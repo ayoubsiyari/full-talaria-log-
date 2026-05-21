@@ -42,18 +42,15 @@ class GannBoxTool extends BaseDrawing {
         this.style.timeBackground = this.style.timeBackground || 'rgba(41, 98, 255, 0.1)';
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing gann-box')
-            .attr('data-id', this.id);
+        this._prepareRenderGroup(container, 'drawing gann-box', renderOpts);
+        this._clearDrawingLabels(scales);;
 
         const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(this.points[0].x) : scales.xScale(this.points[0].x);
@@ -70,7 +67,7 @@ class GannBoxTool extends BaseDrawing {
         const height = bottom - top;
 
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -303,7 +300,7 @@ class GannBoxTool extends BaseDrawing {
             }
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
     static fromJSON(data) {
@@ -384,16 +381,13 @@ class AnchoredVWAPTool extends BaseDrawing {
         });
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing drawing-anchored-vwap')
-            .attr('data-id', this.id);
+        this._prepareRenderGroup(container, 'drawing drawing-anchored-vwap', renderOpts);
+        this._clearDrawingLabels(scales);;
 
         const anchorIndex = Math.round(this.points[0].x);
         const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -955,17 +949,14 @@ class VolumeProfileTool extends BaseDrawing {
         if (!hasOwn('developingVAColor')) this.style.developingVAColor = '#35bad1';
     }
 
-    render(container, scales, isPreview = false) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing drawing-volume-profile')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none');
+        this._prepareRenderGroup(container, 'drawing drawing-volume-profile', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none');
 
         this._profileTopY = null;
         this._profileBottomY = null;
@@ -1099,7 +1090,7 @@ class VolumeProfileTool extends BaseDrawing {
         const startIndex = Math.max(0, Math.min(clampedIndex1, dataIndex2));
         const endIndex = hasChartData ? Math.min(chartData.length - 1, Math.max(clampedIndex1, dataIndex2)) : Math.max(clampedIndex1, dataIndex2);
         if (chartData.length === 0 || startIndex > endIndex) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -1124,7 +1115,7 @@ class VolumeProfileTool extends BaseDrawing {
         const bottom = Math.max(scales.yScale(priceHigh), scales.yScale(priceLow));
         const height = bottom - top;
         if (!Number.isFinite(top) || !Number.isFinite(bottom) || height <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -1241,18 +1232,18 @@ class VolumeProfileTool extends BaseDrawing {
         }
 
         if (!shouldRenderProfileBody) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
         if (!Number.isFinite(priceHigh) || !Number.isFinite(priceLow) || priceHigh === priceLow || height <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
         
         const priceRange = priceHigh - priceLow;
         if (!Number.isFinite(priceRange) || priceRange <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -1299,7 +1290,7 @@ class VolumeProfileTool extends BaseDrawing {
 
         const priceStep = priceRange / numBins;
         if (!Number.isFinite(priceStep) || priceStep <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -1461,7 +1452,7 @@ class VolumeProfileTool extends BaseDrawing {
         // Find max volume for scaling
         const maxVolume = Math.max(...totalVolumeBins, 0);
         if (!Number.isFinite(maxVolume) || maxVolume <= 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -1736,7 +1727,7 @@ class VolumeProfileTool extends BaseDrawing {
             }
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
     renderCornerPoint(group, x, y, opacity = 1) {
@@ -1969,22 +1960,19 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         if (!hasOwn('developingVAColor')) this.style.developingVAColor = '#35bad1';
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
         const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
 
-        this.group = container.append('g')
-            .attr('class', 'drawing drawing-anchored-volume-profile')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none');
+        this._prepareRenderGroup(container, 'drawing drawing-anchored-volume-profile', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none');
 
         if (chartData.length === 0) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return;
         }
 
@@ -2013,7 +2001,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
             : null;
         proxy._isAnchoredProxy = true;
         proxy.fixedProfileSide = String(this.style.profilePlacement || 'left').toLowerCase() === 'right' ? 'right' : 'left';
-        proxy.render(container, scales);
+        proxy.render(container, scales, renderOptsArg = {});
 
         this.group = proxy.group;
         this.group

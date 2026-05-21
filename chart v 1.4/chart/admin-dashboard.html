@@ -1552,6 +1552,25 @@ select { cursor:default; }
 .support-badge.sla { background:rgba(239,68,68,.15); color:#f87171; }
 .support-badge.pri-urgent { background:rgba(239,68,68,.2); color:#fca5a5; }
 .support-badge.pri-high { background:rgba(251,146,60,.2); color:#fdba74; }
+.support-cat-badge {
+  font-size:10px;
+  font-weight:600;
+  padding:2px 8px;
+  border-radius:999px;
+  margin-right:6px;
+  border:1px solid transparent;
+  white-space:nowrap;
+  vertical-align:middle;
+}
+.support-cat-billing { background:rgba(59,130,246,.18); color:#93c5fd; border-color:rgba(59,130,246,.35); }
+.support-cat-account { background:rgba(139,92,246,.18); color:#c4b5fd; border-color:rgba(139,92,246,.35); }
+.support-cat-access { background:rgba(6,182,212,.18); color:#67e8f9; border-color:rgba(6,182,212,.35); }
+.support-cat-bug { background:rgba(239,68,68,.18); color:#fca5a5; border-color:rgba(239,68,68,.35); }
+.support-cat-error { background:rgba(249,115,22,.18); color:#fdba74; border-color:rgba(249,115,22,.35); }
+.support-cat-feature { background:rgba(34,197,94,.18); color:#86efac; border-color:rgba(34,197,94,.35); }
+.support-cat-modifications { background:rgba(234,179,8,.2); color:#fde047; border-color:rgba(234,179,8,.4); }
+.support-cat-suggestions { background:rgba(168,85,247,.2); color:#d8b4fe; border-color:rgba(168,85,247,.4); }
+.support-cat-other { background:rgba(107,114,128,.18); color:#d1d5db; border-color:rgba(107,114,128,.35); }
 .support-msg.internal { border-left:3px solid #a78bfa; opacity:.95; }
 .support-ticket-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
 .support-ticket-controls select { font-size:12px; padding:4px 8px; }
@@ -3411,6 +3430,18 @@ select { cursor:default; }
                   <option value="normal">Normal</option>
                   <option value="low">Low</option>
                 </select>
+                <select id="supportFilterCategory" onchange="loadSupportThreads()">
+                  <option value="">All categories</option>
+                  <option value="billing">Billing</option>
+                  <option value="account">Account</option>
+                  <option value="access">Access</option>
+                  <option value="bug">Bug</option>
+                  <option value="error">Error</option>
+                  <option value="feature">Feature request</option>
+                  <option value="modifications">Modifications</option>
+                  <option value="suggestions">Suggestions / Features</option>
+                  <option value="other">Other</option>
+                </select>
                 <select id="supportFilterAssignee" onchange="loadSupportThreads()">
                   <option value="">All assignees</option>
                   <option value="0">Unassigned</option>
@@ -3451,6 +3482,9 @@ select { cursor:default; }
                       <option value="high">High</option>
                       <option value="urgent">Urgent</option>
                     </select>
+                  </label>
+                  <label style="font-size:11px;color:var(--text-muted)">Category
+                    <select id="supportTicketCategory" onchange="supportPatchTicketField('category', this.value)"></select>
                   </label>
                   <label style="font-size:11px;color:var(--text-muted)">Assignee
                     <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
@@ -3731,6 +3765,31 @@ function clearDsHubRegistryPanel() {
 }
 
 let supportThreads = [];
+
+const SUPPORT_CATEGORY_OPTIONS = [
+  { value: 'billing', label: 'Billing' },
+  { value: 'account', label: 'Account' },
+  { value: 'access', label: 'Access' },
+  { value: 'bug', label: 'Bug' },
+  { value: 'error', label: 'Error' },
+  { value: 'feature', label: 'Feature request' },
+  { value: 'modifications', label: 'Modifications' },
+  { value: 'suggestions', label: 'Suggestions / Features' },
+  { value: 'other', label: 'Other' },
+];
+
+function supportCategoryLabel(cat) {
+  const key = (cat || 'other').toLowerCase();
+  const row = SUPPORT_CATEGORY_OPTIONS.find(c => c.value === key);
+  return row ? row.label : key;
+}
+
+function supportCategoryBadgeHtml(cat) {
+  const raw = (cat || 'other').toLowerCase();
+  const cssKey = SUPPORT_CATEGORY_OPTIONS.some(c => c.value === raw) ? raw : 'other';
+  const label = esc(supportCategoryLabel(cat));
+  return '<span class="support-cat-badge support-cat-' + esc(cssKey) + '">' + label + '</span>';
+}
 let selectedSupportId = null;
 let supportMessages = [];
 let supportAgents = [];
@@ -3989,11 +4048,13 @@ function supportBuildThreadQuery() {
   const q = ($('supportFilterQ') && $('supportFilterQ').value || '').trim();
   const st = ($('supportFilterStatus') && $('supportFilterStatus').value) || '';
   const pr = ($('supportFilterPriority') && $('supportFilterPriority').value) || '';
+  const cat = ($('supportFilterCategory') && $('supportFilterCategory').value) || '';
   const asg = ($('supportFilterAssignee') && $('supportFilterAssignee').value) || '';
   const sla = $('supportFilterSla') && $('supportFilterSla').checked;
   if (q) params.set('q', q);
   if (st) params.set('status', st);
   if (pr) params.set('priority', pr);
+  if (cat) params.set('category', cat);
   if (asg !== '') params.set('assigned_to', asg);
   if (sla) params.set('sla_overdue', 'true');
   return params.toString();
@@ -4015,8 +4076,9 @@ async function loadSupportThreads() {
       const sla = t.sla_overdue ? '<span class="support-badge sla">SLA</span>' : '';
       const pri = t.priority && t.priority !== 'normal' ? '<span class="support-badge pri-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' : '';
       const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : '—';
+      const catBadge = supportCategoryBadgeHtml(t.category);
       return `<div class="support-thread-row${active}" data-id="${t.id}">
-        <div class="support-thread-subj">${ref} · ${esc(t.subject)} ${pri}${sla}</div>
+        <div class="support-thread-subj">${catBadge}${ref} · ${esc(t.subject)} ${pri}${sla}</div>
         <div class="support-thread-meta">${who} · ${esc(t.status)} · ${esc(t.priority || 'normal')} · ${assignee} · ${timeAgo(t.last_message_at)}</div>
       </div>`;
     }).join('');
@@ -4072,6 +4134,12 @@ function supportUpdateTicketControls(th) {
   }
   const prSel = $('supportTicketPriority');
   if (prSel) prSel.value = th.priority || 'normal';
+  const catSel = $('supportTicketCategory');
+  if (catSel) {
+    catSel.innerHTML = SUPPORT_CATEGORY_OPTIONS.map(c =>
+      '<option value="' + c.value + '"' + (th.category === c.value ? ' selected' : '') + '>' + esc(c.label) + '</option>'
+    ).join('');
+  }
   const asSel = $('supportTicketAssignee');
   if (asSel) asSel.value = th.assigned_to_user_id != null ? String(th.assigned_to_user_id) : '0';
   const closed = th.status === 'closed';
@@ -4118,7 +4186,12 @@ async function selectSupportThread(id) {
   if (sfi) sfi.disabled = isInternal;
   const th = supportThreads.find(x => x.id === id);
   const ref = th && th.ticket_ref ? th.ticket_ref : ('TAL-' + String(id).padStart(5, '0'));
-  $('supportThreadTitle').textContent = th ? (ref + ' · ' + th.subject) : ref;
+  const titleEl = $('supportThreadTitle');
+  if (titleEl) {
+    titleEl.innerHTML = th
+      ? (supportCategoryBadgeHtml(th.category) + esc(ref) + ' · ' + esc(th.subject))
+      : esc(ref);
+  }
   supportUpdateTicketControls(th);
   if (th && th.status === 'closed') {
     $('supportInput').disabled = true;
@@ -4146,6 +4219,7 @@ async function supportPatchTicketField(field, value) {
   const body = {};
   if (field === 'status') body.status = value;
   else if (field === 'priority') body.priority = value;
+  else if (field === 'category') body.category = value;
   else if (field === 'assigned_to_user_id') body.assigned_to_user_id = parseInt(value, 10) || 0;
   try {
     const data = await api('/api/admin/support/threads/' + selectedSupportId, {

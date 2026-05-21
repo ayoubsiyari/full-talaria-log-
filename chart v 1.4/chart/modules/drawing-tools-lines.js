@@ -119,25 +119,20 @@ class TrendlineTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
 
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing trendline')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing trendline', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -440,7 +435,7 @@ class TrendlineTool extends BaseDrawing {
         this.renderInfoBox(origX1, origY1, origX2, origY2, scales);
 
         // Create resize handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -847,25 +842,20 @@ class HorizontalLineTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
 
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 1) return;
+                if (this.points.length < 1) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing horizontal-line')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing horizontal-line', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const xRange = scales.xScale.range();
@@ -1221,23 +1211,18 @@ class VerticalLineTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 1) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length < 1) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing vertical-line')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing vertical-line', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const yRange = scales.yScale.range();
@@ -1567,7 +1552,9 @@ class RayTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -1579,10 +1566,8 @@ class RayTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing ray')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing ray', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -1802,7 +1787,7 @@ class RayTool extends BaseDrawing {
         });
 
         // Create resize handles (only for the two defining points)
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -1961,21 +1946,16 @@ class HorizontalRayTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
 
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 1) return;
+                if (this.points.length < 1) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing horizontal-ray')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing horizontal-ray', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const xRange = scales.xScale.range();
@@ -2339,7 +2319,9 @@ class ExtendedLineTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -2351,10 +2333,8 @@ class ExtendedLineTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing extended-line')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing extended-line', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -2589,7 +2569,7 @@ class ExtendedLineTool extends BaseDrawing {
         });
 
         // Create resize handles (only for the two defining points)
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -2752,25 +2732,20 @@ class CrossLineTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
 
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 1) return;
+                if (this.points.length < 1) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing cross-line')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing cross-line', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const xRange = scales.xScale.range();
@@ -2861,7 +2836,7 @@ class CrossLineTool extends BaseDrawing {
         }
 
         // Create resize handle at intersection point
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }

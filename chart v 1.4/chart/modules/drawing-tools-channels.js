@@ -9,9 +9,10 @@ class ParallelChannelTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('parallel-channel', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
+        this.style.color = style.color || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(41, 98, 255, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
@@ -152,7 +153,9 @@ class ParallelChannelTool extends BaseDrawing {
         return false;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -165,11 +168,9 @@ class ParallelChannelTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create new group
-        this.group = container.append('g')
-            .attr('class', 'drawing parallel-channel')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        this._prepareRenderGroup(container, 'drawing parallel-channel', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none').style('cursor', 'default');
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -315,7 +316,7 @@ class ParallelChannelTool extends BaseDrawing {
             }
             
             // Create handles if selected
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         } else {
             this.group.append('line')
                 .attr('x1', x1)
@@ -569,7 +570,9 @@ class RegressionTrendTool extends BaseDrawing {
         return { a, b, stdDev, n, r2 };
     }
 
-    render(container, scales, isPreview = false) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -602,11 +605,9 @@ class RegressionTrendTool extends BaseDrawing {
         const isBeingResized = manager && manager.isResizing && manager.resizingDrawing === this;
         
         // Create new group
-        this.group = container.append('g')
-            .attr('class', 'drawing regression-trend')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        this._prepareRenderGroup(container, 'drawing regression-trend', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none').style('cursor', 'default');
         
         // Create a clipped sub-group for visual elements only
         // Handles will be added to the main group (unclipped)
@@ -935,7 +936,7 @@ class RegressionTrendTool extends BaseDrawing {
         }
         
         // Create handles if selected
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
     renderTextLabel(scales) {
@@ -1069,7 +1070,7 @@ class RegressionTrendTool extends BaseDrawing {
                     .attr('y1', topY)
                     .attr('x2', cx)
                     .attr('y2', bottomY)
-                    .attr('stroke', this.style.stroke || '#2962FF')
+                    .attr('stroke', this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE)
                     .attr('stroke-width', 1)
                     .attr('stroke-dasharray', '3,3')
                     .attr('opacity', 0.4)
@@ -1201,7 +1202,9 @@ class FlatTopBottomTool extends BaseDrawing {
         return false;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -1214,11 +1217,9 @@ class FlatTopBottomTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create new group
-        this.group = container.append('g')
-            .attr('class', 'drawing flat-top-bottom')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        this._prepareRenderGroup(container, 'drawing flat-top-bottom', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none').style('cursor', 'default');
 
         if (this.points.length === 2) {
             const p1 = this.points[0];
@@ -1378,7 +1379,7 @@ class FlatTopBottomTool extends BaseDrawing {
             this.virtualPoints = null;
         }
         this.renderHandlePriceLabels(scales);
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
     /**
@@ -1714,7 +1715,9 @@ class DisjointChannelTool extends BaseDrawing {
         return false;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
         if (this.group) {
             this.group.remove();
@@ -1727,11 +1730,9 @@ class DisjointChannelTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create new group
-        this.group = container.append('g')
-            .attr('class', 'drawing disjoint-channel')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        this._prepareRenderGroup(container, 'drawing disjoint-channel', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none').style('cursor', 'default');
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1903,7 +1904,7 @@ class DisjointChannelTool extends BaseDrawing {
                 p4
             ];
         }
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
     renderTextLabel(scales) {

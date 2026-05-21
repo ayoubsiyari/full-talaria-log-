@@ -54,11 +54,9 @@ class ImageTool extends BaseDrawing {
         if (!this.style.originalAspectRatio) this.style.originalAspectRatio = null;
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) {
             return;
         }
@@ -111,10 +109,9 @@ class ImageTool extends BaseDrawing {
         this._screenY = y;
         this._scales = scales;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing image-tool')
-            .attr('data-id', this.id)
-            .attr('transform', `translate(${x}, ${y})`)
+        this._prepareRenderGroup(container, 'drawing image-tool', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.attr('transform', `translate(${x}, ${y})`)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
         // Calculate actual rendered image dimensions when aspect ratio is maintained

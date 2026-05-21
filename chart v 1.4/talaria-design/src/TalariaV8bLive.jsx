@@ -1714,25 +1714,25 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
 /** Default V9 price-level rows per classic fib tool (must match `drawing-tools-fibonacci.js`). */
 function v9ClassicFibDefaultLevelsTlForLegacy(legacyType) {
   if (legacyType === "fibonacci-extension") {
-    return [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "1", color: "#787B86" },
-      { on: true, value: "0.618", color: "#4CAF50" },
-      { on: true, value: "1.272", color: "#2196F3" },
-      { on: true, value: "1.618", color: "#9C27B0" },
-      { on: true, value: "2.618", color: "#E91E63" },
-      { on: true, value: "4.236", color: "#F44336" },
-    ];
+    return v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "1" },
+      { on: true, value: "0.618" },
+      { on: true, value: "1.272" },
+      { on: true, value: "1.618" },
+      { on: true, value: "2.618" },
+      { on: true, value: "4.236" },
+    ]);
   }
-  return [
-    { on: true, value: "0", color: "#787B86" },
-    { on: true, value: "0.236", color: "#F44336" },
-    { on: true, value: "0.382", color: "#FF9800" },
-    { on: true, value: "0.5", color: "#FFEB3B" },
-    { on: true, value: "0.618", color: "#4CAF50" },
-    { on: true, value: "0.786", color: "#2196F3" },
-    { on: true, value: "1", color: "#787B86" },
-  ];
+  return v9GrayLevelRows([
+    { on: true, value: "0" },
+    { on: true, value: "0.236" },
+    { on: true, value: "0.382" },
+    { on: true, value: "0.5" },
+    { on: true, value: "0.618" },
+    { on: true, value: "0.786" },
+    { on: true, value: "1" },
+  ]);
 }
 
 function v9FibLevelsModeUiToChart(mode) {
@@ -1821,15 +1821,15 @@ function v9TlFibSpeedFanLevelsToChart(levels, fibLineType, fibLineWidth) {
 }
 
 function v9FibSpeedFanDefaultPriceLevelsTl() {
-  return [
-    { on: true, value: "1", color: "#2962FF" },
-    { on: true, value: "0.75", color: "#00BCD4" },
-    { on: true, value: "0.618", color: "#4CAF50" },
-    { on: true, value: "0.5", color: "#FFEB3B" },
-    { on: true, value: "0.382", color: "#FF9800" },
-    { on: true, value: "0.25", color: "#F44336" },
-    { on: true, value: "0", color: "#787B86" },
-  ];
+  return v9GrayLevelRows([
+    { on: true, value: "1" },
+    { on: true, value: "0.75" },
+    { on: true, value: "0.618" },
+    { on: true, value: "0.5" },
+    { on: true, value: "0.382" },
+    { on: true, value: "0.25" },
+    { on: true, value: "0" },
+  ]);
 }
 
 function v9ResolveFibSpeedFanPriceRowsForDrawing(d, tlStyle) {
@@ -2133,32 +2133,32 @@ function v9IsFibTimeZoneType(t) {
 
 /** Default V9 rows for Fib Channel (`drawing-tools-fib-gann.js` FibChannelTool). */
 function v9FibChannelDefaultLevelsTl() {
-  return [
-    { on: true, value: "0", color: "#787B86" },
-    { on: true, value: "1", color: "#787B86" },
-    { on: true, value: "0.236", color: "#F44336" },
-    { on: true, value: "0.382", color: "#FF9800" },
-    { on: true, value: "0.5", color: "#FFEB3B" },
-    { on: true, value: "0.618", color: "#4CAF50" },
-    { on: true, value: "0.786", color: "#2196F3" },
-  ];
+  return v9GrayLevelRows([
+    { on: true, value: "0" },
+    { on: true, value: "1" },
+    { on: true, value: "0.236" },
+    { on: true, value: "0.382" },
+    { on: true, value: "0.5" },
+    { on: true, value: "0.618" },
+    { on: true, value: "0.786" },
+  ]);
 }
 
 /** Default V9 rows for Fib Time Zone (`drawing-tools-fib-gann.js` FibTimeZoneTool). */
 function v9FibTzDefaultLevelsTl() {
-  return [
-    { on: true, value: "0", color: "#787B86", type: "solid", width: "1" },
-    { on: true, value: "1", color: "#F44336", type: "solid", width: "1" },
-    { on: true, value: "2", color: "#FF9800", type: "solid", width: "1" },
-    { on: true, value: "3", color: "#FFEB3B", type: "solid", width: "1" },
-    { on: true, value: "5", color: "#4CAF50", type: "solid", width: "1" },
-    { on: true, value: "8", color: "#00BCD4", type: "solid", width: "1" },
-    { on: true, value: "13", color: "#2962FF", type: "solid", width: "1" },
-    { on: true, value: "21", color: "#9C27B0", type: "solid", width: "1" },
-    { on: false, value: "34", color: "#787B86", type: "dashed", width: "1" },
-    { on: false, value: "55", color: "#787B86", type: "dashed", width: "1" },
-    { on: false, value: "89", color: "#787B86", type: "dashed", width: "1" },
-  ];
+  return v9GrayLevelRows([
+    { on: true, value: "0", type: "solid", width: "1" },
+    { on: true, value: "1", type: "solid", width: "1" },
+    { on: true, value: "2", type: "solid", width: "1" },
+    { on: true, value: "3", type: "solid", width: "1" },
+    { on: true, value: "5", type: "solid", width: "1" },
+    { on: true, value: "8", type: "solid", width: "1" },
+    { on: true, value: "13", type: "solid", width: "1" },
+    { on: true, value: "21", type: "solid", width: "1" },
+    { on: false, value: "34", type: "dashed", width: "1" },
+    { on: false, value: "55", type: "dashed", width: "1" },
+    { on: false, value: "89", type: "dashed", width: "1" },
+  ]);
 }
 
 /** Fib Time Zone stores levels on `drawing.levels`, `drawing.fibNumbers`, or `style.*`. */
@@ -3110,7 +3110,13 @@ function v9TlStylePatchFromDrawing(d) {
 }
 
 const V9_DEFAULT_TL_LINE_COLOR = "#8C8C8C";
-const V9_DEFAULT_TL_SHAPE_FILL = "rgba(74,106,255,0.15)";
+const V9_DEFAULT_TL_SHAPE_FILL = "rgba(140, 140, 140, 0.2)";
+
+/** Map fib/gann/channel level rows to the unified default line color. */
+function v9GrayLevelRows(rows) {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((row) => ({ ...row, color: V9_DEFAULT_TL_LINE_COLOR }));
+}
 
 /** Baseline tlStyle before per-tool saved defaults / drawing read-back (prevents fib subtype field bleed). */
 function v9FreshTlStyleDefaults() {
@@ -3146,6 +3152,9 @@ function v9FreshTlStyleDefaults() {
     midLineWidth: "1",
     showBg: true,
     showBorder: true,
+    borderColor: V9_DEFAULT_TL_LINE_COLOR,
+    borderType: "solid",
+    borderWidth: "1",
   };
 }
 
@@ -5893,7 +5902,7 @@ const TalariaV8bLive = () => {
   const [tlNewTplName, setTlNewTplName] = useState("");
   const [tlSettTplDrop, setTlSettTplDrop] = useState(false);
   const [tlStyle, setTlStyle] = useState({
-    lineColor: "#8C8C8C", bgColor: "rgba(74,106,255,0.15)", lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
+    lineColor: V9_DEFAULT_TL_LINE_COLOR, bgColor: V9_DEFAULT_TL_SHAPE_FILL, lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
     extendLeft: false, extendRight: false, priceLabels: true, timeLabels: true, flatChPrices: true,
     rangeType: "Date & Price", showInfo: false, showInfoTypes: ["Price range"],
     showBorder: true, borderColor: "#8C8C8C", borderType: "dashed", borderWidth: "1",
@@ -5909,111 +5918,92 @@ const TalariaV8bLive = () => {
     visMonths: { checked: true, min: 1, max: 120 },
     midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
     chLines: [
-      { on: true, value: "1.00", color: "#2962FF", type: "solid", width: "2" },
-      { on: true, value: "0.75", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, value: "0.50", color: "#8C8C8C", type: "dashed", width: "1" },
-      { on: true, value: "0.25", color: "#2962FF", type: "dashed", width: "1" },
-      { on: true, value: "0.00", color: "#2962FF", type: "solid", width: "2" },
+      { on: true, value: "1.00", color: V9_DEFAULT_TL_LINE_COLOR, type: "solid", width: "2" },
+      { on: true, value: "0.75", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
+      { on: true, value: "0.50", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
+      { on: true, value: "0.25", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
+      { on: true, value: "0.00", color: V9_DEFAULT_TL_LINE_COLOR, type: "solid", width: "2" },
     ],
     regLines: [
-      { on: true, label: "Middle Line", color: "#9c27b0", type: "dashed", width: "2" },
-      { on: true, label: "Upper Line", color: "#9c27b0", type: "dashed", width: "2" },
-      { on: true, label: "Lower Line", color: "#9c27b0", type: "dashed", width: "2" },
+      { on: true, label: "Middle Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
+      { on: true, label: "Upper Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
+      { on: true, label: "Lower Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
     ],
-    regUpperBg: "rgba(74,106,255,0.15)", regLowerBg: "rgba(255,82,82,0.15)",
+    regUpperBg: V9_DEFAULT_TL_SHAPE_FILL, regLowerBg: V9_DEFAULT_TL_SHAPE_FILL,
     source: "Close", regressionType: "Linear",
     regUpperDev: { on: true, value: "2" },
     regLowerDev: { on: true, value: "2" },
     regPearsonR: false,
-    fibTzLevels: [
-      { on: true, value: "1",  color: "#787B86", type: "solid",  width: "1" },
-      { on: true, value: "2",  color: "#F44336", type: "solid",  width: "1" },
-      { on: true, value: "3",  color: "#FF9800", type: "solid",  width: "1" },
-      { on: true, value: "5",  color: "#FFEB3B", type: "solid",  width: "1" },
-      { on: true, value: "8",  color: "#4CAF50", type: "solid",  width: "1" },
-      { on: true, value: "13", color: "#2196F3", type: "solid",  width: "1" },
-      { on: true, value: "21", color: "#9C27B0", type: "solid",  width: "1" },
-      { on: false, value: "34", color: "#787B86", type: "dashed", width: "1" },
-      { on: false, value: "55", color: "#787B86", type: "dashed", width: "1" },
-      { on: false, value: "89", color: "#787B86", type: "dashed", width: "1" },
-    ],
+    fibTzLevels: v9FibTzDefaultLevelsTl(),
     fibTrendLine: true, fibTimeTrendType: "solid", fibTimeTrendWidth: "1", fibPriceLabels: false, fibTimeLabels: false,
     fibArcsTrendLine: true, fibArcsTrendType: "solid", fibArcsTrendWidth: "1", fibArcsFullCircle: false,
     fibWedgeTrendLine: true, fibWedgeTrendType: "solid", fibWedgeTrendWidth: "1",
     fibBackground: false, fibBgOpacity: 0.5, fibReverse: false, fibPrices: true, fibSpiralCCW: false,
-    fibFanTimeLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#F44336" },
-      { on: true, value: "0.5", color: "#FF9800" },
-      { on: true, value: "0.75", color: "#FFEB3B" },
-      { on: true, value: "1", color: "#4CAF50" },
-    ],
+    fibFanTimeLevels: v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "0.25" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.75" },
+      { on: true, value: "1" },
+    ]),
     fibLevelsOn: true, fibLevelsMode: "Value", fibExtendLines: false, fibGrid: false,
-    fibGridColor: "#787B86", fibGridType: "solid", fibGridWidth: "1",
+    fibGridColor: V9_DEFAULT_TL_LINE_COLOR, fibGridType: "solid", fibGridWidth: "1",
     fibLineType: "solid", fibLineWidth: "2",
-    fibLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.236", color: "#F44336" },
-      { on: true, value: "0.382", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#FFEB3B" },
-      { on: true, value: "0.618", color: "#4CAF50" },
-      { on: true, value: "0.786", color: "#2196F3" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
+    fibLevels: v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement"),
     gannLineType: "solid", gannLineWidth: "2",
     gannBackground: false, gannBgOpacity: 0.5,
-    gannPriceLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.75", color: "#FF9800" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannTimeLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.382", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.618", color: "#F44336" },
-      { on: true, value: "0.75", color: "#9C27B0" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannGridLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.125", color: "#2196F3" },
-      { on: true, value: "0.25", color: "#4CAF50" },
-      { on: true, value: "0.375", color: "#FF9800" },
-      { on: true, value: "0.5", color: "#FFEB3B" },
-      { on: true, value: "0.625", color: "#FF9800" },
-      { on: true, value: "0.75", color: "#4CAF50" },
-      { on: true, value: "0.875", color: "#2196F3" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
-    gannFanLevels: [
-      { on: true, value: "1", color: "#F44336" },
-      { on: true, value: "2", color: "#FF9800" },
-      { on: true, value: "3", color: "#FFEB3B" },
-      { on: true, value: "4", color: "#4CAF50" },
-      { on: true, value: "8", color: "#2196F3" },
-    ],
-    gannArcLevels: [
-      { on: true, value: "0", color: "#787B86" },
-      { on: true, value: "0.25", color: "#2196F3" },
-      { on: true, value: "0.5", color: "#4CAF50" },
-      { on: true, value: "0.75", color: "#FF9800" },
-      { on: true, value: "1", color: "#787B86" },
-    ],
+    gannPriceLevels: v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "0.25" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.75" },
+      { on: true, value: "1" },
+    ]),
+    gannTimeLevels: v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "0.25" },
+      { on: true, value: "0.382" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.618" },
+      { on: true, value: "0.75" },
+      { on: true, value: "1" },
+    ]),
+    gannGridLevels: v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "0.125" },
+      { on: true, value: "0.25" },
+      { on: true, value: "0.375" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.625" },
+      { on: true, value: "0.75" },
+      { on: true, value: "0.875" },
+      { on: true, value: "1" },
+    ]),
+    gannFanLevels: v9GrayLevelRows([
+      { on: true, value: "1" },
+      { on: true, value: "2" },
+      { on: true, value: "3" },
+      { on: true, value: "4" },
+      { on: true, value: "8" },
+    ]),
+    gannArcLevels: v9GrayLevelRows([
+      { on: true, value: "0" },
+      { on: true, value: "0.25" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.75" },
+      { on: true, value: "1" },
+    ]),
     pitchforkStyle: "Original", pfBgOpacity: 0.5,
-    pfLevels: [
-      { on: false, value: "0.25", color: "#FF4081" },
-      { on: true, value: "0.5", color: "#2962FF" },
-      { on: true, value: "0.75", color: "#00BFA5" },
-      { on: false, value: "1.5", color: "#AA00FF" },
-      { on: false, value: "0.382", color: "#FF6D00" },
-      { on: false, value: "0.618", color: "#00BFA5" },
-      { on: true, value: "1", color: "#2962FF" },
-      { on: false, value: "1.75", color: "#FF4081" },
-    ],
+    pfLevels: v9GrayLevelRows([
+      { on: false, value: "0.25" },
+      { on: true, value: "0.5" },
+      { on: true, value: "0.75" },
+      { on: false, value: "1.5" },
+      { on: false, value: "0.382" },
+      { on: false, value: "0.618" },
+      { on: true, value: "1" },
+      { on: false, value: "1.75" },
+    ]),
   });
   const [txtSettOpen, setTxtSettOpen] = useState(false);
   const [txtSettPos, setTxtSettPos] = useState({ x: 200, y: 90 });
@@ -22064,7 +22054,15 @@ const TalariaV8bLive = () => {
                       <label style={{ fontSize:11, fontWeight:700, color:c.tm, display:"block", marginBottom:4 }}>Category</label>
                       <select value={supportNewCategory} onChange={e=>setSupportNewCategory(e.target.value)}
                         style={{ width:"100%", padding:"6px 10px", fontSize:12, background:c.bg, color:c.tx, border:`1px solid ${c.br}`, borderRadius:4, outline:"none", fontFamily:F }}>
-                        <option value="bug">Bug</option><option value="error">Error</option><option value="other">Other</option>
+                        <option value="billing">Billing</option>
+                        <option value="account">Account</option>
+                        <option value="access">Access</option>
+                        <option value="bug">Bug</option>
+                        <option value="error">Error</option>
+                        <option value="feature">Feature request</option>
+                        <option value="modifications">Modifications</option>
+                        <option value="suggestions">Suggestions / Features</option>
+                        <option value="other">Other</option>
                       </select>
                     </div>
                     <div>

@@ -1257,7 +1257,17 @@ SUPPORT_TICKET_URL_BASE = (
     or "/dashboard/profile/?tab=support&thread="
 )
 SUPPORT_CATEGORIES = frozenset(
-    {"billing", "account", "access", "bug", "error", "feature", "other"}
+    {
+        "billing",
+        "account",
+        "access",
+        "bug",
+        "error",
+        "feature",
+        "modifications",
+        "suggestions",
+        "other",
+    }
 )
 SUPPORT_STATUSES = frozenset({"open", "pending", "resolved", "closed"})
 SUPPORT_PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
@@ -10327,6 +10337,7 @@ class SupportAdminPatchThreadIn(BaseModel):
     status: str | None = None
     priority: str | None = None
     assigned_to_user_id: int | None = None
+    category: str | None = None
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -11036,6 +11047,7 @@ def _admin_support_query_threads(
     *,
     status: str | None,
     priority: str | None,
+    category: str | None,
     assigned_to: int | None,
     q: str | None,
     sla_overdue: bool,
@@ -11047,6 +11059,8 @@ def _admin_support_query_threads(
         query = query.filter(SupportThread.status == _support_validate_status(status))
     if priority:
         query = query.filter(SupportThread.priority == _support_validate_priority(priority))
+    if category:
+        query = query.filter(SupportThread.category == _support_validate_category(category))
     if assigned_to is not None:
         if assigned_to == 0:
             query = query.filter(SupportThread.assigned_to_user_id.is_(None))
@@ -11146,6 +11160,7 @@ async def admin_support_list_threads(
     request: Request,
     status: str | None = None,
     priority: str | None = None,
+    category: str | None = None,
     assigned_to: int | None = None,
     q: str | None = None,
     sla_overdue: bool = False,
@@ -11159,6 +11174,7 @@ async def admin_support_list_threads(
             db,
             status=status,
             priority=priority,
+            category=category,
             assigned_to=assigned_to,
             q=q,
             sla_overdue=sla_overdue,
@@ -11221,6 +11237,11 @@ async def admin_support_patch_thread(
                 t.assigned_to_user_id = int(agent.id)
             t.updated_at = now
             changes["assigned_to_user_id"] = {"from": old_a, "to": t.assigned_to_user_id}
+        if payload.category is not None:
+            old_c = t.category
+            t.category = _support_validate_category(payload.category)
+            t.updated_at = now
+            changes["category"] = {"from": old_c, "to": t.category}
         db.commit()
         db.refresh(t)
         if changes:

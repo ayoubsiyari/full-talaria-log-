@@ -599,15 +599,15 @@ class Chart {
         
         // Drawing tool default settings - saved per tool type
         this.toolDefaults = {
-            trendline: { color: '#2962ff', lineWidth: 2, opacity: 1 },
-            horizontal: { color: '#2962ff', lineWidth: 2, opacity: 1 },
-            vertical: { color: '#2962ff', lineWidth: 2, opacity: 1 },
-            rectangle: { color: '#2962ff', lineWidth: 2, opacity: 1, fillColor: 'rgba(41, 98, 255, 0.1)', fillOpacity: 0.1 },
-            fibonacci: { color: '#2962ff', lineWidth: 2, opacity: 1, fillColor: 'rgba(41, 98, 255, 0.1)', fillOpacity: 0.1 },
-            text: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-            arrowUp: { color: '#2962ff', lineWidth: 3, size: 20 },
-            arrowDown: { color: '#d32f2f', lineWidth: 3, size: 20 },
-            channel: { color: '#2962ff', lineWidth: 2, opacity: 1 }
+            trendline: { color: '#8C8C8C', lineWidth: 2, opacity: 1 },
+            horizontal: { color: '#8C8C8C', lineWidth: 2, opacity: 1 },
+            vertical: { color: '#8C8C8C', lineWidth: 2, opacity: 1 },
+            rectangle: { color: '#8C8C8C', lineWidth: 2, opacity: 1, fillColor: 'rgba(140, 140, 140, 0.2)', fillOpacity: 0.2 },
+            fibonacci: { color: '#8C8C8C', lineWidth: 2, opacity: 1, fillColor: 'rgba(140, 140, 140, 0.2)', fillOpacity: 0.2 },
+            text: { color: '#8C8C8C', fontSize: 16, fontWeight: 'bold' },
+            arrowUp: { color: '#8C8C8C', lineWidth: 3, size: 20 },
+            arrowDown: { color: '#8C8C8C', lineWidth: 3, size: 20 },
+            channel: { color: '#8C8C8C', lineWidth: 2, opacity: 1 }
         };
         
         // Load saved tool defaults from localStorage

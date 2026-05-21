@@ -15,6 +15,10 @@ function generateUUID() {
     });
 }
 
+/** Shared default stroke/fill for all drawing tools (V9 toolbar + new placements). */
+const DRAWING_TOOL_DEFAULT_STROKE = '#8C8C8C';
+const DRAWING_TOOL_DEFAULT_FILL = 'rgba(140, 140, 140, 0.2)';
+
 const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'trendline',
     'horizontal',
@@ -41,9 +45,9 @@ class BaseDrawing {
         this.type = type;
         this.points = points; // Array of {x, y} coordinates (x = index, y = price)
         this.style = {
-            stroke: style.stroke || '#787b86',  // TradingView blue - visible on light & dark
+            stroke: style.stroke || style.color || DRAWING_TOOL_DEFAULT_STROKE,
             strokeWidth: style.strokeWidth || 2,
-            fill: style.fill || 'none',
+            fill: style.fill !== undefined && style.fill !== null ? style.fill : 'none',
             opacity: style.opacity || 1,
             dashArray: style.dashArray || 'none',
             ...style
@@ -78,11 +82,122 @@ class BaseDrawing {
     }
 
     /**
+     * Normalize render() third argument (boolean isPreview legacy or opts object).
+     */
+    static normalizeRenderOpts(renderOpts) {
+        if (renderOpts === true) {
+            return { isPreview: true, reuseGroup: false, skipHandles: false };
+        }
+        if (renderOpts === false || renderOpts == null) {
+            return { isPreview: false, reuseGroup: false, skipHandles: false };
+        }
+        if (typeof renderOpts === 'object') {
+            return {
+                isPreview: !!renderOpts.isPreview,
+                reuseGroup: !!renderOpts.reuseGroup,
+                skipHandles: !!renderOpts.skipHandles
+            };
+        }
+        return { isPreview: false, reuseGroup: false, skipHandles: false };
+    }
+
+    _shouldCreateHandles(opts = {}) {
+        if (opts.skipHandles) return false;
+        const mgr = this.chart && this.chart.drawingManager;
+        if (mgr && mgr._skipHandleSetup) return false;
+        return true;
+    }
+
+    _isHandleNode(node) {
+        let el = node;
+        const root = this.group ? this.group.node() : null;
+        while (el && el.getAttribute) {
+            const cls = el.getAttribute('class') || '';
+            if (/resize-handle|custom-handle|resize-handle-group/.test(cls)) return true;
+            if (el === root) break;
+            el = el.parentNode;
+        }
+        return false;
+    }
+
+    _clearGeometryChildren(group) {
+        if (!group || group.empty()) return;
+        const nodes = group.selectAll('*').nodes();
+        nodes.slice().reverse().forEach((node) => {
+            if (!node || this._isHandleNode(node)) return;
+            try { node.parentNode && node.parentNode.removeChild(node); } catch (_) {}
+        });
+    }
+
+    _clearDrawingLabels(scales) {
+        const labelsGroup = scales && scales.labelsGroup;
+        if (!labelsGroup || labelsGroup.empty()) return;
+        try {
+            labelsGroup.selectAll(`[data-id="${this.id}"]`).remove();
+        } catch (_) {}
+    }
+
+    /**
+     * Reuse existing SVG group during hot-path redraws (pan/resize) instead of remove+append.
+     * @returns {boolean} true when group was reused
+     */
+    _prepareRenderGroup(container, className, opts = {}) {
+        const normalized = BaseDrawing.normalizeRenderOpts(opts);
+        const opacity = this.visible ? (this.style.opacity != null ? this.style.opacity : 1) : 0;
+
+        if (normalized.reuseGroup && this.group && !this.group.empty()) {
+            const node = this.group.node();
+            if (node && node.parentNode) {
+                this._clearGeometryChildren(this.group);
+                this.group
+                    .attr('class', className)
+                    .attr('data-id', this.id)
+                    .style('opacity', opacity)
+                    .attr('transform', null);
+                return true;
+            }
+        }
+
+        if (this.group) {
+            try { this.group.remove(); } catch (_) {}
+        }
+
+        this.group = container.append('g')
+            .attr('class', className)
+            .attr('data-id', this.id)
+            .style('opacity', opacity);
+        return false;
+    }
+
+    /**
+     * Patch resize-handle positions without recreating handle DOM (hot path).
+     */
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty() || !scales) return;
+        const pointsToRender = this.virtualPoints || this.points;
+        if (!Array.isArray(pointsToRender)) return;
+
+        pointsToRender.forEach((point, index) => {
+            if (!point) return;
+            const cx = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            const cy = scales.yScale(point.y);
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+            this.group.selectAll(`.resize-handle-group[data-point-index="${index}"] circle`)
+                .attr('cx', cx)
+                .attr('cy', cy);
+        });
+    }
+
+    /**
      * Render the drawing to SVG
      * @param {d3.Selection} container - D3 selection of the drawings container
      * @param {Object} scales - {xScale, yScale} D3 scales
      */
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         throw new Error('render() must be implemented by subclass');
     }
 

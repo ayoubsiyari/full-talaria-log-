@@ -574,7 +574,8 @@ class DrawingToolsManager {
                     }
                     this.renderDrawing(stillTracked, {
                         skipInteraction: true,
-                        skipAxisHighlights
+                        skipAxisHighlights,
+                        hotPath: true
                     });
                     if (stillTracked.selected || (this.selectedDrawings || []).includes(stillTracked)) {
                         if (typeof stillTracked.select === 'function') {
@@ -1966,7 +1967,40 @@ class DrawingToolsManager {
         });
     }
 
+    _shouldDeferLiveEdit() {
+        if (this.isDragging || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
+            return true;
+        }
+        if (this.chart && typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning()) {
+            return true;
+        }
+        return false;
+    }
+
     _broadcastLiveEditUpdate(drawing, pointsOverride = null) {
+        if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
+        if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
+        if (window.panelManager.currentLayout === '1') return;
+
+        if (this._shouldDeferLiveEdit()) {
+            if (!this._deferredLiveEdits) this._deferredLiveEdits = new Map();
+            this._deferredLiveEdits.set(drawing.id || drawing, { drawing, pointsOverride });
+            return;
+        }
+
+        this._broadcastLiveEditUpdateNow(drawing, pointsOverride);
+    }
+
+    _flushDeferredLiveEdits() {
+        if (!this._deferredLiveEdits || this._deferredLiveEdits.size === 0) return;
+        const pending = Array.from(this._deferredLiveEdits.values());
+        this._deferredLiveEdits.clear();
+        pending.forEach(({ drawing, pointsOverride }) => {
+            try { this._broadcastLiveEditUpdateNow(drawing, pointsOverride); } catch (_) {}
+        });
+    }
+
+    _broadcastLiveEditUpdateNow(drawing, pointsOverride = null) {
         if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
@@ -4673,14 +4707,26 @@ class DrawingToolsManager {
         if (drawing.group) {
             drawing.group.style('display', null);
         }
-        
-        // Render with current scales AND chart instance for accurate pixel calculation
-        drawing.render(this.drawingsGroup, {
+
+        const scalesPayload = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
-            chart: this.chart,  // Pass chart for dataIndexToPixel method
-            labelsGroup: this.labelsGroup  // Unclipped group for text labels
-        });
+            chart: this.chart,
+            labelsGroup: this.labelsGroup
+        };
+        const isHotPath = skipAxisHighlights || !!opts.hotPath;
+        const renderOpts = {
+            reuseGroup: isHotPath,
+            skipHandles: isHotPath || !!this._skipHandleSetup || skipInteraction,
+            isPreview: false
+        };
+
+        // Render with current scales AND chart instance for accurate pixel calculation
+        drawing.render(this.drawingsGroup, scalesPayload, renderOpts);
+
+        if (isHotPath && typeof drawing.updateHandlePositions === 'function') {
+            try { drawing.updateHandlePositions(scalesPayload); } catch (_) {}
+        }
         
         // Axis highlights are expensive (SVG labels + full chart scheduleRender). Refresh once after interaction ends.
         if (!skipAxisHighlights && typeof drawing.showAxisHighlights === 'function') {
@@ -5885,7 +5931,7 @@ class DrawingToolsManager {
         
         // Re-render without recreating handles during active drag
         this._skipHandleSetup = true;
-        this.renderDrawing(drawing, { skipAxisHighlights: true });
+        this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
         this._skipHandleSetup = false;
         
         this._broadcastLiveEditUpdate(drawing);
@@ -5932,6 +5978,7 @@ class DrawingToolsManager {
         }
         this.renderDrawing(drawing);
         this._refreshSelectedAxisHighlights();
+        this._flushDeferredLiveEdits();
         this._refreshSingleSelectionChrome(drawing);
     }
 
@@ -6042,6 +6089,7 @@ class DrawingToolsManager {
             }
         }
         this._refreshSelectedAxisHighlights();
+        this._flushDeferredLiveEdits();
         this._refreshSingleSelectionChrome(drawing);
     }
 
@@ -6240,6 +6288,7 @@ class DrawingToolsManager {
         } else if ((this.selectedDrawings || []).length === 1) {
             this._refreshSingleSelectionChrome(this.selectedDrawings[0]);
         }
+        this._flushDeferredLiveEdits();
     }
 
     /**
@@ -7263,19 +7312,23 @@ class DrawingToolsManager {
                 chart: this.chart,
                 labelsGroup: this.labelsGroup
             };
+            const renderOpts = { reuseGroup: true, skipHandles: true, isPreview: false };
             this.drawings.forEach((drawing) => {
                 if (!drawing || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
                     return;
                 }
                 if (drawing.group && !drawing.group.empty()) {
-                    drawing.render(this.drawingsGroup, scales);
+                    drawing.render(this.drawingsGroup, scales, renderOpts);
+                    if (typeof drawing.updateHandlePositions === 'function') {
+                        try { drawing.updateHandlePositions(scales); } catch (_) {}
+                    }
                     if (drawing.selected || (this.selectedDrawings || []).includes(drawing)) {
                         if (typeof drawing.select === 'function') {
                             try { drawing.select({ skipAxisHighlights: true }); } catch (_) {}
                         }
                     }
                 } else {
-                    this.renderDrawing(drawing, { skipInteraction: true });
+                    this.renderDrawing(drawing, { skipInteraction: true, skipAxisHighlights: true, hotPath: true });
                 }
             });
             this.raiseDrawingLayersAboveOrderPreviews();
@@ -7309,6 +7362,10 @@ class DrawingToolsManager {
         });
         
         this.chart._isRendering = wasRendering;
+        
+        if (forceFull) {
+            this._flushDeferredLiveEdits();
+        }
         
         this.raiseDrawingLayersAboveOrderPreviews();
     }
@@ -9979,21 +10036,52 @@ class DrawingToolsManager {
     }
 
     /**
+     * Baseline style patch for a tool type (light gray lines + fill) before V9/saved overrides.
+     */
+    getDefaultToolStylePatch(toolType) {
+        if (!toolType || toolType === 'long-position' || toolType === 'short-position') {
+            return {};
+        }
+        const stroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+            ? DRAWING_TOOL_DEFAULT_STROKE
+            : '#8C8C8C';
+        const fill = typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined'
+            ? DRAWING_TOOL_DEFAULT_FILL
+            : 'rgba(140, 140, 140, 0.2)';
+        return {
+            stroke,
+            color: stroke,
+            lineColor: stroke,
+            strokeWidth: 2,
+            opacity: 1,
+            dashArray: '',
+            strokeDasharray: '',
+            fill,
+            backgroundColor: fill,
+            showBackground: true,
+            borderEnabled: true,
+            borderColor: stroke,
+            middleLineColor: stroke,
+        };
+    }
+
+    /**
      * Style for in-progress preview + new placements. Prefer V9 armed toolbar (window.__v9ArmedDrawStyle).
      */
     getArmedToolStyle(toolType) {
         const tool = toolType || this.currentTool;
         if (!tool) return {};
+        const base = this.getDefaultToolStylePatch(tool);
         try {
             if (typeof window !== 'undefined' && window.__v9ArmedDrawStyle) {
                 const armed = window.__v9ArmedDrawStyle;
                 if (armed.tool === tool && armed.patch && typeof armed.patch === 'object') {
-                    return { ...armed.patch };
+                    return { ...base, ...armed.patch };
                 }
             }
         } catch (_) {}
         const saved = this.getSavedToolStyle(tool);
-        return saved && typeof saved === 'object' ? { ...saved } : {};
+        return saved && typeof saved === 'object' ? { ...base, ...saved } : { ...base };
     }
 
     _applyArmedStyleExtras(drawing) {

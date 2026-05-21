@@ -18,17 +18,17 @@ class HighlighterTool extends BaseDrawing {
         this.style.strokeDasharray = '';
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing highlighter')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? 1 : 0);
+        this._prepareRenderGroup(container, 'drawing highlighter', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Use D3 line with curve smoothing for freehand feel
         const lineGenerator = d3.line()
@@ -53,7 +53,7 @@ class HighlighterTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Always create handles (visibility controlled by opacity)
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -126,23 +126,23 @@ class ArrowMarkerTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('arrow-marker', points, style);
         this.requiredPoints = 2;
-        this.style.fill = style.fill || '#2962ff';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.stroke = 'none';
         this.style.strokeWidth = 0;
         this.arrowHeadSize = style.arrowHeadSize || 40;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing arrow-marker')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing arrow-marker', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -258,7 +258,7 @@ class ArrowMarkerTool extends BaseDrawing {
                 .text(this.text);
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -327,7 +327,7 @@ class ArrowMarkUpTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('arrow-mark-up', points, style);
         this.requiredPoints = 1;
-        this.style.fill = style.fill || '#089981';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.stroke = style.stroke || '#089981';
         this.style.strokeWidth = style.strokeWidth || 0;
         const ms = Number(style.markerSize);
@@ -335,17 +335,17 @@ class ArrowMarkUpTool extends BaseDrawing {
         this.style.markerSize = this.markerSize;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing arrow-mark-up')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing arrow-mark-up', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -430,7 +430,7 @@ class ArrowMarkUpTool extends BaseDrawing {
         }
 
         // Single-point marker: create handles but force move cursor (not resize)
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
@@ -469,17 +469,17 @@ class ArrowMarkDownTool extends BaseDrawing {
         this.style.markerSize = this.markerSize;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing arrow-mark-down')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing arrow-mark-down', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -564,7 +564,7 @@ class ArrowMarkDownTool extends BaseDrawing {
         }
 
         // Single-point marker: create handles but force move cursor (not resize)
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.group.selectAll('.resize-handle, .resize-handle-hit').style('cursor', 'move');
         return this.group;
     }
@@ -595,20 +595,20 @@ class CircleTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('circle', points, style);
         this.requiredPoints = 2;
-        this.style.fill = style.fill || 'rgba(41, 98, 255, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing circle')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing circle', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -713,7 +713,7 @@ class CircleTool extends BaseDrawing {
                 .style('pointer-events', 'none');
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -774,20 +774,20 @@ class RotatedRectangleTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('rotated-rectangle', points, style);
         this.requiredPoints = 2; // Only need 2 clicks, P3 is set during P2 drag
-        this.style.fill = style.fill || 'rgba(156, 39, 176, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing rotated-rectangle')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing rotated-rectangle', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Get pixel coordinates
         const toPixelX = (x) => scales.chart && scales.chart.dataIndexToPixel ? 
@@ -898,7 +898,7 @@ class RotatedRectangleTool extends BaseDrawing {
                 .style('pointer-events', 'none');
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1228,7 +1228,9 @@ class ArcTool extends BaseDrawing {
         this._dragStartMousePoint = null;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
@@ -1240,10 +1242,8 @@ class ArcTool extends BaseDrawing {
             this.finalizeDrawing();
         }
 
-        this.group = container.append('g')
-            .attr('class', 'drawing arc')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing arc', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points.length >= 3 ? this.points[2] : this.points[1]; // End point
@@ -1333,7 +1333,7 @@ class ArcTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1534,7 +1534,9 @@ class CurveTool extends BaseDrawing {
         this._dragStartMousePoint = null;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
@@ -1546,10 +1548,8 @@ class CurveTool extends BaseDrawing {
             this.finalizeDrawing();
         }
 
-        this.group = container.append('g')
-            .attr('class', 'drawing curve')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing curve', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Map points AFTER finalizeDrawing so we have all 3 points
         const screenPoints = this.points.map(p => ({
@@ -1720,7 +1720,7 @@ class CurveTool extends BaseDrawing {
             this.renderTextLabel({ x1, y1, x2, y2, scales });
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1879,17 +1879,17 @@ class DoubleCurveTool extends BaseDrawing {
         this.text = text;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing double-curve')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing double-curve', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Convert endpoints to screen coordinates first
         const p1 = this.points[0];
@@ -1995,7 +1995,7 @@ class DoubleCurveTool extends BaseDrawing {
         }
 
         // Create handles for all points
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         
         return this.group;
     }

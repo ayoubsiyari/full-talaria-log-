@@ -39,13 +39,10 @@ class FibonacciRetracementTool extends BaseDrawing {
         }));
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
@@ -53,10 +50,8 @@ class FibonacciRetracementTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, baseLevelStrokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing fibonacci-retracement')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fibonacci-retracement', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -226,7 +221,7 @@ class FibonacciRetracementTool extends BaseDrawing {
         }
 
         // Create resize handles at anchor points
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -295,13 +290,10 @@ class FibonacciExtensionTool extends BaseDrawing {
         }));
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
@@ -309,10 +301,8 @@ class FibonacciExtensionTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, baseLevelStrokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing fibonacci-extension')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fibonacci-extension', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -480,7 +470,7 @@ class FibonacciExtensionTool extends BaseDrawing {
         }
 
         // Create resize handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }

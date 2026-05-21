@@ -7136,7 +7136,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        drawing.style.stroke = drawing.style.stroke || '#2962FF';
+        drawing.style.stroke = drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
 
         drawing.style.strokeDasharray = normalizeLineType(drawing.style.strokeDasharray, '');
 
@@ -12457,7 +12457,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         if (drawing.style.borderEnabled === undefined) drawing.style.borderEnabled = true;
 
-        if (!drawing.style.borderColor) drawing.style.borderColor = drawing.style.stroke || '#2962ff';
+        if (!drawing.style.borderColor) drawing.style.borderColor = drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
 
         if (drawing.style.borderDasharray === undefined) drawing.style.borderDasharray = '';
 
@@ -12533,7 +12533,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const lineRow = this.createBrushPropertyRow('Line', {
 
-            color: drawing.style.stroke || '#2962ff',
+            color: drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE,
 
             lineType: drawing.style.strokeDasharray ?? drawing.style.dashArray ?? '',
 
@@ -12603,7 +12603,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         borderRow.controls.innerHTML = `
 
-            <button class="tv-color-btn" data-prop="borderColor" style="background: ${drawing.style.borderColor || drawing.style.stroke || '#2962ff'};"></button>
+            <button class="tv-color-btn" data-prop="borderColor" style="background: ${drawing.style.borderColor || drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE};"></button>
 
             <div class="tv-linetype-dropdown" data-prop="borderType" style="position:relative;flex:1 1 0;min-width:40px;">
                 <button class="tv-ending-dropdown-btn" style="width:100%;height:30px;padding:0 6px;border:none;border-radius:4px;background:rgba(255,255,255,0.08);cursor:default;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;gap:4px;">
@@ -27745,7 +27745,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || 'rgba(41, 98, 255, 0.1)', (color) => {
+            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || DRAWING_TOOL_DEFAULT_FILL, (color) => {
 
                 drawing.style.fill = color;
 
@@ -28059,7 +28059,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            this.addColorPicker(styleSection, 'Stroke Color', drawing.style.stroke || '#2962ff', (color) => {
+            this.addColorPicker(styleSection, 'Stroke Color', drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE, (color) => {
 
                 drawing.style.stroke = color;
 
@@ -28197,7 +28197,7 @@ applyTemplate(drawing, templateId, modal) {
 
         else if (drawing.type === 'trend-fib-extension') {
 
-            this.addColorPicker(styleSection, 'Trend line', drawing.style.trendLineColor || drawing.style.stroke || '#2962ff', (color) => {
+            this.addColorPicker(styleSection, 'Trend line', drawing.style.trendLineColor || drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE, (color) => {
 
                 drawing.style.trendLineColor = color;
 
@@ -28221,7 +28221,7 @@ applyTemplate(drawing, templateId, modal) {
 
             });
 
-            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || 'rgba(41, 98, 255, 0.1)', (color) => {
+            this.addColorPicker(styleSection, 'Fill Color', drawing.style.fill || DRAWING_TOOL_DEFAULT_FILL, (color) => {
 
                 drawing.style.fill = color;
 
@@ -31511,11 +31511,11 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const defaultLevels = [
 
-            { value: 0, label: 'Lower', color: drawing.style.stroke || '#2962ff', enabled: true },
+            { value: 0, label: 'Lower', color: drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE, enabled: true },
 
             { value: 0.5, label: 'Middle', color: '#787b86', enabled: false },
 
-            { value: 1, label: 'Upper', color: drawing.style.stroke || '#2962ff', enabled: true }
+            { value: 1, label: 'Upper', color: drawing.style.stroke || DRAWING_TOOL_DEFAULT_STROKE, enabled: true }
 
         ];
 

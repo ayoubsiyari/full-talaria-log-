@@ -10,7 +10,7 @@ class FibChannelTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-channel', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         if (this.style.reverse === undefined) this.style.reverse = false;
         if (this.style.showPrices === undefined) this.style.showPrices = true;
@@ -32,8 +32,9 @@ class FibChannelTool extends BaseDrawing {
             : defaultLevels;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -41,10 +42,8 @@ class FibChannelTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-channel')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-channel', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -84,7 +83,7 @@ class FibChannelTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -97,7 +96,7 @@ class FibChannelTool extends BaseDrawing {
             const dy = y2 - y1;
             const len = Math.hypot(dx, dy);
             if (!len) {
-                this.createHandles(this.group, scales);
+                if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
                 return this.group;
             }
 
@@ -257,7 +256,7 @@ class FibChannelTool extends BaseDrawing {
             });
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         const midHandleGroup = this.group.selectAll('.resize-handle-group')
             .filter(function() { return d3.select(this).attr('data-point-index') === '3'; });
@@ -290,7 +289,7 @@ class FibTimeZoneTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-timezone', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
@@ -328,8 +327,9 @@ class FibTimeZoneTool extends BaseDrawing {
         this.style.fibNumbers = this.levels;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -337,10 +337,8 @@ class FibTimeZoneTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-timezone')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-timezone', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getXFromIndex = (xIdx) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(xIdx) : scales.xScale(xIdx);
@@ -352,7 +350,7 @@ class FibTimeZoneTool extends BaseDrawing {
         const xIndex2 = this.points[1].x;
         const baseDx = xIndex2 - xIndex1;
         if (!baseDx) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
         const x1 = getXFromIndex(xIndex1);
@@ -424,7 +422,7 @@ class FibTimeZoneTool extends BaseDrawing {
             }
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -451,7 +449,7 @@ class FibSpeedFanTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-speed-fan', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.backgroundEnabled === undefined) this.style.backgroundEnabled = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
@@ -471,8 +469,9 @@ class FibSpeedFanTool extends BaseDrawing {
         ];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -480,10 +479,8 @@ class FibSpeedFanTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-speed-fan')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-speed-fan', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -513,7 +510,7 @@ class FibSpeedFanTool extends BaseDrawing {
         const dx = x2 - x1;
         const dy = y2 - y1;
         if (!dx) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -719,7 +716,7 @@ class FibSpeedFanTool extends BaseDrawing {
                 .text(labelText);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -766,8 +763,9 @@ class TrendFibTimeTool extends BaseDrawing {
         ];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length === 0) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -775,10 +773,8 @@ class TrendFibTimeTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing trend-fib-time')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing trend-fib-time', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const chartHeight = scales.chart?.h || 500;
         const getXFromIndex = (idx) => scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(idx) : scales.xScale(idx);
@@ -931,7 +927,7 @@ class TrendFibTimeTool extends BaseDrawing {
             });
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -958,7 +954,7 @@ class FibCirclesTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-circles', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
@@ -972,8 +968,9 @@ class FibCirclesTool extends BaseDrawing {
         ];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -981,10 +978,8 @@ class FibCirclesTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-circles')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-circles', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1047,7 +1042,7 @@ class FibCirclesTool extends BaseDrawing {
                 .text(level.toFixed(3));
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1078,16 +1073,15 @@ class FibSpiralTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-spiral')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-spiral', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1102,7 +1096,7 @@ class FibSpiralTool extends BaseDrawing {
         const dy = y2 - y1;
         const baseLen = Math.hypot(dx, dy);
         if (!baseLen) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -1194,7 +1188,7 @@ class FibSpiralTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1221,7 +1215,7 @@ class FibArcsTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('fib-arcs', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
@@ -1250,8 +1244,9 @@ class FibArcsTool extends BaseDrawing {
         };
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -1259,10 +1254,8 @@ class FibArcsTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-arcs')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-arcs', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1275,7 +1268,7 @@ class FibArcsTool extends BaseDrawing {
 
         const baseRadius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
         if (!baseRadius || !isFinite(baseRadius)) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -1404,7 +1397,7 @@ class FibArcsTool extends BaseDrawing {
         });
 
         if (this.style.trendLineEnabled !== false) {
-            const tCol = this.style.trendLineColor || this.style.stroke || '#2962ff';
+            const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
             const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
             const tHit = Math.max(10, tW * 6);
             const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
@@ -1428,7 +1421,7 @@ class FibArcsTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1526,8 +1519,9 @@ class FibWedgeTool extends BaseDrawing {
         return true;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -1535,10 +1529,8 @@ class FibWedgeTool extends BaseDrawing {
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing fib-wedge')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing fib-wedge', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1552,7 +1544,7 @@ class FibWedgeTool extends BaseDrawing {
         // Preview (2 points): draw the first ray only
         const baseRadius = Math.hypot(x2 - x1, y2 - y1);
         if (!baseRadius || !isFinite(baseRadius)) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -1568,7 +1560,7 @@ class FibWedgeTool extends BaseDrawing {
             .style('cursor', 'move');
 
         if (this.points.length < 3) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -1736,7 +1728,7 @@ class FibWedgeTool extends BaseDrawing {
             this.virtualPoints = null;
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1763,7 +1755,7 @@ class PitchforkTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('pitchfork', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.fill = style.fill || 'none';
         this.style.medianColor = style.medianColor || '#e91e63';
@@ -1783,14 +1775,14 @@ class PitchforkTool extends BaseDrawing {
         ];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing pitchfork')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none')
+        this._prepareRenderGroup(container, 'drawing pitchfork', renderOpts);
+        this._clearDrawingLabels(scales);
+        this.group.style('pointer-events', 'none')
             .style('cursor', 'default')
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
 
@@ -2209,7 +2201,7 @@ class PitchforkTool extends BaseDrawing {
                 .style('cursor', 'move');
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2243,7 +2235,7 @@ class PitchfanTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('pitchfan', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.medianColor = style.medianColor || '#e91e63';
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.2;
@@ -2325,16 +2317,15 @@ class PitchfanTool extends BaseDrawing {
         return true;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const scaleFactor = this.getZoomScaleFactor(scales);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing pitchfan')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing pitchfan', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2358,7 +2349,7 @@ class PitchfanTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -2515,7 +2506,7 @@ class PitchfanTool extends BaseDrawing {
             this.virtualPoints = null;
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2595,14 +2586,13 @@ class GannSquareFixedTool extends BaseDrawing {
         return true;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing gann-square-fixed')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing gann-square-fixed', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2969,7 +2959,7 @@ class GannSquareFixedTool extends BaseDrawing {
             { x: invX(xEnd), y: invY(yEnd) }
         ];
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -3000,14 +2990,13 @@ class GannSquareTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing gann-square')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing gann-square', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -3070,7 +3059,7 @@ class GannSquareTool extends BaseDrawing {
                 .attr('opacity', 0.6);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -3143,14 +3132,13 @@ class GannFanTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing gann-fan')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing gann-fan', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -3330,7 +3318,7 @@ class GannFanTool extends BaseDrawing {
             }
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -3357,7 +3345,7 @@ class TrendFibExtensionTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('trend-fib-extension', points, style);
         this.requiredPoints = 3;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         if (!this.style.trendLineColor) this.style.trendLineColor = this.style.stroke;
@@ -3379,8 +3367,9 @@ class TrendFibExtensionTool extends BaseDrawing {
             : defaultLevels;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length === 0) return;
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
@@ -3393,10 +3382,8 @@ class TrendFibExtensionTool extends BaseDrawing {
         const trendBaseWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth))) ? parseInt(this.style.trendLineWidth) : 1;
         const scaledStrokeWidth = Math.max(0.5, trendBaseWidth * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing trend-fib-extension')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing trend-fib-extension', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -3629,7 +3616,7 @@ class TrendFibExtensionTool extends BaseDrawing {
             });
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
     

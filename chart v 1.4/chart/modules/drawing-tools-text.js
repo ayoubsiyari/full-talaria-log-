@@ -21,12 +21,10 @@ class TextTool extends BaseDrawing {
         this.baseScale = null;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 1) return;
 
         // Get zoom scale factor for visual scaling (same as other tools)
@@ -34,10 +32,8 @@ class TextTool extends BaseDrawing {
         const scaledFontSize = Math.max(6, this.style.fontSize * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing text')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing text', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -516,19 +512,15 @@ class NoteBoxTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 1) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing notebox')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing notebox', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -888,14 +880,13 @@ class AnchoredTextTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing anchored-text')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing anchored-text', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1120,8 +1111,9 @@ class NoteTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         // Get zoom scale factor
@@ -1129,10 +1121,8 @@ class NoteTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
         const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing note')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing note', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Store for live-update during inline editing
         this._lastContainer = container;
@@ -1503,7 +1493,7 @@ class NoteTool extends BaseDrawing {
         textElement.node().addEventListener('dblclick', handleDblClick, true);
 
         // Create handles at both endpoints
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -1542,7 +1532,7 @@ class PriceNoteTool extends BaseDrawing {
         super('price-note', points, style);
         this.requiredPoints = 2;
         this.text = text;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         this.style.fill = style.fill || '#2962ff';
         this.style.borderColor = style.borderColor || 'none';
@@ -1553,8 +1543,9 @@ class PriceNoteTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         // Get zoom scale factor
@@ -1562,10 +1553,8 @@ class PriceNoteTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
         const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing price-note')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing price-note', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0]; // Start point (where line starts)
         const p2 = this.points[1]; // End point (where price label goes)
@@ -1716,7 +1705,7 @@ class PriceNoteTool extends BaseDrawing {
             .text(priceText);
 
         // Create handles at both endpoints, then move p2 handle to label box center
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.group.selectAll('[data-point-index="1"]')
             .attr('cx', lineEndX)
             .attr('cy', lineEndY);
@@ -1759,7 +1748,7 @@ class PinTool extends BaseDrawing {
         this.requiredPoints = 1;
         this.text = text || '';
         this.style.fill = style.fill || '#2962ff';
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.backgroundColor = style.backgroundColor || '#363a45';
         this.style.borderColor = style.borderColor || '#555';
         this.style.textColor = style.textColor || '#d1d4dc';
@@ -1769,18 +1758,17 @@ class PinTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
         // Get zoom scale factor
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledFontSize = Math.max(11, this.style.fontSize * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing pin')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing pin', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2127,14 +2115,13 @@ class TableTool extends BaseDrawing {
         this.style.accentColor = style.accentColor || '#787b86';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing table')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing table', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2281,7 +2268,7 @@ class CalloutTool extends BaseDrawing {
         super('callout', points, style);
         this.requiredPoints = 2;
         this.text = text;
-        this.style.stroke = style.stroke || '#2962FF'; // Circle/anchor color
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE; // Circle/anchor color
         this.style.backgroundColor = style.backgroundColor || '#FFFFFF';
         this.style.borderColor = style.borderColor || '#B2B5BE';
         this.style.textColor = style.textColor || '#F23645';
@@ -2291,14 +2278,13 @@ class CalloutTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing callout')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing callout', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Store for live-update during inline editing
         this._lastContainer = container;
@@ -2635,14 +2621,13 @@ class CommentTool extends BaseDrawing {
         this.style.textAlign = style.textAlign || 'center';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing comment')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing comment', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Store for live-update during inline editing
         this._lastContainer = container;
@@ -2927,7 +2912,7 @@ class PriceLabelTool extends BaseDrawing {
         super('price-label', points, style);
         this.requiredPoints = 1;
         this.text = text;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         this.style.fill = style.fill || '#2962ff';
         this.style.textColor = style.textColor || '#FFFFFF';
@@ -2937,8 +2922,9 @@ class PriceLabelTool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
         // Get zoom scale factor
@@ -2946,10 +2932,8 @@ class PriceLabelTool extends BaseDrawing {
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
         const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing price-label')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing price-label', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0]; // Start point (where line starts)
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -3033,11 +3017,11 @@ class PriceLabelTool extends BaseDrawing {
             .attr('cx', x1)
             .attr('cy', y1)
             .attr('r', 4 * scaleFactor)
-            .attr('fill', this.style.stroke || '#2962ff')
+            .attr('fill', this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE)
             .style('pointer-events', 'none');
 
         // Create handles at both endpoints
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -3076,7 +3060,7 @@ class PriceLabel2Tool extends BaseDrawing {
         super('price-label-2', points, style);
         this.requiredPoints = 1;
         this.text = text;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
         this.style.fill = style.fill || '#2962ff';
         this.style.textColor = style.textColor || '#FFFFFF';
@@ -3086,18 +3070,17 @@ class PriceLabel2Tool extends BaseDrawing {
         this.style.fontStyle = style.fontStyle || 'normal';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
         // Get zoom scale factor
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledFontSize = Math.max(10, this.style.fontSize * scaleFactor);
 
-        this.group = container.append('g')
-            .attr('class', 'drawing price-label-2')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing price-label-2', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -3199,7 +3182,7 @@ class PriceLabel2Tool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         // Create handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -3250,8 +3233,9 @@ class Signpost2Tool extends BaseDrawing {
         this.style.lineLength = style.lineLength || 100;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
         // Get zoom scale factor
@@ -3260,10 +3244,8 @@ class Signpost2Tool extends BaseDrawing {
         const scaledFontSize = Math.max(10, this.style.fontSize * scaleFactor);
         const scaledLineLength = this.style.lineLength * scaleFactor;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing signpost-2')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing signpost-2', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -3490,7 +3472,7 @@ class Signpost2Tool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         // Create handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.group.selectAll('.resize-handle, .resize-handle-hit')
             .style('cursor', 'move');
 
@@ -3534,14 +3516,13 @@ class SignpostTool extends BaseDrawing {
         this.style.color = style.color || '#787b86';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing signpost')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing signpost', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -3576,7 +3557,7 @@ class SignpostTool extends BaseDrawing {
             .attr('fill', '#fff');
 
         // Create handle
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.group.selectAll('.resize-handle, .resize-handle-hit')
             .style('cursor', 'move');
 
@@ -3608,14 +3589,13 @@ class FlagMarkTool extends BaseDrawing {
         this.style.flagHeight = 14;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing flag-mark')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing flag-mark', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -3675,7 +3655,7 @@ class FlagMarkTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Create handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }

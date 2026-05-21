@@ -12,9 +12,9 @@ class BarsPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('bars-pattern', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(15, 24, 43, 0.55)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
     }
 
     isPointInside(mouseX, mouseY, scales) {
@@ -89,14 +89,13 @@ class BarsPatternTool extends BaseDrawing {
         return true;
     }
 
-    render(container, scales, isPreview = false) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing bars-pattern')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing bars-pattern', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const chart = scales?.chart || this.chart || window.chart;
 
@@ -159,7 +158,7 @@ class BarsPatternTool extends BaseDrawing {
         const left = getXFromIndex(startIdx) - half;
         const right = getXFromIndex(endIdx) + half;
 
-        const edgeStroke = this.style.stroke || '#2962ff';
+        const edgeStroke = this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         const edgeStrokeW = Math.max(1, this.style.strokeWidth || 2);
         const xStart = getXFromIndex(startIdx);
         const xEnd = getXFromIndex(endIdx);
@@ -212,7 +211,7 @@ class BarsPatternTool extends BaseDrawing {
             .attr('y', yTop)
             .attr('width', Math.abs(right - left))
             .attr('height', Math.max(0, yBottom - yTop))
-            .attr('fill', this.style.fill || 'rgba(15, 24, 43, 0.55)')
+            .attr('fill', this.style.fill || DRAWING_TOOL_DEFAULT_FILL)
             .attr('stroke', 'none')
             .style('pointer-events', 'all')
             .style('cursor', 'move');
@@ -220,7 +219,7 @@ class BarsPatternTool extends BaseDrawing {
         if (Array.isArray(data) && data.length > 0) {
             const chartType = chart?.chartSettings?.chartType || 'candles';
             const candleWidth = chart?.candleWidth || 8;
-            const stroke = this.style.stroke || '#2962ff';
+            const stroke = this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
 
             const drawStart = Math.max(0, Math.min(data.length - 1, startIdx));
             const drawEnd = Math.max(0, Math.min(data.length - 1, endIdx));
@@ -327,7 +326,7 @@ class BarsPatternTool extends BaseDrawing {
             }
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -355,19 +354,18 @@ class XABCDPatternTool extends BaseDrawing {
         super('xabcd-pattern', points, style);
         this.requiredPoints = 5;
         this.style.stroke = style.stroke || '#f23645';
-        this.style.fill = style.fill || 'rgba(242, 54, 69, 0.25)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.labels = ['X', 'A', 'B', 'C', 'D'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing xabcd-pattern')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing xabcd-pattern', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -688,7 +686,7 @@ class XABCDPatternTool extends BaseDrawing {
         });
 
         // Create handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -745,14 +743,13 @@ class CypherPatternTool extends BaseDrawing {
         this.labels = ['X', 'A', 'B', 'C', 'D'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing cypher-pattern')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing cypher-pattern', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -783,7 +780,7 @@ class CypherPatternTool extends BaseDrawing {
                 .text(this.labels[i]);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -812,7 +809,7 @@ class HeadShouldersTool extends BaseDrawing {
         this.requiredPoints = 7;
         this.style.stroke = style.stroke || '#00bfa5';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(0, 191, 165, 0.14)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.necklineDasharray = style.necklineDasharray || '2,6';
         this.style.necklineWidth = style.necklineWidth || 2;
         this.style.labelFill = style.labelFill || this.style.stroke;
@@ -821,14 +818,13 @@ class HeadShouldersTool extends BaseDrawing {
         this.style.pointFill = style.pointFill || '#0b1220';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing head-shoulders')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing head-shoulders', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -928,7 +924,7 @@ class HeadShouldersTool extends BaseDrawing {
             this.drawShoulderLabel(point.x, point.y, label.text, placeAbove);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1346,14 +1342,13 @@ class ABCDPatternTool extends BaseDrawing {
         this.labels = ['A', 'B', 'C', 'D'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing abcd-pattern')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing abcd-pattern', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1468,7 +1463,7 @@ class ABCDPatternTool extends BaseDrawing {
             });
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1544,7 +1539,7 @@ class TrianglePatternTool extends BaseDrawing {
         this.requiredPoints = 4;
         this.style.stroke = style.stroke || '#7a3ff2';
         this.style.strokeWidth = style.strokeWidth || 2;
-        this.style.fill = style.fill || 'rgba(122, 63, 242, 0.16)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.style.boundaryDasharray = style.boundaryDasharray || '1,6';
         this.style.boundaryWidth = style.boundaryWidth || 1.5;
         this.style.labelFill = style.labelFill || this.style.stroke;
@@ -1552,14 +1547,13 @@ class TrianglePatternTool extends BaseDrawing {
         this.labels = ['A', 'B', 'C', 'D'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing triangle-pattern')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing triangle-pattern', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1704,7 +1698,7 @@ class TrianglePatternTool extends BaseDrawing {
             this._drawPointTag(point.x, point.y + (placeAbove ? -PATTERN_LABEL_OFFSET_PX : PATTERN_LABEL_OFFSET_PX), label);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -1830,14 +1824,13 @@ class ThreeDrivesTool extends BaseDrawing {
         this.style.ratioTextColor = style.ratioTextColor || '#ffffff';
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing three-drives')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing three-drives', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1918,7 +1911,7 @@ class ThreeDrivesTool extends BaseDrawing {
             }
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2086,14 +2079,13 @@ class ElliottImpulseTool extends BaseDrawing {
         this.labels = ['0', '1', '2', '3', '4', '5'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing elliott-impulse')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing elliott-impulse', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2116,7 +2108,7 @@ class ElliottImpulseTool extends BaseDrawing {
             appendWaveLabel(this.group, this.points, i, this.labels[i] || '', getX, getY, this.style);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2148,14 +2140,13 @@ class ElliottCorrectionTool extends BaseDrawing {
         this.labels = ['', 'A', 'B', 'C'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing elliott-correction')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing elliott-correction', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2178,7 +2169,7 @@ class ElliottCorrectionTool extends BaseDrawing {
             appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style);
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2210,14 +2201,13 @@ class ElliottTriangleTool extends BaseDrawing {
         this.labels = ['', 'A', 'B', 'C', 'D', 'E'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing elliott-triangle')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing elliott-triangle', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2240,7 +2230,7 @@ class ElliottTriangleTool extends BaseDrawing {
             appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2272,14 +2262,13 @@ class ElliottDoubleComboTool extends BaseDrawing {
         this.labels = ['', 'W', 'X', 'Y'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing elliott-double-combo')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing elliott-double-combo', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2302,7 +2291,7 @@ class ElliottDoubleComboTool extends BaseDrawing {
             appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2334,14 +2323,13 @@ class ElliottTripleComboTool extends BaseDrawing {
         this.labels = ['', 'W', 'X', 'Y', 'X', 'Z'];
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing elliott-triple-combo')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing elliott-triple-combo', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2364,7 +2352,7 @@ class ElliottTripleComboTool extends BaseDrawing {
             appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
         });
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2395,14 +2383,13 @@ class CyclicLinesTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing cyclic-lines')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing cyclic-lines', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2413,7 +2400,7 @@ class CyclicLinesTool extends BaseDrawing {
         const interval = Math.abs(x2 - x1);
 
         if (interval < 5) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -2433,7 +2420,7 @@ class CyclicLinesTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2464,14 +2451,13 @@ class TimeCyclesTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 2;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing time-cycles')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing time-cycles', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2491,7 +2477,7 @@ class TimeCyclesTool extends BaseDrawing {
                 .style('cursor', 'move');
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 
@@ -2522,14 +2508,13 @@ class SineLineTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 2;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing sine-line')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing sine-line', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2545,7 +2530,7 @@ class SineLineTool extends BaseDrawing {
         const centerY = (y1 + y2) / 2;
 
         if (wavelength < 10) {
-            this.createHandles(this.group, scales);
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
 
@@ -2567,7 +2552,7 @@ class SineLineTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
     }
 

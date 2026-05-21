@@ -16,19 +16,15 @@ class RulerTool extends BaseDrawing {
         this.style.labelBg = style.labelBg || 'rgba(41, 98, 255, 0.9)';
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 2) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing ruler')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing ruler', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -160,7 +156,7 @@ class RulerTool extends BaseDrawing {
         }
 
         // Create resize handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -185,7 +181,7 @@ class DatePriceRangeTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('date-price-range', points, style);
         this.requiredPoints = 2;
-        this.style.stroke = style.stroke || '#2962ff';
+        this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 2;
         this.style.strokeDasharray = style.strokeDasharray || '';
         this.style.fill = style.fill || 'rgba(41, 98, 255, 0.15)';
@@ -529,13 +525,10 @@ class DatePriceRangeTool extends BaseDrawing {
     }
 
     renderPriceRangeMode(container, scales) {
-        if (this.group) this.group.remove();
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing date-price-range range-mode-price')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing date-price-range range-mode-price', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -562,7 +555,7 @@ class DatePriceRangeTool extends BaseDrawing {
         const svg = d3.select(container.node().ownerSVGElement);
         const markerEnd = `dpr-price-end-${this.id}`;
         if (typeof SVGHelpers !== 'undefined') {
-            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE);
         }
 
         this.group.append('rect')
@@ -661,19 +654,16 @@ class DatePriceRangeTool extends BaseDrawing {
         }
 
         this.setModeVirtualHandlePoints('price');
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.updateHandleCursor('price');
         return this.group;
     }
 
     renderTimeRangeMode(container, scales) {
-        if (this.group) this.group.remove();
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing date-price-range range-mode-time')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing date-price-range range-mode-time', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -699,8 +689,8 @@ class DatePriceRangeTool extends BaseDrawing {
         const markerStart = `dpr-time-start-${this.id}`;
         const markerEnd = `dpr-time-end-${this.id}`;
         if (typeof SVGHelpers !== 'undefined') {
-            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || '#2962ff', true);
-            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || '#2962ff');
+            SVGHelpers.createArrowMarker(svg, markerStart, this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE, true);
+            SVGHelpers.createArrowMarker(svg, markerEnd, this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE);
         }
 
         this.group.append('rect')
@@ -787,13 +777,14 @@ class DatePriceRangeTool extends BaseDrawing {
         }
 
         this.setModeVirtualHandlePoints('time');
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.updateHandleCursor('time');
         return this.group;
     }
 
-    render(container, scales) {
-        if (this.group) this.group.remove();
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
         const mode = this.getRangeMode();
@@ -806,10 +797,8 @@ class DatePriceRangeTool extends BaseDrawing {
 
         this.setModeVirtualHandlePoints('both');
 
-        this.group = container.append('g')
-            .attr('class', 'drawing date-price-range')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing date-price-range', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -832,8 +821,8 @@ class DatePriceRangeTool extends BaseDrawing {
         const markerRight = `dpr-right-${this.id}`;
         const markerDown = `dpr-down-${this.id}`;
         if (typeof SVGHelpers !== 'undefined') {
-            SVGHelpers.createArrowMarker(svg, markerRight, this.style.stroke || '#2962ff');
-            SVGHelpers.createArrowMarker(svg, markerDown, this.style.stroke || '#2962ff');
+            SVGHelpers.createArrowMarker(svg, markerRight, this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE);
+            SVGHelpers.createArrowMarker(svg, markerDown, this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE);
         }
 
         const selectionRect = this.group.append('rect')
@@ -874,7 +863,7 @@ class DatePriceRangeTool extends BaseDrawing {
         if (this.style.showLabel) {
             const lines = this.buildRangeInfoLines(p1, p2, scales);
             if (lines.length === 0) {
-                this.createHandles(this.group, scales);
+                if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
                 this.updateHandleCursor('both');
                 return this.group;
             }
@@ -928,7 +917,7 @@ class DatePriceRangeTool extends BaseDrawing {
             }
         }
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.updateHandleCursor('both');
         return this.group;
     }
@@ -1965,22 +1954,18 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (orderManager.entryPrice !== undefined) orderManager.entryPrice = primaryEntry;
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureRiskSettings();
         this._syncBreakevenMetaWithPanel();
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 3) return;
 
         /** Vertical hit for primary entry drag — sized to cover .center-info pill when selected (kept tighter than before). */
         let primaryEntryHitHeight = 20;
 
-        this.group = container.append('g')
-            .attr('class', `drawing risk-reward ${this.meta.orientation}`)
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, `drawing risk-reward ${this.meta.orientation}`, renderOpts);
+        this._clearDrawingLabels(scales);
 
         this.handles = [];
 
@@ -3294,7 +3279,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             lowerY
         };
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
 
@@ -3901,19 +3886,15 @@ class PathTool extends BaseDrawing {
         }
     }
 
-    render(container, scales, isPreview = false) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 1) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing path')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing path', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Create arrow markers for start/end styles
         const startStyle = this.style.startStyle || 'normal';
@@ -4066,17 +4047,13 @@ class BrushTool extends BaseDrawing {
         this.style.strokeDasharray = '';
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        this.group = container.append('g')
-            .attr('class', 'drawing brush')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? 1 : 0);
+        this._prepareRenderGroup(container, 'drawing brush', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Use D3 line with curve smoothing for freehand feel
         const lineGenerator = d3.line()
@@ -4100,7 +4077,7 @@ class BrushTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -4178,19 +4155,15 @@ class PolylineTool extends BaseDrawing {
         this.style.fill = style.fill || 'none';
     }
 
-    render(container, scales, isPreview = false) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 1) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing polyline')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing polyline', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Check if shape is closed (first and last points are close)
         const isClosed = this.points.length >= 3 && this.isShapeClosed();

@@ -31,6 +31,8 @@ const SUPPORT_CATEGORIES: { value: string; label: string }[] = [
   { value: "bug", label: "Bug" },
   { value: "error", label: "Error" },
   { value: "feature", label: "Feature request" },
+  { value: "modifications", label: "Modifications" },
+  { value: "suggestions", label: "Suggestions / Features" },
   { value: "other", label: "Other" },
 ];
 

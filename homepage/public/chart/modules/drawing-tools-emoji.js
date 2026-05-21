@@ -57,11 +57,9 @@ class EmojiStickerTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
-        if (this.group) {
-            this.group.remove();
-        }
-
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) {
             return;
         }
@@ -96,10 +94,8 @@ class EmojiStickerTool extends BaseDrawing {
             fontSize = Math.max(8, Math.min(500, calculatedSize));
         }
 
-        this.group = container.append('g')
-            .attr('class', `drawing emoji-sticker ${this.style.category || 'emoji'}`)
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, `drawing emoji-sticker ${this.style.category || 'emoji'}`, renderOpts);
+        this._clearDrawingLabels(scales);
 
         if (this.style.showBackground) {
             const radius = fontSize * 0.65;

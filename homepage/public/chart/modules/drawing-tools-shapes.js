@@ -226,7 +226,7 @@ class RectangleTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('rectangle', points, style);
         this.requiredPoints = 2;
-        this.style.fill = style.fill || 'rgba(41, 98, 255, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.ensureTextDefaults();
     }
 
@@ -246,25 +246,20 @@ class RectangleTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
 
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing rectangle')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? 1 : 0);
+        this._prepareRenderGroup(container, 'drawing rectangle', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -623,27 +618,22 @@ class EllipseTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('ellipse', points, style);
         this.requiredPoints = 2;
-        this.style.fill = style.fill || 'rgba(255, 152, 0, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
         this.isCircle = false; // Set to true if Shift key held during creation
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing ellipse')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing ellipse', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -940,26 +930,21 @@ class TriangleTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('triangle', points, style);
         this.requiredPoints = 3;
-        this.style.fill = style.fill || 'rgba(76, 175, 80, 0.1)';
+        this.style.fill = style.fill || DRAWING_TOOL_DEFAULT_FILL;
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length === 0) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length === 0) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing triangle')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing triangle', renderOpts);
+        this._clearDrawingLabels(scales);
 
         // Helper to get x coordinate
         const getX = (p) => scales.chart && scales.chart.dataIndexToPixel ? 
@@ -1060,7 +1045,7 @@ class TriangleTool extends BaseDrawing {
         });
 
         // Create resize handles at vertices
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -1116,25 +1101,20 @@ class ArrowTool extends BaseDrawing {
         }
     }
 
-    render(container, scales) {
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
         
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 2) return;
+                if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing arrow')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing arrow', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -1368,7 +1348,7 @@ class ArrowTool extends BaseDrawing {
         this.renderInfoBox(origX1, origY1, origX2, origY2, scales);
 
         // Create resize handles
-        this.createHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
     }
@@ -1645,19 +1625,14 @@ class LabelTool extends BaseDrawing {
         this.style.markerSize = style.markerSize || 8;
     }
 
-    render(container, scales) {
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
-
-        if (this.points.length < 1) return;
+    render(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
+                if (this.points.length < 1) return;
 
         // Create group for this drawing
-        this.group = container.append('g')
-            .attr('class', 'drawing label')
-            .attr('data-id', this.id)
-            .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+        this._prepareRenderGroup(container, 'drawing label', renderOpts);
+        this._clearDrawingLabels(scales);
 
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel ? 
