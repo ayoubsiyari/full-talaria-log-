@@ -1337,7 +1337,7 @@ class DrawingToolsManager {
             // Mousedown on canvas for rectangular selection
             const onMouseDown = (event) => {
                 // Check for Ctrl+drag to start rectangular selection
-                if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
+                if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !this.currentTool) {
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -2247,7 +2247,7 @@ class DrawingToolsManager {
         
         if (!this.currentTool) {
             // Ctrl+drag = marquee multi-select (canvas handler only ran on empty canvas before).
-            if (event.button === 0 && event.ctrlKey && !event.shiftKey && !event.altKey) {
+            if (event.button === 0 && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
                 event.preventDefault();
                 event.stopPropagation();
                 if (typeof event.stopImmediatePropagation === 'function') {
@@ -3315,6 +3315,12 @@ class DrawingToolsManager {
      * Handle mouse move event
      */
     handleMouseMove(event) {
+        // Marquee multi-select: never run placement/drag handlers in parallel.
+        if (this.isRectSelecting) {
+            this.updateRectangularSelection(event);
+            return;
+        }
+
         const placingLine = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing
             && this.angleSnapTools.includes(this.currentTool));
         if (placingLine && this._isPointerOverChartAxis(event)) {
@@ -3343,12 +3349,6 @@ class DrawingToolsManager {
 
         if (this.currentTool && this.isRectSelecting) {
             this.cancelRectangularSelection();
-        }
-        
-        // Handle rectangular selection
-        if (this.isRectSelecting) {
-            this.updateRectangularSelection(event);
-            return;
         }
         
         // Handle brush/highlighter continuous drawing: sample in pixel space + one preview per rAF.
@@ -8776,6 +8776,78 @@ class DrawingToolsManager {
         }
     }
 
+    /** Stop chart pan / drawing drag so Ctrl+marquee does not translate the drawings layer. */
+    _abortInteractionForRectSelect() {
+        if (this.isDragging) {
+            try { this.endDrag(); } catch (_) { /* ignore */ }
+        }
+        this.isDragging = false;
+        this.draggingDrawing = null;
+        this.isResizing = false;
+        this.resizingDrawing = null;
+        this.drawings.forEach((drawing) => {
+            if (drawing && drawing.group) {
+                drawing.group.attr('transform', null);
+            }
+        });
+        const ch = this.chart;
+        if (ch) {
+            if (ch.drag) {
+                ch.drag.active = false;
+                ch.drag.type = null;
+            }
+            if (ch.movement) {
+                ch.movement.isDragging = false;
+            }
+            if (typeof ch._clearPanDrawingsLayerTransform === 'function') {
+                ch._clearPanDrawingsLayerTransform();
+            }
+        }
+    }
+
+    _unbindRectSelectDocumentListeners() {
+        if (!this._rectSelectDocBound) return;
+        if (this._rectSelectDocMove) {
+            document.removeEventListener('mousemove', this._rectSelectDocMove);
+        }
+        if (this._rectSelectDocUp) {
+            document.removeEventListener('mouseup', this._rectSelectDocUp);
+        }
+        if (this._rectSelectDocKeyUp) {
+            document.removeEventListener('keyup', this._rectSelectDocKeyUp);
+        }
+        this._rectSelectDocMove = null;
+        this._rectSelectDocUp = null;
+        this._rectSelectDocKeyUp = null;
+        this._rectSelectDocBound = false;
+    }
+
+    _bindRectSelectDocumentListeners() {
+        this._unbindRectSelectDocumentListeners();
+        const self = this;
+        this._rectSelectDocMove = (e) => {
+            if (!self.isRectSelecting) return;
+            if (!e.ctrlKey && !e.metaKey) {
+                self.cancelRectangularSelection();
+                return;
+            }
+            self.updateRectangularSelection(e);
+        };
+        this._rectSelectDocUp = () => {
+            if (!self.isRectSelecting) return;
+            self.completeRectangularSelection();
+        };
+        this._rectSelectDocKeyUp = (e) => {
+            if (e.key === 'Control' || e.key === 'Meta') {
+                self.cancelRectangularSelection();
+            }
+        };
+        document.addEventListener('mousemove', this._rectSelectDocMove);
+        document.addEventListener('mouseup', this._rectSelectDocUp);
+        document.addEventListener('keyup', this._rectSelectDocKeyUp);
+        this._rectSelectDocBound = true;
+    }
+
     /**
      * Disable stroke hit targets so Ctrl+marquee does not start d3.drag on shapes.
      */
@@ -8818,6 +8890,11 @@ class DrawingToolsManager {
         // Prevent default behavior and stop propagation
         event.preventDefault();
         event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+
+        this._abortInteractionForRectSelect();
         
         const [sx, sy] = this._eventCanvasLocalXY(event);
         this.rectSelectStart = { x: sx, y: sy };
@@ -8829,57 +8906,17 @@ class DrawingToolsManager {
         // Enable SVG pointer-events temporarily for rectangular selection
         this.svg.style('pointer-events', 'all');
         
-        // Create selection rectangle visual
-        if (!this.rectSelectRect) {
-            this.rectSelectRect = this.svg.append('rect')
-                .attr('class', 'selection-rectangle')
-                .style('fill', 'rgba(33, 150, 243, 0.1)')
-                .style('stroke', '#2196F3')
-                .style('stroke-width', '1')
-                .style('stroke-dasharray', '4,4')
-                .style('pointer-events', 'none');
-        }
+        // Create selection rectangle visual (reuse — remove stale node first)
+        this._clearRectSelectVisual();
+        this.rectSelectRect = this.svg.append('rect')
+            .attr('class', 'selection-rectangle')
+            .style('fill', 'rgba(33, 150, 243, 0.1)')
+            .style('stroke', '#2196F3')
+            .style('stroke-width', '1')
+            .style('stroke-dasharray', '4,4')
+            .style('pointer-events', 'none');
         
-        // Set up document-level mouse event listeners for dragging
-        const handleMouseMove = (e) => {
-            if (this.isRectSelecting) {
-                // Check if Ctrl is still held
-                if (!e.ctrlKey) {
-                    // [debug removed]
-                    this.cancelRectangularSelection();
-                    document.removeEventListener('mousemove', handleMouseMove);
-                    document.removeEventListener('mouseup', handleMouseUp);
-                    document.removeEventListener('keyup', handleKeyUp);
-                    return;
-                }
-                this.updateRectangularSelection(e);
-            }
-        };
-        
-        const handleMouseUp = (e) => {
-            if (this.isRectSelecting) {
-                this.completeRectangularSelection();
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-                document.removeEventListener('keyup', handleKeyUp);
-            }
-        };
-        
-        const handleKeyUp = (e) => {
-            if (e.key === 'Control' && this.isRectSelecting) {
-                // [debug removed]
-                this.cancelRectangularSelection();
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-                document.removeEventListener('keyup', handleKeyUp);
-            }
-        };
-        
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        document.addEventListener('keyup', handleKeyUp);
-        
-        // [debug removed]
+        this._bindRectSelectDocumentListeners();
     }
 
     /**
@@ -8955,7 +8992,9 @@ class DrawingToolsManager {
         // [debug removed]
         
         // Clean up
+        this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
+        this._abortInteractionForRectSelect();
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
@@ -8972,7 +9011,9 @@ class DrawingToolsManager {
         this.isRectSelecting = false;
         
         // Clean up selection rectangle visual
+        this._unbindRectSelectDocumentListeners();
         this._clearRectSelectVisual();
+        this._abortInteractionForRectSelect();
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');

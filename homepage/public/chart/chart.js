@@ -17551,6 +17551,19 @@ class Chart {
         this.canvas.addEventListener('mousedown', e => {
             if (this.tool) return;
 
+            // Ctrl/Cmd+drag marquee multi-select (drawing-tools-manager) — must not start chart pan.
+            const dm = this.drawingManager;
+            if (
+                e.button === 0 &&
+                (e.ctrlKey || e.metaKey) &&
+                !e.shiftKey &&
+                dm &&
+                !dm.currentTool &&
+                !dm.eraserMode
+            ) {
+                return;
+            }
+
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);
 
@@ -17682,6 +17695,9 @@ class Chart {
             }
             
             if (this.drag.active) {
+                if (this.drawingManager && this.drawingManager.isRectSelecting) {
+                    return;
+                }
                 const now = performance.now();
                 const dt = now - this.movement.lastTime;
                 const zPan = this._v9LayoutZoom();
