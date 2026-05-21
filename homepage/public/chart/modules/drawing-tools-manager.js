@@ -541,11 +541,29 @@ class DrawingToolsManager {
      */
     _shouldSkipAxisHighlights() {
         if (this._deferAxisHighlights) return true;
+        if ((this.selectedDrawings || []).length > 1) return true;
         if (this.chart && typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning()) {
             return true;
         }
         if (this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag) return true;
         return false;
+    }
+
+    /** Multi-select: handles only — no stacked axis price/time labels (TradingView-style). */
+    _applyMultiSelectAxisHighlightPolicy() {
+        const selected = this.selectedDrawings || [];
+        if (selected.length > 1) {
+            this.toolbar.hide();
+            selected.forEach((drawing) => {
+                if (drawing && typeof drawing.hideAxisHighlights === 'function') {
+                    try { drawing.hideAxisHighlights(); } catch (_) {}
+                }
+            });
+            return;
+        }
+        if (selected.length === 1 && selected[0] && typeof selected[0].showAxisHighlights === 'function') {
+            try { selected[0].showAxisHighlights(); } catch (_) {}
+        }
     }
 
     _refreshSelectedAxisHighlights() {
@@ -6761,16 +6779,16 @@ class DrawingToolsManager {
             } else {
                 // Add to selection
                 this.selectedDrawings.push(drawing);
-                drawing.select();
+                const willBeMulti = this.selectedDrawings.length > 1;
+                drawing.select({ skipAxisHighlights: willBeMulti });
                 this.renderDrawing(drawing);
             }
             
             // Update primary selection
             this.selectedDrawing = this.selectedDrawings.length > 0 ? this.selectedDrawings[this.selectedDrawings.length - 1] : null;
             
-            // Hide toolbar for multi-selection
             if (this.selectedDrawings.length > 1) {
-                this.toolbar.hide();
+                this._applyMultiSelectAxisHighlightPolicy();
             } else if (this.selectedDrawings.length === 1) {
                 this._syncSelectionChrome(this.selectedDrawings[0]);
             }
@@ -8970,6 +8988,42 @@ class DrawingToolsManager {
         return true;
     }
 
+    /** Topmost SVG layer for the Ctrl+drag selection marquee (above clipped drawings). */
+    _ensureMarqueeOverlayGroup() {
+        if (!this.svg) return null;
+        let overlay = this.svg.select('.marquee-overlay');
+        if (overlay.empty()) {
+            overlay = this.svg.append('g')
+                .attr('class', 'marquee-overlay')
+                .style('pointer-events', 'none');
+        }
+        if (overlay.node && typeof overlay.node === 'function') {
+            const node = overlay.node();
+            if (node && node.parentNode && typeof node.parentNode.appendChild === 'function') {
+                node.parentNode.appendChild(node);
+            }
+        }
+        return overlay;
+    }
+
+    _boostSvgForMarquee() {
+        if (!this.svg) return;
+        if (this._marqueeSvgZIndexRestore == null) {
+            this._marqueeSvgZIndexRestore = this.svg.style('z-index') || '';
+        }
+        this.svg.style('z-index', '12');
+    }
+
+    _restoreSvgAfterMarquee() {
+        if (!this.svg) return;
+        if (this._marqueeSvgZIndexRestore != null) {
+            const prev = this._marqueeSvgZIndexRestore;
+            if (prev) this.svg.style('z-index', prev);
+            else this.svg.style('z-index', null);
+            this._marqueeSvgZIndexRestore = null;
+        }
+    }
+
     /** Stop chart pan / drawing drag so Ctrl+marquee does not translate the drawings layer. */
     _abortInteractionForRectSelect() {
         if (this.isDragging) {
@@ -9103,21 +9157,34 @@ class DrawingToolsManager {
         this.ctrlSelectMode = false;
 
         this._suppressDrawingPointerEventsForRectSelect();
+        this._boostSvgForMarquee();
         
         // Enable SVG pointer-events temporarily for rectangular selection
         this.svg.style('pointer-events', 'all');
         
-        // Create selection rectangle visual (reuse — remove stale node first)
+        // Create selection rectangle on top overlay (not inside clipped .drawings)
         this._clearRectSelectVisual();
-        this.rectSelectRect = this.svg.append('rect')
+        const overlay = this._ensureMarqueeOverlayGroup();
+        const parent = overlay || this.svg;
+        this.rectSelectRect = parent.append('rect')
             .attr('class', 'selection-rectangle')
+            .attr('x', sx)
+            .attr('y', sy)
+            .attr('width', 0)
+            .attr('height', 0)
             .style('fill', 'rgba(33, 150, 243, 0.1)')
             .style('stroke', '#2196F3')
             .style('stroke-width', '1')
             .style('stroke-dasharray', '4,4')
             .style('pointer-events', 'none');
+        if (typeof this.rectSelectRect.raise === 'function') {
+            this.rectSelectRect.raise();
+        }
         
         this._bindRectSelectDocumentListeners();
+        if (event) {
+            this.updateRectangularSelection(event);
+        }
     }
 
     /**
@@ -9149,6 +9216,9 @@ class DrawingToolsManager {
                 this.rectSelectRect.remove();
             }
         } catch (_) {}
+        if (this.svg && !this.svg.empty()) {
+            this.svg.selectAll('.selection-rectangle').remove();
+        }
         this.rectSelectRect = null;
         this.rectSelectStart = null;
     }
@@ -9164,6 +9234,7 @@ class DrawingToolsManager {
 
         if (!this.rectSelectRect) {
             if (this.svg) this.svg.style('pointer-events', 'none');
+            this._restoreSvgAfterMarquee();
             this._restoreDrawingPointerEventsAfterRectSelect();
             return;
         }
@@ -9185,10 +9256,31 @@ class DrawingToolsManager {
         // Deselect all first
         this.deselectAll({ forSelectionChange: true });
         
-        // Select all drawings within rectangle
-        selectedDrawings.forEach(drawing => {
-            this.selectDrawing(drawing, true); // true = add to selection
+        // Select all drawings within rectangle (batch — avoid toolbar flash per shape)
+        this.selectedDrawings = [];
+        selectedDrawings.forEach((drawing) => {
+            this.selectedDrawings.push(drawing);
+            drawing.selected = true;
+            drawing.select({ skipAxisHighlights: selectedDrawings.length > 1 });
+            this.renderDrawing(drawing);
         });
+        this.selectedDrawing = this.selectedDrawings.length > 0
+            ? this.selectedDrawings[this.selectedDrawings.length - 1]
+            : null;
+
+        if (this.selectedDrawings.length > 1) {
+            this._applyMultiSelectAxisHighlightPolicy();
+        } else if (this.selectedDrawings.length === 1) {
+            this._syncSelectionChrome(this.selectedDrawings[0]);
+        }
+
+        if (this.objectTreeManager) {
+            this.objectTreeManager.refresh();
+        }
+        this._updateAxisZonePointerEvents();
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
         
         // [debug removed]
         
@@ -9198,6 +9290,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
@@ -9217,6 +9310,7 @@ class DrawingToolsManager {
         
         // Restore SVG pointer-events to allow chart panning
         if (this.svg) this.svg.style('pointer-events', 'none');
+        this._restoreSvgAfterMarquee();
         this._restoreDrawingPointerEventsAfterRectSelect();
     }
 
@@ -10855,5 +10949,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a23_smooth_preview';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a24_ctrl_marquee';
 } catch (_) {}

@@ -541,11 +541,29 @@ class DrawingToolsManager {
      */
     _shouldSkipAxisHighlights() {
         if (this._deferAxisHighlights) return true;
+        if ((this.selectedDrawings || []).length > 1) return true;
         if (this.chart && typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning()) {
             return true;
         }
         if (this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag) return true;
         return false;
+    }
+
+    /** Multi-select: handles only — no stacked axis price/time labels (TradingView-style). */
+    _applyMultiSelectAxisHighlightPolicy() {
+        const selected = this.selectedDrawings || [];
+        if (selected.length > 1) {
+            this.toolbar.hide();
+            selected.forEach((drawing) => {
+                if (drawing && typeof drawing.hideAxisHighlights === 'function') {
+                    try { drawing.hideAxisHighlights(); } catch (_) {}
+                }
+            });
+            return;
+        }
+        if (selected.length === 1 && selected[0] && typeof selected[0].showAxisHighlights === 'function') {
+            try { selected[0].showAxisHighlights(); } catch (_) {}
+        }
     }
 
     _refreshSelectedAxisHighlights() {
@@ -6760,16 +6778,16 @@ class DrawingToolsManager {
             } else {
                 // Add to selection
                 this.selectedDrawings.push(drawing);
-                drawing.select();
+                const willBeMulti = this.selectedDrawings.length > 1;
+                drawing.select({ skipAxisHighlights: willBeMulti });
                 this.renderDrawing(drawing);
             }
             
             // Update primary selection
             this.selectedDrawing = this.selectedDrawings.length > 0 ? this.selectedDrawings[this.selectedDrawings.length - 1] : null;
             
-            // Hide toolbar for multi-selection
             if (this.selectedDrawings.length > 1) {
-                this.toolbar.hide();
+                this._applyMultiSelectAxisHighlightPolicy();
             } else if (this.selectedDrawings.length === 1) {
                 this._syncSelectionChrome(this.selectedDrawings[0]);
             }
@@ -9192,6 +9210,9 @@ class DrawingToolsManager {
                 this.rectSelectRect.remove();
             }
         } catch (_) {}
+        if (this.svg && !this.svg.empty()) {
+            this.svg.selectAll('.selection-rectangle').remove();
+        }
         this.rectSelectRect = null;
         this.rectSelectStart = null;
     }
@@ -9229,10 +9250,31 @@ class DrawingToolsManager {
         // Deselect all first
         this.deselectAll({ forSelectionChange: true });
         
-        // Select all drawings within rectangle
-        selectedDrawings.forEach(drawing => {
-            this.selectDrawing(drawing, true); // true = add to selection
+        // Select all drawings within rectangle (batch — avoid toolbar flash per shape)
+        this.selectedDrawings = [];
+        selectedDrawings.forEach((drawing) => {
+            this.selectedDrawings.push(drawing);
+            drawing.selected = true;
+            drawing.select({ skipAxisHighlights: selectedDrawings.length > 1 });
+            this.renderDrawing(drawing);
         });
+        this.selectedDrawing = this.selectedDrawings.length > 0
+            ? this.selectedDrawings[this.selectedDrawings.length - 1]
+            : null;
+
+        if (this.selectedDrawings.length > 1) {
+            this._applyMultiSelectAxisHighlightPolicy();
+        } else if (this.selectedDrawings.length === 1) {
+            this._syncSelectionChrome(this.selectedDrawings[0]);
+        }
+
+        if (this.objectTreeManager) {
+            this.objectTreeManager.refresh();
+        }
+        this._updateAxisZonePointerEvents();
+        if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
+            this.chart.updateSVGPointerEvents();
+        }
         
         // [debug removed]
         
@@ -10901,5 +10943,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a23_smooth_preview';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a24_ctrl_marquee';
 } catch (_) {}
