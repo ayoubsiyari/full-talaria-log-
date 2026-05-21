@@ -660,6 +660,16 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibLineWidth,
     );
   }
+  if (legacyTool && v9IsFibChannelType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
+    patch.levels = v9TlFibEnabledLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  }
+  if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
+    patch.levels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
+  }
   return patch;
 }
 
@@ -1565,6 +1575,14 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     if (!v9FibTlLevelsMatchLegacyType("fibonacci-retracement", out.fibLevels)) {
       out.fibLevels = v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement");
     }
+  } else if (legacyType === "fib-channel") {
+    if (!Array.isArray(out.fibLevels) || !out.fibLevels.length) {
+      out.fibLevels = v9FibChannelDefaultLevelsTl();
+    }
+  } else if (legacyType === "fib-timezone") {
+    if (!Array.isArray(out.fibTzLevels) || !out.fibTzLevels.length) {
+      out.fibTzLevels = v9FibTzDefaultLevelsTl();
+    }
   }
   if (out.fibLineWidth == null || out.fibLineWidth === "") {
     out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
@@ -1960,6 +1978,159 @@ function v9ResolveClassicFibLevelRowsForDrawing(d, tlStyle) {
   return v9ClassicFibDefaultLevelsTlForLegacy(d.type);
 }
 
+function v9IsFibChannelType(t) {
+  return t === "fib-channel";
+}
+
+function v9IsFibTimeZoneType(t) {
+  return t === "fib-timezone";
+}
+
+/** Default V9 rows for Fib Channel (`drawing-tools-fib-gann.js` FibChannelTool). */
+function v9FibChannelDefaultLevelsTl() {
+  return [
+    { on: true, value: "0", color: "#787B86" },
+    { on: true, value: "1", color: "#787B86" },
+    { on: true, value: "0.236", color: "#F44336" },
+    { on: true, value: "0.382", color: "#FF9800" },
+    { on: true, value: "0.5", color: "#FFEB3B" },
+    { on: true, value: "0.618", color: "#4CAF50" },
+    { on: true, value: "0.786", color: "#2196F3" },
+  ];
+}
+
+/** Default V9 rows for Fib Time Zone (`drawing-tools-fib-gann.js` FibTimeZoneTool). */
+function v9FibTzDefaultLevelsTl() {
+  return [
+    { on: true, value: "0", color: "#787B86", type: "solid", width: "1" },
+    { on: true, value: "1", color: "#F44336", type: "solid", width: "1" },
+    { on: true, value: "2", color: "#FF9800", type: "solid", width: "1" },
+    { on: true, value: "3", color: "#FFEB3B", type: "solid", width: "1" },
+    { on: true, value: "5", color: "#4CAF50", type: "solid", width: "1" },
+    { on: true, value: "8", color: "#00BCD4", type: "solid", width: "1" },
+    { on: true, value: "13", color: "#2962FF", type: "solid", width: "1" },
+    { on: true, value: "21", color: "#9C27B0", type: "solid", width: "1" },
+    { on: false, value: "34", color: "#787B86", type: "dashed", width: "1" },
+    { on: false, value: "55", color: "#787B86", type: "dashed", width: "1" },
+    { on: false, value: "89", color: "#787B86", type: "dashed", width: "1" },
+  ];
+}
+
+function v9FibTzLevelsChartToTl(levels) {
+  if (!Array.isArray(levels) || !levels.length) return undefined;
+  return levels.map((lv) => {
+    const dashRaw = String(lv.lineType ?? "").replace(/\s+/g, "");
+    const type =
+      lv.lineType === "bold" || (!dashRaw && lv.lineWidth >= 3)
+        ? "bold"
+        : V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
+    return {
+      on: lv.enabled !== false,
+      value: lv.value != null ? String(lv.value) : "0",
+      color: lv.color || "#787B86",
+      type,
+      width: String(lv.lineWidth != null && !Number.isNaN(parseInt(lv.lineWidth, 10)) ? lv.lineWidth : 1),
+    };
+  });
+}
+
+function v9TlFibTzLevelsToChart(levels) {
+  if (!Array.isArray(levels) || !levels.length) return [];
+  return levels.map((ln) => {
+    const v = parseFloat(ln.value);
+    const value = Number.isFinite(v) ? v : 0;
+    const isBold = ln.type === "bold";
+    const dashStr = isBold
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
+        : "");
+    const w = parseInt(String(ln.width), 10) || 1;
+    return {
+      value,
+      enabled: ln.on !== false,
+      color: ln.color || "#787b86",
+      lineType: dashStr,
+      lineWidth: isBold ? Math.max(w, 2) : w,
+    };
+  });
+}
+
+function v9TlFibEnabledLevelsToChart(levels, fibLineType, fibLineWidth) {
+  return v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth).map((row) => ({
+    value: row.value,
+    label: row.label,
+    color: row.color,
+    enabled: row.visible,
+    lineType: row.lineType,
+    lineWidth: row.lineWidth,
+  }));
+}
+
+function v9ResolveFibChannelLevelRowsForDrawing(d, tlStyle) {
+  const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
+  if (fromDrawing && fromDrawing.length) return fromDrawing;
+  if (Array.isArray(tlStyle.fibLevels) && tlStyle.fibLevels.length) return tlStyle.fibLevels;
+  return v9FibChannelDefaultLevelsTl();
+}
+
+function v9ResolveFibTzLevelRowsForDrawing(d, tlStyle) {
+  const fromDrawing = v9FibTzLevelsChartToTl(d.levels);
+  if (fromDrawing && fromDrawing.length) return fromDrawing;
+  if (Array.isArray(tlStyle.fibTzLevels) && tlStyle.fibTzLevels.length) return tlStyle.fibTzLevels;
+  return v9FibTzDefaultLevelsTl();
+}
+
+function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibChannelType(d.type)) return;
+  const fibDashStr =
+    tlStyle.fibLineType === "bold"
+      ? ""
+      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+        : "");
+  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+  const strokeW =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : levelsW) ||
+    2;
+  const levelRows = v9ResolveFibChannelLevelRowsForDrawing(d, tlStyle);
+  d.levels = v9TlFibEnabledLevelsToChart(levelRows, tlStyle.fibLineType, tlStyle.fibLineWidth);
+  if (d.style) d.style.levels = d.levels;
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth = strokeW;
+  st.levelsLineWidth = levelsW;
+  st.levelsLineDasharray = fibDashStr;
+  st.showZones = !!tlStyle.fibBackground;
+  st.backgroundOpacity =
+    tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+      ? +tlStyle.fibBgOpacity
+      : 0.08;
+  st.reverse = !!tlStyle.fibReverse;
+  st.showPrices = tlStyle.fibPrices !== false;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
+  st.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
+  st.extendLines = !!tlStyle.fibExtendLines;
+}
+
+function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibTimeZoneType(d.type)) return;
+  const levelRows = v9ResolveFibTzLevelRowsForDrawing(d, tlStyle);
+  d.levels = v9TlFibTzLevelsToChart(levelRows);
+  d.fibNumbers = d.levels;
+  if (d.style) {
+    d.style.levels = d.levels;
+    d.style.fibNumbers = d.levels;
+  }
+  const st = d.style;
+  st.stroke = tlStyle.lineColor;
+  st.strokeWidth =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : 1) ||
+    1;
+}
+
 function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
   if (!d || !d.style || !v9IsClassicFibRetracementType(d.type)) return;
   const fibDashStr =
@@ -2101,6 +2272,10 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     (d.type.startsWith("fibonacci-") || d.type.startsWith("fib-") || d.type.startsWith("trend-fib-"));
   if (v9IsClassicFibRetracementType(d.type)) {
     v9ApplyClassicFibFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibChannelType(d.type)) {
+    v9ApplyFibChannelFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibTimeZoneType(d.type)) {
+    v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthNum);
   } else if (v9IsFibSpeedFanType(d.type)) {
     v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthNum);
   } else if (v9IsTrendFibTimeType(d.type)) {
@@ -2477,6 +2652,39 @@ function v9TlStylePatchFromDrawing(d) {
           };
         })()
       : {}),
+    ...(d.type === "fib-channel"
+      ? (() => {
+          const fl = v9FibSpeedFanLevelsChartToTl(d.levels);
+          const fibDashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
+          const fibLineType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
+          return {
+            fibLevels: fl && fl.length ? fl : v9FibChannelDefaultLevelsTl(),
+            fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
+            fibLineType,
+            fibBackground: !!s.showZones,
+            fibBgOpacity:
+              s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+                : 0.08,
+            fibReverse: !!s.reverse,
+            fibPrices: s.showPrices !== false,
+            fibLevelsOn: s.levelsEnabled !== false,
+            fibLevelsMode: v9FibLevelsModeChartToUi(s.levelsLabelMode),
+            fibExtendLines: !!s.extendLines,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-timezone"
+      ? (() => {
+          const tz = v9FibTzLevelsChartToTl(d.levels);
+          return {
+            fibTzLevels: tz && tz.length ? tz : v9FibTzDefaultLevelsTl(),
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+          };
+        })()
+      : {}),
     ...(d.type === "gann-box"
       ? (() => {
           const dashRaw = String(s.levelsLineDasharray ?? "").replace(/\s+/g, "");
@@ -2656,6 +2864,28 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
       savedLevels && savedLevels.length
         ? v9FibLevelsChartToTl(savedLevels)
         : v9ClassicFibDefaultLevelsTlForLegacy(legacy);
+  }
+  if (v9IsFibChannelType(legacy)) {
+    const savedLevels = Array.isArray(saved.levels)
+      ? saved.levels
+      : Array.isArray(styleForPatch.levels)
+        ? styleForPatch.levels
+        : null;
+    out.fibLevels =
+      savedLevels && savedLevels.length
+        ? v9FibSpeedFanLevelsChartToTl(savedLevels)
+        : v9FibChannelDefaultLevelsTl();
+  }
+  if (v9IsFibTimeZoneType(legacy)) {
+    const savedLevels = Array.isArray(saved.levels)
+      ? saved.levels
+      : Array.isArray(styleForPatch.levels)
+        ? styleForPatch.levels
+        : null;
+    out.fibTzLevels =
+      savedLevels && savedLevels.length
+        ? v9FibTzLevelsChartToTl(savedLevels)
+        : v9FibTzDefaultLevelsTl();
   }
   return out;
 }
@@ -10670,7 +10900,11 @@ const TalariaV8bLive = () => {
               const patch = v9TlStylePatchFromDrawing(drawing);
               if (patch) {
                 br.suppressForwardBridge.current = true;
-                if (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) {
+                if (
+                  (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) ||
+                  (v9IsFibChannelType(drawing.type) && patch.fibLevels) ||
+                  (v9IsFibTimeZoneType(drawing.type) && patch.fibTzLevels)
+                ) {
                   flushSync(() =>
                     br.setTlStyle((s) =>
                       v9EnsureTlStyleArrays({ ...s, ...patch }, s, drawing.type),
@@ -10936,7 +11170,11 @@ const TalariaV8bLive = () => {
             const patch = v9TlStylePatchFromDrawing(live);
             if (patch) {
               br.suppressForwardBridge.current = true;
-              if (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) {
+              if (
+                (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) ||
+                (v9IsFibChannelType(live.type) && patch.fibLevels) ||
+                (v9IsFibTimeZoneType(live.type) && patch.fibTzLevels)
+              ) {
                 flushSync(() =>
                   br.setTlStyle((s) =>
                     v9EnsureTlStyleArrays({ ...s, ...patch }, s, live.type),
@@ -11324,6 +11562,7 @@ const TalariaV8bLive = () => {
     tlStyle.fibLevelsMode,
     tlStyle.fibExtendLines,
     tlStyle.fibFanTimeLevels,
+    tlStyle.fibTzLevels,
     tlStyle.fibGrid,
     tlStyle.fibGridColor,
     tlStyle.fibGridType,
@@ -13876,7 +14115,10 @@ const TalariaV8bLive = () => {
                   <div/>
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span></div>
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
-                  {tlStyle.fibTzLevels.map((lv, idx) => {
+                  {(Array.isArray(tlStyle.fibTzLevels) && tlStyle.fibTzLevels.length
+                    ? tlStyle.fibTzLevels
+                    : v9FibTzDefaultLevelsTl()
+                  ).map((lv, idx) => {
                     const op = lv.on ? 1 : 0.4;
                     const pe = lv.on ? "auto" : "none";
                     const typeDk = `fibTzType-${idx}`;
@@ -14277,7 +14519,12 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* Level rows — 2 columns */}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8, padding:"18px 0 8px" }}>
-                  {(tlStyle.fibLevels || []).map((lv, idx) => {
+                  {(Array.isArray(tlStyle.fibLevels) && tlStyle.fibLevels.length
+                    ? tlStyle.fibLevels
+                    : fi === "fibChannel"
+                      ? v9FibChannelDefaultLevelsTl()
+                      : []
+                  ).map((lv, idx) => {
                     const op = lv.on ? 1 : 0.55;
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
