@@ -19996,7 +19996,11 @@ class Chart {
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
         const dmDrawToolArmed = _dm && (!!_dm.currentTool || !!_dm.eraserMode);
-        const ctrlMagnetSnap = ctrlHeld && dmDrawToolArmed;
+        const dmEditingHandle = _dm && (
+            _dm.isResizing || _dm.isCustomHandleDragging || _dm.isCustomHandleDrag
+            || (_dm.drawingState?.isDrawing && _dm.currentTool)
+        );
+        const ctrlMagnetSnap = ctrlHeld && (dmDrawToolArmed || dmEditingHandle);
         const shiftHeld = e.shiftKey;
         const shiftPreviewY = (shiftHeld && _dm && typeof _dm.getShiftConstrainedPreviewPrice === 'function')
             ? _dm.getShiftConstrainedPreviewPrice(e)

@@ -3480,7 +3480,12 @@ class DrawingToolsManager {
                 this.resizingPointIndex = null;
                 return;
             }
-            const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
+            const currentPoint = this._resolveAnchorPointFromEvent(
+                event,
+                this.resizingDrawing,
+                this.resizingPointIndex,
+                this.resizingDrawing.type
+            );
             let handledByDrawing = false;
             if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
                 handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
@@ -3512,7 +3517,12 @@ class DrawingToolsManager {
                 return;
             }
             const [screenX, screenY] = this._eventCanvasLocalXY(event);
-            const dataPoint = this.getDataPoint(event);
+            const dataPoint = this._resolveAnchorPointFromEvent(
+                event,
+                this.customHandleDraggingDrawing,
+                null,
+                this.customHandleDraggingDrawing.type
+            );
             
             const context = {
                 screen: { x: screenX, y: screenY },
@@ -4148,13 +4158,20 @@ class DrawingToolsManager {
     }
 
     /**
-     * Ctrl/Cmd temporary magnet — only while a draw tool is armed (not crosshair / select).
-     * Toolbar weak/strong magnet is handled separately in _isMagnetSnapActive.
+     * Ctrl/Cmd temporary magnet — draw tools, in-progress placement, and resize/edit handles.
+     * In cursor mode Ctrl still means marquee/select unless actively editing a handle.
      */
     _ctrlMagnetHeld(event) {
-        if (this._isCursorSelectMode()) return false;
         const m = this._pointerModifiers(event);
-        return m.ctrlKey || m.metaKey;
+        if (!(m.ctrlKey || m.metaKey)) return false;
+        if (!this._isCursorSelectMode()) return true;
+        if (this.isRectSelecting || this._ctrlMarqueePending) return false;
+        return !!(
+            this.isResizing
+            || this.isCustomHandleDrag
+            || this.isCustomHandleDragging
+            || (this.drawingState?.isDrawing && this.currentTool)
+        );
     }
 
     /** Same client coords as Chart.refreshCrosshairFromLastPointer when mousemove did not fire yet. */
@@ -4349,13 +4366,12 @@ class DrawingToolsManager {
             yScale: this.chart.yScale
         }, this.chart, useFractionalBarIndex);
 
-        if (!isContinuousTool) {
-            point = this._applyOHLCMagnetSnap(point, screenY, event);
-        }
+        // Match crosshair: weak/strong toolbar magnet + Ctrl always run OHLC snap (even during smooth preview / resize).
+        point = this._applyOHLCMagnetSnap(point, screenY, event);
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
-        if (!isContinuousTool && this._snapPlacementXToBarCenter(event)) {
+        if (this._snapPlacementXToBarCenter(event)) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -10943,5 +10959,5 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // DevTools: if undefined after chart loads, the browser is serving a cached/old drawing-tools-manager.js.
 try {
-    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a24_ctrl_marquee';
+    window.__DRAWING_TOOLS_MANAGER_BUILD = '20260521a25_magnet_edit';
 } catch (_) {}
