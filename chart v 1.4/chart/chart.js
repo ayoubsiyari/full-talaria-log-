@@ -584,6 +584,7 @@ class Chart {
         /** After wheel zoom, suppress pan-load until the user actually pans (avoids post-zoom 5k fetch). */
         this._suppressPanLoadUntilUserPan = false;
         this._indicatorRecalcHandle = null;
+        this._wheelRenderRaf = null;
         this._sessionStateSaveDebounceMs = 4000;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
@@ -1932,6 +1933,25 @@ class Chart {
                 }
             }));
             this._emitTimeframeChanged();
+        }
+
+        this._clampCandleWidthToTimeframeZoomLimits();
+    }
+
+    /** Enforce TradingView-style zoom-out floor after data length or timeframe changes. */
+    _clampCandleWidthToTimeframeZoomLimits() {
+        const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
+            ? this.zoomLevel.allowedWidths
+            : null;
+        if (!widths || !Array.isArray(this.data) || this.data.length === 0) return;
+        const minW = this._getEffectiveMinCandleWidth(widths);
+        const maxW = widths[widths.length - 1];
+        if (this.candleWidth < minW) {
+            this.candleWidth = minW;
+            this._candleWidthAtCache = null;
+        } else if (this.candleWidth > maxW) {
+            this.candleWidth = maxW;
+            this._candleWidthAtCache = null;
         }
     }
 
@@ -12410,6 +12430,7 @@ class Chart {
     _applyLocalTimeframeSwitch(normalizedTf) {
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
+        this._clampCandleWidthToTimeframeZoomLimits();
         this._scheduleRecalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -13428,12 +13449,65 @@ class Chart {
     }
 
     /**
-     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
-     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
+     * TradingView-style max bars visible when fully zoomed out — scales with timeframe
+     * so 1m can show ~days of minute bars while 1D shows ~years of daily bars.
+     */
+    _getTimeframeMaxZoomOutBars(timeframe) {
+        const tf = String(timeframe || '1m').toLowerCase().trim();
+        const map = {
+            '1m': 5000, '2m': 4500, '3m': 4000, '4m': 3800, '5m': 3500,
+            '10m': 3000, '15m': 2800, '30m': 2400, '45m': 2200,
+            '1h': 2000, '2h': 1600, '4h': 1200, '6h': 1000, '12h': 800,
+            '1d': 700, '1w': 520, '1mo': 360,
+        };
+        if (map[tf]) return map[tf];
+        const monthMatch = tf.match(/^(\d+)mo$/);
+        if (monthMatch) {
+            const n = Math.max(1, parseInt(monthMatch[1], 10));
+            return Math.max(120, Math.floor(360 / n));
+        }
+        return 2000;
+    }
+
+    /**
+     * Smallest allowedWidths entry whose bar spacing fits `targetSpacing` (ms per bar on screen).
+     * Used to stop zoom-out once all (or TF-capped) bars fit on screen — TradingView parity.
+     */
+    _getCandleWidthForTargetSpacing(targetSpacing, allowedWidths) {
+        const widths = (allowedWidths && allowedWidths.length)
+            ? allowedWidths
+            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
+        if (!Number.isFinite(targetSpacing) || targetSpacing <= 0) return widths[0];
+        for (let i = 0; i < widths.length; i++) {
+            if (this._getSpacingForCandleWidth(widths[i]) >= targetSpacing) {
+                return widths[i];
+            }
+        }
+        return widths[widths.length - 1];
+    }
+
+    /**
+     * Minimum candleWidth for zoom-out: static floor + per-TF bar budget + "all loaded bars visible" cap.
+     * Prevents zooming out to sub-pixel slivers beyond what TradingView allows on each timeframe.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        return widths[0];
+        const staticMin = widths[0];
+
+        if (!Array.isArray(this.data) || this.data.length === 0 || this.w < 200) {
+            return staticMin;
+        }
+
+        const m = this.margin || { l: 0, r: 60, t: 5, b: 30 };
+        const plotWidth = Math.max(1, this.w - m.l - m.r);
+        const rightMargin = Math.max(0, Number(this.timeScale?.rightOffsetCandles) || 15);
+        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const maxBars = this._getTimeframeMaxZoomOutBars(tf);
+        const effectiveBars = Math.min(this.data.length, maxBars) + rightMargin;
+        const targetSpacing = plotWidth / Math.max(1, effectiveBars);
+        const tfMin = this._getCandleWidthForTargetSpacing(targetSpacing, widths);
+
+        return Math.max(staticMin, tfMin);
     }
     
     /**
@@ -13843,6 +13917,15 @@ class Chart {
         this._panPendingClientY = null;
     }
 
+    _scheduleWheelRender() {
+        if (this._wheelRenderRaf != null) return;
+        this._wheelRenderRaf = requestAnimationFrame(() => {
+            this._wheelRenderRaf = null;
+            this.renderPending = false;
+            this.render();
+        });
+    }
+
     scheduleRender() {
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
         const timeAxisZoomDrag =
@@ -13858,7 +13941,13 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
+        if (wheelBurst) {
+            this.renderPending = false;
+            this._scheduleWheelRender();
+            return;
+        }
+
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || panSyncBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -17552,11 +17641,8 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            // 120ms (was 45ms) so back-to-back wheel ticks stay inside a single burst.
-            // While the burst flag is on, scheduleRender() forces synchronous render() and
-            // constrainOffset() skips the proactive pan-load fetch — together those make
-            // zoom-out feel smooth instead of network-stalled.
-            this._wheelBurstUntil = performance.now() + 120;
+            // 150ms burst + rAF-coalesced paints (see _scheduleWheelRender) so wheel zoom stays smooth.
+            this._wheelBurstUntil = performance.now() + 150;
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
@@ -17652,6 +17738,10 @@ class Chart {
                 const timeZoomFactor = zoomDirection > 0 ? baseTimeZoomFactor : 1 / baseTimeZoomFactor;
                 const oldWidth = this.candleWidth;
                 const newWidth = Math.max(minWidth, Math.min(maxWidth, oldWidth * timeZoomFactor));
+
+                if (newWidth === oldWidth) {
+                    return;
+                }
 
                 // When price axis is UNLOCKED, using time wheel should freeze vertical auto-scale
                 // so Y range stays fixed while we zoom time.
