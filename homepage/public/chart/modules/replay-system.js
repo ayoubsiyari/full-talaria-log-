@@ -2237,7 +2237,6 @@ class ReplaySystem {
         const realignAfterLayout = () => {
             if (!this.isActive) return;
             if (this.userHasPanned) return;
-            if (this.chart && this.chart._timeframeSwitching) return;
             try {
                 if (typeof this.chart.resize === 'function') {
                     this.chart._lastResizeDpr = 0;
@@ -2362,22 +2361,10 @@ class ReplaySystem {
         const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
-        const numBars = chartInstance.data.length;
-        let scrollPosition = Math.max(0, numBars - targetVisibleCandles);
-        let offsetX = -scrollPosition * candleSpacing;
-
-        // When the replay slice fits on screen, scrollPosition=0 pins offsetX at 0 (first bar)
-        // while the playhead is at the last bar — time axis shows session start, replay clock
-        // shows playhead (broken Y-axis + TF switch after 1D→1m).
-        if (numBars <= targetVisibleCandles) {
-            const lastCandleX = (numBars - 1) * candleSpacing;
-            const rightPadPx = rightGapCandles * candleSpacing;
-            offsetX = chartAreaW - rightPadPx - lastCandleX - candleSpacing * 0.5;
-            scrollPosition = 0;
-        }
+        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
 
         return {
-            offsetX,
+            offsetX: -scrollPosition * candleSpacing,
             numVisibleCandles,
             rightGapCandles,
             scrollPosition
@@ -2386,7 +2373,7 @@ class ReplaySystem {
 
     /**
      * Align chart viewport to the replay playhead (right edge). Used after backtest TF refetch
-     * and anywhere fitToView/getReplayAutoScrollState must be applied explicitly.
+     * and when starting playback so Y-axis auto-scale frames the playhead, not full 1D history.
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
@@ -2397,6 +2384,11 @@ class ReplaySystem {
             chartInstance.autoScale = true;
             chartInstance.priceOffset = 0;
             chartInstance.priceZoom = 1;
+            chartInstance.manualCenterPrice = null;
+            chartInstance.manualRange = null;
+            if (chartInstance.priceScale) {
+                chartInstance.priceScale.autoScale = true;
+            }
         }
         if (typeof chartInstance.constrainOffset === 'function') {
             chartInstance.constrainOffset();
@@ -2469,13 +2461,8 @@ class ReplaySystem {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
         }
-        if (this.chart.drawingManager) {
-            if (this.chart._timeframeSwitching) {
-                // Remap runs once after refetch in _refreshDrawingsAfterTimeframeSwitch —
-                // redrawAll here would paint stale bar indices from the previous TF.
-            } else if (typeof this.chart.drawingManager.redrawAll === 'function') {
-                this.chart.drawingManager.redrawAll();
-            }
+        if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
+            this.chart.drawingManager.redrawAll();
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
@@ -2686,6 +2673,10 @@ class ReplaySystem {
                     // UX (esp. V9): starting playback should scroll the viewport with the replay head again.
                     this.autoScrollEnabled = true;
                     this.userHasPanned = false;
+
+                    if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                        this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: true, render: false });
+                    }
 
                     this.showTickProgress(false);
 
