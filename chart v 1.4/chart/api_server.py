@@ -18354,6 +18354,43 @@ async def get_file_candles(
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
+        if questdb_store.questdb_read_primary() and questdb_store.questdb_enabled():
+            try:
+                questdb_store.ensure_schema()
+                tf = timeframe if timeframe in bar_budget.RESOLUTION_TO_TABLE else "1m"
+                q_limit = min(limit, bar_budget.MAX_BARS)
+                candles, has_more_left, has_more_right = questdb_store.query_bars_cursor(
+                    file_id, tf,
+                    cursor_ts=cursor_ts,
+                    direction=direction,
+                    limit=q_limit,
+                )
+                candles = _apply_dataset_filters(candles, original_name=db_file.original_name)
+                if candles or not questdb_store.questdb_tiles_fallback():
+                    prev_cursor = str(candles[0]["t"]) if candles else None
+                    next_cursor = str(candles[-1]["t"]) if candles else None
+                    elapsed_ms = round((_time.monotonic() - t0) * 1000, 1)
+                    return {
+                        "timeframe": tf,
+                        "data": {
+                            "t": [c["t"] for c in candles],
+                            "o": [c["o"] for c in candles],
+                            "h": [c["h"] for c in candles],
+                            "l": [c["l"] for c in candles],
+                            "c": [c["c"] for c in candles],
+                            "v": [c["v"] for c in candles],
+                        },
+                        "returned": len(candles),
+                        "has_more_left": has_more_left,
+                        "has_more_right": has_more_right,
+                        "next_cursor": next_cursor,
+                        "prev_cursor": prev_cursor,
+                        "elapsed_ms": elapsed_ms,
+                        "source": "questdb",
+                    }
+            except Exception:
+                pass
+
         bin_path = BIN_DIR / f"bin_{file_id}_{timeframe}.bin"
 
         agg = db.query(CSVAggregate).filter(

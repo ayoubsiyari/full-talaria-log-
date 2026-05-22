@@ -1751,12 +1751,9 @@ class Chart {
                 }
                 const key = this._smartCacheKeyFromParams(e.fileId, params);
                 if (this._smartPrefetchCache.has(key)) continue;
-                fetch(`${this.apiUrl}/file/${e.fileId}/smart?${params.toString()}`)
-                    .then((r) => (r.ok ? r.json() : null))
+                this._fetchSmartWindow(e.fileId, timeframe, session, 'end', isBacktest && backtestEndTs != null ? { endTs: backtestEndTs } : null, isBacktest ? { skipSessionDates: true } : null)
                     .then((data) => {
-                        if (!data) return;
-                        const ok = (Array.isArray(data.candles) && data.candles.length) || data.data;
-                        if (!ok) return;
+                        if (!this._smartResponseHasPayload(data)) return;
                         this._smartPrefetchCache.set(key, { at: Date.now(), payload: data, fileId: String(e.fileId) });
                         while (this._smartPrefetchCache.size > 4) {
                             const first = this._smartPrefetchCache.keys().next().value;
@@ -2134,7 +2131,7 @@ class Chart {
             if (idx < ladder.length - 1) out.add(ladder[idx + 1]);
         }
         out.delete(cur);
-        return Array.from(out).slice(0, 4);
+        return Array.from(out).slice(0, 2);
     }
 
     _storePrefetchedTfCache(fileId, tf, result, candles) {
@@ -2174,6 +2171,7 @@ class Chart {
         ric(() => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (self.isBacktestMode) return;
+            if (self._timeframeSwitching) return;
             const targets = self._getTimeframesToPrefetch(currentTf);
             const sess = session || self.backtestingSession || {};
             targets.forEach((tf) => {
@@ -13653,6 +13651,7 @@ class Chart {
      * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
     checkViewportLoadMore(direction, force = false) {
+        if (this._timeframeSwitching) return false;
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
         if (!this._serverCursors) return false;
@@ -13716,7 +13715,7 @@ class Chart {
         // Replay can consume candles much faster than normal panning.
         // Size chunk by replay consumption rate + timeframe to avoid long waits
         // while also preventing oversized requests on larger raw timeframes.
-        let panLimit = 5000;
+        let panLimit = 2000;
         if (isReplay) {
             const replaySpeed = Math.max(1, Number(this.replaySystem?.speed) || 1);
             let rawCandleTimeframeMs = this.parseTimeframe(tf);
@@ -13735,25 +13734,56 @@ class Chart {
             const targetRunwaySeconds = 24;
             panLimit = Math.ceil(rawCandlesPerSecond * targetRunwaySeconds) + 1500;
             panLimit = Math.max(1500, Math.min(10000, panLimit));
+        } else {
+            panLimit = Math.min(2000, panLimit);
         }
         this._panLoadLimit = panLimit;
         
         if (!cursor) { this._panLoading = false; return false; }
-        
-        // Load chunk sized to mode/speed (larger during replay).
-        const params = new URLSearchParams({
-            timeframe: tf,
-            limit: String(panLimit),
-            cursor: cursor,
-            direction: direction
-        });
+
+        const barLimit = Math.min(2000, panLimit);
+        const tfMs = this.parseTimeframe(tf) || 60_000;
+        const cursorNum = Number(cursor);
+        let fromMs = null;
+        let toMs = null;
+        if (Number.isFinite(cursorNum)) {
+            if (direction === 'backward') {
+                toMs = cursorNum;
+                fromMs = toMs - barLimit * tfMs;
+            } else {
+                fromMs = cursorNum;
+                toMs = fromMs + barLimit * tfMs;
+            }
+        }
 
         const loadStartTs = Date.now();
-        
-        fetch(`${this.apiUrl}/file/${this.currentFileId}/candles?${params.toString()}`)
-            .then(res => res.ok ? res.json() : null)
-            .then(result => {
-                if (!result || !result.data || !result.data.t) return;
+
+        this._fetchBarsWindow(this.currentFileId, fromMs, toMs, tf, barLimit)
+            .then((payload) => {
+                const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+                const result = bars.length ? {
+                    data: {
+                        t: bars.map((b) => b.t),
+                        o: bars.map((b) => b.o),
+                        h: bars.map((b) => b.h),
+                        l: bars.map((b) => b.l),
+                        c: bars.map((b) => b.c),
+                        v: bars.map((b) => b.v),
+                    },
+                    has_more_left: bars.length >= barLimit,
+                    has_more_right: direction === 'forward' ? bars.length >= barLimit : true,
+                    prev_cursor: String(bars[0].t),
+                    next_cursor: String(bars[bars.length - 1].t),
+                    elapsed_ms: Date.now() - loadStartTs,
+                } : null;
+                if (!result || !result.data || !result.data.t) {
+                    if (direction === 'backward') {
+                        this._serverCursors.hasMoreLeft = false;
+                    } else {
+                        this._serverCursors.hasMoreRight = false;
+                    }
+                    return;
+                }
 
                 if (isReplay && direction === 'forward' && this.replaySystem) {
                     const apiElapsedMs = Number(result.elapsed_ms);

@@ -367,3 +367,79 @@ def query_bars(
             }
         )
     return out
+
+
+def query_bars_cursor(
+    file_id: int,
+    resolution: str,
+    *,
+    cursor_ts: int | None,
+    direction: str,
+    limit: int = 2000,
+) -> tuple[list[dict], bool, bool]:
+    """Cursor pagination for pan/replay loads (newest-first when cursor is None)."""
+    ensure_schema()
+    table = resolution_table(resolution)
+    limit = max(1, min(int(limit), 2000))
+    fid = str(file_id)
+    direction = (direction or "backward").lower().strip()
+
+    def _rows_to_bars(rows: list) -> list[dict]:
+        out: list[dict] = []
+        for ts, o, h, l, c, v in rows:
+            if ts is None:
+                continue
+            t_ms = int(ts.timestamp() * 1000) if hasattr(ts, "timestamp") else int(ts)
+            out.append(
+                {
+                    "t": t_ms,
+                    "o": float(o),
+                    "h": float(h),
+                    "l": float(l),
+                    "c": float(c),
+                    "v": float(v or 0),
+                }
+            )
+        return out
+
+    if cursor_ts is None:
+        sql = f"""
+            SELECT ts, o, h, l, c, v
+            FROM {table}
+            WHERE file_id = %s
+            ORDER BY ts DESC
+            LIMIT {limit}
+        """
+        rows = list(reversed(_fetch_all(sql, (fid,))))
+        bars = _rows_to_bars(rows)
+        has_more_left = len(bars) >= limit
+        has_more_right = False
+        return bars, has_more_left, has_more_right
+
+    cur = _ms_to_questdb_ts(int(cursor_ts))
+    if direction == "forward":
+        sql = f"""
+            SELECT ts, o, h, l, c, v
+            FROM {table}
+            WHERE file_id = %s AND ts > %s
+            ORDER BY ts ASC
+            LIMIT {limit}
+        """
+        rows = _fetch_all(sql, (fid, cur))
+        bars = _rows_to_bars(rows)
+        has_more_left = True
+        has_more_right = len(bars) >= limit
+        return bars, has_more_left, has_more_right
+
+    sql = f"""
+        SELECT ts, o, h, l, c, v
+        FROM {table}
+        WHERE file_id = %s AND ts < %s
+        ORDER BY ts DESC
+        LIMIT {limit}
+    """
+    rows = list(reversed(_fetch_all(sql, (fid, cur))))
+    bars = _rows_to_bars(rows)
+    has_more_left = len(bars) >= limit
+    has_more_right = True
+    return bars, has_more_left, has_more_right
