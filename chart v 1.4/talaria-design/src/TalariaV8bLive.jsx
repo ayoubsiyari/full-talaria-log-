@@ -1588,6 +1588,45 @@ function v9ParallelLevelsToChLines(levels) {
   });
 }
 
+function v9ParallelChannelMidLineRowIndex(chLines) {
+  if (!Array.isArray(chLines) || !chLines.length) return 2;
+  const idx = chLines.findIndex((ln) => {
+    const v = parseFloat(ln.value);
+    return Number.isFinite(v) && Math.abs(v - 0.5) < 0.0001;
+  });
+  return idx >= 0 ? idx : (chLines.length >= 3 ? 2 : -1);
+}
+
+function v9SyncParallelChannelMidLineToChLines(tlStyle) {
+  const base = v9ResolveParallelChannelChLines(tlStyle, null);
+  const idx = v9ParallelChannelMidLineRowIndex(base);
+  if (idx < 0) return base;
+  const midOn = tlStyle.midLine !== false;
+  return base.map((ln, i) =>
+    i === idx
+      ? {
+          ...ln,
+          on: midOn,
+          color: tlStyle.midLineColor || ln.color,
+          type: tlStyle.midLineType || ln.type,
+          width: tlStyle.midLineWidth || ln.width,
+        }
+      : ln,
+  );
+}
+
+function v9ParallelChannelMidLinePatchFromChLines(chLines) {
+  const idx = v9ParallelChannelMidLineRowIndex(chLines);
+  if (idx < 0) return { midLine: false };
+  const mid = chLines[idx];
+  return {
+    midLine: !!mid.on,
+    ...(mid.color ? { midLineColor: mid.color } : {}),
+    ...(mid.type ? { midLineType: mid.type } : {}),
+    ...(mid.width ? { midLineWidth: mid.width } : {}),
+  };
+}
+
 function v9ChLinesToParallelLevels(chLines) {
   if (!Array.isArray(chLines)) return [];
   return chLines.map((ln, idx) => {
@@ -1598,7 +1637,7 @@ function v9ChLinesToParallelLevels(chLines) {
     const dashStr = isBold ? '' : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
       ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
       : '');
-    const uiOn = !!(ln.on || (chLines.length === 5 && idx === 2));
+    const uiOn = !!ln.on;
     return {
       value,
       color: ln.color || '#2962FF',
@@ -2701,12 +2740,11 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
 function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   if (!d || !tlStyle) return;
   const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
-  const nextText = tlStyle.textContent != null ? String(tlStyle.textContent) : "";
-  if (nextText) {
-    d.text = nextText;
+  if (typeof tlStyle.textContent === "string") {
+    d.text = tlStyle.textContent;
     if (typeof d.setText === "function") {
       try {
-        d.setText(nextText);
+        d.setText(d.text);
       } catch (_) {}
     }
   }
@@ -2733,8 +2771,8 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     d.style.trendLineColor = tlStyle.lineColor;
     d.style.trendLineWidth = widthNum;
   }
-  if (d.type === "parallel-channel" && Array.isArray(tlStyle.chLines)) {
-    d.levels = v9ChLinesToParallelLevels(tlStyle.chLines);
+  if (d.type === "parallel-channel") {
+    d.levels = v9ChLinesToParallelLevels(v9SyncParallelChannelMidLineToChLines(tlStyle));
   }
   if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
     v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
@@ -2920,7 +2958,8 @@ function v9TlStylePatchFromDrawing(d) {
             Array.isArray(d.levels) && d.levels.length
               ? v9ParallelLevelsToChLines(d.levels)
               : null;
-          return { chLines: ch && ch.length ? ch : v9DefaultParallelChannelChLines(stroke) };
+          const chLines = ch && ch.length ? ch : v9DefaultParallelChannelChLines(stroke);
+          return { chLines, ...v9ParallelChannelMidLinePatchFromChLines(chLines) };
         })()
       : {}),
     ...(d.type === "regression-trend"
@@ -3273,6 +3312,18 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
       showBorder: true,
       lineWidth: "1",
       borderWidth: "1",
+    };
+  }
+  if (legacy === "parallel-channel") {
+    const stroke = V9_DEFAULT_TL_LINE_COLOR;
+    const chLines = v9DefaultParallelChannelChLines(stroke);
+    const mid = chLines[v9ParallelChannelMidLineRowIndex(chLines)] || {};
+    return {
+      midLine: mid.on !== false,
+      midLineColor: mid.color || stroke,
+      midLineType: mid.type || "dashed",
+      midLineWidth: mid.width || "1",
+      chLines,
     };
   }
   return {};
@@ -11992,20 +12043,35 @@ const TalariaV8bLive = () => {
         middleLineDash: midDashArr,
       };
       const chartsToRender = new Set();
+      const tlForParallel = { ...prevTl, midLine: nextMidLineOn };
+      const parallelLevels = v9ChLinesToParallelLevels(
+        v9SyncParallelChannelMidLineToChLines(tlForParallel),
+      );
       collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
-        Object.assign(d.style, patch);
+        if (d.type === "parallel-channel") {
+          d.levels = parallelLevels;
+        } else {
+          if (!d.style) return;
+          Object.assign(d.style, patch);
+        }
         try {
           if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
           else dm.renderDrawing?.(d);
         } catch (_) {
           try {
             dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try {
+            d.showAxisHighlights();
           } catch (_) {}
         }
         if (dm.chart) chartsToRender.add(dm.chart);
@@ -13622,7 +13688,7 @@ const TalariaV8bLive = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
@@ -14111,7 +14177,7 @@ const TalariaV8bLive = () => {
                       </div>
                       <div/>
                     </>}
-                    {/* ── Middle Line row (rect only) ── */}
+                    {/* ── Middle Line row (rect / ellipse / circle) ── */}
                     {["rect","ellipse","circle"].includes(tlSubTool.icon) && <>{(() => {
                       const midOp = tlStyle.midLine ? 1 : 0.38;
                       const midPE = tlStyle.midLine ? "auto" : "none";
@@ -14188,51 +14254,155 @@ const TalariaV8bLive = () => {
                       <div/><div/>{(showEp||isPatternTool) && <div/>}
                     </>}
                   </div>}
+                  {/* ── Middle Line (parallel channel — outside showLine grid) ── */}
+                  {tlSubTool.icon === "channel" && (() => {
+                    const da = (v) => (v === "dotted" ? "2,4" : v === "dashed" ? "7,4" : v === "dashdot" ? "7,4,2,4" : undefined);
+                    const midOp = tlStyle.midLine ? 1 : 0.38;
+                    const midPE = tlStyle.midLine ? "auto" : "none";
+                    const toggleMidLine = () =>
+                      setTlStyle((s) => {
+                        const nextOn = !s.midLine;
+                        const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLine: nextOn });
+                        queueMicrotask(() =>
+                          flushV9MiddleLineToChart({ ...s, midLine: nextOn, chLines }, nextOn),
+                        );
+                        return { ...s, midLine: nextOn, chLines };
+                      });
+                    return (
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"start", marginBottom:8 }}>
+                        <div/><div/>
+                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span>
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                          <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
+                        </div>
+                        <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                          {TlChk(tlStyle.midLine, "tlchk-midLine", "Middle Line", toggleMidLine)}
+                        </div>
+                        <div style={{ padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
+                          {colorSwatch("tlMidLineColor", tlStyle.midLineColor)}
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
+                          <div style={{ position:"relative" }}>
+                            <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop==="midType"?null:"midType");}}
+                              onMouseEnter={()=>setHov("tl-btn-midType")} onMouseLeave={()=>setHov(null)}
+                              style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
+                                       background:tlStyleDrop==="midType"?"rgba(74,106,255,0.08)":hov==="tl-btn-midType"?c.hv:"transparent", transition:"background 0.12s" }}>
+                              <svg width={22} height={10} viewBox="0 0 22 10">
+                                <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop==="midType"?c.acL:c.ts}
+                                  strokeWidth={tlStyle.midLineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.midLineType)}/>
+                              </svg>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="midType"?c.acL:c.ts}/>
+                            </div>
+                            {tlStyleDrop==="midType" && dropShell("midType", 56, false,
+                              [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
+                                const isA=tlStyle.midLineType===v; const isH=hov===`tlmt-${v}`;
+                                return (
+                                  <div key={v} onClick={()=>{setTlStyle(s=>({...s,midLineType:v}));setTlStyleDrop(null);}}
+                                    onMouseEnter={()=>setHov(`tlmt-${v}`)} onMouseLeave={()=>setHov(null)}
+                                    style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                    {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                    <svg width={28} height={10} viewBox="0 0 28 10">
+                                      <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
+                                    </svg>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:4, alignItems:"center", padding:"8px 0", opacity:midOp, pointerEvents:midPE, transition:"opacity 0.15s" }}>
+                          <div style={{ position:"relative" }}>
+                            <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop==="midWidth"?null:"midWidth");}}
+                              onMouseEnter={()=>setHov("tl-btn-midWidth")} onMouseLeave={()=>setHov(null)}
+                              style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
+                                       background:tlStyleDrop==="midWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-midWidth"?c.hv:"transparent", transition:"background 0.12s" }}>
+                              <svg width={22} height={Math.max(8,+tlStyle.midLineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.midLineWidth+4)}`}>
+                                <line x1={0} y1={Math.max(8,+tlStyle.midLineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.midLineWidth+4)/2}
+                                  stroke={tlStyleDrop==="midWidth"?c.acL:c.ts} strokeWidth={+tlStyle.midLineWidth} strokeLinecap="round"/>
+                              </svg>
+                              <I n="chevDown" s={7} cl={tlStyleDrop==="midWidth"?c.acL:c.ts}/>
+                            </div>
+                            {tlStyleDrop==="midWidth" && dropShell("midWidth", 56, false,
+                              ["1","2","3","4"].map(w=>{
+                                const isA=tlStyle.midLineWidth===w; const isH=hov===`tlmw-${w}`;
+                                return (
+                                  <div key={w} onClick={()=>{setTlStyle(s=>({...s,midLineWidth:w}));setTlStyleDrop(null);}}
+                                    onMouseEnter={()=>setHov(`tlmw-${w}`)} onMouseLeave={()=>setHov(null)}
+                                    style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
+                                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                                    {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                                    <svg width={28} height={Math.max(8,+w+4)} viewBox={`0 0 28 ${Math.max(8,+w+4)}`}>
+                                      <line x1={0} y1={Math.max(8,+w+4)/2} x2={28} y2={Math.max(8,+w+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+w} strokeLinecap="round"/>
+                                    </svg>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* ── Channel / Regression lines rows ── */}
                   {isChannel && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
-                    const lines = isRegCh
+                    const rawLines = isRegCh
                       ? (tlStyle.regLines || [])
                       : v9ResolveParallelChannelChLines(
                           tlStyle,
                           editingDrawingRef.current?.drawing,
                         );
+                    const lines = !isRegCh && tlSubTool.icon === "channel"
+                      ? rawLines.filter(
+                          (ln, idx) =>
+                            idx !== v9ParallelChannelMidLineRowIndex(rawLines) &&
+                            Math.abs(parseFloat(ln.value) - 0.5) >= 0.0001,
+                        )
+                      : rawLines;
                     const stKey = isRegCh ? "regLines" : "chLines";
                     const cpKey = isRegCh ? "regLine" : "chLine";
+                    const lineRowIndex = (displayIdx) => {
+                      if (isRegCh || tlSubTool.icon !== "channel") return displayIdx;
+                      const midIdx = v9ParallelChannelMidLineRowIndex(rawLines);
+                      return displayIdx < midIdx ? displayIdx : displayIdx + 1;
+                    };
                     return <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"end" }}>
                       {/* Column headers */}
                       <div/><div/>
                       <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span></div>
                       <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
                       {lines.map((ln, idx) => {
-                        const isMiddle = !isRegCh && idx === 2;
-                        const op = (isMiddle || ln.on) ? 1 : 0.38;
-                        const pe = (isMiddle || ln.on) ? "auto" : "none";
-                        const chDk = `${cpKey}Type-${idx}`, chWk = `${cpKey}Width-${idx}`;
-                        return <React.Fragment key={idx}>
+                        const srcIdx = lineRowIndex(idx);
+                        const op = ln.on ? 1 : 0.38;
+                        const pe = ln.on ? "auto" : "none";
+                        const chDk = `${cpKey}Type-${srcIdx}`, chWk = `${cpKey}Width-${srcIdx}`;
+                        return <React.Fragment key={srcIdx}>
                           {isRegCh
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${idx}`, ln.label, ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
                               </div>
                             : tlSubTool.icon === "channel" ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {!isMiddle && TlChk(ln.on, `tlchk-${cpKey}-${idx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
                               </div>
                             ) : (
                               <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
                                 <div style={{ width:22, flexShrink:0 }}>
-                                  {!isMiddle && TlChk(ln.on, `tlchk-${cpKey}-${idx}`, "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                                  {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
                                 </div>
                                 <div style={{ position:"relative", width:68, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                                   <input value={ln.value}
-                                    onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,value:val}:l)}));}}
+                                    onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,value:val}:l)}));}}
                                     onClick={e=>e.stopPropagation()}
                                     className="tlr-nospinner"
                                     style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
+                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===srcIdx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -14247,7 +14417,7 @@ const TalariaV8bLive = () => {
                             )
                           }
                           <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
-                            {colorSwatch(`${cpKey}-${idx}`, ln.color)}
+                            {colorSwatch(`${cpKey}-${srcIdx}`, ln.color)}
                           </div>
                           <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s", position:"relative" }}>
                             <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===chDk?null:chDk);}}
@@ -14264,10 +14434,10 @@ const TalariaV8bLive = () => {
                             </div>
                             {tlStyleDrop===chDk && dropShell(chDk, 56, false,
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                                const isA=ln.type===v; const isH=hov===`${cpKey}t-${idx}-${v}`;
+                                const isA=ln.type===v; const isH=hov===`${cpKey}t-${srcIdx}-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,type:v}:l)}));setTlStyleDrop(null);}}
-                                    onMouseEnter={()=>setHov(`${cpKey}t-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
+                                  <div key={v} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,type:v}:l)}));setTlStyleDrop(null);}}
+                                    onMouseEnter={()=>setHov(`${cpKey}t-${srcIdx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
                                     {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -14294,10 +14464,10 @@ const TalariaV8bLive = () => {
                             </div>
                             {tlStyleDrop===chWk && dropShell(chWk, 56, false,
                               ["1","2","3","4"].map(w=>{
-                                const isA=ln.width===w; const isH=hov===`${cpKey}w-${idx}-${w}`;
+                                const isA=ln.width===w; const isH=hov===`${cpKey}w-${srcIdx}-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===idx?{...l,width:w}:l)}));setTlStyleDrop(null);}}
-                                    onMouseEnter={()=>setHov(`${cpKey}w-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
+                                  <div key={w} onClick={()=>{setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,width:w}:l)}));setTlStyleDrop(null);}}
+                                    onMouseEnter={()=>setHov(`${cpKey}w-${srcIdx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
                                     {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
@@ -14309,12 +14479,12 @@ const TalariaV8bLive = () => {
                               })
                             )}
                           </div>
-                          {isRegCh && idx === 1 && <>
+                          {isRegCh && srcIdx === 1 && <>
                             <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Upper Background</span>
                             <div style={{ padding:"8px 0" }}>{colorSwatch("regUpperBg", tlStyle.regUpperBg)}</div>
                             <div/><div/>
                           </>}
-                          {isRegCh && idx === 2 && <>
+                          {isRegCh && srcIdx === 2 && <>
                             <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Lower Background</span>
                             <div style={{ padding:"8px 0" }}>{colorSwatch("regLowerBg", tlStyle.regLowerBg)}</div>
                             <div/><div/>

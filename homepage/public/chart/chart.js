@@ -582,6 +582,9 @@ class Chart {
         /** Per fileId → Map<tf, { rawData, data, cursors, nativeRawFetchTf }> for instant TF revisit */
         this._tfDataCache = new Map();
         this._tfDataCacheMaxPerFile = 5;
+        /** Backtest-only TF cache (session-end anchored); hot-swaps replay without exit/enter */
+        this._btTfDataCache = new Map();
+        this._btTfDataCacheMaxPerFile = 8;
         /** Native resolution of rawData from the last server fetch (used for client-resample gate) */
         this._nativeRawFetchTf = null;
         this._sessionStateSaveDebounceMs = 4000;
@@ -1163,6 +1166,7 @@ class Chart {
             this.isBacktestMode = true;
             this.currentTimeframe = '1d';
             if (this._tfDataCache) this._tfDataCache.clear();
+            if (this._btTfDataCache) this._btTfDataCache.clear();
             try { this._emitTimeframeChanged(); } catch (e) {}
 
             // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
@@ -1452,6 +1456,7 @@ class Chart {
             this.isBacktestMode = true;
             this.currentTimeframe = '1d';
             if (this._tfDataCache) this._tfDataCache.clear();
+            if (this._btTfDataCache) this._btTfDataCache.clear();
             try { this._emitTimeframeChanged(); } catch (e) {}
 
             const replayRawTf = '1d';
@@ -1517,6 +1522,7 @@ class Chart {
             this._nativeRawFetchTf = replayRawTf;
             this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true, skipTimeframePrefetch: true });
             this.loadedRanges.set(0, result.returned);
+            this._saveBtTfDataCacheFromChart(this.currentFileId, replayRawTf);
             // Defer prefetch of other session instruments until after replay + layout settle —
             // parallel /smart for EUR/GBP/… competes with enterReplayMode and blanks panel 0 when half-width.
             const selfBt = this;
@@ -1525,9 +1531,6 @@ class Chart {
                 if (String(selfBt.currentFileId) !== String(scheduledFor)) return;
                 if (typeof selfBt._scheduleSmartPrefetchOthers === 'function') {
                     selfBt._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
-                }
-                if (typeof selfBt._scheduleTimeframePrefetch === 'function') {
-                    selfBt._scheduleTimeframePrefetch(fileId, replayRawTf, session);
                 }
             }, 14000);
 
@@ -2035,6 +2038,344 @@ class Chart {
         }
         this._endTimeframeSwitching();
         if (!replayPath) this.scheduleRender();
+        return true;
+    }
+
+    _getBacktestSessionEndMs(session) {
+        const sess = session || this.backtestingSession || {};
+        const r = sess.endDate || sess.end_date;
+        if (!r) return null;
+        const t = this._sessionEndToInclusiveUtcMs(r);
+        return Number.isFinite(t) ? Math.floor(t) : null;
+    }
+
+    _btTfCacheAnchorKey(sessionEndMs) {
+        return sessionEndMs != null && Number.isFinite(sessionEndMs) ? String(sessionEndMs) : 'none';
+    }
+
+    _getBtTfDataCache(fileId, timeframe) {
+        if (!fileId || !timeframe || !this._btTfDataCache) return null;
+        const perFile = this._btTfDataCache.get(String(fileId));
+        if (!perFile) return null;
+        const tf = String(timeframe).toLowerCase().trim();
+        const entry = perFile.get(tf);
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
+        const anchorKey = this._btTfCacheAnchorKey(this._getBacktestSessionEndMs());
+        if (entry.anchorKey !== anchorKey) return null;
+        return entry;
+    }
+
+    _storeBtTfDataCacheEntry(fileId, timeframe, rawData, meta = {}) {
+        if (!this.isBacktestMode || !fileId || !timeframe) return;
+        if (!Array.isArray(rawData) || !rawData.length) return;
+        const tf = String(timeframe).toLowerCase().trim();
+        const sessionEndMs = this._getBacktestSessionEndMs();
+        if (!this._btTfDataCache) this._btTfDataCache = new Map();
+        const fid = String(fileId);
+        if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
+        const perFile = this._btTfDataCache.get(fid);
+        perFile.set(tf, {
+            at: Date.now(),
+            anchorKey: this._btTfCacheAnchorKey(sessionEndMs),
+            rawData: rawData.slice(),
+            totalCandles: meta.totalCandles != null ? meta.totalCandles : rawData.length,
+            serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
+            nativeRawFetchTf: meta.nativeRawFetchTf || tf,
+        });
+        while (perFile.size > (this._btTfDataCacheMaxPerFile || 8)) {
+            const first = perFile.keys().next().value;
+            perFile.delete(first);
+        }
+    }
+
+    _saveBtTfDataCacheFromChart(fileId, timeframe) {
+        if (!fileId || !Array.isArray(this.rawData) || !this.rawData.length) return;
+        this._storeBtTfDataCacheEntry(fileId, timeframe, this.rawData, {
+            totalCandles: this.totalCandles,
+            serverCursors: this._serverCursors,
+            nativeRawFetchTf: this._nativeRawFetchTf || timeframe,
+        });
+    }
+
+    _scheduleBacktestTimeframePrefetch(fileId, session) {
+        if (!this.isBacktestMode || !fileId) return;
+        const ric = typeof window !== 'undefined' && window.requestIdleCallback
+            ? window.requestIdleCallback
+            : (cb) => setTimeout(cb, 2500);
+        const self = this;
+        ric(() => {
+            if (String(self.currentFileId) !== String(fileId)) return;
+            if (!self.isBacktestMode) return;
+            const sessionEndMs = self._getBacktestSessionEndMs(session);
+            const historyRange = self._getBacktestSessionEndFetchRange(sessionEndMs);
+            const fetchOpts = { skipSessionDates: true, limit: 100000 };
+            const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
+            const targets = new Set(['1m', '5m', '15m', '1h', '4h', '1d']);
+            targets.delete(cur);
+            if (self._getTimeframesToPrefetch) {
+                self._getTimeframesToPrefetch(cur).forEach((t) => targets.add(t));
+            }
+            Array.from(targets).slice(0, 6).forEach((tf) => {
+                if (self._getBtTfDataCache(fileId, tf)) return;
+                self._fetchSmartWindow(fileId, tf, session || self.backtestingSession || {}, 'end', historyRange, fetchOpts)
+                    .then((result) => {
+                        if (!self._smartResponseHasPayload(result)) return;
+                        if (String(self.currentFileId) !== String(fileId)) return;
+                        const rows = Array.isArray(result.candles)
+                            ? self._normalizeCandlesFromApi(result.candles)
+                            : [];
+                        if (!rows.length) return;
+                        self._storeBtTfDataCacheEntry(fileId, tf, rows, {
+                            totalCandles: result.total,
+                            serverCursors: {
+                                firstTs: result.first_cursor,
+                                lastTs: result.last_cursor,
+                                hasMoreLeft: result.has_more_left,
+                                hasMoreRight: result.has_more_right,
+                            },
+                            nativeRawFetchTf: tf,
+                        });
+                    })
+                    .catch(() => {});
+            });
+        });
+    }
+
+    /**
+     * Swap backtest replay to new TF bars without exitReplayMode/enterReplayMode (much faster on revisit).
+     */
+    async _hotSwapBacktestReplayTimeframe(timeframe, ctx) {
+        const replay = this.replaySystem;
+        if (!replay || !this.currentFileId) return false;
+
+        const normalizedTf = String(timeframe || '1m').toLowerCase().trim();
+        const session = this.backtestingSession || {};
+        const sessionEndMs = ctx.sessionEndMs != null
+            ? ctx.sessionEndMs
+            : this._getBacktestSessionEndMs(session);
+
+        let savedReplayTimestamp = ctx.savedReplayTimestamp;
+        const savedCurrentIndex = ctx.savedCurrentIndex;
+        const wasPlaying = !!ctx.wasPlaying;
+        const wasAtSessionEnd = !!ctx.wasAtSessionEnd;
+        const savedSpeed = ctx.savedSpeed;
+        const savedPlaybackMode = ctx.savedPlaybackMode;
+        const previousTf = ctx.previousTf || String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevTfMs = this.parseTimeframe(previousTf);
+        const newTfMsForSwitch = this.parseTimeframe(normalizedTf);
+        const switchingToFiner = Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch < prevTfMs;
+
+        if (wasPlaying && typeof replay.pause === 'function') {
+            try { replay.pause(); } catch (_p) { /* ignore */ }
+        }
+
+        this._commitTimeframeChange(normalizedTf);
+        this._nativeRawFetchTf = normalizedTf;
+        this.data = this.resampleData(this.rawData, normalizedTf);
+        this._panLoading = false;
+        this._chartViewRestored = false;
+
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        this.manualCenterPrice = null;
+        this.manualRange = null;
+
+        if (replay.isActive) {
+            replay.fullRawData = [...this.rawData];
+            replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+            replay.rawTimeframe = normalizedTf;
+            replay._fullRawDataMatchesTF = true;
+            replay.tickPathCache = {};
+            replay.tickPathCacheBuilt = false;
+            replay.replayStartTimestamp = replay.fullRawData[0]?.t ?? replay.replayStartTimestamp;
+            replay.replayEndTimestamp = replay.fullRawData[replay.fullRawData.length - 1]?.t ?? replay.replayEndTimestamp;
+
+            let sessionStartMs = null;
+            try {
+                const raw = session.startDate || session.start_date;
+                if (raw) {
+                    const t = new Date(raw).getTime();
+                    if (Number.isFinite(t)) sessionStartMs = t;
+                }
+            } catch (_e) { /* ignore */ }
+            if (sessionStartMs != null && typeof replay._findLastRawIndexAtOrBefore === 'function') {
+                const floorHit = replay._findLastRawIndexAtOrBefore(replay.fullRawData, sessionStartMs);
+                replay.sessionStartIndex = floorHit >= 0 ? floorHit : 0;
+            }
+        } else if (typeof replay.enterReplayMode === 'function') {
+            replay.enterReplayMode({
+                suppressInitialUpdateChartData: true,
+                skipRealignAfterLayout: true,
+                preservePlayhead: Number.isFinite(savedReplayTimestamp),
+                initialReplayTimestamp: savedReplayTimestamp,
+                initialCurrentIndex: savedCurrentIndex,
+            });
+        }
+
+        if (wasAtSessionEnd && sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+            savedReplayTimestamp = sessionEndMs;
+        }
+
+        if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
+            try {
+                replay.applyPersistedState({
+                    replayTimestamp: savedReplayTimestamp,
+                    speed: savedSpeed,
+                    playbackMode: savedPlaybackMode || undefined,
+                    deferChartSync: true,
+                });
+            } catch (e) {
+                console.warn('[backtest] applyPersistedState after TF hot-swap failed', e);
+            }
+        }
+
+        let coarsePeriodExclusiveEndTs = ctx.coarsePeriodExclusiveEndTs;
+        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
+            && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
+            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
+            const smin = replay.sessionStartIndex || 0;
+            if (fineIdx >= smin) {
+                replay.currentIndex = fineIdx;
+                const b = replay.fullRawData[fineIdx];
+                if (b && Number.isFinite(b.t)) replay.replayTimestamp = b.t;
+            }
+        }
+
+        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const firstT = replay.fullRawData[0].t;
+            const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
+            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
+                try {
+                    const loaded = await this.ensureGoToWindowContainsTimestamp(
+                        savedReplayTimestamp,
+                        { usingReplay: true }
+                    );
+                    if (loaded && typeof replay.goToReplayTimestamp === 'function') {
+                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
+                    }
+                } catch (e) {
+                    console.warn('[backtest] playhead window fetch after TF hot-swap failed', e);
+                }
+            }
+        }
+
+        const omTf = this.orderManager
+            || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
+        let guardTs = savedReplayTimestamp;
+        if (!Number.isFinite(Number(guardTs)) && Array.isArray(replay.fullRawData) && typeof replay.currentIndex === 'number') {
+            const rb = replay.fullRawData[replay.currentIndex];
+            guardTs = rb != null && Number.isFinite(rb.t) ? rb.t : null;
+        }
+        if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
+            try { omTf._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
+        }
+
+        if (typeof replay.updateChartData === 'function') {
+            try { replay.updateChartData(true); } catch (e) {
+                console.warn('[backtest] updateChartData after TF hot-swap failed', e);
+            }
+        }
+
+        if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            replay.currentIndex = replay.fullRawData.length - 1;
+            const endBar = replay.fullRawData[replay.currentIndex];
+            if (endBar && Number.isFinite(endBar.t)) replay.replayTimestamp = endBar.t;
+            try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
+        }
+
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
+        }
+
+        if (omTf && typeof omTf._refreshAllGuardsToCurrentCandle === 'function') {
+            try { omTf._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
+        }
+
+        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
+        }
+
+        if (typeof this._fireChartDataLoaded === 'function') {
+            try { this._fireChartDataLoaded(); } catch (_e4) { /* ignore */ }
+        }
+
+        const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
+        if (shouldResumePlay && typeof replay.play === 'function') {
+            try { replay.play(); } catch (_e5) { /* ignore */ }
+        } else if (wasAtSessionEnd) {
+            replay.isPlaying = false;
+            if (typeof replay.syncPlayPauseUI === 'function') replay.syncPlayPauseUI();
+        }
+
+        try { this.resize(); } catch (_r) { /* ignore */ }
+        try {
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
+            }
+        } catch (_r2) { /* ignore */ }
+
+        this._endTimeframeSwitching();
+        if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
+            try { omTf.updatePositions(); } catch (_eOm) { /* ignore */ }
+        }
+        return true;
+    }
+
+    async _applyBacktestTimeframeFromCache(timeframe) {
+        if (!this.isBacktestMode || !this.currentFileId) return false;
+        const entry = this._getBtTfDataCache(this.currentFileId, timeframe);
+        if (!entry) return false;
+
+        const replay = this.replaySystem;
+        if (!replay) return false;
+
+        const session = this.backtestingSession || {};
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevTfMs = this.parseTimeframe(previousTf);
+        const newTfMs = this.parseTimeframe(timeframe);
+        const switchingToFiner = replay.isActive
+            && Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMs) && newTfMs > 0
+            && newTfMs < prevTfMs;
+
+        let coarsePeriodExclusiveEndTs = null;
+        if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const floorIdx = replay.sessionStartIndex || 0;
+            let oi = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
+            oi = Math.min(Math.max(oi, floorIdx), replay.fullRawData.length - 1);
+            const nextCoarse = replay.fullRawData[oi + 1];
+            if (nextCoarse && Number.isFinite(nextCoarse.t)) {
+                coarsePeriodExclusiveEndTs = nextCoarse.t;
+            } else if (sessionEndMs != null) {
+                coarsePeriodExclusiveEndTs = sessionEndMs + 1;
+            }
+        }
+
+        this.rawData = entry.rawData.slice();
+        this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
+        this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
+        this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
+
+        await this._hotSwapBacktestReplayTimeframe(timeframe, {
+            savedReplayTimestamp: this._captureReplayPlayheadMs(replay),
+            savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
+            wasPlaying: !!replay.isPlaying,
+            wasAtSessionEnd: replay.isActive
+                && typeof replay._isAtBacktestSessionEnd === 'function'
+                && replay._isAtBacktestSessionEnd(sessionEndMs),
+            savedSpeed: replay.speed,
+            savedPlaybackMode: typeof replay.getPlaybackMode === 'function' ? replay.getPlaybackMode() : null,
+            previousTf,
+            sessionEndMs,
+            coarsePeriodExclusiveEndTs,
+        });
         return true;
     }
 
@@ -2897,6 +3238,15 @@ class Chart {
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
                 requestAnimationFrame(() => this.hideLoader());
+                // Prefetch common TFs in idle time so first 1m/5m switch during replay is faster.
+                const fid = this.currentFileId;
+                const sess = session;
+                setTimeout(() => {
+                    if (String(this.currentFileId) !== String(fid)) return;
+                    if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
+                        this._scheduleBacktestTimeframePrefetch(fid, sess);
+                    }
+                }, 4000);
             });
         } else {
             console.error('❌ Replay system not available!');
@@ -12343,8 +12693,15 @@ class Chart {
                 && Number.isFinite(newTfMs) && newTfMs > 0;
 
             if (needsServerRefetch) {
-                // Path C: _refetchBacktestTimeframe commits + ends the switching state when data arrives.
-                this._refetchBacktestTimeframe(normalizedTf);
+                // Path C: backtest cache hit → hot-swap replay; else fetch + hot-swap (no exit/enter).
+                this._applyBacktestTimeframeFromCache(normalizedTf)
+                    .then((hit) => {
+                        if (!hit) this._refetchBacktestTimeframe(normalizedTf);
+                    })
+                    .catch((e) => {
+                        console.warn('[backtest] TF cache restore failed, refetching', e);
+                        this._refetchBacktestTimeframe(normalizedTf);
+                    });
                 return;
             }
 
@@ -12844,21 +13201,16 @@ class Chart {
             return;
         }
 
-        // Drop any live-mode TF cache for this file — stale 1m windows break replay scale on revisit.
-        if (this._tfDataCache && this.currentFileId) {
-            this._tfDataCache.delete(String(this.currentFileId));
+        // Fast path: session-anchored backtest cache (instant on 1D↔1m revisit during replay).
+        if (await this._applyBacktestTimeframeFromCache(timeframe)) {
+            return;
         }
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
 
         const session = this.backtestingSession || {};
-        const sessionEndMs = (() => {
-            const r = session.endDate || session.end_date;
-            if (!r) return null;
-            const t = this._sessionEndToInclusiveUtcMs(r);
-            return Number.isFinite(t) ? Math.floor(t) : null;
-        })();
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
 
         let savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
         const savedCurrentIndex = typeof replay.currentIndex === 'number'
@@ -12873,12 +13225,6 @@ class Chart {
             ? replay.getPlaybackMode()
             : null;
 
-        // Do NOT rewrite chart.data[last] OHLC after a TF switch to "match" a saved tick price.
-        // getCurrentCandle() reads that bar for SL/TP; inflating h/l toward a display price causes
-        // false fills when the user only changed timeframe (replay still paused).
-
-        // Fine→coarse: applyPersistedState uses the same wall-clock cut so the playhead bar
-        // matches 1m tick time on 1D, etc. (no synthetic OHLC writes — see note above).
         const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const prevTfMs = this.parseTimeframe(previousTf);
         const newTfMsForSwitch = this.parseTimeframe(timeframe);
@@ -12906,16 +13252,6 @@ class Chart {
 
         const loadId = ++this._timeframeLoadSeq;
 
-        try {
-            if (wasActive && typeof replay.exitReplayMode === 'function') {
-                replay.exitReplayMode();
-            }
-        } catch (e) {
-            console.warn('[backtest] exitReplayMode before refetch failed', e);
-        }
-
-        // Same load path as initial backtest (1D) and every other TF: anchor at session
-        // end, skip session start clamp, max batch — NOT a small replay-centered window.
         const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
         const fetchOpts = { skipSessionDates: true, limit: 100000 };
 
@@ -12930,7 +13266,6 @@ class Chart {
                 historyRange,
                 fetchOpts
             );
-            // Initial-load retry parity: empty end-clamped fetch → retry without end clamp.
             if (!this._smartResponseHasPayload(result)) {
                 result = await this._fetchSmartWindow(
                     this.currentFileId,
@@ -12948,7 +13283,6 @@ class Chart {
             return;
         }
 
-        // Superseded by a newer switch — abandon, the newer one owns the overlay.
         if (loadId !== this._timeframeLoadSeq) return;
 
         if (!this._smartResponseHasPayload(result)) {
@@ -12958,10 +13292,6 @@ class Chart {
             return;
         }
 
-        // Atomic commit: TF + data + cursors land together. No position-restore,
-        // no fitToView — `enterReplayMode` below owns viewport positioning.
-        this.rawData = [];
-        this.data = [];
         this.totalCandles = result.total;
         this._serverCursors = {
             firstTs: result.first_cursor,
@@ -12970,17 +13300,16 @@ class Chart {
             hasMoreRight: result.has_more_right
         };
         this._panLoading = false;
-        this._chartViewRestored = false;
-        this._commitTimeframeChange(timeframe);
         this._nativeRawFetchTf = timeframe;
+        this._commitTimeframeChange(timeframe);
         this._ingestSmartWindowResult(result, {
             skipIndicators: true,
             skipFitToView: true,
             skipChartDataLoadedEvent: true,
+            skipTimeframePrefetch: true,
         });
-        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-            this.compareOverlay.refreshForTimeframe(timeframe);
-        }
+        this._saveBtTfDataCacheFromChart(this.currentFileId, timeframe);
+
         if (this.hideLoader) this.hideLoader();
 
         if (!Array.isArray(this.rawData) || this.rawData.length === 0) {
@@ -12988,199 +13317,17 @@ class Chart {
             return;
         }
 
-        if (!wasActive || typeof replay.enterReplayMode !== 'function') {
-            this._endTimeframeSwitching();
-            return;
-        }
-
-        // TradingView-style reset on every TF switch. Match what double-click
-        // on the time axis does (jumpToLatest): default candleWidth, autoScale
-        // ON, no preserved priceZoom/priceOffset. Done BEFORE enterReplayMode
-        // so its internal getReplayAutoScrollState() computes offsetX against
-        // the reset candleWidth and lands the playhead at the right edge with
-        // the same geometry as a fresh load.
-        this.candleWidth = DEFAULT_CANDLE_WIDTH;
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        this.manualCenterPrice = null;
-        this.manualRange = null;
-        this._chartViewRestored = false;
-
-        try {
-            replay.enterReplayMode({
-                suppressInitialUpdateChartData: true,
-                skipRealignAfterLayout: true,
-                preservePlayhead: Number.isFinite(savedReplayTimestamp),
-                initialReplayTimestamp: savedReplayTimestamp,
-                initialCurrentIndex: savedCurrentIndex,
-            });
-        } catch (e) {
-            console.error('[backtest] enterReplayMode after refetch failed', e);
-            this._endTimeframeSwitching();
-            return;
-        }
-
-        if (wasAtSessionEnd && sessionEndMs != null && Number.isFinite(sessionEndMs)) {
-            savedReplayTimestamp = sessionEndMs;
-        }
-
-        if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
-            try {
-                replay.applyPersistedState({
-                    replayTimestamp: savedReplayTimestamp,
-                    speed: savedSpeed,
-                    playbackMode: savedPlaybackMode || undefined,
-                    deferChartSync: true,
-                });
-            } catch (e) {
-                console.warn('[backtest] applyPersistedState after refetch failed', e);
-            }
-        }
-
-        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
-            && typeof replay._findLastRawIndexAtOrBefore === 'function'
-            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
-            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
-            const smin = replay.sessionStartIndex || 0;
-            if (fineIdx >= smin) {
-                replay.currentIndex = fineIdx;
-                const b = replay.fullRawData[fineIdx];
-                if (b && Number.isFinite(b.t)) {
-                    replay.replayTimestamp = b.t;
-                }
-            }
-        }
-
-        // Session-end batch may not include a mid-session playhead (100k 1m bar cap).
-        // Load a window around the playhead the same way Go-To does, then restore position.
-        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const firstT = replay.fullRawData[0].t;
-            const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
-            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
-                try {
-                    const loaded = await this.ensureGoToWindowContainsTimestamp(
-                        savedReplayTimestamp,
-                        { usingReplay: true }
-                    );
-                    if (loaded && typeof replay.goToReplayTimestamp === 'function') {
-                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
-                    }
-                } catch (e) {
-                    console.warn('[backtest] playhead window fetch after TF refetch failed', e);
-                }
-            }
-        }
-
-        // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
-        // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
-        // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
-        const omTfRefetch = this.orderManager
-            || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
-        let guardTsTfRefetch = savedReplayTimestamp;
-        if (!Number.isFinite(Number(guardTsTfRefetch)) && Array.isArray(replay.fullRawData) && typeof replay.currentIndex === 'number') {
-            const rbTf = replay.fullRawData[replay.currentIndex];
-            const tRawTf = rbTf != null ? Number(rbTf.t) : NaN;
-            guardTsTfRefetch = Number.isFinite(tRawTf) ? tRawTf : null;
-        }
-        if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTsTfRefetch))) {
-            try { omTfRefetch._refreshAllGuardsToTimestamp(Number(guardTsTfRefetch), -1); } catch (_eTf) { /* ignore */ }
-        } else if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
-            try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf2) { /* ignore */ }
-        }
-
-        if (typeof replay.updateChartData === 'function') {
-            try {
-                replay.updateChartData(true);
-            } catch (e) {
-                console.warn('[backtest] replay updateChartData after refetch failed', e);
-            }
-        }
-
-        if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            replay.currentIndex = replay.fullRawData.length - 1;
-            const endBar = replay.fullRawData[replay.currentIndex];
-            if (endBar && Number.isFinite(endBar.t)) {
-                replay.replayTimestamp = endBar.t;
-            }
-            try {
-                replay.updateChartData(true);
-            } catch (e) { /* ignore */ }
-        }
-
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true });
-        }
-
-        if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
-            try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf3) { /* ignore */ }
-        }
-
-        if (typeof this._fireChartDataLoaded === 'function') {
-            try {
-                this._fireChartDataLoaded();
-            } catch (e) { /* ignore */ }
-        }
-
-        const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
-        if (shouldResumePlay && typeof replay.play === 'function') {
-            try { replay.play(); } catch (e) { /* ignore */ }
-        } else if (wasAtSessionEnd) {
-            replay.isPlaying = false;
-            if (typeof replay.syncPlayPauseUI === 'function') {
-                replay.syncPlayPauseUI();
-            }
-        }
-
-        // Final viewport reset = "double-click time axis" parity on every TF
-        // switch. Without this, a 1D → 5m switch sometimes lands the viewport
-        // mid-history: enterReplayMode internally schedules a setTimeout(150ms)
-        // realignAfterLayout pass that can fire AFTER applyPersistedState moved
-        // currentIndex (so chart.data.length grew) but BEFORE the canvas is
-        // measured at its new size — leaving a stale offsetX from the smaller
-        // session-start slice. We defer the freeze lift to ~200ms so:
-        //   1) enterReplayMode's own realignAfterLayout (rAF + setTimeout 150ms)
-        //      has fully run,
-        //   2) the canvas has settled at its real dimensions,
-        //   3) jumpToLatest then computes the final offsetX against the right
-        //      data length and right candle spacing.
-        // In replay mode jumpToLatest → fitToView → getReplayAutoScrollState
-        // = right edge of the sliced data = playhead. The freeze overlay
-        // (snapshot of the previous TF) stays up the whole time so the user
-        // never sees the intermediate "viewport at session start" frame.
-        const finalizeReset = () => {
-            try {
-                if (typeof this.resize === 'function') this.resize();
-            } catch (e) { /* ignore */ }
-            try {
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
-                }
-            } catch (e) { /* ignore */ }
-            this._endTimeframeSwitching();
-            if (!shouldResumePlay) {
-                try {
-                    const omFin = this.orderManager
-                        || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
-                    if (omFin && typeof omFin.updatePositions === 'function') {
-                        omFin.updatePositions();
-                    }
-                } catch (_eOm) { /* ignore */ }
-            }
-        };
-        // Run after enterReplayMode's own 150ms realignAfterLayout completes.
-        // Two-pass: an immediate rAF render keeps the snapshot bitmap accurate
-        // against the new canvas size if it changed during the fetch, then the
-        // delayed finalizeReset lifts the freeze with the correct viewport.
-        requestAnimationFrame(() => {
-            try {
-                if (typeof this.render === 'function') this.render();
-            } catch (e) { /* ignore */ }
+        await this._hotSwapBacktestReplayTimeframe(timeframe, {
+            savedReplayTimestamp,
+            savedCurrentIndex,
+            wasPlaying,
+            wasAtSessionEnd,
+            savedSpeed,
+            savedPlaybackMode,
+            previousTf,
+            sessionEndMs,
+            coarsePeriodExclusiveEndTs,
         });
-        // Shorter settle window: enterReplayMode's realignAfterLayout uses rAF + ~150ms;
-        // two rAF passes plus 100ms is enough for canvas + replay viewport without the old 200ms penalty.
-        setTimeout(finalizeReset, 100);
     }
 
     /**
