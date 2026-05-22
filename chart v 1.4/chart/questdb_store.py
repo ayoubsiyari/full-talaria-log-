@@ -4,6 +4,7 @@ QuestDB OHLC storage — time-indexed reads + ILP bulk ingest.
 from __future__ import annotations
 
 import os
+import re
 import socket
 import threading
 import time
@@ -28,6 +29,28 @@ AGG_SAMPLE_BY: dict[str, str] = {
 
 _schema_lock = threading.Lock()
 _schema_ready = False
+
+_OHLCV_DDL = """
+    file_id SYMBOL,
+    ts TIMESTAMP,
+    o DOUBLE,
+    h DOUBLE,
+    l DOUBLE,
+    c DOUBLE,
+    v DOUBLE
+) TIMESTAMP(ts) PARTITION BY YEAR;
+"""
+
+
+def _safe_file_id(file_id: int | str) -> str:
+    fid = str(int(file_id))
+    if not re.fullmatch(r"[0-9]+", fid):
+        raise ValueError(f"Invalid file_id: {file_id!r}")
+    return fid
+
+
+def _create_ohlcv_table(table: str) -> None:
+    _exec_sql(f"CREATE TABLE IF NOT EXISTS {table} ({_OHLCV_DDL}")
 
 
 def questdb_enabled() -> bool:
@@ -88,7 +111,11 @@ def _pg_conn():
     url = _pg_url()
     if not url:
         raise RuntimeError("QUESTDB_PG_URL not configured")
-    conn = psycopg2.connect(url)
+    conn = psycopg2.connect(
+        url,
+        gssencmode="disable",
+        sslmode="disable",
+    )
     try:
         conn.autocommit = True
         yield conn
@@ -137,20 +164,41 @@ def ensure_schema() -> None:
         """
         _exec_sql(ddl)
         for table in AGG_SAMPLE_BY:
-            _exec_sql(
-                f"""
-                CREATE TABLE IF NOT EXISTS {table} (
-                    file_id SYMBOL,
-                    ts TIMESTAMP,
-                    o DOUBLE,
-                    h DOUBLE,
-                    l DOUBLE,
-                    c DOUBLE,
-                    v DOUBLE
-                ) TIMESTAMP(ts) PARTITION BY YEAR;
-                """
-            )
+            _create_ohlcv_table(table)
         _schema_ready = True
+
+
+def _table_row_count(table: str) -> int:
+    row = _fetch_one(f"SELECT count() FROM {table}", ())
+    return int(row[0]) if row else 0
+
+
+def _drop_and_recreate_table(table: str) -> None:
+    _exec_sql(f"DROP TABLE {table}")
+    _create_ohlcv_table(table)
+
+
+def _replace_table_excluding_file(table: str, fid: str) -> None:
+    """QuestDB has no DELETE — copy rows for other file_ids into a new table."""
+    tmp = f"_tmp_{table}_{fid}_{int(time.time() * 1000)}"
+    _exec_sql(f"CREATE TABLE {tmp} AS (SELECT * FROM {table} WHERE file_id != '{fid}')")
+    _exec_sql(f"DROP TABLE {table}")
+    _exec_sql(f"RENAME TABLE {tmp} TO {table}")
+
+
+def delete_file_data(file_id: int) -> None:
+    """Remove all OHLC rows for one dataset (QuestDB-compatible, no DELETE)."""
+    ensure_schema()
+    fid = _safe_file_id(file_id)
+    for table in OHLCV_TABLES:
+        n = count_bars(file_id, table)
+        if n <= 0:
+            continue
+        total = _table_row_count(table)
+        if n >= total:
+            _drop_and_recreate_table(table)
+        else:
+            _replace_table_excluding_file(table, fid)
 
 
 def count_bars(file_id: int, table: str = "ohlcv_1m") -> int:
@@ -159,16 +207,9 @@ def count_bars(file_id: int, table: str = "ohlcv_1m") -> int:
         raise ValueError(f"Unknown table: {table}")
     row = _fetch_one(
         f"SELECT count() FROM {table} WHERE file_id = %s",
-        (str(file_id),),
+        (_safe_file_id(file_id),),
     )
     return int(row[0]) if row else 0
-
-
-def delete_file_data(file_id: int) -> None:
-    ensure_schema()
-    fid = str(file_id)
-    for table in OHLCV_TABLES:
-        _exec_sql(f"DELETE FROM {table} WHERE file_id = %s", (fid,))
 
 
 def _ilp_send(lines: list[str]) -> None:
@@ -192,7 +233,7 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
     ensure_schema()
     if not candles:
         return 0
-    fid = str(file_id)
+    fid = _safe_file_id(file_id)
     sent = 0
     buf: list[str] = []
     for c in candles:
@@ -215,23 +256,43 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
     return sent
 
 
+def _rebuild_aggregate_table_for_file(table: str, sample: str, fid: str) -> None:
+    """Replace one file_id's aggregate rows (QuestDB has no DELETE)."""
+    tmp = f"_tmp_{table}_{fid}_{int(time.time() * 1000)}"
+    _exec_sql(
+        f"""
+        CREATE TABLE {tmp} AS (
+            SELECT * FROM {table} WHERE file_id != '{fid}'
+            UNION ALL
+            SELECT file_id, ts, first(o), max(h), min(l), last(c), sum(v)
+            FROM ohlcv_1m
+            WHERE file_id = '{fid}'
+            SAMPLE BY {sample} ALIGN TO CALENDAR
+        )
+        """
+    )
+    _exec_sql(f"DROP TABLE {table}")
+    _exec_sql(f"RENAME TABLE {tmp} TO {table}")
+
+
 def rebuild_aggregates(file_id: int) -> dict[str, int]:
     """Rebuild all higher-TF tables for one file_id from ohlcv_1m."""
     ensure_schema()
-    fid = str(file_id)
+    fid = _safe_file_id(file_id)
     counts: dict[str, int] = {}
+    if count_bars(file_id, "ohlcv_1m") <= 0:
+        for table in AGG_SAMPLE_BY:
+            n = count_bars(file_id, table)
+            if n > 0:
+                total = _table_row_count(table)
+                if n >= total:
+                    _drop_and_recreate_table(table)
+                else:
+                    _replace_table_excluding_file(table, fid)
+            counts[table] = 0
+        return counts
     for table, sample in AGG_SAMPLE_BY.items():
-        _exec_sql(f"DELETE FROM {table} WHERE file_id = %s", (fid,))
-        _exec_sql(
-            f"""
-            INSERT INTO {table}
-            SELECT file_id, ts, first(o), max(h), min(l), last(c), sum(v)
-            FROM ohlcv_1m
-            WHERE file_id = %s
-            SAMPLE BY {sample} ALIGN TO CALENDAR
-            """,
-            (fid,),
-        )
+        _rebuild_aggregate_table_for_file(table, sample, fid)
         counts[table] = count_bars(file_id, table)
     return counts
 
