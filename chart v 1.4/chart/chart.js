@@ -12730,6 +12730,25 @@ class Chart {
             }
         }
 
+        const switchingToCoarser = wasActive
+            && Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch > prevTfMs;
+        if (switchingToCoarser
+            && Number.isFinite(savedReplayTimestamp)
+            && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const hit = replay._findLastRawIndexAtOrBefore(replay.fullRawData, savedReplayTimestamp);
+            const smin = replay.sessionStartIndex || 0;
+            if (hit >= smin) {
+                replay.currentIndex = hit;
+                const b = replay.fullRawData[hit];
+                if (b && Number.isFinite(b.t)) {
+                    replay.replayTimestamp = b.t;
+                }
+            }
+        }
+
         // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
         // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
         // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
@@ -12790,7 +12809,20 @@ class Chart {
                 if (typeof this.resize === 'function') this.resize();
             } catch (e) { /* ignore */ }
             try {
-                if (Array.isArray(this.data) && this.data.length > 0
+                if (replay.isActive) {
+                    if (typeof replay.updateChartData === 'function') {
+                        replay.updateChartData(true);
+                    }
+                    if (replay.autoScrollEnabled && typeof replay.getReplayAutoScrollState === 'function') {
+                        const st = replay.getReplayAutoScrollState(this);
+                        if (st && Number.isFinite(st.offsetX)) {
+                            this.offsetX = st.offsetX;
+                        }
+                    }
+                    if (typeof this.constrainOffset === 'function') {
+                        this.constrainOffset();
+                    }
+                } else if (Array.isArray(this.data) && this.data.length > 0
                     && typeof this.jumpToLatest === 'function') {
                     this.jumpToLatest();
                 }
@@ -14261,20 +14293,28 @@ class Chart {
         // Update logo for current theme
         this.updateLogoForTheme();
 
+        const wheelBurstDecorSkip =
+            typeof this._wheelBurstUntil === 'number' &&
+            performance.now() < this._wheelBurstUntil;
+        const zoomedOutDecorSkip = visible.length > MAX_VISIBLE_BARS;
+
         // Draw indicators (Overlay indicators like SMA, EMA, BB)
-        if (typeof this.drawIndicators === 'function') {
+        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip && typeof this.drawIndicators === 'function') {
             this.drawIndicators();
         }
         
         // Draw separate panel indicators (ATR, ADR, etc.)
-        if (typeof this.renderSeparatePanelIndicators === 'function') {
+        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip
+            && typeof this.renderSeparatePanelIndicators === 'function') {
             this.renderSeparatePanelIndicators();
         }
 
         // Price hover line removed - no longer needed
 
         // Redraw drawings
-        this.redrawDrawings();
+        if (!wheelBurstDecorSkip) {
+            this.redrawDrawings();
+        }
         
         // Update order lines if order manager is active
         // This happens AFTER scales are calculated in render()
@@ -14296,7 +14336,8 @@ class Chart {
         }
 
         // Draw secondary indicators (RSI, MACD, etc.) in their own panels
-        if (typeof this.drawSecondaryIndicators === 'function') {
+        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip
+            && typeof this.drawSecondaryIndicators === 'function') {
             this.drawSecondaryIndicators();
         }
 

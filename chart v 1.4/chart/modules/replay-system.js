@@ -2563,6 +2563,47 @@ class ReplaySystem {
             && this.currentIndex >= this.fullRawData.length - 1);
     }
 
+    /** Inclusive session end (ms) from backtestingSession, or null. */
+    _getBacktestSessionEndMs() {
+        const ch = this.chart;
+        if (!ch || !ch.isBacktestMode) return null;
+        const session = ch.backtestingSession || {};
+        const raw = session.endDate || session.end_date;
+        if (!raw) return null;
+        try {
+            if (typeof ch._sessionEndToInclusiveUtcMs === 'function') {
+                const t = ch._sessionEndToInclusiveUtcMs(raw);
+                return Number.isFinite(t) ? Math.floor(t) : null;
+            }
+            const t = new Date(raw).getTime();
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * True when virtual replay time has reached the backtest session end (not merely the last
+     * loaded bar — 1D loads can end at the playhead while 1m still has room to advance).
+     */
+    _isReplayWallClockAtSessionEnd() {
+        const endMs = this._getBacktestSessionEndMs();
+        if (!Number.isFinite(endMs)) return true;
+        let ts = Number(this.replayTimestamp);
+        if (!Number.isFinite(ts) && this.fullRawData && this.fullRawData[this.currentIndex]) {
+            ts = Number(this.fullRawData[this.currentIndex].t);
+        }
+        if (!Number.isFinite(ts)) return false;
+        const ch = this.chart;
+        const tf = ch && ch.currentTimeframe ? String(ch.currentTimeframe).toLowerCase() : '1m';
+        let tfMs = 60000;
+        if (ch && typeof ch.parseTimeframe === 'function') {
+            const parsed = ch.parseTimeframe(tf);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        }
+        return ts >= endMs - Math.max(tfMs * 0.5, 60000);
+    }
+
     /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
     _playWouldBeNoOpAtSessionEnd() {
         if (!this.isActive || !this._isAtLastLoadedBar()) return false;
@@ -2578,6 +2619,9 @@ class ReplaySystem {
             }
         }
         if (this.tryRequestForwardDataProbe()) return false;
+        if (this.chart && this.chart.isBacktestMode && !this._isReplayWallClockAtSessionEnd()) {
+            return false;
+        }
         return true;
     }
 
@@ -2586,6 +2630,19 @@ class ReplaySystem {
      */
     _notifyReplayReachedEndOfData() {
         this._maybeNotifyReplayToast('Backtest replay complete — you reached the end of this session.');
+    }
+
+    /** At last loaded bar but playback may still continue (forward fetch / not at session end yet). */
+    _canContinuePastLoadedEdge() {
+        if (!this._isAtLastLoadedBar()) return true;
+        if (this.tryRequestForwardDataProbe()) return true;
+        if (this.chart && this.chart.isBacktestMode && !this._isReplayWallClockAtSessionEnd()) {
+            if (typeof this.chart.checkViewportLoadMore === 'function') {
+                this.chart.checkViewportLoadMore('forward', true);
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -2725,9 +2782,7 @@ class ReplaySystem {
     simpleStepForward() {
         if (this._timeframeChanging) return;
         if (this.currentIndex >= this.fullRawData.length - 1) {
-            // Before giving up, try to trigger pan-loading for more data.
-            // We also allow a few forced probes in case local hasMoreRight got stale.
-            if (this.tryRequestForwardDataProbe()) {
+            if (this._canContinuePastLoadedEdge()) {
                 if (this.isPlaying && !this._nextCandleTimer) {
                     this.scheduleForwardEdgeRetry(() => {
                         if (this.isPlaying) {
@@ -2735,7 +2790,7 @@ class ReplaySystem {
                         }
                     });
                 }
-                return; // Don't pause yet — data may still arrive
+                return;
             }
             this.pause();
             this._notifyReplayReachedEndOfData();
@@ -4175,7 +4230,7 @@ class ReplaySystem {
                 if (this.isPlaying) this.startTickAnimation();
             }, nextCandleDelay);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
+            if (this._canContinuePastLoadedEdge()) {
                 if (this.isPlaying) {
                     this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
                 }
@@ -5150,12 +5205,24 @@ class ReplaySystem {
         
         // Restore view position and state after a short delay
         setTimeout(() => {
-            // Restore exact position
-            this.currentIndex = savedCurrentIndex;
-            if (Number.isFinite(savedReplayTimestamp)) {
-                this.replayTimestamp = savedReplayTimestamp;
-            } else if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+            // Remap playhead by wall-clock time — savedCurrentIndex is for the OLD raw series
+            // (e.g. 1m index 50k clamped to ~500 on 1D looked like "end of backtest").
+            if (Number.isFinite(savedReplayTimestamp) && this.fullRawData && this.fullRawData.length > 0) {
+                const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, savedReplayTimestamp);
+                const smin = this.sessionStartIndex || 0;
+                this.currentIndex = hit < 0
+                    ? smin
+                    : Math.min(Math.max(hit, smin), this.fullRawData.length - 1);
+                this.replayTimestamp = this.fullRawData[this.currentIndex]?.t ?? savedReplayTimestamp;
+            } else {
+                const smin = this.sessionStartIndex || 0;
+                this.currentIndex = Math.min(
+                    Math.max(savedCurrentIndex, smin),
+                    Math.max(0, this.fullRawData.length - 1)
+                );
+                if (this.fullRawData[this.currentIndex]) {
+                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                }
             }
             this.tickProgress = savedTickProgress;
             this.tickElapsedMs = savedTickElapsedMs;
