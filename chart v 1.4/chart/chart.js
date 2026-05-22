@@ -585,6 +585,7 @@ class Chart {
         this._suppressPanLoadUntilUserPan = false;
         this._indicatorRecalcHandle = null;
         this._wheelRenderRaf = null;
+        this._replayRenderRaf = null;
         this._sessionStateSaveDebounceMs = 4000;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
@@ -13455,18 +13456,40 @@ class Chart {
     _getTimeframeMaxZoomOutBars(timeframe) {
         const tf = String(timeframe || '1m').toLowerCase().trim();
         const map = {
-            '1m': 5000, '2m': 4500, '3m': 4000, '4m': 3800, '5m': 3500,
-            '10m': 3000, '15m': 2800, '30m': 2400, '45m': 2200,
-            '1h': 2000, '2h': 1600, '4h': 1200, '6h': 1000, '12h': 800,
-            '1d': 700, '1w': 520, '1mo': 360,
+            '1m': 900, '2m': 850, '3m': 800, '4m': 750, '5m': 700,
+            '10m': 650, '15m': 600, '30m': 550, '45m': 520,
+            '1h': 500, '2h': 480, '4h': 450, '6h': 420, '12h': 400,
+            '1d': 380, '1w': 320, '1mo': 280,
         };
         if (map[tf]) return map[tf];
         const monthMatch = tf.match(/^(\d+)mo$/);
         if (monthMatch) {
             const n = Math.max(1, parseInt(monthMatch[1], 10));
-            return Math.max(120, Math.floor(360 / n));
+            return Math.max(120, Math.floor(280 / n));
         }
-        return 2000;
+        return 600;
+    }
+
+    /** Minimum pixel spacing between bar centers at full zoom-out (readability + perf). */
+    _getMinBarSpacingPxForTimeframe(timeframe) {
+        const tf = String(timeframe || '1m').toLowerCase().trim();
+        const map = {
+            '1m': 3, '2m': 2.8, '3m': 2.6, '4m': 2.5, '5m': 2.5,
+            '10m': 2.4, '15m': 2.4, '30m': 2.3, '45m': 2.3,
+            '1h': 2.5, '2h': 2.5, '4h': 2.5, '6h': 2.5, '12h': 2.5,
+            '1d': 3, '1w': 3.5, '1mo': 4,
+        };
+        if (map[tf]) return map[tf];
+        return 2.5;
+    }
+
+    /** Hard cap on how many bars can appear on screen when fully zoomed out (TradingView-style). */
+    _getMaxVisibleBarsForZoomOut(timeframe) {
+        const m = this.margin || { l: 0, r: 60, t: 5, b: 30 };
+        const plotWidth = Math.max(1, (this.w || 1600) - m.l - m.r);
+        const minSpacingPx = this._getMinBarSpacingPxForTimeframe(timeframe);
+        const viewportCap = Math.max(100, Math.floor(plotWidth / minSpacingPx));
+        return Math.min(viewportCap, this._getTimeframeMaxZoomOutBars(timeframe));
     }
 
     /**
@@ -13502,7 +13525,7 @@ class Chart {
         const plotWidth = Math.max(1, this.w - m.l - m.r);
         const rightMargin = Math.max(0, Number(this.timeScale?.rightOffsetCandles) || 15);
         const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        const maxBars = this._getTimeframeMaxZoomOutBars(tf);
+        const maxBars = this._getMaxVisibleBarsForZoomOut(tf);
         const effectiveBars = Math.min(this.data.length, maxBars) + rightMargin;
         const targetSpacing = plotWidth / Math.max(1, effectiveBars);
         const tfMin = this._getCandleWidthForTargetSpacing(targetSpacing, widths);
@@ -13688,9 +13711,39 @@ class Chart {
             && performance.now() < this._wheelBurstUntil;
     }
 
-    /** Pan drag or wheel zoom — use lightweight render (skip heavy overlays). */
+    _isReplayRenderFastPath() {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive) return false;
+        return !!(rs.isPlaying || rs.animatingCandle || rs.fastMode);
+    }
+
+    /** Pan drag, wheel zoom, or replay playback — use lightweight render. */
     _isInteractionFastPath() {
-        return this._isChartViewPanning() || this._isWheelBurst();
+        return this._isChartViewPanning() || this._isWheelBurst() || this._isReplayRenderFastPath();
+    }
+
+    _resolveCandleLodCap(plotPx, visibleCount, opts = {}) {
+        if (opts.panFast || this._isInteractionFastPath()) {
+            return this._getPanLodCap();
+        }
+        let maxLod = Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
+        if (visibleCount > plotPx * 1.5 || (this.candleWidth != null && this.candleWidth < 1.5)) {
+            maxLod = Math.min(maxLod, Math.max(240, Math.ceil(plotPx * 1.15)));
+        }
+        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        if (tf === '1m' && visibleCount > plotPx) {
+            maxLod = Math.min(maxLod, Math.max(200, Math.ceil(plotPx)));
+        }
+        return maxLod;
+    }
+
+    _scheduleReplayRender() {
+        if (this._replayRenderRaf != null) return;
+        this._replayRenderRaf = requestAnimationFrame(() => {
+            this._replayRenderRaf = null;
+            this.renderPending = false;
+            this.render();
+        });
     }
 
     /** Lower draw budget while the chart view is moving (pan / inertia). */
@@ -13944,6 +13997,12 @@ class Chart {
         if (wheelBurst) {
             this.renderPending = false;
             this._scheduleWheelRender();
+            return;
+        }
+
+        if (replayPlaying) {
+            this.renderPending = false;
+            this._scheduleReplayRender();
             return;
         }
 
@@ -16551,7 +16610,7 @@ class Chart {
         // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
         // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
+        const maxLod = this._resolveCandleLodCap(plotPx, visible.length, opts);
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
