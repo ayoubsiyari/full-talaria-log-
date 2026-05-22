@@ -564,7 +564,7 @@ class Chart {
         // we drop the cached precision so the registry is re-queried for the new tick
         // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
         this._symbolPrecisionResolvedFor = null;
-        this._RAW_DATA_CAP = 50_000; // ring buffer: max candles in memory (non-replay pan loads)
+        this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
          * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
@@ -572,8 +572,7 @@ class Chart {
          * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
          * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 12000;
-        this._pendingIndicatorRecalc = false;
+        this.BACKTEST_SMART_INITIAL_LIMIT = 24000;
 
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
@@ -9680,10 +9679,6 @@ class Chart {
             this.offsetX = minOffset - overshoot * resistance;
             if (this.movement) this.movement.velocityX *= 0.3;
         }
-
-        if (!wheelActive && !panActive && typeof this._trimDataWindowIfNeeded === 'function') {
-            try { this._trimDataWindowIfNeeded(); } catch (_trimE) { /* ignore */ }
-        }
         
         // Constrain candle width with quantized steps (TradingView style)
         // Use Fibonacci-like sequence for cleaner candle widths
@@ -11998,7 +11993,7 @@ class Chart {
             && !this._panLoading;
         if (haveCurrentTfData) return;
 
-        if (this.drawingManager && Array.isArray(this.drawingManager.drawings) && this.drawingManager.drawings.length > 0) {
+        if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
 
@@ -12171,139 +12166,7 @@ class Chart {
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
-            try { this._refreshDrawingsAfterTimeframeSwitch(); } catch (e) { /* ignore */ }
         });
-    }
-
-    /**
-     * Min/max timestamp (ms) across saved drawing anchor points — used to size 1m refetch windows.
-     */
-    _collectDrawingTimestampBounds() {
-        const dm = this.drawingManager;
-        if (!dm || !Array.isArray(dm.drawings)) {
-            return { minTs: null, maxTs: null };
-        }
-        let minTs = null;
-        let maxTs = null;
-        for (const d of dm.drawings) {
-            if (!d || !Array.isArray(d.timestampPoints)) continue;
-            for (const p of d.timestampPoints) {
-                const t = Number(p.timestamp);
-                if (!Number.isFinite(t)) continue;
-                if (minTs == null || t < minTs) minTs = t;
-                if (maxTs == null || t > maxTs) maxTs = t;
-            }
-        }
-        return { minTs, maxTs };
-    }
-
-    /**
-     * Build start/end timestamps for backtest TF refetch so replay position, prior-TF
-     * history, and drawing anchors all fit within the smart-window limit when possible.
-     */
-    _buildBacktestTfRefetchRange(timeframe, session, savedReplayTimestamp, sessionEndMs, opts = {}) {
-        const drawMinTs = opts.drawMinTs;
-        const drawMaxTs = opts.drawMaxTs;
-        const priorFirstTs = opts.priorFirstTs;
-
-        const tfMs = this.parseTimeframe(timeframe);
-        const forwardBufferBars = 20000;
-        const forwardBufferMs = Number.isFinite(tfMs) && tfMs > 0 ? forwardBufferBars * tfMs : 0;
-
-        let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
-        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
-        if (typeof window !== 'undefined') {
-            const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
-            if (Number.isFinite(w) && w > 0) backtestBatch = w;
-        }
-        const maxBars = Math.max(5000, Math.min(100000, backtestBatch));
-        const maxSpanMs = maxBars * (Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60000);
-
-        let sessionStartMs = null;
-        try {
-            const r = session && (session.startDate || session.start_date);
-            if (r) {
-                const t = new Date(r).getTime();
-                if (Number.isFinite(t)) sessionStartMs = Math.floor(t);
-            }
-        } catch (_) { /* ignore */ }
-
-        let rangeEndTs = sessionEndMs;
-        if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
-            const replayAnchoredEnd = savedReplayTimestamp + forwardBufferMs;
-            rangeEndTs = sessionEndMs != null
-                ? Math.min(replayAnchoredEnd, sessionEndMs)
-                : replayAnchoredEnd;
-        }
-        if (Number.isFinite(drawMaxTs)) {
-            rangeEndTs = rangeEndTs != null ? Math.max(rangeEndTs, drawMaxTs) : drawMaxTs;
-        }
-
-        let rangeStartTs = sessionStartMs;
-        if (Number.isFinite(priorFirstTs)) {
-            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, priorFirstTs) : priorFirstTs;
-        }
-        if (Number.isFinite(drawMinTs)) {
-            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, drawMinTs) : drawMinTs;
-        }
-        if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
-            const replayBack = savedReplayTimestamp - forwardBufferMs;
-            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, replayBack) : replayBack;
-        }
-
-        if (Number.isFinite(rangeStartTs) && Number.isFinite(rangeEndTs) && rangeEndTs > rangeStartTs) {
-            const span = rangeEndTs - rangeStartTs;
-            if (span > maxSpanMs) {
-                const needMinCandidates = [drawMinTs, priorFirstTs];
-                if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
-                    needMinCandidates.push(savedReplayTimestamp - forwardBufferMs);
-                }
-                const needMaxCandidates = [drawMaxTs, savedReplayTimestamp, rangeEndTs];
-                const needMin = needMinCandidates.filter(Number.isFinite).reduce((a, b) => Math.min(a, b), Infinity);
-                const needMax = needMaxCandidates.filter(Number.isFinite).reduce((a, b) => Math.max(a, b), -Infinity);
-
-                if (Number.isFinite(needMin) && Number.isFinite(needMax) && needMax - needMin <= maxSpanMs) {
-                    rangeStartTs = needMin;
-                    rangeEndTs = needMin + maxSpanMs;
-                    if (sessionEndMs != null) rangeEndTs = Math.min(rangeEndTs, sessionEndMs);
-                    if (rangeEndTs - rangeStartTs < maxSpanMs && sessionEndMs != null) {
-                        rangeStartTs = Math.max(rangeEndTs - maxSpanMs, needMin);
-                    }
-                } else {
-                    // Too much history for one fetch — tail window (anchor=end) around replay/drawings end.
-                    rangeStartTs = rangeEndTs - maxSpanMs;
-                }
-            }
-        }
-
-        const out = {};
-        if (Number.isFinite(rangeStartTs)) out.startTs = Math.floor(rangeStartTs);
-        if (Number.isFinite(rangeEndTs)) out.endTs = Math.floor(rangeEndTs);
-        return out;
-    }
-
-    /**
-     * Remap drawing timestamps to the new timeframe and redraw SVG after a TF switch.
-     * Safe to call when the freeze overlay is lifting (scales + canvas size are final).
-     */
-    _refreshDrawingsAfterTimeframeSwitch() {
-        const dm = this.drawingManager;
-        if (!dm || !this.data || this.data.length === 0) return;
-        if (typeof this._clearPanDrawingsLayerTransform === 'function') {
-            this._clearPanDrawingsLayerTransform();
-        }
-        if (typeof dm.updateClipPath === 'function') {
-            dm.updateClipPath();
-        }
-        if (dm.drawings && dm.drawings.length > 0) {
-            if (typeof dm.refreshDrawingsForTimeframe === 'function') {
-                dm.refreshDrawingsForTimeframe();
-            } else if (typeof dm.redrawAll === 'function') {
-                dm.redrawAll({ forceFull: true });
-            }
-        } else if (typeof dm.redrawAll === 'function') {
-            dm.redrawAll({ forceFull: true });
-        }
     }
 
     /**
@@ -12592,9 +12455,6 @@ class Chart {
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
-        const wasAtSessionEnd = wasActive
-            && typeof replay._playWouldBeNoOpAtSessionEnd === 'function'
-            && replay._playWouldBeNoOpAtSessionEnd();
         let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
             ? replay.replayTimestamp
             : null;
@@ -12655,17 +12515,6 @@ class Chart {
 
         const loadId = ++this._timeframeLoadSeq;
 
-        // Capture drawing + prior-TF window bounds before exitReplayMode clears replay buffers.
-        const drawBounds = this._collectDrawingTimestampBounds();
-        const priorFirstTs = (Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
-            && Number.isFinite(replay.fullRawData[0].t))
-            ? replay.fullRawData[0].t
-            : null;
-
-        if (this.drawingManager && typeof this.drawingManager.saveDrawings === 'function') {
-            try { this.drawingManager.saveDrawings(); } catch (_) { /* ignore */ }
-        }
-
         try {
             if (wasActive && typeof replay.exitReplayMode === 'function') {
                 replay.exitReplayMode();
@@ -12674,20 +12523,27 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // Anchor fetch around replay position AND drawing timestamps. On 1m the 100k bar
-        // limit is ~69 days — without startTs, shapes drawn on 1D (years of history) fall
-        // outside the loaded window and vanish after switching to 1m.
-        const historyRange = this._buildBacktestTfRefetchRange(
-            timeframe,
-            session,
-            savedReplayTimestamp,
-            sessionEndMs,
-            {
-                drawMinTs: drawBounds.minTs,
-                drawMaxTs: drawBounds.maxTs,
-                priorFirstTs,
+        // Anchor data fetch around the current replay position rather than session end.
+        // For lower timeframes (e.g. 1min) the 100k bar limit only covers ~69 days.
+        // If we always anchor at session end (e.g. 2026) and the replay position is in
+        // 2023, that timestamp won't exist in the loaded window → chart jumps to 2026.
+        // Instead, set endTs = replayTimestamp + forward buffer so the replay position
+        // is guaranteed to be within the fetched range.
+
+        const tfMs = this.parseTimeframe(timeframe);
+        const forwardBufferBars = 20000;
+        const forwardBufferMs = forwardBufferBars * tfMs;
+
+        let anchorEndTs = sessionEndMs;
+        if (Number.isFinite(savedReplayTimestamp) && Number.isFinite(tfMs) && tfMs > 0) {
+            const replayAnchoredEnd = savedReplayTimestamp + forwardBufferMs;
+            if (sessionEndMs != null) {
+                anchorEndTs = Math.min(replayAnchoredEnd, sessionEndMs);
+            } else {
+                anchorEndTs = replayAnchoredEnd;
             }
-        );
+        }
+        const historyRange = anchorEndTs != null ? { endTs: anchorEndTs } : null;
 
         let result;
         try {
@@ -12776,15 +12632,11 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode({ suppressInitialUpdateChartData: true, skipRealignAfterLayout: true });
+            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
             return;
-        }
-
-        if (wasAtSessionEnd && sessionEndMs != null && Number.isFinite(sessionEndMs)) {
-            savedReplayTimestamp = sessionEndMs;
         }
 
         if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
@@ -12840,21 +12692,6 @@ class Chart {
             }
         }
 
-        if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            replay.currentIndex = replay.fullRawData.length - 1;
-            const endBar = replay.fullRawData[replay.currentIndex];
-            if (endBar && Number.isFinite(endBar.t)) {
-                replay.replayTimestamp = endBar.t;
-            }
-            try {
-                replay.updateChartData(true);
-            } catch (e) { /* ignore */ }
-        }
-
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true });
-        }
-
         if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
             try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf3) { /* ignore */ }
         }
@@ -12865,14 +12702,8 @@ class Chart {
             } catch (e) { /* ignore */ }
         }
 
-        const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
-        if (shouldResumePlay && typeof replay.play === 'function') {
+        if (wasPlaying && typeof replay.play === 'function') {
             try { replay.play(); } catch (e) { /* ignore */ }
-        } else if (wasAtSessionEnd) {
-            replay.isPlaying = false;
-            if (typeof replay.syncPlayPauseUI === 'function') {
-                replay.syncPlayPauseUI();
-            }
         }
 
         // Final viewport reset = "double-click time axis" parity on every TF
@@ -12896,22 +12727,15 @@ class Chart {
                 if (typeof this.resize === 'function') this.resize();
             } catch (e) { /* ignore */ }
             try {
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
-                }
                 if (Array.isArray(this.data) && this.data.length > 0
                     && typeof this.jumpToLatest === 'function') {
                     this.jumpToLatest();
                 }
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: false });
-                }
             } catch (e) { /* ignore */ }
-            try { this._refreshDrawingsAfterTimeframeSwitch(); } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
             // updatePositions is skipped while _timeframeSwitching; when replay stays paused after
             // refetch, replay.play() does not run — refresh orders/PnL once after the freeze lifts.
-            if (!shouldResumePlay) {
+            if (!wasPlaying) {
                 try {
                     const omFin = this.orderManager
                         || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
@@ -13032,7 +12856,7 @@ class Chart {
         // Replay can consume candles much faster than normal panning.
         // Size chunk by replay consumption rate + timeframe to avoid long waits
         // while also preventing oversized requests on larger raw timeframes.
-        let panLimit = this._getPanLoadBatchLimit();
+        let panLimit = 5000;
         if (isReplay) {
             const replaySpeed = Math.max(1, Number(this.replaySystem?.speed) || 1);
             let rawCandleTimeframeMs = this.parseTimeframe(tf);
@@ -13229,7 +13053,7 @@ class Chart {
                     }
                     // ── Ring buffer: cap rawData to avoid unbounded memory growth ──
                     let trimmed = merged;
-                    const cap = this._getMaxInMemoryBars(this.currentTimeframe);
+                    const cap = this._RAW_DATA_CAP || 300_000;
                     if (merged.length > cap) {
                         if (direction === 'backward') {
                             // Loading older data → evict from the right (newest)
@@ -13246,10 +13070,7 @@ class Chart {
                         }
                     }
                     this.rawData = trimmed;
-                    this.data = this.resampleData(trimmed, this.currentTimeframe);
-                    if (!isReplay && typeof this._trimDataWindowIfNeeded === 'function') {
-                        try { this._trimDataWindowIfNeeded(); } catch (_tw) { /* ignore */ }
-                    }
+                    this.data = [...this.rawData];
                 }
 
                 // ── Prefetch next batch while user is still panning ──
@@ -13277,11 +13098,7 @@ class Chart {
                 
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
-                    if (this._isChartViewPanning() || this._panLoading) {
-                        this._pendingIndicatorRecalc = true;
-                    } else if (typeof this.recalculateIndicators === 'function') {
-                        this.recalculateIndicators();
-                    }
+                    if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
                     this.scheduleRender();
                 }
                 
@@ -13303,9 +13120,6 @@ class Chart {
             .finally(() => { 
                 this._panLoading = false; 
                 this._lastPanLoadTime = Date.now();
-                if (!this._isChartViewPanning()) {
-                    this._flushDeferredIndicatorRecalc();
-                }
 
                 // Re-check immediately: if the viewport still shows empty space
                 // after this batch, fire the next fetch right away so the user
@@ -13512,160 +13326,12 @@ class Chart {
     }
 
     /**
-     * TradingView-style cap: max bar slots visible on screen for the active timeframe.
-     * Zoom-out stops at this budget so scale/render/pan stay smooth (especially on 1m).
-     * Override: window.CHART_MAX_BARS_ON_SCREEN = { '1m': 1200, ... } or a number multiplier.
-     */
-    _getMaxBarsOnScreen(timeframe) {
-        const m = this.margin || { l: 60, r: 60 };
-        const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
-        // ~1 bar per pixel of plot width (TradingView-like density ceiling).
-        const fromWidth = Math.max(280, Math.ceil(plotPx * 1.05));
-        const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
-        const limits = {
-            '1m': 1600, '2m': 1500, '3m': 1400, '5m': 1300,
-            '10m': 1200, '15m': 1100, '30m': 1000,
-            '45m': 950, '1h': 900, '2h': 850, '3h': 800, '4h': 750,
-            '6h': 700, '8h': 650, '12h': 600,
-            '1d': 700, '1w': 520, '1wk': 520,
-        };
-        let cap = limits[tf];
-        if (!Number.isFinite(cap)) {
-            const mo = tf.match(/^(\d+)mo$/);
-            cap = mo ? 480 : 1000;
-        }
-        let maxBars = Math.min(fromWidth, cap);
-
-        if (typeof window !== 'undefined' && window) {
-            const override = window.CHART_MAX_BARS_ON_SCREEN;
-            if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
-                maxBars = Math.min(maxBars, Math.floor(override));
-            } else if (override && typeof override === 'object') {
-                const tfOverride = Number(override[tf]);
-                if (Number.isFinite(tfOverride) && tfOverride > 0) {
-                    maxBars = Math.min(maxBars, Math.floor(tfOverride));
-                }
-            }
-        }
-        return maxBars;
-    }
-
-    /** In-memory series cap (viewport buffer + pan history); replay uses fullRawData separately. */
-    _getMaxInMemoryBars(timeframe) {
-        const screen = this._getMaxBarsOnScreen(timeframe);
-        const cap = Number(this._RAW_DATA_CAP) > 0 ? Number(this._RAW_DATA_CAP) : 50000;
-        return Math.min(cap, Math.max(screen * 3, screen + 4000));
-    }
-
-    /** Non-replay pan fetch size — smaller chunks load progressively when scrolling back. */
-    _getPanLoadBatchLimit() {
-        const tf = this.currentTimeframe || '1m';
-        const tfMs = this.parseTimeframe(tf);
-        if (!Number.isFinite(tfMs) || tfMs <= 0) return 1500;
-        if (tfMs >= 86400000) return 600;
-        if (tfMs >= 3600000) return 1200;
-        if (tfMs >= 900000) return 1500;
-        return 2000;
-    }
-
-    /**
-     * Minimum candleWidth for zoom-out: static floor + per-TF bar count cap (TradingView-like).
+     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
+     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        const listMin = widths[0];
-        const listMax = widths[widths.length - 1];
-        const m = this.margin || { l: 60, r: 60 };
-        const plotPx = Math.max(1, (this.w || 0) - m.l - m.r);
-        const maxBars = this._getMaxBarsOnScreen();
-        if (!Number.isFinite(plotPx) || plotPx <= 0 || maxBars <= 0) return listMin;
-
-        const targetSpacing = plotPx / maxBars;
-        let lo = listMin;
-        let hi = listMax;
-        let best = listMax;
-        for (let i = 0; i < 28; i++) {
-            const mid = (lo + hi) / 2;
-            if (this._getSpacingForCandleWidth(mid) >= targetSpacing) {
-                best = mid;
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
-        for (let j = 0; j < widths.length; j++) {
-            if (widths[j] >= best - 1e-6) return widths[j];
-        }
-        return listMax;
-    }
-
-    /** Subsample a visible slice when zoom-out would still exceed the on-screen bar budget. */
-    _subsampleBarsForScale(visible, maxBars) {
-        if (!visible || visible.length <= maxBars) return visible;
-        const step = Math.ceil(visible.length / maxBars);
-        const out = [];
-        for (let i = 0; i < visible.length; i += step) out.push(visible[i]);
-        const last = visible[visible.length - 1];
-        if (out[out.length - 1] !== last) out.push(last);
-        return out;
-    }
-
-    /**
-     * Trim loaded history to a sliding window around the viewport (non-replay only).
-     * Older bars reload via checkViewportLoadMore('backward') when the user pans back.
-     */
-    _trimDataWindowIfNeeded() {
-        if (this.replaySystem && this.replaySystem.isActive) return;
-        if (!Array.isArray(this.rawData) || this.rawData.length === 0) return;
-
-        const maxMem = this._getMaxInMemoryBars(this.currentTimeframe);
-        if (this.rawData.length <= maxMem) return;
-
-        const spacing = this.getCandleSpacing();
-        const m = this.margin || { l: 0, r: 0 };
-        const cw = Math.max(1, this.w - m.l - m.r);
-        const visStart = Math.max(0, Math.floor(-this.offsetX / spacing));
-        const visEnd = Math.min(this.rawData.length, visStart + Math.ceil(cw / spacing) + 2);
-        const buffer = Math.min(8000, Math.max(1500, Math.floor(maxMem * 0.2)));
-
-        let keepStart = Math.max(0, visStart - buffer);
-        let keepEnd = Math.min(this.rawData.length, visEnd + buffer);
-        if (keepEnd - keepStart > maxMem) {
-            const mid = Math.floor((visStart + visEnd) / 2);
-            keepStart = Math.max(0, mid - Math.floor(maxMem / 2));
-            keepEnd = keepStart + maxMem;
-            if (keepEnd > this.rawData.length) {
-                keepEnd = this.rawData.length;
-                keepStart = Math.max(0, keepEnd - maxMem);
-            }
-        }
-        if (keepStart <= 0 && keepEnd >= this.rawData.length) return;
-
-        const evictedLeft = keepStart;
-        const prevLen = this.rawData.length;
-        const trimmed = this.rawData.slice(keepStart, keepEnd);
-        this.rawData = trimmed;
-        this.data = this.resampleData(trimmed, this.currentTimeframe);
-        if (evictedLeft > 0) {
-            this.offsetX -= evictedLeft * spacing;
-            if (this._serverCursors) {
-                this._serverCursors.hasMoreLeft = true;
-                this._serverCursors.firstTs = String(trimmed[0].t);
-            }
-        }
-        if (keepEnd < prevLen && this._serverCursors) {
-            this._serverCursors.hasMoreRight = true;
-            this._serverCursors.lastTs = String(trimmed[trimmed.length - 1].t);
-        }
-        if (typeof this.bumpDataVersion === 'function') this.bumpDataVersion();
-    }
-
-    _flushDeferredIndicatorRecalc() {
-        if (!this._pendingIndicatorRecalc) return;
-        this._pendingIndicatorRecalc = false;
-        if (typeof this.recalculateIndicators === 'function') {
-            try { this.recalculateIndicators(); } catch (_e) { /* ignore */ }
-        }
+        return widths[0];
     }
     
     /**
@@ -13686,21 +13352,10 @@ class Chart {
         // Use consistent candle spacing
         const candleAndSpacing = this.getCandleSpacing();
         
-        let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
-        let visEnd = Math.min(
-            this.data.length,
-            -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles
+        const visible = this.data.slice(
+            Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles),
+            Math.min(this.data.length, -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles)
         );
-        const maxScaleBars = this._getMaxBarsOnScreen() + 48;
-        if (visEnd - visStart > maxScaleBars) {
-            const mid = Math.floor((visStart + visEnd) / 2);
-            visStart = Math.max(0, mid - Math.floor(maxScaleBars / 2));
-            visEnd = Math.min(this.data.length, visStart + maxScaleBars);
-        }
-        const domainStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing));
-        const domainBarCount = Math.max(1, visEnd - visStart);
-        let visible = this.data.slice(visStart, visEnd);
-        visible = this._subsampleBarsForScale(visible, maxScaleBars);
         
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
         if (visible.length === 0) {
@@ -13817,7 +13472,8 @@ class Chart {
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
-            .domain([domainStart, domainStart + domainBarCount])
+            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
+                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
             .range([m.l, this.w - m.r]);
         
         const indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -13825,11 +13481,7 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        let maxVolume = 1;
-        for (let vi = 0; vi < visible.length; vi++) {
-            const vv = Number(visible[vi] && visible[vi].v);
-            if (Number.isFinite(vv) && vv > maxVolume) maxVolume = vv;
-        }
+        const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
@@ -13855,28 +13507,11 @@ class Chart {
         );
     }
 
-    /** Lower draw budget while the chart view is moving (pan / inertia / wheel zoom burst). */
+    /** Lower draw budget while the chart view is moving (pan / inertia). */
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        // ~1 aggregated bucket per screen pixel while dragging — keeps pan at 60fps.
-        return Math.min(520, Math.max(200, Math.ceil(plotPx * 1.05)));
-    }
-
-    /** Candle/volume LOD bucket count: full quality idle, tighter while interacting. */
-    _getDrawLodCap(fastPath = false) {
-        const m = this.margin || { l: 0, r: 60 };
-        const plotPx = Math.max(1, this.w - m.l - m.r);
-        if (fastPath) return this._getPanLodCap();
-        const screenCap = this._getMaxBarsOnScreen() + 40;
-        return Math.min(screenCap, Math.max(320, Math.ceil(plotPx * 1.5)));
-    }
-
-    /** Pan drag, inertia, or wheel zoom — use lightweight render path. */
-    _isInteractiveViewportChange() {
-        const wheelBurst = typeof this._wheelBurstUntil === 'number'
-            && performance.now() < this._wheelBurstUntil;
-        return this._isChartViewPanning() || wheelBurst;
+        return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
     }
 
     /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
@@ -14298,7 +13933,6 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
-        const interactiveFast = this._isInteractiveViewportChange();
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -14320,20 +13954,14 @@ class Chart {
         // separate-panel indicators to miss segments when scrolling into older bars.
         const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
         const plotRight = this.w - mVis.r;
-        const edgeBuf = interactiveFast ? 3 : 6;
-        let startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        let endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
-        const maxRenderBars = this._getMaxBarsOnScreen() + (interactiveFast ? 48 : 80);
-        if (endIdx - startIdx > maxRenderBars) {
-            const mid = Math.floor((startIdx + endIdx) / 2);
-            startIdx = Math.max(0, mid - Math.floor(maxRenderBars / 2));
-            endIdx = Math.min(this.data.length, startIdx + maxRenderBars);
-        }
-
+        const edgeBuf = 6;
+        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
+        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        
         // Expose current visible range for indicator rendering
         this.visibleStartIndex = startIdx;
         this.visibleEndIndex = endIdx;
-
+        
         const visible = this.data.slice(startIdx, endIdx);
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
@@ -14368,8 +13996,8 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging or wheel-zooming: candles + axes, skip heavy overlays.
-        if (interactiveFast) {
+        // Fast path while dragging chart: candles + axes + news markers (lite).
+        if (chartViewPanning) {
             const panOpts = { panFast: true };
             this.drawGrid();
             this.drawVolume(visible, panOpts);
@@ -14378,13 +14006,13 @@ class Chart {
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
-            if (chartViewPanning && this._canPanTransformDrawings()) {
+            if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
                 this._clearPanDrawingsLayerTransform();
-                if (chartViewPanning) this.redrawDrawings();
+                this.redrawDrawings();
             }
-            this._syncOrderOverlaysDuringPan(chartViewPanning, { lite: true });
+            this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -16138,7 +15766,7 @@ class Chart {
         this.ctx.clip();
         
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
-        const maxVolLod = this._getDrawLodCap(!!opts.panFast);
+        const maxVolLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
         const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod);
         let volLodMax = 1;
         if (volLod) {
@@ -16721,7 +16349,7 @@ class Chart {
         // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
         // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const maxLod = this._getDrawLodCap(!!opts.panFast);
+        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
@@ -17771,7 +17399,6 @@ class Chart {
                 this.inertia.active = false;
                 this.dispatchScrollSync();
                 this._finishPanDrawingRedraw();
-                this._flushDeferredIndicatorRecalc();
             }
         };
         
@@ -18512,7 +18139,6 @@ class Chart {
                 this.scheduleChartViewSave();
                 if (!isChartClick) {
                     this._finishPanDrawingRedraw();
-                    this._flushDeferredIndicatorRecalc();
                     this.scheduleRender();
                 }
 

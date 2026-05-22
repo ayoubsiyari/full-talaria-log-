@@ -814,24 +814,14 @@ class DrawingToolsManager {
                 // [debug removed]
                 lastTimeframe = newTimeframe;
                 
-                // Refresh after data is resampled. Defer while chart.js holds the TF freeze
-                // (_timeframeSwitching) — early refresh runs against stale scales/clip and shapes
-                // vanish until another TF change (same root cause as embed-bridge redrawAll fix).
-                const runRefresh = () => {
-                    if (this.chart && this.chart._timeframeSwitching) {
-                        requestAnimationFrame(runRefresh);
-                        return;
-                    }
+                // Refresh drawings after a small delay to ensure data is resampled
+                requestAnimationFrame(() => {
                     if (this.drawings.length > 0) {
-                        if (typeof this.refreshDrawingsForTimeframe === 'function') {
-                            this.refreshDrawingsForTimeframe();
-                        } else if (typeof this.redrawAll === 'function') {
-                            this.redrawAll({ forceFull: true });
-                        }
+                        // [debug removed]
+                        this.refreshDrawingsForTimeframe();
                         this.saveDrawings();
                     }
-                };
-                requestAnimationFrame(runRefresh);
+                });
             }
         };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;
@@ -8565,8 +8555,21 @@ class DrawingToolsManager {
                 }
             };
             
-            // Map saved timestamps to canvas indices on the same bar series the chart renders.
-            const conversionData = this._getDrawingConversionData() || this.chart.data;
+            // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
+            const replaySystem = this.chart.replaySystem;
+            const isReplayActive = replaySystem && replaySystem.isActive;
+            let conversionData = this.chart.data;
+            
+            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
+                // In replay mode, resample the FULL dataset to current timeframe
+                try {
+                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
+                    conversionData = fullResampled;
+                    // [debug removed]
+                } catch (error) {
+                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
+                }
+            }
             
             data.forEach((item, index) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8657,7 +8660,15 @@ class DrawingToolsManager {
                 }
             };
 
-            const conversionData = this._getDrawingConversionData() || this.chart.data;
+            const replaySystem = this.chart.replaySystem;
+            const isReplayActive = replaySystem && replaySystem.isActive;
+            let conversionData = this.chart.data;
+            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
+                try {
+                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
+                    conversionData = fullResampled;
+                } catch (error) {}
+            }
 
             data.forEach((item) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8720,72 +8731,59 @@ class DrawingToolsManager {
     }
 
     /**
-     * Bar series used to convert drawing timestamps ↔ canvas indices.
-     * In replay mode this MUST be chart.data (playhead slice), not fullRawData resample —
-     * otherwise 1m indices overshoot the sliced series and shapes disappear after TF switch.
-     */
-    _getDrawingConversionData() {
-        if (!this.chart) return null;
-
-        const replaySystem = this.chart.replaySystem;
-        const isReplayActive = replaySystem && replaySystem.isActive;
-
-        if (isReplayActive) {
-            if (Array.isArray(this.chart.data) && this.chart.data.length > 0) {
-                return this.chart.data;
-            }
-            if (replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                try {
-                    return this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                } catch (_) { /* ignore */ }
-            }
-            return null;
-        }
-
-        return (Array.isArray(this.chart.data) && this.chart.data.length > 0)
-            ? this.chart.data
-            : null;
-    }
-
-    /**
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
     refreshDrawingsForTimeframe() {
-        const conversionData = this._getDrawingConversionData();
-        if (!conversionData || conversionData.length === 0) {
+        if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
         }
-
-        const tf = this.chart.currentTimeframe;
-
-        const remapDrawing = (drawing) => {
-            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
-                return false;
+        
+        // [debug removed]
+        // [debug removed]
+        
+        // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
+        // This ensures drawings with timestamps beyond current replay position are handled correctly
+        const replaySystem = this.chart.replaySystem;
+        const isReplayActive = replaySystem && replaySystem.isActive;
+        let conversionData = this.chart.data;
+        
+        if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
+            // In replay mode, resample the FULL dataset to current timeframe
+            // This gives us all candles needed for timestamp lookup
+            try {
+                const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
+                conversionData = fullResampled;
+                // [debug removed]
+            } catch (error) {
+                console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
             }
-            const newPoints = CoordinateUtils.pointsFromTimestamps(
-                drawing.timestampPoints,
-                conversionData,
-                tf
-            );
-            drawing.points = newPoints;
-            drawing.chart = this.chart;
-            if (drawing.group) {
-                drawing.group.remove();
-                drawing.group = null;
-            }
-            this.renderDrawing(drawing);
-            return true;
-        };
-
+        }
+        
         // Instead of destroying and recreating, just update the points
-        this.drawings.forEach((drawing) => {
-            remapDrawing(drawing);
+        this.drawings.forEach((drawing, index) => {
+            // Use the STORED timestamps (not recalculated ones)
+            if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
+                // Convert timestamps back to indices for the NEW timeframe data
+                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, this.chart.currentTimeframe);
+                
+                // Update the drawing's points AND chart reference
+                drawing.points = newPoints;
+                drawing.chart = this.chart; // Update chart reference
+                
+                // Destroy old SVG elements
+                if (drawing.group) {
+                    drawing.group.remove();
+                    drawing.group = null;
+                }
+                
+                // Re-render with new points
+                this.renderDrawing(drawing);
+            }
         });
-
-        this.updateClipPath();
-        this.redrawAll({ forceFull: true });
+        
+        // [debug removed]
         
         // Refresh object tree if available
         if (this.objectTreeManager) {
