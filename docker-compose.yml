@@ -15,14 +15,18 @@ services:
     environment:
       QDB_PG_USER: ${QUESTDB_PG_USER:-admin}
       QDB_PG_PASSWORD: ${QUESTDB_PG_PASSWORD:-quest}
+      QDB_PG_ENABLED: "true"
+      QDB_LINE_TCP_ENABLED: "true"
+      QDB_HTTP_MIN_ENABLED: "true"
     volumes:
       - questdb_data:/var/lib/questdb
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/status || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      # Official image has no curl/wget — use bash /dev/tcp (PG wire port).
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8812' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
   db:
     image: postgres:16-alpine
@@ -135,7 +139,7 @@ services:
       redis:
         condition: service_healthy
       questdb:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
@@ -192,7 +196,7 @@ services:
       redis:
         condition: service_healthy
       questdb:
-        condition: service_healthy
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]

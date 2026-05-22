@@ -522,6 +522,19 @@ curl -s "http://localhost:3000/api/file/FILE_ID/bars?from=1640995200000&to=16436
 
 **Admin single-dataset sync:** `POST /api/admin/datasets/{file_id}/questdb-sync?force=false`
 
+**If `talaria-questdb-1 is unhealthy`:** older compose used `curl` in the healthcheck, but the QuestDB image has no `curl`. Pull latest `docker-compose.yml` (bash `/dev/tcp` check on port 8812), then:
+
+```bash
+docker compose up -d questdb
+docker compose ps questdb
+docker compose logs questdb --tail 50
+# Once questdb is up:
+docker compose up -d trading-chart trading-chart-worker
+docker compose exec trading-chart-worker py scripts/migrate_csv_to_questdb.py
+```
+
+To run without QuestDB temporarily: `QUESTDB_ENABLED=false docker compose up -d trading-chart trading-chart-worker`
+
 ---
 
 ## Related files
