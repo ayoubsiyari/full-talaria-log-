@@ -584,6 +584,8 @@ class Chart {
         /** After wheel zoom, suppress pan-load until the user actually pans (avoids post-zoom 5k fetch). */
         this._suppressPanLoadUntilUserPan = false;
         this._indicatorRecalcHandle = null;
+        /** Set when rawData/data changed but full indicator pass was deferred (pan / idle). */
+        this._indicatorsNeedRecalc = false;
         this._wheelRenderRaf = null;
         this._replayRenderRaf = null;
         this._sessionStateSaveDebounceMs = 4000;
@@ -1702,19 +1704,81 @@ class Chart {
         return newMs >= nativeMs * 0.92;
     }
 
-    _scheduleRecalculateIndicators() {
+    _cancelIndicatorRecalcTimer() {
+        if (this._indicatorRecalcHandle == null) return;
+        const handle = this._indicatorRecalcHandle;
+        this._indicatorRecalcHandle = null;
+        if (typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
+            try { window.cancelIdleCallback(handle); } catch (_) { /* ignore */ }
+        } else {
+            clearTimeout(handle);
+        }
+    }
+
+    /**
+     * Queue a full indicator recompute without blocking pan/zoom frames.
+     * @param {object} [options]
+     * @param {boolean} [options.deferWhileInteracting=true] - wait until pan/wheel burst ends
+     * @param {boolean} [options.forceRender=true] - scheduleRender after recalc
+     */
+    _scheduleRecalculateIndicators(options = {}) {
+        const deferWhileInteracting = options.deferWhileInteracting !== false;
+        const forceRender = options.forceRender !== false;
+        this._indicatorsNeedRecalc = true;
+
+        if (deferWhileInteracting && (this._isChartViewPanning() || this._isWheelBurst())) {
+            return;
+        }
         if (this._indicatorRecalcHandle != null) return;
+
         const run = () => {
             this._indicatorRecalcHandle = null;
+            if (!this._indicatorsNeedRecalc) return;
+            this._indicatorsNeedRecalc = false;
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
-                this.scheduleRender();
+                if (forceRender) this.scheduleRender();
             }
         };
         const ric = typeof window !== 'undefined' && window.requestIdleCallback
             ? window.requestIdleCallback
             : (cb) => setTimeout(cb, 16);
         this._indicatorRecalcHandle = ric(run, { timeout: 500 });
+    }
+
+    /** Run deferred indicator pass after pan/inertia or pan-load while dragging. */
+    _flushDeferredIndicatorRecalc(forceRender = true) {
+        this._cancelIndicatorRecalcTimer();
+        if (!this._indicatorsNeedRecalc) return;
+        this._indicatorsNeedRecalc = false;
+        if (typeof this.recalculateIndicators === 'function') {
+            try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
+        }
+        if (forceRender) this.scheduleRender();
+    }
+
+    /** Apply merged pan-load bars without redundant copy/resample when TF already matches. */
+    _assignDataFromPanLoad(trimmed, fetchTf) {
+        this.rawData = trimmed;
+        this._updateNativeRawBarMsFromRawData();
+        const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const srcTf = String(fetchTf || displayTf).toLowerCase().trim();
+        if (srcTf === displayTf) {
+            this.data = trimmed;
+        } else if (this._canResampleTimeframeLocally(displayTf)) {
+            this.data = this.resampleData(trimmed, this.currentTimeframe);
+        } else {
+            this.data = trimmed;
+        }
+        this.bumpDataVersion();
+    }
+
+    _scheduleIndicatorRecalcAfterDataChange() {
+        this._indicatorsNeedRecalc = true;
+        if (this._isChartViewPanning() || this._isWheelBurst()) {
+            return;
+        }
+        this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
     }
 
     _scheduleSmartPrefetchTimeframes(fileId, currentTf, session) {
@@ -2169,7 +2233,7 @@ class Chart {
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this._ingestSmartWindowResult(result, { skipFitToView: true, deferIndicators: true });
             this.loadedRanges.set(0, result.returned);
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
@@ -2180,6 +2244,7 @@ class Chart {
             this.resize();
             this.fitToView();
             this.render();
+            this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
@@ -2495,7 +2560,7 @@ class Chart {
             this.currentSymbol = targetTicker || this.currentSymbol;
 
             this._isLoadingOwnPairData = true;
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this._ingestSmartWindowResult(result, { skipFitToView: true, deferIndicators: true });
             this.loadedRanges.set(0, result.returned);
             this._isLoadingOwnPairData = false;
 
@@ -2547,9 +2612,7 @@ class Chart {
                 this._pendingChartViewSanityCheck = true;
             }
 
-            if (typeof this.recalculateIndicators === 'function') {
-                try { this.recalculateIndicators(); } catch (e) {}
-            }
+            this._indicatorsNeedRecalc = true;
 
             if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
@@ -2604,6 +2667,7 @@ class Chart {
             }
 
             this.render();
+            this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -13193,8 +13257,7 @@ class Chart {
                             this._serverCursors.firstTs = String(trimmed[0].t);
                         }
                     }
-                    this.rawData = trimmed;
-                    this.data = [...this.rawData];
+                    this._assignDataFromPanLoad(trimmed, tf);
                 }
 
                 // ── Prefetch next batch while user is still panning ──
@@ -13222,7 +13285,7 @@ class Chart {
                 
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
-                    if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
+                    this._scheduleIndicatorRecalcAfterDataChange();
                     this.scheduleRender();
                 }
                 
@@ -14257,16 +14320,25 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging or wheel-zooming: candles + axes (lite).
+        // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
         if (interactionFast) {
             const panOpts = { panFast: true };
             this.drawGrid();
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            this.drawAxes();
-            this.drawEconomicCalendarAxisMarkers({ panFast: true });
-            this.drawCurrentPriceLabel(visible);
+
+            // Overlay + pane indicators stay on screen during pan (draw uses visible range only).
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
+            }
+            if (typeof this.drawSecondaryIndicators === 'function') {
+                this.drawSecondaryIndicators();
+            }
+
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
             } else if (!this._isWheelBurst()) {
@@ -14274,6 +14346,9 @@ class Chart {
                 this.redrawDrawings();
             }
             this._syncOrderOverlaysDuringPan(interactionFast, { lite: true });
+            this.drawAxes();
+            this.drawEconomicCalendarAxisMarkers({ panFast: true });
+            this.drawCurrentPriceLabel(visible);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -17660,6 +17735,7 @@ class Chart {
                 this.inertia.active = false;
                 this.dispatchScrollSync();
                 this._finishPanDrawingRedraw();
+                this._flushDeferredIndicatorRecalc(true);
             }
         };
         
@@ -17712,6 +17788,9 @@ class Chart {
                 this._suppressPanLoadUntilUserPan = true;
                 if (this.data && this.data.length > 0) {
                     try { this.constrainOffset(); } catch (_e) {}
+                }
+                if (this._indicatorsNeedRecalc) {
+                    this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
                 }
                 this.scheduleRender();
             }, 160);
@@ -18406,6 +18485,7 @@ class Chart {
                 this.scheduleChartViewSave();
                 if (!isChartClick) {
                     this._finishPanDrawingRedraw();
+                    this._flushDeferredIndicatorRecalc(true);
                     this.scheduleRender();
                 }
 
@@ -18526,6 +18606,7 @@ class Chart {
             if (wasPanDrag) {
                 this._clearPanDrawingsLayerTransform();
                 this._finishPanDrawingRedraw();
+                this._flushDeferredIndicatorRecalc(true);
             }
             this.drag.active = false;
             this.drag.type = null;
