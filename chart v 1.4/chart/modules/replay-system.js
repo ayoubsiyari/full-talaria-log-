@@ -2594,9 +2594,35 @@ class ReplaySystem {
             && this.currentIndex >= this.fullRawData.length - 1);
     }
 
+    /**
+     * True when replay is at the backtest session end — NOT merely at the last bar
+     * of the currently fetched window (e.g. mid-session on 15m at Aug 2018).
+     */
+    _isAtBacktestSessionEnd(sessionEndMs) {
+        if (!this.isActive || !this._isAtLastLoadedBar()) return false;
+        if (sessionEndMs == null || !Number.isFinite(Number(sessionEndMs))) return false;
+        const bar = this.fullRawData && this.fullRawData[this.currentIndex];
+        const barTs = bar && Number.isFinite(bar.t) ? Number(bar.t) : Number(this.replayTimestamp);
+        if (!Number.isFinite(barTs)) return false;
+        return barTs >= Number(sessionEndMs) - 86400000;
+    }
+
     /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
     _playWouldBeNoOpAtSessionEnd() {
         if (!this.isActive || !this._isAtLastLoadedBar()) return false;
+        let sessionEndMs = null;
+        try {
+            const sess = this.chart && this.chart.backtestingSession;
+            const r = sess && (sess.endDate || sess.end_date);
+            if (r && this.chart && typeof this.chart._sessionEndToInclusiveUtcMs === 'function') {
+                sessionEndMs = this.chart._sessionEndToInclusiveUtcMs(r);
+            } else if (r) {
+                sessionEndMs = new Date(r).getTime();
+            }
+        } catch (_) { /* ignore */ }
+        if (sessionEndMs != null && !this._isAtBacktestSessionEnd(sessionEndMs)) {
+            return false;
+        }
         const mode = this.getPlaybackMode();
         if (mode === 'tick') {
             const tpc = this.currentTicksPerCandle || this.ticksPerCandle || 72;
