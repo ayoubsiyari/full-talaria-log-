@@ -997,13 +997,11 @@ class TriangleTool extends BaseDrawing {
             return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
         }).join(' ') + ' Z';
 
-        const fillPaint = shapeBackgroundFill(this.style, this.style.fill);
-
         this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', pathData)
             .attr('stroke', 'none')
-            .attr('fill', fillPaint)
+            .attr('fill', this.style.fill)
             .attr('opacity', this.style.opacity)
             .style('pointer-events', 'none')
             .style('cursor', 'default');
