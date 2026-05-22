@@ -2242,16 +2242,13 @@ class ReplaySystem {
                     this.chart.resize();
                 }
             } catch (e) { /* ignore */ }
-            if (this.autoScrollEnabled) {
+            if (!this.shouldHoldUserViewport(this.chart)) {
                 this.chart.autoScale = true;
                 this.chart.priceOffset = 0;
                 this.chart.priceZoom = 1;
-                const st = this.getReplayAutoScrollState(this.chart);
-                if (st && Number.isFinite(st.offsetX)) {
-                    this.chart.offsetX = st.offsetX;
-                    if (typeof this.chart.constrainOffset === 'function') {
-                        this.chart.constrainOffset();
-                    }
+                this.applyReplayAutoScroll(this.chart);
+                if (typeof this.chart.constrainOffset === 'function') {
+                    this.chart.constrainOffset();
                 }
                 this.chart.renderPending = true;
                 if (typeof this.chart.render === 'function') this.chart.render();
@@ -2369,6 +2366,30 @@ class ReplaySystem {
     }
 
     /**
+     * True when replay must not overwrite chart pan/zoom (user dragged away from follow mode).
+     */
+    shouldHoldUserViewport(chartInstance = this.chart) {
+        if (!this.isActive) return false;
+        if (this.userHasPanned || !this.autoScrollEnabled) return true;
+        const chart = chartInstance || this.chart;
+        if (!chart) return false;
+        if (typeof chart._isChartViewPanning === 'function' && chart._isChartViewPanning()) return true;
+        if (chart.drag && chart.drag.active && chart.drag.type === 'pan') return true;
+        return false;
+    }
+
+    /** Apply playhead follow scroll only when follow mode is on and the user has not panned away. */
+    applyReplayAutoScroll(chartInstance = this.chart) {
+        if (!chartInstance || this.shouldHoldUserViewport(chartInstance)) return false;
+        const st = this.getReplayAutoScrollState(chartInstance);
+        if (st && Number.isFinite(st.offsetX)) {
+            chartInstance.offsetX = st.offsetX;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * True when display TF matches raw 1m replay bars (incremental append safe).
      */
     _canIncrementalReplayResample() {
@@ -2471,13 +2492,8 @@ class ReplaySystem {
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
-        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
-            && this.chart._isChartViewPanning();
-        if (autoScroll && this.autoScrollEnabled && !chartPanning) {
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
+        if (autoScroll) {
+            this.applyReplayAutoScroll(this.chart);
         }
         
         // Update UI elements
@@ -3567,14 +3583,7 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
-            && this.chart._isChartViewPanning();
-        if (this.autoScrollEnabled && !chartPanning) {
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
-        }
+        this.applyReplayAutoScroll(this.chart);
         
         // Update UI
         this.updateSlider();
@@ -4021,7 +4030,7 @@ class ReplaySystem {
             this.chart.recalculateAllIndicators();
         }
 
-        if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
+        if (!this.shouldHoldUserViewport(this.chart) && this.tickProgress % 8 === 0) {
             this.chart.fitToView();
         }
 
@@ -4155,12 +4164,11 @@ class ReplaySystem {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
 
-                if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
+                if (!this.shouldHoldUserViewport(pc) && this.tickProgress % 8 === 0) {
                     if (pc.fitToView) {
                         pc.fitToView();
                     } else {
-                        const st = this.getReplayAutoScrollState(pc);
-                        if (st) pc.offsetX = st.offsetX;
+                        this.applyReplayAutoScroll(pc);
                     }
                 }
 
@@ -5103,8 +5111,7 @@ class ReplaySystem {
                     this.syncPanelCharts(true);
                 }
                 if (this.autoScrollEnabled) {
-                    const st = this.getReplayAutoScrollState(initiator);
-                    if (st) initiator.offsetX = st.offsetX;
+                    this.applyReplayAutoScroll(initiator);
                 }
                 if (typeof initiator.constrainOffset === 'function') {
                     initiator.constrainOffset();
@@ -5217,10 +5224,7 @@ class ReplaySystem {
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
                 (this.chart.candleWidth + (this.chart.candleGap || 2));
             if (this.autoScrollEnabled) {
-                const st = this.getReplayAutoScrollState(this.chart);
-                if (st) {
-                    this.chart.offsetX = st.offsetX;
-                } else {
+                if (!this.applyReplayAutoScroll(this.chart)) {
                     this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
                 }
             } else {
@@ -5395,10 +5399,7 @@ class ReplaySystem {
         if (mainChart.drawingManager && typeof mainChart.drawingManager.redrawAll === 'function') {
             try { mainChart.drawingManager.redrawAll(); } catch (_e) { /* ignore */ }
         }
-        if (this.autoScrollEnabled) {
-            const st = this.getReplayAutoScrollState(mainChart);
-            if (st) mainChart.offsetX = st.offsetX;
-        }
+        this.applyReplayAutoScroll(mainChart);
         if (typeof mainChart.constrainOffset === 'function') {
             try { mainChart.constrainOffset(); } catch (_e) { /* ignore */ }
         }
@@ -5500,10 +5501,7 @@ class ReplaySystem {
                     try { pc.recalculateIndicators(); } catch (e) {}
                 }
                 
-                if (this.autoScrollEnabled) {
-                    const st = this.getReplayAutoScrollState(pc);
-                    if (st) pc.offsetX = st.offsetX;
-                }
+                this.applyReplayAutoScroll(pc);
                 
                 if (typeof pc.constrainOffset === 'function') pc.constrainOffset();
                 

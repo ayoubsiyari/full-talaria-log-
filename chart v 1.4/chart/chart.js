@@ -9297,6 +9297,10 @@ class Chart {
         // spans the full loaded history (years of FX range) while the playhead price sits near the top.
         const replay = this.replaySystem;
         if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            if (typeof replay.shouldHoldUserViewport === 'function' && replay.shouldHoldUserViewport(this)) {
+                if (typeof this.constrainOffset === 'function') this.constrainOffset();
+                return;
+            }
             const st = replay.getReplayAutoScrollState(this);
             if (st && Number.isFinite(st.offsetX)) {
                 this.offsetX = st.offsetX;
@@ -13862,6 +13866,7 @@ class Chart {
     _canUsePanChartBitmapCache() {
         if (!this._isChartViewPanning()) return false;
         if (this._isWheelBurst() || this._isReplayRenderFastPath()) return false;
+        if (this.replaySystem && this.replaySystem.isActive) return false;
         if (!this.data || this.data.length === 0) return false;
         if (this.boxZoom && this.boxZoom.active) return false;
         if (this._panSnapOffsetX == null || !this._panSeriesCache) return false;
@@ -14249,7 +14254,9 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
-        this._invalidatePanChartBitmap();
+        if (!(this._isChartViewPanning && this._isChartViewPanning())) {
+            this._invalidatePanChartBitmap();
+        }
     }
     
     animateZoom() {
@@ -14477,7 +14484,8 @@ class Chart {
         // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            if (this._isChartViewPanning() && this._panSnapOffsetX != null && !this._panSeriesCacheMeta) {
+            if (this._isChartViewPanning() && this._panSnapOffsetX != null && !this._panSeriesCacheMeta
+                && !(this.replaySystem && this.replaySystem.isActive)) {
                 this._reanchorPanChartBitmapCache();
             }
             const usePanBitmap = this._canUsePanChartBitmapCache() && this._panSeriesCacheMeta;
@@ -18313,7 +18321,7 @@ class Chart {
                     chartWrapper.style.cursor = panCursor;
                 }
                 
-                if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
+                if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
             }
