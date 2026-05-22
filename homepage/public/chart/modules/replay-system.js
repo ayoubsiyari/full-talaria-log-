@@ -2203,7 +2203,6 @@ class ReplaySystem {
                 if (found >= 0) {
                     startIdx = found;
                 } else {
-                    // Session start is past every loaded bar — start at the last bar.
                     startIdx = rd.length - 1;
                 }
             }

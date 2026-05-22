@@ -572,7 +572,7 @@ class Chart {
          * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
          * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 24000;
+        this.BACKTEST_SMART_INITIAL_LIMIT = 100000;
 
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
@@ -11620,7 +11620,8 @@ class Chart {
                 requestTimeframe,
                 session,
                 'start',
-                { startTs: targetTimestamp }
+                { startTs: targetTimestamp },
+                { limit: 100000 }
             );
 
             if (!this._smartResponseHasPayload(result)) {
@@ -12446,66 +12447,46 @@ class Chart {
      * stays up across the entire fetch + re-enter-replay sequence, and is only
      * lifted by `_endTimeframeSwitching` once the replay viewport is final.
      */
-    _buildBacktestTfRefetchRange(timeframe, session, replayTimestampMs, sessionEndMs) {
-        const tfMs = this.parseTimeframe(timeframe);
-        const forwardBufferBars = 20000;
-        const forwardBufferMs = Number.isFinite(tfMs) && tfMs > 0 ? forwardBufferBars * tfMs : 0;
+    _captureReplayPlayheadMs(replay) {
+        if (!replay) return null;
 
-        let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
-        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
-        if (typeof window !== 'undefined') {
-            const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
-            if (Number.isFinite(w) && w > 0) backtestBatch = w;
+        let ts = null;
+        const ac = replay.animatingCandle;
+        if (ac && Number.isFinite(ac.t)) {
+            const tp = Number(replay.tickProgress) || 0;
+            if (tp > 0 || (!replay.isPlaying && Number.isFinite(ac.close))) ts = ac.t;
         }
-        const maxBars = Math.max(5000, Math.min(100000, backtestBatch));
-        const maxSpanMs = maxBars * (Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60000);
-
-        let sessionStartMs = null;
-        try {
-            const r = session && (session.startDate || session.start_date);
-            if (r) {
-                const t = new Date(r).getTime();
-                if (Number.isFinite(t)) sessionStartMs = Math.floor(t);
-            }
-        } catch (_) { /* ignore */ }
-
-        const replayTs = Number(replayTimestampMs);
-        let rangeEndTs = sessionEndMs;
-        if (Number.isFinite(replayTs) && forwardBufferMs > 0) {
-            const replayAnchoredEnd = replayTs + forwardBufferMs;
-            rangeEndTs = sessionEndMs != null
-                ? Math.min(replayAnchoredEnd, sessionEndMs)
-                : replayAnchoredEnd;
-        } else if (!Number.isFinite(rangeEndTs) && Number.isFinite(replayTs)) {
-            rangeEndTs = replayTs + forwardBufferMs;
+        if (!Number.isFinite(ts) && Number.isFinite(replay.replayTimestamp)) ts = replay.replayTimestamp;
+        if (!Number.isFinite(ts) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const ci = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
+            const idx = Math.min(Math.max(ci, 0), replay.fullRawData.length - 1);
+            const bar = replay.fullRawData[idx];
+            if (bar && Number.isFinite(bar.t)) ts = bar.t;
         }
-
-        let rangeStartTs = sessionStartMs;
-        if (Number.isFinite(replayTs) && forwardBufferMs > 0) {
-            const replayBack = replayTs - forwardBufferMs;
-            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, replayBack) : replayBack;
+        if (!Number.isFinite(ts) && Array.isArray(this.data) && this.data.length > 0) {
+            const lastBar = this.data[this.data.length - 1];
+            if (lastBar && Number.isFinite(lastBar.t)) ts = lastBar.t;
         }
-
-        if (Number.isFinite(rangeStartTs) && Number.isFinite(rangeEndTs) && rangeEndTs > rangeStartTs) {
-            const span = rangeEndTs - rangeStartTs;
-            if (span > maxSpanMs) {
-                rangeEndTs = Number.isFinite(replayTs)
-                    ? Math.min(rangeEndTs, replayTs + forwardBufferMs)
-                    : rangeEndTs;
-                if (sessionEndMs != null) {
-                    rangeEndTs = Math.min(rangeEndTs, sessionEndMs);
-                }
-                rangeStartTs = rangeEndTs - maxSpanMs;
-                if (sessionStartMs != null) {
-                    rangeStartTs = Math.max(rangeStartTs, sessionStartMs);
-                }
-            }
+        if (!Number.isFinite(ts)) {
+            try {
+                const ct = Number(this.orderManager?.orderService?.multiInstrumentSession?.current_time);
+                if (Number.isFinite(ct)) ts = ct;
+            } catch (_) { /* ignore */ }
         }
+        if (!Number.isFinite(ts)) return null;
+        return typeof this.normalizeTimestampMs === 'function'
+            ? this.normalizeTimestampMs(ts)
+            : ts;
+    }
 
-        const out = {};
-        if (Number.isFinite(rangeStartTs)) out.startTs = Math.floor(rangeStartTs);
-        if (Number.isFinite(rangeEndTs)) out.endTs = Math.floor(rangeEndTs);
-        return out;
+    /**
+     * Same fetch window as initial backtest load (1D): anchor at session end, max batch.
+     * All TF switches (including 1m) use this — not a replay-centered slice.
+     */
+    _getBacktestSessionEndFetchRange(sessionEndMs) {
+        return sessionEndMs != null && Number.isFinite(sessionEndMs)
+            ? { endTs: Math.floor(sessionEndMs) }
+            : null;
     }
 
     async _refetchBacktestTimeframe(timeframe) {
@@ -12526,30 +12507,10 @@ class Chart {
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
 
-        let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
-            ? replay.replayTimestamp
+        let savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
+        const savedCurrentIndex = typeof replay.currentIndex === 'number'
+            ? replay.currentIndex
             : null;
-        // Align persisted wall time with intra-candle tick animation (same idea as
-        // onTimeframeChange): replayTimestamp can lag the visible tick bar while ticks run.
-        const acTs = replay.animatingCandle;
-        if (acTs && Number.isFinite(acTs.t)) {
-            const tp = Number(replay.tickProgress) || 0;
-            if (tp > 0) {
-                savedReplayTimestamp = acTs.t;
-            } else if (!replay.isPlaying && Number.isFinite(acTs.close)) {
-                savedReplayTimestamp = acTs.t;
-            }
-        }
-        if (!Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const ci = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
-            const idx = Math.min(Math.max(ci, 0), replay.fullRawData.length - 1);
-            const bar = replay.fullRawData[idx];
-            if (bar && Number.isFinite(bar.t)) savedReplayTimestamp = bar.t;
-        }
-        if (!Number.isFinite(savedReplayTimestamp) && Array.isArray(this.data) && this.data.length > 0) {
-            const lastBar = this.data[this.data.length - 1];
-            if (lastBar && Number.isFinite(lastBar.t)) savedReplayTimestamp = lastBar.t;
-        }
 
         const wasAtSessionEnd = wasActive
             && typeof replay._isAtBacktestSessionEnd === 'function'
@@ -12600,14 +12561,10 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // Anchor 1m fetch around the replay playhead — never default to session/dataset end
-        // when replayTimestamp was missing (that loaded May 2026 while user was on Aug 2018).
-        const historyRange = this._buildBacktestTfRefetchRange(
-            timeframe,
-            session,
-            savedReplayTimestamp,
-            sessionEndMs
-        );
+        // Same load path as initial backtest (1D) and every other TF: anchor at session
+        // end, skip session start clamp, max batch — NOT a small replay-centered window.
+        const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
+        const fetchOpts = { skipSessionDates: true, limit: 100000 };
 
         let result;
         try {
@@ -12618,18 +12575,17 @@ class Chart {
                 session,
                 'end',
                 historyRange,
-                { skipSessionDates: true }
+                fetchOpts
             );
-            // Retry with the same replay-anchored window — do NOT fetch with null endTs
-            // (that returns the dataset tail and jumps the chart to the last file bar).
+            // Initial-load retry parity: empty end-clamped fetch → retry without end clamp.
             if (!this._smartResponseHasPayload(result)) {
                 result = await this._fetchSmartWindow(
                     this.currentFileId,
                     timeframe,
                     session,
                     'end',
-                    historyRange,
-                    { skipSessionDates: true, limit: 100000 }
+                    null,
+                    fetchOpts
                 );
             }
         } catch (e) {
@@ -12698,7 +12654,13 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode({ suppressInitialUpdateChartData: true, skipRealignAfterLayout: true });
+            replay.enterReplayMode({
+                suppressInitialUpdateChartData: true,
+                skipRealignAfterLayout: true,
+                preservePlayhead: Number.isFinite(savedReplayTimestamp),
+                initialReplayTimestamp: savedReplayTimestamp,
+                initialCurrentIndex: savedCurrentIndex,
+            });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
@@ -12733,6 +12695,26 @@ class Chart {
                 const b = replay.fullRawData[fineIdx];
                 if (b && Number.isFinite(b.t)) {
                     replay.replayTimestamp = b.t;
+                }
+            }
+        }
+
+        // Session-end batch may not include a mid-session playhead (100k 1m bar cap).
+        // Load a window around the playhead the same way Go-To does, then restore position.
+        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const firstT = replay.fullRawData[0].t;
+            const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
+            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
+                try {
+                    const loaded = await this.ensureGoToWindowContainsTimestamp(
+                        savedReplayTimestamp,
+                        { usingReplay: true }
+                    );
+                    if (loaded && typeof replay.goToReplayTimestamp === 'function') {
+                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
+                    }
+                } catch (e) {
+                    console.warn('[backtest] playhead window fetch after TF refetch failed', e);
                 }
             }
         }
@@ -12819,14 +12801,7 @@ class Chart {
             } catch (e) { /* ignore */ }
             try {
                 if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
-                }
-                if (Array.isArray(this.data) && this.data.length > 0
-                    && typeof this.jumpToLatest === 'function') {
-                    this.jumpToLatest();
-                }
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: false });
+                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
                 }
             } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
