@@ -329,10 +329,6 @@ installChartContextMenuStyles();
 const DEFAULT_CANDLE_WIDTH = 6;
 /** Body width as a fraction of center-to-center bar spacing (TradingView ≈ 0.8). */
 const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
-/** Max bars drawn per frame (viewport culling + zoom-out cap). */
-const MAX_VISIBLE_BARS = 800;
-/** Minimum on-screen bar width in CSS px (zoom-out floor). */
-const MIN_BAR_WIDTH_PX = 1;
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -355,18 +351,6 @@ class Chart {
             throw new Error('Canvas element not found. Make sure the HTML is loaded.');
         }
         this.ctx = this.canvas.getContext('2d');
-        this.candleCanvas = this.canvas;
-        this.candleCtx = this.ctx;
-        this._initLayerCanvases();
-
-        this.dirty = true;
-        this.gridDirty = true;
-        this.candleDirty = true;
-        this.crosshairDirty = true;
-        this._visibleSliceCache = null;
-        this._visibleSliceRangeKey = '';
-        this._mappedDrawSeriesCache = null;
-        this._crosshairLineState = null;
         
         if (svgElement) {
             this.svg = d3.select(svgElement);
@@ -608,13 +592,6 @@ class Chart {
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
         this.renderPending = false;
-        /** scrollOffset alias — pan/zoom update this.offsetX only (no data re-slice on mousemove). */
-        Object.defineProperty(this, 'scrollOffset', {
-            configurable: true,
-            enumerable: false,
-            get: () => this.offsetX,
-            set: (v) => { this.offsetX = v; },
-        });
         this.renderThrottleTimer = null;
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
@@ -888,18 +865,14 @@ class Chart {
         }
         
         this.fitToView(); // Position chart to show latest data on right
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.render();
         
         // Force a re-render after a short delay to ensure chart is visible after page reload
         // Also re-measure canvas dimensions after page layout completes to fix squished/broken appearance
         setTimeout(() => {
             this.resize(); // Re-measure canvas after layout completes
             this.fitToView();
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+            this.render();
         }, 100);
         
         // Listen for timezone changes (main + panel charts so axes/crosshairs stay in sync)
@@ -2095,9 +2068,7 @@ class Chart {
 
             this.resize();
             this.fitToView();
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+            this.render();
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
@@ -2156,9 +2127,7 @@ class Chart {
                 this.priceOffset = 0;
                 this.autoScale = true;
                 if (this.priceScale) this.priceScale.autoScale = true;
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
 
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
@@ -2523,9 +2492,7 @@ class Chart {
                 this.fitToView();
             }
 
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+            this.render();
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -2544,9 +2511,7 @@ class Chart {
                     this._chartViewRestored = false;
                     this.fitToView();
                 }
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
 
                 // Same as clicking the floating "Follow replay" (#replayFollow) button:
                 // replaySystem.scheduleReplayFollowOnceLayoutSettled() — multi-panel
@@ -3278,11 +3243,7 @@ class Chart {
                 console.warn('⚠️ Could not restore indicator', snap.type, e);
             }
         });
-        if (typeof this.markDirty === 'function') {
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
-        }
+        if (typeof this.render === 'function') this.render();
     }
 
     /** Patches that must persist even if GET /state has not finished (race on first load). */
@@ -4785,10 +4746,8 @@ class Chart {
         this.indicators.active = [];
         this.indicators.data = {};
 
-        if (typeof this.markDirty === 'function') {
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+        if (typeof this.render === 'function') {
+            this.render();
         }
 
         if (typeof this.updateOHLCIndicators === 'function') {
@@ -5235,10 +5194,8 @@ class Chart {
 
         this.bumpDataVersion();
 
-        if (typeof this.markDirty === 'function') {
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+        if (typeof this.render === 'function') {
+            this.render();
         }
 
         if (typeof this.updateOHLCIndicators === 'function') {
@@ -7758,10 +7715,8 @@ class Chart {
             }
             if (typeof pc.applyChartSettings === 'function') {
                 pc.applyChartSettings();
-            } else if (typeof pc.markDirty === 'function') {
-                pc.markDirty('grid');
-                pc.markDirty('candle');
-                pc.renderPending = true;
+            } else if (typeof pc.render === 'function') {
+                pc.render();
             }
         });
     }
@@ -7897,9 +7852,7 @@ class Chart {
                 fileSelect.innerHTML = '<option value="">⚠️ Server not running - Upload CSV to begin</option>';
             }
             // No fallback data - user must upload CSV
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+            this.render();
         }
     }
     
@@ -9087,19 +9040,16 @@ class Chart {
 
 	        this._lastResizeDpr = dpr;
 	        
-	        this._resizeLayerCanvas(this.candleCanvas, this.candleCtx, dpr, nextW, nextH);
-	        if (this.gridCanvas && this.gridCtx) {
-	            this._resizeLayerCanvas(this.gridCanvas, this.gridCtx, dpr, nextW, nextH);
-	        }
-	        if (this.crosshairCanvas && this.crosshairCtx) {
-	            this._resizeLayerCanvas(this.crosshairCanvas, this.crosshairCtx, dpr, nextW, nextH);
-	        }
-	        this.ctx = this.candleCtx;
-	        this.canvas = this.candleCanvas;
+	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
+	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
+	        this.canvas.style.width = nextW + 'px';
+	        this.canvas.style.height = nextH + 'px';
+	        
+	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+	        this.ctx.scale(dpr, dpr);
 	        
 	        this.w = nextW;
 	        this.h = nextH;
-	        this.markDirty('all');
 
 	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
 
@@ -9138,9 +9088,8 @@ class Chart {
 	            this.fitToView();
 	        }
 	        
-	        this.markDirty('grid');
-	        this.markDirty('candle');
-	        this.renderPending = true;
+	        this.render();
+	        this.renderPending = false;
 	        
 	        if (!isPanelDragResize) {
 	            if (svgNode) {
@@ -12206,13 +12155,7 @@ class Chart {
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
-        try {
-            if (typeof this.markDirty === 'function') {
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
-            }
-        } catch (e) { /* ignore */ }
+        try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
         // Compare legend / loading state: keep in sync once main data is committed so
         // compare OHLC does not drop before the main 3-dot indicator hides.
         if (this.compareOverlay && typeof this.compareOverlay.onMainChartTimeframeReady === 'function') {
@@ -12220,11 +12163,7 @@ class Chart {
         }
         requestAnimationFrame(() => {
             try {
-                if (typeof this.markDirty === 'function') {
-                    this.markDirty('grid');
-                    this.markDirty('candle');
-                    this.renderPending = true;
-                }
+                if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
         });
@@ -12465,9 +12404,7 @@ class Chart {
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
                 // Refresh partner-panel sync positions immediately after the
                 // new viewport settles.  Without this, _timeSyncLastTargetBar
                 // retains the stale bar-index from the previous timeframe and
@@ -12730,25 +12667,6 @@ class Chart {
             }
         }
 
-        const switchingToCoarser = wasActive
-            && Number.isFinite(prevTfMs) && prevTfMs > 0
-            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
-            && newTfMsForSwitch > prevTfMs;
-        if (switchingToCoarser
-            && Number.isFinite(savedReplayTimestamp)
-            && typeof replay._findLastRawIndexAtOrBefore === 'function'
-            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const hit = replay._findLastRawIndexAtOrBefore(replay.fullRawData, savedReplayTimestamp);
-            const smin = replay.sessionStartIndex || 0;
-            if (hit >= smin) {
-                replay.currentIndex = hit;
-                const b = replay.fullRawData[hit];
-                if (b && Number.isFinite(b.t)) {
-                    replay.replayTimestamp = b.t;
-                }
-            }
-        }
-
         // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
         // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
         // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
@@ -12809,20 +12727,7 @@ class Chart {
                 if (typeof this.resize === 'function') this.resize();
             } catch (e) { /* ignore */ }
             try {
-                if (replay.isActive) {
-                    if (typeof replay.updateChartData === 'function') {
-                        replay.updateChartData(true);
-                    }
-                    if (replay.autoScrollEnabled && typeof replay.getReplayAutoScrollState === 'function') {
-                        const st = replay.getReplayAutoScrollState(this);
-                        if (st && Number.isFinite(st.offsetX)) {
-                            this.offsetX = st.offsetX;
-                        }
-                    }
-                    if (typeof this.constrainOffset === 'function') {
-                        this.constrainOffset();
-                    }
-                } else if (Array.isArray(this.data) && this.data.length > 0
+                if (Array.isArray(this.data) && this.data.length > 0
                     && typeof this.jumpToLatest === 'function') {
                     this.jumpToLatest();
                 }
@@ -12846,11 +12751,7 @@ class Chart {
         // delayed finalizeReset lifts the freeze with the correct viewport.
         requestAnimationFrame(() => {
             try {
-                if (typeof this.markDirty === 'function') {
-                    this.markDirty('grid');
-                    this.markDirty('candle');
-                    this.renderPending = true;
-                }
+                if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
         });
         setTimeout(finalizeReset, 200);
@@ -13425,134 +13326,12 @@ class Chart {
     }
 
     /**
-     * Minimum candleWidth: 1px floor + zoom-out cap so visible bars ≤ MAX_VISIBLE_BARS.
+     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
+     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        let floor = Math.max(MIN_BAR_WIDTH_PX, widths[0]);
-        const m = this.margin || { l: 0, r: 60 };
-        const plotW = Math.max(0, (this.w || 0) - m.l - m.r);
-        if (plotW > 0) {
-            const minSpacing = plotW / MAX_VISIBLE_BARS;
-            for (let i = 0; i < widths.length; i++) {
-                if (this._getSpacingForCandleWidth(widths[i]) >= minSpacing) {
-                    floor = Math.max(floor, widths[i]);
-                    break;
-                }
-            }
-            if (this._getSpacingForCandleWidth(floor) < minSpacing) {
-                floor = Math.max(floor, minSpacing * 0.85);
-            }
-        }
-        return floor;
-    }
-
-    _getPlotWidth() {
-        const m = this.margin || { l: 0, r: 60 };
-        return Math.max(0, (this.w || 0) - m.l - m.r);
-    }
-
-    /**
-     * Visible index range before the draw loop (capped at MAX_VISIBLE_BARS).
-     * @returns {{ startIdx: number, endIdx: number }}
-     */
-    _getVisibleIndexRange() {
-        if (!this.data || this.data.length === 0) {
-            return { startIdx: 0, endIdx: 0 };
-        }
-        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const plotRight = this.w - mVis.r;
-        const edgeBuf = 6;
-        let startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        let endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
-        const spacing = this.getCandleSpacing();
-        const plotW = this._getPlotWidth();
-        const maxByWidth = spacing > 0
-            ? Math.min(MAX_VISIBLE_BARS, Math.ceil(plotW / spacing) + edgeBuf * 2)
-            : MAX_VISIBLE_BARS;
-        if (endIdx - startIdx > maxByWidth) {
-            endIdx = startIdx + maxByWidth;
-        }
-        if (endIdx - startIdx > MAX_VISIBLE_BARS) {
-            const center = Math.floor((startIdx + endIdx) / 2);
-            startIdx = Math.max(0, center - Math.floor(MAX_VISIBLE_BARS / 2));
-            endIdx = Math.min(this.data.length, startIdx + MAX_VISIBLE_BARS);
-        }
-        return { startIdx, endIdx };
-    }
-
-    /** Cached visible slice — rebuilt only when range or dataVersion changes (not each rAF). */
-    _getVisibleSlice() {
-        const { startIdx, endIdx } = this._getVisibleIndexRange();
-        const key = `${startIdx}:${endIdx}:${this.dataVersion ?? 0}`;
-        if (this._visibleSliceRangeKey === key && this._visibleSliceCache) {
-            return this._visibleSliceCache;
-        }
-        this._visibleSliceRangeKey = key;
-        this._visibleSliceCache = this.data.slice(startIdx, endIdx);
-        this._mappedDrawSeriesCache = this._visibleSliceCache.map((d, i) => ({
-            d,
-            idx: startIdx + i,
-        }));
-        return this._visibleSliceCache;
-    }
-
-    markDirty(layers = 'all') {
-        this.dirty = true;
-        if (layers === 'all' || layers === 'grid') this.gridDirty = true;
-        if (layers === 'all' || layers === 'candle') this.candleDirty = true;
-        if (layers === 'all' || layers === 'crosshair') this.crosshairDirty = true;
-    }
-
-    _initLayerCanvases() {
-        if (this.isPanel || this._layersInitialized) return;
-        const wrap = this.canvas && this.canvas.parentElement;
-        if (!wrap) return;
-
-        this.gridCanvas = document.createElement('canvas');
-        this.gridCanvas.className = 'chart-layer-grid';
-        this.gridCanvas.setAttribute('aria-hidden', 'true');
-        this.crosshairCanvas = document.createElement('canvas');
-        this.crosshairCanvas.className = 'chart-layer-crosshair';
-        this.crosshairCanvas.setAttribute('aria-hidden', 'true');
-
-        const layerBase = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
-        this.gridCanvas.style.cssText = layerBase + 'z-index:0;';
-        this.crosshairCanvas.style.cssText = layerBase + 'z-index:3;';
-        this.candleCanvas.style.zIndex = '1';
-        this.candleCanvas.style.position = 'absolute';
-        this.candleCanvas.style.inset = '0';
-        this.candleCanvas.style.width = '100%';
-        this.candleCanvas.style.height = '100%';
-
-        wrap.insertBefore(this.gridCanvas, this.candleCanvas);
-        wrap.appendChild(this.crosshairCanvas);
-
-        this.gridCtx = this.gridCanvas.getContext('2d');
-        this.crosshairCtx = this.crosshairCanvas.getContext('2d');
-        this.ctx = this.candleCtx;
-        this.canvas = this.candleCanvas;
-        this._layersInitialized = true;
-    }
-
-    _resizeLayerCanvas(canvasEl, ctx, dpr, cssW, cssH) {
-        if (!canvasEl || !ctx) return;
-        canvasEl.width = Math.max(1, Math.floor(cssW * dpr));
-        canvasEl.height = Math.max(1, Math.floor(cssH * dpr));
-        canvasEl.style.width = cssW + 'px';
-        canvasEl.style.height = cssH + 'px';
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(dpr, dpr);
-    }
-
-    _withCtx(targetCtx, fn) {
-        const prev = this.ctx;
-        this.ctx = targetCtx;
-        try {
-            return fn();
-        } finally {
-            this.ctx = prev;
-        }
+        return widths[0];
     }
     
     /**
@@ -13567,13 +13346,19 @@ class Chart {
         const priceHeight = ch * (1 - effectiveVolumeHeight);
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         
+        // Add buffer for smoother scrolling
+        const bufferCandles = 20; // Number of extra candles to render on each side
+        
         // Use consistent candle spacing
         const candleAndSpacing = this.getCandleSpacing();
-        const { startIdx, endIdx } = this._getVisibleIndexRange();
-        const visibleCount = Math.max(0, endIdx - startIdx);
-
+        
+        const visible = this.data.slice(
+            Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles),
+            Math.min(this.data.length, -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles)
+        );
+        
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
-        if (visibleCount === 0) {
+        if (visible.length === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
                 const _indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -13589,18 +13374,14 @@ class Chart {
         // argument-limit / stack issues when zoomed out on 1m data (50k+ visible bars).
         let minPrice = Infinity;
         let maxPrice = -Infinity;
-        let maxVolume = 1;
-        for (let i = startIdx; i < endIdx; i++) {
-            const d = this.data[i];
+        for (let i = 0; i < visible.length; i++) {
+            const d = visible[i];
             if (!d) continue;
             const h = Number(d.h);
             const l = Number(d.l);
-            const v = Number(d.v);
             if (Number.isFinite(h) && h > maxPrice) maxPrice = h;
             if (Number.isFinite(l) && l < minPrice) minPrice = l;
-            if (Number.isFinite(v) && v > maxVolume) maxVolume = v;
         }
-        const visible = visibleCount > 0 ? this._getVisibleSlice() : [];
         if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
             minPrice = 0;
             maxPrice = 1;
@@ -13691,8 +13472,8 @@ class Chart {
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
-            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
-                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visibleCount])
+            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
+                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
             .range([m.l, this.w - m.r]);
         
         const indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -13700,6 +13481,7 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
+        const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
@@ -13909,9 +13691,8 @@ class Chart {
         this.drag.lastX = cx;
         this.drag.lastY = cy;
         this._constrainOffsetDuringDrag();
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.renderPending = false;
+        this.render();
 
         if (!this._panScrollSyncRaf) {
             this._panScrollSyncRaf = requestAnimationFrame(() => {
@@ -13965,8 +13746,11 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        this.markDirty('grid');
-        this.markDirty('candle');
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
+            this.renderPending = false;
+            this.render();
+            return;
+        }
         this.renderPending = true;
     }
 
@@ -13975,7 +13759,6 @@ class Chart {
      */
     _scheduleCrosshairTooltipFromEvent(e) {
         this._pendingCrosshairMoveEvent = e;
-        this.crosshairDirty = true;
         if (this._crosshairTooltipRaf != null) return;
         this._crosshairTooltipRaf = requestAnimationFrame(() => {
             this._crosshairTooltipRaf = null;
@@ -13985,18 +13768,11 @@ class Chart {
             if (this.drag && this.drag.active && this.drag.type === 'pan') return;
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(ev);
             if (typeof this.updateTooltip === 'function') this.updateTooltip(ev);
-            if (this.crosshairDirty) {
-                this._renderCrosshairLayer();
-                this.crosshairDirty = false;
-            }
         });
     }
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
-        this._visibleSliceRangeKey = '';
-        this._visibleSliceCache = null;
-        this._mappedDrawSeriesCache = null;
     }
     
     animateZoom() {
@@ -14072,9 +13848,7 @@ class Chart {
         this.offsetX = newCenterOffset;
         
         this.constrainOffset();
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.render();
     }
     
     panBy(dx, dy) {
@@ -14085,9 +13859,7 @@ class Chart {
             this.priceOffset -= dy * pricePerPixel;
         }
         this.constrainOffset();
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.render();
     }
     
     resetView() {
@@ -14099,9 +13871,7 @@ class Chart {
         
         // Reset position to show latest data
         this.fitToView();
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.render();
     }
     
     animate() {
@@ -14109,14 +13879,9 @@ class Chart {
         
         this.animateZoom();
 
-        if (this.renderPending || this.dirty) {
-            if (this.gridDirty || this.candleDirty) {
-                this.render();
-                this.gridDirty = false;
-                this.candleDirty = false;
-            }
+        if (this.renderPending) {
+            this.render();
             this.renderPending = false;
-            this.dirty = false;
 
             // Update follow button visibility after each render (throttled).
             if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {
@@ -14126,11 +13891,6 @@ class Chart {
                     try { this.replaySystem.updateAutoScrollIndicator(); } catch (_) {}
                 }
             }
-        }
-
-        if (this.crosshairDirty && !(this.drag && this.drag.active && this.drag.type === 'pan')) {
-            this._renderCrosshairLayer();
-            this.crosshairDirty = false;
         }
 
         // Calculate FPS
@@ -14189,10 +13949,20 @@ class Chart {
         // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
         this._timeTicks = this._buildTimeTicks();
 
-        const { startIdx, endIdx } = this._getVisibleIndexRange();
+        // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
+        // Using full canvas width for bar count was too wide vs the drawable area and caused
+        // separate-panel indicators to miss segments when scrolling into older bars.
+        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+        const plotRight = this.w - mVis.r;
+        const edgeBuf = 6;
+        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
+        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        
+        // Expose current visible range for indicator rendering
         this.visibleStartIndex = startIdx;
-        this.visibleEndIndex = Math.max(startIdx, endIdx - 1);
-        const visible = this._getVisibleSlice();
+        this.visibleEndIndex = endIdx;
+        
+        const visible = this.data.slice(startIdx, endIdx);
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
         if (visible.length === 0 && this.data.length === 0) {
@@ -14229,12 +13999,7 @@ class Chart {
         // Fast path while dragging chart: candles + axes + news markers (lite).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
-            if (this.gridCtx) {
-                this.gridCtx.clearRect(0, 0, this.w, this.h);
-                this._withCtx(this.gridCtx, () => this.drawGrid());
-            } else {
-                this.drawGrid();
-            }
+            this.drawGrid();
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
@@ -14262,12 +14027,8 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        if (this.gridCtx) {
-            this.gridCtx.clearRect(0, 0, this.w, this.h);
-            this._withCtx(this.gridCtx, () => this.drawGrid());
-        } else {
-            this.drawGrid();
-        }
+        // Draw grid lines first
+        this.drawGrid();
 
         // Draw volume bars
         this.drawVolume(visible);
@@ -14293,28 +14054,20 @@ class Chart {
         // Update logo for current theme
         this.updateLogoForTheme();
 
-        const wheelBurstDecorSkip =
-            typeof this._wheelBurstUntil === 'number' &&
-            performance.now() < this._wheelBurstUntil;
-        const zoomedOutDecorSkip = visible.length > MAX_VISIBLE_BARS;
-
         // Draw indicators (Overlay indicators like SMA, EMA, BB)
-        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip && typeof this.drawIndicators === 'function') {
+        if (typeof this.drawIndicators === 'function') {
             this.drawIndicators();
         }
         
         // Draw separate panel indicators (ATR, ADR, etc.)
-        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip
-            && typeof this.renderSeparatePanelIndicators === 'function') {
+        if (typeof this.renderSeparatePanelIndicators === 'function') {
             this.renderSeparatePanelIndicators();
         }
 
         // Price hover line removed - no longer needed
 
         // Redraw drawings
-        if (!wheelBurstDecorSkip) {
-            this.redrawDrawings();
-        }
+        this.redrawDrawings();
         
         // Update order lines if order manager is active
         // This happens AFTER scales are calculated in render()
@@ -14336,8 +14089,7 @@ class Chart {
         }
 
         // Draw secondary indicators (RSI, MACD, etc.) in their own panels
-        if (!wheelBurstDecorSkip && !zoomedOutDecorSkip
-            && typeof this.drawSecondaryIndicators === 'function') {
+        if (typeof this.drawSecondaryIndicators === 'function') {
             this.drawSecondaryIndicators();
         }
 
@@ -15966,9 +15718,7 @@ class Chart {
         if (this.priceHoverThrottle) return;
         
         this.priceHoverThrottle = requestAnimationFrame(() => {
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.renderPending = true;
+            this.render();
             this.priceHoverThrottle = null;
         });
     }
@@ -16603,7 +16353,7 @@ class Chart {
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
-            : (this._mappedDrawSeriesCache || []);
+            : visible.map((d, i) => ({ d, idx: (this.visibleStartIndex || 0) + i }));
 
         drawSeries.forEach(({ d, idx }) => {
             // Calculate X position using our helper method
@@ -18633,9 +18383,7 @@ class Chart {
                 }
             }
 
-            if (!(this.drag && this.drag.active && this.drag.type === 'pan')) {
-                this._scheduleCrosshairTooltipFromEvent(e);
-            }
+            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
 
             if (this.canvas && !this.isPanel) {
                 const rect = this._pointerLayoutRect();
@@ -20349,47 +20097,6 @@ class Chart {
         }
     }
 
-    /**
-     * Crosshair lines only — top canvas layer (mousemove must not redraw grid/candles).
-     */
-    _renderCrosshairLayer() {
-        const ctx = this.crosshairCtx;
-        const state = this._crosshairLineState;
-        if (!ctx || !this.w || !this.h) return;
-        ctx.clearRect(0, 0, this.w, this.h);
-        if (!state || !state.showLines) return;
-
-        const m = this.margin || { l: 0, r: 60, t: 0, b: 30 };
-        const crossColor = state.crossColor || 'rgba(120,123,134,0.4)';
-        const crossWidth = Math.max(1, state.crossWidth || 2);
-        const crossPattern = state.crossPattern || 'dashed';
-        const plotW = Math.max(0, this.w - m.l - m.r);
-
-        ctx.save();
-        ctx.strokeStyle = crossColor;
-        ctx.lineWidth = crossWidth;
-        if (crossPattern === 'dashed') ctx.setLineDash([6, 4]);
-        else if (crossPattern === 'dotted') ctx.setLineDash([2, 4]);
-        else if (crossPattern === 'longDash') ctx.setLineDash([10, 5]);
-        else ctx.setLineDash([]);
-
-        const lineX = state.lineX;
-        const hY = state.hLineRenderY;
-        if (Number.isFinite(lineX)) {
-            ctx.beginPath();
-            ctx.moveTo(lineX + 0.5, m.t);
-            ctx.lineTo(lineX + 0.5, this.h - m.b);
-            ctx.stroke();
-        }
-        if (Number.isFinite(hY)) {
-            ctx.beginPath();
-            ctx.moveTo(m.l, hY + 0.5);
-            ctx.lineTo(m.l + plotW, hY + 0.5);
-            ctx.stroke();
-        }
-        ctx.restore();
-    }
-
     updateCrosshair(e) {
         e = (e && e.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
         // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
@@ -20418,7 +20125,6 @@ class Chart {
         this._lastCrosshairShiftKey = !!e.shiftKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
-            this._crosshairLineState = null;
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
             // Broadcast hide to other panels
@@ -20573,20 +20279,7 @@ class Chart {
                 : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
         // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
         const plotW = Math.max(0, this.w - m.l - m.r);
-        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
-        this._crosshairLineState = {
-            showLines,
-            lineX,
-            hLineRenderY: safeHLineY,
-            crossColor,
-            crossWidth,
-            crossPattern,
-        };
-        if (this.crosshairCtx) {
-            if (vLine) vLine.style.display = 'none';
-            if (hLine) hLine.style.display = 'none';
-            this.crosshairDirty = true;
-        } else if (vLine) {
+        if (vLine) {
             vLine.style.top = '0px';
             vLine.style.left = (lineX - crossWidth * 0.5) + 'px';
             vLine.style.width = crossWidth + 'px';
@@ -20594,7 +20287,8 @@ class Chart {
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
         }
-        if (!this.crosshairCtx && hLine) {
+        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
+        if (hLine) {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
@@ -20811,18 +20505,9 @@ class Chart {
                 }
             }
         }
-
-        if (this.crosshairCtx) {
-            this._renderCrosshairLayer();
-            this.crosshairDirty = false;
-        }
     }
     
     hideCrosshair() {
-        this._crosshairLineState = null;
-        if (this.crosshairCtx) {
-            this.crosshairCtx.clearRect(0, 0, this.w, this.h);
-        }
         const container = this.canvas?.parentElement;
         if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');
@@ -22097,25 +21782,19 @@ class Chart {
             this.addColorPicker(content, 'Line Color', actualDrawing.color || '#2962ff', (color) => {
                 actualDrawing.color = color;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.markDirty('grid');
-                chart.markDirty('candle');
-                chart.renderPending = true;
+                chart.render();
             });
             
             this.addSlider(content, 'Line Width', actualDrawing.lineWidth || 2, 1, 10, (width) => {
                 actualDrawing.lineWidth = width;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.markDirty('grid');
-                chart.markDirty('candle');
-                chart.renderPending = true;
+                chart.render();
             });
             
             this.addSlider(content, 'Line Opacity', (actualDrawing.opacity || 1) * 100, 0, 100, (opacity) => {
                 actualDrawing.opacity = opacity / 100;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.markDirty('grid');
-                chart.markDirty('candle');
-                chart.renderPending = true;
+                chart.render();
             });
         }
         
@@ -22127,16 +21806,12 @@ class Chart {
                 
             this.addColorPicker(content, 'Fill Color', drawing.fillColor || 'rgba(41, 98, 255, 0.1)', (color) => {
                 drawing.fillColor = color;
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
             });
             
             this.addSlider(content, 'Fill Opacity', (drawing.fillOpacity || 0.1) * 100, 0, 100, (opacity) => {
                 drawing.fillOpacity = opacity / 100;
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
             });
         }
         
@@ -22186,9 +21861,7 @@ class Chart {
                         updatedDrawing.fillColor = d3.color(preset.color).copy({opacity: drawing.fillOpacity || 0.1});
                     }
                     this.saveDrawingChanges(updatedDrawing);
-                    this.markDirty('grid');
-                    this.markDirty('candle');
-                    this.renderPending = true;
+                    this.render();
                 });
                 
             presetBtn.append('div')
@@ -22238,9 +21911,7 @@ class Chart {
                     drawing.fillColor = 'rgba(41, 98, 255, 0.1)';
                     drawing.fillOpacity = 0.1;
                 }
-                this.markDirty('grid');
-                this.markDirty('candle');
-                this.renderPending = true;
+                this.render();
             });
             
         // Close button
@@ -22369,11 +22040,7 @@ class Chart {
                         // Force redraw
                         setTimeout(() => {
                             if (chart.redrawDrawings) chart.redrawDrawings();
-                            if (chart.markDirty) {
-                                chart.markDirty('grid');
-                                chart.markDirty('candle');
-                                chart.renderPending = true;
-                            }
+                            if (chart.render) chart.render();
                         }, 10);
                     });
             });
@@ -22535,9 +22202,7 @@ class Chart {
         // Sync cloned drawing to other panels
         this.syncDrawingToOtherPanels(clone, 'add');
         this.hideContextMenu();
-        this.markDirty('grid');
-        this.markDirty('candle');
-        this.renderPending = true;
+        this.render();
     }
     
     /**
@@ -23683,10 +23348,8 @@ class Chart {
                         try { this.redrawDrawings(); } catch (_) {}
                     }
                 }
-                if (typeof this.markDirty === 'function') {
-                    this.markDirty('grid');
-                    this.markDirty('candle');
-                    this.renderPending = true;
+                if (typeof this.render === 'function') {
+                    this.render();
                 }
             }
             
