@@ -503,7 +503,7 @@ curl -s http://localhost:3000/api/status
 **Backfill existing CSV datasets:**
 
 ```bash
-docker compose exec trading-chart-worker py scripts/migrate_csv_to_questdb.py
+docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py
 ```
 
 **Seek test (doc §5):** request a 2022 window — should return in ms, not scan from 2010:
@@ -530,7 +530,7 @@ docker compose ps questdb
 docker compose logs questdb --tail 50
 # Once questdb is up:
 docker compose up -d trading-chart trading-chart-worker
-docker compose exec trading-chart-worker py scripts/migrate_csv_to_questdb.py
+docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py
 ```
 
 To run without QuestDB temporarily: `QUESTDB_ENABLED=false docker compose up -d trading-chart trading-chart-worker`

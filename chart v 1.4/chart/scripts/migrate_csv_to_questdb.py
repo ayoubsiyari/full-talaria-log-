@@ -8,7 +8,11 @@ Run from chart v 1.4/chart with DATABASE_URL + QuestDB env configured:
   set QUESTDB_ENABLED=true
   set QUESTDB_PG_URL=postgresql://admin:quest@localhost:8812/qdb
   set QUESTDB_ILP_HOST=127.0.0.1
-  py scripts/migrate_csv_to_questdb.py
+  python3 scripts/migrate_csv_to_questdb.py
+
+Docker (Linux container — use python3, not Windows `py`):
+
+  docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py
 
 Options:
   --dry-run       List files that would be synced
