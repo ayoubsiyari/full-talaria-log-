@@ -2109,6 +2109,9 @@ class ReplaySystem {
      * @param {boolean} [options.startAtBeginning] - Backtest-style session floor (URL/mode)
      * @param {boolean} [options.suppressInitialUpdateChartData] - Skip first `updateChartData()` so host can restore playhead (TF refetch); avoids SL/TP on session-start bar.
      * @param {boolean} [options.skipRealignAfterLayout] - Host owns viewport after TF refetch; skip internal realign loop.
+     * @param {boolean} [options.preservePlayhead] - TF refetch: keep wall-clock playhead instead of resetting to session start.
+     * @param {number} [options.initialReplayTimestamp] - Wall-clock ms to restore when preservePlayhead is set.
+     * @param {number} [options.initialCurrentIndex] - Optional raw index hint from the prior TF.
      */
     enterReplayMode(options = {}) {
         // === PROTECT: Don't reinitialize if already active or during timeframe change ===
@@ -2138,25 +2141,55 @@ class ReplaySystem {
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
         const isBacktesting = mode === 'backtest' || mode === 'propfirm' || options.startAtBeginning;
-        
-        if (isBacktesting) {
+
+        const rd = this.chart.rawData;
+        let sessionStartMs = null;
+        try {
+            let sess = this.chart.backtestingSession;
+            if (!sess && typeof window !== 'undefined' && window.userStorage) {
+                sess = JSON.parse(window.userStorage.getItem('backtestingSession') || '{}');
+            }
+            const raw = sess && (sess.startDate || sess.start_date);
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (e) { /* ignore */ }
+
+        const preservePlayhead = !!options.preservePlayhead;
+        const initialReplayTs = (typeof options.initialReplayTimestamp === 'number'
+            && Number.isFinite(options.initialReplayTimestamp))
+            ? options.initialReplayTimestamp
+            : null;
+
+        if (preservePlayhead && initialReplayTs != null && Array.isArray(rd) && rd.length > 0) {
+            let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
+                ? this._findLastRawIndexAtOrBefore(rd, initialReplayTs)
+                : -1;
+            if (idx < 0 && typeof options.initialCurrentIndex === 'number'
+                && Number.isFinite(options.initialCurrentIndex)) {
+                idx = Math.min(Math.max(Math.floor(options.initialCurrentIndex), 0), rd.length - 1);
+            }
+            if (idx < 0) idx = 0;
+            this.currentIndex = idx;
+            this.replayTimestamp = rd[idx]?.t ?? initialReplayTs;
+
+            let floorIdx = 0;
+            if (sessionStartMs != null) {
+                const floorHit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                    ? this._findLastRawIndexAtOrBefore(rd, sessionStartMs)
+                    : -1;
+                floorIdx = floorHit >= 0 ? floorHit : 0;
+            }
+            this.sessionStartIndex = floorIdx;
+            if (this.currentIndex < this.sessionStartIndex) {
+                this.currentIndex = this.sessionStartIndex;
+                this.replayTimestamp = rd[this.currentIndex]?.t ?? this.replayTimestamp;
+            }
+        } else if (isBacktesting) {
             // Backtest sessions load all daily history available on the server BEFORE
             // session start so the user sees the lead-up. Replay must still begin at
             // the first bar at/after session.startDate — find that index by timestamp.
-            let sessionStartMs = null;
-            try {
-                let sess = this.chart.backtestingSession;
-                if (!sess && typeof window !== 'undefined' && window.userStorage) {
-                    sess = JSON.parse(window.userStorage.getItem('backtestingSession') || '{}');
-                }
-                const raw = sess && (sess.startDate || sess.start_date);
-                if (raw) {
-                    const t = new Date(raw).getTime();
-                    if (Number.isFinite(t)) sessionStartMs = t;
-                }
-            } catch (e) { /* ignore */ }
-
-            const rd = this.chart.rawData;
             let startIdx = Math.min(10, rd.length - 1);
             if (sessionStartMs != null && Array.isArray(rd) && rd.length > 0) {
                 let found = -1;
@@ -2170,7 +2203,6 @@ class ReplaySystem {
                 if (found >= 0) {
                     startIdx = found;
                 } else {
-                    // Session start is past every loaded bar — start at the last bar.
                     startIdx = rd.length - 1;
                 }
             }
