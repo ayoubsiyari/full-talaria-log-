@@ -12171,6 +12171,113 @@ class Chart {
     }
 
     /**
+     * Min/max timestamp (ms) across saved drawing anchor points — used to size 1m refetch windows.
+     */
+    _collectDrawingTimestampBounds() {
+        const dm = this.drawingManager;
+        if (!dm || !Array.isArray(dm.drawings)) {
+            return { minTs: null, maxTs: null };
+        }
+        let minTs = null;
+        let maxTs = null;
+        for (const d of dm.drawings) {
+            if (!d || !Array.isArray(d.timestampPoints)) continue;
+            for (const p of d.timestampPoints) {
+                const t = Number(p.timestamp);
+                if (!Number.isFinite(t)) continue;
+                if (minTs == null || t < minTs) minTs = t;
+                if (maxTs == null || t > maxTs) maxTs = t;
+            }
+        }
+        return { minTs, maxTs };
+    }
+
+    /**
+     * Build start/end timestamps for backtest TF refetch so replay position, prior-TF
+     * history, and drawing anchors all fit within the smart-window limit when possible.
+     */
+    _buildBacktestTfRefetchRange(timeframe, session, savedReplayTimestamp, sessionEndMs, opts = {}) {
+        const drawMinTs = opts.drawMinTs;
+        const drawMaxTs = opts.drawMaxTs;
+        const priorFirstTs = opts.priorFirstTs;
+
+        const tfMs = this.parseTimeframe(timeframe);
+        const forwardBufferBars = 20000;
+        const forwardBufferMs = Number.isFinite(tfMs) && tfMs > 0 ? forwardBufferBars * tfMs : 0;
+
+        let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
+        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
+        if (typeof window !== 'undefined') {
+            const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
+            if (Number.isFinite(w) && w > 0) backtestBatch = w;
+        }
+        const maxBars = Math.max(5000, Math.min(100000, backtestBatch));
+        const maxSpanMs = maxBars * (Number.isFinite(tfMs) && tfMs > 0 ? tfMs : 60000);
+
+        let sessionStartMs = null;
+        try {
+            const r = session && (session.startDate || session.start_date);
+            if (r) {
+                const t = new Date(r).getTime();
+                if (Number.isFinite(t)) sessionStartMs = Math.floor(t);
+            }
+        } catch (_) { /* ignore */ }
+
+        let rangeEndTs = sessionEndMs;
+        if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
+            const replayAnchoredEnd = savedReplayTimestamp + forwardBufferMs;
+            rangeEndTs = sessionEndMs != null
+                ? Math.min(replayAnchoredEnd, sessionEndMs)
+                : replayAnchoredEnd;
+        }
+        if (Number.isFinite(drawMaxTs)) {
+            rangeEndTs = rangeEndTs != null ? Math.max(rangeEndTs, drawMaxTs) : drawMaxTs;
+        }
+
+        let rangeStartTs = sessionStartMs;
+        if (Number.isFinite(priorFirstTs)) {
+            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, priorFirstTs) : priorFirstTs;
+        }
+        if (Number.isFinite(drawMinTs)) {
+            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, drawMinTs) : drawMinTs;
+        }
+        if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
+            const replayBack = savedReplayTimestamp - forwardBufferMs;
+            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, replayBack) : replayBack;
+        }
+
+        if (Number.isFinite(rangeStartTs) && Number.isFinite(rangeEndTs) && rangeEndTs > rangeStartTs) {
+            const span = rangeEndTs - rangeStartTs;
+            if (span > maxSpanMs) {
+                const needMinCandidates = [drawMinTs, priorFirstTs];
+                if (Number.isFinite(savedReplayTimestamp) && forwardBufferMs > 0) {
+                    needMinCandidates.push(savedReplayTimestamp - forwardBufferMs);
+                }
+                const needMaxCandidates = [drawMaxTs, savedReplayTimestamp, rangeEndTs];
+                const needMin = needMinCandidates.filter(Number.isFinite).reduce((a, b) => Math.min(a, b), Infinity);
+                const needMax = needMaxCandidates.filter(Number.isFinite).reduce((a, b) => Math.max(a, b), -Infinity);
+
+                if (Number.isFinite(needMin) && Number.isFinite(needMax) && needMax - needMin <= maxSpanMs) {
+                    rangeStartTs = needMin;
+                    rangeEndTs = needMin + maxSpanMs;
+                    if (sessionEndMs != null) rangeEndTs = Math.min(rangeEndTs, sessionEndMs);
+                    if (rangeEndTs - rangeStartTs < maxSpanMs && sessionEndMs != null) {
+                        rangeStartTs = Math.max(rangeEndTs - maxSpanMs, needMin);
+                    }
+                } else {
+                    // Too much history for one fetch — tail window (anchor=end) around replay/drawings end.
+                    rangeStartTs = rangeEndTs - maxSpanMs;
+                }
+            }
+        }
+
+        const out = {};
+        if (Number.isFinite(rangeStartTs)) out.startTs = Math.floor(rangeStartTs);
+        if (Number.isFinite(rangeEndTs)) out.endTs = Math.floor(rangeEndTs);
+        return out;
+    }
+
+    /**
      * Remap drawing timestamps to the new timeframe and redraw SVG after a TF switch.
      * Safe to call when the freeze overlay is lifting (scales + canvas size are final).
      */
@@ -12543,6 +12650,13 @@ class Chart {
 
         const loadId = ++this._timeframeLoadSeq;
 
+        // Capture drawing + prior-TF window bounds before exitReplayMode clears replay buffers.
+        const drawBounds = this._collectDrawingTimestampBounds();
+        const priorFirstTs = (Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
+            && Number.isFinite(replay.fullRawData[0].t))
+            ? replay.fullRawData[0].t
+            : null;
+
         try {
             if (wasActive && typeof replay.exitReplayMode === 'function') {
                 replay.exitReplayMode();
@@ -12551,27 +12665,20 @@ class Chart {
             console.warn('[backtest] exitReplayMode before refetch failed', e);
         }
 
-        // Anchor data fetch around the current replay position rather than session end.
-        // For lower timeframes (e.g. 1min) the 100k bar limit only covers ~69 days.
-        // If we always anchor at session end (e.g. 2026) and the replay position is in
-        // 2023, that timestamp won't exist in the loaded window → chart jumps to 2026.
-        // Instead, set endTs = replayTimestamp + forward buffer so the replay position
-        // is guaranteed to be within the fetched range.
-
-        const tfMs = this.parseTimeframe(timeframe);
-        const forwardBufferBars = 20000;
-        const forwardBufferMs = forwardBufferBars * tfMs;
-
-        let anchorEndTs = sessionEndMs;
-        if (Number.isFinite(savedReplayTimestamp) && Number.isFinite(tfMs) && tfMs > 0) {
-            const replayAnchoredEnd = savedReplayTimestamp + forwardBufferMs;
-            if (sessionEndMs != null) {
-                anchorEndTs = Math.min(replayAnchoredEnd, sessionEndMs);
-            } else {
-                anchorEndTs = replayAnchoredEnd;
+        // Anchor fetch around replay position AND drawing timestamps. On 1m the 100k bar
+        // limit is ~69 days — without startTs, shapes drawn on 1D (years of history) fall
+        // outside the loaded window and vanish after switching to 1m.
+        const historyRange = this._buildBacktestTfRefetchRange(
+            timeframe,
+            session,
+            savedReplayTimestamp,
+            sessionEndMs,
+            {
+                drawMinTs: drawBounds.minTs,
+                drawMaxTs: drawBounds.maxTs,
+                priorFirstTs,
             }
-        }
-        const historyRange = anchorEndTs != null ? { endTs: anchorEndTs } : null;
+        );
 
         let result;
         try {
