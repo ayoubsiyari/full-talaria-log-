@@ -579,6 +579,11 @@ class Chart {
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
         this._smartCacheTtlMs = 120000;
+        /** Finest bar spacing (ms) held in rawData — used to skip /smart when client resample suffices. */
+        this._nativeRawBarMs = null;
+        /** After wheel zoom, suppress pan-load until the user actually pans (avoids post-zoom 5k fetch). */
+        this._suppressPanLoadUntilUserPan = false;
+        this._indicatorRecalcHandle = null;
         this._sessionStateSaveDebounceMs = 4000;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
@@ -1663,6 +1668,81 @@ class Chart {
         return this._getSmartCachedPayload(fileId, params, true);
     }
 
+    _inferMedianBarPeriodMs(data) {
+        if (!Array.isArray(data) || data.length < 2) return NaN;
+        const maxSamples = Math.min(data.length - 1, 48);
+        let sum = 0;
+        let count = 0;
+        for (let i = 1; i <= maxSamples; i++) {
+            const dt = Number(data[i].t) - Number(data[i - 1].t);
+            if (Number.isFinite(dt) && dt > 0) {
+                sum += dt;
+                count += 1;
+            }
+        }
+        return count > 0 ? sum / count : NaN;
+    }
+
+    _updateNativeRawBarMsFromRawData() {
+        const inferred = this._inferMedianBarPeriodMs(this.rawData);
+        if (!Number.isFinite(inferred) || inferred <= 0) return;
+        if (!Number.isFinite(this._nativeRawBarMs) || inferred < this._nativeRawBarMs * 0.92) {
+            this._nativeRawBarMs = inferred;
+        }
+    }
+
+    _canResampleTimeframeLocally(normalizedTf) {
+        if (!Array.isArray(this.rawData) || this.rawData.length === 0) return false;
+        if (typeof this.parseTimeframe !== 'function') return false;
+        const newMs = this.parseTimeframe(normalizedTf);
+        const nativeMs = Number(this._nativeRawBarMs) || this._inferMedianBarPeriodMs(this.rawData);
+        if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(nativeMs) || nativeMs <= 0) return false;
+        return newMs >= nativeMs * 0.92;
+    }
+
+    _scheduleRecalculateIndicators() {
+        if (this._indicatorRecalcHandle != null) return;
+        const run = () => {
+            this._indicatorRecalcHandle = null;
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
+                this.scheduleRender();
+            }
+        };
+        const ric = typeof window !== 'undefined' && window.requestIdleCallback
+            ? window.requestIdleCallback
+            : (cb) => setTimeout(cb, 16);
+        this._indicatorRecalcHandle = ric(run, { timeout: 500 });
+    }
+
+    _scheduleSmartPrefetchTimeframes(fileId, currentTf, session) {
+        const ric = typeof window !== 'undefined' && window.requestIdleCallback
+            ? window.requestIdleCallback
+            : (cb) => setTimeout(cb, 400);
+        ric(() => {
+            if (!fileId || String(this.currentFileId) !== String(fileId)) return;
+            if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
+            const cur = String(currentTf || '1m').toLowerCase().trim();
+            const common = ['5m', '15m', '30m', '1h', '4h', '1d'];
+            const sess = session || this.backtestingSession || {};
+            for (let i = 0; i < common.length; i++) {
+                const tf = common[i];
+                if (tf === cur) continue;
+                const params = this._buildSmartWindowParams(fileId, tf, sess);
+                const key = this._smartCacheKeyFromParams(fileId, params);
+                if (this._smartPrefetchCache.has(key)) continue;
+                fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`)
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((payload) => {
+                        if (payload && this._smartResponseHasPayload(payload)) {
+                            this._setSmartCachedPayload(fileId, params, payload);
+                        }
+                    })
+                    .catch(() => { /* ignore prefetch errors */ });
+            }
+        });
+    }
+
     _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
         const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
         ric(() => {
@@ -1775,21 +1855,30 @@ class Chart {
 
     /**
      * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
-     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent (defer listeners until replay playhead is restored)
+     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent, deferIndicators
      */
     _commitLoadedBars(newData, startIndex, options = {}) {
         if (!newData || newData.length === 0) return;
 
         if (startIndex === 0) {
             this.rawData = newData;
+            const inferred = this._inferMedianBarPeriodMs(this.rawData);
+            if (Number.isFinite(inferred) && inferred > 0) {
+                this._nativeRawBarMs = inferred;
+            }
         } else {
             this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
+            this._updateNativeRawBarMsFromRawData();
         }
 
         this.data = this.resampleData(this.rawData, this.currentTimeframe);
 
         if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
-            this.recalculateIndicators();
+            if (options.deferIndicators) {
+                this._scheduleRecalculateIndicators();
+            } else {
+                this.recalculateIndicators();
+            }
         }
 
         // GET /sessions/:id/state often finishes before the first OHLC ingest. In that case
@@ -2063,6 +2152,7 @@ class Chart {
             this.loadedRanges.set(0, result.returned);
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
+            this._scheduleSmartPrefetchTimeframes(targetFileId, requestTimeframe, session);
 
             this.updateChartTitle(this.currentSymbol);
 
@@ -9647,7 +9737,7 @@ class Chart {
         const wheelActive = typeof this._wheelBurstUntil === 'number'
             && performance.now() < this._wheelBurstUntil;
         const panActive = this._isChartViewPanning();
-        if (!wheelActive && !panActive) {
+        if (!wheelActive && !panActive && !this._suppressPanLoadUntilUserPan) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
@@ -12059,8 +12149,12 @@ class Chart {
             return;
         }
 
-        // Always fetch from server — viewport-based, like TradingView
+        // Always fetch from server when rawData cannot be resampled locally (finer TF than stored native).
         if (this.currentFileId) {
+            if (hasData && this._canResampleTimeframeLocally(normalizedTf)) {
+                this._applyLocalTimeframeSwitch(normalizedTf);
+                return;
+            }
             this._loadTimeframeFromServer(normalizedTf);
             return;
         }
@@ -12310,6 +12404,35 @@ class Chart {
     }
     
     /**
+     * Switch timeframe using in-memory rawData (no /smart round-trip).
+     * Used when the destination TF is coarser than or equal to native raw bar spacing.
+     */
+    _applyLocalTimeframeSwitch(normalizedTf) {
+        this._commitTimeframeChange(normalizedTf);
+        this.data = this.resampleData(this.rawData, normalizedTf);
+        this._scheduleRecalculateIndicators();
+        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
+        }
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        this._chartViewRestored = false;
+        this.resize();
+        if (this.data && this.data.length > 0) {
+            this.jumpToLatest();
+        } else {
+            this.fitToView();
+        }
+        this._endTimeframeSwitching();
+        this.scheduleRender();
+        if (typeof this._fireChartDataLoaded === 'function') {
+            try { this._fireChartDataLoaded(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
      * Load a timeframe window from the server (viewport-based).
      * Fetches last 5000 candles at the requested timeframe.
      * @param {string} timeframe
@@ -12354,63 +12477,41 @@ class Chart {
             this._panLoading = false;
             this._chartViewRestored = false;
 
-            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
-            this.resize();
-
             // Commit the new timeframe BEFORE ingest so _commitLoadedBars + the
             // chartDataLoaded listeners (which can trigger sub-renders) see a
             // consistent {currentTimeframe, data} pair. The render path is still
             // frozen by `_timeframeSwitching` so nothing paints until we explicitly
             // end the switch below.
             this._commitTimeframeChange(timeframe);
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
-
-            // Immediately put the chart into a renderable state.
-            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
-            // which some listeners react to with a render. Without a valid offsetX for
-            // the NEW dataset, those intermediate renders produce
-            // "No candles drawn! All N candles are outside viewport" warnings and a
-            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
-            // The rAF below refines the view (restore center timestamp) once dimensions settle.
-            if (Array.isArray(this.data) && this.data.length > 0) {
-                this._chartViewRestored = false;
-                this.fitToView();
-            }
+            this._ingestSmartWindowResult(result, {
+                skipFitToView: true,
+                deferIndicators: true,
+            });
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             if (this.hideLoader) this.hideLoader();
 
+            this._scheduleSmartPrefetchTimeframes(this.currentFileId, timeframe, session);
+
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // TradingView-style reset on every TF switch: identical to the
-                // user double-clicking the time axis (default candleWidth,
-                // autoScale ON, latest candle at the right edge). Previously we
-                // tried to preserve the visible center timestamp + previous
-                // candleWidth across the switch, but that often landed the user
-                // on an arbitrary region of the new TF and required a manual
-                // double-click to get a usable view. jumpToLatest is also
-                // self-healing for the offscreen-viewport edge case the old
-                // sanity-check guarded against.
+                this.candleWidth = DEFAULT_CANDLE_WIDTH;
+                this.priceZoom = 1;
+                this.priceOffset = 0;
+                this.autoScale = true;
+
                 if (this.data && this.data.length > 0) {
+                    this._chartViewRestored = false;
                     this.jumpToLatest();
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
                 }
-                // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
-                // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
-                this.render();
-                // Refresh partner-panel sync positions immediately after the
-                // new viewport settles.  Without this, _timeSyncLastTargetBar
-                // retains the stale bar-index from the previous timeframe and
-                // the first user scroll produces a large unexpected jump on
-                // same-pair panels even when time-sync is enabled.
-                // dispatchScrollSync is a no-op when all sync is disabled.
                 if (typeof this.dispatchScrollSync === 'function') {
                     this.dispatchScrollSync();
                 }
@@ -12796,6 +12897,7 @@ class Chart {
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
         if (!this._serverCursors) return false;
+        if (this._suppressPanLoadUntilUserPan && !force) return false;
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
@@ -13507,6 +13609,16 @@ class Chart {
         );
     }
 
+    _isWheelBurst() {
+        return typeof this._wheelBurstUntil === 'number'
+            && performance.now() < this._wheelBurstUntil;
+    }
+
+    /** Pan drag or wheel zoom — use lightweight render (skip heavy overlays). */
+    _isInteractionFastPath() {
+        return this._isChartViewPanning() || this._isWheelBurst();
+    }
+
     /** Lower draw budget while the chart view is moving (pan / inertia). */
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
@@ -13933,6 +14045,7 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
+        const interactionFast = this._isInteractionFastPath();
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -13996,8 +14109,8 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes + news markers (lite).
-        if (chartViewPanning) {
+        // Fast path while dragging or wheel-zooming: candles + axes (lite).
+        if (interactionFast) {
             const panOpts = { panFast: true };
             this.drawGrid();
             this.drawVolume(visible, panOpts);
@@ -14008,11 +14121,11 @@ class Chart {
             this.drawCurrentPriceLabel(visible);
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
-            } else {
+            } else if (!this._isWheelBurst()) {
                 this._clearPanDrawingsLayerTransform();
                 this.redrawDrawings();
             }
-            this._syncOrderOverlaysDuringPan(true, { lite: true });
+            this._syncOrderOverlaysDuringPan(interactionFast, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -17447,11 +17560,15 @@ class Chart {
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
+            // Pan-load stays off until the user actually pans (wheel-only zoom-out should
+            // not immediately fire a 5k-bar /candles fetch).
             clearTimeout(this._wheelPostBurstTimer);
             this._wheelPostBurstTimer = setTimeout(() => {
+                this._suppressPanLoadUntilUserPan = true;
                 if (this.data && this.data.length > 0) {
                     try { this.constrainOffset(); } catch (_e) {}
                 }
+                this.scheduleRender();
             }, 160);
 
             // No zoom if we have no data
@@ -17780,6 +17897,7 @@ class Chart {
                 this.isZooming = true;
             } else if (mode === 'chart') {
                 this.drag.type = 'pan';
+                this._suppressPanLoadUntilUserPan = false;
                 this._snapshotPanDrawingsLayer();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
