@@ -564,7 +564,7 @@ class Chart {
         // we drop the cached precision so the registry is re-queried for the new tick
         // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
         this._symbolPrecisionResolvedFor = null;
-        this._RAW_DATA_CAP = 80_000; // ring buffer: max candles in memory (non-replay pan loads)
+        this._RAW_DATA_CAP = 50_000; // ring buffer: max candles in memory (non-replay pan loads)
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
          * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
@@ -13513,32 +13513,48 @@ class Chart {
 
     /**
      * TradingView-style cap: max bar slots visible on screen for the active timeframe.
-     * Prevents zoom-out from fitting tens of thousands of 1m candles (scale/render stall).
+     * Zoom-out stops at this budget so scale/render/pan stay smooth (especially on 1m).
+     * Override: window.CHART_MAX_BARS_ON_SCREEN = { '1m': 1200, ... } or a number multiplier.
      */
     _getMaxBarsOnScreen(timeframe) {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
-        const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
+        // ~1 bar per pixel of plot width (TradingView-like density ceiling).
+        const fromWidth = Math.max(280, Math.ceil(plotPx * 1.05));
         const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
         const limits = {
-            '1m': 3500, '2m': 3200, '3m': 3000, '5m': 2800,
-            '10m': 2600, '15m': 2400, '30m': 2200,
-            '45m': 2000, '1h': 1800, '2h': 1600, '3h': 1500, '4h': 1400,
-            '6h': 1300, '8h': 1200, '12h': 1100,
-            '1d': 1200, '1w': 900, '1wk': 900,
+            '1m': 1600, '2m': 1500, '3m': 1400, '5m': 1300,
+            '10m': 1200, '15m': 1100, '30m': 1000,
+            '45m': 950, '1h': 900, '2h': 850, '3h': 800, '4h': 750,
+            '6h': 700, '8h': 650, '12h': 600,
+            '1d': 700, '1w': 520, '1wk': 520,
         };
-        const tfCap = limits[tf];
-        if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
-        const mo = tf.match(/^(\d+)mo$/);
-        if (mo) return Math.min(fromWidth, 800);
-        return Math.min(fromWidth, 2400);
+        let cap = limits[tf];
+        if (!Number.isFinite(cap)) {
+            const mo = tf.match(/^(\d+)mo$/);
+            cap = mo ? 480 : 1000;
+        }
+        let maxBars = Math.min(fromWidth, cap);
+
+        if (typeof window !== 'undefined' && window) {
+            const override = window.CHART_MAX_BARS_ON_SCREEN;
+            if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
+                maxBars = Math.min(maxBars, Math.floor(override));
+            } else if (override && typeof override === 'object') {
+                const tfOverride = Number(override[tf]);
+                if (Number.isFinite(tfOverride) && tfOverride > 0) {
+                    maxBars = Math.min(maxBars, Math.floor(tfOverride));
+                }
+            }
+        }
+        return maxBars;
     }
 
     /** In-memory series cap (viewport buffer + pan history); replay uses fullRawData separately. */
     _getMaxInMemoryBars(timeframe) {
         const screen = this._getMaxBarsOnScreen(timeframe);
-        const cap = Number(this._RAW_DATA_CAP) > 0 ? Number(this._RAW_DATA_CAP) : 80000;
-        return Math.min(cap, Math.max(screen * 4, screen + 8000));
+        const cap = Number(this._RAW_DATA_CAP) > 0 ? Number(this._RAW_DATA_CAP) : 50000;
+        return Math.min(cap, Math.max(screen * 3, screen + 4000));
     }
 
     /** Non-replay pan fetch size — smaller chunks load progressively when scrolling back. */
@@ -13675,7 +13691,7 @@ class Chart {
             this.data.length,
             -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles
         );
-        const maxScaleBars = this._getMaxBarsOnScreen() + 80;
+        const maxScaleBars = this._getMaxBarsOnScreen() + 48;
         if (visEnd - visStart > maxScaleBars) {
             const mid = Math.floor((visStart + visEnd) / 2);
             visStart = Math.max(0, mid - Math.floor(maxScaleBars / 2));
@@ -13839,11 +13855,28 @@ class Chart {
         );
     }
 
-    /** Lower draw budget while the chart view is moving (pan / inertia). */
+    /** Lower draw budget while the chart view is moving (pan / inertia / wheel zoom burst). */
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
+        // ~1 aggregated bucket per screen pixel while dragging — keeps pan at 60fps.
+        return Math.min(520, Math.max(200, Math.ceil(plotPx * 1.05)));
+    }
+
+    /** Candle/volume LOD bucket count: full quality idle, tighter while interacting. */
+    _getDrawLodCap(fastPath = false) {
+        const m = this.margin || { l: 0, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        if (fastPath) return this._getPanLodCap();
+        const screenCap = this._getMaxBarsOnScreen() + 40;
+        return Math.min(screenCap, Math.max(320, Math.ceil(plotPx * 1.5)));
+    }
+
+    /** Pan drag, inertia, or wheel zoom — use lightweight render path. */
+    _isInteractiveViewportChange() {
+        const wheelBurst = typeof this._wheelBurstUntil === 'number'
+            && performance.now() < this._wheelBurstUntil;
+        return this._isChartViewPanning() || wheelBurst;
     }
 
     /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
@@ -14265,6 +14298,7 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
+        const interactiveFast = this._isInteractiveViewportChange();
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -14286,10 +14320,10 @@ class Chart {
         // separate-panel indicators to miss segments when scrolling into older bars.
         const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
         const plotRight = this.w - mVis.r;
-        const edgeBuf = 6;
+        const edgeBuf = interactiveFast ? 3 : 6;
         let startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
         let endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
-        const maxRenderBars = this._getMaxBarsOnScreen() + 120;
+        const maxRenderBars = this._getMaxBarsOnScreen() + (interactiveFast ? 48 : 80);
         if (endIdx - startIdx > maxRenderBars) {
             const mid = Math.floor((startIdx + endIdx) / 2);
             startIdx = Math.max(0, mid - Math.floor(maxRenderBars / 2));
@@ -14334,8 +14368,8 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes + news markers (lite).
-        if (chartViewPanning) {
+        // Fast path while dragging or wheel-zooming: candles + axes, skip heavy overlays.
+        if (interactiveFast) {
             const panOpts = { panFast: true };
             this.drawGrid();
             this.drawVolume(visible, panOpts);
@@ -14344,13 +14378,13 @@ class Chart {
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
-            if (this._canPanTransformDrawings()) {
+            if (chartViewPanning && this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
                 this._clearPanDrawingsLayerTransform();
-                this.redrawDrawings();
+                if (chartViewPanning) this.redrawDrawings();
             }
-            this._syncOrderOverlaysDuringPan(true, { lite: true });
+            this._syncOrderOverlaysDuringPan(chartViewPanning, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -16104,7 +16138,7 @@ class Chart {
         this.ctx.clip();
         
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
-        const maxVolLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
+        const maxVolLod = this._getDrawLodCap(!!opts.panFast);
         const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod);
         let volLodMax = 1;
         if (volLod) {
@@ -16687,7 +16721,7 @@ class Chart {
         // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
         // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
+        const maxLod = this._getDrawLodCap(!!opts.panFast);
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
