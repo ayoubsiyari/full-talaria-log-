@@ -2107,23 +2107,6 @@ class Chart {
     _getTimeframesToPrefetch(currentTf) {
         const cur = String(currentTf || '1m').toLowerCase().trim();
         const out = new Set();
-        try {
-            if (typeof window !== 'undefined' && window.timeframeFavorites
-                && Array.isArray(window.timeframeFavorites.favorites)) {
-                window.timeframeFavorites.favorites.forEach((f) => {
-                    const n = String(f || '').toLowerCase().trim();
-                    if (n) out.add(n);
-                });
-            } else {
-                const saved = userStorage.getItem('chart_timeframe_favorites');
-                if (saved) {
-                    JSON.parse(saved).forEach((f) => {
-                        const n = String(f || '').toLowerCase().trim();
-                        if (n) out.add(n);
-                    });
-                }
-            }
-        } catch (e) { /* ignore */ }
         const ladder = ['1m', '2m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
         const idx = ladder.indexOf(cur);
         if (idx >= 0) {
@@ -2131,7 +2114,7 @@ class Chart {
             if (idx < ladder.length - 1) out.add(ladder[idx + 1]);
         }
         out.delete(cur);
-        return Array.from(out).slice(0, 2);
+        return Array.from(out).slice(0, 1);
     }
 
     _storePrefetchedTfCache(fileId, tf, result, candles) {
@@ -2272,10 +2255,6 @@ class Chart {
         return Number.isFinite(t) ? Math.floor(t) : null;
     }
 
-    _btTfCacheAnchorKey(sessionEndMs) {
-        return sessionEndMs != null && Number.isFinite(sessionEndMs) ? String(sessionEndMs) : 'none';
-    }
-
     _getBtTfDataCache(fileId, timeframe) {
         if (!fileId || !timeframe || !this._btTfDataCache) return null;
         const perFile = this._btTfDataCache.get(String(fileId));
@@ -2283,7 +2262,10 @@ class Chart {
         const tf = String(timeframe).toLowerCase().trim();
         const entry = perFile.get(tf);
         if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
-        const anchorKey = this._btTfCacheAnchorKey(this._getBacktestSessionEndMs());
+        const playheadMs = this._captureReplayPlayheadMs(this.replaySystem);
+        const anchorKey = this._btTfCacheAnchorKey(
+            this._getBacktestSessionEndMs(), playheadMs, tf
+        );
         if (entry.anchorKey !== anchorKey) return null;
         return entry;
     }
@@ -2293,6 +2275,9 @@ class Chart {
         if (!Array.isArray(rawData) || !rawData.length) return;
         const tf = String(timeframe).toLowerCase().trim();
         const sessionEndMs = this._getBacktestSessionEndMs();
+        const playheadMs = meta.playheadMs != null
+            ? meta.playheadMs
+            : this._captureReplayPlayheadMs(this.replaySystem);
         if (!this._btTfDataCache) this._btTfDataCache = new Map();
         const fid = String(fileId);
         if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
@@ -2303,7 +2288,7 @@ class Chart {
             : rawData.slice();
         perFile.set(tf, {
             at: Date.now(),
-            anchorKey: this._btTfCacheAnchorKey(sessionEndMs),
+            anchorKey: this._btTfCacheAnchorKey(sessionEndMs, playheadMs, tf),
             rawData: storedRaw,
             totalCandles: meta.totalCandles != null ? meta.totalCandles : rawData.length,
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
@@ -2328,23 +2313,29 @@ class Chart {
         if (!this.isBacktestMode || !fileId) return;
         const ric = typeof window !== 'undefined' && window.requestIdleCallback
             ? window.requestIdleCallback
-            : (cb) => setTimeout(cb, 2500);
+            : (cb) => setTimeout(cb, 8000);
         const self = this;
         ric(() => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
+            if (self._timeframeSwitching) return;
+            if (self.replaySystem && self.replaySystem.isPlaying) return;
+
+            const playheadMs = self._captureReplayPlayheadMs(self.replaySystem);
             const sessionEndMs = self._getBacktestSessionEndMs(session);
-            const historyRange = self._getBacktestSessionEndFetchRange(sessionEndMs);
             const fetchOpts = { skipSessionDates: true, limit: self.BACKTEST_SMART_INITIAL_LIMIT || 800 };
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
-            const targets = new Set(['1m', '5m', '15m', '1h', '4h', '1d']);
-            targets.delete(cur);
-            if (self._getTimeframesToPrefetch) {
-                self._getTimeframesToPrefetch(cur).forEach((t) => targets.add(t));
-            }
-            Array.from(targets).slice(0, 6).forEach((tf) => {
+            const targets = self._getTimeframesToPrefetch
+                ? self._getTimeframesToPrefetch(cur)
+                : [];
+            if (!targets.length) return;
+
+            targets.slice(0, 1).forEach((tf) => {
                 if (self._getBtTfDataCache(fileId, tf)) return;
-                self._fetchSmartWindow(fileId, tf, session || self.backtestingSession || {}, 'end', historyRange, fetchOpts)
+                const windowRange = self._backtestTfUsesPlayheadFetchRange(tf) && Number.isFinite(playheadMs)
+                    ? self._getBacktestReplayFetchRange(tf, session || self.backtestingSession || {}, playheadMs)
+                    : self._getBacktestSessionEndFetchRange(sessionEndMs);
+                self._fetchSmartWindow(fileId, tf, session || self.backtestingSession || {}, 'end', windowRange, fetchOpts)
                     .then((result) => {
                         if (!self._smartResponseHasPayload(result)) return;
                         if (String(self.currentFileId) !== String(fileId)) return;
@@ -2361,6 +2352,7 @@ class Chart {
                                 hasMoreRight: result.has_more_right,
                             },
                             nativeRawFetchTf: tf,
+                            playheadMs,
                         });
                     })
                     .catch(() => {});
@@ -13479,6 +13471,62 @@ class Chart {
             : null;
     }
 
+    /**
+     * Backtest replay TF fetch window centered on the playhead (fine TFs) so switching
+     * 1D→1m at April 2015 does not pull only the last N minutes before session end.
+     */
+    _getBacktestReplayFetchRange(timeframe, session, playheadMs) {
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        let sessionStartMs = null;
+        try {
+            const raw = session?.startDate || session?.start_date;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const barLimit = Math.min(
+            2000,
+            Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800
+        );
+        const forwardBars = Math.min(400, Math.max(80, Math.floor(barLimit * 0.2)));
+        const anchor = Number.isFinite(playheadMs) ? playheadMs : sessionEndMs;
+        if (!Number.isFinite(anchor)) {
+            return this._getBacktestSessionEndFetchRange(sessionEndMs);
+        }
+
+        let endTs = anchor + forwardBars * tfMs;
+        if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+            endTs = Math.min(endTs, sessionEndMs);
+        }
+        let startTs = endTs - barLimit * tfMs;
+        if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
+            startTs = Math.max(startTs, sessionStartMs - 500 * tfMs);
+        }
+
+        return {
+            startTs: Math.floor(startTs),
+            endTs: Math.floor(endTs),
+        };
+    }
+
+    _backtestTfUsesPlayheadFetchRange(timeframe) {
+        const tfMs = this.parseTimeframe(timeframe);
+        return Number.isFinite(tfMs) && tfMs > 0 && tfMs <= 60 * 60 * 1000;
+    }
+
+    _btTfCacheAnchorKey(sessionEndMs, playheadMs, timeframe) {
+        if (this._backtestTfUsesPlayheadFetchRange(timeframe) && Number.isFinite(playheadMs)) {
+            const bucketMs = 60 * 60 * 1000;
+            return `ph:${Math.floor(playheadMs / bucketMs)}`;
+        }
+        return sessionEndMs != null && Number.isFinite(sessionEndMs)
+            ? `end:${Math.floor(sessionEndMs)}`
+            : 'none';
+    }
+
     async _refetchBacktestTimeframe(timeframe) {
         const replay = this.replaySystem;
         if (!replay || !this.currentFileId) {
@@ -13537,7 +13585,10 @@ class Chart {
 
         const loadId = ++this._timeframeLoadSeq;
 
-        const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
+        const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
+        const historyRange = this._backtestTfUsesPlayheadFetchRange(timeframe) && Number.isFinite(playheadMs)
+            ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
+            : this._getBacktestSessionEndFetchRange(sessionEndMs);
         const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 800 };
 
         let result;
@@ -13594,6 +13645,14 @@ class Chart {
             skipTimeframePrefetch: true,
         });
         this._saveBtTfDataCacheFromChart(this.currentFileId, timeframe);
+        if (this._btTfDataCache) {
+            const perFile = this._btTfDataCache.get(String(this.currentFileId));
+            const tfKey = String(timeframe).toLowerCase().trim();
+            const entry = perFile && perFile.get(tfKey);
+            if (entry && Number.isFinite(playheadMs)) {
+                entry.anchorKey = this._btTfCacheAnchorKey(sessionEndMs, playheadMs, tfKey);
+            }
+        }
 
         if (this.hideLoader) this.hideLoader();
 
