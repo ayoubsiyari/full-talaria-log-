@@ -579,15 +579,6 @@ class Chart {
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
         this._smartCacheTtlMs = 120000;
-        /** Finest bar spacing (ms) held in rawData — used to skip /smart when client resample suffices. */
-        this._nativeRawBarMs = null;
-        /** After wheel zoom, suppress pan-load until the user actually pans (avoids post-zoom 5k fetch). */
-        this._suppressPanLoadUntilUserPan = false;
-        this._indicatorRecalcHandle = null;
-        /** Set when rawData/data changed but full indicator pass was deferred (pan / idle). */
-        this._indicatorsNeedRecalc = false;
-        this._wheelRenderRaf = null;
-        this._replayRenderRaf = null;
         this._sessionStateSaveDebounceMs = 4000;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
@@ -1672,143 +1663,6 @@ class Chart {
         return this._getSmartCachedPayload(fileId, params, true);
     }
 
-    _inferMedianBarPeriodMs(data) {
-        if (!Array.isArray(data) || data.length < 2) return NaN;
-        const maxSamples = Math.min(data.length - 1, 48);
-        let sum = 0;
-        let count = 0;
-        for (let i = 1; i <= maxSamples; i++) {
-            const dt = Number(data[i].t) - Number(data[i - 1].t);
-            if (Number.isFinite(dt) && dt > 0) {
-                sum += dt;
-                count += 1;
-            }
-        }
-        return count > 0 ? sum / count : NaN;
-    }
-
-    _updateNativeRawBarMsFromRawData() {
-        const inferred = this._inferMedianBarPeriodMs(this.rawData);
-        if (!Number.isFinite(inferred) || inferred <= 0) return;
-        if (!Number.isFinite(this._nativeRawBarMs) || inferred < this._nativeRawBarMs * 0.92) {
-            this._nativeRawBarMs = inferred;
-        }
-    }
-
-    _canResampleTimeframeLocally(normalizedTf) {
-        if (!Array.isArray(this.rawData) || this.rawData.length === 0) return false;
-        if (typeof this.parseTimeframe !== 'function') return false;
-        const newMs = this.parseTimeframe(normalizedTf);
-        const nativeMs = Number(this._nativeRawBarMs) || this._inferMedianBarPeriodMs(this.rawData);
-        if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(nativeMs) || nativeMs <= 0) return false;
-        return newMs >= nativeMs * 0.92;
-    }
-
-    _cancelIndicatorRecalcTimer() {
-        if (this._indicatorRecalcHandle == null) return;
-        const handle = this._indicatorRecalcHandle;
-        this._indicatorRecalcHandle = null;
-        if (typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
-            try { window.cancelIdleCallback(handle); } catch (_) { /* ignore */ }
-        } else {
-            clearTimeout(handle);
-        }
-    }
-
-    /**
-     * Queue a full indicator recompute without blocking pan/zoom frames.
-     * @param {object} [options]
-     * @param {boolean} [options.deferWhileInteracting=true] - wait until pan/wheel burst ends
-     * @param {boolean} [options.forceRender=true] - scheduleRender after recalc
-     */
-    _scheduleRecalculateIndicators(options = {}) {
-        const deferWhileInteracting = options.deferWhileInteracting !== false;
-        const forceRender = options.forceRender !== false;
-        this._indicatorsNeedRecalc = true;
-
-        if (deferWhileInteracting && (this._isChartViewPanning() || this._isWheelBurst())) {
-            return;
-        }
-        if (this._indicatorRecalcHandle != null) return;
-
-        const run = () => {
-            this._indicatorRecalcHandle = null;
-            if (!this._indicatorsNeedRecalc) return;
-            this._indicatorsNeedRecalc = false;
-            if (typeof this.recalculateIndicators === 'function') {
-                try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
-                if (forceRender) this.scheduleRender();
-            }
-        };
-        const ric = typeof window !== 'undefined' && window.requestIdleCallback
-            ? window.requestIdleCallback
-            : (cb) => setTimeout(cb, 16);
-        this._indicatorRecalcHandle = ric(run, { timeout: 500 });
-    }
-
-    /** Run deferred indicator pass after pan/inertia or pan-load while dragging. */
-    _flushDeferredIndicatorRecalc(forceRender = true) {
-        this._cancelIndicatorRecalcTimer();
-        if (!this._indicatorsNeedRecalc) return;
-        this._indicatorsNeedRecalc = false;
-        if (typeof this.recalculateIndicators === 'function') {
-            try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
-        }
-        if (forceRender) this.scheduleRender();
-    }
-
-    /** Apply merged pan-load bars without redundant copy/resample when TF already matches. */
-    _assignDataFromPanLoad(trimmed, fetchTf) {
-        this.rawData = trimmed;
-        this._updateNativeRawBarMsFromRawData();
-        const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        const srcTf = String(fetchTf || displayTf).toLowerCase().trim();
-        if (srcTf === displayTf) {
-            this.data = trimmed;
-        } else if (this._canResampleTimeframeLocally(displayTf)) {
-            this.data = this.resampleData(trimmed, this.currentTimeframe);
-        } else {
-            this.data = trimmed;
-        }
-        this.bumpDataVersion();
-    }
-
-    _scheduleIndicatorRecalcAfterDataChange() {
-        this._indicatorsNeedRecalc = true;
-        if (this._isChartViewPanning() || this._isWheelBurst()) {
-            return;
-        }
-        this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
-    }
-
-    _scheduleSmartPrefetchTimeframes(fileId, currentTf, session) {
-        const ric = typeof window !== 'undefined' && window.requestIdleCallback
-            ? window.requestIdleCallback
-            : (cb) => setTimeout(cb, 400);
-        ric(() => {
-            if (!fileId || String(this.currentFileId) !== String(fileId)) return;
-            if (!this._smartPrefetchCache) this._smartPrefetchCache = new Map();
-            const cur = String(currentTf || '1m').toLowerCase().trim();
-            const common = ['5m', '15m', '30m', '1h', '4h', '1d'];
-            const sess = session || this.backtestingSession || {};
-            for (let i = 0; i < common.length; i++) {
-                const tf = common[i];
-                if (tf === cur) continue;
-                const params = this._buildSmartWindowParams(fileId, tf, sess);
-                const key = this._smartCacheKeyFromParams(fileId, params);
-                if (this._smartPrefetchCache.has(key)) continue;
-                fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`)
-                    .then((r) => (r.ok ? r.json() : null))
-                    .then((payload) => {
-                        if (payload && this._smartResponseHasPayload(payload)) {
-                            this._setSmartCachedPayload(fileId, params, payload);
-                        }
-                    })
-                    .catch(() => { /* ignore prefetch errors */ });
-            }
-        });
-    }
-
     _scheduleSmartPrefetchOthers(activeFileId, timeframe, session) {
         const ric = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
         ric(() => {
@@ -1921,30 +1775,21 @@ class Chart {
 
     /**
      * Apply parsed OHLCV rows: resample, indicators, view fit, drawings, chartDataLoaded.
-     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent, deferIndicators
+     * @param {object} options skipIndicators, skipFitToView, skipChartDataLoadedEvent (defer listeners until replay playhead is restored)
      */
     _commitLoadedBars(newData, startIndex, options = {}) {
         if (!newData || newData.length === 0) return;
 
         if (startIndex === 0) {
             this.rawData = newData;
-            const inferred = this._inferMedianBarPeriodMs(this.rawData);
-            if (Number.isFinite(inferred) && inferred > 0) {
-                this._nativeRawBarMs = inferred;
-            }
         } else {
             this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
-            this._updateNativeRawBarMsFromRawData();
         }
 
         this.data = this.resampleData(this.rawData, this.currentTimeframe);
 
         if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
-            if (options.deferIndicators) {
-                this._scheduleRecalculateIndicators();
-            } else {
-                this.recalculateIndicators();
-            }
+            this.recalculateIndicators();
         }
 
         // GET /sessions/:id/state often finishes before the first OHLC ingest. In that case
@@ -1998,25 +1843,6 @@ class Chart {
                 }
             }));
             this._emitTimeframeChanged();
-        }
-
-        this._clampCandleWidthToTimeframeZoomLimits();
-    }
-
-    /** Enforce TradingView-style zoom-out floor after data length or timeframe changes. */
-    _clampCandleWidthToTimeframeZoomLimits() {
-        const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
-            ? this.zoomLevel.allowedWidths
-            : null;
-        if (!widths || !Array.isArray(this.data) || this.data.length === 0) return;
-        const minW = this._getEffectiveMinCandleWidth(widths);
-        const maxW = widths[widths.length - 1];
-        if (this.candleWidth < minW) {
-            this.candleWidth = minW;
-            this._candleWidthAtCache = null;
-        } else if (this.candleWidth > maxW) {
-            this.candleWidth = maxW;
-            this._candleWidthAtCache = null;
         }
     }
 
@@ -2233,18 +2059,16 @@ class Chart {
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
-            this._ingestSmartWindowResult(result, { skipFitToView: true, deferIndicators: true });
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-            this._scheduleSmartPrefetchTimeframes(targetFileId, requestTimeframe, session);
 
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
             this.fitToView();
             this.render();
-            this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
@@ -2560,7 +2384,7 @@ class Chart {
             this.currentSymbol = targetTicker || this.currentSymbol;
 
             this._isLoadingOwnPairData = true;
-            this._ingestSmartWindowResult(result, { skipFitToView: true, deferIndicators: true });
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
             this._isLoadingOwnPairData = false;
 
@@ -2612,7 +2436,9 @@ class Chart {
                 this._pendingChartViewSanityCheck = true;
             }
 
-            this._indicatorsNeedRecalc = true;
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (e) {}
+            }
 
             if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
             this.resize();
@@ -2667,7 +2493,6 @@ class Chart {
             }
 
             this.render();
-            this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -9225,7 +9050,6 @@ class Chart {
 	        
 	        this.w = nextW;
 	        this.h = nextH;
-	        this._invalidatePanChartBitmap();
 
 	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
 
@@ -9297,9 +9121,6 @@ class Chart {
         // spans the full loaded history (years of FX range) while the playhead price sits near the top.
         const replay = this.replaySystem;
         if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
-            if (typeof this._isChartViewPanning === 'function' && this._isChartViewPanning()) {
-                return;
-            }
             const st = replay.getReplayAutoScrollState(this);
             if (st && Number.isFinite(st.offsetX)) {
                 this.offsetX = st.offsetX;
@@ -9826,7 +9647,7 @@ class Chart {
         const wheelActive = typeof this._wheelBurstUntil === 'number'
             && performance.now() < this._wheelBurstUntil;
         const panActive = this._isChartViewPanning();
-        if (!wheelActive && !panActive && !this._suppressPanLoadUntilUserPan) {
+        if (!wheelActive && !panActive) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
@@ -12238,12 +12059,8 @@ class Chart {
             return;
         }
 
-        // Always fetch from server when rawData cannot be resampled locally (finer TF than stored native).
+        // Always fetch from server — viewport-based, like TradingView
         if (this.currentFileId) {
-            if (hasData && this._canResampleTimeframeLocally(normalizedTf)) {
-                this._applyLocalTimeframeSwitch(normalizedTf);
-                return;
-            }
             this._loadTimeframeFromServer(normalizedTf);
             return;
         }
@@ -12493,36 +12310,6 @@ class Chart {
     }
     
     /**
-     * Switch timeframe using in-memory rawData (no /smart round-trip).
-     * Used when the destination TF is coarser than or equal to native raw bar spacing.
-     */
-    _applyLocalTimeframeSwitch(normalizedTf) {
-        this._commitTimeframeChange(normalizedTf);
-        this.data = this.resampleData(this.rawData, normalizedTf);
-        this._clampCandleWidthToTimeframeZoomLimits();
-        this._scheduleRecalculateIndicators();
-        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-            this.compareOverlay.refreshForTimeframe(normalizedTf);
-        }
-        this.candleWidth = DEFAULT_CANDLE_WIDTH;
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        this._chartViewRestored = false;
-        this.resize();
-        if (this.data && this.data.length > 0) {
-            this.jumpToLatest();
-        } else {
-            this.fitToView();
-        }
-        this._endTimeframeSwitching();
-        this.scheduleRender();
-        if (typeof this._fireChartDataLoaded === 'function') {
-            try { this._fireChartDataLoaded(); } catch (_) { /* ignore */ }
-        }
-    }
-
-    /**
      * Load a timeframe window from the server (viewport-based).
      * Fetches last 5000 candles at the requested timeframe.
      * @param {string} timeframe
@@ -12567,41 +12354,63 @@ class Chart {
             this._panLoading = false;
             this._chartViewRestored = false;
 
+            if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+            this.resize();
+
             // Commit the new timeframe BEFORE ingest so _commitLoadedBars + the
             // chartDataLoaded listeners (which can trigger sub-renders) see a
             // consistent {currentTimeframe, data} pair. The render path is still
             // frozen by `_timeframeSwitching` so nothing paints until we explicitly
             // end the switch below.
             this._commitTimeframeChange(timeframe);
-            this._ingestSmartWindowResult(result, {
-                skipFitToView: true,
-                deferIndicators: true,
-            });
+            this._ingestSmartWindowResult(result, { skipFitToView: true });
+
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
+            if (Array.isArray(this.data) && this.data.length > 0) {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(timeframe);
             }
             if (this.hideLoader) this.hideLoader();
 
-            this._scheduleSmartPrefetchTimeframes(this.currentFileId, timeframe, session);
-
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                this.candleWidth = DEFAULT_CANDLE_WIDTH;
-                this.priceZoom = 1;
-                this.priceOffset = 0;
-                this.autoScale = true;
-
+                // TradingView-style reset on every TF switch: identical to the
+                // user double-clicking the time axis (default candleWidth,
+                // autoScale ON, latest candle at the right edge). Previously we
+                // tried to preserve the visible center timestamp + previous
+                // candleWidth across the switch, but that often landed the user
+                // on an arbitrary region of the new TF and required a manual
+                // double-click to get a usable view. jumpToLatest is also
+                // self-healing for the offscreen-viewport edge case the old
+                // sanity-check guarded against.
                 if (this.data && this.data.length > 0) {
-                    this._chartViewRestored = false;
                     this.jumpToLatest();
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
                 }
+                // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
+                // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
+                this.render();
+                // Refresh partner-panel sync positions immediately after the
+                // new viewport settles.  Without this, _timeSyncLastTargetBar
+                // retains the stale bar-index from the previous timeframe and
+                // the first user scroll produces a large unexpected jump on
+                // same-pair panels even when time-sync is enabled.
+                // dispatchScrollSync is a no-op when all sync is disabled.
                 if (typeof this.dispatchScrollSync === 'function') {
                     this.dispatchScrollSync();
                 }
@@ -12858,20 +12667,6 @@ class Chart {
             }
         }
 
-        if (typeof replay._recomputeSessionEndIndex === 'function') {
-            replay._recomputeSessionEndIndex();
-        }
-        const tfSwitchMaxIdx = typeof replay._getEffectiveReplayMaxIndex === 'function'
-            ? replay._getEffectiveReplayMaxIndex()
-            : (Array.isArray(replay.fullRawData) ? replay.fullRawData.length - 1 : 0);
-        if (replay.currentIndex > tfSwitchMaxIdx) {
-            replay.currentIndex = tfSwitchMaxIdx;
-            const rb = replay.fullRawData && replay.fullRawData[tfSwitchMaxIdx];
-            if (rb && Number.isFinite(rb.t)) {
-                replay.replayTimestamp = rb.t;
-            }
-        }
-
         // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
         // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
         // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
@@ -12908,13 +12703,7 @@ class Chart {
         }
 
         if (wasPlaying && typeof replay.play === 'function') {
-            if (typeof replay._isAtReplayEnd === 'function' && replay._isAtReplayEnd()) {
-                try {
-                    replay._maybeNotifyReplayToast('Already at the end of this backtest — step back or move the replay head to continue.');
-                } catch (e) { /* ignore */ }
-            } else {
-                try { replay.play(); } catch (e) { /* ignore */ }
-            }
+            try { replay.play(); } catch (e) { /* ignore */ }
         }
 
         // Final viewport reset = "double-click time axis" parity on every TF
@@ -13007,7 +12796,6 @@ class Chart {
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
         if (!this._serverCursors) return false;
-        if (this._suppressPanLoadUntilUserPan && !force) return false;
 
         const isReplay = this.replaySystem && this.replaySystem.isActive && this.replaySystem.fullRawData;
 
@@ -13026,12 +12814,7 @@ class Chart {
 
         const session = this.backtestingSession || {};
         const sessionStartTs = session.startDate ? new Date(session.startDate).getTime() : null;
-        const sessionEndRaw = session.endDate || session.end_date;
-        const sessionEndTs = sessionEndRaw
-            ? (typeof this._sessionEndToInclusiveUtcMs === 'function'
-                ? this._sessionEndToInclusiveUtcMs(sessionEndRaw)
-                : new Date(sessionEndRaw).getTime())
-            : null;
+        const sessionEndTs = session.endDate ? new Date(session.endDate).getTime() : null;
         const hasSessionStart = Number.isFinite(sessionStartTs);
         const hasSessionEnd = Number.isFinite(sessionEndTs);
         
@@ -13231,53 +13014,31 @@ class Chart {
                 }
 
                 if (uniqueNew.length === 0) return;
-
-                if (hasSessionEnd && Number.isFinite(sessionEndTs)) {
-                    merged = merged.filter(c => Number(c?.t) <= sessionEndTs);
-                }
                 
                 if (isReplay) {
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
-                    if (typeof this.replaySystem._recomputeSessionEndIndex === 'function') {
-                        this.replaySystem._recomputeSessionEndIndex();
-                    }
-                    const replayMaxIdx = typeof this.replaySystem._getEffectiveReplayMaxIndex === 'function'
-                        ? this.replaySystem._getEffectiveReplayMaxIndex()
-                        : merged.length - 1;
                     // Keep replay index stable without scanning entire array when possible
                     if (Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
                             this.replaySystem.currentIndex = Math.min(
                                 Math.max(replayIndex + uniqueNew.length, 0),
-                                replayMaxIdx
+                                merged.length - 1
                             );
                         } else if (direction === 'forward') {
                             this.replaySystem.currentIndex = Math.min(
                                 Math.max(replayIndex, 0),
-                                replayMaxIdx
+                                merged.length - 1
                             );
                         } else if (replayTs != null) {
                             const newIdx = merged.findIndex(c => c.t >= replayTs);
-                            if (newIdx >= 0) this.replaySystem.currentIndex = Math.min(newIdx, replayMaxIdx);
+                            if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                         }
                     } else if (replayTs != null) {
                         const newIdx = merged.findIndex(c => c.t >= replayTs);
-                        if (newIdx >= 0) this.replaySystem.currentIndex = Math.min(newIdx, replayMaxIdx);
-                    }
-
-                    if (this.replaySystem.currentIndex > replayMaxIdx) {
-                        this.replaySystem.currentIndex = replayMaxIdx;
-                    }
-                    if (typeof this.replaySystem._isAtSessionBoundary === 'function'
-                        && this.replaySystem._isAtSessionBoundary()
-                        && this.replaySystem.isPlaying) {
-                        try {
-                            this.replaySystem.pause();
-                            this.replaySystem._notifyReplayReachedEndOfData();
-                        } catch (_) { /* ignore */ }
+                        if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                     }
 
                     // Avoid expensive re-slice/re-resample in the middle of active playback.
@@ -13308,7 +13069,8 @@ class Chart {
                             this._serverCursors.firstTs = String(trimmed[0].t);
                         }
                     }
-                    this._assignDataFromPanLoad(trimmed, tf);
+                    this.rawData = trimmed;
+                    this.data = [...this.rawData];
                 }
 
                 // ── Prefetch next batch while user is still panning ──
@@ -13336,7 +13098,7 @@ class Chart {
                 
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
-                    this._scheduleIndicatorRecalcAfterDataChange();
+                    if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
                     this.scheduleRender();
                 }
                 
@@ -13564,87 +13326,12 @@ class Chart {
     }
 
     /**
-     * TradingView-style max bars visible when fully zoomed out — scales with timeframe
-     * so 1m can show ~days of minute bars while 1D shows ~years of daily bars.
-     */
-    _getTimeframeMaxZoomOutBars(timeframe) {
-        const tf = String(timeframe || '1m').toLowerCase().trim();
-        const map = {
-            '1m': 900, '2m': 850, '3m': 800, '4m': 750, '5m': 700,
-            '10m': 650, '15m': 600, '30m': 550, '45m': 520,
-            '1h': 500, '2h': 480, '4h': 450, '6h': 420, '12h': 400,
-            '1d': 380, '1w': 320, '1mo': 280,
-        };
-        if (map[tf]) return map[tf];
-        const monthMatch = tf.match(/^(\d+)mo$/);
-        if (monthMatch) {
-            const n = Math.max(1, parseInt(monthMatch[1], 10));
-            return Math.max(120, Math.floor(280 / n));
-        }
-        return 600;
-    }
-
-    /** Minimum pixel spacing between bar centers at full zoom-out (readability + perf). */
-    _getMinBarSpacingPxForTimeframe(timeframe) {
-        const tf = String(timeframe || '1m').toLowerCase().trim();
-        const map = {
-            '1m': 3, '2m': 2.8, '3m': 2.6, '4m': 2.5, '5m': 2.5,
-            '10m': 2.4, '15m': 2.4, '30m': 2.3, '45m': 2.3,
-            '1h': 2.5, '2h': 2.5, '4h': 2.5, '6h': 2.5, '12h': 2.5,
-            '1d': 3, '1w': 3.5, '1mo': 4,
-        };
-        if (map[tf]) return map[tf];
-        return 2.5;
-    }
-
-    /** Hard cap on how many bars can appear on screen when fully zoomed out (TradingView-style). */
-    _getMaxVisibleBarsForZoomOut(timeframe) {
-        const m = this.margin || { l: 0, r: 60, t: 5, b: 30 };
-        const plotWidth = Math.max(1, (this.w || 1600) - m.l - m.r);
-        const minSpacingPx = this._getMinBarSpacingPxForTimeframe(timeframe);
-        const viewportCap = Math.max(100, Math.floor(plotWidth / minSpacingPx));
-        return Math.min(viewportCap, this._getTimeframeMaxZoomOutBars(timeframe));
-    }
-
-    /**
-     * Smallest allowedWidths entry whose bar spacing fits `targetSpacing` (ms per bar on screen).
-     * Used to stop zoom-out once all (or TF-capped) bars fit on screen — TradingView parity.
-     */
-    _getCandleWidthForTargetSpacing(targetSpacing, allowedWidths) {
-        const widths = (allowedWidths && allowedWidths.length)
-            ? allowedWidths
-            : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
-        if (!Number.isFinite(targetSpacing) || targetSpacing <= 0) return widths[0];
-        for (let i = 0; i < widths.length; i++) {
-            if (this._getSpacingForCandleWidth(widths[i]) >= targetSpacing) {
-                return widths[i];
-            }
-        }
-        return widths[widths.length - 1];
-    }
-
-    /**
-     * Minimum candleWidth for zoom-out: static floor + per-TF bar budget + "all loaded bars visible" cap.
-     * Prevents zooming out to sub-pixel slivers beyond what TradingView allows on each timeframe.
+     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
+     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        const staticMin = widths[0];
-
-        if (!Array.isArray(this.data) || this.data.length === 0 || this.w < 200) {
-            return staticMin;
-        }
-
-        const m = this.margin || { l: 0, r: 60, t: 5, b: 30 };
-        const plotWidth = Math.max(1, this.w - m.l - m.r);
-        const rightMargin = Math.max(0, Number(this.timeScale?.rightOffsetCandles) || 15);
-        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        const maxBars = this._getMaxVisibleBarsForZoomOut(tf);
-        const effectiveBars = Math.min(this.data.length, maxBars) + rightMargin;
-        const targetSpacing = plotWidth / Math.max(1, effectiveBars);
-        const tfMin = this._getCandleWidthForTargetSpacing(targetSpacing, widths);
-
-        return Math.max(staticMin, tfMin);
+        return widths[0];
     }
     
     /**
@@ -13714,10 +13401,7 @@ class Chart {
         // Apply price zoom and offset with improved calculations
         let domainMin, domainMax;
 
-        if (this._panBitmapUsesFrozenScales()) {
-            domainMin = this._panBitmapFrozenYDomain[0];
-            domainMax = this._panBitmapFrozenYDomain[1];
-        } else if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
+        if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
             // Auto-scale mode: fit all visible data with symmetric padding
             domainMin = minPrice - padding;
             domainMax = maxPrice + padding;
@@ -13776,11 +13460,7 @@ class Chart {
         // Include effective last price in Y domain so the price line/label stay drawable
         // in auto-scale mode or when the right edge has no visible bars.
         // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
-        if (
-            !this._panBitmapUsesFrozenScales() &&
-            this.chartSettings.showPriceLine !== false &&
-            this.autoScale
-        ) {
+        if (this.chartSettings.showPriceLine !== false && this.autoScale) {
             const linePrice = this.resolveEffectiveCurrentPrice(visible);
             if (Number.isFinite(linePrice)) {
                 const span = domainMax - domainMin;
@@ -13801,9 +13481,7 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        const maxVolume = (this._panBitmapUsesFrozenScales() && this._panBitmapFrozenVolumeDomain)
-            ? this._panBitmapFrozenVolumeDomain[1]
-            : Math.max(...visible.map(d => d.v), 1);
+        const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
@@ -13829,191 +13507,11 @@ class Chart {
         );
     }
 
-    _isWheelBurst() {
-        return typeof this._wheelBurstUntil === 'number'
-            && performance.now() < this._wheelBurstUntil;
-    }
-
-    _isReplayRenderFastPath() {
-        const rs = this.replaySystem;
-        if (!rs || !rs.isActive) return false;
-        return !!(rs.isPlaying || rs.animatingCandle || rs.fastMode);
-    }
-
-    /** Pan drag, wheel zoom, or replay playback — use lightweight render. */
-    _isInteractionFastPath() {
-        return this._isChartViewPanning() || this._isWheelBurst() || this._isReplayRenderFastPath();
-    }
-
-    _resolveCandleLodCap(plotPx, visibleCount, opts = {}) {
-        if (opts.panFast || this._isInteractionFastPath()) {
-            return this._getPanLodCap();
-        }
-        let maxLod = Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
-        if (visibleCount > plotPx * 1.5 || (this.candleWidth != null && this.candleWidth < 1.5)) {
-            maxLod = Math.min(maxLod, Math.max(240, Math.ceil(plotPx * 1.15)));
-        }
-        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        if (tf === '1m' && visibleCount > plotPx) {
-            maxLod = Math.min(maxLod, Math.max(200, Math.ceil(plotPx)));
-        }
-        return maxLod;
-    }
-
-    _scheduleReplayRender() {
-        if (this._replayRenderRaf != null) return;
-        this._replayRenderRaf = requestAnimationFrame(() => {
-            this._replayRenderRaf = null;
-            this.renderPending = false;
-            this.render();
-        });
-    }
-
     /** Lower draw budget while the chart view is moving (pan / inertia). */
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
-    }
-
-    _invalidatePanChartBitmap() {
-        this._panSeriesCacheMeta = null;
-    }
-
-    _clearPanBitmapFrozenScales() {
-        this._panBitmapFrozenYDomain = null;
-        this._panBitmapFrozenVolumeDomain = null;
-    }
-
-    _panBitmapUsesFrozenScales() {
-        return !!(
-            this._panBitmapFrozenYDomain &&
-            (this._isChartViewPanning() || this._panBitmapPendingReleaseRender)
-        );
-    }
-
-    /** Shared pan delta for SVG drawings layer and series bitmap — must stay in sync. */
-    _getPanLayerTranslateDeltas() {
-        if (this._panSnapOffsetX == null) return { dx: 0, ty: 0 };
-        const dx = this.offsetX - this._panSnapOffsetX;
-        let ty = 0;
-        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
-            const m = this.margin;
-            const priceAreaHeight = this.h - m.t - m.b;
-            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            if (priceAreaHeight > 0 && Number.isFinite(priceRange) && priceRange > 0) {
-                ty = ((this.priceOffset - this._panSnapPriceOffset) / priceRange) * priceAreaHeight;
-            }
-        }
-        return { dx, ty };
-    }
-
-    /** TradingView-style: slide a pre-rendered series bitmap during chart pan instead of redrawing every candle. */
-    _canUsePanChartBitmapCache() {
-        if (!this._isChartViewPanning()) return false;
-        if (this._isWheelBurst() || this._isReplayRenderFastPath()) return false;
-        if (this.replaySystem && this.replaySystem.isActive) return false;
-        if (!this.data || this.data.length === 0) return false;
-        if (this.boxZoom && this.boxZoom.active) return false;
-        if (this._panSnapOffsetX == null || !this._panSeriesCache) return false;
-        return true;
-    }
-
-    /** Re-capture series bitmap at the current pan position when cache was invalidated mid-drag. */
-    _reanchorPanChartBitmapCache() {
-        if (!this._isChartViewPanning() || !this.yScale) return;
-        this._panSnapOffsetX = this.offsetX;
-        this._panSnapPriceOffset = this.priceOffset;
-        this._panBitmapFrozenYDomain = this.yScale.domain().slice();
-        if (this.volumeScale) {
-            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
-        }
-        this._preparePanChartBitmapCache();
-    }
-
-    _getPanSeriesBitmapSnapMeta() {
-        return {
-            offsetX: this._panSnapOffsetX,
-            priceOffset: this._panSnapPriceOffset,
-            candleWidth: this.candleWidth,
-            priceZoom: this.priceZoom,
-            w: this.w,
-            h: this.h,
-            dataVersion: this.dataVersion,
-            showVolume: !!this.chartSettings.showVolume,
-        };
-    }
-
-    /**
-     * Capture series layer (candles, volume, indicators) at pan start so drag frames can blit+translate.
-     */
-    _preparePanChartBitmapCache() {
-        if (!this.data || this.data.length === 0 || this.w < 2 || this.h < 2) return;
-        if (!this.yScale) return;
-
-        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const plotRight = this.w - mVis.r;
-        const edgeBuf = 6;
-        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
-        const visible = this.data.slice(startIdx, endIdx);
-        if (!visible.length) return;
-
-        const snap = this._getPanSeriesBitmapSnapMeta();
-        const dpr = window.devicePixelRatio || 1;
-        const pw = Math.max(1, Math.floor(this.w * dpr));
-        const ph = Math.max(1, Math.floor(this.h * dpr));
-
-        if (!this._panSeriesCache) {
-            this._panSeriesCache = document.createElement('canvas');
-        }
-        if (this._panSeriesCache.width !== pw || this._panSeriesCache.height !== ph) {
-            this._panSeriesCache.width = pw;
-            this._panSeriesCache.height = ph;
-        }
-
-        const octx = this._panSeriesCache.getContext('2d');
-        octx.setTransform(1, 0, 0, 1, 0, 0);
-        octx.clearRect(0, 0, pw, ph);
-        octx.scale(dpr, dpr);
-
-        const prevCtx = this.ctx;
-        this.ctx = octx;
-        try {
-            const panOpts = { panFast: true };
-            this.drawVolume(visible, panOpts);
-            this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function') {
-                this.drawIndicators();
-            }
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
-            }
-            if (typeof this.drawSecondaryIndicators === 'function') {
-                this.drawSecondaryIndicators();
-            }
-        } finally {
-            this.ctx = prevCtx;
-        }
-
-        this._panSeriesCacheMeta = snap;
-    }
-
-    _drawPanSeriesBitmapCache() {
-        const { dx, ty } = this._getPanLayerTranslateDeltas();
-
-        const m = this.margin || { l: 0, r: 60, t: 0, b: 30 };
-        this.ctx.save();
-        this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, Math.max(0, this.w - m.l - m.r), Math.max(0, this.h - m.t - m.b));
-        this.ctx.clip();
-        this.ctx.drawImage(
-            this._panSeriesCache,
-            0, 0, this._panSeriesCache.width, this._panSeriesCache.height,
-            dx, ty, this.w, this.h
-        );
-        this.ctx.restore();
     }
 
     /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
@@ -14049,12 +13547,6 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
-        if (this.yScale) {
-            this._panBitmapFrozenYDomain = this.yScale.domain().slice();
-        }
-        if (this.volumeScale) {
-            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
-        }
     }
 
     _clearAxisHighlightPanTransform() {
@@ -14081,7 +13573,7 @@ class Chart {
         ).attr('transform', timeT);
     }
 
-    _clearPanDrawingsLayerTransform(clearFrozen = true) {
+    _clearPanDrawingsLayerTransform() {
         const dm = this.drawingManager;
         if (dm) {
             if (typeof dm._ensureDrawingsPanLayer === 'function') {
@@ -14106,11 +13598,6 @@ class Chart {
         this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
-        this._invalidatePanChartBitmap();
-        if (clearFrozen) {
-            this._panBitmapPendingReleaseRender = false;
-            this._clearPanBitmapFrozenScales();
-        }
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
@@ -14153,7 +13640,16 @@ class Chart {
     _applyPanDrawingsLayerTransform() {
         const dm = this.drawingManager;
         if (!dm || this._panSnapOffsetX == null) return;
-        const { dx, ty } = this._getPanLayerTranslateDeltas();
+        const dx = this.offsetX - this._panSnapOffsetX;
+        let ty = 0;
+        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
+            const m = this.margin;
+            const priceAreaHeight = this.h - m.t - m.b;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            if (priceRange > 0) {
+                ty = ((this.priceOffset - this._panSnapPriceOffset) / priceRange) * priceAreaHeight;
+            }
+        }
         const transform = ty ? `translate(${dx},${ty})` : `translate(${dx},0)`;
         if (typeof dm._ensureDrawingsPanLayer === 'function') {
             dm._ensureDrawingsPanLayer();
@@ -14182,8 +13678,6 @@ class Chart {
         const zPan = this._v9LayoutZoom();
         const effectiveDx = this.timeScale.locked ? 0 : (cx - this.drag.lastX) / zPan;
         const effectiveDy = this.priceScale.locked ? 0 : (cy - this.drag.lastY) / zPan;
-
-        if (effectiveDx === 0 && effectiveDy === 0) return;
 
         this.offsetX += effectiveDx;
         if (this.yScale && effectiveDy !== 0) {
@@ -14237,15 +13731,6 @@ class Chart {
         this._panPendingClientY = null;
     }
 
-    _scheduleWheelRender() {
-        if (this._wheelRenderRaf != null) return;
-        this._wheelRenderRaf = requestAnimationFrame(() => {
-            this._wheelRenderRaf = null;
-            this.renderPending = false;
-            this.render();
-        });
-    }
-
     scheduleRender() {
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
         const timeAxisZoomDrag =
@@ -14261,19 +13746,7 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (wheelBurst) {
-            this.renderPending = false;
-            this._scheduleWheelRender();
-            return;
-        }
-
-        if (replayPlaying) {
-            this.renderPending = false;
-            this._scheduleReplayRender();
-            return;
-        }
-
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || panSyncBurst) {
+        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -14300,9 +13773,6 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
-        if (!this._isChartViewPanning()) {
-            this._invalidatePanChartBitmap();
-        }
     }
     
     animateZoom() {
@@ -14463,7 +13933,6 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
-        const interactionFast = this._isInteractionFastPath();
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -14527,54 +13996,28 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
-        if (interactionFast) {
+        // Fast path while dragging chart: candles + axes + news markers (lite).
+        if (chartViewPanning) {
             const panOpts = { panFast: true };
-            if (this._isChartViewPanning() && this._panSnapOffsetX != null && !this._panSeriesCacheMeta) {
-                this._reanchorPanChartBitmapCache();
-            }
-            const usePanBitmap = this._canUsePanChartBitmapCache() && this._panSeriesCacheMeta;
-
-            if (usePanBitmap) {
-                this.drawGrid();
-                this._drawPanSeriesBitmapCache();
-            } else {
-                this.drawGrid();
-                this.drawVolume(visible, panOpts);
-                this.drawCandles(visible, panOpts);
-                this.drawPriceLine(visible);
-
-                // Overlay + pane indicators stay on screen during pan (draw uses visible range only).
-                if (typeof this.drawIndicators === 'function') {
-                    this.drawIndicators();
-                }
-                if (typeof this.renderSeparatePanelIndicators === 'function') {
-                    this.renderSeparatePanelIndicators();
-                }
-                if (typeof this.drawSecondaryIndicators === 'function') {
-                    this.drawSecondaryIndicators();
-                }
-            }
-
-            if (this._canPanTransformDrawings()) {
-                this._applyPanDrawingsLayerTransform();
-            } else if (!this._isWheelBurst() && !this._isChartViewPanning()) {
-                this._clearPanDrawingsLayerTransform();
-                this.redrawDrawings();
-            }
-            this._syncOrderOverlaysDuringPan(interactionFast, { lite: true });
+            this.drawGrid();
+            this.drawVolume(visible, panOpts);
+            this.drawCandles(visible, panOpts);
+            this.drawPriceLine(visible);
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: true });
             this.drawCurrentPriceLabel(visible);
+            if (this._canPanTransformDrawings()) {
+                this._applyPanDrawingsLayerTransform();
+            } else {
+                this._clearPanDrawingsLayerTransform();
+                this.redrawDrawings();
+            }
+            this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
-            }
-            if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
-                this._panBitmapPendingReleaseRender = false;
-                this._clearPanBitmapFrozenScales();
             }
             return;
         }
@@ -14681,11 +14124,6 @@ class Chart {
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
         if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
             window.__economicCalendarNotifyChartRender(this);
-        }
-
-        if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
-            this._panBitmapPendingReleaseRender = false;
-            this._clearPanBitmapFrozenScales();
         }
     }
     
@@ -16911,7 +16349,7 @@ class Chart {
         // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
         // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const maxLod = this._resolveCandleLodCap(plotPx, visible.length, opts);
+        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
@@ -17961,7 +17399,6 @@ class Chart {
                 this.inertia.active = false;
                 this.dispatchScrollSync();
                 this._finishPanDrawingRedraw();
-                this._flushDeferredIndicatorRecalc(true);
             }
         };
         
@@ -18002,23 +17439,19 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            // 150ms burst + rAF-coalesced paints (see _scheduleWheelRender) so wheel zoom stays smooth.
-            this._wheelBurstUntil = performance.now() + 150;
+            // 120ms (was 45ms) so back-to-back wheel ticks stay inside a single burst.
+            // While the burst flag is on, scheduleRender() forces synchronous render() and
+            // constrainOffset() skips the proactive pan-load fetch — together those make
+            // zoom-out feel smooth instead of network-stalled.
+            this._wheelBurstUntil = performance.now() + 120;
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
-            // Pan-load stays off until the user actually pans (wheel-only zoom-out should
-            // not immediately fire a 5k-bar /candles fetch).
             clearTimeout(this._wheelPostBurstTimer);
             this._wheelPostBurstTimer = setTimeout(() => {
-                this._suppressPanLoadUntilUserPan = true;
                 if (this.data && this.data.length > 0) {
                     try { this.constrainOffset(); } catch (_e) {}
                 }
-                if (this._indicatorsNeedRecalc) {
-                    this._scheduleRecalculateIndicators({ deferWhileInteracting: false });
-                }
-                this.scheduleRender();
             }, 160);
 
             // No zoom if we have no data
@@ -18102,10 +17535,6 @@ class Chart {
                 const timeZoomFactor = zoomDirection > 0 ? baseTimeZoomFactor : 1 / baseTimeZoomFactor;
                 const oldWidth = this.candleWidth;
                 const newWidth = Math.max(minWidth, Math.min(maxWidth, oldWidth * timeZoomFactor));
-
-                if (newWidth === oldWidth) {
-                    return;
-                }
 
                 // When price axis is UNLOCKED, using time wheel should freeze vertical auto-scale
                 // so Y range stays fixed while we zoom time.
@@ -18351,9 +17780,7 @@ class Chart {
                 this.isZooming = true;
             } else if (mode === 'chart') {
                 this.drag.type = 'pan';
-                this._suppressPanLoadUntilUserPan = false;
                 this._snapshotPanDrawingsLayer();
-                this._preparePanChartBitmapCache();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
                 const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
@@ -18366,7 +17793,7 @@ class Chart {
                     chartWrapper.style.cursor = panCursor;
                 }
                 
-                if (this.replaySystem?.isActive) {
+                if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
                     this.replaySystem.onUserPan();
                 }
             }
@@ -18704,18 +18131,14 @@ class Chart {
                     cancelAnimationFrame(this._panScrollSyncRaf);
                     this._panScrollSyncRaf = null;
                 }
-                this._clearPanDrawingsLayerTransform(false);
-                if (isChartClick) {
-                    this._clearPanBitmapFrozenScales();
-                } else {
+                this._clearPanDrawingsLayerTransform();
+                if (!isChartClick) {
                     this.dispatchScrollSync(true);
-                    this._constrainOffsetDuringDrag();
-                    this._panBitmapPendingReleaseRender = true;
+                    this.constrainOffset();
                 }
                 this.scheduleChartViewSave();
                 if (!isChartClick) {
                     this._finishPanDrawingRedraw();
-                    this._flushDeferredIndicatorRecalc(true);
                     this.scheduleRender();
                 }
 
@@ -18836,7 +18259,6 @@ class Chart {
             if (wasPanDrag) {
                 this._clearPanDrawingsLayerTransform();
                 this._finishPanDrawingRedraw();
-                this._flushDeferredIndicatorRecalc(true);
             }
             this.drag.active = false;
             this.drag.type = null;
@@ -18941,13 +18363,23 @@ class Chart {
                         this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
-                        this._scheduleChartPanFrame(e.clientX, e.clientY);
+                        let effectiveDx = this.timeScale.locked ? 0 : dx;
+                        let effectiveDy = this.priceScale.locked ? 0 : dy;
+                        this.offsetX += effectiveDx;
+                        if (this.yScale && effectiveDy !== 0) {
+                            this.autoScale = false;
+                            this.priceScale.autoScale = false;
+                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
+                            this.priceOffset += effectiveDy * pricePerPixel;
+                        }
+                        this.constrainOffset();
+                        this.scheduleRender();
+                        this.dispatchScrollSync();
                     }
 
-                    if (this.drag.type !== 'pan') {
-                        this.drag.lastX = e.clientX;
-                        this.drag.lastY = e.clientY;
-                    }
+                    this.drag.lastX = e.clientX;
+                    this.drag.lastY = e.clientY;
                 }
             }
 
