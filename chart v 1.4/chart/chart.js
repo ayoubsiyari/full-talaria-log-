@@ -329,6 +329,10 @@ installChartContextMenuStyles();
 const DEFAULT_CANDLE_WIDTH = 6;
 /** Body width as a fraction of center-to-center bar spacing (TradingView ≈ 0.8). */
 const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
+/** Max bars drawn per frame (viewport culling + zoom-out cap). */
+const MAX_VISIBLE_BARS = 800;
+/** Minimum on-screen bar width in CSS px (zoom-out floor). */
+const MIN_BAR_WIDTH_PX = 1;
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -351,6 +355,17 @@ class Chart {
             throw new Error('Canvas element not found. Make sure the HTML is loaded.');
         }
         this.ctx = this.canvas.getContext('2d');
+        this.candleCanvas = this.canvas;
+        this.candleCtx = this.ctx;
+        this._initLayerCanvases();
+
+        this.dirty = true;
+        this.gridDirty = true;
+        this.candleDirty = true;
+        this.crosshairDirty = true;
+        this._visibleSliceCache = null;
+        this._visibleSliceRangeKey = '';
+        this._crosshairLineState = null;
         
         if (svgElement) {
             this.svg = d3.select(svgElement);
@@ -592,6 +607,13 @@ class Chart {
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
         this.renderPending = false;
+        /** scrollOffset alias — pan/zoom update this.offsetX only (no data re-slice on mousemove). */
+        Object.defineProperty(this, 'scrollOffset', {
+            configurable: true,
+            enumerable: false,
+            get: () => this.offsetX,
+            set: (v) => { this.offsetX = v; },
+        });
         this.renderThrottleTimer = null;
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
@@ -9040,16 +9062,19 @@ class Chart {
 
 	        this._lastResizeDpr = dpr;
 	        
-	        this.canvas.width = Math.max(1, Math.floor(nextW * dpr));
-	        this.canvas.height = Math.max(1, Math.floor(nextH * dpr));
-	        this.canvas.style.width = nextW + 'px';
-	        this.canvas.style.height = nextH + 'px';
-	        
-	        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-	        this.ctx.scale(dpr, dpr);
+	        this._resizeLayerCanvas(this.candleCanvas, this.candleCtx, dpr, nextW, nextH);
+	        if (this.gridCanvas && this.gridCtx) {
+	            this._resizeLayerCanvas(this.gridCanvas, this.gridCtx, dpr, nextW, nextH);
+	        }
+	        if (this.crosshairCanvas && this.crosshairCtx) {
+	            this._resizeLayerCanvas(this.crosshairCanvas, this.crosshairCtx, dpr, nextW, nextH);
+	        }
+	        this.ctx = this.candleCtx;
+	        this.canvas = this.candleCanvas;
 	        
 	        this.w = nextW;
 	        this.h = nextH;
+	        this.markDirty('all');
 
 	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
 
@@ -13326,12 +13351,130 @@ class Chart {
     }
 
     /**
-     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
-     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
+     * Minimum candleWidth: 1px floor + zoom-out cap so visible bars ≤ MAX_VISIBLE_BARS.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        return widths[0];
+        let floor = Math.max(MIN_BAR_WIDTH_PX, widths[0]);
+        const m = this.margin || { l: 0, r: 60 };
+        const plotW = Math.max(0, (this.w || 0) - m.l - m.r);
+        if (plotW > 0) {
+            const minSpacing = plotW / MAX_VISIBLE_BARS;
+            for (let i = 0; i < widths.length; i++) {
+                if (this._getSpacingForCandleWidth(widths[i]) >= minSpacing) {
+                    floor = Math.max(floor, widths[i]);
+                    break;
+                }
+            }
+            if (this._getSpacingForCandleWidth(floor) < minSpacing) {
+                floor = Math.max(floor, minSpacing * 0.85);
+            }
+        }
+        return floor;
+    }
+
+    _getPlotWidth() {
+        const m = this.margin || { l: 0, r: 60 };
+        return Math.max(0, (this.w || 0) - m.l - m.r);
+    }
+
+    /**
+     * Visible index range before the draw loop (capped at MAX_VISIBLE_BARS).
+     * @returns {{ startIdx: number, endIdx: number }}
+     */
+    _getVisibleIndexRange() {
+        if (!this.data || this.data.length === 0) {
+            return { startIdx: 0, endIdx: 0 };
+        }
+        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+        const plotRight = this.w - mVis.r;
+        const edgeBuf = 6;
+        let startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
+        let endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        const spacing = this.getCandleSpacing();
+        const plotW = this._getPlotWidth();
+        const maxByWidth = spacing > 0
+            ? Math.min(MAX_VISIBLE_BARS, Math.ceil(plotW / spacing) + edgeBuf * 2)
+            : MAX_VISIBLE_BARS;
+        if (endIdx - startIdx > maxByWidth) {
+            endIdx = startIdx + maxByWidth;
+        }
+        if (endIdx - startIdx > MAX_VISIBLE_BARS) {
+            const center = Math.floor((startIdx + endIdx) / 2);
+            startIdx = Math.max(0, center - Math.floor(MAX_VISIBLE_BARS / 2));
+            endIdx = Math.min(this.data.length, startIdx + MAX_VISIBLE_BARS);
+        }
+        return { startIdx, endIdx };
+    }
+
+    /** Cached visible slice — rebuilt only when range or dataVersion changes (not each rAF). */
+    _getVisibleSlice() {
+        const { startIdx, endIdx } = this._getVisibleIndexRange();
+        const key = `${startIdx}:${endIdx}:${this.dataVersion ?? 0}`;
+        if (this._visibleSliceRangeKey === key && this._visibleSliceCache) {
+            return this._visibleSliceCache;
+        }
+        this._visibleSliceRangeKey = key;
+        this._visibleSliceCache = this.data.slice(startIdx, endIdx);
+        return this._visibleSliceCache;
+    }
+
+    markDirty(layers = 'all') {
+        this.dirty = true;
+        if (layers === 'all' || layers === 'grid') this.gridDirty = true;
+        if (layers === 'all' || layers === 'candle') this.candleDirty = true;
+        if (layers === 'all' || layers === 'crosshair') this.crosshairDirty = true;
+    }
+
+    _initLayerCanvases() {
+        if (this.isPanel || this._layersInitialized) return;
+        const wrap = this.canvas && this.canvas.parentElement;
+        if (!wrap) return;
+
+        this.gridCanvas = document.createElement('canvas');
+        this.gridCanvas.className = 'chart-layer-grid';
+        this.gridCanvas.setAttribute('aria-hidden', 'true');
+        this.crosshairCanvas = document.createElement('canvas');
+        this.crosshairCanvas.className = 'chart-layer-crosshair';
+        this.crosshairCanvas.setAttribute('aria-hidden', 'true');
+
+        const layerBase = 'position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;';
+        this.gridCanvas.style.cssText = layerBase + 'z-index:0;';
+        this.crosshairCanvas.style.cssText = layerBase + 'z-index:3;';
+        this.candleCanvas.style.zIndex = '1';
+        this.candleCanvas.style.position = 'absolute';
+        this.candleCanvas.style.inset = '0';
+        this.candleCanvas.style.width = '100%';
+        this.candleCanvas.style.height = '100%';
+
+        wrap.insertBefore(this.gridCanvas, this.candleCanvas);
+        wrap.appendChild(this.crosshairCanvas);
+
+        this.gridCtx = this.gridCanvas.getContext('2d');
+        this.crosshairCtx = this.crosshairCanvas.getContext('2d');
+        this.ctx = this.candleCtx;
+        this.canvas = this.candleCanvas;
+        this._layersInitialized = true;
+    }
+
+    _resizeLayerCanvas(canvasEl, ctx, dpr, cssW, cssH) {
+        if (!canvasEl || !ctx) return;
+        canvasEl.width = Math.max(1, Math.floor(cssW * dpr));
+        canvasEl.height = Math.max(1, Math.floor(cssH * dpr));
+        canvasEl.style.width = cssW + 'px';
+        canvasEl.style.height = cssH + 'px';
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+    }
+
+    _withCtx(targetCtx, fn) {
+        const prev = this.ctx;
+        this.ctx = targetCtx;
+        try {
+            return fn();
+        } finally {
+            this.ctx = prev;
+        }
     }
     
     /**
@@ -13346,19 +13489,13 @@ class Chart {
         const priceHeight = ch * (1 - effectiveVolumeHeight);
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         
-        // Add buffer for smoother scrolling
-        const bufferCandles = 20; // Number of extra candles to render on each side
-        
         // Use consistent candle spacing
         const candleAndSpacing = this.getCandleSpacing();
-        
-        const visible = this.data.slice(
-            Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles),
-            Math.min(this.data.length, -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles)
-        );
-        
+        const { startIdx, endIdx } = this._getVisibleIndexRange();
+        const visibleCount = Math.max(0, endIdx - startIdx);
+
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
-        if (visible.length === 0) {
+        if (visibleCount === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
                 const _indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -13374,14 +13511,18 @@ class Chart {
         // argument-limit / stack issues when zoomed out on 1m data (50k+ visible bars).
         let minPrice = Infinity;
         let maxPrice = -Infinity;
-        for (let i = 0; i < visible.length; i++) {
-            const d = visible[i];
+        let maxVolume = 1;
+        for (let i = startIdx; i < endIdx; i++) {
+            const d = this.data[i];
             if (!d) continue;
             const h = Number(d.h);
             const l = Number(d.l);
+            const v = Number(d.v);
             if (Number.isFinite(h) && h > maxPrice) maxPrice = h;
             if (Number.isFinite(l) && l < minPrice) minPrice = l;
+            if (Number.isFinite(v) && v > maxVolume) maxVolume = v;
         }
+        const visible = visibleCount > 0 ? this._getVisibleSlice() : [];
         if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
             minPrice = 0;
             maxPrice = 1;
@@ -13472,8 +13613,8 @@ class Chart {
         
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
-            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
-                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
+            .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
+                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visibleCount])
             .range([m.l, this.w - m.r]);
         
         const indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -13481,7 +13622,6 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        const maxVolume = Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
@@ -13691,8 +13831,9 @@ class Chart {
         this.drag.lastX = cx;
         this.drag.lastY = cy;
         this._constrainOffsetDuringDrag();
-        this.renderPending = false;
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
 
         if (!this._panScrollSyncRaf) {
             this._panScrollSyncRaf = requestAnimationFrame(() => {
@@ -13748,9 +13889,16 @@ class Chart {
 
         if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
             this.renderPending = false;
+            this.markDirty('grid');
+            this.markDirty('candle');
             this.render();
+            this.gridDirty = false;
+            this.candleDirty = false;
+            this.dirty = false;
             return;
         }
+        this.markDirty('grid');
+        this.markDirty('candle');
         this.renderPending = true;
     }
 
@@ -13759,6 +13907,7 @@ class Chart {
      */
     _scheduleCrosshairTooltipFromEvent(e) {
         this._pendingCrosshairMoveEvent = e;
+        this.crosshairDirty = true;
         if (this._crosshairTooltipRaf != null) return;
         this._crosshairTooltipRaf = requestAnimationFrame(() => {
             this._crosshairTooltipRaf = null;
@@ -13768,11 +13917,17 @@ class Chart {
             if (this.drag && this.drag.active && this.drag.type === 'pan') return;
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(ev);
             if (typeof this.updateTooltip === 'function') this.updateTooltip(ev);
+            if (this.crosshairDirty) {
+                this._renderCrosshairLayer();
+                this.crosshairDirty = false;
+            }
         });
     }
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
+        this._visibleSliceRangeKey = '';
+        this._visibleSliceCache = null;
     }
     
     animateZoom() {
@@ -13879,9 +14034,14 @@ class Chart {
         
         this.animateZoom();
 
-        if (this.renderPending) {
-            this.render();
+        if (this.renderPending || this.dirty) {
+            if (this.gridDirty || this.candleDirty) {
+                this.render();
+                this.gridDirty = false;
+                this.candleDirty = false;
+            }
             this.renderPending = false;
+            this.dirty = false;
 
             // Update follow button visibility after each render (throttled).
             if (this.replaySystem && typeof this.replaySystem.updateAutoScrollIndicator === 'function') {
@@ -13891,6 +14051,11 @@ class Chart {
                     try { this.replaySystem.updateAutoScrollIndicator(); } catch (_) {}
                 }
             }
+        }
+
+        if (this.crosshairDirty && !(this.drag && this.drag.active && this.drag.type === 'pan')) {
+            this._renderCrosshairLayer();
+            this.crosshairDirty = false;
         }
 
         // Calculate FPS
@@ -13949,20 +14114,10 @@ class Chart {
         // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
         this._timeTicks = this._buildTimeTicks();
 
-        // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
-        // Using full canvas width for bar count was too wide vs the drawable area and caused
-        // separate-panel indicators to miss segments when scrolling into older bars.
-        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const plotRight = this.w - mVis.r;
-        const edgeBuf = 6;
-        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
-        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
-        
-        // Expose current visible range for indicator rendering
+        const { startIdx, endIdx } = this._getVisibleIndexRange();
         this.visibleStartIndex = startIdx;
-        this.visibleEndIndex = endIdx;
-        
-        const visible = this.data.slice(startIdx, endIdx);
+        this.visibleEndIndex = Math.max(startIdx, endIdx - 1);
+        const visible = this._getVisibleSlice();
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
         if (visible.length === 0 && this.data.length === 0) {
@@ -13999,7 +14154,12 @@ class Chart {
         // Fast path while dragging chart: candles + axes + news markers (lite).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
-            this.drawGrid();
+            if (this.gridCtx) {
+                this.gridCtx.clearRect(0, 0, this.w, this.h);
+                this._withCtx(this.gridCtx, () => this.drawGrid());
+            } else {
+                this.drawGrid();
+            }
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
@@ -14027,8 +14187,12 @@ class Chart {
             this.compareOverlay.updateLeftMargin();
         }
 
-        // Draw grid lines first
-        this.drawGrid();
+        if (this.gridCtx) {
+            this.gridCtx.clearRect(0, 0, this.w, this.h);
+            this._withCtx(this.gridCtx, () => this.drawGrid());
+        } else {
+            this.drawGrid();
+        }
 
         // Draw volume bars
         this.drawVolume(visible);
@@ -18383,7 +18547,9 @@ class Chart {
                 }
             }
 
-            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+            if (!(this.drag && this.drag.active && this.drag.type === 'pan')) {
+                this._scheduleCrosshairTooltipFromEvent(e);
+            }
 
             if (this.canvas && !this.isPanel) {
                 const rect = this._pointerLayoutRect();
@@ -20097,6 +20263,47 @@ class Chart {
         }
     }
 
+    /**
+     * Crosshair lines only — top canvas layer (mousemove must not redraw grid/candles).
+     */
+    _renderCrosshairLayer() {
+        const ctx = this.crosshairCtx;
+        const state = this._crosshairLineState;
+        if (!ctx || !this.w || !this.h) return;
+        ctx.clearRect(0, 0, this.w, this.h);
+        if (!state || !state.showLines) return;
+
+        const m = this.margin || { l: 0, r: 60, t: 0, b: 30 };
+        const crossColor = state.crossColor || 'rgba(120,123,134,0.4)';
+        const crossWidth = Math.max(1, state.crossWidth || 2);
+        const crossPattern = state.crossPattern || 'dashed';
+        const plotW = Math.max(0, this.w - m.l - m.r);
+
+        ctx.save();
+        ctx.strokeStyle = crossColor;
+        ctx.lineWidth = crossWidth;
+        if (crossPattern === 'dashed') ctx.setLineDash([6, 4]);
+        else if (crossPattern === 'dotted') ctx.setLineDash([2, 4]);
+        else if (crossPattern === 'longDash') ctx.setLineDash([10, 5]);
+        else ctx.setLineDash([]);
+
+        const lineX = state.lineX;
+        const hY = state.hLineRenderY;
+        if (Number.isFinite(lineX)) {
+            ctx.beginPath();
+            ctx.moveTo(lineX + 0.5, m.t);
+            ctx.lineTo(lineX + 0.5, this.h - m.b);
+            ctx.stroke();
+        }
+        if (Number.isFinite(hY)) {
+            ctx.beginPath();
+            ctx.moveTo(m.l, hY + 0.5);
+            ctx.lineTo(m.l + plotW, hY + 0.5);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
     updateCrosshair(e) {
         e = (e && e.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
         // Auto-fix stale dimensions: compare the parent wrapper size (which CSS
@@ -20125,6 +20332,7 @@ class Chart {
         this._lastCrosshairShiftKey = !!e.shiftKey;
         
         if (x < m.l || x > this.w - m.r || y < m.t || y > this.h - m.b) {
+            this._crosshairLineState = null;
             this.hideCrosshair();
             this.currentCrosshairTimestamp = null;
             // Broadcast hide to other panels
@@ -20279,7 +20487,20 @@ class Chart {
                 : `repeating-linear-gradient(to right,${crossColor} 0px,${crossColor} 6px,transparent 6px,transparent 10px)`;
         // Match receiveCrosshairSync / plot box: explicit top + span only the drawable width (not 100% of wrapper).
         const plotW = Math.max(0, this.w - m.l - m.r);
-        if (vLine) {
+        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
+        this._crosshairLineState = {
+            showLines,
+            lineX,
+            hLineRenderY: safeHLineY,
+            crossColor,
+            crossWidth,
+            crossPattern,
+        };
+        if (this.crosshairCtx) {
+            if (vLine) vLine.style.display = 'none';
+            if (hLine) hLine.style.display = 'none';
+            this.crosshairDirty = true;
+        } else if (vLine) {
             vLine.style.top = '0px';
             vLine.style.left = (lineX - crossWidth * 0.5) + 'px';
             vLine.style.width = crossWidth + 'px';
@@ -20287,8 +20508,7 @@ class Chart {
             vLine.style.display = showLines ? 'block' : 'none';
             vLine.style.background = vBg;
         }
-        const safeHLineY = Number.isFinite(hLineRenderY) ? hLineRenderY : lineY;
-        if (hLine) {
+        if (!this.crosshairCtx && hLine) {
             hLine.style.left = m.l + 'px';
             hLine.style.right = 'auto';
             hLine.style.width = plotW + 'px';
@@ -20505,9 +20725,18 @@ class Chart {
                 }
             }
         }
+
+        if (this.crosshairCtx) {
+            this._renderCrosshairLayer();
+            this.crosshairDirty = false;
+        }
     }
     
     hideCrosshair() {
+        this._crosshairLineState = null;
+        if (this.crosshairCtx) {
+            this.crosshairCtx.clearRect(0, 0, this.w, this.h);
+        }
         const container = this.canvas?.parentElement;
         if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');
