@@ -9225,6 +9225,7 @@ class Chart {
 	        
 	        this.w = nextW;
 	        this.h = nextH;
+	        this._invalidatePanChartBitmap();
 
 	        const isPanelDragResize = !!(window.panelManager && window.panelManager.isResizing);
 
@@ -13663,7 +13664,10 @@ class Chart {
         // Apply price zoom and offset with improved calculations
         let domainMin, domainMax;
 
-        if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
+        if (this._panBitmapFrozenYDomain && this._isChartViewPanning()) {
+            domainMin = this._panBitmapFrozenYDomain[0];
+            domainMax = this._panBitmapFrozenYDomain[1];
+        } else if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
             // Auto-scale mode: fit all visible data with symmetric padding
             domainMin = minPrice - padding;
             domainMax = maxPrice + padding;
@@ -13722,7 +13726,11 @@ class Chart {
         // Include effective last price in Y domain so the price line/label stay drawable
         // in auto-scale mode or when the right edge has no visible bars.
         // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
-        if (this.chartSettings.showPriceLine !== false && this.autoScale) {
+        if (
+            !(this._panBitmapFrozenYDomain && this._isChartViewPanning()) &&
+            this.chartSettings.showPriceLine !== false &&
+            this.autoScale
+        ) {
             const linePrice = this.resolveEffectiveCurrentPrice(visible);
             if (Number.isFinite(linePrice)) {
                 const span = domainMax - domainMin;
@@ -13743,7 +13751,9 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        const maxVolume = Math.max(...visible.map(d => d.v), 1);
+        const maxVolume = (this._panBitmapFrozenVolumeDomain && this._isChartViewPanning())
+            ? this._panBitmapFrozenVolumeDomain[1]
+            : Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
@@ -13814,6 +13824,129 @@ class Chart {
         const m = this.margin || { l: 0, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
         return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
+    }
+
+    _invalidatePanChartBitmap() {
+        this._panSeriesCacheMeta = null;
+    }
+
+    _clearPanBitmapFrozenScales() {
+        this._panBitmapFrozenYDomain = null;
+        this._panBitmapFrozenVolumeDomain = null;
+    }
+
+    /** TradingView-style: slide a pre-rendered series bitmap during chart pan instead of redrawing every candle. */
+    _canUsePanChartBitmapCache() {
+        if (!this._isChartViewPanning()) return false;
+        if (this._isWheelBurst() || this._isReplayRenderFastPath()) return false;
+        if (!this.data || this.data.length === 0) return false;
+        if (this.boxZoom && this.boxZoom.active) return false;
+        if (this._panSnapOffsetX == null || !this._panSeriesCache || !this._panSeriesCacheMeta) return false;
+        return true;
+    }
+
+    _getPanSeriesBitmapSnapMeta() {
+        return {
+            offsetX: this._panSnapOffsetX,
+            priceOffset: this._panSnapPriceOffset,
+            candleWidth: this.candleWidth,
+            priceZoom: this.priceZoom,
+            w: this.w,
+            h: this.h,
+            dataVersion: this.dataVersion,
+            showVolume: !!this.chartSettings.showVolume,
+        };
+    }
+
+    /**
+     * Capture series layer (candles, volume, indicators) at pan start so drag frames can blit+translate.
+     */
+    _preparePanChartBitmapCache() {
+        if (!this.data || this.data.length === 0 || this.w < 2 || this.h < 2) return;
+
+        if (this.yScale) {
+            this._panBitmapFrozenYDomain = this.yScale.domain().slice();
+        }
+        if (this.volumeScale) {
+            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
+        }
+
+        this.calculateScales();
+        this._timeTicks = this._buildTimeTicks();
+
+        const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+        const plotRight = this.w - mVis.r;
+        const edgeBuf = 6;
+        const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
+        const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
+        const visible = this.data.slice(startIdx, endIdx);
+        if (!visible.length) return;
+
+        const snap = this._getPanSeriesBitmapSnapMeta();
+        const dpr = window.devicePixelRatio || 1;
+        const pw = Math.max(1, Math.floor(this.w * dpr));
+        const ph = Math.max(1, Math.floor(this.h * dpr));
+
+        if (!this._panSeriesCache) {
+            this._panSeriesCache = document.createElement('canvas');
+        }
+        if (this._panSeriesCache.width !== pw || this._panSeriesCache.height !== ph) {
+            this._panSeriesCache.width = pw;
+            this._panSeriesCache.height = ph;
+        }
+
+        const octx = this._panSeriesCache.getContext('2d');
+        octx.setTransform(1, 0, 0, 1, 0, 0);
+        octx.clearRect(0, 0, pw, ph);
+        octx.scale(dpr, dpr);
+
+        const prevCtx = this.ctx;
+        this.ctx = octx;
+        try {
+            const panOpts = { panFast: true };
+            this.drawVolume(visible, panOpts);
+            this.drawCandles(visible, panOpts);
+            this.drawPriceLine(visible);
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
+            }
+            if (typeof this.drawSecondaryIndicators === 'function') {
+                this.drawSecondaryIndicators();
+            }
+        } finally {
+            this.ctx = prevCtx;
+        }
+
+        this._panSeriesCacheMeta = snap;
+    }
+
+    _drawPanSeriesBitmapCache() {
+        const dx = this.offsetX - this._panSnapOffsetX;
+        let ty = 0;
+        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
+            const m = this.margin;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            const priceAreaHeight = this.h - m.t - m.b;
+            if (priceAreaHeight > 0 && Number.isFinite(priceRange) && priceRange > 0) {
+                const pricePerPixel = priceRange / priceAreaHeight;
+                ty = (this._panSnapPriceOffset - this.priceOffset) / pricePerPixel;
+            }
+        }
+
+        const m = this.margin || { l: 0, r: 60, t: 0, b: 30 };
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(m.l, m.t, Math.max(0, this.w - m.l - m.r), Math.max(0, this.h - m.t - m.b));
+        this.ctx.clip();
+        this.ctx.drawImage(
+            this._panSeriesCache,
+            0, 0, this._panSeriesCache.width, this._panSeriesCache.height,
+            dx, ty, this.w, this.h
+        );
+        this.ctx.restore();
     }
 
     /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
@@ -13900,6 +14033,8 @@ class Chart {
         this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
+        this._clearPanBitmapFrozenScales();
+        this._invalidatePanChartBitmap();
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
@@ -14096,6 +14231,7 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
+        this._invalidatePanChartBitmap();
     }
     
     animateZoom() {
@@ -14323,20 +14459,27 @@ class Chart {
         // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            this.drawGrid();
-            this.drawVolume(visible, panOpts);
-            this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
+            const usePanBitmap = this._canUsePanChartBitmapCache();
 
-            // Overlay + pane indicators stay on screen during pan (draw uses visible range only).
-            if (typeof this.drawIndicators === 'function') {
-                this.drawIndicators();
-            }
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
-            }
-            if (typeof this.drawSecondaryIndicators === 'function') {
-                this.drawSecondaryIndicators();
+            if (usePanBitmap) {
+                this.drawGrid();
+                this._drawPanSeriesBitmapCache();
+            } else {
+                this.drawGrid();
+                this.drawVolume(visible, panOpts);
+                this.drawCandles(visible, panOpts);
+                this.drawPriceLine(visible);
+
+                // Overlay + pane indicators stay on screen during pan (draw uses visible range only).
+                if (typeof this.drawIndicators === 'function') {
+                    this.drawIndicators();
+                }
+                if (typeof this.renderSeparatePanelIndicators === 'function') {
+                    this.renderSeparatePanelIndicators();
+                }
+                if (typeof this.drawSecondaryIndicators === 'function') {
+                    this.drawSecondaryIndicators();
+                }
             }
 
             if (this._canPanTransformDrawings()) {
@@ -18127,6 +18270,7 @@ class Chart {
                 this.drag.type = 'pan';
                 this._suppressPanLoadUntilUserPan = false;
                 this._snapshotPanDrawingsLayer();
+                this._preparePanChartBitmapCache();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
                 const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
