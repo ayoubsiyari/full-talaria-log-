@@ -12446,6 +12446,47 @@ class Chart {
      * stays up across the entire fetch + re-enter-replay sequence, and is only
      * lifted by `_endTimeframeSwitching` once the replay viewport is final.
      */
+    _captureReplayPlayheadMs(replay) {
+        if (!replay) return null;
+
+        let ts = null;
+        const ac = replay.animatingCandle;
+        if (ac && Number.isFinite(ac.t)) {
+            const tp = Number(replay.tickProgress) || 0;
+            if (tp > 0) {
+                ts = ac.t;
+            } else if (!replay.isPlaying && Number.isFinite(ac.close)) {
+                ts = ac.t;
+            }
+        }
+        if (!Number.isFinite(ts) && Number.isFinite(replay.replayTimestamp)) {
+            ts = replay.replayTimestamp;
+        }
+        if (!Number.isFinite(ts) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const ci = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
+            const idx = Math.min(Math.max(ci, 0), replay.fullRawData.length - 1);
+            const bar = replay.fullRawData[idx];
+            if (bar && Number.isFinite(bar.t)) ts = bar.t;
+        }
+        // Replay slice: last visible bar is the playhead (more reliable than fullRawData when resampled).
+        if (!Number.isFinite(ts) && Array.isArray(this.data) && this.data.length > 0) {
+            const lastBar = this.data[this.data.length - 1];
+            if (lastBar && Number.isFinite(lastBar.t)) ts = lastBar.t;
+        }
+        if (!Number.isFinite(ts)) {
+            try {
+                const om = this.orderManager && this.orderManager.orderService;
+                const ct = Number(om && om.multiInstrumentSession && om.multiInstrumentSession.current_time);
+                if (Number.isFinite(ct)) ts = ct;
+            } catch (_) { /* ignore */ }
+        }
+        if (!Number.isFinite(ts)) return null;
+        const normalized = typeof this.normalizeTimestampMs === 'function'
+            ? this.normalizeTimestampMs(ts)
+            : Number(ts);
+        return Number.isFinite(normalized) ? normalized : null;
+    }
+
     _buildBacktestTfRefetchRange(timeframe, session, replayTimestampMs, sessionEndMs) {
         const tfMs = this.parseTimeframe(timeframe);
         const forwardBufferBars = 20000;
@@ -12469,42 +12510,51 @@ class Chart {
             }
         } catch (_) { /* ignore */ }
 
-        const replayTs = Number(replayTimestampMs);
-        let rangeEndTs = sessionEndMs;
-        if (Number.isFinite(replayTs) && forwardBufferMs > 0) {
-            const replayAnchoredEnd = replayTs + forwardBufferMs;
-            rangeEndTs = sessionEndMs != null
-                ? Math.min(replayAnchoredEnd, sessionEndMs)
-                : replayAnchoredEnd;
-        } else if (!Number.isFinite(rangeEndTs) && Number.isFinite(replayTs)) {
-            rangeEndTs = replayTs + forwardBufferMs;
-        }
-
-        let rangeStartTs = sessionStartMs;
-        if (Number.isFinite(replayTs) && forwardBufferMs > 0) {
-            const replayBack = replayTs - forwardBufferMs;
-            rangeStartTs = rangeStartTs != null ? Math.min(rangeStartTs, replayBack) : replayBack;
-        }
-
-        if (Number.isFinite(rangeStartTs) && Number.isFinite(rangeEndTs) && rangeEndTs > rangeStartTs) {
-            const span = rangeEndTs - rangeStartTs;
-            if (span > maxSpanMs) {
-                rangeEndTs = Number.isFinite(replayTs)
-                    ? Math.min(rangeEndTs, replayTs + forwardBufferMs)
-                    : rangeEndTs;
-                if (sessionEndMs != null) {
-                    rangeEndTs = Math.min(rangeEndTs, sessionEndMs);
-                }
-                rangeStartTs = rangeEndTs - maxSpanMs;
-                if (sessionStartMs != null) {
-                    rangeStartTs = Math.max(rangeStartTs, sessionStartMs);
-                }
-            }
-        }
+        const replayTs = typeof this.normalizeTimestampMs === 'function'
+            ? this.normalizeTimestampMs(replayTimestampMs)
+            : Number(replayTimestampMs);
 
         const out = {};
-        if (Number.isFinite(rangeStartTs)) out.startTs = Math.floor(rangeStartTs);
-        if (Number.isFinite(rangeEndTs)) out.endTs = Math.floor(rangeEndTs);
+
+        // Always center the fetch window on the replay playhead — never pull the full
+        // session span to session end (that returns the dataset tail on 1m).
+        if (Number.isFinite(replayTs)) {
+            let rangeStartTs = replayTs - forwardBufferMs;
+            let rangeEndTs = replayTs + forwardBufferMs;
+            if (sessionStartMs != null) rangeStartTs = Math.max(rangeStartTs, sessionStartMs);
+            if (sessionEndMs != null) rangeEndTs = Math.min(rangeEndTs, sessionEndMs);
+            let span = rangeEndTs - rangeStartTs;
+            if (!Number.isFinite(span) || span <= 0) {
+                rangeStartTs = replayTs - Math.floor(maxSpanMs / 2);
+                rangeEndTs = replayTs + Math.floor(maxSpanMs / 2);
+            } else if (span > maxSpanMs) {
+                rangeStartTs = replayTs - Math.floor(maxSpanMs / 2);
+                rangeEndTs = replayTs + Math.floor(maxSpanMs / 2);
+                if (sessionStartMs != null && rangeStartTs < sessionStartMs) {
+                    const shift = sessionStartMs - rangeStartTs;
+                    rangeStartTs = sessionStartMs;
+                    rangeEndTs = Math.min(rangeEndTs + shift, sessionEndMs ?? rangeEndTs + shift);
+                }
+                if (sessionEndMs != null && rangeEndTs > sessionEndMs) {
+                    const shift = rangeEndTs - sessionEndMs;
+                    rangeEndTs = sessionEndMs;
+                    rangeStartTs = Math.max(rangeStartTs - shift, sessionStartMs ?? rangeStartTs - shift);
+                }
+            }
+            if (Number.isFinite(rangeStartTs)) out.startTs = Math.floor(rangeStartTs);
+            if (Number.isFinite(rangeEndTs)) out.endTs = Math.floor(rangeEndTs);
+            return out;
+        }
+
+        // Last resort when playhead time is unknown: take maxSpan ending at session end,
+        // not the entire session (which exceeds the 100k 1m bar cap and snaps to dataset tail).
+        if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+            out.endTs = Math.floor(sessionEndMs);
+            out.startTs = Math.floor(sessionEndMs - maxSpanMs);
+            if (sessionStartMs != null) out.startTs = Math.max(out.startTs, sessionStartMs);
+        } else if (sessionStartMs != null) {
+            out.startTs = Math.floor(sessionStartMs);
+        }
         return out;
     }
 
@@ -12526,30 +12576,10 @@ class Chart {
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
 
-        let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
-            ? replay.replayTimestamp
+        let savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
+        const savedCurrentIndex = typeof replay.currentIndex === 'number'
+            ? replay.currentIndex
             : null;
-        // Align persisted wall time with intra-candle tick animation (same idea as
-        // onTimeframeChange): replayTimestamp can lag the visible tick bar while ticks run.
-        const acTs = replay.animatingCandle;
-        if (acTs && Number.isFinite(acTs.t)) {
-            const tp = Number(replay.tickProgress) || 0;
-            if (tp > 0) {
-                savedReplayTimestamp = acTs.t;
-            } else if (!replay.isPlaying && Number.isFinite(acTs.close)) {
-                savedReplayTimestamp = acTs.t;
-            }
-        }
-        if (!Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const ci = typeof replay.currentIndex === 'number' ? replay.currentIndex : 0;
-            const idx = Math.min(Math.max(ci, 0), replay.fullRawData.length - 1);
-            const bar = replay.fullRawData[idx];
-            if (bar && Number.isFinite(bar.t)) savedReplayTimestamp = bar.t;
-        }
-        if (!Number.isFinite(savedReplayTimestamp) && Array.isArray(this.data) && this.data.length > 0) {
-            const lastBar = this.data[this.data.length - 1];
-            if (lastBar && Number.isFinite(lastBar.t)) savedReplayTimestamp = lastBar.t;
-        }
 
         const wasAtSessionEnd = wasActive
             && typeof replay._isAtBacktestSessionEnd === 'function'
@@ -12608,6 +12638,7 @@ class Chart {
             savedReplayTimestamp,
             sessionEndMs
         );
+        const fetchAnchor = Number.isFinite(savedReplayTimestamp) ? 'start' : 'end';
 
         let result;
         try {
@@ -12616,7 +12647,7 @@ class Chart {
                 this.currentFileId,
                 timeframe,
                 session,
-                'end',
+                fetchAnchor,
                 historyRange,
                 { skipSessionDates: true }
             );
@@ -12627,7 +12658,7 @@ class Chart {
                     this.currentFileId,
                     timeframe,
                     session,
-                    'end',
+                    fetchAnchor,
                     historyRange,
                     { skipSessionDates: true, limit: 100000 }
                 );
@@ -12698,7 +12729,13 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode({ suppressInitialUpdateChartData: true, skipRealignAfterLayout: true });
+            replay.enterReplayMode({
+                suppressInitialUpdateChartData: true,
+                skipRealignAfterLayout: true,
+                preservePlayhead: Number.isFinite(savedReplayTimestamp),
+                initialReplayTimestamp: savedReplayTimestamp,
+                initialCurrentIndex: savedCurrentIndex,
+            });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
@@ -12819,14 +12856,7 @@ class Chart {
             } catch (e) { /* ignore */ }
             try {
                 if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
-                }
-                if (Array.isArray(this.data) && this.data.length > 0
-                    && typeof this.jumpToLatest === 'function') {
-                    this.jumpToLatest();
-                }
-                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: false });
+                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
                 }
             } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
