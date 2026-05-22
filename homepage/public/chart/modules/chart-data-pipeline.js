@@ -7,8 +7,10 @@
 
     const RENDER_BAR_BUDGET = 500;
     const VIEWPORT_BUFFER_BARS = 48;
-    const INITIAL_BACKTEST_BARS = 2500;
+    const INITIAL_BACKTEST_BARS = 800;
     const LARGE_SERIES_THRESHOLD = 8000;
+    const REPLAY_RAW_CAP = 5000;
+    const REPLAY_CONTEXT_BARS = 500;
 
     class ChartDataPipeline {
         constructor(chart) {
@@ -31,6 +33,8 @@
         static get VIEWPORT_BUFFER_BARS() { return VIEWPORT_BUFFER_BARS; }
         static get INITIAL_BACKTEST_BARS() { return INITIAL_BACKTEST_BARS; }
         static get LARGE_SERIES_THRESHOLD() { return LARGE_SERIES_THRESHOLD; }
+        static get REPLAY_RAW_CAP() { return REPLAY_RAW_CAP; }
+        static get REPLAY_CONTEXT_BARS() { return REPLAY_CONTEXT_BARS; }
 
         attachViewportManager(viewportManager) {
             this.viewportData = viewportManager;
@@ -282,11 +286,13 @@
             const playhead = typeof replaySystem?.currentIndex === 'number'
                 ? replaySystem.currentIndex
                 : fullRawData.length - 1;
-            const runway = 12000;
-            const minStart = Math.max(0, Math.min(floorIdx, playhead - runway));
+            const contextBars = REPLAY_CONTEXT_BARS;
+            const minStart = Math.max(0, Math.min(floorIdx, playhead - contextBars));
             let start = Math.max(minStart, fullRawData.length - cap);
 
-            if (start <= 0) return fullRawData;
+            // Drop bars far behind playhead (keep context window only).
+            const behindCut = Math.max(minStart, playhead - contextBars);
+            start = Math.max(start, behindCut);
 
             const trimmed = fullRawData.slice(start);
             if (replaySystem) {
@@ -305,8 +311,9 @@
     }
 
     function chartRawCap(chart) {
-        const base = chart._REPLAY_RAW_CAP || chart._RAW_DATA_CAP || 300000;
-        if (chart.isBacktestMode) return Math.min(base, 120000);
+        const pipelineCap = REPLAY_RAW_CAP;
+        const base = chart._REPLAY_RAW_CAP || chart._RAW_DATA_CAP || 8000;
+        if (chart.isBacktestMode) return Math.min(base, pipelineCap);
         return base;
     }
 

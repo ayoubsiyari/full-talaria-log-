@@ -23,8 +23,8 @@ class ViewportDataManager {
         this.mergedCandles = [];
         
         // Config
-        this.chunkSize = 5000;        // candles per request
-        this.maxCachedChunks = 20;    // LRU eviction threshold
+        this.chunkSize = 800;         // candles per request (bar budget aligned)
+        this.maxCachedChunks = 10;    // LRU eviction threshold (~8k bars)
         this.bufferMultiplier = 1.5;  // load 1.5x visible range
         this.prefetchEnabled = true;
         
@@ -112,23 +112,11 @@ class ViewportDataManager {
      * @returns {Promise<Array>} Initial candles
      */
     async loadInitial() {
-        const result = await this.fetchFromAPI({
-            timeframe: this.timeframe,
-            start_ts: this.sessionStartTs,
-            end_ts: this.sessionEndTs,
-            limit: this.chunkSize
-        });
-        
-        if (result && result.data) {
-            const candles = this.columnarToCandles(result.data);
-            this.addToCache(candles);
-            this.hasMoreRight = result.has_more_right;
-            this.hasMoreLeft = result.has_more_left;
-            this.nextCursor = result.next_cursor;
-            this.prevCursor = result.prev_cursor;
-            return candles;
+        const result = await this.fetchBarsRange(this.sessionStartTs, this.sessionEndTs);
+        if (result && result.bars && result.bars.length) {
+            this.addToCache(result.bars);
+            return result.bars;
         }
-        
         return [];
     }
     
@@ -177,32 +165,62 @@ class ViewportDataManager {
      * Fetch candles for a specific time range
      */
     async fetchCandles(startTs, endTs) {
-        const result = await this.fetchFromAPI({
-            timeframe: this.timeframe,
-            start_ts: Math.floor(startTs),
-            end_ts: Math.ceil(endTs),
-            limit: this.chunkSize
-        });
-        
-        if (result && result.data) {
-            const candles = this.columnarToCandles(result.data);
-            this.addToCache(candles);
-            this.hasMoreRight = result.has_more_right;
-            this.hasMoreLeft = result.has_more_left;
-            this.nextCursor = result.next_cursor;
-            this.prevCursor = result.prev_cursor;
-            return candles;
+        const result = await this.fetchBarsRange(startTs, endTs);
+        if (result && result.bars && result.bars.length) {
+            this.addToCache(result.bars);
+            return result.bars;
         }
-        
         return [];
+    }
+
+    /**
+     * Fetch bounded range via /bars (bar-budget resolution).
+     */
+    async fetchBarsRange(startTs, endTs, resolution = 'auto') {
+        if (!this.fileId) return null;
+
+        const requestKey = `bars:${startTs}_${endTs}_${resolution}`;
+        if (this.pendingRequests.has(requestKey)) {
+            return this.pendingRequests.get(requestKey);
+        }
+
+        this.loading = true;
+        const params = new URLSearchParams({
+            resolution: resolution,
+            limit: String(this.chunkSize),
+        });
+        if (startTs != null) params.set('from', String(Math.floor(startTs)));
+        if (endTs != null) params.set('to', String(Math.ceil(endTs)));
+
+        const url = `${this.apiUrl}/file/${this.fileId}/bars?${params.toString()}`;
+        const promise = fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
+            .catch(err => {
+                console.error('ViewportDataManager /bars fetch error:', err);
+                return null;
+            })
+            .finally(() => {
+                this.loading = false;
+                this.pendingRequests.delete(requestKey);
+            });
+
+        this.pendingRequests.set(requestKey, promise);
+        return promise;
     }
     
     /**
-     * Make API request to /api/file/{id}/candles
+     * Make API request to /api/file/{id}/candles (cursor pagination only).
      */
     async fetchFromAPI(params) {
         if (!this.fileId) return null;
-        
+
+        // Range requests belong on /bars, not /candles.
+        if (params.start_ts != null || params.end_ts != null) {
+            return this.fetchBarsRange(params.start_ts, params.end_ts, params.timeframe || 'auto');
+        }
         const requestKey = JSON.stringify(params);
         if (this.pendingRequests.has(requestKey)) {
             return this.pendingRequests.get(requestKey);

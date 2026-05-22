@@ -479,6 +479,51 @@ Copy into your release notes when staging passes:
 
 ---
 
+## QuestDB historical data (bar-budget architecture)
+
+After enabling QuestDB in Docker (`questdb` service + `QUESTDB_*` env on `trading-chart`):
+
+**Status check:**
+
+```bash
+curl -s http://localhost:3000/api/status
+```
+
+**Expected (when QuestDB is up):**
+
+```json
+{
+  "message": "Trading Chart API is running",
+  "redis": "ok",
+  "questdb": "ok",
+  "questdb_read_primary": false
+}
+```
+
+**Backfill existing CSV datasets:**
+
+```bash
+docker compose exec trading-chart-worker py scripts/migrate_csv_to_questdb.py
+```
+
+**Seek test (doc §5):** request a 2022 window — should return in ms, not scan from 2010:
+
+```bash
+curl -s "http://localhost:3000/api/file/FILE_ID/bars?from=1640995200000&to=1643673600000&resolution=auto"
+```
+
+**Rollout flags:**
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `QUESTDB_ENABLED` | `true` (compose) | Dual-write on binary build |
+| `QUESTDB_READ_PRIMARY` | `false` | Serve reads from QuestDB first |
+| `QUESTDB_TILES_FALLBACK` | `true` | Fall back to tile/CSV when QuestDB empty |
+
+**Admin single-dataset sync:** `POST /api/admin/datasets/{file_id}/questdb-sync?force=false`
+
+---
+
 ## Related files
 
 - Checklist: [backtest-scaling-checklist.md](./backtest-scaling-checklist.md)

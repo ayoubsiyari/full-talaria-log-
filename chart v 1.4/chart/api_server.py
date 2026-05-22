@@ -117,6 +117,8 @@ _analytics_bootstrap.install()
 import chart_redis
 import backtest_whatif as bw
 import session_journal_store as sjs
+import bar_budget
+import questdb_store
 
 from analytics_engine import (
     normalize_trades,
@@ -7264,6 +7266,44 @@ def build_binary_for_file(
                 db.commit()
                 return False
 
+            if questdb_store.questdb_enabled():
+                try:
+                    questdb_store.ensure_schema()
+                    qsync = questdb_store.sync_file_candles(file_id, candles)
+                    print(f"  ✅ QuestDB: {qsync.get('inserted_1m', 0)} 1m rows synced")
+                except Exception as qexc:
+                    all_ok = False
+                    print(f"  ⚠️ QuestDB sync failed for file {file_id}: {qexc}")
+
+            skip_tiles = (
+                questdb_store.questdb_enabled()
+                and questdb_store.questdb_read_primary()
+                and not questdb_store.questdb_tiles_fallback()
+            )
+
+            if skip_tiles:
+                for tf in ALL_TFS:
+                    resampled = candles if tf == "1m" else (
+                        _resample_candles_monthly(candles) if tf == "1mo"
+                        else _resample_candles(candles, ALL_TFS[tf])
+                    )
+                    start_ts = resampled[0]["t"] if resampled else None
+                    end_ts = resampled[-1]["t"] if resampled else None
+                    db.query(CSVAggregate).filter(
+                        CSVAggregate.file_id == file_id,
+                        CSVAggregate.timeframe == tf,
+                    ).update({
+                        "status": "ready",
+                        "row_count": len(resampled),
+                        "start_ts": start_ts,
+                        "end_ts": end_ts,
+                    })
+                db.commit()
+                print(f"✅ QuestDB-only build complete for file {file_id} (tiles skipped)")
+                if all_ok:
+                    _archive_source_csv_if_ready(file_id, Path(file_path))
+                return all_ok
+
             # Write binary for each timeframe
             for tf, ms in ALL_TFS.items():
                 bin_name = f"bin_{file_id}_{tf}.bin"
@@ -8395,6 +8435,14 @@ async def api_status():
         out["redis"] = "unavailable"
     else:
         out["redis"] = "not_configured"
+    qp = questdb_store.ping_ok()
+    if qp is True:
+        out["questdb"] = "ok"
+    elif qp is False:
+        out["questdb"] = "unavailable"
+    else:
+        out["questdb"] = "not_configured"
+    out["questdb_read_primary"] = questdb_store.questdb_read_primary()
     return out
 
 
@@ -14189,6 +14237,20 @@ async def admin_rebuild_dataset_binary(file_id: int, request: Request):
     finally:
         db.close()
 
+
+@app.post("/api/admin/datasets/{file_id}/questdb-sync")
+async def admin_questdb_sync_dataset(file_id: int, request: Request, force: bool = False):
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+        if not db_file:
+            raise HTTPException(status_code=404, detail="File not found")
+        result = _questdb_sync_file_from_csv(db_file, force=force)
+        return {"success": True, **result}
+    finally:
+        db.close()
+
 # ═══════════════════════════════════════════════════════════════════
 #  ADMIN — FirstRate duplicate cleanup
 #
@@ -18024,12 +18086,43 @@ async def get_file_smart(
     end_ts: int = None,
     anchor: str = "end",
     response_format: str = "csv",
+    resolution: str | None = Query(None, description="When 'auto', use bar-budget /bars logic"),
 ):
     """
     Viewport-based data loading using binary files (like TradingView).
     O(1) seek + O(n) read. No CSV parsing.
     Returns last N candles at the exact requested timeframe.
     """
+    if resolution and str(resolution).lower() in ("auto", ""):
+        user = _get_user_from_request(request)
+        if user is not None:
+            _enforce_backtest_user_rate(user, "smart")
+        db = next(get_db())
+        try:
+            db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+            if not db_file:
+                raise HTTPException(status_code=404, detail="File not found")
+            payload = _build_bars_payload(
+                file_id, db_file,
+                from_ms=start_ts, to_ms=end_ts,
+                resolution="auto", limit=min(limit, bar_budget.MAX_BARS),
+            )
+            bars = payload.get("bars") or []
+            if response_format == "candles":
+                return {
+                    "timeframe": payload.get("resolution"),
+                    "resolution": payload.get("resolution"),
+                    "total": len(bars),
+                    "returned": len(bars),
+                    "has_more_left": False,
+                    "has_more_right": False,
+                    "candles": bars,
+                    "source": payload.get("source"),
+                }
+            return payload
+        finally:
+            db.close()
+
     from io import StringIO
     import time as _time
     t0 = _time.monotonic()
@@ -18107,7 +18200,9 @@ async def get_file_smart(
         else:
             # ── Fast path for custom TF: resample from 1m binary on-the-fly ──
             tile_meta_1m = _load_tile_meta(file_id, '1m')
-            if tile_meta_1m is not None:
+            if tile_meta_1m is not None and not (
+                questdb_store.questdb_enabled() and questdb_store.questdb_read_primary()
+            ):
                 source = "custom-tf-resample"
                 raw_1m, _, _, _ = _tiles_read_window(
                     file_id, '1m', tile_meta_1m,
@@ -18510,7 +18605,151 @@ def _merge_csv_tail_onto_1m_candles(
     for c in extra:
         by_t[int(c["t"])] = c
     merged = sorted(by_t.values(), key=lambda x: x["t"])
-    return _apply_dataset_filters(merged, original_name=db_file.original_name, apply_spike=False)
+    result = _apply_dataset_filters(merged, original_name=db_file.original_name, apply_spike=False)
+    if questdb_store.questdb_enabled() and extra:
+        try:
+            questdb_store.ensure_schema()
+            questdb_store.append_1m_bars(int(file_id), extra)
+        except Exception:
+            pass
+    return result
+
+
+def _questdb_sync_file_from_csv(db_file: CSVFile, force: bool = False) -> dict:
+    """Load canonical CSV and sync into QuestDB (admin / migration helper)."""
+    if not questdb_store.questdb_enabled():
+        raise HTTPException(status_code=503, detail="QuestDB is not enabled")
+    file_id = int(db_file.id)
+    if not force and questdb_store.count_bars(file_id) > 0:
+        return {"file_id": file_id, "status": "skipped", "existing": questdb_store.count_bars(file_id)}
+    csv_path = _resolve_dataset_csv_for_file(db_file)
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail="CSV not found on disk")
+    candles = _parse_candles_from_csv(csv_path, original_name=db_file.original_name)
+    if not candles:
+        raise HTTPException(status_code=400, detail="CSV produced no candles")
+    questdb_store.ensure_schema()
+    out = questdb_store.sync_file_candles(file_id, candles)
+    return {"file_id": file_id, "status": "synced", "rows_1m": len(candles), **out}
+
+
+def _read_legacy_window_candles(
+    file_id: int,
+    db_file: CSVFile,
+    timeframe: str,
+    *,
+    limit: int,
+    start_ts: int | None,
+    end_ts: int | None,
+    anchor: str = "start",
+) -> list:
+    """Tile/binary/CSV window read for /bars fallback."""
+    tile_meta = _load_tile_meta(file_id, timeframe)
+    if tile_meta is not None:
+        candles, _, _, _ = _tiles_read_window(
+            file_id, timeframe, tile_meta,
+            limit=limit, anchor=anchor,
+            start_ts=start_ts, end_ts=end_ts,
+        )
+        return candles
+    bin_path = BIN_DIR / f"bin_{file_id}_{timeframe}.bin"
+    if bin_path.exists():
+        total = _mmap_total(bin_path)
+        if start_ts is not None or end_ts is not None:
+            si = _mmap_bisect(bin_path, start_ts) if start_ts else 0
+            ei = _mmap_bisect(bin_path, end_ts + 1) if end_ts else total
+            range_count = ei - si
+            if range_count > limit:
+                if anchor == "start":
+                    return _mmap_read_range(bin_path, si, limit)
+                return _mmap_read_range(bin_path, ei - limit, limit)
+            return _mmap_read_range(bin_path, si, range_count)
+        if total > limit:
+            if anchor == "start":
+                return _mmap_read_range(bin_path, 0, limit)
+            return _mmap_read_range(bin_path, total - limit, limit)
+        return _mmap_read_range(bin_path, 0, total)
+    candles, _, _, _ = _smart_load_from_csv(
+        db_file, timeframe, limit=limit, anchor=anchor,
+        start_ts=start_ts, end_ts=end_ts,
+    )
+    return candles
+
+
+def _build_bars_payload(
+    file_id: int,
+    db_file: CSVFile,
+    *,
+    from_ms: int | None,
+    to_ms: int | None,
+    resolution: str = "auto",
+    limit: int = 2000,
+) -> dict:
+    """Bar-budget response — QuestDB primary, tile/CSV fallback."""
+    import time as _time
+
+    limit = max(1, min(int(limit), bar_budget.MAX_BARS))
+    now_ms = int(_time.time() * 1000)
+    window_from = int(from_ms) if from_ms is not None else 0
+    window_to = int(to_ms) if to_ms is not None else now_ms
+    if window_to <= window_from:
+        window_to = window_from + 60_000
+
+    chosen = bar_budget.choose_resolution(window_from, window_to, resolution)
+    source = "questdb"
+
+    bars: list = []
+    if questdb_store.questdb_enabled():
+        try:
+            questdb_store.ensure_schema()
+            use_qdb = questdb_store.questdb_read_primary() or questdb_store.count_bars(file_id, "ohlcv_1m") > 0
+            if use_qdb:
+                bars = questdb_store.query_bars(file_id, chosen, from_ms, to_ms, limit=limit)
+        except Exception:
+            bars = []
+
+    if not bars and questdb_store.questdb_tiles_fallback():
+        source = "tiles"
+        bars = _read_legacy_window_candles(
+            file_id, db_file, chosen,
+            limit=limit, start_ts=from_ms, end_ts=to_ms, anchor="start",
+        )
+
+    bars = _apply_dataset_filters(bars, original_name=db_file.original_name)
+    return {
+        "file_id": file_id,
+        "resolution": chosen,
+        "bars": bars,
+        "returned": len(bars),
+        "source": source,
+    }
+
+
+@app.get("/api/file/{file_id}/bars")
+async def get_file_bars(
+    file_id: int,
+    request: Request,
+    from_: int | None = Query(None, alias="from"),
+    to: int | None = Query(None, alias="to"),
+    resolution: str = Query("auto", description="auto or 1m,5m,15m,1h,4h,1d,1w"),
+    limit: int = Query(2000, ge=1, le=2000),
+):
+    """Bounded OHLC range with bar-budget resolution selection."""
+    user = _get_user_from_request(request)
+    if user is not None:
+        _enforce_backtest_user_rate(user, "smart")
+
+    db = next(get_db())
+    try:
+        db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
+        if not db_file:
+            raise HTTPException(status_code=404, detail="File not found")
+        return _build_bars_payload(
+            file_id, db_file,
+            from_ms=from_, to_ms=to, resolution=resolution, limit=limit,
+        )
+    finally:
+        db.close()
 
 
 def _smart_load_from_csv(
@@ -19079,6 +19318,12 @@ if homepage_dir.exists():
 @app.on_event("startup")
 async def _firstrate_scheduler_app_startup():
     """Background thread: periodically queues FirstRate FX sync per uploads/firstrate_schedule.json."""
+    if questdb_store.questdb_enabled():
+        try:
+            questdb_store.ensure_schema()
+            print("✅ QuestDB schema ready")
+        except Exception as exc:
+            print(f"⚠️ QuestDB schema init failed: {exc}")
     _start_firstrate_scheduler_thread()
 
 

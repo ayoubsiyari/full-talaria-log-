@@ -2992,26 +2992,13 @@ class ReplaySystem {
      * pan-loading can finish before playback reaches the edge.
      */
     getForwardPrefetchThreshold() {
-        let rawCandleTimeframeMs = 60000;
-        if (this.fullRawData && this.fullRawData.length > 1) {
-            const dt = Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t);
-            if (Number.isFinite(dt) && dt > 0) {
-                rawCandleTimeframeMs = dt;
-            }
-        }
-
-        const rawCandleTimeframeSec = Math.max(1, rawCandleTimeframeMs / 1000);
-        const speed = Math.max(1, Number(this.speed) || 1);
-        const rawCandlesPerSecond = speed / rawCandleTimeframeSec;
-
-        // Adapt runway to observed forward-load latency so replay asks for data
-        // early enough even when API responses are temporarily slow.
-        const observedLoadMs = Math.max(500, Number(this.forwardLoadLatencyMs) || 1500);
-        const runwaySeconds = Math.max(12, Math.min(75, Math.ceil((observedLoadMs / 1000) * 3)));
-
-        const dynamicThreshold = Math.ceil(rawCandlesPerSecond * runwaySeconds) + 800;
-        const minThreshold = Math.max(2000, Math.ceil(rawCandlesPerSecond * 8) + 300);
-        return Math.max(minThreshold, Math.min(60000, dynamicThreshold));
+        const floor = Math.max(0, this.sessionStartIndex || 0);
+        const bufferLen = Array.isArray(this.fullRawData)
+            ? Math.max(0, this.fullRawData.length - floor)
+            : 2000;
+        // Prefetch when 80% of the loaded buffer is consumed (~20% remaining).
+        const remainingTrigger = Math.ceil(bufferLen * 0.2);
+        return Math.max(150, Math.min(2000, remainingTrigger));
     }
 
     getForwardEdgeRetryDelayMs() {

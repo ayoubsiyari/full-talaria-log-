@@ -9,6 +9,21 @@ services:
       timeout: 5s
       retries: 5
 
+  questdb:
+    image: questdb/questdb:8.2.2
+    restart: unless-stopped
+    environment:
+      QDB_PG_USER: ${QUESTDB_PG_USER:-admin}
+      QDB_PG_PASSWORD: ${QUESTDB_PG_PASSWORD:-quest}
+    volumes:
+      - questdb_data:/var/lib/questdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   db:
     image: postgres:16-alpine
     environment:
@@ -104,6 +119,12 @@ services:
       # Billing portal return_url allowlist (api_server). Until DNS is live, use the origin you open in the browser (e.g. http://localhost:3000). Production: https://www.talaria-log.com
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       STRIPE_REDIRECT_ALLOWED_ORIGINS: ${STRIPE_REDIRECT_ALLOWED_ORIGINS:-}
+      QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
+      QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
+      QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
+      QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
+      QUESTDB_ILP_HOST: questdb
+      QUESTDB_ILP_PORT: "9009"
     # Optional: inject FINNHUB (and other keys) from chart/.env — required:false so compose works if file is missing.
     env_file:
       - path: "./chart v 1.4/chart/.env"
@@ -112,6 +133,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      questdb:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -157,10 +180,18 @@ services:
       BACKTEST_WHATIF_ASYNC: ${BACKTEST_WHATIF_ASYNC:-true}
       BACKTEST_WHATIF_CACHE_TTL_SEC: ${BACKTEST_WHATIF_CACHE_TTL_SEC:-900}
       AUTH_ENABLED: "false"
+      QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
+      QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
+      QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
+      QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
+      QUESTDB_ILP_HOST: questdb
+      QUESTDB_ILP_PORT: "9009"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      questdb:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -188,5 +219,6 @@ services:
 
 volumes:
   postgres_data:
+  questdb_data:
   chart_uploads:
   chart_data:

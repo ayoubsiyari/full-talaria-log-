@@ -564,7 +564,8 @@ class Chart {
         // we drop the cached precision so the registry is re-queried for the new tick
         // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
         this._symbolPrecisionResolvedFor = null;
-        this._RAW_DATA_CAP = 300_000; // ring buffer: max candles in memory
+        this._RAW_DATA_CAP = 8000; // ring buffer: max candles in memory
+        this._REPLAY_RAW_CAP = 5000;
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
          * Instruments may hold 10–15+ years of 1m bars on disk — that full series is never loaded at once.
@@ -572,7 +573,7 @@ class Chart {
          * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
          * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 2500;
+        this.BACKTEST_SMART_INITIAL_LIMIT = 800;
         this._REPLAY_RAW_CAP = 120000;
         this.displaySeries = null;
         this.dataPipeline = null;
@@ -1495,14 +1496,24 @@ class Chart {
                 this.viewportData.chunkSize = initialBars;
             }
 
-            let result = await this._fetchSmartWindow(
-                fileId,
-                replayRawTf,
-                session,
-                'end',
-                historyRange,
-                { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT }
-            );
+            let result = null;
+            if (sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m') {
+                try {
+                    result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf);
+                } catch (e) {
+                    console.warn('Replay seek /bars fetch failed, falling back to /smart:', e);
+                }
+            }
+            if (!result) {
+                result = await this._fetchSmartWindow(
+                    fileId,
+                    replayRawTf,
+                    session,
+                    'end',
+                    historyRange,
+                    { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT }
+                );
+            }
 
             if (!this._smartResponseHasPayload(result)) {
                 const startR = session.startDate || session.start_date;
@@ -1784,6 +1795,121 @@ class Chart {
     async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
         const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange, smartOpts);
         return this._fetchSmartWindowWithParams(fileId, params);
+    }
+
+    /**
+     * Fetch bounded OHLC via /bars (bar-budget resolution selection).
+     */
+    async _fetchBarsWindow(fileId, fromMs, toMs, resolution = 'auto', limit = 2000) {
+        const params = new URLSearchParams({
+            resolution: String(resolution || 'auto'),
+            limit: String(Math.max(100, Math.min(2000, Number(limit) || 2000))),
+        });
+        if (Number.isFinite(fromMs)) params.set('from', String(Math.floor(fromMs)));
+        if (Number.isFinite(toMs)) params.set('to', String(Math.floor(toMs)));
+
+        const cacheKey = `bars|${fileId}|${params.toString()}`;
+        if (this._smartPrefetchCache && this._smartPrefetchCache.has(cacheKey)) {
+            const entry = this._smartPrefetchCache.get(cacheKey);
+            if (entry && Date.now() - entry.at < (this._smartCacheTtlMs || 120000)) {
+                return entry.payload;
+            }
+        }
+
+        const response = await fetch(`${this.apiUrl}/file/${fileId}/bars?${params.toString()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        if (this._smartPrefetchCache) {
+            this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+        }
+        return result;
+    }
+
+    _smartPayloadFromBars(barsPayload) {
+        const bars = Array.isArray(barsPayload?.bars) ? barsPayload.bars : [];
+        if (!bars.length) return null;
+        return {
+            candles: bars,
+            timeframe: barsPayload.resolution || '1m',
+            total: bars.length,
+            returned: bars.length,
+            has_more_left: true,
+            has_more_right: true,
+            first_cursor: String(bars[0].t),
+            last_cursor: String(bars[bars.length - 1].t),
+            source: barsPayload.source || 'bars',
+        };
+    }
+
+    async _fetchReplaySeekBuffer(fileId, session, replayRawTf = '1m') {
+        const sessionStartMs = (() => {
+            const raw = session?.startDate || session?.start_date;
+            if (!raw) return null;
+            const t = new Date(raw).getTime();
+            return Number.isFinite(t) ? t : null;
+        })();
+        const sessionEndMs = (() => {
+            const raw = session?.endDate || session?.end_date;
+            if (!raw) return null;
+            const t = this._sessionEndToInclusiveUtcMs(raw);
+            return Number.isFinite(t) ? Math.floor(t) : null;
+        })();
+        const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
+        const contextMs = 500 * tfMs;
+        const forwardMs = 2500 * tfMs;
+        const fromMs = sessionStartMs != null ? sessionStartMs - contextMs : null;
+        const toMs = sessionEndMs != null
+            ? sessionEndMs
+            : (sessionStartMs != null ? sessionStartMs + forwardMs : null);
+        const resolution = replayRawTf === '1m' ? '1m' : 'auto';
+        const payload = await this._fetchBarsWindow(fileId, fromMs, toMs, resolution, 2000);
+        return this._smartPayloadFromBars(payload);
+    }
+
+    _getVisibleTimestampRange() {
+        const source = Array.isArray(this.rawData) && this.rawData.length
+            ? this.rawData
+            : (Array.isArray(this.data) ? this.data : []);
+        if (!source.length) return null;
+
+        const spacing = this.getCandleSpacing();
+        const m = this.margin || { l: 60, r: 60 };
+        const plotWidth = Math.max(1, (this.w || 800) - m.l - m.r);
+        const startIdx = Math.max(0, Math.floor(-this.offsetX / spacing));
+        const endIdx = Math.min(source.length - 1, Math.ceil((plotWidth - this.offsetX) / spacing));
+        const buffer = 48;
+        const i0 = Math.max(0, startIdx - buffer);
+        const i1 = Math.min(source.length - 1, endIdx + buffer);
+        const t0 = source[i0]?.t;
+        const t1 = source[i1]?.t;
+        if (!Number.isFinite(t0) || !Number.isFinite(t1)) return null;
+        return { startTs: t0, endTs: t1 };
+    }
+
+    _scheduleViewportBarsFetch() {
+        if (this._viewportBarsTimer) return;
+        this._viewportBarsTimer = setTimeout(() => {
+            this._viewportBarsTimer = null;
+            this._refreshViewportBarsFromServer().catch(() => {});
+        }, 180);
+    }
+
+    async _refreshViewportBarsFromServer() {
+        if (!this.currentFileId || this._panLoading) return;
+        if (this.replaySystem && this.replaySystem.isActive) return;
+        if (!this.viewportData || !this.dataPipeline) return;
+        const range = this._getVisibleTimestampRange();
+        if (!range) return;
+
+        const candles = await this.dataPipeline.loadForVisibleRange(range.startTs, range.endTs);
+        if (!Array.isArray(candles) || candles.length === 0) return;
+
+        this.rawData = candles;
+        this.data = [...candles];
+        if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
+            this.dataPipeline.bumpDisplayVersion();
+        }
+        if (typeof this.scheduleRender === 'function') this.scheduleRender();
     }
 
     _inferMedianBarPeriodMs(data) {
@@ -10340,6 +10466,9 @@ class Chart {
                 if (this.offsetX < minOffset + nearEdgeThreshold) {
                     this.checkViewportLoadMore('forward');
                 }
+                if (this.viewportData && this.dataPipeline && !isReplayActive) {
+                    this._scheduleViewportBarsFetch();
+                }
             }
         }
 
@@ -13664,7 +13793,7 @@ class Chart {
                     }
                     // ── Ring buffer: cap rawData to avoid unbounded memory growth ──
                     let trimmed = merged;
-                    const cap = this._RAW_DATA_CAP || 300_000;
+                    const cap = this._RAW_DATA_CAP || 8000;
                     if (merged.length > cap) {
                         if (direction === 'backward') {
                             // Loading older data → evict from the right (newest)
@@ -13783,7 +13912,9 @@ class Chart {
             if (this.dataPipeline && typeof this.dataPipeline.attachViewportManager === 'function') {
                 this.dataPipeline.attachViewportManager(this.viewportData);
             }
-            const initialBars = (PipelineCtor && PipelineCtor.INITIAL_BACKTEST_BARS) || 2500;
+            const initialBars = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.INITIAL_BACKTEST_BARS)
+                || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.INITIAL_BACKTEST_BARS)
+                || 800;
             this.viewportData.chunkSize = initialBars;
         }
     }
