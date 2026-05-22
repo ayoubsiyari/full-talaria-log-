@@ -131,6 +131,10 @@ const V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS = new Set([
 const V9_TL_LINE_COLOR_OPACITY_CHART_TYPES = new Set([
   "rectangle", "rotated-rectangle", "ellipse", "circle", "triangle", "arc",
 ]);
+const V9_ARROW_MARK_CHART_TYPES = new Set(["arrow-mark-up", "arrow-mark-down"]);
+function v9IsArrowMarkChartType(type) {
+  return !!type && V9_ARROW_MARK_CHART_TYPES.has(type);
+}
 function v9TlLineColorSupportsOpacity(subToolIcon, chartDrawingType) {
   if (["draw", "brush"].includes(subToolIcon)) return true;
   if (chartDrawingType === "brush" || chartDrawingType === "highlighter") return true;
@@ -721,6 +725,17 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
+  }
+  if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
+    const borderOn = tlStyle.showBorder !== false;
+    const outline = tlStyle.borderColor || tlStyle.lineColor || patch.stroke;
+    patch.showBackground = shapeBgOn;
+    patch.fill = shapeBgOn ? (tlStyle.bgColor || patch.fill || "#F23645") : "none";
+    patch.borderEnabled = borderOn;
+    patch.borderColor = outline;
+    patch.stroke = borderOn ? outline : "none";
+    patch.strokeWidth = borderOn ? Math.max(1, widthNum) : 0;
+    patch.borderWidth = borderOn ? Math.max(1, parseInt(tlStyle.borderWidth, 10) || 1) : 0;
   }
   return patch;
 }
@@ -2804,8 +2819,17 @@ function v9TlStylePatchFromDrawing(d) {
       typeof s.showBackground === "boolean"
         ? s.showBackground
         : !!(s.fill && s.fill !== "none" && s.fill !== "transparent"),
-    showBorder: s.borderEnabled !== false,
-    ...(s.borderColor ? { borderColor: s.borderColor } : {}),
+    showBorder:
+      typeof s.borderEnabled === "boolean"
+        ? s.borderEnabled
+        : v9IsArrowMarkChartType(d.type)
+          ? !!(s.stroke && s.stroke !== "none" && Number(s.strokeWidth) > 0)
+          : s.borderEnabled !== false,
+    ...(v9IsArrowMarkChartType(d.type)
+      ? { borderColor: s.borderColor || (s.stroke && s.stroke !== "none" ? s.stroke : undefined) }
+      : s.borderColor
+        ? { borderColor: s.borderColor }
+        : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
     extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
@@ -11056,8 +11080,14 @@ const TalariaV8bLive = () => {
           showBg: typeof sPartial.showBackground === 'boolean'
             ? sPartial.showBackground
             : (sPartial.fill && sPartial.fill !== 'none' && sPartial.fill !== 'transparent' ? true : prev.showBg),
-          showBorder: typeof sPartial.borderEnabled === 'boolean' ? sPartial.borderEnabled : prev.showBorder,
-          borderColor: sPartial.borderColor || prev.borderColor,
+          showBorder: typeof sPartial.borderEnabled === 'boolean'
+            ? sPartial.borderEnabled
+            : v9IsArrowMarkChartType(drawingForStyle.type)
+              ? !!(sPartial.stroke && sPartial.stroke !== 'none' && Number(sPartial.strokeWidth) > 0)
+              : prev.showBorder,
+          borderColor: sPartial.borderColor
+            || (v9IsArrowMarkChartType(drawingForStyle.type) && sPartial.stroke && sPartial.stroke !== 'none' ? sPartial.stroke : null)
+            || prev.borderColor,
           borderType: LEGACY_DASH_TO_V9[(sPartial.borderDasharray || '')] || prev.borderType,
           borderWidth: sPartial.borderWidth != null ? String(sPartial.borderWidth) : prev.borderWidth,
           ep1: sPartial.startStyle || prev.ep1,
@@ -11919,7 +11949,7 @@ const TalariaV8bLive = () => {
     }
   };
 
-  // Shape background on/off — immediate repaint (triangle/rect/ellipse/circle/arc).
+  // Shape / arrow-mark background on/off — immediate repaint.
   const flushV9ShapeBackgroundToChart = (tl) => {
     try {
       const editSess = editingDrawingRef.current;
@@ -11932,7 +11962,10 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type)) return;
+        if (!V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type) && !v9IsArrowMarkChartType(d.type)) return;
+        if (v9IsArrowMarkChartType(d.type)) {
+          patch.fill = bgOn ? (tl.bgColor || d.style.fill || "#F23645") : "none";
+        }
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -11960,6 +11993,55 @@ const TalariaV8bLive = () => {
     setTlStyle((s) => {
       const next = { ...s, showBg: !s.showBg };
       queueMicrotask(() => flushV9ShapeBackgroundToChart(next));
+      return next;
+    });
+  };
+
+  const flushV9ShapeBorderToChart = (tl) => {
+    try {
+      const editSess = editingDrawingRef.current;
+      const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
+      const borderOn = tl.showBorder !== false;
+      const outline = tl.borderColor || tl.lineColor || "#787b86";
+      const widthNum = Math.max(1, parseInt(tl.borderWidth, 10) || parseInt(tl.lineWidth, 10) || 1);
+      const patch = {
+        borderEnabled: borderOn,
+        borderColor: outline,
+        stroke: borderOn ? outline : "none",
+        strokeWidth: borderOn ? widthNum : 0,
+        borderWidth: borderOn ? widthNum : 0,
+      };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (!v9IsArrowMarkChartType(d.type)) return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        Object.assign(d.style, patch);
+        try {
+          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+          else dm.renderDrawing?.(d);
+        } catch (_) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 shape border flush] failed:", err);
+    }
+  };
+
+  const toggleTlShowBorder = () => {
+    setTlStyle((s) => {
+      const next = { ...s, showBorder: !s.showBorder };
+      queueMicrotask(() => flushV9ShapeBorderToChart(next));
       return next;
     });
   };
@@ -14504,10 +14586,28 @@ const TalariaV8bLive = () => {
                       </div>
                     </>;
                   })()}
-                  {/* ── Background row (no-grid tools) ── */}
-                  {hasBg && !showLine && !isChannel && !isPitchfork && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
+                  {/* ── Arrow mark: Border + Background (no line grid) ── */}
+                  {hasBg && !showLine && !isChannel && !isPitchfork && ["arrowUp","arrowDn"].includes(tlSubTool.icon) && <>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
+                      <div style={{ padding:"8px 0" }}>
+                        {TlChk(tlStyle.showBorder, "tlchk-arrowBorder", "Border", toggleTlShowBorder)}
+                      </div>
+                      <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBorder ? 1 : 0.38, pointerEvents:tlStyle.showBorder ? "auto" : "none", transition:"opacity 0.15s" }}>
+                        {colorSwatch("tlBorderColor", tlStyle.borderColor || tlStyle.lineColor)}
+                      </div>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
+                      <div style={{ padding:"8px 0" }}>
+                        {TlChk(tlStyle.showBg, "tlchk-shapeBg2", "Background", toggleTlShowBg)}
+                      </div>
+                      <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
+                        {colorSwatch("tlBgColor", tlStyle.bgColor)}
+                      </div>
+                    </div>
+                  </>}
+                  {hasBg && !showLine && !isChannel && !isPitchfork && !["arrowUp","arrowDn"].includes(tlSubTool.icon) && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
                     <div style={{ padding:"8px 0" }}>
-                      {TlChk(tlStyle.showBg, "tlchk-shapeBg2", ["arrowUp","arrowDn"].includes(tlSubTool.icon) ? "Arrow" : "Background", toggleTlShowBg)}
+                      {TlChk(tlStyle.showBg, "tlchk-shapeBg2", "Background", toggleTlShowBg)}
                     </div>
                     <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
                       {colorSwatch("tlBgColor", tlStyle.bgColor)}

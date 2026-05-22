@@ -2,6 +2,30 @@
  * Drawing Tools - Extended Shapes Module
  * Implements: Highlighter, Arrow Markers, Circle, Arc, Curve, Double Curve, Rotated Rectangle
  */
+
+/** Respect V9 `showBackground` (from drawing-tools-shapes.js when loaded first). */
+function arrowMarkBackgroundFill(style, defaultFill) {
+    if (typeof shapeBackgroundFill === 'function') {
+        return shapeBackgroundFill(style, defaultFill);
+    }
+    if (style && style.showBackground === false) return 'none';
+    const raw = style && (style.fill ?? style.backgroundColor);
+    if (raw === 'none' || raw === 'transparent') return raw || 'none';
+    return raw || defaultFill;
+}
+
+function arrowMarkBorderVisible(style) {
+    if (typeof shapeBorderVisible === 'function') {
+        return shapeBorderVisible(style);
+    }
+    return !style || style.borderEnabled !== false;
+}
+
+function arrowMarkOutlineStroke(style) {
+    const c = style && (style.borderColor || style.stroke);
+    return c && c !== 'none' ? c : '#787b86';
+}
+
 // ============================================================================
 // Highlighter Tool (Freehand semi-transparent highlighting)
 // ============================================================================
@@ -357,6 +381,12 @@ class ArrowMarkUpTool extends BaseDrawing {
         const size = normalizeArrowMarkSize(this);
         const layout = arrowMarkUpLayout(size);
         const arrowPath = arrowMarkUpPathD(x, y, size);
+        const fillPaint = arrowMarkBackgroundFill(this.style, this.style.fill);
+        const borderOn = arrowMarkBorderVisible(this.style);
+        const outlineStroke = arrowMarkOutlineStroke(this.style);
+        const outlineWidth = borderOn
+            ? Math.max(1, Number(this.style.strokeWidth) || Number(this.style.borderWidth) || 1)
+            : 0;
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
@@ -379,33 +409,34 @@ class ArrowMarkUpTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Stroke-only hit area (interactive)
-        this.group.append('path')
-            .attr('class', 'shape-border-hit')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(16, size * 0.35))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        this.group.append('path')
-            .attr('class', 'shape-border')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
         this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', arrowPath)
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
+
+        if (borderOn) {
+            this.group.append('path')
+                .attr('class', 'shape-border-hit')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, size * 0.35))
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            this.group.append('path')
+                .attr('class', 'shape-border')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', outlineStroke)
+                .attr('stroke-width', outlineWidth)
+                .attr('data-original-width', outlineWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // Render text below the arrow
         if (this.text && this.text.trim()) {
@@ -491,6 +522,12 @@ class ArrowMarkDownTool extends BaseDrawing {
         const size = normalizeArrowMarkSize(this);
         const layout = arrowMarkUpLayout(size);
         const arrowPath = arrowMarkDownPathD(x, y, size);
+        const fillPaint = arrowMarkBackgroundFill(this.style, this.style.fill);
+        const borderOn = arrowMarkBorderVisible(this.style);
+        const outlineStroke = arrowMarkOutlineStroke(this.style);
+        const outlineWidth = borderOn
+            ? Math.max(1, Number(this.style.strokeWidth) || Number(this.style.borderWidth) || 1)
+            : 0;
 
         // Add invisible larger hitbox for easier selection (render FIRST so it's behind the arrow)
         const hitboxPadding = size * 0.5;
@@ -513,33 +550,34 @@ class ArrowMarkDownTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        // Stroke-only hit area (interactive)
-        this.group.append('path')
-            .attr('class', 'shape-border-hit')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(16, size * 0.35))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        this.group.append('path')
-            .attr('class', 'shape-border')
-            .attr('d', arrowPath)
-            .attr('fill', 'none')
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('data-original-width', this.style.strokeWidth)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
         this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', arrowPath)
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
+
+        if (borderOn) {
+            this.group.append('path')
+                .attr('class', 'shape-border-hit')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, size * 0.35))
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            this.group.append('path')
+                .attr('class', 'shape-border')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', outlineStroke)
+                .attr('stroke-width', outlineWidth)
+                .attr('data-original-width', outlineWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // Render text above the arrow
         if (this.text && this.text.trim()) {

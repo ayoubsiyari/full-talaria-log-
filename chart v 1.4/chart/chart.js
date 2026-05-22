@@ -579,6 +579,11 @@ class Chart {
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
         this._smartCacheTtlMs = 120000;
+        /** Per fileId → Map<tf, { rawData, data, cursors, nativeRawFetchTf }> for instant TF revisit */
+        this._tfDataCache = new Map();
+        this._tfDataCacheMaxPerFile = 5;
+        /** Native resolution of rawData from the last server fetch (used for client-resample gate) */
+        this._nativeRawFetchTf = null;
         this._sessionStateSaveDebounceMs = 4000;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
@@ -1507,7 +1512,8 @@ class Chart {
             await new Promise(resolve => setTimeout(resolve, 0));
             this.currentFileId = fileId;
             // skipIndicators: enterReplayMode will recalculate on the 10% slice — no need on 100k
-            this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true });
+            this._nativeRawFetchTf = replayRawTf;
+            this._ingestSmartWindowResult(result, { skipIndicators: true, skipFitToView: true, skipTimeframePrefetch: true });
             this.loadedRanges.set(0, result.returned);
             // Defer prefetch of other session instruments until after replay + layout settle —
             // parallel /smart for EUR/GBP/… competes with enterReplayMode and blanks panel 0 when half-width.
@@ -1517,6 +1523,9 @@ class Chart {
                 if (String(selfBt.currentFileId) !== String(scheduledFor)) return;
                 if (typeof selfBt._scheduleSmartPrefetchOthers === 'function') {
                     selfBt._scheduleSmartPrefetchOthers(fileId, replayRawTf, session);
+                }
+                if (typeof selfBt._scheduleTimeframePrefetch === 'function') {
+                    selfBt._scheduleTimeframePrefetch(fileId, replayRawTf, session);
                 }
             }, 14000);
 
@@ -1752,6 +1761,266 @@ class Chart {
         return this._fetchSmartWindowWithParams(fileId, params);
     }
 
+    _inferMedianBarPeriodMs(data) {
+        if (!Array.isArray(data) || data.length < 2) return NaN;
+        const samples = [];
+        const step = Math.max(1, Math.floor(data.length / 20));
+        for (let i = step; i < data.length; i += step) {
+            const d = data[i].t - data[i - step].t;
+            if (Number.isFinite(d) && d > 0) samples.push(d);
+        }
+        if (!samples.length) return NaN;
+        samples.sort((a, b) => a - b);
+        return samples[Math.floor(samples.length / 2)];
+    }
+
+    _getNativeRawTfMs() {
+        const replay = this.replaySystem;
+        if (replay && replay.isActive) {
+            const rawTf = replay.rawTimeframe;
+            if (typeof rawTf === 'number' && rawTf > 0) return rawTf;
+            if (typeof rawTf === 'string' && rawTf) {
+                const ms = this.parseTimeframe(rawTf);
+                if (Number.isFinite(ms) && ms > 0) return ms;
+            }
+        }
+        if (this._nativeRawFetchTf) {
+            const ms = this.parseTimeframe(this._nativeRawFetchTf);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        const inferred = this._inferMedianBarPeriodMs(this.rawData);
+        return Number.isFinite(inferred) && inferred > 0 ? inferred : NaN;
+    }
+
+    /**
+     * True when rawData is fine enough to aggregate to normalizedTf without a server refetch.
+     * Mirrors compare-overlay needRefetch (refetch only when new TF is materially finer).
+     */
+    _canClientResampleToTimeframe(normalizedTf) {
+        const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
+        if (!hasData) return false;
+        const newMs = this.parseTimeframe(normalizedTf);
+        const rawMs = this._getNativeRawTfMs();
+        if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(rawMs) || rawMs <= 0) return false;
+        return newMs >= rawMs * 0.92;
+    }
+
+    _getTfDataCache(fileId, timeframe) {
+        if (!fileId || !timeframe || !this._tfDataCache) return null;
+        const perFile = this._tfDataCache.get(String(fileId));
+        if (!perFile) return null;
+        const entry = perFile.get(String(timeframe).toLowerCase().trim());
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
+        return entry;
+    }
+
+    _saveTfDataCache(fileId, timeframe, extra = {}) {
+        if (!fileId || !timeframe) return;
+        const tf = String(timeframe).toLowerCase().trim();
+        if (!Array.isArray(this.rawData) || !this.rawData.length) return;
+        if (!this._tfDataCache) this._tfDataCache = new Map();
+        const fid = String(fileId);
+        if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
+        const perFile = this._tfDataCache.get(fid);
+        perFile.set(tf, {
+            at: Date.now(),
+            rawData: this.rawData.slice(),
+            data: Array.isArray(this.data) && this.data.length
+                ? this.data.slice()
+                : this.resampleData(this.rawData, tf),
+            totalCandles: this.totalCandles,
+            serverCursors: this._serverCursors ? { ...this._serverCursors } : null,
+            nativeRawFetchTf: this._nativeRawFetchTf || tf,
+            ...extra,
+        });
+        while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
+            const first = perFile.keys().next().value;
+            perFile.delete(first);
+        }
+    }
+
+    _restoreFromTfDataCache(fileId, normalizedTf) {
+        const entry = this._getTfDataCache(fileId, normalizedTf);
+        if (!entry) return false;
+        this.rawData = entry.rawData.slice();
+        this.data = Array.isArray(entry.data) && entry.data.length
+            ? entry.data.slice()
+            : this.resampleData(this.rawData, normalizedTf);
+        this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
+        this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
+        if (entry.nativeRawFetchTf) this._nativeRawFetchTf = entry.nativeRawFetchTf;
+        this._panLoading = false;
+        return true;
+    }
+
+    _deferRecalculateIndicators() {
+        if (typeof this.recalculateIndicators !== 'function') return;
+        const ric = typeof requestIdleCallback === 'function'
+            ? requestIdleCallback
+            : (cb) => setTimeout(cb, 16);
+        ric(() => {
+            try {
+                if (Array.isArray(this.data) && this.data.length) {
+                    this.recalculateIndicators();
+                }
+            } catch (e) { /* ignore */ }
+        });
+    }
+
+    _getTimeframesToPrefetch(currentTf) {
+        const cur = String(currentTf || '1m').toLowerCase().trim();
+        const out = new Set();
+        try {
+            if (typeof window !== 'undefined' && window.timeframeFavorites
+                && Array.isArray(window.timeframeFavorites.favorites)) {
+                window.timeframeFavorites.favorites.forEach((f) => {
+                    const n = String(f || '').toLowerCase().trim();
+                    if (n) out.add(n);
+                });
+            } else {
+                const saved = userStorage.getItem('chart_timeframe_favorites');
+                if (saved) {
+                    JSON.parse(saved).forEach((f) => {
+                        const n = String(f || '').toLowerCase().trim();
+                        if (n) out.add(n);
+                    });
+                }
+            }
+        } catch (e) { /* ignore */ }
+        const ladder = ['1m', '2m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
+        const idx = ladder.indexOf(cur);
+        if (idx >= 0) {
+            if (idx > 0) out.add(ladder[idx - 1]);
+            if (idx < ladder.length - 1) out.add(ladder[idx + 1]);
+        }
+        out.delete(cur);
+        return Array.from(out).slice(0, 4);
+    }
+
+    _storePrefetchedTfCache(fileId, tf, result, candles) {
+        if (!fileId || !tf || !Array.isArray(candles) || !candles.length) return;
+        if (!this._tfDataCache) this._tfDataCache = new Map();
+        const fid = String(fileId);
+        const normalized = String(tf).toLowerCase().trim();
+        if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
+        const perFile = this._tfDataCache.get(fid);
+        perFile.set(normalized, {
+            at: Date.now(),
+            rawData: candles,
+            data: this.resampleData(candles, normalized),
+            totalCandles: result && result.total != null ? result.total : candles.length,
+            serverCursors: result ? {
+                firstTs: result.first_cursor,
+                lastTs: result.last_cursor,
+                hasMoreLeft: result.has_more_left,
+                hasMoreRight: result.has_more_right,
+            } : null,
+            nativeRawFetchTf: normalized,
+        });
+        while (perFile.size > (this._tfDataCacheMaxPerFile || 5)) {
+            const first = perFile.keys().next().value;
+            perFile.delete(first);
+        }
+    }
+
+    _scheduleTimeframePrefetch(fileId, currentTf, session) {
+        if (!fileId || !currentTf) return;
+        const ric = typeof window !== 'undefined' && window.requestIdleCallback
+            ? window.requestIdleCallback
+            : (cb) => setTimeout(cb, 500);
+        const self = this;
+        ric(() => {
+            if (String(self.currentFileId) !== String(fileId)) return;
+            const targets = self._getTimeframesToPrefetch(currentTf);
+            const sess = session || self.backtestingSession || {};
+            targets.forEach((tf) => {
+                if (self._getTfDataCache(fileId, tf)) return;
+                const params = self._buildSmartWindowParams(fileId, tf, sess);
+                if (self._getSmartCachedPayload(fileId, params, false)) {
+                    const cached = self._getSmartCachedPayload(fileId, params, false);
+                    if (cached && Array.isArray(cached.candles) && cached.candles.length) {
+                        const rows = self._normalizeCandlesFromApi(cached.candles);
+                        if (rows.length) self._storePrefetchedTfCache(fileId, tf, cached, rows);
+                    }
+                    return;
+                }
+                self._fetchSmartWindowWithParams(fileId, params)
+                    .then((result) => {
+                        if (!self._smartResponseHasPayload(result)) return;
+                        if (String(self.currentFileId) !== String(fileId)) return;
+                        const rows = Array.isArray(result.candles)
+                            ? self._normalizeCandlesFromApi(result.candles)
+                            : [];
+                        if (rows.length) self._storePrefetchedTfCache(fileId, tf, result, rows);
+                    })
+                    .catch(() => {});
+            });
+        });
+    }
+
+    _applyLiveTimeframeSwitchFromCache(normalizedTf) {
+        if (!this.currentFileId) return false;
+        if (!this._restoreFromTfDataCache(this.currentFileId, normalizedTf)) return false;
+        this._commitTimeframeChange(normalizedTf);
+        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
+        }
+        if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+        this.resize();
+        if (this.data && this.data.length > 0) {
+            this._chartViewRestored = false;
+            this.jumpToLatest();
+        } else {
+            this.fitToView();
+        }
+        this._deferRecalculateIndicators();
+        this._endTimeframeSwitching();
+        this._fireChartDataLoaded();
+        return true;
+    }
+
+    /**
+     * Synchronous client-resample TF switch (live or replay). Skips network when rawData
+     * granularity is sufficient for the destination timeframe.
+     */
+    _applyClientResampleTimeframeSwitch(normalizedTf, options = {}) {
+        const replayPath = !!options.replayPath;
+        this._commitTimeframeChange(normalizedTf);
+        this.data = this.resampleData(this.rawData, normalizedTf);
+        if (this.currentFileId) {
+            this._saveTfDataCache(this.currentFileId, normalizedTf);
+        }
+        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
+        }
+        if (replayPath && this.replaySystem && this.replaySystem.isActive) {
+            this.candleWidth = DEFAULT_CANDLE_WIDTH;
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            this._chartViewRestored = false;
+            this.replaySystem.onTimeframeChange(this);
+            requestAnimationFrame(() => {
+                if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                    this.compareOverlay.refreshForTimeframe(normalizedTf);
+                }
+            });
+        } else {
+            this._deferRecalculateIndicators();
+            this.resize();
+            if (this.data && this.data.length > 0) {
+                this.jumpToLatest();
+            } else {
+                this._chartViewRestored = false;
+                this.fitToView();
+            }
+            this._fireChartDataLoaded();
+        }
+        this._endTimeframeSwitching();
+        if (!replayPath) this.scheduleRender();
+        return true;
+    }
+
     _normalizeCandlesFromApi(candles) {
         const out = [];
         if (!Array.isArray(candles)) return out;
@@ -1843,6 +2112,17 @@ class Chart {
                 }
             }));
             this._emitTimeframeChanged();
+        }
+
+        if (startIndex === 0 && this.currentFileId) {
+            this._saveTfDataCache(this.currentFileId, this.currentTimeframe);
+            if (!options.skipTimeframePrefetch) {
+                this._scheduleTimeframePrefetch(
+                    this.currentFileId,
+                    this.currentTimeframe,
+                    this.backtestingSession
+                );
+            }
         }
     }
 
@@ -2059,6 +2339,7 @@ class Chart {
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
+            this._nativeRawFetchTf = requestTimeframe;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
@@ -11974,6 +12255,14 @@ class Chart {
      * double-clicked the time axis. The commit happens atomically inside
      * `_loadTimeframeFromServer` / `_commitTimeframeChange` once the new data is
      * either fetched or resampled.
+     *
+     * Execution paths after the freeze overlay arms:
+     *  A) TF data cache hit → restore bars, no network
+     *  B) Replay + client resample (coarse/equal TF) → onTimeframeChange, no network
+     *  C) Replay + backtest finer TF → _refetchBacktestTimeframe (network + replay re-init)
+     *  D) Live + fileId + client resample gate → resample rawData, no network
+     *  E) Live + fileId → _loadTimeframeFromServer (GET /smart)
+     *  F) Local CSV only → resample rawData, no network
      */
     setTimeframe(timeframe) {
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
@@ -12012,6 +12301,11 @@ class Chart {
             }
         }
 
+        // Path A: instant revisit of a recently loaded timeframe (prefetch or prior switch).
+        if (this.currentFileId && this._applyLiveTimeframeSwitchFromCache(normalizedTf)) {
+            return;
+        }
+
         if (this.replaySystem && this.replaySystem.isActive) {
             // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
             // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
@@ -12023,18 +12317,23 @@ class Chart {
             const newTfMs = typeof this.parseTimeframe === 'function'
                 ? this.parseTimeframe(normalizedTf)
                 : NaN;
-            // Always refetch from server during backtest when the timeframe changes,
-            // regardless of direction.  Client-side resample of fine-grained rawData
-            // (e.g. 100k 1m bars ≈ 69 days) to a coarse TF (1D) produces very few
-            // candles and loses the deep history the server can provide for that TF.
+            // Server refetch only when switching to a materially finer TF than loaded raw bars.
+            // Coarse switches (1m → 1h / 1D) use client resample — same deep history, no 100k fetch.
             const needsServerRefetch = this.isBacktestMode
                 && this.currentFileId
                 && Number.isFinite(rawTfMs) && rawTfMs > 0
-                && Number.isFinite(newTfMs) && newTfMs > 0;
+                && Number.isFinite(newTfMs) && newTfMs > 0
+                && newTfMs < rawTfMs * 0.92;
 
             if (needsServerRefetch) {
-                // _loadTimeframeFromServer commits + ends the switching state when data arrives.
+                // Path C: _refetchBacktestTimeframe commits + ends the switching state when data arrives.
                 this._refetchBacktestTimeframe(normalizedTf);
+                return;
+            }
+
+            // Path B: client-side resample during replay (coarse/equal TF or non-backtest replay).
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
             }
 
@@ -12060,8 +12359,12 @@ class Chart {
             return;
         }
 
-        // Always fetch from server — viewport-based, like TradingView
+        // Path E/D: server file — resample when safe, else fetch from /smart.
         if (this.currentFileId) {
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf);
+                return;
+            }
             this._loadTimeframeFromServer(normalizedTf);
             return;
         }
@@ -12072,10 +12375,11 @@ class Chart {
             return;
         }
 
+        // Path F: local CSV — resample without network.
         // Commit BEFORE resample so the new data + new timeframe land together.
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
-        if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
+        this._deferRecalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
@@ -12330,6 +12634,31 @@ class Chart {
         try {
             if (this.showLoader) this.showLoader('Changing timeframe...');
 
+            // Cache hit when called directly (bypassing setTimeframe's early check).
+            if (this._restoreFromTfDataCache(this.currentFileId, timeframe)) {
+                this._commitTimeframeChange(timeframe);
+                if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                    this.compareOverlay.refreshForTimeframe(timeframe);
+                }
+                if (this.hideLoader) this.hideLoader();
+                requestAnimationFrame(() => {
+                    if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
+                    this.resize();
+                    if (this.data && this.data.length > 0) {
+                        this.jumpToLatest();
+                    } else {
+                        this.fitToView();
+                    }
+                    this._deferRecalculateIndicators();
+                    this._endTimeframeSwitching();
+                    this.render();
+                    if (typeof this.dispatchScrollSync === 'function') {
+                        this.dispatchScrollSync();
+                    }
+                });
+                return;
+            }
+
             const session = this.backtestingSession || {};
             const result = await this._fetchSmartWindow(
                 this.currentFileId,
@@ -12364,7 +12693,9 @@ class Chart {
             // frozen by `_timeframeSwitching` so nothing paints until we explicitly
             // end the switch below.
             this._commitTimeframeChange(timeframe);
-            this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this._nativeRawFetchTf = timeframe;
+            this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
+            this._deferRecalculateIndicators();
 
             // Immediately put the chart into a renderable state.
             // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
@@ -12619,6 +12950,7 @@ class Chart {
         this._panLoading = false;
         this._chartViewRestored = false;
         this._commitTimeframeChange(timeframe);
+        this._nativeRawFetchTf = timeframe;
         this._ingestSmartWindowResult(result, {
             skipIndicators: true,
             skipFitToView: true,
@@ -12824,7 +13156,9 @@ class Chart {
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
         });
-        setTimeout(finalizeReset, 200);
+        // Shorter settle window: enterReplayMode's realignAfterLayout uses rAF + ~150ms;
+        // two rAF passes plus 100ms is enough for canvas + replay viewport without the old 200ms penalty.
+        setTimeout(finalizeReset, 100);
     }
 
     /**
@@ -13396,12 +13730,56 @@ class Chart {
     }
 
     /**
-     * Minimum candleWidth for zoom-out (static floor from allowedWidths[0]).
-     * No viewport cap — users can zoom out arbitrarily; candle LOD keeps render smooth.
+     * TradingView-style cap: max bar slots on screen for the active timeframe.
+     */
+    _getMaxBarsOnScreen(timeframe) {
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
+        const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
+        const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
+        const limits = {
+            '1m': 3500, '2m': 3200, '3m': 3000, '5m': 2800,
+            '10m': 2600, '15m': 2400, '30m': 2200,
+            '45m': 2000, '1h': 1800, '2h': 1600, '3h': 1500, '4h': 1400,
+            '6h': 1300, '8h': 1200, '12h': 1100,
+            '1d': 1200, '1w': 900, '1wk': 900,
+        };
+        const tfCap = limits[tf];
+        if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
+        const mo = tf.match(/^(\d+)mo$/);
+        if (mo) return Math.min(fromWidth, 800);
+        return Math.min(fromWidth, 2400);
+    }
+
+    /**
+     * Minimum candleWidth for zoom-out: static floor + per-TF on-screen bar cap.
      */
     _getEffectiveMinCandleWidth(allowedWidths) {
         const widths = (allowedWidths && allowedWidths.length) ? allowedWidths : [0.1, 0.2];
-        return widths[0];
+        const listMin = widths[0];
+        const listMax = widths[widths.length - 1];
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(1, (this.w || 0) - m.l - m.r);
+        const maxBars = this._getMaxBarsOnScreen();
+        if (!Number.isFinite(plotPx) || plotPx <= 0 || maxBars <= 0) return listMin;
+
+        const targetSpacing = plotPx / maxBars;
+        let lo = listMin;
+        let hi = listMax;
+        let best = listMax;
+        for (let i = 0; i < 28; i++) {
+            const mid = (lo + hi) / 2;
+            if (this._getSpacingForCandleWidth(mid) >= targetSpacing) {
+                best = mid;
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        for (let j = 0; j < widths.length; j++) {
+            if (widths[j] >= best - 1e-6) return widths[j];
+        }
+        return listMax;
     }
     
     /**

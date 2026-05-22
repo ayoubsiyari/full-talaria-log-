@@ -2843,12 +2843,27 @@ class CompareOverlay {
      * @param {string|number} fileId
      * @param {string} [fetchTf] - API timeframe for this request; defaults to {@link #_resolveOverlaySmartFetchTimeframe}.
      */
+    /**
+     * Reuse main chart TF cache when overlay fileId matches (avoids duplicate /smart fetch).
+     */
+    _getOverlayBarsFromChartTfCache(fileId, timeframe) {
+        const ch = this.chart;
+        if (!ch || typeof ch._getTfDataCache !== 'function') return null;
+        const entry = ch._getTfDataCache(fileId, timeframe);
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
+        return entry.rawData.slice();
+    }
+
     async _fetchOverlayBarsViaSmart(fileId, fetchTf) {
         const ch = this.chart;
-        if (!ch || typeof ch._fetchSmartWindow !== 'function') return [];
         const tf = fetchTf != null && String(fetchTf).trim() !== ''
             ? String(fetchTf).trim()
             : this._resolveOverlaySmartFetchTimeframe();
+        const cached = this._getOverlayBarsFromChartTfCache(fileId, tf);
+        if (cached && cached.length) {
+            return cached;
+        }
+        if (!ch || typeof ch._fetchSmartWindow !== 'function') return [];
         const session = this._resolveCompareSession();
         const windowRange = this._resolveCompareWindowRange();
         const explicit = !!(windowRange && Number.isFinite(windowRange.startTs) && Number.isFinite(windowRange.endTs));
@@ -4114,6 +4129,21 @@ class CompareOverlay {
 
         (async () => {
             try {
+                // Wait until main chart finishes TF switch before hitting /smart (cache may already have bars).
+                const ch = this.chart;
+                if (ch && ch._timeframeSwitching) {
+                    await new Promise((resolve) => {
+                        const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+                        const step = () => {
+                            const timedOut = (typeof performance !== 'undefined' && performance.now)
+                                ? (performance.now() - t0 > 90000)
+                                : false;
+                            if (!ch._timeframeSwitching || timedOut) resolve();
+                            else requestAnimationFrame(step);
+                        };
+                        requestAnimationFrame(step);
+                    });
+                }
                 for (const overlay of this.overlays) {
                     const nativeMs = Number.isFinite(overlay.nativeBarMs)
                         ? overlay.nativeBarMs
@@ -4123,7 +4153,10 @@ class CompareOverlay {
                         && Number.isFinite(nativeMs)
                         && newMs < nativeMs * 0.92;
                     if (needRefetch) {
-                        let rows = await this._fetchOverlayBarsViaSmart(overlay.fileId, timeframe);
+                        const cachedRows = this._getOverlayBarsFromChartTfCache(overlay.fileId, timeframe);
+                        let rows = cachedRows && cachedRows.length
+                            ? cachedRows
+                            : await this._fetchOverlayBarsViaSmart(overlay.fileId, timeframe);
                         if (!rows.length) {
                             try {
                                 rows = await this._fetchOverlayBarsLegacyCsv(overlay.fileId);
@@ -4149,7 +4182,10 @@ class CompareOverlay {
                             && Number.isFinite(nativeMs)
                             && newMs < nativeMs * 0.92;
                         if (needRefetch) {
-                            let rows = await this._fetchOverlayBarsViaSmart(pane.fileId, timeframe);
+                            const cachedPaneRows = this._getOverlayBarsFromChartTfCache(pane.fileId, timeframe);
+                            let rows = cachedPaneRows && cachedPaneRows.length
+                                ? cachedPaneRows
+                                : await this._fetchOverlayBarsViaSmart(pane.fileId, timeframe);
                             if (!rows.length) {
                                 try {
                                     rows = await this._fetchOverlayBarsLegacyCsv(pane.fileId);

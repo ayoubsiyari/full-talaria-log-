@@ -2485,10 +2485,25 @@ class ReplaySystem {
             return;
         }
         
-        // Recalculate indicators
+        // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
+        // full recalc every frame freezes when pressing Play. Stride while playing; skip
+        // when paused on the last bar with a huge slice (Play at end is usually a no-op).
         if (typeof this.chart.recalculateIndicators === 'function') {
             try {
-                this.chart.recalculateIndicators();
+                const sliceLen = this.chart.rawData.length;
+                const maxFullRecalc = 12000;
+                const stride = 20;
+                let runRecalc = sliceLen <= maxFullRecalc;
+                if (!runRecalc && this.isPlaying) {
+                    runRecalc = this.currentIndex < 4000
+                        || (this.currentIndex % stride === 0);
+                }
+                if (!runRecalc && !this.isPlaying && this._isAtLastLoadedBar()) {
+                    runRecalc = false;
+                }
+                if (runRecalc) {
+                    this.chart.recalculateIndicators();
+                }
             } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
