@@ -9297,6 +9297,9 @@ class Chart {
         // spans the full loaded history (years of FX range) while the playhead price sits near the top.
         const replay = this.replaySystem;
         if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            if (typeof this._isChartViewPanning === 'function' && this._isChartViewPanning()) {
+                return;
+            }
             const st = replay.getReplayAutoScrollState(this);
             if (st && Number.isFinite(st.offsetX)) {
                 this.offsetX = st.offsetX;
@@ -13711,7 +13714,7 @@ class Chart {
         // Apply price zoom and offset with improved calculations
         let domainMin, domainMax;
 
-        if (this._panBitmapFrozenYDomain && this._isChartViewPanning()) {
+        if (this._panBitmapUsesFrozenScales()) {
             domainMin = this._panBitmapFrozenYDomain[0];
             domainMax = this._panBitmapFrozenYDomain[1];
         } else if (this.autoScale && this.priceZoom === 1 && this.priceOffset === 0) {
@@ -13774,7 +13777,7 @@ class Chart {
         // in auto-scale mode or when the right edge has no visible bars.
         // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
         if (
-            !(this._panBitmapFrozenYDomain && this._isChartViewPanning()) &&
+            !this._panBitmapUsesFrozenScales() &&
             this.chartSettings.showPriceLine !== false &&
             this.autoScale
         ) {
@@ -13798,7 +13801,7 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        const maxVolume = (this._panBitmapFrozenVolumeDomain && this._isChartViewPanning())
+        const maxVolume = (this._panBitmapUsesFrozenScales() && this._panBitmapFrozenVolumeDomain)
             ? this._panBitmapFrozenVolumeDomain[1]
             : Math.max(...visible.map(d => d.v), 1);
         this.volumeScale = d3.scaleLinear()
@@ -13882,14 +13885,50 @@ class Chart {
         this._panBitmapFrozenVolumeDomain = null;
     }
 
+    _panBitmapUsesFrozenScales() {
+        return !!(
+            this._panBitmapFrozenYDomain &&
+            (this._isChartViewPanning() || this._panBitmapPendingReleaseRender)
+        );
+    }
+
+    /** Shared pan delta for SVG drawings layer and series bitmap — must stay in sync. */
+    _getPanLayerTranslateDeltas() {
+        if (this._panSnapOffsetX == null) return { dx: 0, ty: 0 };
+        const dx = this.offsetX - this._panSnapOffsetX;
+        let ty = 0;
+        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
+            const m = this.margin;
+            const priceAreaHeight = this.h - m.t - m.b;
+            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+            if (priceAreaHeight > 0 && Number.isFinite(priceRange) && priceRange > 0) {
+                ty = ((this.priceOffset - this._panSnapPriceOffset) / priceRange) * priceAreaHeight;
+            }
+        }
+        return { dx, ty };
+    }
+
     /** TradingView-style: slide a pre-rendered series bitmap during chart pan instead of redrawing every candle. */
     _canUsePanChartBitmapCache() {
         if (!this._isChartViewPanning()) return false;
         if (this._isWheelBurst() || this._isReplayRenderFastPath()) return false;
+        if (this.replaySystem && this.replaySystem.isActive) return false;
         if (!this.data || this.data.length === 0) return false;
         if (this.boxZoom && this.boxZoom.active) return false;
-        if (this._panSnapOffsetX == null || !this._panSeriesCache || !this._panSeriesCacheMeta) return false;
+        if (this._panSnapOffsetX == null || !this._panSeriesCache) return false;
         return true;
+    }
+
+    /** Re-capture series bitmap at the current pan position when cache was invalidated mid-drag. */
+    _reanchorPanChartBitmapCache() {
+        if (!this._isChartViewPanning() || !this.yScale) return;
+        this._panSnapOffsetX = this.offsetX;
+        this._panSnapPriceOffset = this.priceOffset;
+        this._panBitmapFrozenYDomain = this.yScale.domain().slice();
+        if (this.volumeScale) {
+            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
+        }
+        this._preparePanChartBitmapCache();
     }
 
     _getPanSeriesBitmapSnapMeta() {
@@ -13910,16 +13949,7 @@ class Chart {
      */
     _preparePanChartBitmapCache() {
         if (!this.data || this.data.length === 0 || this.w < 2 || this.h < 2) return;
-
-        if (this.yScale) {
-            this._panBitmapFrozenYDomain = this.yScale.domain().slice();
-        }
-        if (this.volumeScale) {
-            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
-        }
-
-        this.calculateScales();
-        this._timeTicks = this._buildTimeTicks();
+        if (!this.yScale) return;
 
         const mVis = this.margin || { l: 0, r: 0, t: 0, b: 0 };
         const plotRight = this.w - mVis.r;
@@ -13971,17 +14001,7 @@ class Chart {
     }
 
     _drawPanSeriesBitmapCache() {
-        const dx = this.offsetX - this._panSnapOffsetX;
-        let ty = 0;
-        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
-            const m = this.margin;
-            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            const priceAreaHeight = this.h - m.t - m.b;
-            if (priceAreaHeight > 0 && Number.isFinite(priceRange) && priceRange > 0) {
-                const pricePerPixel = priceRange / priceAreaHeight;
-                ty = (this._panSnapPriceOffset - this.priceOffset) / pricePerPixel;
-            }
-        }
+        const { dx, ty } = this._getPanLayerTranslateDeltas();
 
         const m = this.margin || { l: 0, r: 60, t: 0, b: 30 };
         this.ctx.save();
@@ -14029,6 +14049,12 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
+        if (this.yScale) {
+            this._panBitmapFrozenYDomain = this.yScale.domain().slice();
+        }
+        if (this.volumeScale) {
+            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
+        }
     }
 
     _clearAxisHighlightPanTransform() {
@@ -14055,7 +14081,7 @@ class Chart {
         ).attr('transform', timeT);
     }
 
-    _clearPanDrawingsLayerTransform() {
+    _clearPanDrawingsLayerTransform(clearFrozen = true) {
         const dm = this.drawingManager;
         if (dm) {
             if (typeof dm._ensureDrawingsPanLayer === 'function') {
@@ -14080,8 +14106,11 @@ class Chart {
         this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
-        this._clearPanBitmapFrozenScales();
         this._invalidatePanChartBitmap();
+        if (clearFrozen) {
+            this._panBitmapPendingReleaseRender = false;
+            this._clearPanBitmapFrozenScales();
+        }
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
@@ -14124,16 +14153,7 @@ class Chart {
     _applyPanDrawingsLayerTransform() {
         const dm = this.drawingManager;
         if (!dm || this._panSnapOffsetX == null) return;
-        const dx = this.offsetX - this._panSnapOffsetX;
-        let ty = 0;
-        if (this.yScale && this._panSnapPriceOffset != null && this.priceOffset !== this._panSnapPriceOffset) {
-            const m = this.margin;
-            const priceAreaHeight = this.h - m.t - m.b;
-            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            if (priceRange > 0) {
-                ty = ((this.priceOffset - this._panSnapPriceOffset) / priceRange) * priceAreaHeight;
-            }
-        }
+        const { dx, ty } = this._getPanLayerTranslateDeltas();
         const transform = ty ? `translate(${dx},${ty})` : `translate(${dx},0)`;
         if (typeof dm._ensureDrawingsPanLayer === 'function') {
             dm._ensureDrawingsPanLayer();
@@ -14162,6 +14182,8 @@ class Chart {
         const zPan = this._v9LayoutZoom();
         const effectiveDx = this.timeScale.locked ? 0 : (cx - this.drag.lastX) / zPan;
         const effectiveDy = this.priceScale.locked ? 0 : (cy - this.drag.lastY) / zPan;
+
+        if (effectiveDx === 0 && effectiveDy === 0) return;
 
         this.offsetX += effectiveDx;
         if (this.yScale && effectiveDy !== 0) {
@@ -14278,7 +14300,9 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
-        this._invalidatePanChartBitmap();
+        if (!this._isChartViewPanning()) {
+            this._invalidatePanChartBitmap();
+        }
     }
     
     animateZoom() {
@@ -14506,7 +14530,10 @@ class Chart {
         // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            const usePanBitmap = this._canUsePanChartBitmapCache();
+            if (this._isChartViewPanning() && this._panSnapOffsetX != null && !this._panSeriesCacheMeta) {
+                this._reanchorPanChartBitmapCache();
+            }
+            const usePanBitmap = this._canUsePanChartBitmapCache() && this._panSeriesCacheMeta;
 
             if (usePanBitmap) {
                 this.drawGrid();
@@ -14531,7 +14558,7 @@ class Chart {
 
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
-            } else if (!this._isWheelBurst()) {
+            } else if (!this._isWheelBurst() && !this._isChartViewPanning()) {
                 this._clearPanDrawingsLayerTransform();
                 this.redrawDrawings();
             }
@@ -14544,6 +14571,10 @@ class Chart {
             }
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
+            }
+            if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
+                this._panBitmapPendingReleaseRender = false;
+                this._clearPanBitmapFrozenScales();
             }
             return;
         }
@@ -14650,6 +14681,11 @@ class Chart {
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
         if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
             window.__economicCalendarNotifyChartRender(this);
+        }
+
+        if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
+            this._panBitmapPendingReleaseRender = false;
+            this._clearPanBitmapFrozenScales();
         }
     }
     
@@ -18330,7 +18366,7 @@ class Chart {
                     chartWrapper.style.cursor = panCursor;
                 }
                 
-                if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
+                if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
             }
@@ -18668,10 +18704,13 @@ class Chart {
                     cancelAnimationFrame(this._panScrollSyncRaf);
                     this._panScrollSyncRaf = null;
                 }
-                this._clearPanDrawingsLayerTransform();
-                if (!isChartClick) {
+                this._clearPanDrawingsLayerTransform(false);
+                if (isChartClick) {
+                    this._clearPanBitmapFrozenScales();
+                } else {
                     this.dispatchScrollSync(true);
-                    this.constrainOffset();
+                    this._constrainOffsetDuringDrag();
+                    this._panBitmapPendingReleaseRender = true;
                 }
                 this.scheduleChartViewSave();
                 if (!isChartClick) {
@@ -18902,23 +18941,13 @@ class Chart {
                         this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
-                        let effectiveDx = this.timeScale.locked ? 0 : dx;
-                        let effectiveDy = this.priceScale.locked ? 0 : dy;
-                        this.offsetX += effectiveDx;
-                        if (this.yScale && effectiveDy !== 0) {
-                            this.autoScale = false;
-                            this.priceScale.autoScale = false;
-                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                            this.priceOffset += effectiveDy * pricePerPixel;
-                        }
-                        this.constrainOffset();
-                        this.scheduleRender();
-                        this.dispatchScrollSync();
+                        this._scheduleChartPanFrame(e.clientX, e.clientY);
                     }
 
-                    this.drag.lastX = e.clientX;
-                    this.drag.lastY = e.clientY;
+                    if (this.drag.type !== 'pan') {
+                        this.drag.lastX = e.clientX;
+                        this.drag.lastY = e.clientY;
+                    }
                 }
             }
 

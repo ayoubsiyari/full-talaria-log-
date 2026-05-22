@@ -2481,7 +2481,9 @@ class ReplaySystem {
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
-        if (autoScroll && this.autoScrollEnabled) {
+        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
+            && this.chart._isChartViewPanning();
+        if (autoScroll && this.autoScrollEnabled && !chartPanning) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -2497,7 +2499,11 @@ class ReplaySystem {
         
         // Apply constraints
         if (typeof this.chart.constrainOffset === 'function') {
-            this.chart.constrainOffset();
+            if (chartPanning && typeof this.chart._constrainOffsetDuringDrag === 'function') {
+                this.chart._constrainOffsetDuringDrag();
+            } else if (!chartPanning) {
+                this.chart.constrainOffset();
+            }
         }
         
         if (playing && typeof this.chart._scheduleReplayRender === 'function') {
@@ -3628,7 +3634,9 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled) {
+        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
+            && this.chart._isChartViewPanning();
+        if (this.autoScrollEnabled && !chartPanning) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -3642,7 +3650,11 @@ class ReplaySystem {
         // Render
         this.chart.isLoading = false;
         if (typeof this.chart.constrainOffset === 'function') {
-            this.chart.constrainOffset();
+            if (chartPanning && typeof this.chart._constrainOffsetDuringDrag === 'function') {
+                this.chart._constrainOffsetDuringDrag();
+            } else if (!chartPanning) {
+                this.chart.constrainOffset();
+            }
         }
         this.chart.renderPending = true;
         this.chart.render();
