@@ -1545,8 +1545,10 @@ class PriceNoteTool extends BaseDrawing {
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
+        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
+        // Get zoom scale factor
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
         const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
@@ -1554,13 +1556,25 @@ class PriceNoteTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing price-note', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const p1 = this.points[0]; // Anchor on chart — price label shows p1.y
-        const p2 = this.points[1]; // Label attachment point (same model as Note tool)
+        const p1 = this.points[0]; // Start point (where line starts)
+        const p2 = this.points[1]; // End point (where price label goes)
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
         const x2 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
+        // Draw the line (endpoint will be shortened to box edge after label position is known)
+        const lineEl = this.group.append('line')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStrokeWidth)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        // Invisible hit area
         const lineHitEl = this.group.append('line')
             .attr('class', 'shape-border-hit')
             .attr('x1', x1)
@@ -1572,16 +1586,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        const lineEl = this.group.append('line')
-            .attr('x1', x1)
-            .attr('y1', y1)
-            .attr('x2', x2)
-            .attr('y2', y2)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStrokeWidth)
-            .style('pointer-events', 'none')
-            .style('cursor', 'move');
-
+        // Format price from START point (p1) - the point we drag from
         const formatPrice = (price) => {
             if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             if (price >= 1) return price.toFixed(4);
@@ -1591,6 +1596,7 @@ class PriceNoteTool extends BaseDrawing {
         const priceText = formatPrice(p1.y);
         const padding = 8;
 
+        // Measure text
         const tempText = container.append('text')
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
@@ -1600,7 +1606,7 @@ class PriceNoteTool extends BaseDrawing {
         let textBbox;
         try {
             textBbox = tempText.node().getBBox();
-        } catch (e) {
+        } catch(e) {
             textBbox = { width: 60, height: scaledFontSize * 1.2 };
         }
         tempText.remove();
@@ -1608,27 +1614,59 @@ class PriceNoteTool extends BaseDrawing {
         const boxWidth = textBbox.width + padding * 2;
         const boxHeight = textBbox.height + padding;
 
-        // Match Note tool: box nearest edge touches p2; no viewport clamp (clamp caused edge-sticking on pan).
-        const _dx = x2 - x1;
-        const _dy = y2 - y1;
-        const _len = Math.hypot(_dx, _dy);
-        const _ux = _len > 0 ? _dx / _len : 1;
-        const _uy = _len > 0 ? _dy / _len : 0;
-        const _tEdgeX = Math.abs(_ux) > 1e-9 ? (boxWidth / 2) / Math.abs(_ux) : Infinity;
-        const _tEdgeY = Math.abs(_uy) > 1e-9 ? (boxHeight / 2) / Math.abs(_uy) : Infinity;
-        const _tEdge = Math.min(_tEdgeX, _tEdgeY);
-        const _labelCX = x2 + _ux * _tEdge;
-        const _labelCY = y2 + _uy * _tEdge;
-        const boxX = _labelCX - boxWidth / 2;
-        const boxY = _labelCY - boxHeight / 2;
+        // Rotate the label to match the line direction (and keep it readable)
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        let angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (angleDeg > 90) angleDeg -= 180;
+        if (angleDeg < -90) angleDeg += 180;
 
-        lineEl.attr('x2', x2).attr('y2', y2);
-        lineHitEl.attr('x2', x2).attr('y2', y2);
+        const markerRadius = 6 * scaleFactor;
+        const endpointClearance = this.selected ? markerRadius : 0;
+
+        const len = Math.hypot(dx, dy);
+        const ux = len > 0 ? (dx / len) : 0;
+        const uy = len > 0 ? (dy / len) : 1;
+        const labelDistance = endpointClearance + boxHeight / 2;
+        let labelX = x2 + ux * labelDistance;
+        let labelY = y2 + uy * labelDistance;
+
+        const xRange = scales.xScale.range();
+        const yRange = scales.yScale.range();
+        const minX = Math.min(xRange[0], xRange[1]);
+        const maxX = Math.max(xRange[0], xRange[1]);
+        const minY = Math.min(yRange[0], yRange[1]);
+        const maxY = Math.max(yRange[0], yRange[1]);
+        const chartMarginTop = (scales.chart && scales.chart.margin && typeof scales.chart.margin.t === 'number')
+            ? scales.chart.margin.t
+            : 0;
+        const clampMinY = Math.max(0, minY - chartMarginTop);
+        const edgePad = 0;
+        labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(maxX - boxWidth / 2 - edgePad, labelX));
+        labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
+
+        // Shorten line so it stops at the near edge of the label box
+        const backUx = len > 0 ? -(dx / len) : 0;
+        const backUy = len > 0 ? -(dy / len) : -1;
+        const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
+        const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
+        const tEdge = Math.min(tEdgeX, tEdgeY);
+        const lineEndX = labelX + backUx * tEdge;
+        const lineEndY = labelY + backUy * tEdge;
+        lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
+        lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
+
+        const labelGroup = this.group.append('g')
+            .attr('class', 'price-note-label')
+            .attr('transform', `translate(${labelX},${labelY})`);
+
+        const boxX = -boxWidth / 2;
+        const boxY = -boxHeight / 2;
 
         const brd = this.style.borderColor;
         const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
 
-        this.group.append('rect')
+        labelGroup.append('rect')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -1641,7 +1679,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        this.group.append('rect')
+        labelGroup.append('rect')
             .attr('class', 'shape-border-hit')
             .attr('x', boxX)
             .attr('y', boxY)
@@ -1654,8 +1692,8 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        this.group.append('text')
-            .attr('x', boxX + boxWidth / 2)
+        labelGroup.append('text')
+            .attr('x', 0)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
@@ -1666,7 +1704,11 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .text(priceText);
 
+        // Create handles at both endpoints, then move p2 handle to label box center
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        this.group.selectAll('[data-point-index="1"]')
+            .attr('cx', lineEndX)
+            .attr('cy', lineEndY);
 
         return this.group;
     }

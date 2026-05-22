@@ -2411,17 +2411,6 @@ class ReplaySystem {
     }
 
     /**
-     * True when display TF matches raw 1m replay bars (incremental append safe).
-     */
-    _canIncrementalReplayResample() {
-        const tf = String(this.chart?.currentTimeframe || '1m').toLowerCase().trim();
-        if (tf !== '1m') return false;
-        if (!this.fullRawData || this.fullRawData.length < 2) return true;
-        const dt = Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t);
-        return Number.isFinite(dt) && dt >= 55000 && dt <= 65000;
-    }
-
-    /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
      */
@@ -2453,7 +2442,6 @@ class ReplaySystem {
         
         // Slice rawData to current position (minimum 1 candle)
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
-        const prevSliceEnd = this._lastReplaySliceEnd || 0;
         this.chart.rawData = this.fullRawData.slice(0, sliceEnd);
         
         if (this.chart.rawData.length === 0) {
@@ -2462,26 +2450,9 @@ class ReplaySystem {
             return;
         }
         
-        // Resample for current timeframe — incremental O(1) append on 1m replay when possible.
+        // Resample for current timeframe
         try {
-            if (sliceEnd === prevSliceEnd + 1 && prevSliceEnd > 0 && this._canIncrementalReplayResample()
-                && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
-                const bar = this.chart.rawData[sliceEnd - 1];
-                const last = this.chart.data[this.chart.data.length - 1];
-                if (last && last.t === bar.t) {
-                    last.h = Math.max(last.h, bar.h);
-                    last.l = Math.min(last.l, bar.l);
-                    last.c = bar.c;
-                    last.v = (Number(last.v) || 0) + (Number(bar.v) || 0);
-                } else {
-                    this.chart.data.push({
-                        t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v
-                    });
-                }
-            } else {
-                this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
-            }
-            this._lastReplaySliceEnd = sliceEnd;
+            this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
@@ -2489,26 +2460,16 @@ class ReplaySystem {
             console.error('❌ Error resampling data:', error);
             return;
         }
-
-        if (typeof this.chart._clampCandleWidthToTimeframeZoomLimits === 'function') {
-            this.chart._clampCandleWidthToTimeframeZoomLimits();
-        }
         
-        // During playback skip heavy indicator/drawing rebuilds every candle (major 1m perf win).
-        const playing = !!this.isPlaying;
-        if (!playing && typeof this.chart.recalculateIndicators === 'function') {
+        // Recalculate indicators
+        if (typeof this.chart.recalculateIndicators === 'function') {
             try {
                 this.chart.recalculateIndicators();
             } catch (error) {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
-        } else if (playing && typeof this.chart.recalculateIndicators === 'function'
-            && sliceEnd > 0 && sliceEnd % 48 === 0) {
-            try {
-                this.chart.recalculateIndicators();
-            } catch (_) { /* ignore */ }
         }
-        if (!playing && this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
+        if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
             this.chart.drawingManager.redrawAll();
         }
         
@@ -2529,29 +2490,39 @@ class ReplaySystem {
             this.chart.constrainOffset();
         }
         
-        if (playing && typeof this.chart._scheduleReplayRender === 'function') {
-            this.chart._scheduleReplayRender();
-        } else {
-            this.chart.renderPending = true;
-            this.chart.render();
-        }
+        this.chart.renderPending = true;
+        this.chart.render();
         
-        // Update order manager positions after each candle (throttled during fast replay)
-        if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            if (!playing || sliceEnd % 4 === 0) {
-                this.chart.orderManager.updatePositions();
+        // Force a reflow to commit the canvas changes
+        if (this.chart.canvas) {
+            void this.chart.canvas.offsetHeight;
+            
+            // Force canvas to flush by reading a pixel
+            if (this.chart.ctx) {
+                try {
+                    void this.chart.ctx.getImageData(0, 0, 1, 1);
+                } catch (e) {}
             }
+        }
+
+        setTimeout(() => {
+            this.chart.renderPending = true;
+        }, 0);
+        
+        requestAnimationFrame(() => {
+            this.chart.renderPending = true;
+        });
+        
+        // Update order manager positions after each candle
+        if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
+            this.chart.orderManager.updatePositions();
         }
         
         // Sync all panel charts with the current replay position (main already aligned above)
-        if (!playing || sliceEnd % 6 === 0) {
-            this.syncPanelCharts(true);
-        }
+        this.syncPanelCharts(true);
         
         // Update follow button visibility based on whether last candle is visible
-        if (!playing || sliceEnd % 8 === 0) {
-            this.updateAutoScrollIndicator();
-        }
+        this.updateAutoScrollIndicator();
 
         this._persistReplayStateThrottled();
         
@@ -4060,21 +4031,16 @@ class ReplaySystem {
             this.chart.fitToView();
         }
 
-        if (typeof this.chart._scheduleReplayRender === 'function') {
-            this.chart._scheduleReplayRender();
-        } else if (this.chart.scheduleRender) {
-            this.chart.scheduleRender();
+        if (this.chart.render) {
+            this.chart.render();
         }
 
-        // Keep panels in lockstep — throttle during tick animation (every 4th tick).
-        if (!this.tickProgress || this.tickProgress % 4 === 0) {
-            this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
-        }
+        // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
+        // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
+        this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-            if (!this.tickProgress || this.tickProgress % 6 === 0) {
-                this.chart.orderManager.updatePositions();
-            }
+            this.chart.orderManager.updatePositions();
         }
 
         // Tick replay never hits updateChartData(); still refresh follow chrome while bars advance.

@@ -8753,47 +8753,58 @@ class DrawingToolsManager {
         // [debug removed]
         // [debug removed]
         
-        // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-        // This ensures drawings with timestamps beyond current replay position are handled correctly
+        // CRITICAL: In replay mode, map timestamps against the same bar series the
+        // chart renders (chart.data = slice to playhead). Using fullRawData resample
+        // gives indices outside the sliced series on 1m — shapes vanish while other
+        // TFs still look correct (coarser resample masks the mismatch).
         const replaySystem = this.chart.replaySystem;
         const isReplayActive = replaySystem && replaySystem.isActive;
         let conversionData = this.chart.data;
-        
+
         if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-            // In replay mode, resample the FULL dataset to current timeframe
-            // This gives us all candles needed for timestamp lookup
-            try {
-                const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                conversionData = fullResampled;
-                // [debug removed]
-            } catch (error) {
-                console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
+            if (!this.chart.data || this.chart.data.length === 0) {
+                try {
+                    conversionData = this.chart.resampleData(
+                        replaySystem.fullRawData,
+                        this.chart.currentTimeframe
+                    );
+                } catch (error) {
+                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
+                }
             }
         }
-        
-        // Instead of destroying and recreating, just update the points
-        this.drawings.forEach((drawing, index) => {
-            // Use the STORED timestamps (not recalculated ones)
-            if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
-                // Convert timestamps back to indices for the NEW timeframe data
-                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, this.chart.currentTimeframe);
-                
-                // Update the drawing's points AND chart reference
-                drawing.points = newPoints;
-                drawing.chart = this.chart; // Update chart reference
-                
-                // Destroy old SVG elements
-                if (drawing.group) {
-                    drawing.group.remove();
-                    drawing.group = null;
+
+        const remapDrawing = (drawing) => {
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                if (typeof drawing.recalculateTimestamps === 'function') {
+                    try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
                 }
-                
-                // Re-render with new points
-                this.renderDrawing(drawing);
             }
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                return false;
+            }
+            const newPoints = CoordinateUtils.pointsFromTimestamps(
+                drawing.timestampPoints,
+                conversionData,
+                this.chart.currentTimeframe
+            );
+            drawing.points = newPoints;
+            drawing.chart = this.chart;
+            if (drawing.group) {
+                drawing.group.remove();
+                drawing.group = null;
+            }
+            this.renderDrawing(drawing);
+            return true;
+        };
+
+        // Instead of destroying and recreating, just update the points
+        this.drawings.forEach((drawing) => {
+            remapDrawing(drawing);
         });
-        
-        // [debug removed]
+
+        this.updateClipPath();
+        this.redrawAll({ forceFull: true });
         
         // Refresh object tree if available
         if (this.objectTreeManager) {
