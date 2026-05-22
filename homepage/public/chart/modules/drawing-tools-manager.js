@@ -814,14 +814,24 @@ class DrawingToolsManager {
                 // [debug removed]
                 lastTimeframe = newTimeframe;
                 
-                // Refresh drawings after a small delay to ensure data is resampled
-                requestAnimationFrame(() => {
+                // Refresh after data is resampled. Defer while chart.js holds the TF freeze
+                // (_timeframeSwitching) — early refresh runs against stale scales/clip and shapes
+                // vanish until another TF change (same root cause as embed-bridge redrawAll fix).
+                const runRefresh = () => {
+                    if (this.chart && this.chart._timeframeSwitching) {
+                        requestAnimationFrame(runRefresh);
+                        return;
+                    }
                     if (this.drawings.length > 0) {
-                        // [debug removed]
-                        this.refreshDrawingsForTimeframe();
+                        if (typeof this.refreshDrawingsForTimeframe === 'function') {
+                            this.refreshDrawingsForTimeframe();
+                        } else if (typeof this.redrawAll === 'function') {
+                            this.redrawAll({ forceFull: true });
+                        }
                         this.saveDrawings();
                     }
-                });
+                };
+                requestAnimationFrame(runRefresh);
             }
         };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;

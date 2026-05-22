@@ -12345,7 +12345,32 @@ class Chart {
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+            try { this._refreshDrawingsAfterTimeframeSwitch(); } catch (e) { /* ignore */ }
         });
+    }
+
+    /**
+     * Remap drawing timestamps to the new timeframe and redraw SVG after a TF switch.
+     * Safe to call when the freeze overlay is lifting (scales + canvas size are final).
+     */
+    _refreshDrawingsAfterTimeframeSwitch() {
+        const dm = this.drawingManager;
+        if (!dm || !this.data || this.data.length === 0) return;
+        if (typeof this._clearPanDrawingsLayerTransform === 'function') {
+            this._clearPanDrawingsLayerTransform();
+        }
+        if (typeof dm.updateClipPath === 'function') {
+            dm.updateClipPath();
+        }
+        if (dm.drawings && dm.drawings.length > 0) {
+            if (typeof dm.refreshDrawingsForTimeframe === 'function') {
+                dm.refreshDrawingsForTimeframe();
+            } else if (typeof dm.redrawAll === 'function') {
+                dm.redrawAll({ forceFull: true });
+            }
+        } else if (typeof dm.redrawAll === 'function') {
+            dm.redrawAll({ forceFull: true });
+        }
     }
 
     /**
