@@ -2053,53 +2053,7 @@ class Chart {
         return sessionEndMs != null && Number.isFinite(sessionEndMs) ? String(sessionEndMs) : 'none';
     }
 
-    _btCacheCoversPlayhead(entry, playheadTs) {
-        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return false;
-        if (!Number.isFinite(playheadTs)) return true;
-        const lo = Number.isFinite(entry.coversFromTs) ? entry.coversFromTs : entry.rawData[0].t;
-        const hi = Number.isFinite(entry.coversToTs) ? entry.coversToTs : entry.rawData[entry.rawData.length - 1].t;
-        return Number.isFinite(lo) && Number.isFinite(hi) && playheadTs >= lo && playheadTs <= hi;
-    }
-
-    /**
-     * During replay, fine TFs (1m–30m) fetch a window around the playhead (one request).
-     * Coarse TFs (1h+) keep the session-end history batch like the initial 1D load.
-     */
-    _buildBacktestReplayTfFetchParams(timeframe, session, sessionEndMs, playheadTs) {
-        const fetchOpts = { skipSessionDates: true, limit: 100000 };
-        const tfMs = this.parseTimeframe(timeframe);
-        const isFineIntraday = Number.isFinite(tfMs) && tfMs < 3600000;
-
-        if (Number.isFinite(playheadTs) && isFineIntraday) {
-            const contextMs = 45 * 86400000;
-            let startTs = playheadTs - contextMs;
-            let sessionStartMs = null;
-            try {
-                const raw = session && (session.startDate || session.start_date);
-                if (raw) {
-                    const t = new Date(raw).getTime();
-                    if (Number.isFinite(t)) sessionStartMs = t;
-                }
-            } catch (_e) { /* ignore */ }
-            if (sessionStartMs != null) startTs = Math.max(startTs, sessionStartMs);
-            let endTs = playheadTs + Math.max(tfMs * 3000, 86400000);
-            if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
-                endTs = Math.min(endTs, sessionEndMs);
-            }
-            return {
-                anchor: 'start',
-                windowRange: { startTs: Math.floor(startTs), endTs: Math.ceil(endTs) },
-                fetchOpts,
-            };
-        }
-        return {
-            anchor: 'end',
-            windowRange: this._getBacktestSessionEndFetchRange(sessionEndMs),
-            fetchOpts,
-        };
-    }
-
-    _getBtTfDataCache(fileId, timeframe, playheadTs) {
+    _getBtTfDataCache(fileId, timeframe) {
         if (!fileId || !timeframe || !this._btTfDataCache) return null;
         const perFile = this._btTfDataCache.get(String(fileId));
         if (!perFile) return null;
@@ -2108,7 +2062,6 @@ class Chart {
         if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
         const anchorKey = this._btTfCacheAnchorKey(this._getBacktestSessionEndMs());
         if (entry.anchorKey !== anchorKey) return null;
-        if (!this._btCacheCoversPlayhead(entry, playheadTs)) return null;
         return entry;
     }
 
@@ -2125,8 +2078,6 @@ class Chart {
             at: Date.now(),
             anchorKey: this._btTfCacheAnchorKey(sessionEndMs),
             rawData: rawData.slice(),
-            coversFromTs: rawData[0].t,
-            coversToTs: rawData[rawData.length - 1].t,
             totalCandles: meta.totalCandles != null ? meta.totalCandles : rawData.length,
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
             nativeRawFetchTf: meta.nativeRawFetchTf || tf,
@@ -2156,10 +2107,8 @@ class Chart {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
             const sessionEndMs = self._getBacktestSessionEndMs(session);
-            const replay = self.replaySystem;
-            const playheadTs = replay && replay.isActive
-                ? (Number.isFinite(replay.replayTimestamp) ? replay.replayTimestamp : null)
-                : null;
+            const historyRange = self._getBacktestSessionEndFetchRange(sessionEndMs);
+            const fetchOpts = { skipSessionDates: true, limit: 100000 };
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
             const targets = new Set(['1m', '5m', '15m', '1h', '4h', '1d']);
             targets.delete(cur);
@@ -2167,14 +2116,8 @@ class Chart {
                 self._getTimeframesToPrefetch(cur).forEach((t) => targets.add(t));
             }
             Array.from(targets).slice(0, 6).forEach((tf) => {
-                if (self._getBtTfDataCache(fileId, tf, playheadTs)) return;
-                const plan = self._buildBacktestReplayTfFetchParams(
-                    tf, session || self.backtestingSession || {}, sessionEndMs, playheadTs
-                );
-                self._fetchSmartWindow(
-                    fileId, tf, session || self.backtestingSession || {},
-                    plan.anchor, plan.windowRange, plan.fetchOpts
-                )
+                if (self._getBtTfDataCache(fileId, tf)) return;
+                self._fetchSmartWindow(fileId, tf, session || self.backtestingSession || {}, 'end', historyRange, fetchOpts)
                     .then((result) => {
                         if (!self._smartResponseHasPayload(result)) return;
                         if (String(self.currentFileId) !== String(fileId)) return;
@@ -2304,8 +2247,7 @@ class Chart {
             }
         }
 
-        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
-            && !ctx.skipGoToWindow) {
+        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
             const firstT = replay.fullRawData[0].t;
             const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
             if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
@@ -2314,11 +2256,8 @@ class Chart {
                         savedReplayTimestamp,
                         { usingReplay: true }
                     );
-                    if (loaded) {
-                        this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
-                        if (loaded && typeof replay.goToReplayTimestamp === 'function') {
-                            replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
-                        }
+                    if (loaded && typeof replay.goToReplayTimestamp === 'function') {
+                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
                     }
                 } catch (e) {
                     console.warn('[backtest] playhead window fetch after TF hot-swap failed', e);
@@ -2359,12 +2298,10 @@ class Chart {
         }
 
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-            requestAnimationFrame(() => {
-                try { this.compareOverlay.refreshForTimeframe(normalizedTf); } catch (_co) { /* ignore */ }
-            });
+            this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
-        if (typeof this._fireChartDataLoaded === 'function' && !ctx.fromCache) {
+        if (typeof this._fireChartDataLoaded === 'function') {
             try { this._fireChartDataLoaded(); } catch (_e4) { /* ignore */ }
         }
 
@@ -2377,6 +2314,11 @@ class Chart {
         }
 
         try { this.resize(); } catch (_r) { /* ignore */ }
+        try {
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
+            }
+        } catch (_r2) { /* ignore */ }
 
         this._endTimeframeSwitching();
         if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
@@ -2387,12 +2329,11 @@ class Chart {
 
     async _applyBacktestTimeframeFromCache(timeframe) {
         if (!this.isBacktestMode || !this.currentFileId) return false;
+        const entry = this._getBtTfDataCache(this.currentFileId, timeframe);
+        if (!entry) return false;
+
         const replay = this.replaySystem;
         if (!replay) return false;
-
-        const playheadTs = this._captureReplayPlayheadMs(replay);
-        const entry = this._getBtTfDataCache(this.currentFileId, timeframe, playheadTs);
-        if (!entry) return false;
 
         const session = this.backtestingSession || {};
         const sessionEndMs = this._getBacktestSessionEndMs(session);
@@ -2423,7 +2364,7 @@ class Chart {
         this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            savedReplayTimestamp: playheadTs,
+            savedReplayTimestamp: this._captureReplayPlayheadMs(replay),
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
             wasAtSessionEnd: replay.isActive
@@ -2434,8 +2375,6 @@ class Chart {
             previousTf,
             sessionEndMs,
             coarsePeriodExclusiveEndTs,
-            skipGoToWindow: true,
-            fromCache: true,
         });
         return true;
     }
@@ -3307,7 +3246,7 @@ class Chart {
                     if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
                         this._scheduleBacktestTimeframePrefetch(fid, sess);
                     }
-                }, 2000);
+                }, 4000);
             });
         } else {
             console.error('❌ Replay system not available!');
@@ -12735,11 +12674,6 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // Snapshot current TF into backtest cache before leaving (instant revisit).
-            if (this.isBacktestMode && this.currentFileId && hasData) {
-                this._saveBtTfDataCacheFromChart(this.currentFileId, this.currentTimeframe);
-            }
-
             // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
             // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
             // them — refetch from the server with the session window clamp instead.
@@ -13318,19 +13252,19 @@ class Chart {
 
         const loadId = ++this._timeframeLoadSeq;
 
-        const fetchPlan = this._buildBacktestReplayTfFetchParams(
-            timeframe, session, sessionEndMs, savedReplayTimestamp
-        );
+        const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
+        const fetchOpts = { skipSessionDates: true, limit: 100000 };
 
         let result;
         try {
+            if (this.showLoader) this.showLoader('Changing timeframe...');
             result = await this._fetchSmartWindow(
                 this.currentFileId,
                 timeframe,
                 session,
-                fetchPlan.anchor,
-                fetchPlan.windowRange,
-                fetchPlan.fetchOpts
+                'end',
+                historyRange,
+                fetchOpts
             );
             if (!this._smartResponseHasPayload(result)) {
                 result = await this._fetchSmartWindow(
@@ -13339,11 +13273,12 @@ class Chart {
                     session,
                     'end',
                     null,
-                    fetchPlan.fetchOpts
+                    fetchOpts
                 );
             }
         } catch (e) {
             console.error('[backtest] timeframe refetch fetch failed', e);
+            if (this.hideLoader) this.hideLoader();
             this._endTimeframeSwitching();
             return;
         }
@@ -13352,6 +13287,7 @@ class Chart {
 
         if (!this._smartResponseHasPayload(result)) {
             console.warn('[backtest] timeframe refetch returned no data');
+            if (this.hideLoader) this.hideLoader();
             this._endTimeframeSwitching();
             return;
         }
@@ -13374,14 +13310,12 @@ class Chart {
         });
         this._saveBtTfDataCacheFromChart(this.currentFileId, timeframe);
 
+        if (this.hideLoader) this.hideLoader();
+
         if (!Array.isArray(this.rawData) || this.rawData.length === 0) {
             this._endTimeframeSwitching();
             return;
         }
-
-        const playheadInRange = Number.isFinite(savedReplayTimestamp)
-            && savedReplayTimestamp >= this.rawData[0].t
-            && savedReplayTimestamp <= this.rawData[this.rawData.length - 1].t;
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
             savedReplayTimestamp,
@@ -13393,7 +13327,6 @@ class Chart {
             previousTf,
             sessionEndMs,
             coarsePeriodExclusiveEndTs,
-            skipGoToWindow: playheadInRange,
         });
     }
 
