@@ -3251,6 +3251,30 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
       lineColor: cpBuildColor(base.r, base.g, base.b, V9_DEFAULT_HIGHLIGHTER_ALPHA),
     };
   }
+  if (legacy === "arrow-mark-up") {
+    const c = V9_ARROW_MARK_UP_COLOR;
+    return {
+      lineColor: c,
+      bgColor: c,
+      borderColor: c,
+      showBg: true,
+      showBorder: true,
+      lineWidth: "1",
+      borderWidth: "1",
+    };
+  }
+  if (legacy === "arrow-mark-down") {
+    const c = V9_ARROW_MARK_DOWN_COLOR;
+    return {
+      lineColor: c,
+      bgColor: c,
+      borderColor: c,
+      showBg: true,
+      showBorder: true,
+      lineWidth: "1",
+      borderWidth: "1",
+    };
+  }
   return {};
 }
 
@@ -9733,7 +9757,7 @@ const TalariaV8bLive = () => {
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
     else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...v9PatchFibLevelsInStyle(s, groupSelected?.fib?.icon, rows=>rows.map(l=>({...l, color: colorVal}))), lineColor: colorVal} : {...s, lineColor: colorVal});
-    else if(targetKey === "tlBgColor") setTlStyle(s=>({...s, bgColor: colorVal}));
+    else if(targetKey === "tlBgColor") setTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType));
     else if(targetKey === "tlMidLineColor") setTlStyle(s=>({...s, midLineColor: colorVal}));
     else if(targetKey === "tlTextColor") setTlStyle(s=>({...s, textColor: colorVal}));
     else if(targetKey === "tlLabelColor") setTlStyle(s=>({...s, labelColor: colorVal}));
@@ -19518,8 +19542,8 @@ const TalariaV8bLive = () => {
             </TlBtn>}
             {/* btn 2b: bg color — for non-rect, non-pattern applicable tools */}
             {["polyline","pathTool","curve","doubleCurve","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
-              onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
-              {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
+              onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const arrowSwatch=tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor);const parsed=parseColor(v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?arrowSwatch:tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
+              {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?(tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor)):tlStyle.bgColor}/></svg>}
             </TlBtn>}
             {/* btn 3: line style */}
             {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
@@ -26659,7 +26683,7 @@ const TalariaV8bLive = () => {
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
           onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
           onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>({...s,bgColor:cv}));else if(colorPicker==="tlBorderColor")setTlStyle(s=>({...s,borderColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
+          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>v9ApplyTlBgColorToStyle(s,cv,tlSubTool.icon,chartPrimarySelectedDrawingType));else if(colorPicker==="tlBorderColor")setTlStyle(s=>({...s,borderColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}

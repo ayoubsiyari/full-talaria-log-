@@ -1162,6 +1162,7 @@ class Chart {
             // by the user via the timeframe bar; this just sets the default.
             this.isBacktestMode = true;
             this.currentTimeframe = '1d';
+            if (this._tfDataCache) this._tfDataCache.clear();
             try { this._emitTimeframeChanged(); } catch (e) {}
 
             // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
@@ -1450,6 +1451,7 @@ class Chart {
             // system still begins at session start (see enterReplayMode).
             this.isBacktestMode = true;
             this.currentTimeframe = '1d';
+            if (this._tfDataCache) this._tfDataCache.clear();
             try { this._emitTimeframeChanged(); } catch (e) {}
 
             const replayRawTf = '1d';
@@ -1774,6 +1776,10 @@ class Chart {
         return samples[Math.floor(samples.length / 2)];
     }
 
+    _isBacktestReplayActive() {
+        return !!(this.isBacktestMode && this.replaySystem && this.replaySystem.isActive);
+    }
+
     _getNativeRawTfMs() {
         const replay = this.replaySystem;
         if (replay && replay.isActive) {
@@ -1797,6 +1803,10 @@ class Chart {
      * Mirrors compare-overlay needRefetch (refetch only when new TF is materially finer).
      */
     _canClientResampleToTimeframe(normalizedTf) {
+        // Backtest replay always refetches so every TF shares the same session-end anchor
+        // and replay playhead stays aligned (client resample / TF cache break 1D↔1m toggles).
+        if (this._isBacktestReplayActive()) return false;
+        if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) return false;
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         if (!hasData) return false;
         const newMs = this.parseTimeframe(normalizedTf);
@@ -1816,6 +1826,8 @@ class Chart {
 
     _saveTfDataCache(fileId, timeframe, extra = {}) {
         if (!fileId || !timeframe) return;
+        // Backtest bars are anchored at session-end + replay slice — do not mix into live TF cache.
+        if (this.isBacktestMode) return;
         const tf = String(timeframe).toLowerCase().trim();
         if (!Array.isArray(this.rawData) || !this.rawData.length) return;
         if (!this._tfDataCache) this._tfDataCache = new Map();
@@ -1899,6 +1911,7 @@ class Chart {
 
     _storePrefetchedTfCache(fileId, tf, result, candles) {
         if (!fileId || !tf || !Array.isArray(candles) || !candles.length) return;
+        if (this.isBacktestMode) return;
         if (!this._tfDataCache) this._tfDataCache = new Map();
         const fid = String(fileId);
         const normalized = String(tf).toLowerCase().trim();
@@ -1925,12 +1938,14 @@ class Chart {
 
     _scheduleTimeframePrefetch(fileId, currentTf, session) {
         if (!fileId || !currentTf) return;
+        if (this.isBacktestMode) return;
         const ric = typeof window !== 'undefined' && window.requestIdleCallback
             ? window.requestIdleCallback
             : (cb) => setTimeout(cb, 500);
         const self = this;
         ric(() => {
             if (String(self.currentFileId) !== String(fileId)) return;
+            if (self.isBacktestMode) return;
             const targets = self._getTimeframesToPrefetch(currentTf);
             const sess = session || self.backtestingSession || {};
             targets.forEach((tf) => {
@@ -1960,6 +1975,8 @@ class Chart {
 
     _applyLiveTimeframeSwitchFromCache(normalizedTf) {
         if (!this.currentFileId) return false;
+        if (this._isBacktestReplayActive()) return false;
+        if (this.isBacktestMode) return false;
         if (!this._restoreFromTfDataCache(this.currentFileId, normalizedTf)) return false;
         this._commitTimeframeChange(normalizedTf);
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -12317,13 +12334,13 @@ class Chart {
             const newTfMs = typeof this.parseTimeframe === 'function'
                 ? this.parseTimeframe(normalizedTf)
                 : NaN;
-            // Server refetch only when switching to a materially finer TF than loaded raw bars.
-            // Coarse switches (1m → 1h / 1D) use client resample — same deep history, no 100k fetch.
+            // Always refetch from server during backtest when the timeframe changes.
+            // Client-side resample of fine rawData to a coarse TF loses deep history;
+            // TF cache restore skips replay re-init and breaks playhead / price scale on 1m↔1D toggles.
             const needsServerRefetch = this.isBacktestMode
                 && this.currentFileId
                 && Number.isFinite(rawTfMs) && rawTfMs > 0
-                && Number.isFinite(newTfMs) && newTfMs > 0
-                && newTfMs < rawTfMs * 0.92;
+                && Number.isFinite(newTfMs) && newTfMs > 0;
 
             if (needsServerRefetch) {
                 // Path C: _refetchBacktestTimeframe commits + ends the switching state when data arrives.
@@ -12635,7 +12652,7 @@ class Chart {
             if (this.showLoader) this.showLoader('Changing timeframe...');
 
             // Cache hit when called directly (bypassing setTimeframe's early check).
-            if (this._restoreFromTfDataCache(this.currentFileId, timeframe)) {
+            if (!this.isBacktestMode && this._restoreFromTfDataCache(this.currentFileId, timeframe)) {
                 this._commitTimeframeChange(timeframe);
                 if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                     this.compareOverlay.refreshForTimeframe(timeframe);
@@ -12825,6 +12842,11 @@ class Chart {
         if (!replay || !this.currentFileId) {
             this._endTimeframeSwitching();
             return;
+        }
+
+        // Drop any live-mode TF cache for this file — stale 1m windows break replay scale on revisit.
+        if (this._tfDataCache && this.currentFileId) {
+            this._tfDataCache.delete(String(this.currentFileId));
         }
 
         const wasActive = !!replay.isActive;
