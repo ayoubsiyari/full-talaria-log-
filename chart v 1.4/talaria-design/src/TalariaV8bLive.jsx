@@ -132,8 +132,35 @@ const V9_TL_LINE_COLOR_OPACITY_CHART_TYPES = new Set([
   "rectangle", "rotated-rectangle", "ellipse", "circle", "triangle", "arc",
 ]);
 const V9_ARROW_MARK_CHART_TYPES = new Set(["arrow-mark-up", "arrow-mark-down"]);
+const V9_ARROW_MARK_UP_COLOR = "#089981";
+const V9_ARROW_MARK_DOWN_COLOR = "#F23645";
 function v9IsArrowMarkChartType(type) {
   return !!type && V9_ARROW_MARK_CHART_TYPES.has(type);
+}
+function v9IsArrowMarkUiActive(subToolIcon, chartDrawingType) {
+  if (subToolIcon === "arrowUp" || subToolIcon === "arrowDn") return true;
+  return v9IsArrowMarkChartType(chartDrawingType);
+}
+function v9ArrowMarkDefaultColorForLegacy(legacy) {
+  if (legacy === "arrow-mark-up") return V9_ARROW_MARK_UP_COLOR;
+  if (legacy === "arrow-mark-down") return V9_ARROW_MARK_DOWN_COLOR;
+  return null;
+}
+/** Floating bar `tl-bgcol` drives fill + outline for arrow marks (enabled by default). */
+function v9TlStyleWithArrowMarkSyncedColor(prev, colorVal) {
+  return {
+    ...prev,
+    bgColor: colorVal,
+    lineColor: colorVal,
+    borderColor: colorVal,
+    showBg: true,
+    showBorder: true,
+  };
+}
+function v9ApplyTlBgColorToStyle(prev, colorVal, subToolIcon, chartDrawingType) {
+  return v9IsArrowMarkUiActive(subToolIcon, chartDrawingType)
+    ? v9TlStyleWithArrowMarkSyncedColor(prev, colorVal)
+    : { ...prev, bgColor: colorVal };
 }
 function v9TlLineColorSupportsOpacity(subToolIcon, chartDrawingType) {
   if (["draw", "brush"].includes(subToolIcon)) return true;
@@ -728,12 +755,18 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
-    const outline = tlStyle.borderColor || tlStyle.lineColor || patch.stroke;
+    const fillColor =
+      tlStyle.bgColor ||
+      tlStyle.lineColor ||
+      v9ArrowMarkDefaultColorForLegacy(legacyTool) ||
+      V9_ARROW_MARK_DOWN_COLOR;
+    const outline = tlStyle.borderColor || fillColor;
     patch.showBackground = shapeBgOn;
-    patch.fill = shapeBgOn ? (tlStyle.bgColor || patch.fill || "#F23645") : "none";
+    patch.fill = shapeBgOn ? fillColor : "none";
     patch.borderEnabled = borderOn;
     patch.borderColor = outline;
     patch.stroke = borderOn ? outline : "none";
+    patch.color = borderOn ? outline : "none";
     patch.strokeWidth = borderOn ? Math.max(1, widthNum) : 0;
     patch.borderWidth = borderOn ? Math.max(1, parseInt(tlStyle.borderWidth, 10) || 1) : 0;
   }
@@ -3183,6 +3216,16 @@ function v9TlStylePatchFromDrawing(d) {
             lineColor: s.stroke || stroke,
             lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
           };
+        })()
+      : {}),
+    ...(v9IsArrowMarkChartType(d.type)
+      ? (() => {
+          const c =
+            (s.fill && s.fill !== "none" && s.fill !== "transparent")
+              ? s.fill
+              : (s.stroke && s.stroke !== "none" ? s.stroke : undefined);
+          if (!c) return {};
+          return { lineColor: c, bgColor: c, borderColor: s.borderColor || c };
         })()
       : {}),
     ...v9CoordPatchFromDrawing(d),
