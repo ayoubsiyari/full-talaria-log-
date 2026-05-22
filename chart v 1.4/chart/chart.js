@@ -11998,7 +11998,7 @@ class Chart {
             && !this._panLoading;
         if (haveCurrentTfData) return;
 
-        if (this.drawingManager && this.drawings && this.drawings.length > 0) {
+        if (this.drawingManager && Array.isArray(this.drawingManager.drawings) && this.drawingManager.drawings.length > 0) {
             this.drawingManager.saveDrawings();
         }
 
@@ -12662,6 +12662,10 @@ class Chart {
             ? replay.fullRawData[0].t
             : null;
 
+        if (this.drawingManager && typeof this.drawingManager.saveDrawings === 'function') {
+            try { this.drawingManager.saveDrawings(); } catch (_) { /* ignore */ }
+        }
+
         try {
             if (wasActive && typeof replay.exitReplayMode === 'function') {
                 replay.exitReplayMode();
@@ -12903,6 +12907,7 @@ class Chart {
                     replay.syncReplayViewportToPlayhead(this, { resetPriceScale: false });
                 }
             } catch (e) { /* ignore */ }
+            try { this._refreshDrawingsAfterTimeframeSwitch(); } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
             // updatePositions is skipped while _timeframeSwitching; when replay stays paused after
             // refetch, replay.play() does not run — refresh orders/PnL once after the freeze lifts.

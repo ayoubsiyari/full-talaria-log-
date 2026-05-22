@@ -8565,21 +8565,8 @@ class DrawingToolsManager {
                 }
             };
             
-            // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                // In replay mode, resample the FULL dataset to current timeframe
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                    // [debug removed]
-                } catch (error) {
-                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-                }
-            }
+            // Map saved timestamps to canvas indices on the same bar series the chart renders.
+            const conversionData = this._getDrawingConversionData() || this.chart.data;
             
             data.forEach((item, index) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8670,15 +8657,7 @@ class DrawingToolsManager {
                 }
             };
 
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                } catch (error) {}
-            }
+            const conversionData = this._getDrawingConversionData() || this.chart.data;
 
             data.forEach((item) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8741,52 +8720,54 @@ class DrawingToolsManager {
     }
 
     /**
+     * Bar series used to convert drawing timestamps ↔ canvas indices.
+     * In replay mode this MUST be chart.data (playhead slice), not fullRawData resample —
+     * otherwise 1m indices overshoot the sliced series and shapes disappear after TF switch.
+     */
+    _getDrawingConversionData() {
+        if (!this.chart) return null;
+
+        const replaySystem = this.chart.replaySystem;
+        const isReplayActive = replaySystem && replaySystem.isActive;
+
+        if (isReplayActive) {
+            if (Array.isArray(this.chart.data) && this.chart.data.length > 0) {
+                return this.chart.data;
+            }
+            if (replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
+                try {
+                    return this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
+                } catch (_) { /* ignore */ }
+            }
+            return null;
+        }
+
+        return (Array.isArray(this.chart.data) && this.chart.data.length > 0)
+            ? this.chart.data
+            : null;
+    }
+
+    /**
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
     refreshDrawingsForTimeframe() {
-        if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
+        const conversionData = this._getDrawingConversionData();
+        if (!conversionData || conversionData.length === 0) {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
         }
-        
-        // [debug removed]
-        // [debug removed]
-        
-        // CRITICAL: In replay mode, map timestamps against the same bar series the
-        // chart renders (chart.data = slice to playhead). Using fullRawData resample
-        // gives indices outside the sliced series on 1m — shapes vanish while other
-        // TFs still look correct (coarser resample masks the mismatch).
-        const replaySystem = this.chart.replaySystem;
-        const isReplayActive = replaySystem && replaySystem.isActive;
-        let conversionData = this.chart.data;
 
-        if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-            if (!this.chart.data || this.chart.data.length === 0) {
-                try {
-                    conversionData = this.chart.resampleData(
-                        replaySystem.fullRawData,
-                        this.chart.currentTimeframe
-                    );
-                } catch (error) {
-                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-                }
-            }
-        }
+        const tf = this.chart.currentTimeframe;
 
         const remapDrawing = (drawing) => {
-            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
-                if (typeof drawing.recalculateTimestamps === 'function') {
-                    try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
-                }
-            }
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return false;
             }
             const newPoints = CoordinateUtils.pointsFromTimestamps(
                 drawing.timestampPoints,
                 conversionData,
-                this.chart.currentTimeframe
+                tf
             );
             drawing.points = newPoints;
             drawing.chart = this.chart;

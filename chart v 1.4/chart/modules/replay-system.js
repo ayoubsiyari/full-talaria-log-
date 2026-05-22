@@ -2469,8 +2469,13 @@ class ReplaySystem {
                 console.warn('⚠️ Error recalculating indicators:', error);
             }
         }
-        if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
-            this.chart.drawingManager.redrawAll();
+        if (this.chart.drawingManager) {
+            if (this.chart._timeframeSwitching) {
+                // Remap runs once after refetch in _refreshDrawingsAfterTimeframeSwitch —
+                // redrawAll here would paint stale bar indices from the previous TF.
+            } else if (typeof this.chart.drawingManager.redrawAll === 'function') {
+                this.chart.drawingManager.redrawAll();
+            }
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
