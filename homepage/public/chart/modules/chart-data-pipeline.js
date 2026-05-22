@@ -1,0 +1,319 @@
+/**
+ * ChartDataPipeline — viewport-scoped display series for large backtests.
+ * Master series (chart.data / replay fullRawData) stays unchanged for orders/replay.
+ */
+(function (global) {
+    'use strict';
+
+    const RENDER_BAR_BUDGET = 500;
+    const VIEWPORT_BUFFER_BARS = 48;
+    const INITIAL_BACKTEST_BARS = 2500;
+    const LARGE_SERIES_THRESHOLD = 8000;
+
+    class ChartDataPipeline {
+        constructor(chart) {
+            this.chart = chart;
+            this.viewportData = null;
+            this._resampleCache = {
+                tf: null,
+                sourceRef: null,
+                sourceLen: -1,
+                dataVersion: -1,
+                result: null,
+            };
+            this._displayCache = {
+                key: '',
+                series: null,
+            };
+        }
+
+        static get RENDER_BAR_BUDGET() { return RENDER_BAR_BUDGET; }
+        static get VIEWPORT_BUFFER_BARS() { return VIEWPORT_BUFFER_BARS; }
+        static get INITIAL_BACKTEST_BARS() { return INITIAL_BACKTEST_BARS; }
+        static get LARGE_SERIES_THRESHOLD() { return LARGE_SERIES_THRESHOLD; }
+
+        attachViewportManager(viewportManager) {
+            this.viewportData = viewportManager;
+        }
+
+        invalidateResampleCache() {
+            this._resampleCache.sourceRef = null;
+            this._resampleCache.sourceLen = -1;
+            this._resampleCache.result = null;
+            this._displayCache.key = '';
+            this._displayCache.series = null;
+        }
+
+        bumpDisplayVersion() {
+            this._displayCache.key = '';
+            this._displayCache.series = null;
+        }
+
+        /**
+         * Incremental resample: O(1) when replay appends one raw bar.
+         */
+        getResampledSeries(source, timeframe, dataVersion) {
+            const chart = this.chart;
+            if (!Array.isArray(source) || source.length === 0) return [];
+
+            const tf = String(timeframe || chart.currentTimeframe || '1m').toLowerCase().trim();
+            const cache = this._resampleCache;
+            const dv = dataVersion ?? chart.dataVersion ?? 0;
+
+            if (
+                cache.sourceRef === source
+                && cache.tf === tf
+                && cache.dataVersion === dv
+                && cache.sourceLen === source.length
+                && Array.isArray(cache.result)
+            ) {
+                return cache.result;
+            }
+
+            if (
+                cache.sourceRef === source
+                && cache.tf === tf
+                && cache.sourceLen === source.length - 1
+                && source.length > 0
+                && Array.isArray(cache.result)
+                && cache.result.length > 0
+                && typeof chart.parseTimeframe === 'function'
+            ) {
+                const appended = this._tryIncrementalResample(source, cache.result, tf, chart);
+                if (appended) {
+                    cache.sourceLen = source.length;
+                    cache.dataVersion = dv;
+                    cache.result = appended;
+                    return appended;
+                }
+            }
+
+            const full = typeof chart._resampleDataFull === 'function'
+                ? chart._resampleDataFull(source, tf)
+                : (typeof chart.resampleData === 'function' ? chart.resampleData(source, tf) : source);
+
+            cache.tf = tf;
+            cache.sourceRef = source;
+            cache.sourceLen = source.length;
+            cache.dataVersion = dv;
+            cache.result = full;
+            return full;
+        }
+
+        _tryIncrementalResample(source, prevResampled, tf, chart) {
+            const lastRaw = source[source.length - 1];
+            if (!lastRaw || !Number.isFinite(lastRaw.t)) return null;
+
+            const timeframeMs = chart.parseTimeframe(tf);
+            if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) return null;
+
+            const bucketStart = Math.floor(lastRaw.t / timeframeMs) * timeframeMs;
+            const out = prevResampled.slice();
+            const lastBucket = out[out.length - 1];
+
+            if (lastBucket && lastBucket.t === bucketStart) {
+                lastBucket.h = Math.max(lastBucket.h, lastRaw.h);
+                lastBucket.l = Math.min(lastBucket.l, lastRaw.l);
+                lastBucket.c = lastRaw.c;
+                lastBucket.v = (Number(lastBucket.v) || 0) + (Number(lastRaw.v) || 0);
+                return out;
+            }
+
+            out.push({
+                t: bucketStart,
+                o: lastRaw.o,
+                h: lastRaw.h,
+                l: lastRaw.l,
+                c: lastRaw.c,
+                v: Number(lastRaw.v) || 0,
+            });
+            return out;
+        }
+
+        /**
+         * Visible index range from offsetX and plot geometry (matches chart pan math).
+         */
+        sliceByViewport(resampled, viewport) {
+            if (!Array.isArray(resampled) || resampled.length === 0) return [];
+
+            const chart = this.chart;
+            const m = chart.margin || { l: 60, r: 60 };
+            const plotWidth = viewport.plotWidth != null
+                ? viewport.plotWidth
+                : Math.max(1, (chart.w || 800) - m.l - m.r);
+            const spacing = viewport.spacing != null
+                ? viewport.spacing
+                : (typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8);
+            const offsetX = viewport.offsetX != null ? viewport.offsetX : (chart.offsetX || 0);
+            const buf = viewport.bufferBars != null ? viewport.bufferBars : VIEWPORT_BUFFER_BARS;
+
+            const visStart = Math.max(0, -Math.floor(offsetX / spacing) - buf);
+            const visEnd = Math.min(
+                resampled.length,
+                -Math.floor(offsetX / spacing) + Math.ceil(plotWidth / spacing) + buf
+            );
+
+            if (visEnd <= visStart) return [];
+            return resampled.slice(visStart, visEnd);
+        }
+
+        /**
+         * Pre-bucket OHLC for render (same semantics as chart._aggregateVisibleOhlcvBuckets).
+         */
+        applyRenderBudget(slice, maxBars, baseIndex) {
+            if (!slice || slice.length === 0) return [];
+            const maxBuckets = maxBars != null ? maxBars : RENDER_BAR_BUDGET;
+            if (slice.length <= maxBuckets) {
+                const base = baseIndex || 0;
+                return slice.map((d, i) => {
+                    if (d && Number.isFinite(d.midIdx)) return d;
+                    return Object.assign({}, d, { midIdx: base + i });
+                });
+            }
+
+            const n = slice.length;
+            const numBuckets = Math.min(maxBuckets, n);
+            const step = n / numBuckets;
+            const base = baseIndex || 0;
+            const buckets = [];
+
+            for (let b = 0; b < numBuckets; b++) {
+                const i0 = Math.floor(b * step);
+                const i1 = Math.min(n - 1, Math.floor((b + 1) * step) - 1);
+                if (i0 > i1) continue;
+                const first = slice[i0];
+                let h = first.h;
+                let l = first.l;
+                let volSum = 0;
+                for (let k = i0; k <= i1; k++) {
+                    const row = slice[k];
+                    if (!row) continue;
+                    if (row.h > h) h = row.h;
+                    if (row.l < l) l = row.l;
+                    volSum += Number(row.v) || 0;
+                }
+                const midIdx = base + Math.floor((i0 + i1) / 2);
+                buckets.push({
+                    t: first.t,
+                    o: first.o,
+                    h,
+                    l,
+                    c: slice[i1].c,
+                    v: volSum,
+                    midIdx,
+                    _pipelineBucket: true,
+                });
+            }
+            return buckets;
+        }
+
+        /**
+         * Build display series for paint: resample → viewport slice → render budget.
+         */
+        buildDisplaySeries(options = {}) {
+            const chart = this.chart;
+            const source = options.source != null
+                ? options.source
+                : (Array.isArray(chart.data) && chart.data.length > 0
+                    ? chart.data
+                    : chart.rawData);
+            const tf = options.timeframe || chart.currentTimeframe;
+            const dv = chart.dataVersion ?? 0;
+
+            if (!Array.isArray(source) || source.length === 0) return [];
+
+            const usePipeline = chart.isBacktestMode
+                || source.length > LARGE_SERIES_THRESHOLD
+                || (chart.totalCandles && chart.totalCandles > LARGE_SERIES_THRESHOLD);
+
+            if (!usePipeline) {
+                return source;
+            }
+
+            const m = chart.margin || { l: 60, r: 60 };
+            const plotWidth = Math.max(1, (chart.w || 800) - m.l - m.r);
+            const spacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
+            const offsetX = chart.offsetX || 0;
+            const maxBudget = chart.isBacktestMode
+                ? RENDER_BAR_BUDGET
+                : Math.min(RENDER_BAR_BUDGET * 2, RENDER_BAR_BUDGET + 400);
+
+            const cacheKey = [
+                dv,
+                tf,
+                source.length,
+                offsetX.toFixed(2),
+                spacing.toFixed(4),
+                chart.candleWidth,
+                plotWidth,
+                maxBudget,
+            ].join('|');
+
+            if (this._displayCache.key === cacheKey && this._displayCache.series) {
+                return this._displayCache.series;
+            }
+
+            const resampled = this.getResampledSeries(source, tf, dv);
+            const visStart = Math.max(0, -Math.floor(offsetX / spacing) - VIEWPORT_BUFFER_BARS);
+            const sliced = this.sliceByViewport(resampled, {
+                offsetX,
+                plotWidth,
+                spacing,
+                bufferBars: VIEWPORT_BUFFER_BARS,
+            });
+            const display = this.applyRenderBudget(sliced, maxBudget, visStart);
+
+            this._displayCache.key = cacheKey;
+            this._displayCache.series = display;
+            chart.displaySeries = display;
+            return display;
+        }
+
+        /**
+         * Evict replay fullRawData bars before session floor / far left of playhead.
+         */
+        capReplayFullRawData(fullRawData, replaySystem) {
+            if (!Array.isArray(fullRawData) || fullRawData.length === 0) return fullRawData;
+
+            const cap = chartRawCap(this.chart);
+            if (fullRawData.length <= cap) return fullRawData;
+
+            const floorIdx = Math.max(0, replaySystem?.sessionStartIndex || 0);
+            const playhead = typeof replaySystem?.currentIndex === 'number'
+                ? replaySystem.currentIndex
+                : fullRawData.length - 1;
+            const runway = 12000;
+            const minStart = Math.max(0, Math.min(floorIdx, playhead - runway));
+            let start = Math.max(minStart, fullRawData.length - cap);
+
+            if (start <= 0) return fullRawData;
+
+            const trimmed = fullRawData.slice(start);
+            if (replaySystem) {
+                replaySystem.currentIndex = Math.max(0, playhead - start);
+                if (typeof replaySystem.sessionStartIndex === 'number') {
+                    replaySystem.sessionStartIndex = Math.max(0, floorIdx - start);
+                }
+            }
+            return trimmed;
+        }
+
+        async loadForVisibleRange(startTs, endTs) {
+            if (!this.viewportData || !this.viewportData.fileId) return [];
+            return this.viewportData.loadViewport(startTs, endTs);
+        }
+    }
+
+    function chartRawCap(chart) {
+        const base = chart._REPLAY_RAW_CAP || chart._RAW_DATA_CAP || 300000;
+        if (chart.isBacktestMode) return Math.min(base, 120000);
+        return base;
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = ChartDataPipeline;
+    }
+    if (typeof global !== 'undefined') {
+        global.ChartDataPipeline = ChartDataPipeline;
+    }
+})(typeof window !== 'undefined' ? window : global);

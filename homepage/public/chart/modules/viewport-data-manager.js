@@ -8,7 +8,7 @@
  * 4. Evicts old chunks via LRU when memory budget is exceeded
  * 5. Prefetches adjacent chunks in the background
  */
-export class ViewportDataManager {
+class ViewportDataManager {
     constructor(chart) {
         this.chart = chart;
         this.apiUrl = chart.apiUrl || '';
@@ -510,4 +510,11 @@ export class ViewportDataManager {
             loading: this.loading
         };
     }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ViewportDataManager;
+}
+if (typeof window !== 'undefined') {
+    window.ViewportDataManager = ViewportDataManager;
 }

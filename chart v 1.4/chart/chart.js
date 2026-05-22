@@ -572,7 +572,12 @@ class Chart {
          * Optional: set window.CHART_BACKTEST_SMART_INITIAL_LIMIT before chart.js loads for a heavier first batch.
          * Default kept moderate so first paint stays fast; viewport/replay loads more as needed.
          */
-        this.BACKTEST_SMART_INITIAL_LIMIT = 100000;
+        this.BACKTEST_SMART_INITIAL_LIMIT = 2500;
+        this._REPLAY_RAW_CAP = 120000;
+        this.displaySeries = null;
+        this.dataPipeline = null;
+        this.viewportData = null;
+        this._initDataPipeline();
 
         // Performance optimizations for large datasets
         this.totalCandles = 0; // Total number of candles in dataset
@@ -1475,13 +1480,28 @@ class Chart {
             })();
             const historyRange = sessionEndMs != null ? { endTs: sessionEndMs } : null;
 
+            const sessionStartTs = (() => {
+                const raw = session.startDate || session.start_date;
+                if (!raw) return null;
+                const t = new Date(raw).getTime();
+                return Number.isFinite(t) ? t : null;
+            })();
+
+            if (this.viewportData) {
+                this.viewportData.init(fileId, replayRawTf, sessionStartTs, sessionEndMs);
+                const initialBars = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.INITIAL_BACKTEST_BARS)
+                    || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.INITIAL_BACKTEST_BARS)
+                    || 2500;
+                this.viewportData.chunkSize = initialBars;
+            }
+
             let result = await this._fetchSmartWindow(
                 fileId,
                 replayRawTf,
                 session,
                 'end',
                 historyRange,
-                { skipSessionDates: true }
+                { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT }
             );
 
             if (!this._smartResponseHasPayload(result)) {
@@ -1595,7 +1615,7 @@ class Chart {
             backtestBatch = optLimit;
         }
         const limit = isBacktest
-            ? String(Math.max(5000, Math.min(100000, backtestBatch)))
+            ? String(Math.max(500, Math.min(100000, backtestBatch)))
             : (Number.isFinite(optLimit) && optLimit > 0
                 ? String(Math.max(100, Math.min(100000, Math.floor(optLimit))))
                 : '5000');
@@ -2074,10 +2094,14 @@ class Chart {
         const fid = String(fileId);
         if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
         const perFile = this._btTfDataCache.get(fid);
+        const maxCacheBars = 12000;
+        const storedRaw = rawData.length > maxCacheBars
+            ? rawData.slice(rawData.length - maxCacheBars)
+            : rawData.slice();
         perFile.set(tf, {
             at: Date.now(),
             anchorKey: this._btTfCacheAnchorKey(sessionEndMs),
-            rawData: rawData.slice(),
+            rawData: storedRaw,
             totalCandles: meta.totalCandles != null ? meta.totalCandles : rawData.length,
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
             nativeRawFetchTf: meta.nativeRawFetchTf || tf,
@@ -2108,7 +2132,7 @@ class Chart {
             if (!self.isBacktestMode) return;
             const sessionEndMs = self._getBacktestSessionEndMs(session);
             const historyRange = self._getBacktestSessionEndFetchRange(sessionEndMs);
-            const fetchOpts = { skipSessionDates: true, limit: 100000 };
+            const fetchOpts = { skipSessionDates: true, limit: self.BACKTEST_SMART_INITIAL_LIMIT || 2500 };
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
             const targets = new Set(['1m', '5m', '15m', '1h', '4h', '1d']);
             targets.delete(cur);
@@ -2414,6 +2438,10 @@ class Chart {
         }
 
         this.data = this.resampleData(this.rawData, this.currentTimeframe);
+        if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
+            this.dataPipeline.invalidateResampleCache();
+        }
+        this.bumpDataVersion();
 
         if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
             this.recalculateIndicators();
@@ -13253,7 +13281,7 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
-        const fetchOpts = { skipSessionDates: true, limit: 100000 };
+        const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 2500 };
 
         let result;
         try {
@@ -13589,6 +13617,9 @@ class Chart {
                 if (uniqueNew.length === 0) return;
                 
                 if (isReplay) {
+                    if (this.dataPipeline && typeof this.dataPipeline.capReplayFullRawData === 'function') {
+                        merged = this.dataPipeline.capReplayFullRawData(merged, this.replaySystem);
+                    }
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
@@ -13618,6 +13649,13 @@ class Chart {
                     // Playback loop already redraws continuously and will pick up merged data.
                     if (!this.replaySystem.isPlaying) {
                         this.replaySystem.updateChartData(false);
+                    }
+                    if (this.isBacktestMode && this.viewportData && this._serverCursors) {
+                        this.viewportData.hasMoreLeft = !!this._serverCursors.hasMoreLeft;
+                        this.viewportData.hasMoreRight = !!this._serverCursors.hasMoreRight;
+                    }
+                    if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
+                        this.dataPipeline.bumpDisplayVersion();
                     }
                 } else {
                     // Normal mode: update rawData directly
@@ -13732,7 +13770,50 @@ class Chart {
         return out;
     }
 
+    _initDataPipeline() {
+        const PipelineCtor = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline)
+            || (typeof window !== 'undefined' && window.ChartDataPipeline);
+        const ViewportCtor = (typeof ViewportDataManager !== 'undefined' && ViewportDataManager)
+            || (typeof window !== 'undefined' && window.ViewportDataManager);
+        if (PipelineCtor) {
+            this.dataPipeline = new PipelineCtor(this);
+        }
+        if (ViewportCtor) {
+            this.viewportData = new ViewportCtor(this);
+            if (this.dataPipeline && typeof this.dataPipeline.attachViewportManager === 'function') {
+                this.dataPipeline.attachViewportManager(this.viewportData);
+            }
+            const initialBars = (PipelineCtor && PipelineCtor.INITIAL_BACKTEST_BARS) || 2500;
+            this.viewportData.chunkSize = initialBars;
+        }
+    }
+
+    _shouldUseDisplayPipeline() {
+        if (!this.dataPipeline) return false;
+        if (this.isBacktestMode) return true;
+        const len = Array.isArray(this.data) ? this.data.length : 0;
+        const total = Number(this.totalCandles) || 0;
+        const threshold = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.LARGE_SERIES_THRESHOLD)
+            || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.LARGE_SERIES_THRESHOLD)
+            || 8000;
+        return len > threshold || total > threshold;
+    }
+
+    getDisplaySeries() {
+        if (!this._shouldUseDisplayPipeline()) {
+            return Array.isArray(this.data) ? this.data : [];
+        }
+        return this.dataPipeline.buildDisplaySeries({ source: this.data, timeframe: this.currentTimeframe });
+    }
+
     resampleData(data, timeframe) {
+        if (this.dataPipeline) {
+            return this.dataPipeline.getResampledSeries(data, timeframe, this.dataVersion);
+        }
+        return this._resampleDataFull(data, timeframe);
+    }
+
+    _resampleDataFull(data, timeframe) {
         if (!Array.isArray(data) || data.length === 0) return [];
 
         const prepared = this._prepareBarsForResampling(data);
@@ -13905,6 +13986,12 @@ class Chart {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
         const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
+        if (this.isBacktestMode) {
+            const budget = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.RENDER_BAR_BUDGET)
+                || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.RENDER_BAR_BUDGET)
+                || 500;
+            return Math.min(fromWidth, budget);
+        }
         const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
         const limits = {
             '1m': 3500, '2m': 3200, '3m': 3000, '5m': 2800,
@@ -13990,9 +14077,10 @@ class Chart {
             }
         }
         const visible = this.data.slice(visStart, visEnd);
+        const priceVisible = this._shouldUseDisplayPipeline() ? this.getDisplaySeries() : visible;
         
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
-        if (visible.length === 0) {
+        if (priceVisible.length === 0 && visible.length === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
                 const _indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -14008,8 +14096,8 @@ class Chart {
         // argument-limit / stack issues when zoomed out on 1m data (50k+ visible bars).
         let minPrice = Infinity;
         let maxPrice = -Infinity;
-        for (let i = 0; i < visible.length; i++) {
-            const d = visible[i];
+        for (let i = 0; i < priceVisible.length; i++) {
+            const d = priceVisible[i];
             if (!d) continue;
             const h = Number(d.h);
             const l = Number(d.l);
@@ -14095,7 +14183,7 @@ class Chart {
         // in auto-scale mode or when the right edge has no visible bars.
         // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
         if (this.chartSettings.showPriceLine !== false && this.autoScale) {
-            const linePrice = this.resolveEffectiveCurrentPrice(visible);
+            const linePrice = this.resolveEffectiveCurrentPrice(priceVisible.length ? priceVisible : visible);
             if (Number.isFinite(linePrice)) {
                 const span = domainMax - domainMin;
                 const pad = Math.max(span * 0.02, Math.abs(linePrice) * 1e-9, 1e-10);
@@ -14407,6 +14495,9 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
+        if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
+            this.dataPipeline.bumpDisplayVersion();
+        }
     }
     
     animateZoom() {
@@ -14596,7 +14687,27 @@ class Chart {
         this.visibleStartIndex = startIdx;
         this.visibleEndIndex = endIdx;
         
-        const visible = this.data.slice(startIdx, endIdx);
+        let visible;
+        if (this._shouldUseDisplayPipeline()) {
+            const disp = this.getDisplaySeries();
+            visible = [];
+            let minMid = startIdx;
+            let maxMid = endIdx;
+            for (let di = 0; di < disp.length; di++) {
+                const d = disp[di];
+                const idx = Number.isFinite(d.midIdx) ? d.midIdx : (startIdx + di);
+                if (idx < startIdx - edgeBuf || idx > endIdx + edgeBuf) continue;
+                visible.push(d);
+                if (idx < minMid) minMid = idx;
+                if (idx > maxMid) maxMid = idx;
+            }
+            if (visible.length > 0) {
+                this.visibleStartIndex = Math.max(0, minMid);
+                this.visibleEndIndex = Math.min(this.data.length, maxMid + 1);
+            }
+        } else {
+            visible = this.data.slice(startIdx, endIdx);
+        }
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
         if (visible.length === 0 && this.data.length === 0) {
@@ -16429,8 +16540,8 @@ class Chart {
             volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b.c >= b.o));
         } else {
             visible.forEach((d, i) => {
-                const idx = this.visibleStartIndex + i;
-                drawVolBar(d.v, idx, d.c >= d.o);
+                const idx = Number.isFinite(d.midIdx) ? d.midIdx : this.visibleStartIndex + i;
+                drawVolBar(Number.isFinite(d.v) ? d.v : (d.vSum || 0), idx, d.c >= d.o);
             });
         }
         
@@ -16987,7 +17098,10 @@ class Chart {
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
-            : visible.map((d, i) => ({ d, idx: (this.visibleStartIndex || 0) + i }));
+            : visible.map((d, i) => ({
+                d,
+                idx: Number.isFinite(d.midIdx) ? d.midIdx : (this.visibleStartIndex || 0) + i,
+            }));
 
         drawSeries.forEach(({ d, idx }) => {
             // Calculate X position using our helper method
