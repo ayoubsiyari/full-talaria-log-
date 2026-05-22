@@ -2108,6 +2108,7 @@ class ReplaySystem {
      * @param {Object} [options] - Optional configuration
      * @param {boolean} [options.startAtBeginning] - Backtest-style session floor (URL/mode)
      * @param {boolean} [options.suppressInitialUpdateChartData] - Skip first `updateChartData()` so host can restore playhead (TF refetch); avoids SL/TP on session-start bar.
+     * @param {boolean} [options.skipRealignAfterLayout] - Host owns viewport after TF refetch; skip internal realign loop.
      */
     enterReplayMode(options = {}) {
         // === PROTECT: Don't reinitialize if already active or during timeframe change ===
@@ -2236,6 +2237,7 @@ class ReplaySystem {
         const realignAfterLayout = () => {
             if (!this.isActive) return;
             if (this.userHasPanned) return;
+            if (this.chart && this.chart._timeframeSwitching) return;
             try {
                 if (typeof this.chart.resize === 'function') {
                     this.chart._lastResizeDpr = 0;
@@ -2260,7 +2262,9 @@ class ReplaySystem {
                 setTimeout(realignAfterLayout, realignAttempts <= 3 ? 200 : 500);
             }
         };
-        requestAnimationFrame(realignAfterLayout);
+        if (!options.skipRealignAfterLayout) {
+            requestAnimationFrame(realignAfterLayout);
+        }
     }
 
     /**
@@ -2358,14 +2362,52 @@ class ReplaySystem {
         const rightGapCandles = Math.max(configuredGapCandles, ratioGapCandles);
 
         const targetVisibleCandles = Math.max(1, numVisibleCandles - rightGapCandles);
-        const scrollPosition = Math.max(0, chartInstance.data.length - targetVisibleCandles);
+        const numBars = chartInstance.data.length;
+        let scrollPosition = Math.max(0, numBars - targetVisibleCandles);
+        let offsetX = -scrollPosition * candleSpacing;
+
+        // When the replay slice fits on screen, scrollPosition=0 pins offsetX at 0 (first bar)
+        // while the playhead is at the last bar — time axis shows session start, replay clock
+        // shows playhead (broken Y-axis + TF switch after 1D→1m).
+        if (numBars <= targetVisibleCandles) {
+            const lastCandleX = (numBars - 1) * candleSpacing;
+            const rightPadPx = rightGapCandles * candleSpacing;
+            offsetX = chartAreaW - rightPadPx - lastCandleX - candleSpacing * 0.5;
+            scrollPosition = 0;
+        }
 
         return {
-            offsetX: -scrollPosition * candleSpacing,
+            offsetX,
             numVisibleCandles,
             rightGapCandles,
             scrollPosition
         };
+    }
+
+    /**
+     * Align chart viewport to the replay playhead (right edge). Used after backtest TF refetch
+     * and anywhere fitToView/getReplayAutoScrollState must be applied explicitly.
+     */
+    syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
+        if (!this.isActive || !chartInstance) return false;
+        const st = this.getReplayAutoScrollState(chartInstance);
+        if (!st || !Number.isFinite(st.offsetX)) return false;
+        chartInstance.offsetX = st.offsetX;
+        if (opts.resetPriceScale !== false) {
+            chartInstance.autoScale = true;
+            chartInstance.priceOffset = 0;
+            chartInstance.priceZoom = 1;
+        }
+        if (typeof chartInstance.constrainOffset === 'function') {
+            chartInstance.constrainOffset();
+        }
+        if (opts.render !== false) {
+            chartInstance.renderPending = true;
+            if (typeof chartInstance.render === 'function') {
+                chartInstance.render();
+            }
+        }
+        return true;
     }
 
     /**
@@ -2433,10 +2475,7 @@ class ReplaySystem {
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
         if (autoScroll && this.autoScrollEnabled) {
-            const autoScrollState = this.getReplayAutoScrollState(this.chart);
-            if (autoScrollState) {
-                this.chart.offsetX = autoScrollState.offsetX;
-            }
+            this.syncReplayViewportToPlayhead(this.chart, { resetPriceScale: false, render: false });
         }
         
         // Update UI elements

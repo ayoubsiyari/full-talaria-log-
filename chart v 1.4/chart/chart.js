@@ -12455,6 +12455,9 @@ class Chart {
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
+        const wasAtSessionEnd = wasActive
+            && typeof replay._playWouldBeNoOpAtSessionEnd === 'function'
+            && replay._playWouldBeNoOpAtSessionEnd();
         let savedReplayTimestamp = Number.isFinite(replay.replayTimestamp)
             ? replay.replayTimestamp
             : null;
@@ -12632,11 +12635,15 @@ class Chart {
         this._chartViewRestored = false;
 
         try {
-            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
+            replay.enterReplayMode({ suppressInitialUpdateChartData: true, skipRealignAfterLayout: true });
         } catch (e) {
             console.error('[backtest] enterReplayMode after refetch failed', e);
             this._endTimeframeSwitching();
             return;
+        }
+
+        if (wasAtSessionEnd && sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+            savedReplayTimestamp = sessionEndMs;
         }
 
         if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
@@ -12692,6 +12699,21 @@ class Chart {
             }
         }
 
+        if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            replay.currentIndex = replay.fullRawData.length - 1;
+            const endBar = replay.fullRawData[replay.currentIndex];
+            if (endBar && Number.isFinite(endBar.t)) {
+                replay.replayTimestamp = endBar.t;
+            }
+            try {
+                replay.updateChartData(true);
+            } catch (e) { /* ignore */ }
+        }
+
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true });
+        }
+
         if (omTfRefetch && typeof omTfRefetch._refreshAllGuardsToCurrentCandle === 'function') {
             try { omTfRefetch._refreshAllGuardsToCurrentCandle(); } catch (_eTf3) { /* ignore */ }
         }
@@ -12702,8 +12724,14 @@ class Chart {
             } catch (e) { /* ignore */ }
         }
 
-        if (wasPlaying && typeof replay.play === 'function') {
+        const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
+        if (shouldResumePlay && typeof replay.play === 'function') {
             try { replay.play(); } catch (e) { /* ignore */ }
+        } else if (wasAtSessionEnd) {
+            replay.isPlaying = false;
+            if (typeof replay.syncPlayPauseUI === 'function') {
+                replay.syncPlayPauseUI();
+            }
         }
 
         // Final viewport reset = "double-click time axis" parity on every TF
@@ -12727,15 +12755,21 @@ class Chart {
                 if (typeof this.resize === 'function') this.resize();
             } catch (e) { /* ignore */ }
             try {
+                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
+                }
                 if (Array.isArray(this.data) && this.data.length > 0
                     && typeof this.jumpToLatest === 'function') {
                     this.jumpToLatest();
+                }
+                if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                    replay.syncReplayViewportToPlayhead(this, { resetPriceScale: false });
                 }
             } catch (e) { /* ignore */ }
             this._endTimeframeSwitching();
             // updatePositions is skipped while _timeframeSwitching; when replay stays paused after
             // refetch, replay.play() does not run — refresh orders/PnL once after the freeze lifts.
-            if (!wasPlaying) {
+            if (!shouldResumePlay) {
                 try {
                     const omFin = this.orderManager
                         || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
