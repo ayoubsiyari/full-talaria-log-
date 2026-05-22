@@ -18093,36 +18093,6 @@ async def get_file_smart(
     O(1) seek + O(n) read. No CSV parsing.
     Returns last N candles at the exact requested timeframe.
     """
-    if resolution and str(resolution).lower() in ("auto", ""):
-        user = _get_user_from_request(request)
-        if user is not None:
-            _enforce_backtest_user_rate(user, "smart")
-        db = next(get_db())
-        try:
-            db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
-            if not db_file:
-                raise HTTPException(status_code=404, detail="File not found")
-            payload = _build_bars_payload(
-                file_id, db_file,
-                from_ms=start_ts, to_ms=end_ts,
-                resolution="auto", limit=min(limit, bar_budget.MAX_BARS),
-            )
-            bars = payload.get("bars") or []
-            if response_format == "candles":
-                return {
-                    "timeframe": payload.get("resolution"),
-                    "resolution": payload.get("resolution"),
-                    "total": len(bars),
-                    "returned": len(bars),
-                    "has_more_left": False,
-                    "has_more_right": False,
-                    "candles": bars,
-                    "source": payload.get("source"),
-                }
-            return payload
-        finally:
-            db.close()
-
     from io import StringIO
     import time as _time
     t0 = _time.monotonic()
@@ -18138,6 +18108,32 @@ async def get_file_smart(
         db_file = db.query(CSVFile).filter(CSVFile.id == file_id).first()
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
+
+        use_auto = resolution and str(resolution).lower() in ("auto", "")
+        if questdb_store.questdb_read_primary() or use_auto:
+            res_for_bars = "auto" if use_auto else timeframe
+            q_from, q_to, q_limit = _smart_questdb_window(
+                timeframe if not use_auto else "1m",
+                limit=limit,
+                anchor=anchor,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            )
+            if use_auto:
+                q_from, q_to = start_ts, end_ts
+            payload = _build_bars_payload(
+                file_id, db_file,
+                from_ms=q_from, to_ms=q_to,
+                resolution=res_for_bars, limit=q_limit,
+            )
+            smart_resp = _bars_to_smart_candles_response(
+                payload,
+                response_format=response_format,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            )
+            if smart_resp and (payload.get("bars") or not questdb_store.questdb_tiles_fallback()):
+                return smart_resp
 
         # ── Find binary file for this timeframe ──
         bin_path = BIN_DIR / f"bin_{file_id}_{timeframe}.bin"
@@ -18723,6 +18719,59 @@ def _build_bars_payload(
         "returned": len(bars),
         "source": source,
     }
+
+
+def _bars_to_smart_candles_response(
+    payload: dict,
+    *,
+    response_format: str,
+    start_ts: int | None = None,
+    end_ts: int | None = None,
+) -> dict | None:
+    """Convert /bars payload to /smart candles JSON shape."""
+    bars = payload.get("bars") or []
+    if not bars:
+        return None
+    tf = payload.get("resolution") or "1m"
+    first_t = bars[0]["t"]
+    last_t = bars[-1]["t"]
+    has_more_left = start_ts is None or first_t > start_ts
+    has_more_right = end_ts is None or last_t < end_ts
+    if response_format == "candles":
+        return {
+            "timeframe": tf,
+            "resolution": tf,
+            "total": len(bars),
+            "returned": len(bars),
+            "has_more_left": has_more_left,
+            "has_more_right": has_more_right,
+            "first_cursor": str(first_t),
+            "last_cursor": str(last_t),
+            "candles": bars,
+            "source": payload.get("source"),
+        }
+    return payload
+
+
+def _smart_questdb_window(
+    timeframe: str,
+    *,
+    limit: int,
+    anchor: str,
+    start_ts: int | None,
+    end_ts: int | None,
+) -> tuple[int | None, int | None, int]:
+    """End-anchored backtest windows: last N bars at timeframe before end_ts."""
+    effective_limit = max(1, min(int(limit), bar_budget.MAX_BARS))
+    q_from = start_ts
+    q_to = end_ts
+    if q_to is not None and q_from is None and anchor == "end":
+        try:
+            tf_ms = _parse_tf_ms(timeframe)
+            q_from = max(0, int(q_to) - effective_limit * tf_ms)
+        except Exception:
+            q_from = None
+    return q_from, q_to, effective_limit
 
 
 @app.get("/api/file/{file_id}/bars")

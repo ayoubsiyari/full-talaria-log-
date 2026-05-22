@@ -559,6 +559,7 @@ class Chart {
         this.currentFileId = null;
         /** Bumps on each server timeframe load so stale async responses are ignored. */
         this._timeframeLoadSeq = 0;
+        this._timeframeFetchAbort = null;
         this.currentSymbol = null; // Store detected symbol from CSV
         // Tracks the last symbol we resolved precision for. When currentSymbol changes
         // we drop the cached precision so the registry is re-queried for the new tick
@@ -1614,7 +1615,7 @@ class Chart {
         if (!anchor) anchor = isBacktest ? 'start' : 'end';
 
         let backtestBatch = Number(this.BACKTEST_SMART_INITIAL_LIMIT);
-        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 100000;
+        if (!Number.isFinite(backtestBatch) || backtestBatch <= 0) backtestBatch = 800;
         if (typeof window !== 'undefined') {
             const w = Number(window.CHART_BACKTEST_SMART_INITIAL_LIMIT);
             if (Number.isFinite(w) && w > 0) backtestBatch = w;
@@ -1626,10 +1627,10 @@ class Chart {
             backtestBatch = optLimit;
         }
         const limit = isBacktest
-            ? String(Math.max(500, Math.min(100000, backtestBatch)))
+            ? String(Math.max(100, Math.min(2000, backtestBatch)))
             : (Number.isFinite(optLimit) && optLimit > 0
-                ? String(Math.max(100, Math.min(100000, Math.floor(optLimit))))
-                : '5000');
+                ? String(Math.max(100, Math.min(2000, Math.floor(optLimit))))
+                : '2000');
         const params = new URLSearchParams({
             timeframe: timeframe,
             limit: limit,
@@ -1767,11 +1768,21 @@ class Chart {
         });
     }
 
+    _getTimeframeFetchSignal() {
+        return this._timeframeFetchAbort && !this._timeframeFetchAbort.signal.aborted
+            ? this._timeframeFetchAbort.signal
+            : undefined;
+    }
+
     async _fetchSmartWindowWithParams(fileId, params) {
         const cached = this._getSmartCachedPayload(fileId, params, false);
         if (cached) return cached;
 
-        const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`);
+        const fetchInit = {};
+        const signal = this._getTimeframeFetchSignal();
+        if (signal) fetchInit.signal = signal;
+
+        const response = await fetch(`${this.apiUrl}/file/${fileId}/smart?${params.toString()}`, fetchInit);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const ct = (response.headers.get('content-type') || '').toLowerCase();
         if (ct && !ct.includes('json')) {
@@ -1788,11 +1799,75 @@ class Chart {
         return result;
     }
 
+    _computeBarsWindowForBacktest(timeframe, session, windowRange, smartOpts, anchor) {
+        const opts = smartOpts && typeof smartOpts === 'object' ? smartOpts : {};
+        const isBacktest = this._isSessionBacktestStyle(session);
+        const effectiveAnchor = anchor || (isBacktest ? 'start' : 'end');
+        let toMs = this.normalizeTimestampMs(windowRange?.endTs);
+        let fromMs = this.normalizeTimestampMs(windowRange?.startTs);
+
+        if (!Number.isFinite(toMs) && session) {
+            const endRaw = session.endDate || session.end_date;
+            if (endRaw) {
+                const t = this._sessionEndToInclusiveUtcMs(endRaw);
+                if (Number.isFinite(t)) toMs = Math.floor(t);
+            }
+        }
+        if (!Number.isFinite(fromMs) && !opts.skipSessionDates && session) {
+            const startRaw = session.startDate || session.start_date;
+            if (startRaw) {
+                const t = new Date(startRaw).getTime();
+                if (Number.isFinite(t)) fromMs = t;
+            }
+        }
+
+        const resolution = String(timeframe || 'auto').toLowerCase().trim();
+        const barLimit = Math.min(2000, Number(opts.limit) || 2000);
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+
+        if (Number.isFinite(toMs) && !Number.isFinite(fromMs)) {
+            if (resolution === 'auto') {
+                fromMs = null;
+            } else {
+                fromMs = toMs - barLimit * tfMs;
+            }
+        } else if (Number.isFinite(fromMs) && !Number.isFinite(toMs) && effectiveAnchor === 'start') {
+            toMs = fromMs + barLimit * tfMs;
+        } else if (!Number.isFinite(toMs) && !Number.isFinite(fromMs) && effectiveAnchor === 'end') {
+            toMs = Date.now();
+            fromMs = toMs - barLimit * tfMs;
+        }
+
+        return { fromMs, toMs, resolution, limit: barLimit };
+    }
+
+    async _fetchSmartWindowViaBars(fileId, timeframe, session, anchor, windowRange, smartOpts) {
+        const win = this._computeBarsWindowForBacktest(
+            timeframe, session, windowRange, smartOpts, anchor
+        );
+        const payload = await this._fetchBarsWindow(
+            fileId, win.fromMs, win.toMs, win.resolution, win.limit
+        );
+        return this._smartPayloadFromBars(payload);
+    }
+
     /**
      * Fetch a window of candles from /smart endpoint.
      * Server reads binary tiles/mmap; response uses native candle array when response_format=candles.
      */
     async _fetchSmartWindow(fileId, timeframe, session, anchor, windowRange = null, smartOpts = null) {
+        const sessionObj = session || this.backtestingSession || {};
+        if (fileId) {
+            try {
+                const viaBars = await this._fetchSmartWindowViaBars(
+                    fileId, timeframe, sessionObj, anchor, windowRange, smartOpts
+                );
+                if (this._smartResponseHasPayload(viaBars)) return viaBars;
+            } catch (err) {
+                if (err && err.name === 'AbortError') throw err;
+                console.warn('[chart] /bars fetch failed, falling back to /smart', err);
+            }
+        }
         const params = this._buildSmartWindowParams(fileId, timeframe, session, anchor, windowRange, smartOpts);
         return this._fetchSmartWindowWithParams(fileId, params);
     }
@@ -1816,7 +1891,11 @@ class Chart {
             }
         }
 
-        const response = await fetch(`${this.apiUrl}/file/${fileId}/bars?${params.toString()}`);
+        const fetchInit = {};
+        const signal = this._getTimeframeFetchSignal();
+        if (signal) fetchInit.signal = signal;
+
+        const response = await fetch(`${this.apiUrl}/file/${fileId}/bars?${params.toString()}`, fetchInit);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (this._smartPrefetchCache) {
@@ -2108,7 +2187,7 @@ class Chart {
                     }
                     return;
                 }
-                self._fetchSmartWindowWithParams(fileId, params)
+                self._fetchSmartWindow(fileId, tf, sess, 'end', null, null)
                     .then((result) => {
                         if (!self._smartResponseHasPayload(result)) return;
                         if (String(self.currentFileId) !== String(fileId)) return;
@@ -2258,7 +2337,7 @@ class Chart {
             if (!self.isBacktestMode) return;
             const sessionEndMs = self._getBacktestSessionEndMs(session);
             const historyRange = self._getBacktestSessionEndFetchRange(sessionEndMs);
-            const fetchOpts = { skipSessionDates: true, limit: self.BACKTEST_SMART_INITIAL_LIMIT || 2500 };
+            const fetchOpts = { skipSessionDates: true, limit: self.BACKTEST_SMART_INITIAL_LIMIT || 800 };
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
             const targets = new Set(['1m', '5m', '15m', '1h', '4h', '1d']);
             targets.delete(cur);
@@ -2742,6 +2821,7 @@ class Chart {
             // the rawTimeframe mismatch the displayed bars).
             let requestTimeframe;
             let params;
+            let backtestHistoryRange = null;
             if (isBacktestSession) {
                 requestTimeframe = this.currentTimeframe || '1d';
                 const sessionEndMs = (() => {
@@ -2754,13 +2834,13 @@ class Chart {
                 if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
                     endAnchor = Math.floor(replayTargetTs);
                 }
-                const historyRange = endAnchor != null ? { endTs: endAnchor } : null;
+                backtestHistoryRange = endAnchor != null ? { endTs: endAnchor } : null;
                 params = this._buildSmartWindowParams(
                     targetFileId,
                     requestTimeframe,
                     session,
                     'end',
-                    historyRange,
+                    backtestHistoryRange,
                     { skipSessionDates: true }
                 );
             } else {
@@ -2783,21 +2863,43 @@ class Chart {
                 result = this._tryTakeSmartPrefetch(targetFileId, prefetchParams);
             }
             if (!result) {
-                result = await this._fetchSmartWindowWithParams(targetFileId, params);
-                // Initial-load retry parity: if the end-clamped backtest fetch returns
-                // no candles (file ends before the chosen end anchor, or the prior
-                // pair's session window doesn't overlap this file's data range),
-                // retry once without the end clamp so the new pair still renders.
-                if (isBacktestSession && !this._smartResponseHasPayload(result)) {
-                    const retryParams = this._buildSmartWindowParams(
+                if (isBacktestSession) {
+                    result = await this._fetchSmartWindow(
                         targetFileId,
                         requestTimeframe,
                         session,
                         'end',
-                        null,
+                        backtestHistoryRange,
                         { skipSessionDates: true }
                     );
-                    result = await this._fetchSmartWindowWithParams(targetFileId, retryParams);
+                    if (!this._smartResponseHasPayload(result)) {
+                        result = await this._fetchSmartWindow(
+                            targetFileId,
+                            requestTimeframe,
+                            session,
+                            'end',
+                            null,
+                            { skipSessionDates: true }
+                        );
+                    }
+                } else {
+                    let windowRange = null;
+                    if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                        const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                        const contextBars = 4000;
+                        const contextMs = contextBars * 60 * 1000;
+                        windowRange = {
+                            startTs: Math.max(sessionStartMs, replayTargetTs - contextMs),
+                        };
+                    }
+                    result = await this._fetchSmartWindow(
+                        targetFileId,
+                        requestTimeframe,
+                        session,
+                        'end',
+                        windowRange,
+                        null
+                    );
                 }
             }
 
@@ -3069,6 +3171,7 @@ class Chart {
             // otherwise the new pair only gets the post-session-start slice.
             let requestTimeframe;
             let params;
+            let backtestHistoryRange = null;
             if (isBacktest) {
                 requestTimeframe = this.currentTimeframe || '1d';
                 const sessionEndMs = (() => {
@@ -3085,7 +3188,7 @@ class Chart {
                 if (replayActiveBefore && Number.isFinite(replayTs)) {
                     endAnchor = Math.floor(replayTs);
                 }
-                const historyRange = endAnchor != null ? { endTs: endAnchor } : null;
+                backtestHistoryRange = endAnchor != null ? { endTs: endAnchor } : null;
                 const buildParams = (mainChart && typeof mainChart._buildSmartWindowParams === 'function')
                     ? mainChart._buildSmartWindowParams.bind(mainChart)
                     : this._buildSmartWindowParams.bind(this);
@@ -3094,7 +3197,7 @@ class Chart {
                     requestTimeframe,
                     session,
                     'end',
-                    historyRange,
+                    backtestHistoryRange,
                     { skipSessionDates: true }
                 );
             } else {
@@ -3122,22 +3225,43 @@ class Chart {
                 }
             }
             if (!result) {
-                result = await this._fetchSmartWindowWithParams(targetFileId, params);
-                // Same retry parity as loadFileData: if the end-clamped backtest fetch
-                // returns nothing, retry without the end clamp.
-                if (isBacktest && !this._smartResponseHasPayload(result)) {
-                    const buildParams = (mainChart && typeof mainChart._buildSmartWindowParams === 'function')
-                        ? mainChart._buildSmartWindowParams.bind(mainChart)
-                        : this._buildSmartWindowParams.bind(this);
-                    const retryParams = buildParams(
+                if (isBacktest) {
+                    result = await this._fetchSmartWindow(
                         targetFileId,
                         requestTimeframe,
                         session,
                         'end',
-                        null,
+                        backtestHistoryRange,
                         { skipSessionDates: true }
                     );
-                    result = await this._fetchSmartWindowWithParams(targetFileId, retryParams);
+                    if (!this._smartResponseHasPayload(result)) {
+                        result = await this._fetchSmartWindow(
+                            targetFileId,
+                            requestTimeframe,
+                            session,
+                            'end',
+                            null,
+                            { skipSessionDates: true }
+                        );
+                    }
+                } else {
+                    let windowRange = null;
+                    if (replayActiveBefore && Number.isFinite(replayTs)) {
+                        const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
+                        const ctxBars = 4000;
+                        const ctxMs = ctxBars * 60 * 1000;
+                        windowRange = {
+                            startTs: Math.max(sessionStartMs, replayTs - ctxMs),
+                        };
+                    }
+                    result = await this._fetchSmartWindow(
+                        targetFileId,
+                        requestTimeframe,
+                        session,
+                        'end',
+                        windowRange,
+                        null
+                    );
                 }
             }
 
@@ -12426,7 +12550,7 @@ class Chart {
                 session,
                 'start',
                 { startTs: targetTimestamp },
-                { limit: 100000 }
+                { limit: 2000 }
             );
 
             if (!this._smartResponseHasPayload(result)) {
@@ -12967,6 +13091,10 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
+        if (this._timeframeFetchAbort) {
+            try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
+        }
+        this._timeframeFetchAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;
@@ -12981,6 +13109,7 @@ class Chart {
     _endTimeframeSwitching() {
         const wasSwitching = !!this._timeframeSwitching;
         this._timeframeSwitching = false;
+        this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
@@ -13280,6 +13409,7 @@ class Chart {
             });
 
         } catch (error) {
+            if (error && error.name === 'AbortError') return;
             if (loadId === this._timeframeLoadSeq) {
                 console.error('❌ Timeframe change failed:', error);
                 if (this.hideLoader) this.hideLoader();
@@ -13410,7 +13540,7 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const historyRange = this._getBacktestSessionEndFetchRange(sessionEndMs);
-        const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 2500 };
+        const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 800 };
 
         let result;
         try {
