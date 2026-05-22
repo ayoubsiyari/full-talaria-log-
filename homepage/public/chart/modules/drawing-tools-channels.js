@@ -30,13 +30,26 @@ class ParallelChannelTool extends BaseDrawing {
     }
 
     ensureTextDefaults() {
-        if (!this.style.textColor) this.style.textColor = this.style.stroke;
-        if (!this.style.fontSize) this.style.fontSize = 14;
-        if (!this.style.fontFamily) this.style.fontFamily = 'Roboto, sans-serif';
-        if (!this.style.fontWeight) this.style.fontWeight = 'normal';
-        if (!this.style.fontStyle) this.style.fontStyle = 'normal';
-        if (!this.style.textVAlign) this.style.textVAlign = 'middle';
-        if (!this.style.textHAlign) this.style.textHAlign = 'center';
+        const textDefaults = {
+            fontSize: 14,
+            fontFamily: 'Roboto, sans-serif',
+            fontWeight: 'normal',
+            fontStyle: 'normal',
+            textVAlign: 'top',
+            textPosition: 'top',
+            textHAlign: 'center',
+            textAlign: 'center',
+            textOffsetX: 0,
+            textOffsetY: -8
+        };
+        Object.keys(textDefaults).forEach((key) => {
+            if (this.style[key] === undefined || this.style[key] === null) {
+                this.style[key] = textDefaults[key];
+            }
+        });
+        if (!this.style.textColor) {
+            this.style.textColor = this.style.stroke;
+        }
     }
 
     /**
@@ -331,31 +344,94 @@ class ParallelChannelTool extends BaseDrawing {
 
     renderTextLabel(scales) {
         const label = this.text || '';
-        if (!label.trim()) return;
+        if (!label.trim() || !this.points || this.points.length < 2) return;
 
         const p1 = this.points[0];
         const p2 = this.points[1];
 
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x)
+            : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x)
+            : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
+        let angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+        const angleRad = Math.atan2(y2 - y1, x2 - x1);
+        if (angle > 90 || angle < -90) {
+            angle += 180;
+        }
+
+        const fontSize = this.style.fontSize || 14;
+        const lineLabelOffset = 14 + Math.max(0, fontSize / 2 - 6);
+        const textVAlign = String(this.style.textVAlign || this.style.textPosition || 'top').toLowerCase();
+        const textHAlign = String(this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
+
+        const rawLX = x1 <= x2 ? x1 : x2;
+        const rawLY = x1 <= x2 ? y1 : y2;
+        const rawRX = x1 <= x2 ? x2 : x1;
+        const rawRY = x1 <= x2 ? y2 : y1;
+        const rawDX = rawRX - rawLX;
+        const rawDY = rawRY - rawLY;
+        const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
+        const lineUx = rawDX / rawLen;
+        const lineUy = rawDY / rawLen;
+
+        const edgePad = 5;
+        let baseX;
+        let baseY;
+        let labelAnchor;
+        switch (textHAlign) {
+            case 'left':
+                baseX = rawLX + lineUx * edgePad;
+                baseY = rawLY + lineUy * edgePad;
+                labelAnchor = 'start';
+                break;
+            case 'right':
+                baseX = rawRX - lineUx * edgePad;
+                baseY = rawRY - lineUy * edgePad;
+                labelAnchor = 'end';
+                break;
+            default:
+                baseX = (rawLX + rawRX) / 2;
+                baseY = (rawLY + rawRY) / 2;
+                labelAnchor = 'middle';
+        }
+
+        const perpX = -Math.sin(angleRad);
+        const perpY = Math.cos(angleRad);
+        const signUp = perpY <= 0 ? 1 : -1;
+        if (textVAlign === 'top') {
+            baseX += perpX * lineLabelOffset * signUp;
+            baseY += perpY * lineLabelOffset * signUp;
+        } else if (textVAlign === 'bottom') {
+            baseX -= perpX * lineLabelOffset * signUp;
+            baseY -= perpY * lineLabelOffset * signUp;
+        }
+
+        const rawOffsetX = this.style.textOffsetX === undefined || this.style.textOffsetX === null
+            ? 0
+            : this.style.textOffsetX;
+        const rawOffsetY = this.style.textOffsetY === undefined || this.style.textOffsetY === null
+            ? 0
+            : this.style.textOffsetY;
+        const offsetX = rawOffsetX;
+        const offsetY = rawOffsetY === -8 ? 0 : rawOffsetY;
 
         if (typeof appendTextLabel === 'function') {
             appendTextLabel(this.group, label, {
-                x: midX,
-                y: midY - 10,
-                anchor: 'middle',
+                x: baseX + offsetX,
+                y: baseY + offsetY,
+                anchor: labelAnchor,
+                yAnchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
-                fontSize: this.style.fontSize || 14,
+                fontSize,
                 fontFamily: this.style.fontFamily || 'Roboto, sans-serif',
                 fontWeight: this.style.fontWeight || 'normal',
-                fontStyle: this.style.fontStyle || 'normal'
+                fontStyle: this.style.fontStyle || 'normal',
+                rotation: angle
             });
         }
     }
