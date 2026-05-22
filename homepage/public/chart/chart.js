@@ -585,6 +585,7 @@ class Chart {
         this.totalCandles = 0; // Total number of candles in dataset
         this.loadedRanges = new Map(); // Cache loaded data ranges
         this._smartPrefetchCache = new Map(); // LRU-ish cache for /smart payloads (prefetch + repeat loads)
+        this._barsInflight = new Map(); // dedupe parallel /bars requests with identical params
         this._smartCacheTtlMs = 120000;
         /** Per fileId → Map<tf, { rawData, data, cursors, nativeRawFetchTf }> for instant TF revisit */
         this._tfDataCache = new Map();
@@ -1888,17 +1889,31 @@ class Chart {
             }
         }
 
+        if (this._barsInflight && this._barsInflight.has(cacheKey)) {
+            return this._barsInflight.get(cacheKey);
+        }
+
         const fetchInit = {};
         const signal = this._getTimeframeFetchSignal();
         if (signal) fetchInit.signal = signal;
 
-        const response = await fetch(`${this.apiUrl}/file/${fileId}/bars?${params.toString()}`, fetchInit);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const result = await response.json();
-        if (this._smartPrefetchCache) {
-            this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
-        }
-        return result;
+        const inflight = fetch(`${this.apiUrl}/file/${fileId}/bars?${params.toString()}`, fetchInit)
+            .then((response) => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then((result) => {
+                if (this._smartPrefetchCache) {
+                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
+                }
+                return result;
+            })
+            .finally(() => {
+                if (this._barsInflight) this._barsInflight.delete(cacheKey);
+            });
+
+        if (this._barsInflight) this._barsInflight.set(cacheKey, inflight);
+        return inflight;
     }
 
     _smartPayloadFromBars(barsPayload) {
@@ -3511,10 +3526,11 @@ class Chart {
                 const sess = session;
                 setTimeout(() => {
                     if (String(this.currentFileId) !== String(fid)) return;
+                    if (this._timeframeSwitching) return;
                     if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
                         this._scheduleBacktestTimeframePrefetch(fid, sess);
                     }
-                }, 4000);
+                }, 12000);
             });
         } else {
             console.error('❌ Replay system not available!');
