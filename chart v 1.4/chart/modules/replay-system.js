@@ -2471,7 +2471,9 @@ class ReplaySystem {
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
-        if (autoScroll && this.autoScrollEnabled) {
+        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
+            && this.chart._isChartViewPanning();
+        if (autoScroll && this.autoScrollEnabled && !chartPanning) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;
@@ -3565,7 +3567,9 @@ class ReplaySystem {
         }
         
         // Auto-scroll if enabled
-        if (this.autoScrollEnabled) {
+        const chartPanning = this.chart && typeof this.chart._isChartViewPanning === 'function'
+            && this.chart._isChartViewPanning();
+        if (this.autoScrollEnabled && !chartPanning) {
             const autoScrollState = this.getReplayAutoScrollState(this.chart);
             if (autoScrollState) {
                 this.chart.offsetX = autoScrollState.offsetX;

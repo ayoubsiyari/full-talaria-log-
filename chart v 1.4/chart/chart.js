@@ -13864,8 +13864,20 @@ class Chart {
         if (this._isWheelBurst() || this._isReplayRenderFastPath()) return false;
         if (!this.data || this.data.length === 0) return false;
         if (this.boxZoom && this.boxZoom.active) return false;
-        if (this._panSnapOffsetX == null || !this._panSeriesCache || !this._panSeriesCacheMeta) return false;
+        if (this._panSnapOffsetX == null || !this._panSeriesCache) return false;
         return true;
+    }
+
+    /** Re-capture series bitmap at the current pan position when cache was invalidated mid-drag. */
+    _reanchorPanChartBitmapCache() {
+        if (!this._isChartViewPanning() || !this.yScale) return;
+        this._panSnapOffsetX = this.offsetX;
+        this._panSnapPriceOffset = this.priceOffset;
+        this._panBitmapFrozenYDomain = this.yScale.domain().slice();
+        if (this.volumeScale) {
+            this._panBitmapFrozenVolumeDomain = this.volumeScale.domain().slice();
+        }
+        this._preparePanChartBitmapCache();
     }
 
     _getPanSeriesBitmapSnapMeta() {
@@ -14119,6 +14131,8 @@ class Chart {
         const zPan = this._v9LayoutZoom();
         const effectiveDx = this.timeScale.locked ? 0 : (cx - this.drag.lastX) / zPan;
         const effectiveDy = this.priceScale.locked ? 0 : (cy - this.drag.lastY) / zPan;
+
+        if (effectiveDx === 0 && effectiveDy === 0) return;
 
         this.offsetX += effectiveDx;
         if (this.yScale && effectiveDy !== 0) {
@@ -14463,7 +14477,10 @@ class Chart {
         // Fast path while dragging or wheel-zooming: keep indicators visible; skip heavy overlays only.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            const usePanBitmap = this._canUsePanChartBitmapCache();
+            if (this._isChartViewPanning() && this._panSnapOffsetX != null && !this._panSeriesCacheMeta) {
+                this._reanchorPanChartBitmapCache();
+            }
+            const usePanBitmap = this._canUsePanChartBitmapCache() && this._panSeriesCacheMeta;
 
             if (usePanBitmap) {
                 this.drawGrid();
@@ -14488,7 +14505,7 @@ class Chart {
 
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
-            } else if (!this._isWheelBurst()) {
+            } else if (!this._isWheelBurst() && !this._isChartViewPanning()) {
                 this._clearPanDrawingsLayerTransform();
                 this.redrawDrawings();
             }
@@ -14502,7 +14519,7 @@ class Chart {
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
             }
-            if (this._panBitmapPendingReleaseRender) {
+            if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
                 this._panBitmapPendingReleaseRender = false;
                 this._clearPanBitmapFrozenScales();
             }
@@ -14613,7 +14630,7 @@ class Chart {
             window.__economicCalendarNotifyChartRender(this);
         }
 
-        if (this._panBitmapPendingReleaseRender) {
+        if (this._panBitmapPendingReleaseRender && !this._isChartViewPanning()) {
             this._panBitmapPendingReleaseRender = false;
             this._clearPanBitmapFrozenScales();
         }
@@ -18871,23 +18888,13 @@ class Chart {
                         this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
-                        let effectiveDx = this.timeScale.locked ? 0 : dx;
-                        let effectiveDy = this.priceScale.locked ? 0 : dy;
-                        this.offsetX += effectiveDx;
-                        if (this.yScale && effectiveDy !== 0) {
-                            this.autoScale = false;
-                            this.priceScale.autoScale = false;
-                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                            this.priceOffset += effectiveDy * pricePerPixel;
-                        }
-                        this.constrainOffset();
-                        this.scheduleRender();
-                        this.dispatchScrollSync();
+                        this._scheduleChartPanFrame(e.clientX, e.clientY);
                     }
 
-                    this.drag.lastX = e.clientX;
-                    this.drag.lastY = e.clientY;
+                    if (this.drag.type !== 'pan') {
+                        this.drag.lastX = e.clientX;
+                        this.drag.lastY = e.clientY;
+                    }
                 }
             }
 
