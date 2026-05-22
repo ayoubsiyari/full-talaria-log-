@@ -12855,6 +12855,20 @@ class Chart {
             }
         }
 
+        if (typeof replay._recomputeSessionEndIndex === 'function') {
+            replay._recomputeSessionEndIndex();
+        }
+        const tfSwitchMaxIdx = typeof replay._getEffectiveReplayMaxIndex === 'function'
+            ? replay._getEffectiveReplayMaxIndex()
+            : (Array.isArray(replay.fullRawData) ? replay.fullRawData.length - 1 : 0);
+        if (replay.currentIndex > tfSwitchMaxIdx) {
+            replay.currentIndex = tfSwitchMaxIdx;
+            const rb = replay.fullRawData && replay.fullRawData[tfSwitchMaxIdx];
+            if (rb && Number.isFinite(rb.t)) {
+                replay.replayTimestamp = rb.t;
+            }
+        }
+
         // Backtest TF refetch bypasses replay.onTimeframeChange(); updateChartData() still ends with
         // orderManager.updatePositions() on fresh resampled OHLC — same false SL/TP as client resample
         // unless we pre-arm guards (parity with seekTo + onTimeframeChange). Applies to host and multichart iframes.
@@ -12891,7 +12905,13 @@ class Chart {
         }
 
         if (wasPlaying && typeof replay.play === 'function') {
-            try { replay.play(); } catch (e) { /* ignore */ }
+            if (typeof replay._isAtReplayEnd === 'function' && replay._isAtReplayEnd()) {
+                try {
+                    replay._maybeNotifyReplayToast('Already at the end of this backtest — step back or move the replay head to continue.');
+                } catch (e) { /* ignore */ }
+            } else {
+                try { replay.play(); } catch (e) { /* ignore */ }
+            }
         }
 
         // Final viewport reset = "double-click time axis" parity on every TF
@@ -13003,7 +13023,12 @@ class Chart {
 
         const session = this.backtestingSession || {};
         const sessionStartTs = session.startDate ? new Date(session.startDate).getTime() : null;
-        const sessionEndTs = session.endDate ? new Date(session.endDate).getTime() : null;
+        const sessionEndRaw = session.endDate || session.end_date;
+        const sessionEndTs = sessionEndRaw
+            ? (typeof this._sessionEndToInclusiveUtcMs === 'function'
+                ? this._sessionEndToInclusiveUtcMs(sessionEndRaw)
+                : new Date(sessionEndRaw).getTime())
+            : null;
         const hasSessionStart = Number.isFinite(sessionStartTs);
         const hasSessionEnd = Number.isFinite(sessionEndTs);
         
@@ -13203,31 +13228,53 @@ class Chart {
                 }
 
                 if (uniqueNew.length === 0) return;
+
+                if (hasSessionEnd && Number.isFinite(sessionEndTs)) {
+                    merged = merged.filter(c => Number(c?.t) <= sessionEndTs);
+                }
                 
                 if (isReplay) {
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
+                    if (typeof this.replaySystem._recomputeSessionEndIndex === 'function') {
+                        this.replaySystem._recomputeSessionEndIndex();
+                    }
+                    const replayMaxIdx = typeof this.replaySystem._getEffectiveReplayMaxIndex === 'function'
+                        ? this.replaySystem._getEffectiveReplayMaxIndex()
+                        : merged.length - 1;
                     // Keep replay index stable without scanning entire array when possible
                     if (Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
                             this.replaySystem.currentIndex = Math.min(
                                 Math.max(replayIndex + uniqueNew.length, 0),
-                                merged.length - 1
+                                replayMaxIdx
                             );
                         } else if (direction === 'forward') {
                             this.replaySystem.currentIndex = Math.min(
                                 Math.max(replayIndex, 0),
-                                merged.length - 1
+                                replayMaxIdx
                             );
                         } else if (replayTs != null) {
                             const newIdx = merged.findIndex(c => c.t >= replayTs);
-                            if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
+                            if (newIdx >= 0) this.replaySystem.currentIndex = Math.min(newIdx, replayMaxIdx);
                         }
                     } else if (replayTs != null) {
                         const newIdx = merged.findIndex(c => c.t >= replayTs);
-                        if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
+                        if (newIdx >= 0) this.replaySystem.currentIndex = Math.min(newIdx, replayMaxIdx);
+                    }
+
+                    if (this.replaySystem.currentIndex > replayMaxIdx) {
+                        this.replaySystem.currentIndex = replayMaxIdx;
+                    }
+                    if (typeof this.replaySystem._isAtSessionBoundary === 'function'
+                        && this.replaySystem._isAtSessionBoundary()
+                        && this.replaySystem.isPlaying) {
+                        try {
+                            this.replaySystem.pause();
+                            this.replaySystem._notifyReplayReachedEndOfData();
+                        } catch (_) { /* ignore */ }
                     }
 
                     // Avoid expensive re-slice/re-resample in the middle of active playback.

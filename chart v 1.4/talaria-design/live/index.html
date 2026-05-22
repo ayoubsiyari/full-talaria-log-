@@ -1326,12 +1326,12 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260522a24"></script>
+    <script defer src="/chart/chart.js?v=20260522b01"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260521a20"></script>
 
     <!-- Replay system — must load AFTER chart.js (depends on it). -->
-    <script defer src="/chart/modules/replay-system.js?v=20260521a20"></script>
+    <script defer src="/chart/modules/replay-system.js?v=20260522b01"></script>
     <script defer src="/chart/modules/replay-dashboard-sync.js?v=20260521a20"></script>
 
     <!-- Order: bus + service + #orderPanel (V9 React shell drives hidden DOM) -->

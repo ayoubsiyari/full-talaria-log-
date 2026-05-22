@@ -24,6 +24,7 @@ class ReplaySystem {
         this.replayStartTimestamp = null; // Starting timestamp of replay data
         this.replayEndTimestamp = null;   // Ending timestamp of replay data
         this.sessionStartIndex = 0;      // Minimum index the user can roll back to (backtest range floor)
+        this.sessionEndIndex = null;     // Maximum index within backtest session end date (inclusive)
         this.tickElapsedMs = 0;           // Elapsed milliseconds within current candle animation
 
         /** Throttle replay "session ended" / "already at end" toasts (many paths hit pause together). */
@@ -156,7 +157,7 @@ class ReplaySystem {
 
             if (idx !== null) {
                 const persistMinIdx = this.sessionStartIndex || 0;
-                this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
+                this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this._getEffectiveReplayMaxIndex());
                 this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
@@ -559,7 +560,7 @@ class ReplaySystem {
             const rect = this.slider.getBoundingClientRect();
             const percent = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
             const sliderMin = this.sessionStartIndex || 0;
-            const sliderMax = this.fullRawData.length - 1;
+            const sliderMax = this._getEffectiveReplayMaxIndex();
             const targetIndex = Math.round(sliderMin + percent * (sliderMax - sliderMin));
             this.seekTo(targetIndex, { fromDrag: true });
         };
@@ -2183,6 +2184,10 @@ class ReplaySystem {
         
         // Store full datasets
         this.fullRawData = [...this.chart.rawData];
+        const enterEndMs = this._getSessionEndMs();
+        if (enterEndMs != null) {
+            this.fullRawData = this.fullRawData.filter(c => Number(c?.t) <= enterEndMs);
+        }
         this.fullData = [...this.chart.data];
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
         this._fullRawDataMatchesTF = false;
@@ -2190,6 +2195,11 @@ class ReplaySystem {
         // === INITIALIZE VIRTUAL TIMESTAMP TRACKING ===
         this.replayStartTimestamp = this.fullRawData[0].t;
         this.replayEndTimestamp = this.fullRawData[this.fullRawData.length - 1].t;
+        this._recomputeSessionEndIndex();
+        const enterMaxIdx = this._getEffectiveReplayMaxIndex();
+        if (this.currentIndex > enterMaxIdx) {
+            this.currentIndex = enterMaxIdx;
+        }
         this.replayTimestamp = this.fullRawData[this.currentIndex].t;
         this.tickElapsedMs = 0;
 
@@ -2393,7 +2403,7 @@ class ReplaySystem {
         const floorIdx = this.sessionStartIndex || 0;
         if (this.currentIndex < floorIdx) this.currentIndex = floorIdx;
         if (this.currentIndex < 0) this.currentIndex = 0;
-        if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
+        if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this._getEffectiveReplayMaxIndex();
 
         // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
         // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in
@@ -2587,14 +2597,63 @@ class ReplaySystem {
         } catch (_) {}
     }
 
+    _getSessionEndMs() {
+        try {
+            const session = this.chart?.backtestingSession || {};
+            const r = session.endDate || session.end_date;
+            if (!r) return null;
+            if (this.chart && typeof this.chart._sessionEndToInclusiveUtcMs === 'function') {
+                const t = this.chart._sessionEndToInclusiveUtcMs(r);
+                return Number.isFinite(t) ? t : null;
+            }
+            const t = new Date(r).getTime();
+            return Number.isFinite(t) ? t : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** Recompute last raw index allowed within configured backtest session end. */
+    _recomputeSessionEndIndex() {
+        if (!this.fullRawData || this.fullRawData.length === 0) {
+            this.sessionEndIndex = null;
+            return;
+        }
+        this.sessionEndIndex = this.fullRawData.length - 1;
+        const endMs = this._getSessionEndMs();
+        if (endMs == null) return;
+        const idx = this._findLastRawIndexAtOrBefore(this.fullRawData, endMs);
+        if (idx >= 0) this.sessionEndIndex = idx;
+    }
+
+    _getEffectiveReplayMaxIndex() {
+        if (!this.fullRawData || this.fullRawData.length === 0) return 0;
+        let maxIdx = this.fullRawData.length - 1;
+        if (typeof this.sessionEndIndex === 'number' && this.sessionEndIndex >= 0) {
+            maxIdx = Math.min(maxIdx, this.sessionEndIndex);
+        }
+        return maxIdx;
+    }
+
+    _isAtSessionBoundary() {
+        if (!this.fullRawData || this.fullRawData.length === 0) return false;
+        if (this._getSessionEndMs() == null) return false;
+        if (this.sessionEndIndex == null) this._recomputeSessionEndIndex();
+        return this.currentIndex >= this._getEffectiveReplayMaxIndex();
+    }
+
+    _isAtReplayEnd() {
+        if (!this.fullRawData || this.fullRawData.length === 0) return true;
+        return this.currentIndex >= this._getEffectiveReplayMaxIndex();
+    }
+
     _isAtLastLoadedBar() {
-        return !!(this.fullRawData && this.fullRawData.length > 0
-            && this.currentIndex >= this.fullRawData.length - 1);
+        return this._isAtReplayEnd();
     }
 
     /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
     _playWouldBeNoOpAtSessionEnd() {
-        if (!this.isActive || !this._isAtLastLoadedBar()) return false;
+        if (!this.isActive || !this._isAtReplayEnd()) return false;
         const mode = this.getPlaybackMode();
         if (mode === 'tick') {
             const tpc = this.currentTicksPerCandle || this.ticksPerCandle || 72;
@@ -2606,6 +2665,7 @@ class ReplaySystem {
                 return false;
             }
         }
+        if (this._isAtSessionBoundary()) return true;
         if (this.tryRequestForwardDataProbe()) return false;
         return true;
     }
@@ -2753,10 +2813,8 @@ class ReplaySystem {
      */
     simpleStepForward() {
         if (this._timeframeChanging) return;
-        if (this.currentIndex >= this.fullRawData.length - 1) {
-            // Before giving up, try to trigger pan-loading for more data.
-            // We also allow a few forced probes in case local hasMoreRight got stale.
-            if (this.tryRequestForwardDataProbe()) {
+        if (this._isAtReplayEnd()) {
+            if (!this._isAtSessionBoundary() && this.tryRequestForwardDataProbe()) {
                 if (this.isPlaying && !this._nextCandleTimer) {
                     this.scheduleForwardEdgeRetry(() => {
                         if (this.isPlaying) {
@@ -2772,16 +2830,17 @@ class ReplaySystem {
         }
         
         // Proactively request more data using speed-aware threshold
-        const remainingCandles = this.fullRawData.length - this.currentIndex;
+        const remainingCandles = this._getEffectiveReplayMaxIndex() - this.currentIndex;
         const preloadThreshold = this.getForwardPrefetchThreshold();
         if (remainingCandles < preloadThreshold &&
+            !this._isAtSessionBoundary() &&
             this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
             this.chart.checkViewportLoadMore('forward');
         }
         
         // Get the target index respecting timeframe selection
         const oldIndex = this.currentIndex;
-        const targetIndex = this.calculateNextIndex();
+        const targetIndex = Math.min(this.calculateNextIndex(), this._getEffectiveReplayMaxIndex());
         this.currentIndex = targetIndex;
         this.edgeProbeRetryCount = 0;
         
@@ -2798,8 +2857,9 @@ class ReplaySystem {
      * Calculate the next index based on selected timeframe (used by both play and step)
      */
     calculateNextIndex() {
-        if (this.currentIndex >= this.fullRawData.length - 1) {
-            return this.fullRawData.length - 1;
+        const maxIdx = this._getEffectiveReplayMaxIndex();
+        if (this.currentIndex >= maxIdx) {
+            return maxIdx;
         }
         
         // Priority 0: explicit override (V9 can set this directly).
@@ -2853,7 +2913,7 @@ class ReplaySystem {
         
         // Calculate how many raw candles to skip
         const candlesToSkip = Math.max(1, Math.round(tfMs / rawCandleIntervalMs));
-        const targetIndex = Math.min(this.currentIndex + candlesToSkip, this.fullRawData.length - 1);
+        const targetIndex = Math.min(this.currentIndex + candlesToSkip, this._getEffectiveReplayMaxIndex());
         
         
         return targetIndex;
@@ -2956,6 +3016,8 @@ class ReplaySystem {
     }
 
     tryRequestForwardDataProbe() {
+        if (this._isAtSessionBoundary()) return false;
+
         const canLoadForward = !!(this.chart
             && typeof this.chart.checkViewportLoadMore === 'function'
             && this.chart.currentFileId);
@@ -3084,15 +3146,16 @@ class ReplaySystem {
             return;
         }
 
-        const remainingCandles = this.fullRawData.length - this.currentIndex;
+        const remainingCandles = this._getEffectiveReplayMaxIndex() - this.currentIndex;
         const preloadThreshold = this.getForwardPrefetchThreshold();
         if (remainingCandles < preloadThreshold &&
+            !this._isAtSessionBoundary() &&
             this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
             this.chart.checkViewportLoadMore('forward');
         }
         
-        if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
+        if (this._isAtReplayEnd()) {
+            if (!this._isAtSessionBoundary() && this.tryRequestForwardDataProbe()) {
                 this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
                 return;
             }
@@ -3480,8 +3543,8 @@ class ReplaySystem {
         // previously we only loaded when we hit the end, which caused visible pauses
         // while waiting on network responses.
         const canLoadForward = !!(this.chart && this.chart._serverCursors && this.chart._serverCursors.hasMoreRight);
-        if (canLoadForward) {
-            const remainingCandles = Math.max(0, this.fullRawData.length - this.currentIndex);
+        if (canLoadForward && !this._isAtSessionBoundary()) {
+            const remainingCandles = Math.max(0, this._getEffectiveReplayMaxIndex() - this.currentIndex);
             const preloadThreshold = this.getForwardPrefetchThreshold();
             if (remainingCandles < preloadThreshold) {
                 const now = Date.now();
@@ -3494,8 +3557,8 @@ class ReplaySystem {
         
         for (let i = 0; i < candlesToComplete; i++) {
             // Check bounds
-            if (this.currentIndex >= this.fullRawData.length - 1) {
-                if (this.tryRequestForwardDataProbe()) {
+            if (this._isAtReplayEnd()) {
+                if (!this._isAtSessionBoundary() && this.tryRequestForwardDataProbe()) {
                     if (this.isPlaying) {
                         this.scheduleForwardEdgeRetry(() => this.animateFastMode());
                     }
@@ -3541,7 +3604,7 @@ class ReplaySystem {
         const floorIdx = this.sessionStartIndex || 0;
         if (this.currentIndex < floorIdx) this.currentIndex = floorIdx;
         if (this.currentIndex < 0) this.currentIndex = 0;
-        if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
+        if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this._getEffectiveReplayMaxIndex();
 
         // Keep fast-mode rendering aligned with canonical resampleData()
         // so OHLC is identical to normal replay updates for all timeframes.
@@ -4196,7 +4259,7 @@ class ReplaySystem {
         } catch (_) {}
         
         // Start animation for next candle if still playing
-        if (this.isPlaying && this.currentIndex < this.fullRawData.length - 1) {
+        if (this.isPlaying && !this._isAtReplayEnd()) {
             if (this._nextCandleTimer) {
                 clearTimeout(this._nextCandleTimer);
                 this._nextCandleTimer = null;
@@ -4208,8 +4271,8 @@ class ReplaySystem {
                 this._nextCandleTimer = null;
                 if (this.isPlaying) this.startTickAnimation();
             }, nextCandleDelay);
-        } else if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
+        } else if (this._isAtReplayEnd()) {
+            if (!this._isAtSessionBoundary() && this.tryRequestForwardDataProbe()) {
                 if (this.isPlaying) {
                     this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
                 }
@@ -4335,8 +4398,8 @@ class ReplaySystem {
             return;
         }
 
-        if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
+        if (this._isAtReplayEnd()) {
+            if (!this._isAtSessionBoundary() && this.tryRequestForwardDataProbe()) {
                 return;
             }
             return;
@@ -4459,7 +4522,7 @@ class ReplaySystem {
      */
     seekTo(index, { fromDrag = false } = {}) {
         const seekMinIdx = this.sessionStartIndex || 0;
-        this.currentIndex = Math.max(seekMinIdx, Math.min(index, this.fullRawData.length - 1));
+        this.currentIndex = Math.max(seekMinIdx, Math.min(index, this._getEffectiveReplayMaxIndex()));
         
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -4523,7 +4586,7 @@ class ReplaySystem {
             idx = this.fullRawData.length - 1;
         }
         const minIdx = this.sessionStartIndex || 0;
-        idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
+        idx = Math.min(Math.max(idx, minIdx), this._getEffectiveReplayMaxIndex());
 
         this.currentIndex = idx;
         this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
@@ -5040,7 +5103,7 @@ class ReplaySystem {
         const progressFill = document.getElementById('replayProgressFill');
         if (progressFill) {
             const sliderMin = this.sessionStartIndex || 0;
-            const range = Math.max(1, this.fullRawData.length - 1 - sliderMin);
+            const range = Math.max(1, this._getEffectiveReplayMaxIndex() - sliderMin);
             const percent = ((this.currentIndex - sliderMin) / range) * 100;
             progressFill.style.width = `${percent}%`;
         }
@@ -5052,7 +5115,7 @@ class ReplaySystem {
         }
 
         const min = this.sessionStartIndex || 0;
-        const max = Math.max(min, this.fullRawData.length - 1);
+        const max = Math.max(min, this._getEffectiveReplayMaxIndex());
         this.slider.min = min;
         this.slider.max = max;
         this.slider.value = Math.max(Math.min(this.currentIndex, max), min);
