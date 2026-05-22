@@ -1840,13 +1840,40 @@ class Chart {
     }
 
     async _fetchSmartWindowViaBars(fileId, timeframe, session, anchor, windowRange, smartOpts) {
+        const requestedTf = String(timeframe || '1m').toLowerCase().trim();
+        const storeRes = this._questdbStoreResolution(requestedTf);
         const win = this._computeBarsWindowForBacktest(
             timeframe, session, windowRange, smartOpts, anchor
         );
         const payload = await this._fetchBarsWindow(
-            fileId, win.fromMs, win.toMs, win.resolution, win.limit
+            fileId, win.fromMs, win.toMs, storeRes, win.limit
         );
-        return this._smartPayloadFromBars(payload);
+        let smart = this._smartPayloadFromBars(payload);
+        if (smart && storeRes !== requestedTf && payload?.resolution !== requestedTf) {
+            const rows = Array.isArray(smart.candles)
+                ? this._normalizeCandlesFromApi(smart.candles)
+                : [];
+            if (rows.length) {
+                smart.candles = this.resampleData(rows, requestedTf);
+                smart.timeframe = requestedTf;
+            }
+        } else if (smart) {
+            smart.timeframe = requestedTf;
+        }
+        return smart;
+    }
+
+    /** Map UI timeframe to a QuestDB pre-aggregate (client resamples when they differ). */
+    _questdbStoreResolution(timeframe) {
+        const tf = String(timeframe || '1m').toLowerCase().trim();
+        const direct = new Set(['1m', '5m', '15m', '1h', '4h', '1d', '1w']);
+        if (direct.has(tf)) return tf;
+        const aliases = {
+            '2m': '1m', '3m': '1m', '4m': '1m', '10m': '5m',
+            '30m': '15m', '45m': '15m', '2h': '1h', '6h': '4h', '12h': '4h',
+            '1mo': '1w',
+        };
+        return aliases[tf] || 'auto';
     }
 
     /**
@@ -2347,7 +2374,7 @@ class Chart {
 
             targets.slice(0, 1).forEach((tf) => {
                 if (self._getBtTfDataCache(fileId, tf)) return;
-                const windowRange = self._backtestTfUsesPlayheadFetchRange(tf) && Number.isFinite(playheadMs)
+                const windowRange = Number.isFinite(playheadMs)
                     ? self._getBacktestReplayFetchRange(tf, session || self.backtestingSession || {}, playheadMs)
                     : self._getBacktestSessionEndFetchRange(sessionEndMs);
                 self._fetchSmartWindow(fileId, tf, session || self.backtestingSession || {}, 'end', windowRange, fetchOpts)
@@ -13528,15 +13555,11 @@ class Chart {
         };
     }
 
-    _backtestTfUsesPlayheadFetchRange(timeframe) {
-        const tfMs = this.parseTimeframe(timeframe);
-        return Number.isFinite(tfMs) && tfMs > 0 && tfMs <= 60 * 60 * 1000;
-    }
-
     _btTfCacheAnchorKey(sessionEndMs, playheadMs, timeframe) {
-        if (this._backtestTfUsesPlayheadFetchRange(timeframe) && Number.isFinite(playheadMs)) {
-            const bucketMs = 60 * 60 * 1000;
-            return `ph:${Math.floor(playheadMs / bucketMs)}`;
+        if (Number.isFinite(playheadMs)) {
+            const tfMs = this.parseTimeframe(timeframe) || 3600000;
+            const bucketMs = Math.max(tfMs * 4, 3600000);
+            return `ph:${Math.floor(playheadMs / bucketMs)}:${String(timeframe || '').toLowerCase().trim()}`;
         }
         return sessionEndMs != null && Number.isFinite(sessionEndMs)
             ? `end:${Math.floor(sessionEndMs)}`
@@ -13602,7 +13625,7 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const historyRange = this._backtestTfUsesPlayheadFetchRange(timeframe) && Number.isFinite(playheadMs)
+        const historyRange = Number.isFinite(playheadMs)
             ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
             : this._getBacktestSessionEndFetchRange(sessionEndMs);
         const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 800 };
@@ -13618,14 +13641,19 @@ class Chart {
                 historyRange,
                 fetchOpts
             );
-            if (!this._smartResponseHasPayload(result)) {
+            if (!this._smartResponseHasPayload(result) && Number.isFinite(playheadMs)) {
+                const tfMs = this.parseTimeframe(timeframe) || 86400000;
+                const wider = { ...historyRange };
+                if (wider.startTs != null) {
+                    wider.startTs = Math.max(0, wider.startTs - 1000 * tfMs);
+                }
                 result = await this._fetchSmartWindow(
                     this.currentFileId,
                     timeframe,
                     session,
                     'end',
-                    null,
-                    fetchOpts
+                    wider,
+                    { skipSessionDates: true, limit: 2000 }
                 );
             }
         } catch (e) {

@@ -18357,7 +18357,9 @@ async def get_file_candles(
         if questdb_store.questdb_read_primary() and questdb_store.questdb_enabled():
             try:
                 questdb_store.ensure_schema()
-                tf = timeframe if timeframe in bar_budget.RESOLUTION_TO_TABLE else "1m"
+                tf = bar_budget.normalize_resolution(timeframe)
+                if tf not in bar_budget.RESOLUTION_TO_TABLE:
+                    tf = "1m"
                 q_limit = min(limit, bar_budget.MAX_BARS)
                 candles, has_more_left, has_more_right = questdb_store.query_bars_cursor(
                     file_id, tf,

@@ -29,13 +29,34 @@ RESOLUTION_TO_TABLE: dict[str, str] = {
 
 TABLE_TO_RESOLUTION: dict[str, str] = {v: k for k, v in RESOLUTION_TO_TABLE.items()}
 
+# UI intervals without a dedicated QuestDB aggregate — read finest available table.
+CLIENT_RESOLUTION_ALIASES: dict[str, str] = {
+    "2m": "1m",
+    "3m": "1m",
+    "4m": "1m",
+    "10m": "5m",
+    "30m": "15m",
+    "45m": "15m",
+    "2h": "1h",
+    "6h": "4h",
+    "12h": "4h",
+    "1mo": "1w",
+}
+
+
+def normalize_resolution(resolution: str) -> str:
+    key = resolution.lower().strip()
+    if key in RESOLUTION_TO_TABLE:
+        return key
+    return CLIENT_RESOLUTION_ALIASES.get(key, key)
+
 
 def choose_resolution(from_ms: int, to_ms: int, explicit: str | None = None) -> str:
     """
     Pick the finest timeframe where bar count <= MAX_BARS, preferring TARGET_BARS.
     """
     if explicit and explicit.lower() not in ("auto", ""):
-        res = explicit.lower().strip()
+        res = normalize_resolution(explicit)
         if res not in RESOLUTION_TO_TABLE:
             raise ValueError(f"Unsupported resolution: {explicit}")
         return res
@@ -56,7 +77,7 @@ def choose_resolution(from_ms: int, to_ms: int, explicit: str | None = None) -> 
 
 
 def resolution_table(resolution: str) -> str:
-    key = resolution.lower().strip()
+    key = normalize_resolution(resolution)
     if key not in RESOLUTION_TO_TABLE:
         raise ValueError(f"Unsupported resolution: {resolution}")
     return RESOLUTION_TO_TABLE[key]
