@@ -639,15 +639,16 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
   const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
   const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
+  const shapeBgOn = tlStyle.showBg !== false;
   const patch = {
     stroke: tlStyle.lineColor,
     color: tlStyle.lineColor,
     strokeWidth: widthNum,
     dashArray: dashArr,
     strokeDasharray: dashArr,
-    fill: tlStyle.bgColor,
+    fill: shapeBgOn ? tlStyle.bgColor : "none",
     backgroundColor: tlStyle.bgColor,
-    showBackground: tlStyle.showBg !== false,
+    showBackground: shapeBgOn,
     borderEnabled: tlStyle.showBorder !== false,
     borderColor: tlStyle.borderColor,
     borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? "",
@@ -716,6 +717,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.stroke = strokeRgba;
     patch.color = strokeRgba;
     patch.opacity = 1;
+  }
+  if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
+    patch.showBackground = shapeBgOn;
+    patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
   }
   return patch;
 }
@@ -2795,7 +2800,10 @@ function v9TlStylePatchFromDrawing(d) {
     ...(widthStr ? { lineWidth: widthStr } : {}),
     lineType,
     ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
-    showBg: s.showBackground !== false,
+    showBg:
+      typeof s.showBackground === "boolean"
+        ? s.showBackground
+        : !!(s.fill && s.fill !== "none" && s.fill !== "transparent"),
     showBorder: s.borderEnabled !== false,
     ...(s.borderColor ? { borderColor: s.borderColor } : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
@@ -11911,6 +11919,51 @@ const TalariaV8bLive = () => {
     }
   };
 
+  // Shape background on/off — immediate repaint (triangle/rect/ellipse/circle/arc).
+  const flushV9ShapeBackgroundToChart = (tl) => {
+    try {
+      const editSess = editingDrawingRef.current;
+      const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
+      const bgOn = tl.showBg !== false;
+      const patch = {
+        showBackground: bgOn,
+        fill: bgOn ? (tl.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none",
+      };
+      const chartsToRender = new Set();
+      collectV9BridgeTargets().forEach(({ dm, d }) => {
+        if (!d || !d.style) return;
+        if (!V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type)) return;
+        const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
+        if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+        const tb = dm.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+        Object.assign(d.style, patch);
+        try {
+          if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+          else dm.renderDrawing?.(d);
+        } catch (_) {
+          try { dm.renderDrawing?.(d); } catch (_) {}
+        }
+        if (d.selected && typeof d.showAxisHighlights === "function") {
+          try { d.showAxisHighlights(); } catch (_) {}
+        }
+        if (dm.chart) chartsToRender.add(dm.chart);
+      });
+      chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
+    } catch (err) {
+      console.warn("[V9 shape background flush] failed:", err);
+    }
+  };
+
+  const toggleTlShowBg = () => {
+    setTlStyle((s) => {
+      const next = { ...s, showBg: !s.showBg };
+      queueMicrotask(() => flushV9ShapeBackgroundToChart(next));
+      return next;
+    });
+  };
+
   // Extend left/right — immediate repaint (TradingView toggles without waiting for OK).
   const flushV9ExtendToChart = (tl) => {
     try {
@@ -13655,7 +13708,7 @@ const TalariaV8bLive = () => {
                       )}
                     </div>
                     {/* Background row */}
-                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showBg,"tlchk-rngBg","Background",()=>setTlStyle(s=>({...s,showBg:!s.showBg})))}</div>
+                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showBg,"tlchk-rngBg","Background",toggleTlShowBg)}</div>
                     <div style={{padding:"8px 0",opacity:tlStyle.showBg?1:0.38,pointerEvents:tlStyle.showBg?"auto":"none",transition:"opacity 0.15s"}}>{colorSwatch("tlBgColor",tlStyle.bgColor)}</div>
                     <div/><div/>
                     {/* Separator spanning all columns */}
@@ -13978,7 +14031,7 @@ const TalariaV8bLive = () => {
                     {/* ── Background row (inside grid) ── */}
                     {hasBg && <>
                       <div style={{ padding:"8px 0", alignSelf:"center" }}>
-                        {TlChk(tlStyle.showBg, "tlchk-shapeBg", "Background", () => setTlStyle(s => ({ ...s, showBg: !s.showBg })))}
+                        {TlChk(tlStyle.showBg, "tlchk-shapeBg", "Background", toggleTlShowBg)}
                       </div>
                       <div style={{ padding:"8px 0", opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
                         {colorSwatch("tlBgColor", tlStyle.bgColor)}
@@ -14454,7 +14507,7 @@ const TalariaV8bLive = () => {
                   {/* ── Background row (no-grid tools) ── */}
                   {hasBg && !showLine && !isChannel && !isPitchfork && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
                     <div style={{ padding:"8px 0" }}>
-                      {TlChk(tlStyle.showBg, "tlchk-shapeBg2", ["arrowUp","arrowDn"].includes(tlSubTool.icon) ? "Arrow" : "Background", () => setTlStyle(s => ({ ...s, showBg: !s.showBg })))}
+                      {TlChk(tlStyle.showBg, "tlchk-shapeBg2", ["arrowUp","arrowDn"].includes(tlSubTool.icon) ? "Arrow" : "Background", toggleTlShowBg)}
                     </div>
                     <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
                       {colorSwatch("tlBgColor", tlStyle.bgColor)}
