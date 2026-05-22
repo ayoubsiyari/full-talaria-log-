@@ -365,6 +365,7 @@ class Chart {
         this.crosshairDirty = true;
         this._visibleSliceCache = null;
         this._visibleSliceRangeKey = '';
+        this._mappedDrawSeriesCache = null;
         this._crosshairLineState = null;
         
         if (svgElement) {
@@ -887,14 +888,18 @@ class Chart {
         }
         
         this.fitToView(); // Position chart to show latest data on right
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
         
         // Force a re-render after a short delay to ensure chart is visible after page reload
         // Also re-measure canvas dimensions after page layout completes to fix squished/broken appearance
         setTimeout(() => {
             this.resize(); // Re-measure canvas after layout completes
             this.fitToView();
-            this.render();
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
         }, 100);
         
         // Listen for timezone changes (main + panel charts so axes/crosshairs stay in sync)
@@ -2090,7 +2095,9 @@ class Chart {
 
             this.resize();
             this.fitToView();
-            this.render();
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
@@ -2149,7 +2156,9 @@ class Chart {
                 this.priceOffset = 0;
                 this.autoScale = true;
                 if (this.priceScale) this.priceScale.autoScale = true;
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
 
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
@@ -2514,7 +2523,9 @@ class Chart {
                 this.fitToView();
             }
 
-            this.render();
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
 
             requestAnimationFrame(() => {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
@@ -2533,7 +2544,9 @@ class Chart {
                     this._chartViewRestored = false;
                     this.fitToView();
                 }
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
 
                 // Same as clicking the floating "Follow replay" (#replayFollow) button:
                 // replaySystem.scheduleReplayFollowOnceLayoutSettled() — multi-panel
@@ -3265,7 +3278,11 @@ class Chart {
                 console.warn('⚠️ Could not restore indicator', snap.type, e);
             }
         });
-        if (typeof this.render === 'function') this.render();
+        if (typeof this.markDirty === 'function') {
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
+        }
     }
 
     /** Patches that must persist even if GET /state has not finished (race on first load). */
@@ -4768,8 +4785,10 @@ class Chart {
         this.indicators.active = [];
         this.indicators.data = {};
 
-        if (typeof this.render === 'function') {
-            this.render();
+        if (typeof this.markDirty === 'function') {
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
         }
 
         if (typeof this.updateOHLCIndicators === 'function') {
@@ -5216,8 +5235,10 @@ class Chart {
 
         this.bumpDataVersion();
 
-        if (typeof this.render === 'function') {
-            this.render();
+        if (typeof this.markDirty === 'function') {
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
         }
 
         if (typeof this.updateOHLCIndicators === 'function') {
@@ -7737,8 +7758,10 @@ class Chart {
             }
             if (typeof pc.applyChartSettings === 'function') {
                 pc.applyChartSettings();
-            } else if (typeof pc.render === 'function') {
-                pc.render();
+            } else if (typeof pc.markDirty === 'function') {
+                pc.markDirty('grid');
+                pc.markDirty('candle');
+                pc.renderPending = true;
             }
         });
     }
@@ -7874,7 +7897,9 @@ class Chart {
                 fileSelect.innerHTML = '<option value="">⚠️ Server not running - Upload CSV to begin</option>';
             }
             // No fallback data - user must upload CSV
-            this.render();
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
         }
     }
     
@@ -9113,8 +9138,9 @@ class Chart {
 	            this.fitToView();
 	        }
 	        
-	        this.render();
-	        this.renderPending = false;
+	        this.markDirty('grid');
+	        this.markDirty('candle');
+	        this.renderPending = true;
 	        
 	        if (!isPanelDragResize) {
 	            if (svgNode) {
@@ -12180,7 +12206,13 @@ class Chart {
         // Paint the new bars to the canvas FIRST, then drop the overlay on the next
         // frame. If we removed the overlay before render() the user would see a
         // single blank canvas frame between the snapshot and the new chart.
-        try { if (typeof this.render === 'function') this.render(); } catch (e) { /* ignore */ }
+        try {
+            if (typeof this.markDirty === 'function') {
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
+            }
+        } catch (e) { /* ignore */ }
         // Compare legend / loading state: keep in sync once main data is committed so
         // compare OHLC does not drop before the main 3-dot indicator hides.
         if (this.compareOverlay && typeof this.compareOverlay.onMainChartTimeframeReady === 'function') {
@@ -12188,7 +12220,11 @@ class Chart {
         }
         requestAnimationFrame(() => {
             try {
-                if (typeof this.render === 'function') this.render();
+                if (typeof this.markDirty === 'function') {
+                    this.markDirty('grid');
+                    this.markDirty('candle');
+                    this.renderPending = true;
+                }
             } catch (e) { /* ignore */ }
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
         });
@@ -12429,7 +12465,9 @@ class Chart {
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
                 // Refresh partner-panel sync positions immediately after the
                 // new viewport settles.  Without this, _timeSyncLastTargetBar
                 // retains the stale bar-index from the previous timeframe and
@@ -12776,7 +12814,11 @@ class Chart {
         // delayed finalizeReset lifts the freeze with the correct viewport.
         requestAnimationFrame(() => {
             try {
-                if (typeof this.render === 'function') this.render();
+                if (typeof this.markDirty === 'function') {
+                    this.markDirty('grid');
+                    this.markDirty('candle');
+                    this.renderPending = true;
+                }
             } catch (e) { /* ignore */ }
         });
         setTimeout(finalizeReset, 200);
@@ -13416,6 +13458,10 @@ class Chart {
         }
         this._visibleSliceRangeKey = key;
         this._visibleSliceCache = this.data.slice(startIdx, endIdx);
+        this._mappedDrawSeriesCache = this._visibleSliceCache.map((d, i) => ({
+            d,
+            idx: startIdx + i,
+        }));
         return this._visibleSliceCache;
     }
 
@@ -13887,16 +13933,6 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
-            this.renderPending = false;
-            this.markDirty('grid');
-            this.markDirty('candle');
-            this.render();
-            this.gridDirty = false;
-            this.candleDirty = false;
-            this.dirty = false;
-            return;
-        }
         this.markDirty('grid');
         this.markDirty('candle');
         this.renderPending = true;
@@ -13928,6 +13964,7 @@ class Chart {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
         this._visibleSliceRangeKey = '';
         this._visibleSliceCache = null;
+        this._mappedDrawSeriesCache = null;
     }
     
     animateZoom() {
@@ -14003,7 +14040,9 @@ class Chart {
         this.offsetX = newCenterOffset;
         
         this.constrainOffset();
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
     }
     
     panBy(dx, dy) {
@@ -14014,7 +14053,9 @@ class Chart {
             this.priceOffset -= dy * pricePerPixel;
         }
         this.constrainOffset();
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
     }
     
     resetView() {
@@ -14026,7 +14067,9 @@ class Chart {
         
         // Reset position to show latest data
         this.fitToView();
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
     }
     
     animate() {
@@ -15882,7 +15925,9 @@ class Chart {
         if (this.priceHoverThrottle) return;
         
         this.priceHoverThrottle = requestAnimationFrame(() => {
-            this.render();
+            this.markDirty('grid');
+            this.markDirty('candle');
+            this.renderPending = true;
             this.priceHoverThrottle = null;
         });
     }
@@ -16517,7 +16562,7 @@ class Chart {
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
         const drawSeries = lod
             ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
-            : visible.map((d, i) => ({ d, idx: (this.visibleStartIndex || 0) + i }));
+            : (this._mappedDrawSeriesCache || []);
 
         drawSeries.forEach(({ d, idx }) => {
             // Calculate X position using our helper method
@@ -22011,19 +22056,25 @@ class Chart {
             this.addColorPicker(content, 'Line Color', actualDrawing.color || '#2962ff', (color) => {
                 actualDrawing.color = color;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.render();
+                chart.markDirty('grid');
+                chart.markDirty('candle');
+                chart.renderPending = true;
             });
             
             this.addSlider(content, 'Line Width', actualDrawing.lineWidth || 2, 1, 10, (width) => {
                 actualDrawing.lineWidth = width;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.render();
+                chart.markDirty('grid');
+                chart.markDirty('candle');
+                chart.renderPending = true;
             });
             
             this.addSlider(content, 'Line Opacity', (actualDrawing.opacity || 1) * 100, 0, 100, (opacity) => {
                 actualDrawing.opacity = opacity / 100;
                 chart.saveDrawingChanges(actualDrawing);
-                chart.render();
+                chart.markDirty('grid');
+                chart.markDirty('candle');
+                chart.renderPending = true;
             });
         }
         
@@ -22035,12 +22086,16 @@ class Chart {
                 
             this.addColorPicker(content, 'Fill Color', drawing.fillColor || 'rgba(41, 98, 255, 0.1)', (color) => {
                 drawing.fillColor = color;
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
             });
             
             this.addSlider(content, 'Fill Opacity', (drawing.fillOpacity || 0.1) * 100, 0, 100, (opacity) => {
                 drawing.fillOpacity = opacity / 100;
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
             });
         }
         
@@ -22090,7 +22145,9 @@ class Chart {
                         updatedDrawing.fillColor = d3.color(preset.color).copy({opacity: drawing.fillOpacity || 0.1});
                     }
                     this.saveDrawingChanges(updatedDrawing);
-                    this.render();
+                    this.markDirty('grid');
+                    this.markDirty('candle');
+                    this.renderPending = true;
                 });
                 
             presetBtn.append('div')
@@ -22140,7 +22197,9 @@ class Chart {
                     drawing.fillColor = 'rgba(41, 98, 255, 0.1)';
                     drawing.fillOpacity = 0.1;
                 }
-                this.render();
+                this.markDirty('grid');
+                this.markDirty('candle');
+                this.renderPending = true;
             });
             
         // Close button
@@ -22269,7 +22328,11 @@ class Chart {
                         // Force redraw
                         setTimeout(() => {
                             if (chart.redrawDrawings) chart.redrawDrawings();
-                            if (chart.render) chart.render();
+                            if (chart.markDirty) {
+                                chart.markDirty('grid');
+                                chart.markDirty('candle');
+                                chart.renderPending = true;
+                            }
                         }, 10);
                     });
             });
@@ -22431,7 +22494,9 @@ class Chart {
         // Sync cloned drawing to other panels
         this.syncDrawingToOtherPanels(clone, 'add');
         this.hideContextMenu();
-        this.render();
+        this.markDirty('grid');
+        this.markDirty('candle');
+        this.renderPending = true;
     }
     
     /**
@@ -23577,8 +23642,10 @@ class Chart {
                         try { this.redrawDrawings(); } catch (_) {}
                     }
                 }
-                if (typeof this.render === 'function') {
-                    this.render();
+                if (typeof this.markDirty === 'function') {
+                    this.markDirty('grid');
+                    this.markDirty('candle');
+                    this.renderPending = true;
                 }
             }
             
