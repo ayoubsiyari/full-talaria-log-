@@ -18,6 +18,8 @@ services:
       QDB_PG_ENABLED: "true"
       QDB_LINE_TCP_ENABLED: "true"
       QDB_HTTP_MIN_ENABLED: "true"
+      # PG wire can queue when large SAMPLE BY / rebuild jobs run — allow more concurrent clients.
+      QDB_PG_NET_CONNECTION_LIMIT: "64"
     volumes:
       - questdb_data:/var/lib/questdb
     healthcheck:
@@ -26,7 +28,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 12
-      start_period: 60s
+      start_period: 90s
 
   db:
     image: postgres:16-alpine
@@ -127,6 +129,7 @@ services:
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
+      QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
       QUESTDB_ILP_PORT: "9009"
     # Optional: inject FINNHUB (and other keys) from chart/.env — required:false so compose works if file is missing.
@@ -139,7 +142,7 @@ services:
       redis:
         condition: service_healthy
       questdb:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
@@ -188,6 +191,7 @@ services:
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
+      QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
       QUESTDB_ILP_PORT: "9009"
     depends_on:
@@ -196,7 +200,7 @@ services:
       redis:
         condition: service_healthy
       questdb:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]

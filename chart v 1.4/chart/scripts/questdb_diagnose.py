@@ -64,6 +64,20 @@ def main() -> int:
         print("QUESTDB_ENABLED is false — set env and retry.")
         return 1
 
+    ping = questdb_store.ping_ok()
+    if ping is not True:
+        print(
+            "QuestDB PG wire is not reachable (ping_ok=%s).\n"
+            "On the VPS run:\n"
+            "  docker compose ps questdb\n"
+            "  docker compose logs questdb --tail 80\n"
+            "  docker compose restart questdb\n"
+            "  docker compose exec trading-chart-worker bash -lc "
+            "'timeout 5 bash -c \"echo > /dev/tcp/questdb/8812\" && echo PG_OK'\n"
+            % (ping,)
+        )
+        return 2
+
     stats = questdb_store.dataset_stats(args.file_id)
     print(json.dumps(stats, indent=2))
 
