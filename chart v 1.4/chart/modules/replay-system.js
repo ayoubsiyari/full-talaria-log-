@@ -5323,23 +5323,25 @@ class ReplaySystem {
                 }
             }
             
-            // TradingView-style: center playhead on every timeframe switch (unless drawings need the viewport).
-            const hasDrawings = !!(this.chart.drawingManager && this.chart.drawingManager.drawings && this.chart.drawingManager.drawings.length > 0);
+            // TradingView-style: center playhead on every timeframe switch.
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
                 (this.chart.candleWidth + (this.chart.candleGap || 2));
             const centeredOffset = typeof this.getReplayCenterPlayheadOffset === 'function'
                 ? this.getReplayCenterPlayheadOffset(this.chart)
                 : null;
-            if (!hasDrawings) {
-                if (Number.isFinite(centeredOffset)) {
-                    this.chart.offsetX = centeredOffset;
-                } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
-                    this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
-                }
+            if (Number.isFinite(centeredOffset)) {
+                this.chart.offsetX = centeredOffset;
+            } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
+                this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
             }
-            if (!hasDrawings) {
-                this.chart.priceOffset = savedPriceOffset;
-                this.chart.priceZoom = savedPriceZoom;
+            // Refit Y-axis to the new timeframe's candles (do not restore pre-switch zoom).
+            this.chart.autoScale = true;
+            this.chart.priceOffset = 0;
+            this.chart.priceZoom = 1;
+            this.chart.manualCenterPrice = null;
+            this.chart.manualRange = null;
+            if (this.chart.priceScale) {
+                this.chart.priceScale.autoScale = true;
             }
             
             if (typeof this.chart.constrainOffset === 'function') {
