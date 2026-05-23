@@ -1946,15 +1946,29 @@ class Chart {
     _smartPayloadFromBars(barsPayload) {
         const bars = Array.isArray(barsPayload?.bars) ? barsPayload.bars : [];
         if (!bars.length) return null;
+        const session = this.backtestingSession || {};
+        let sessionStartMs = null;
+        try {
+            const raw = session.startDate || session.start_date;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+        const firstT = bars[0].t;
+        const lastT = bars[bars.length - 1].t;
+        const hasMoreLeft = sessionStartMs != null
+            ? firstT > sessionStartMs
+            : true;
         return {
             candles: bars,
             timeframe: barsPayload.resolution || '1m',
             total: bars.length,
             returned: bars.length,
-            has_more_left: true,
+            has_more_left: hasMoreLeft,
             has_more_right: true,
-            first_cursor: String(bars[0].t),
-            last_cursor: String(bars[bars.length - 1].t),
+            first_cursor: String(firstT),
+            last_cursor: String(lastT),
             source: barsPayload.source || 'bars',
         };
     }
@@ -2365,7 +2379,12 @@ class Chart {
 
             const playheadMs = self._captureReplayPlayheadMs(self.replaySystem);
             const sessionEndMs = self._getBacktestSessionEndMs(session);
-            const fetchOpts = { skipSessionDates: true, limit: self.BACKTEST_SMART_INITIAL_LIMIT || 800 };
+            const fetchOpts = {
+                skipSessionDates: true,
+                limit: self._backtestFetchLimitForTimeframe
+                    ? self._backtestFetchLimitForTimeframe(cur)
+                    : (self.BACKTEST_SMART_INITIAL_LIMIT || 800),
+            };
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
             const targets = self._getTimeframesToPrefetch
                 ? self._getTimeframesToPrefetch(cur)
@@ -2575,11 +2594,7 @@ class Chart {
         }
 
         try { this.resize(); } catch (_r) { /* ignore */ }
-        try {
-            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
-            }
-        } catch (_r2) { /* ignore */ }
+        try { this._snapReplayViewportAfterTfSwitch(replay); } catch (_r2) { /* ignore */ }
 
         this._endTimeframeSwitching();
         if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
@@ -10610,9 +10625,12 @@ class Chart {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
-                // Replay mode: only allow backward (scroll-left) pan-loading
-                // Forward loading is handled by simpleStepForward
-                if (this.offsetX > maxOffset - nearEdgeThreshold) {
+                // Replay mode: load older history when scrolled near the left edge of loaded data.
+                const replayNearLeft = this.offsetX > maxOffset - nearEdgeThreshold;
+                const replayNearEmptyLeft = Array.isArray(this.data) && this.data.length > 0
+                    && spacing > 0
+                    && this.offsetX > maxOffset - spacing * 8;
+                if (replayNearLeft || replayNearEmptyLeft) {
                     this.checkViewportLoadMore('backward');
                 }
             } else {
@@ -13530,11 +13548,16 @@ class Chart {
         } catch (_e) { /* ignore */ }
 
         const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const isFine = tfMs <= 4 * 60 * 60 * 1000;
         const barLimit = Math.min(
             2000,
-            Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800
+            Math.max(isFine ? 2000 : 800, Number(this.BACKTEST_SMART_INITIAL_LIMIT) || 800)
         );
-        const forwardBars = Math.min(400, Math.max(80, Math.floor(barLimit * 0.2)));
+        // Backward-heavy: fine TFs keep ~30–40h+ of 1m (or ~12d of 15m) before playhead.
+        const forwardBars = isFine
+            ? Math.min(120, Math.max(24, Math.floor(barLimit * 0.06)))
+            : Math.min(200, Math.max(40, Math.floor(barLimit * 0.12)));
+        const backwardBars = Math.max(1, barLimit - forwardBars);
         const anchor = Number.isFinite(playheadMs) ? playheadMs : sessionEndMs;
         if (!Number.isFinite(anchor)) {
             return this._getBacktestSessionEndFetchRange(sessionEndMs);
@@ -13544,15 +13567,60 @@ class Chart {
         if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
             endTs = Math.min(endTs, sessionEndMs);
         }
-        let startTs = endTs - barLimit * tfMs;
+        let startTs = anchor - backwardBars * tfMs;
         if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
-            startTs = Math.max(startTs, sessionStartMs - 500 * tfMs);
+            startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
         }
 
         return {
             startTs: Math.floor(startTs),
             endTs: Math.floor(endTs),
         };
+    }
+
+    _backtestFetchLimitForTimeframe(timeframe) {
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        return tfMs <= 4 * 60 * 60 * 1000 ? 2000 : 800;
+    }
+
+    /**
+     * After backtest TF switch: align viewport to playhead and preload left history if needed.
+     */
+    _snapReplayViewportAfterTfSwitch(replay) {
+        if (!replay || !replay.isActive) return;
+
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
+        }
+
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+        if (Array.isArray(this.data) && this.data.length > 0 && spacing > 0) {
+            const m = this.margin || { l: 60, r: 60 };
+            const plotW = Math.max(1, (this.w || 800) - m.l - m.r);
+            const totalW = this.data.length * spacing;
+            const maxOffset = spacing * 2;
+            const minOffset = plotW - totalW - spacing * 2;
+            if (Number.isFinite(maxOffset) && this.offsetX > maxOffset) {
+                this.offsetX = maxOffset;
+            }
+            if (Number.isFinite(minOffset) && this.offsetX < minOffset) {
+                this.offsetX = minOffset;
+            }
+        }
+
+        if (typeof this.constrainOffset === 'function') {
+            this.constrainOffset();
+        }
+
+        // Proactively fetch older bars when the playhead sits near the left edge of loaded data.
+        if (this._serverCursors && this._serverCursors.hasMoreLeft !== false) {
+            this.checkViewportLoadMore('backward', true);
+        }
+
+        this.renderPending = true;
+        if (typeof this.render === 'function') {
+            this.render();
+        }
     }
 
     _btTfCacheAnchorKey(sessionEndMs, playheadMs, timeframe) {
@@ -13628,7 +13696,10 @@ class Chart {
         const historyRange = Number.isFinite(playheadMs)
             ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
             : this._getBacktestSessionEndFetchRange(sessionEndMs);
-        const fetchOpts = { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT || 800 };
+        const fetchOpts = {
+            skipSessionDates: true,
+            limit: this._backtestFetchLimitForTimeframe(timeframe),
+        };
 
         let result;
         try {
@@ -13846,6 +13917,7 @@ class Chart {
 
         const barLimit = Math.min(2000, panLimit);
         const tfMs = this.parseTimeframe(tf) || 60_000;
+        const storeTf = this._questdbStoreResolution(tf);
         const cursorNum = Number(cursor);
         let fromMs = null;
         let toMs = null;
@@ -13861,9 +13933,12 @@ class Chart {
 
         const loadStartTs = Date.now();
 
-        this._fetchBarsWindow(this.currentFileId, fromMs, toMs, tf, barLimit)
+        this._fetchBarsWindow(this.currentFileId, fromMs, toMs, storeTf, barLimit)
             .then((payload) => {
-                const bars = Array.isArray(payload?.bars) ? payload.bars : [];
+                let bars = Array.isArray(payload?.bars) ? payload.bars : [];
+                if (bars.length && storeTf !== tf) {
+                    bars = this.resampleData(this._normalizeCandlesFromApi(bars), tf);
+                }
                 const result = bars.length ? {
                     data: {
                         t: bars.map((b) => b.t),
@@ -14016,6 +14091,14 @@ class Chart {
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
+                    if (direction === 'backward' && uniqueNew.length > 0) {
+                        const spacing = typeof this.getCandleSpacing === 'function'
+                            ? this.getCandleSpacing()
+                            : 0;
+                        if (spacing > 0) {
+                            this.offsetX -= uniqueNew.length * spacing;
+                        }
+                    }
                     // Keep replay index stable without scanning entire array when possible
                     if (Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
