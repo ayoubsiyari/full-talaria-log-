@@ -972,12 +972,15 @@ class BaseDrawing {
             drawing.visibility = data.visibility;
         }
         
-        // Store timestamp points permanently if they're in timestamp format
-        if (data.coordinateSystem === 'timestamp' && data.points) {
-            drawing.timestampPoints = data.points.map(p => ({
-                timestamp: p.timestamp,
-                price: p.price || p.y
-            }));
+        // Store timestamp points only when JSON still has wall-clock anchors (not post-conversion {x,y})
+        if (data.coordinateSystem === 'timestamp' && Array.isArray(data.points) && data.points.length > 0) {
+            const first = data.points[0];
+            if (first && Number.isFinite(first.timestamp)) {
+                drawing.timestampPoints = data.points.map(p => ({
+                    timestamp: p.timestamp,
+                    price: p.price !== undefined ? p.price : p.y
+                }));
+            }
         }
         
         return drawing;

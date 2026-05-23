@@ -5323,19 +5323,24 @@ class ReplaySystem {
                 }
             }
             
-            // TradingView-style: center playhead on every timeframe switch.
+            // TradingView-style: center playhead on every timeframe switch (unless drawings need the viewport).
+            const hasDrawings = !!(this.chart.drawingManager && this.chart.drawingManager.drawings && this.chart.drawingManager.drawings.length > 0);
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
                 (this.chart.candleWidth + (this.chart.candleGap || 2));
             const centeredOffset = typeof this.getReplayCenterPlayheadOffset === 'function'
                 ? this.getReplayCenterPlayheadOffset(this.chart)
                 : null;
-            if (Number.isFinite(centeredOffset)) {
-                this.chart.offsetX = centeredOffset;
-            } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
-                this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+            if (!hasDrawings) {
+                if (Number.isFinite(centeredOffset)) {
+                    this.chart.offsetX = centeredOffset;
+                } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
+                    this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+                }
             }
-            this.chart.priceOffset = savedPriceOffset;
-            this.chart.priceZoom = savedPriceZoom;
+            if (!hasDrawings) {
+                this.chart.priceOffset = savedPriceOffset;
+                this.chart.priceZoom = savedPriceZoom;
+            }
             
             if (typeof this.chart.constrainOffset === 'function') {
                 this.chart.constrainOffset();

@@ -5224,6 +5224,8 @@ class DrawingToolsManager {
         }
         drawing = trackedDrawing;
 
+        this._resolveDrawingPointsBeforeRender(drawing);
+
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
@@ -7266,26 +7268,14 @@ class DrawingToolsManager {
     }
     
     /**
-     * Dataset used when converting timestamp-based drawing points to bar indices.
+     * Series used for timestamp→index conversion. Must match chart.data (what xScale /
+     * dataIndexToPixel use), not fullRawData resample — replay prefix slices differ.
      */
     _getDrawingConversionData() {
-        let conversionData = this.chart && this.chart.data;
-        if (
-            this.chart &&
-            this.chart.replaySystem &&
-            this.chart.replaySystem.isActive &&
-            this.chart.replaySystem.fullRawData &&
-            this.chart.replaySystem.fullRawData.length > 0 &&
-            typeof this.chart.resampleData === 'function'
-        ) {
-            try {
-                conversionData = this.chart.resampleData(
-                    this.chart.replaySystem.fullRawData,
-                    this.chart.currentTimeframe
-                );
-            } catch (_) {}
+        if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
+            return this.chart.data;
         }
-        return conversionData;
+        return [];
     }
 
     /**
@@ -8708,15 +8698,8 @@ class DrawingToolsManager {
                 }
             };
 
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                } catch (error) {}
-            }
+            const conversionData = this._getDrawingConversionData();
+            if (!conversionData || !conversionData.length) return;
 
             data.forEach((item) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8830,11 +8813,6 @@ class DrawingToolsManager {
 
         this.drawings.forEach((drawing) => {
             if (!drawing) return;
-            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
-                if (typeof drawing.recalculateTimestamps === 'function') {
-                    try { drawing.recalculateTimestamps(); } catch (_) {}
-                }
-            }
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
 
             this._syncDrawingPointsFromTimestamps(drawing);
@@ -8854,23 +8832,22 @@ class DrawingToolsManager {
 
         if (!Number.isFinite(minIdx) || !Number.isFinite(maxIdx)) return;
 
-        if (!this._areDrawingAnchorsVisible(minIdx, maxIdx)) {
-            const centerIdx = (minIdx + maxIdx) / 2;
-            let anchorTs = null;
-            if (Number.isFinite(minTs) && Number.isFinite(maxTs)) {
-                anchorTs = (minTs + maxTs) / 2;
-            } else if (typeof chart.estimateTimestampForDataIndex === 'function') {
-                anchorTs = chart.estimateTimestampForDataIndex(centerIdx);
-            }
-            if (anchorTs && typeof chart._restorePositionToTimestamp === 'function') {
-                chart._restorePositionToTimestamp(anchorTs, chart.candleWidth);
-            } else {
-                this._scrollViewportToFractionalIndex(centerIdx);
-            }
-            chart.renderPending = true;
-            if (typeof chart.render === 'function') {
-                try { chart.render(); } catch (_) {}
-            }
+        // After TF switch, center on drawings so they stay findable (playhead centering hides them).
+        const centerIdx = (minIdx + maxIdx) / 2;
+        let anchorTs = null;
+        if (Number.isFinite(minTs) && Number.isFinite(maxTs)) {
+            anchorTs = (minTs + maxTs) / 2;
+        } else if (typeof chart.estimateTimestampForDataIndex === 'function') {
+            anchorTs = chart.estimateTimestampForDataIndex(centerIdx);
+        }
+        if (anchorTs && typeof chart._restorePositionToTimestamp === 'function') {
+            chart._restorePositionToTimestamp(anchorTs, chart.candleWidth);
+        } else {
+            this._scrollViewportToFractionalIndex(centerIdx);
+        }
+        chart.renderPending = true;
+        if (typeof chart.render === 'function') {
+            try { chart.render(); } catch (_) {}
         }
 
         const firstT = chart.data[0]?.t;
@@ -8896,30 +8873,9 @@ class DrawingToolsManager {
             cancelAnimationFrame(this._tfDrawingsRefreshToken);
             this._tfDrawingsRefreshToken = null;
         }
-        const maxAttempts = Number.isFinite(options.maxAttempts) ? options.maxAttempts : 120;
+        const maxAttempts = Number.isFinite(options.maxAttempts) ? options.maxAttempts : 180;
         let attempts = 0;
-        const tick = () => {
-            attempts += 1;
-            const chart = this.chart;
-            if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) {
-                if (attempts < maxAttempts) {
-                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
-                }
-                return;
-            }
-            if (chart._timeframeSwitching
-                || (chart.replaySystem && chart.replaySystem._timeframeChanging)) {
-                if (attempts < maxAttempts) {
-                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
-                }
-                return;
-            }
-            if (this._isDrawingEditActive()) {
-                if (attempts < maxAttempts) {
-                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
-                }
-                return;
-            }
+        const runRefresh = () => {
             this._tfDrawingsRefreshToken = null;
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
@@ -8927,24 +8883,35 @@ class DrawingToolsManager {
                         this.refreshDrawingsForTimeframe();
                         this.saveDrawings();
                     }
+                    const chart = this.chart;
                     if (chart && chart.currentTimeframe) {
                         this._drawingsRefreshTimeframe = chart.currentTimeframe;
                     }
                 });
             });
         };
+        const tick = () => {
+            attempts += 1;
+            const chart = this.chart;
+            const force = attempts >= maxAttempts;
+            if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) {
+                if (!force) {
+                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                }
+                return;
+            }
+            if (!force && (chart._timeframeSwitching
+                || (chart.replaySystem && chart.replaySystem._timeframeChanging))) {
+                this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                return;
+            }
+            if (!force && this._isDrawingEditActive()) {
+                this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                return;
+            }
+            runRefresh();
+        };
         this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
-    }
-
-    /**
-     * Series used for timestamp→index conversion. Must match chart.data (what xScale uses),
-     * not fullRawData resample — prefix replay slices differ from full-window resample.
-     */
-    _getDrawingConversionData() {
-        if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
-            return this.chart.data;
-        }
-        return [];
     }
 
     /**
@@ -8965,7 +8932,11 @@ class DrawingToolsManager {
             drawing.timestampPoints,
             conversionData,
             this.chart.currentTimeframe
-        );
+        ).map((pt, i) => {
+            const src = drawing.timestampPoints[i];
+            const price = src && Number.isFinite(src.price) ? src.price : pt.y;
+            return { x: pt.x, y: price };
+        });
         drawing.chart = this.chart;
     }
 
@@ -8983,11 +8954,6 @@ class DrawingToolsManager {
         }
 
         this.drawings.forEach((drawing) => {
-            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
-                if (typeof drawing.recalculateTimestamps === 'function') {
-                    try { drawing.recalculateTimestamps(); } catch (_) {}
-                }
-            }
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return;
             }

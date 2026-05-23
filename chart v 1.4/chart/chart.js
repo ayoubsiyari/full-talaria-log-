@@ -2944,10 +2944,11 @@ class Chart {
         }
 
         if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            const hasDrawings = !!(this.drawingManager && this.drawingManager.drawings && this.drawingManager.drawings.length > 0);
             replay.syncReplayViewportToPlayhead(this, {
-                resetPriceScale: true,
+                resetPriceScale: !hasDrawings,
                 render: true,
-                centerPlayhead: true,
+                centerPlayhead: !hasDrawings,
             });
         }
 
@@ -14025,10 +14026,11 @@ class Chart {
         if (!replay || !replay.isActive) return;
 
         if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            const hasDrawings = !!(this.drawingManager && this.drawingManager.drawings && this.drawingManager.drawings.length > 0);
             replay.syncReplayViewportToPlayhead(this, {
-                resetPriceScale: true,
+                resetPriceScale: !hasDrawings,
                 render: false,
-                centerPlayhead: true,
+                centerPlayhead: !hasDrawings,
             });
         }
 
@@ -15052,6 +15054,25 @@ class Chart {
             minPrice = 0;
             maxPrice = 1;
         }
+
+        // Keep drawing anchor prices inside auto-scale so TF resets do not clip shapes vertically.
+        const dm = this.drawingManager;
+        if (dm && Array.isArray(dm.drawings)) {
+            for (let di = 0; di < dm.drawings.length; di++) {
+                const drawing = dm.drawings[di];
+                if (!drawing || drawing.visible === false || drawing.hidden === true) continue;
+                const anchors = drawing.timestampPoints || drawing.points;
+                if (!Array.isArray(anchors)) continue;
+                for (let ai = 0; ai < anchors.length; ai++) {
+                    const ap = anchors[ai];
+                    const py = Number.isFinite(ap.price) ? ap.price : ap.y;
+                    if (!Number.isFinite(py)) continue;
+                    if (py < minPrice) minPrice = py;
+                    if (py > maxPrice) maxPrice = py;
+                }
+            }
+        }
+
         const priceRange = maxPrice - minPrice || maxPrice * 0.01;
         
         // Calculate chart height for price area
@@ -25141,7 +25162,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a62';
+    window.TALARIA_CHART_BUILD = '20260522a63';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
