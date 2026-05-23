@@ -817,7 +817,6 @@ class DrawingToolsManager {
             }
 
             if (newTimeframe && newTimeframe !== this._drawingsRefreshTimeframe) {
-                this._drawingsRefreshTimeframe = newTimeframe;
                 this.scheduleRefreshAfterTimeframe();
             }
         };
@@ -827,7 +826,6 @@ class DrawingToolsManager {
             const newTimeframe = event.detail?.timeframe;
             if (!newTimeframe || newTimeframe === this._drawingsRefreshTimeframe) return;
             if (!this._drawingsLoaded) return;
-            this._drawingsRefreshTimeframe = newTimeframe;
             this.scheduleRefreshAfterTimeframe();
         };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;
@@ -7932,6 +7930,7 @@ class DrawingToolsManager {
                 if (!drawing || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
                     return;
                 }
+                this._resolveDrawingPointsBeforeRender(drawing);
                 if (drawing.group && !drawing.group.empty()) {
                     drawing.render(this._getDrawingsContentGroup(), scales, renderOpts);
                     if (typeof drawing.updateHandlePositions === 'function') {
@@ -7968,6 +7967,7 @@ class DrawingToolsManager {
         // always expose point handles must keep full setup so gear/dblclick/resize still
         // work after a redraw (SVG groups are recreated here).
         this.drawings.forEach(drawing => {
+            this._resolveDrawingPointsBeforeRender(drawing);
             const needsFullInteraction =
                 !!drawing.selected ||
                 (this.selectedDrawings && this.selectedDrawings.includes(drawing)) ||
@@ -8779,6 +8779,115 @@ class DrawingToolsManager {
     }
 
     /**
+     * Re-sync index points from timestamp anchors before paint (pan/zoom/TF).
+     * Skipped during active drag/resize so live edits are not overwritten.
+     */
+    _resolveDrawingPointsBeforeRender(drawing) {
+        if (!drawing || this._isDrawingEditActive()) return;
+        if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
+        this._syncDrawingPointsFromTimestamps(drawing);
+    }
+
+    _areDrawingAnchorsVisible(minIdx, maxIdx, padBars = 8) {
+        const chart = this.chart;
+        if (!chart || !Number.isFinite(minIdx) || !Number.isFinite(maxIdx)) return true;
+        const m = chart.margin || { l: 60, r: 60 };
+        const plotRight = (chart.w || 800) - m.r;
+        if (typeof chart.pixelToDataIndex !== 'function') return true;
+        const leftIdx = chart.pixelToDataIndex(m.l);
+        const rightIdx = chart.pixelToDataIndex(plotRight);
+        return maxIdx >= leftIdx - padBars && minIdx <= rightIdx + padBars;
+    }
+
+    _scrollViewportToFractionalIndex(centerIdx) {
+        const chart = this.chart;
+        if (!chart || !Number.isFinite(centerIdx)) return;
+        const m = chart.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, (chart.w || 800) - m.l - m.r);
+        const centerX = cw / 2;
+        const spacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
+        if (!Number.isFinite(spacing) || spacing <= 0) return;
+        chart.offsetX = centerX - centerIdx * spacing;
+        if (typeof chart.constrainOffset === 'function') {
+            chart.constrainOffset();
+        }
+        chart._chartViewRestored = true;
+    }
+
+    /**
+     * After TF refresh: pan so drawings are on screen and prefetch bars if anchors
+     * fall outside the loaded window.
+     */
+    _ensureDrawingsVisibleAfterTfRefresh() {
+        const chart = this.chart;
+        if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) return;
+        if (!this.drawings.length) return;
+
+        let minIdx = Infinity;
+        let maxIdx = -Infinity;
+        let minTs = Infinity;
+        let maxTs = -Infinity;
+
+        this.drawings.forEach((drawing) => {
+            if (!drawing) return;
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                if (typeof drawing.recalculateTimestamps === 'function') {
+                    try { drawing.recalculateTimestamps(); } catch (_) {}
+                }
+            }
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
+
+            this._syncDrawingPointsFromTimestamps(drawing);
+            (drawing.points || []).forEach((p) => {
+                if (p && Number.isFinite(p.x)) {
+                    minIdx = Math.min(minIdx, p.x);
+                    maxIdx = Math.max(maxIdx, p.x);
+                }
+            });
+            drawing.timestampPoints.forEach((tp) => {
+                if (tp && Number.isFinite(tp.timestamp)) {
+                    minTs = Math.min(minTs, tp.timestamp);
+                    maxTs = Math.max(maxTs, tp.timestamp);
+                }
+            });
+        });
+
+        if (!Number.isFinite(minIdx) || !Number.isFinite(maxIdx)) return;
+
+        if (!this._areDrawingAnchorsVisible(minIdx, maxIdx)) {
+            const centerIdx = (minIdx + maxIdx) / 2;
+            let anchorTs = null;
+            if (Number.isFinite(minTs) && Number.isFinite(maxTs)) {
+                anchorTs = (minTs + maxTs) / 2;
+            } else if (typeof chart.estimateTimestampForDataIndex === 'function') {
+                anchorTs = chart.estimateTimestampForDataIndex(centerIdx);
+            }
+            if (anchorTs && typeof chart._restorePositionToTimestamp === 'function') {
+                chart._restorePositionToTimestamp(anchorTs, chart.candleWidth);
+            } else {
+                this._scrollViewportToFractionalIndex(centerIdx);
+            }
+            chart.renderPending = true;
+            if (typeof chart.render === 'function') {
+                try { chart.render(); } catch (_) {}
+            }
+        }
+
+        const firstT = chart.data[0]?.t;
+        const lastT = chart.data[chart.data.length - 1]?.t;
+        if (Number.isFinite(minTs) && Number.isFinite(firstT) && minTs < firstT - 1) {
+            if (typeof chart.checkViewportLoadMore === 'function') {
+                try { chart.checkViewportLoadMore('backward', true); } catch (_) {}
+            }
+        }
+        if (Number.isFinite(maxTs) && Number.isFinite(lastT) && maxTs > lastT + 1) {
+            if (typeof chart.checkViewportLoadMore === 'function') {
+                try { chart.checkViewportLoadMore('forward', true); } catch (_) {}
+            }
+        }
+    }
+
+    /**
      * Defer timestamp→index refresh until TF switch, replay resample, and viewport
      * centering are complete (avoids one-frame glitches during backtest TF hot-swap).
      */
@@ -8818,7 +8927,7 @@ class DrawingToolsManager {
                         this.refreshDrawingsForTimeframe();
                         this.saveDrawings();
                     }
-                    if (chart.currentTimeframe) {
+                    if (chart && chart.currentTimeframe) {
                         this._drawingsRefreshTimeframe = chart.currentTimeframe;
                     }
                 });
@@ -8872,6 +8981,20 @@ class DrawingToolsManager {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
         }
+
+        this.drawings.forEach((drawing) => {
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                if (typeof drawing.recalculateTimestamps === 'function') {
+                    try { drawing.recalculateTimestamps(); } catch (_) {}
+                }
+            }
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                return;
+            }
+            this._syncDrawingPointsFromTimestamps(drawing);
+        });
+
+        this._ensureDrawingsVisibleAfterTfRefresh();
 
         this.drawings.forEach((drawing) => {
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
