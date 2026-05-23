@@ -11550,9 +11550,18 @@ async def admin_support_stats(request: Request):
             .filter(SupportThread.status == "closed", SupportThread.closed_at >= today_start)
             .count()
         )
+        total_active = open_n + pending_n
+        total_all = db.query(SupportThread).count()
+        resolved_n = (
+            db.query(SupportThread)
+            .filter(SupportThread.status.in_(("resolved", "closed")))
+            .count()
+        )
+        resolve_pct = round(resolved_n / total_all * 100) if total_all else 0
         by_category: dict[str, int] = {}
+        by_category_pct: dict[str, int] = {}
         for cat in SUPPORT_CATEGORIES:
-            by_category[cat] = (
+            n = (
                 db.query(SupportThread)
                 .filter(
                     SupportThread.category == cat,
@@ -11560,13 +11569,20 @@ async def admin_support_stats(request: Request):
                 )
                 .count()
             )
+            by_category[cat] = n
+            by_category_pct[cat] = round(n / total_active * 100) if total_active else 0
         return {
             "open": open_n,
             "pending": pending_n,
             "unassigned": unassigned_n,
             "sla_overdue": overdue_n,
             "closed_today": closed_today,
+            "total_active": total_active,
+            "total_all": total_all,
+            "resolved_count": resolved_n,
+            "resolve_pct": resolve_pct,
             "by_category": by_category,
+            "by_category_pct": by_category_pct,
             "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
         }
     finally:
