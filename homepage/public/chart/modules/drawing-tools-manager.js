@@ -107,6 +107,8 @@ class DrawingToolsManager {
         this._directResizeUpHandler = null;
         this._directMoveMoveHandler = null;
         this._directMoveUpHandler = null;
+        /** True while canvas/SVG direct-move listeners are active (not legacy transform drag). */
+        this._directMoveActive = false;
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
@@ -1448,6 +1450,7 @@ class DrawingToolsManager {
                         return;
                     }
                     this.selectDrawing(armedHit.primary, event.shiftKey);
+                    this._startDirectMoveDrag(armedHit.primary, event);
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -2184,8 +2187,21 @@ class DrawingToolsManager {
         });
     }
 
+    /** True while the user is actively placing, moving, or resizing a drawing. */
+    _isDrawingEditActive() {
+        return !!(
+            this._directMoveActive ||
+            this.isDragging ||
+            this.isResizing ||
+            this.isCustomHandleDrag ||
+            this.isCustomHandleDragging ||
+            this.isDraggingFirstTwo ||
+            (this.drawingState && this.drawingState.isDrawing)
+        );
+    }
+
     _shouldDeferLiveEdit() {
-        if (this.isDragging || this.isResizing || this.isCustomHandleDrag || this.isCustomHandleDragging) {
+        if (this._isDrawingEditActive()) {
             return true;
         }
         if (this.chart && typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning()) {
@@ -2340,9 +2356,8 @@ class DrawingToolsManager {
             }
         }
         const isVolumeProfileBoundaryHandle = !!(handleNode && handleNode.classList && handleNode.classList.contains('volume-profile-boundary-hit'));
-        const allowActiveToolHandleBypass = this.currentTool === 'polyline' || this.currentTool === 'path'
-            || this.currentTool === 'brush' || this.currentTool === 'highlighter';
-        if (handleNode && !isVolumeProfileBoundaryHandle && (!this.currentTool || allowActiveToolHandleBypass)) {
+        // Let d3 / document resize handlers own handle drags — never fall through to draw-start.
+        if (handleNode && !isVolumeProfileBoundaryHandle) {
             return;
         }
         
@@ -2847,6 +2862,9 @@ class DrawingToolsManager {
                     return;
                 }
                 this.selectDrawing(targetDrawing, event.shiftKey);
+                if (!event.detail || event.detail < 2) {
+                    this._startDirectMoveDrag(targetDrawing, event);
+                }
             }
             this._abortInProgressPlacement();
             if (typeof event.preventDefault === 'function') event.preventDefault();
@@ -5898,11 +5916,22 @@ class DrawingToolsManager {
                     // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
                     const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox || isLineElement || isShapeBorder || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
-                    
-                    return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
+
+                    if (isResizeHandle || isCustomHandle || isAnyHandle) {
+                        return false;
+                    }
+                    if (!canDrag) {
+                        return false;
+                    }
+                    if (!self.currentTool) {
+                        return true;
+                    }
+                    // Keep-drawing mode: still allow moving the selected shape from its border.
+                    return !!(drawing.selected && (self.selectedDrawings || []).includes(drawing));
                 })
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
+                    self.isDragging = true;
 
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -6067,6 +6096,9 @@ class DrawingToolsManager {
                     if (self.chart.broadcastDrawingChange && index > -1) {
                         self.chart.broadcastDrawingChange('update', drawing, index);
                     }
+
+                    self.isDragging = false;
+                    self._refreshSingleSelectionChrome(drawing);
                     
                     // [debug removed]
                 })
@@ -6093,6 +6125,9 @@ class DrawingToolsManager {
         const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
             .filter(d => d && d.type !== 'anchored-vwap');
         if (!drawings || drawings.length === 0) return;
+
+        this._directMoveActive = true;
+        this.isDragging = true;
 
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
@@ -6140,7 +6175,11 @@ class DrawingToolsManager {
                 }
                 this.clampDrawingPointsToCandleRange(item.drawing);
 
-                this.renderDrawing(item.drawing);
+                this.renderDrawing(item.drawing, {
+                    skipInteraction: true,
+                    skipAxisHighlights: true,
+                    hotPath: true
+                });
 
                 if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
                     item.drawing.showAxisHighlights();
@@ -6153,6 +6192,8 @@ class DrawingToolsManager {
             e.preventDefault();
             e.stopPropagation();
             stopDirectMoveListeners();
+            this._directMoveActive = false;
+            this.isDragging = false;
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
                 this.chart.updateCrosshair(e);
@@ -6167,11 +6208,18 @@ class DrawingToolsManager {
                     item.drawing.recalculateTimestamps();
                 }
 
+                this.renderDrawing(item.drawing);
+
                 const index = this.drawings.indexOf(item.drawing);
                 if (this.chart && this.chart.broadcastDrawingChange && index > -1) {
                     this.chart.broadcastDrawingChange('update', item.drawing, index);
                 }
             });
+
+            this.saveDrawings();
+            if (startStates.length === 1 && startStates[0].drawing) {
+                this._refreshSingleSelectionChrome(startStates[0].drawing);
+            }
         };
 
         document.addEventListener('mousemove', this._directMoveMoveHandler, true);
@@ -7866,6 +7914,9 @@ class DrawingToolsManager {
         }
 
         const forceFull = !!options.forceFull;
+        if (!forceFull && this._isDrawingEditActive()) {
+            return;
+        }
         const panFast = !forceFull && (options.panFast || this._isChartViewPanning());
 
         // Update clip path dimensions in case chart was resized
@@ -8756,6 +8807,12 @@ class DrawingToolsManager {
                 }
                 return;
             }
+            if (this._isDrawingEditActive()) {
+                if (attempts < maxAttempts) {
+                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                }
+                return;
+            }
             this._tfDrawingsRefreshToken = null;
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
@@ -8790,7 +8847,7 @@ class DrawingToolsManager {
         if (!drawing || !drawing.timestampPoints || drawing.timestampPoints.length === 0) {
             return;
         }
-        if (this.isDragging || this.isResizing || this.isDrawing || this.isDraggingFirstTwo) {
+        if (this._isDrawingEditActive()) {
             return;
         }
         const conversionData = this._getDrawingConversionData();
@@ -8810,6 +8867,9 @@ class DrawingToolsManager {
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
     refreshDrawingsForTimeframe() {
+        if (this._isDrawingEditActive()) {
+            return;
+        }
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
@@ -9876,6 +9936,47 @@ class DrawingToolsManager {
                         continue;
                     }
                 }
+            }
+
+            // Rectangle / triangle / circle / ellipse: allow whole-body selection and drag,
+            // not only narrow border strokes (fill has pointer-events:none).
+            if (!hitsById.has(drawing.id) && (drawing.type === 'rectangle' || drawing.type === 'triangle'
+                || drawing.type === 'circle' || drawing.type === 'ellipse')) {
+                try {
+                    const points = drawing.points || [];
+                    if (points.length >= 2 && this.chart?.xScale && this.chart?.yScale) {
+                        const toPx = (p) => ({
+                            x: this.chart.dataIndexToPixel ? this.chart.dataIndexToPixel(p.x) : this.chart.xScale(p.x),
+                            y: this.chart.yScale(p.y)
+                        });
+                        if (drawing.type === 'circle' || drawing.type === 'ellipse') {
+                            const a = toPx(points[0]);
+                            const b = toPx(points[1]);
+                            const cx = (a.x + b.x) / 2;
+                            const cy = (a.y + b.y) / 2;
+                            const rx = Math.abs(b.x - a.x) / 2;
+                            const ry = Math.abs(b.y - a.y) / 2;
+                            if (rx > 0 && ry > 0) {
+                                const ndx = (mouseX - cx) / rx;
+                                const ndy = (mouseY - cy) / ry;
+                                if ((ndx * ndx + ndy * ndy) <= 1.05) {
+                                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                    continue;
+                                }
+                            }
+                        } else {
+                            const pxPoints = points.map(toPx);
+                            const minX = Math.min(...pxPoints.map(p => p.x));
+                            const maxX = Math.max(...pxPoints.map(p => p.x));
+                            const minY = Math.min(...pxPoints.map(p => p.y));
+                            const maxY = Math.max(...pxPoints.map(p => p.y));
+                            if (mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY) {
+                                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                                continue;
+                            }
+                        }
+                    }
+                } catch (_) { /* ignore */ }
             }
 
             // Risk/Reward tools: allow selecting/dragging by zone interior, not only stroke.
