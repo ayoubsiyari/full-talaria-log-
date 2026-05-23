@@ -14882,15 +14882,12 @@ class Chart {
         this._applyAxisHighlightPanTransform(dx, ty);
     }
 
-    _runChartPanFrame() {
+    /** Move chart view 1:1 with pointer — called on every mousemove during pan. */
+    _applyChartPanStep(clientX, clientY) {
         if (!this._isChartPanDragging()) return;
-        const cx = this._panPendingClientX;
-        const cy = this._panPendingClientY;
-        if (cx == null || cy == null) return;
-
         const zPan = this._v9LayoutZoom();
-        const effectiveDx = this.timeScale.locked ? 0 : (cx - this.drag.lastX) / zPan;
-        const effectiveDy = this.priceScale.locked ? 0 : (cy - this.drag.lastY) / zPan;
+        const effectiveDx = this.timeScale.locked ? 0 : (clientX - this.drag.lastX) / zPan;
+        const effectiveDy = this.priceScale.locked ? 0 : (clientY - this.drag.lastY) / zPan;
 
         this.offsetX += effectiveDx;
         if (this.yScale && effectiveDy !== 0) {
@@ -14901,28 +14898,31 @@ class Chart {
             this.priceOffset += effectiveDy * pricePerPixel;
         }
 
-        this.drag.lastX = cx;
-        this.drag.lastY = cy;
+        this.drag.lastX = clientX;
+        this.drag.lastY = clientY;
         this._constrainOffsetDuringDrag();
-        this.renderPending = false;
-        this.render();
-
-        if (!this._panScrollSyncRaf) {
-            this._panScrollSyncRaf = requestAnimationFrame(() => {
-                this._panScrollSyncRaf = null;
-                this.dispatchScrollSync(true);
-            });
-        }
     }
 
-    _scheduleChartPanFrame(clientX, clientY) {
-        this._panPendingClientX = clientX;
-        this._panPendingClientY = clientY;
+    /** Coalesce paints to one render per animation frame while panning. */
+    _scheduleChartPanRender() {
         if (this._chartPanFrameRaf != null) return;
         this._chartPanFrameRaf = requestAnimationFrame(() => {
             this._chartPanFrameRaf = null;
-            this._runChartPanFrame();
+            if (!this._isChartPanDragging()) return;
+            this.renderPending = false;
+            this.render();
+            if (!this._panScrollSyncRaf) {
+                this._panScrollSyncRaf = requestAnimationFrame(() => {
+                    this._panScrollSyncRaf = null;
+                    this.dispatchScrollSync(true);
+                });
+            }
         });
+    }
+
+    _scheduleChartPanFrame(clientX, clientY) {
+        this._applyChartPanStep(clientX, clientY);
+        this._scheduleChartPanRender();
     }
 
     _flushChartPanFrame() {
@@ -14931,7 +14931,8 @@ class Chart {
             this._chartPanFrameRaf = null;
         }
         if (this._isChartPanDragging()) {
-            this._runChartPanFrame();
+            this.renderPending = false;
+            this.render();
         }
     }
 
@@ -14940,8 +14941,6 @@ class Chart {
             cancelAnimationFrame(this._chartPanFrameRaf);
             this._chartPanFrameRaf = null;
         }
-        this._panPendingClientX = null;
-        this._panPendingClientY = null;
     }
 
     scheduleRender() {
@@ -19074,21 +19073,10 @@ class Chart {
                     }
                     return;
                 }
-                const now = performance.now();
-                const dt = now - this.movement.lastTime;
                 const zPan = this._v9LayoutZoom();
                 const dx = (e.clientX - this.drag.lastX) / zPan;
                 const dy = (e.clientY - this.drag.lastY) / zPan;
-                
-                // Calculate velocity for inertia (smoothed so flick-release feels natural)
-                if (dt > 0) {
-                    const rawVx = dx / (dt / 16.67);
-                    const rawVy = dy / (dt / 16.67);
-                    const blend = 0.4;
-                    this.inertia.velocityX = this.inertia.velocityX * (1 - blend) + rawVx * blend;
-                    this.inertia.velocityY = this.inertia.velocityY * (1 - blend) + rawVy * blend;
-                }
-                this.movement.lastTime = now;
+                this.movement.lastTime = performance.now();
                 
                 // Keep cursor style consistent with drag type (sticky behavior)
                 let dragCursor = null;
@@ -19112,7 +19100,7 @@ class Chart {
                     }
                 }
                 
-                // ─── Chart Pan ─── (one paint per animation frame — avoids stuck-then-jump jank)
+                // ─── Chart Pan ─── (offset updates every mousemove; render coalesced to rAF)
                 if (this.drag.type === 'pan') {
                     this._scheduleChartPanFrame(e.clientX, e.clientY);
 
@@ -19361,7 +19349,7 @@ class Chart {
                     this._suppressContextMenuUntil = performance.now() + this._contextMenuSuppressMs;
                 }
             }
-            // Handle pan end — flick inertia when velocity is high (TradingView-style glide)
+            // Handle pan end — stop immediately on release (no post-release slide)
             else if (dragType === 'pan' && wasDragging) {
                 this._flushChartPanFrame();
                 this._cancelChartPanFrame();
@@ -19376,21 +19364,15 @@ class Chart {
                     cancelAnimationFrame(this._panScrollSyncRaf);
                     this._panScrollSyncRaf = null;
                 }
+                this.inertia.active = false;
+                this.inertia.velocityX = 0;
+                this.inertia.velocityY = 0;
                 this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
-                    const speed = Math.hypot(this.inertia.velocityX, this.inertia.velocityY);
-                    if (speed > this.inertia.minVelocity && typeof this._runPanInertia === 'function') {
-                        this.inertia.active = true;
-                        this.inertia.lastTime = performance.now();
-                        this._runPanInertia();
-                    } else {
-                        this.inertia.velocityX = 0;
-                        this.inertia.velocityY = 0;
-                        this.dispatchScrollSync(true);
-                        this.constrainOffset();
-                        this._finishPanDrawingRedraw();
-                        this.scheduleRender();
-                    }
+                    this.dispatchScrollSync(true);
+                    this.constrainOffset();
+                    this._finishPanDrawingRedraw();
+                    this.scheduleRender();
                 }
                 this.scheduleChartViewSave();
 
