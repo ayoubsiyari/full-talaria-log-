@@ -25147,7 +25147,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a58';
+    window.TALARIA_CHART_BUILD = '20260522a59';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

@@ -5247,8 +5247,6 @@ class DrawingToolsManager {
             drawing.group.style('display', null);
         }
 
-        this._syncDrawingPointsFromTimestamps(drawing);
-
         const scalesPayload = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
@@ -6778,6 +6776,9 @@ class DrawingToolsManager {
                             drawing.afterPointsMoveDelta(dx, dy);
                         }
                         drawing.meta.updatedAt = Date.now();
+                        if (typeof drawing.recalculateTimestamps === 'function') {
+                            drawing.recalculateTimestamps();
+                        }
                     }
                 }
                 if (drawing.group) {
@@ -6817,6 +6818,9 @@ class DrawingToolsManager {
                         this.draggingDrawing.afterPointsMoveDelta(dx, dy);
                     }
                     this.draggingDrawing.meta.updatedAt = Date.now();
+                    if (typeof this.draggingDrawing.recalculateTimestamps === 'function') {
+                        this.draggingDrawing.recalculateTimestamps();
+                    }
                 }
             }
             if (this.draggingDrawing && this.draggingDrawing.group) {
@@ -8780,20 +8784,13 @@ class DrawingToolsManager {
     }
 
     /**
-     * Re-derive index points from stored timestamps before render / TF refresh.
-     * Skipped while the user is actively placing or dragging a drawing.
+     * Re-derive index points from stored timestamps (TF switch / load only — not every render).
      */
     _syncDrawingPointsFromTimestamps(drawing) {
         if (!drawing || !drawing.timestampPoints || drawing.timestampPoints.length === 0) {
             return;
         }
-        if (
-            this.isDragging ||
-            this.isResizing ||
-            this.isDrawing ||
-            this.isDraggingFirstTwo ||
-            this.currentTool
-        ) {
+        if (this.isDragging || this.isResizing || this.isDrawing || this.isDraggingFirstTwo) {
             return;
         }
         const conversionData = this._getDrawingConversionData();
