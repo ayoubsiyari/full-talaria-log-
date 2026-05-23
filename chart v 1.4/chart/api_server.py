@@ -18761,11 +18761,30 @@ def _build_bars_payload(
         )
 
     bars = _apply_dataset_filters(bars, original_name=db_file.original_name)
+    has_more_left = False
+    has_more_right = False
+    if bars:
+        first_t = int(bars[0]["t"])
+        last_t = int(bars[-1]["t"])
+        if questdb_store.questdb_enabled() and source == "questdb":
+            has_more_left = questdb_store.has_bars_before(file_id, chosen, first_t)
+            has_more_right = questdb_store.has_bars_after(file_id, chosen, last_t)
+        else:
+            has_more_left = (
+                len(bars) >= limit
+                or (from_ms is not None and first_t > int(from_ms))
+            )
+            has_more_right = (
+                len(bars) >= limit
+                or (to_ms is not None and last_t < int(to_ms))
+            )
     return {
         "file_id": file_id,
         "resolution": chosen,
         "bars": bars,
         "returned": len(bars),
+        "has_more_left": has_more_left,
+        "has_more_right": has_more_right,
         "source": source,
     }
 

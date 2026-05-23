@@ -1540,11 +1540,15 @@ class Chart {
             this.updateLoaderStep(1, 'completed');
             
             this.totalCandles = result.total;
+            let hasMoreLeft = result.has_more_left !== false;
+            if (sessionStartTs != null) {
+                hasMoreLeft = true;
+            }
             this._serverCursors = {
                 firstTs: result.first_cursor,
                 lastTs: result.last_cursor,
-                hasMoreLeft: result.has_more_left,
-                hasMoreRight: result.has_more_right
+                hasMoreLeft,
+                hasMoreRight: result.has_more_right !== false,
             };
             this._panLoading = false;
             
@@ -1967,8 +1971,8 @@ class Chart {
         } catch (_e) { /* ignore */ }
         const firstT = bars[0].t;
         const lastT = bars[bars.length - 1].t;
-        const hasMoreLeft = sessionStartMs != null
-            ? firstT > sessionStartMs
+        const hasMoreLeft = typeof barsPayload.has_more_left === 'boolean'
+            ? barsPayload.has_more_left
             : true;
         return {
             candles: bars,
@@ -14091,7 +14095,7 @@ class Chart {
                 return false;
             }
         }
-        if (direction === 'backward' && hasSessionStart && !isReplay) {
+        if (direction === 'backward' && hasSessionStart && !isReplay && !this.isBacktestMode) {
             const firstCursorTs = Number(this._serverCursors.firstTs);
             if (Number.isFinite(firstCursorTs) && firstCursorTs <= sessionStartTs) {
                 this._serverCursors.hasMoreLeft = false;
@@ -14176,11 +14180,15 @@ class Chart {
                         c: bars.map((b) => b.c),
                         v: bars.map((b) => b.v),
                     },
-                    has_more_left: bars.length >= barLimit,
-                    has_more_right: direction === 'forward' ? bars.length >= barLimit : true,
+                    has_more_left: typeof payload?.has_more_left === 'boolean'
+                        ? payload.has_more_left
+                        : (direction === 'backward' ? bars.length >= barLimit : true),
+                    has_more_right: typeof payload?.has_more_right === 'boolean'
+                        ? payload.has_more_right
+                        : (direction === 'forward' ? bars.length >= barLimit : true),
                     prev_cursor: String(bars[0].t),
                     next_cursor: String(bars[bars.length - 1].t),
-                    elapsed_ms: Date.now() - loadStartTs,
+                    elapsed_ms: payload?.elapsed_ms ?? (Date.now() - loadStartTs),
                 } : null;
                 if (!result || !result.data || !result.data.t) {
                     if (direction === 'backward') {
@@ -14228,9 +14236,10 @@ class Chart {
                     });
                 }
 
+                const allowPreSessionLeft = (isReplay || this.isBacktestMode) && direction === 'backward';
                 const boundedCandles = newCandles.filter(c => {
                     if (hasSessionStart && c.t < sessionStartTs) {
-                        if (!(isReplay && direction === 'backward')) return false;
+                        if (!allowPreSessionLeft) return false;
                     }
                     if (hasSessionEnd && c.t > sessionEndTs) return false;
                     return true;
@@ -14240,7 +14249,7 @@ class Chart {
                     if (direction === 'forward' && hasSessionEnd) {
                         this._serverCursors.hasMoreRight = false;
                     }
-                    if (direction === 'backward' && hasSessionStart && !isReplay) {
+                    if (direction === 'backward' && hasSessionStart && !isReplay && !this.isBacktestMode) {
                         this._serverCursors.hasMoreLeft = false;
                     }
                     return;
@@ -14308,7 +14317,10 @@ class Chart {
                 if (uniqueNew.length === 0) return;
                 
                 if (isReplay) {
-                    if (this.dataPipeline && typeof this.dataPipeline.capReplayFullRawData === 'function') {
+                    // Keep backward pan history — cap only evicts far-ahead bars during forward prefetch.
+                    if (direction === 'forward'
+                        && this.dataPipeline
+                        && typeof this.dataPipeline.capReplayFullRawData === 'function') {
                         merged = this.dataPipeline.capReplayFullRawData(merged, this.replaySystem);
                     }
                     // Update replay system's master copy
@@ -24902,6 +24914,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
+    window.TALARIA_CHART_BUILD = '20260522a52';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

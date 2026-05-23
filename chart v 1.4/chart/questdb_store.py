@@ -617,6 +617,60 @@ def query_bars(
     return _query_bars_via_1m_sample(file_id, sample, from_ms, to_ms, limit)
 
 
+def has_bars_before(file_id: int, resolution: str, before_ms: int) -> bool:
+    """True when at least one bar exists strictly before before_ms."""
+    ensure_schema()
+    res = normalize_resolution(resolution)
+    fid = _safe_file_id(file_id)
+    cur = _ms_to_questdb_ts(int(before_ms))
+    if res == "1m":
+        sql = f"SELECT 1 FROM ohlcv_1m WHERE file_id = %s AND ts < %s LIMIT 1"
+        return bool(_fetch_all(sql, (fid, cur)))
+    sample = _sample_for_resolution(res)
+    if sample and preagg_is_incomplete(file_id, res):
+        sql = f"""
+            SELECT 1
+            FROM ohlcv_1m
+            WHERE file_id = %s AND ts < %s
+            LIMIT 1
+        """
+        return bool(_fetch_all(sql, (fid, cur)))
+    table = resolution_table(res)
+    sql = f"SELECT 1 FROM {table} WHERE file_id = %s AND ts < %s LIMIT 1"
+    if _fetch_all(sql, (fid, cur)):
+        return True
+    if sample:
+        return has_bars_before(file_id, "1m", before_ms)
+    return False
+
+
+def has_bars_after(file_id: int, resolution: str, after_ms: int) -> bool:
+    """True when at least one bar exists strictly after after_ms."""
+    ensure_schema()
+    res = normalize_resolution(resolution)
+    fid = _safe_file_id(file_id)
+    cur = _ms_to_questdb_ts(int(after_ms))
+    if res == "1m":
+        sql = f"SELECT 1 FROM ohlcv_1m WHERE file_id = %s AND ts > %s LIMIT 1"
+        return bool(_fetch_all(sql, (fid, cur)))
+    sample = _sample_for_resolution(res)
+    if sample and preagg_is_incomplete(file_id, res):
+        sql = f"""
+            SELECT 1
+            FROM ohlcv_1m
+            WHERE file_id = %s AND ts > %s
+            LIMIT 1
+        """
+        return bool(_fetch_all(sql, (fid, cur)))
+    table = resolution_table(res)
+    sql = f"SELECT 1 FROM {table} WHERE file_id = %s AND ts > %s LIMIT 1"
+    if _fetch_all(sql, (fid, cur)):
+        return True
+    if sample:
+        return has_bars_after(file_id, "1m", after_ms)
+    return False
+
+
 def query_bars_cursor(
     file_id: int,
     resolution: str,
