@@ -1543,11 +1543,181 @@ select { cursor:default; }
 }
 .support-thread-subj { font-weight: 600; color: var(--text); margin-bottom: 4px; }
 .support-thread-meta { font-size: 11px; color: var(--text-muted); }
-.support-ticket-stats { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
-.support-ticket-stat { font-size:11px; padding:4px 10px; border-radius:999px; background:var(--surface-raised); border:1px solid var(--border); color:var(--text-secondary); }
-.support-ticket-stat.warn { border-color:rgba(251,191,36,.4); color:#fbbf24; }
-.support-ticket-stat.ok { border-color:rgba(16,185,129,.35); color:#34d399; }
-.support-ticket-stat .stat-pct { opacity:.8; font-size:10px; margin-left:2px; }
+.support-stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.support-stats-section {
+  background: rgba(12, 18, 32, 0.42);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px 14px;
+}
+.support-stats-section.focus {
+  border-color: rgba(34, 211, 238, 0.18);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.06) 0%, rgba(12, 18, 32, 0.5) 55%);
+}
+.support-stats-section-hdr {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.support-stats-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 1200px) {
+  .support-stats-kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .support-stats-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.support-stats-kpi {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.support-stats-kpi .kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.support-stats-kpi .kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  line-height: 1.1;
+}
+.support-stats-kpi.warn .kpi-value { color: var(--warn); }
+.support-stats-kpi.danger .kpi-value { color: var(--danger); }
+.support-stats-kpi.ok .kpi-value { color: var(--ok); }
+.support-stats-kpi .kpi-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.support-stats-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .support-stats-focus-grid { grid-template-columns: 1fr; }
+}
+.support-stats-focus-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.support-stats-focus-card.bug { border-color: rgba(239, 68, 68, 0.28); }
+.support-stats-focus-card.error { border-color: rgba(249, 115, 22, 0.28); }
+.support-stats-focus-card.resolve { border-color: rgba(52, 211, 153, 0.28); }
+.support-stats-focus-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.support-stats-focus-top .focus-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.support-stats-focus-top .focus-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.support-stats-focus-card.bug .focus-value { color: #fca5a5; }
+.support-stats-focus-card.error .focus-value { color: #fdba74; }
+.support-stats-focus-card.resolve .focus-value { color: var(--ok); }
+.support-stats-focus-top .focus-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.support-stats-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.support-stats-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  min-width: 0;
+  transition: width .35s ease;
+}
+.support-stats-bar.bug > span { background: linear-gradient(90deg, #ef4444, #f87171); }
+.support-stats-bar.error > span { background: linear-gradient(90deg, #f97316, #fdba74); }
+.support-stats-bar.resolve > span { background: linear-gradient(90deg, #10b981, #34d399); }
+.support-stats-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 8px;
+}
+.support-stats-cat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+.support-stats-cat-item .cat-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.support-stats-cat-item .cat-count {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.support-stats-cat-item .cat-pct {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.support-stats-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 2px;
+}
 .support-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:center; }
 .support-filters select, .support-filters input { font-size:12px; padding:6px 8px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--surface-raised); color:var(--text); }
 .support-badge { font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px; }
@@ -3407,7 +3577,7 @@ select { cursor:default; }
 
       <!-- ════════ TICKETS SECTION ════════ -->
       <div class="section" id="sec-support">
-        <div id="supportTicketStats" class="support-ticket-stats"></div>
+        <div id="supportTicketStats"></div>
         <div class="support-layout">
           <div class="card" style="margin:0;display:flex;flex-direction:column;max-height:calc(100vh - 120px)">
             <div class="card-hdr">
@@ -4044,30 +4214,98 @@ async function loadSupportTicketStats() {
     const resolvePct = s.resolve_pct != null ? s.resolve_pct : 0;
     const bugErrorResolved = s.bug_error_resolved || 0;
     const bugErrorTotal = s.bug_error_total || 0;
-    const byCatPct = s.by_category_pct || {};
-    const parts = [
-      '<span class="support-ticket-stat ok">Bug/Error resolve: ' + resolvePct + '%<span class="stat-pct">(' + bugErrorResolved + '/' + bugErrorTotal + ')</span></span>',
-      '<span class="support-ticket-stat">Open: ' + (s.open || 0) + '</span>',
-      '<span class="support-ticket-stat">Pending: ' + (s.pending || 0) + '</span>',
-      '<span class="support-ticket-stat">Unassigned: ' + (s.unassigned || 0) + '</span>',
-      '<span class="support-ticket-stat warn">SLA overdue: ' + (s.sla_overdue || 0) + '</span>',
-      '<span class="support-ticket-stat">Closed today: ' + (s.closed_today || 0) + '</span>'
-    ];
-    if (s.sla_business_hours) {
-      parts.push('<span class="support-ticket-stat">SLA: business hours</span>');
-    }
     const byCat = s.by_category || {};
-    SUPPORT_CATEGORY_OPTIONS.forEach(function (c) {
-      const n = byCat[c.value];
-      if (n > 0) {
-        const pct = byCatPct[c.value];
-        const pctHtml = (c.value === 'bug' || c.value === 'error') && pct != null
-          ? ' <span class="stat-pct">(' + pct + '%)</span>'
+    const byCatPct = s.by_category_pct || {};
+    const bugCount = byCat.bug || 0;
+    const errorCount = byCat.error || 0;
+    const bugPct = byCatPct.bug || 0;
+    const errorPct = byCatPct.error || 0;
+
+    function supportStatsBar(kind, pct) {
+      const width = Math.max(0, Math.min(100, pct || 0));
+      return '<div class="support-stats-bar ' + kind + '"><span style="width:' + width + '%"></span></div>';
+    }
+
+    function supportStatsKpi(label, value, tone, sub) {
+      const toneCls = tone ? ' ' + tone : '';
+      const subHtml = sub ? '<div class="kpi-sub">' + sub + '</div>' : '';
+      return '<div class="support-stats-kpi' + toneCls + '"><div class="kpi-label">' + esc(label) + '</div><div class="kpi-value">' + value + '</div>' + subHtml + '</div>';
+    }
+
+    const queueRow = [
+      supportStatsKpi('Open', s.open || 0),
+      supportStatsKpi('Pending', s.pending || 0),
+      supportStatsKpi('Unassigned', s.unassigned || 0),
+      supportStatsKpi('SLA overdue', s.sla_overdue || 0, 'warn'),
+      supportStatsKpi('Closed today', s.closed_today || 0, 'ok')
+    ].join('');
+
+    const focusCards = [
+      '<div class="support-stats-focus-card resolve">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">Bug / Error resolve</div><div class="focus-meta">' + bugErrorResolved + ' of ' + bugErrorTotal + ' closed</div></div>',
+      '    <div class="focus-value">' + resolvePct + '%</div>',
+      '  </div>',
+      supportStatsBar('resolve', resolvePct),
+      '</div>',
+      '<div class="support-stats-focus-card bug">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('bug') + '</div><div class="focus-meta">Active queue share</div></div>',
+      '    <div><div class="focus-value">' + bugCount + '</div><div class="focus-meta" style="text-align:right">' + bugPct + '%</div></div>',
+      '  </div>',
+      supportStatsBar('bug', bugPct),
+      '</div>',
+      '<div class="support-stats-focus-card error">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">' + supportCategoryBadgeHtml('error') + '</div><div class="focus-meta">Active queue share</div></div>',
+      '    <div><div class="focus-value">' + errorCount + '</div><div class="focus-meta" style="text-align:right">' + errorPct + '%</div></div>',
+      '  </div>',
+      supportStatsBar('error', errorPct),
+      '</div>'
+    ].join('');
+
+    const catRows = SUPPORT_CATEGORY_OPTIONS
+      .map(function (c) {
+        const n = byCat[c.value] || 0;
+        return { cat: c, count: n, pct: byCatPct[c.value] || 0 };
+      })
+      .filter(function (row) { return row.count > 0; })
+      .sort(function (a, b) { return b.count - a.count; })
+      .map(function (row) {
+        const pctHtml = (row.cat.value === 'bug' || row.cat.value === 'error')
+          ? '<span class="cat-pct">' + row.pct + '%</span>'
           : '';
-        parts.push('<span class="support-ticket-stat">' + supportCategoryBadgeHtml(c.value) + ' ' + n + pctHtml + '</span>');
-      }
-    });
-    el.innerHTML = parts.join('');
+        return '<div class="support-stats-cat-item">' +
+          '<div class="cat-left">' + supportCategoryBadgeHtml(row.cat.value) + '</div>' +
+          '<span class="cat-count">' + row.count + '</span>' +
+          pctHtml +
+          '</div>';
+      });
+
+    const catGrid = catRows.length
+      ? catRows.join('')
+      : '<div class="support-stats-empty">No active tickets by category</div>';
+
+    const slaNote = s.sla_business_hours
+      ? '<div class="support-stats-empty" style="margin-top:8px">SLA measured in business hours</div>'
+      : '';
+
+    el.innerHTML =
+      '<div class="support-stats-panel">' +
+        '<div class="support-stats-section">' +
+          '<div class="support-stats-section-hdr">Queue overview</div>' +
+          '<div class="support-stats-kpi-row">' + queueRow + '</div>' +
+        '</div>' +
+        '<div class="support-stats-section focus">' +
+          '<div class="support-stats-section-hdr">Bug &amp; error metrics</div>' +
+          '<div class="support-stats-focus-grid">' + focusCards + '</div>' +
+        '</div>' +
+        '<div class="support-stats-section">' +
+          '<div class="support-stats-section-hdr">Active by category</div>' +
+          '<div class="support-stats-cat-grid">' + catGrid + '</div>' +
+          slaNote +
+        '</div>' +
+      '</div>';
   } catch (e) { el.innerHTML = ''; }
 }
 
