@@ -316,6 +316,7 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
     fid = _safe_file_id(file_id)
     sent = 0
     buf: list[str] = []
+    batches = 0
     for c in candles:
         ts_us = int(c["t"]) * 1000
         line = (
@@ -327,10 +328,14 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
         if len(buf) >= batch_size:
             _ilp_send(buf)
             sent += len(buf)
+            batches += 1
+            if batches % 20 == 0:
+                print(f"  … ILP sent {sent:,} rows to QuestDB", flush=True)
             buf = []
     if buf:
         _ilp_send(buf)
         sent += len(buf)
+    print(f"  ✅ ILP complete: {sent:,} rows sent", flush=True)
     return sent
 
 
@@ -377,23 +382,66 @@ def rebuild_aggregates(file_id: int) -> dict[str, int]:
     return counts
 
 
-def sync_file_candles(file_id: int, candles: list[dict]) -> dict[str, Any]:
-    """Full replace: delete existing rows, insert 1m, rebuild aggregates."""
+def _ingest_wait_timeout(expected: int) -> float:
+    if expected >= 2_000_000:
+        return 900.0
+    if expected >= 500_000:
+        return 600.0
+    if expected >= 50_000:
+        return 300.0
+    return 180.0
+
+
+def _should_rebuild_aggregates(explicit: bool | None) -> bool:
+    if explicit is not None:
+        return explicit
+    return os.getenv("QUESTDB_REBUILD_AGGREGATES", "false").lower() in ("1", "true", "yes")
+
+
+def sync_file_candles(
+    file_id: int,
+    candles: list[dict],
+    *,
+    rebuild_aggregates: bool | None = None,
+) -> dict[str, Any]:
+    """Full replace: delete existing rows, insert 1m; optional aggregate rebuild."""
+    do_rebuild = _should_rebuild_aggregates(rebuild_aggregates)
     delete_file_data(file_id)
     inserted = insert_1m_bars(file_id, candles)
-    _wait_1m_ingest_visible(file_id, len(candles))
-    agg = rebuild_aggregates(file_id)
-    return {"inserted_1m": inserted, "aggregates": agg}
+    _wait_1m_ingest_visible(
+        file_id,
+        len(candles),
+        timeout=_ingest_wait_timeout(len(candles)),
+    )
+    visible = count_bars(file_id, "ohlcv_1m")
+    agg: dict[str, int] = {}
+    if do_rebuild:
+        agg = rebuild_aggregates(file_id)
+    return {
+        "inserted_1m": inserted,
+        "visible_1m": visible,
+        "aggregates": agg,
+        "rebuild_aggregates": do_rebuild,
+    }
 
 
-def append_1m_bars(file_id: int, candles: list[dict]) -> dict[str, Any]:
-    """Append new 1m rows and rebuild aggregates for the file (incremental ingest)."""
+def append_1m_bars(
+    file_id: int,
+    candles: list[dict],
+    *,
+    rebuild_aggregates: bool | None = None,
+) -> dict[str, Any]:
+    """Append new 1m rows; optional aggregate rebuild."""
     if not candles:
         return {"appended": 0}
+    do_rebuild = _should_rebuild_aggregates(rebuild_aggregates)
     appended = insert_1m_bars(file_id, candles)
-    _wait_1m_ingest_visible(file_id, count_bars(file_id, "ohlcv_1m"))
-    agg = rebuild_aggregates(file_id)
-    return {"appended": appended, "aggregates": agg}
+    expected = count_bars(file_id, "ohlcv_1m")
+    _wait_1m_ingest_visible(file_id, expected, timeout=_ingest_wait_timeout(expected))
+    agg: dict[str, int] = {}
+    if do_rebuild:
+        agg = rebuild_aggregates(file_id)
+    return {"appended": appended, "visible_1m": count_bars(file_id, "ohlcv_1m"), "aggregates": agg}
 
 
 def _ms_to_questdb_ts(ms: int) -> str:

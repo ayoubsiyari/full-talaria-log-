@@ -12,7 +12,7 @@ Run from chart v 1.4/chart with DATABASE_URL + QuestDB env configured:
 
 Docker (Linux container — use python3, not Windows `py`):
 
-  docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py
+  docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py --file-id 22 --force
 
 Options:
   --dry-run       List files that would be synced
@@ -27,6 +27,11 @@ import argparse
 import os
 import sys
 import time
+import traceback
+
+# Avoid spawning binary/what-if background workers when importing api_server.
+os.environ.setdefault("APP_ROLE", "migrate")
+os.environ.setdefault("FIrstrate_SCHEDULE_DISABLE", "true")
 
 _CHART_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _CHART_DIR not in sys.path:
@@ -40,6 +45,9 @@ from api_server import (  # noqa: E402
 )
 import questdb_store  # noqa: E402
 
+# Large files: skip pre-agg rebuild (reads use runtime SAMPLE BY on ohlcv_1m).
+_PARTIAL_ROW_THRESHOLD = 50_000
+
 
 def sync_one(file_id: int, force: bool, dry_run: bool) -> dict:
     db = SessionLocal()
@@ -50,6 +58,13 @@ def sync_one(file_id: int, force: bool, dry_run: bool) -> dict:
 
         existing = questdb_store.count_bars(file_id) if questdb_store.questdb_enabled() else 0
         if existing > 0 and not force:
+            if existing < _PARTIAL_ROW_THRESHOLD:
+                return {
+                    "file_id": file_id,
+                    "status": "partial",
+                    "existing": existing,
+                    "hint": "Re-run with --force to replace corrupt partial data",
+                }
             return {"file_id": file_id, "status": "skipped", "existing": existing}
 
         csv_path = _resolve_dataset_csv_for_file(db_file)
@@ -60,18 +75,42 @@ def sync_one(file_id: int, force: bool, dry_run: bool) -> dict:
             return {"file_id": file_id, "status": "would_sync", "csv": str(csv_path)}
 
         t0 = time.monotonic()
+        print(f"📂 Parsing CSV for file {file_id} ({db_file.original_name}) …", flush=True)
         candles = _parse_candles_from_csv(csv_path, original_name=db_file.original_name)
         if not candles:
             return {"file_id": file_id, "status": "empty_csv"}
 
-        result = questdb_store.sync_file_candles(file_id, candles)
+        print(f"📤 Syncing {len(candles):,} candles to QuestDB (1m only, no pre-agg rebuild) …", flush=True)
+        result = questdb_store.sync_file_candles(
+            file_id,
+            candles,
+            rebuild_aggregates=False,
+        )
         elapsed = round(time.monotonic() - t0, 2)
+        visible = int(result.get("visible_1m") or 0)
+        if visible < max(1000, int(len(candles) * 0.99)):
+            return {
+                "file_id": file_id,
+                "status": "incomplete",
+                "rows_1m": len(candles),
+                "visible_1m": visible,
+                "elapsed_sec": elapsed,
+                **result,
+                "hint": "QuestDB ILP did not commit full row count — check questdb logs / disk / OOM",
+            }
         return {
             "file_id": file_id,
             "status": "synced",
             "rows_1m": len(candles),
             "elapsed_sec": elapsed,
             **result,
+        }
+    except Exception as exc:
+        return {
+            "file_id": file_id,
+            "status": "error",
+            "error": str(exc)[:500],
+            "traceback": traceback.format_exc()[-2000:],
         }
     finally:
         db.close()
@@ -93,8 +132,8 @@ def main() -> int:
 
     if args.file_id:
         out = sync_one(args.file_id, args.force, args.dry_run)
-        print(out)
-        return 0 if out.get("status") not in ("not_found", "csv_missing", "empty_csv") else 1
+        print(out, flush=True)
+        return 0 if out.get("status") == "synced" else 1
 
     db = SessionLocal()
     try:
@@ -110,7 +149,7 @@ def main() -> int:
     failed = 0
     for f in files:
         out = sync_one(int(f.id), args.force, args.dry_run)
-        print(out)
+        print(out, flush=True)
         st = out.get("status")
         if st in ("synced", "would_sync"):
             ok += 1
@@ -119,7 +158,7 @@ def main() -> int:
         else:
             failed += 1
 
-    print(f"done synced={ok} skipped={skipped} failed={failed} dry_run={args.dry_run}")
+    print(f"done synced={ok} skipped={skipped} failed={failed} dry_run={args.dry_run}", flush=True)
     return 0 if failed == 0 else 1
 
 
