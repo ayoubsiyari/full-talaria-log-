@@ -80,7 +80,7 @@ def sync_one(file_id: int, force: bool, dry_run: bool) -> dict:
         if not candles:
             return {"file_id": file_id, "status": "empty_csv"}
 
-        print(f"📤 Syncing {len(candles):,} candles to QuestDB (1m only, no pre-agg rebuild) …", flush=True)
+        print(f"📤 Syncing {len(candles):,} candles to QuestDB via PG wire (1m only) …", flush=True)
         result = questdb_store.sync_file_candles(
             file_id,
             candles,

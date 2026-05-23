@@ -242,6 +242,11 @@ def dataset_stats(file_id: int) -> dict[str, Any]:
     """Row counts per table + whether pre-aggregates look incomplete."""
     ensure_schema()
     stats: dict[str, Any] = {"file_id": file_id, "tables": {}, "preagg_incomplete": {}}
+    try:
+        total_row = _fetch_one("SELECT count() FROM ohlcv_1m", ())
+        stats["ohlcv_1m_total"] = int(total_row[0]) if total_row else 0
+    except Exception:
+        stats["ohlcv_1m_total"] = None
     for table in OHLCV_TABLES:
         n = count_bars(file_id, table)
         stats["tables"][table] = n
@@ -287,37 +292,28 @@ def _ilp_send(lines: list[str]) -> None:
     with socket.create_connection((host, port), timeout=120) as sock:
         sock.sendall(payload)
         sock.shutdown(socket.SHUT_WR)
-        sock.settimeout(5)
+        sock.settimeout(30)
+        chunks: list[bytes] = []
         try:
-            sock.recv(4096)
+            while True:
+                part = sock.recv(65536)
+                if not part:
+                    break
+                chunks.append(part)
         except socket.timeout:
             pass
-
-
-def _wait_1m_ingest_visible(file_id: int, expected: int, timeout: float = 180.0) -> None:
-    """Poll until ILP-written 1m rows are visible via PG (aggregate rebuild needs this)."""
-    if expected <= 0:
+    if not chunks:
         return
-    deadline = time.monotonic() + timeout
-    target = max(1, int(expected * 0.995))
-    last_log = 0.0
-    while time.monotonic() < deadline:
-        visible = count_bars(file_id, "ohlcv_1m")
-        if visible >= target:
-            print(f"  ✅ QuestDB visible: {visible:,} / {expected:,} rows", flush=True)
-            time.sleep(0.25)
-            return
-        now = time.monotonic()
-        if now - last_log >= 15.0:
-            print(f"  … waiting for ILP flush: {visible:,} / {target:,} visible", flush=True)
-            last_log = now
-        time.sleep(0.5)
-    visible = count_bars(file_id, "ohlcv_1m")
-    print(f"  ⚠️ ILP flush timeout: {visible:,} / {target:,} visible after {int(timeout)}s", flush=True)
+    resp = b"".join(chunks).decode("utf-8", errors="replace").strip()
+    if not resp:
+        return
+    lower = resp.lower()
+    if "err" in lower or "could not parse" in lower or "ioexception" in lower:
+        raise RuntimeError(f"QuestDB ILP rejected batch: {resp[:800]}")
 
 
-def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) -> int:
-    """Bulk insert 1m candles via ILP. Returns rows sent."""
+def insert_1m_bars_ilp(file_id: int, candles: list[dict], batch_size: int = 5000) -> int:
+    """Incremental/small inserts via ILP (nanosecond designated timestamps)."""
     ensure_schema()
     if not candles:
         return 0
@@ -326,11 +322,12 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
     buf: list[str] = []
     batches = 0
     for c in candles:
-        ts_us = int(c["t"]) * 1000
+        # QuestDB ILP designated timestamp defaults to nanoseconds.
+        ts_ns = int(c["t"]) * 1_000_000
         line = (
             f"ohlcv_1m,file_id={fid} "
             f"o={float(c['o'])},h={float(c['h'])},l={float(c['l'])},"
-            f"c={float(c['c'])},v={float(c.get('v') or 0)} {ts_us}\n"
+            f"c={float(c['c'])},v={float(c.get('v') or 0)} {ts_ns}\n"
         )
         buf.append(line)
         if len(buf) >= batch_size:
@@ -345,6 +342,77 @@ def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) ->
         sent += len(buf)
     print(f"  ✅ ILP complete: {sent:,} rows sent", flush=True)
     return sent
+
+
+def insert_1m_bars_pg(file_id: int, candles: list[dict], batch_size: int = 2000) -> int:
+    """Bulk insert via PG wire — reliable for multi-million-row backfills."""
+    ensure_schema()
+    if not candles:
+        return 0
+    fid = _safe_file_id(file_id)
+    batch_size = max(100, min(int(batch_size), 5000))
+    inserted = 0
+    with _pg_conn() as conn:
+        with conn.cursor() as cur:
+            for i in range(0, len(candles), batch_size):
+                batch = candles[i : i + batch_size]
+                placeholders: list[str] = []
+                params: list[Any] = []
+                for c in batch:
+                    placeholders.append("(%s, %s, %s, %s, %s, %s, %s)")
+                    params.extend(
+                        [
+                            fid,
+                            _ms_to_questdb_ts(int(c["t"])),
+                            float(c["o"]),
+                            float(c["h"]),
+                            float(c["l"]),
+                            float(c["c"]),
+                            float(c.get("v") or 0),
+                        ]
+                    )
+                sql = (
+                    "INSERT INTO ohlcv_1m (file_id, ts, o, h, l, c, v) VALUES "
+                    + ",".join(placeholders)
+                )
+                cur.execute(sql, tuple(params))
+                inserted += len(batch)
+                if (i // batch_size) % 25 == 0 and i > 0:
+                    print(f"  … PG inserted {inserted:,} rows", flush=True)
+    print(f"  ✅ PG insert complete: {inserted:,} rows", flush=True)
+    return inserted
+
+
+def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) -> int:
+    """Route large backfills to PG wire; small incremental appends use ILP."""
+    mode = (os.getenv("QUESTDB_INGEST_MODE") or "auto").strip().lower()
+    if mode == "ilp":
+        return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
+    if mode == "pg" or (mode == "auto" and len(candles) >= 10_000):
+        return insert_1m_bars_pg(file_id, candles, batch_size=min(batch_size, 2000))
+    return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
+
+
+def _wait_1m_ingest_visible(file_id: int, expected: int, timeout: float = 180.0) -> None:
+    """Poll until written 1m rows are visible via PG."""
+    if expected <= 0:
+        return
+    deadline = time.monotonic() + timeout
+    target = max(1, int(expected * 0.995))
+    last_log = 0.0
+    while time.monotonic() < deadline:
+        visible = count_bars(file_id, "ohlcv_1m")
+        if visible >= target:
+            print(f"  ✅ QuestDB visible: {visible:,} / {expected:,} rows", flush=True)
+            time.sleep(0.25)
+            return
+        now = time.monotonic()
+        if now - last_log >= 15.0:
+            print(f"  … waiting for ingest flush: {visible:,} / {target:,} visible", flush=True)
+            last_log = now
+        time.sleep(0.5)
+    visible = count_bars(file_id, "ohlcv_1m")
+    print(f"  ⚠️ Ingest flush timeout: {visible:,} / {target:,} visible after {int(timeout)}s", flush=True)
 
 
 def _rebuild_aggregate_table_for_file(table: str, sample: str, fid: str) -> None:
