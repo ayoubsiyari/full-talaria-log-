@@ -14,6 +14,9 @@ class ReplaySystem {
         this.fullRawData = null;
         this.fullData = null;
         this.rawTimeframe = '1m';
+        /** Finest loaded series for playhead/index; display TF resamples from a slice of this. */
+        this._masterFineRawData = null;
+        this._masterFineRawTf = null;
         this._fullRawDataMatchesTF = false;
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
@@ -103,6 +106,78 @@ class ReplaySystem {
         this._goBackEntries = null;
 
         this.init();
+    }
+
+    _parseTfMs(tf) {
+        const chart = this.chart;
+        if (!chart || typeof chart.parseTimeframe !== 'function') return NaN;
+        return chart.parseTimeframe(tf);
+    }
+
+    _updateMasterFineRawData(data, tf) {
+        if (!Array.isArray(data) || !data.length || !tf) return;
+        const newMs = this._parseTfMs(tf);
+        if (!Number.isFinite(newMs) || newMs <= 0) return;
+        const curMs = this._masterFineRawTf ? this._parseTfMs(this._masterFineRawTf) : NaN;
+        if (!Array.isArray(this._masterFineRawData) || !this._masterFineRawData.length
+            || !Number.isFinite(curMs) || curMs <= 0 || newMs < curMs * 0.92) {
+            this._masterFineRawData = data.slice();
+            this._masterFineRawTf = String(tf).toLowerCase().trim();
+        }
+    }
+
+    /** Re-anchor playhead index from wall-clock replay time (stable across TF switches). */
+    syncCurrentIndexFromReplayTimestamp(ts) {
+        if (!Number.isFinite(ts) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
+            return false;
+        }
+        this.replayTimestamp = ts;
+        const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
+        const floor = this.sessionStartIndex || 0;
+        if (hit >= floor) {
+            this.currentIndex = hit;
+            return true;
+        }
+        if (hit >= 0) {
+            this.currentIndex = floor;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * After a TF hot-swap fetch: keep fine master for playhead when zooming out;
+     * replace master when zooming in to a finer native series.
+     */
+    applyHotSwapFetchedRawData(fetchedRawData, fetchedTf, savedReplayTimestamp) {
+        if (!Array.isArray(fetchedRawData) || !fetchedRawData.length) return;
+        const tf = String(fetchedTf || '1m').toLowerCase().trim();
+        const incomingMs = this._parseTfMs(tf);
+        const masterTf = this._masterFineRawTf || this.rawTimeframe || tf;
+        const masterMs = this._parseTfMs(masterTf);
+        const hasMaster = Array.isArray(this._masterFineRawData) && this._masterFineRawData.length > 0;
+        const fetchedIsFiner = Number.isFinite(incomingMs) && incomingMs > 0
+            && Number.isFinite(masterMs) && masterMs > 0
+            && incomingMs < masterMs * 0.92;
+
+        if (fetchedIsFiner || !hasMaster) {
+            this._masterFineRawData = fetchedRawData.slice();
+            this._masterFineRawTf = tf;
+            this.fullRawData = this._masterFineRawData;
+            this.rawTimeframe = tf;
+        } else if (hasMaster && Number.isFinite(incomingMs) && incomingMs > masterMs * 0.92) {
+            this.fullRawData = this._masterFineRawData;
+            this.rawTimeframe = this._masterFineRawTf;
+        } else {
+            this.fullRawData = fetchedRawData.slice();
+            this.rawTimeframe = tf;
+            this._updateMasterFineRawData(fetchedRawData, tf);
+        }
+        this._fullRawDataMatchesTF = false;
+
+        if (Number.isFinite(savedReplayTimestamp)) {
+            this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+        }
     }
 
     applyPersistedState(state) {
@@ -1650,6 +1725,7 @@ class ReplaySystem {
         this.fullRawData = [...this.chart.rawData];
         this.fullData = [...this.chart.data];
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
+        this._updateMasterFineRawData(this.fullRawData, this.rawTimeframe);
         this._fullRawDataMatchesTF = false;
         
         // Set current index and initialize virtual timestamp (cannot roll before session floor)
@@ -2223,6 +2299,7 @@ class ReplaySystem {
         this.fullRawData = [...this.chart.rawData];
         this.fullData = [...this.chart.data];
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
+        this._updateMasterFineRawData(this.fullRawData, this.rawTimeframe);
         this._fullRawDataMatchesTF = false;
         
         // === INITIALIZE VIRTUAL TIMESTAMP TRACKING ===
@@ -5288,6 +5365,10 @@ class ReplaySystem {
         } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
+
+        if (Number.isFinite(savedReplayTimestamp)) {
+            this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+        }
         
         // Update chart data with current position (client-side resample)
         this.updateChartData(false);
@@ -5305,15 +5386,17 @@ class ReplaySystem {
         
         // Restore view position and state after a short delay
         setTimeout(() => {
-            // Restore exact position
-            this.currentIndex = savedCurrentIndex;
             if (Number.isFinite(savedReplayTimestamp)) {
-                this.replayTimestamp = savedReplayTimestamp;
-            } else if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+            } else {
+                this.currentIndex = savedCurrentIndex;
+                if (this.fullRawData[this.currentIndex]) {
+                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                }
             }
             this.tickProgress = savedTickProgress;
             this.tickElapsedMs = savedTickElapsedMs;
+            this.updateChartData(false);
             
             // Find containing candle in resampled data (last candle with t <= replay ts)
             // so timeframe switches never jump to a future candle.
