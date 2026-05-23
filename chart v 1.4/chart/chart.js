@@ -2943,8 +2943,12 @@ class Chart {
             try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
         }
 
-        if (typeof replay.syncReplayViewportToPlayhead === 'function' && replay.autoScrollEnabled !== false) {
-            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, {
+                resetPriceScale: true,
+                render: true,
+                centerPlayhead: true,
+            });
         }
 
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -14017,9 +14021,12 @@ class Chart {
     _snapReplayViewportAfterTfSwitch(replay, options = {}) {
         if (!replay || !replay.isActive) return;
 
-        if (replay.autoScrollEnabled !== false
-            && typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, {
+                resetPriceScale: true,
+                render: false,
+                centerPlayhead: true,
+            });
         }
 
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
@@ -25137,7 +25144,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a55';
+    window.TALARIA_CHART_BUILD = '20260522a56';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

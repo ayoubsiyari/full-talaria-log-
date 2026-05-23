@@ -2402,14 +2402,70 @@ class ReplaySystem {
     }
 
     /**
+     * TradingView-style: place the replay playhead candle at horizontal center of the plot area.
+     * Used on timeframe switch only — playback follow still uses getReplayAutoScrollState().
+     */
+    getReplayCenterPlayheadOffset(chartInstance = this.chart) {
+        if (!chartInstance || !Array.isArray(chartInstance.data) || !chartInstance.data.length) {
+            return null;
+        }
+
+        const candleSpacing = chartInstance.getCandleSpacing
+            ? chartInstance.getCandleSpacing()
+            : (chartInstance.candleWidth + (chartInstance.candleGap || 2));
+        if (!Number.isFinite(candleSpacing) || candleSpacing <= 0) return null;
+
+        let effectiveW = Number(chartInstance.w) || 0;
+        if (effectiveW < 80) {
+            try {
+                const canvas = chartInstance.canvas;
+                const el = canvas && canvas.parentElement;
+                const rw = el ? el.getBoundingClientRect().width : 0;
+                if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+            } catch (_e) { /* ignore */ }
+        }
+        if (effectiveW < 80) effectiveW = 320;
+
+        const m = chartInstance.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, effectiveW - (m.l || 0) - (m.r || 0));
+        const centerX = (m.l || 0) + plotW / 2;
+
+        const replayTs = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : (this.fullRawData && typeof this.currentIndex === 'number'
+                ? this.fullRawData[this.currentIndex]?.t
+                : null);
+
+        let targetViewIndex = chartInstance.data.length - 1;
+        for (let i = 0; i < chartInstance.data.length; i++) {
+            if (replayTs == null || chartInstance.data[i].t <= replayTs) {
+                targetViewIndex = i;
+            } else {
+                break;
+            }
+        }
+
+        return centerX - (targetViewIndex * candleSpacing) - candleSpacing / 2;
+    }
+
+    /**
      * Align chart viewport to the replay playhead (right edge). Used after backtest TF refetch
      * and when starting playback so Y-axis auto-scale frames the playhead, not full 1D history.
+     * Pass opts.centerPlayhead=true on timeframe switch to center the playhead (TradingView-style).
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
-        const st = this.getReplayAutoScrollState(chartInstance);
-        if (!st || !Number.isFinite(st.offsetX)) return false;
-        chartInstance.offsetX = st.offsetX;
+
+        let offsetX = null;
+        if (opts.centerPlayhead) {
+            offsetX = this.getReplayCenterPlayheadOffset(chartInstance);
+        } else {
+            const st = this.getReplayAutoScrollState(chartInstance);
+            if (st && Number.isFinite(st.offsetX)) offsetX = st.offsetX;
+        }
+        if (!Number.isFinite(offsetX)) return false;
+
+        chartInstance.offsetX = offsetX;
         if (opts.resetPriceScale !== false) {
             chartInstance.autoScale = true;
             chartInstance.priceOffset = 0;
@@ -5267,18 +5323,15 @@ class ReplaySystem {
                 }
             }
             
-            // Position view — align with replay follow viewport (same as updateChartData), not dead-center,
-            // so 1h/daily switches do not shove the playhead off-screen or rubber-band jump.
+            // TradingView-style: center playhead on every timeframe switch.
             const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
                 (this.chart.candleWidth + (this.chart.candleGap || 2));
-            if (this.autoScrollEnabled) {
-                const st = this.getReplayAutoScrollState(this.chart);
-                if (st) {
-                    this.chart.offsetX = st.offsetX;
-                } else {
-                    this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
-                }
-            } else {
+            const centeredOffset = typeof this.getReplayCenterPlayheadOffset === 'function'
+                ? this.getReplayCenterPlayheadOffset(this.chart)
+                : null;
+            if (Number.isFinite(centeredOffset)) {
+                this.chart.offsetX = centeredOffset;
+            } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
                 this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
             }
             this.chart.priceOffset = savedPriceOffset;
