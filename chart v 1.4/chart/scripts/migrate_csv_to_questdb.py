@@ -14,6 +14,9 @@ Docker (Linux container — use python3, not Windows `py`):
 
   docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py --file-id 22 --force
 
+Note: bulk sync uses QuestDB ILP (not PG wire) so historical rows can load while other
+file_ids already exist in ohlcv_1m. PG-only mode fails with "out of order" on 2nd+ pairs.
+
 Options:
   --dry-run       List files that would be synced
   --force         Re-sync even when QuestDB already has rows

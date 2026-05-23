@@ -264,6 +264,17 @@ def _sample_for_resolution(resolution: str) -> str | None:
     return AGG_SAMPLE_BY.get(table)
 
 
+def _sort_dedupe_candles(candles: list[dict]) -> list[dict]:
+    """Ensure ascending unique timestamps (QuestDB ingest requirement)."""
+    if not candles:
+        return []
+    by_t: dict[int, dict] = {}
+    for c in candles:
+        t = int(c["t"])
+        by_t[t] = c
+    return [by_t[k] for k in sorted(by_t)]
+
+
 def _rows_to_bars(rows: list) -> list[dict]:
     out: list[dict] = []
     for ts, o, h, l, c, v in rows:
@@ -384,12 +395,28 @@ def insert_1m_bars_pg(file_id: int, candles: list[dict], batch_size: int = 2000)
 
 
 def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) -> int:
-    """Route large backfills to PG wire; small incremental appends use ILP."""
+    """
+    Bulk backfills use ILP (out-of-order safe when other file_ids already exist).
+    PG wire rejects timestamps earlier than the table high-water mark — only safe on
+    an empty table or strictly append-newer tail rows.
+    """
+    candles = _sort_dedupe_candles(candles)
+    if not candles:
+        return 0
     mode = (os.getenv("QUESTDB_INGEST_MODE") or "auto").strip().lower()
+    if mode == "pg":
+        try:
+            return insert_1m_bars_pg(file_id, candles, batch_size=min(batch_size, 2000))
+        except Exception as exc:
+            if "out of order" not in str(exc).lower():
+                raise
+            print("  ⚠️ PG insert out-of-order — retrying via ILP", flush=True)
+            return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
     if mode == "ilp":
         return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
-    if mode == "pg" or (mode == "auto" and len(candles) >= 10_000):
-        return insert_1m_bars_pg(file_id, candles, batch_size=min(batch_size, 2000))
+    # auto: ILP for all non-trivial loads (multi-dataset VPS always has other file_ids)
+    if len(candles) >= 100:
+        return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
     return insert_1m_bars_ilp(file_id, candles, batch_size=batch_size)
 
 
@@ -481,6 +508,7 @@ def sync_file_candles(
     rebuild_agg: bool | None = None,
 ) -> dict[str, Any]:
     """Full replace: delete existing rows, insert 1m; optional aggregate rebuild."""
+    candles = _sort_dedupe_candles(candles)
     do_rebuild = _should_rebuild_aggregates(rebuild_agg)
     delete_file_data(file_id)
     inserted = insert_1m_bars(file_id, candles)
@@ -508,6 +536,7 @@ def append_1m_bars(
     rebuild_agg: bool | None = None,
 ) -> dict[str, Any]:
     """Append new 1m rows; optional aggregate rebuild."""
+    candles = _sort_dedupe_candles(candles)
     if not candles:
         return {"appended": 0}
     do_rebuild = _should_rebuild_aggregates(rebuild_agg)
