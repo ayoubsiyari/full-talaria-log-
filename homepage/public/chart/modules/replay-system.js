@@ -21,6 +21,7 @@ class ReplaySystem {
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
         this.replayTimestamp = null;      // Current virtual replay time (milliseconds)
+        this.replayPlayheadPrice = null;  // Wall-clock price at playhead (preserved across TF switches)
         this.replayStartTimestamp = null; // Starting timestamp of replay data
         this.replayEndTimestamp = null;   // Ending timestamp of replay data
         this.sessionStartIndex = 0;      // Minimum index the user can roll back to (backtest range floor)
@@ -157,7 +158,17 @@ class ReplaySystem {
             if (idx !== null) {
                 const persistMinIdx = this.sessionStartIndex || 0;
                 this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
-                this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
+                const wallTs = (typeof state.replayTimestamp === 'number' && Number.isFinite(state.replayTimestamp))
+                    ? state.replayTimestamp
+                    : (typeof state.replayTimestamp === 'string' ? Number(state.replayTimestamp) : NaN);
+                if (Number.isFinite(wallTs)) {
+                    this.replayTimestamp = wallTs;
+                } else {
+                    this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
+                }
+                if (Number.isFinite(state.replayPlayheadPrice)) {
+                    this.replayPlayheadPrice = state.replayPlayheadPrice;
+                }
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
                 if (typeof state.playbackMode === 'string') {
@@ -2512,7 +2523,9 @@ class ReplaySystem {
         if (!midTickAnimation) {
             const curBar = this.fullRawData[this.currentIndex];
             if (curBar && Number.isFinite(curBar.t)) {
-                this.replayTimestamp = curBar.t;
+                if (!Number.isFinite(this.replayTimestamp)) {
+                    this.replayTimestamp = curBar.t;
+                }
             }
         }
 
@@ -2537,6 +2550,10 @@ class ReplaySystem {
         } catch (error) {
             console.error('❌ Error resampling data:', error);
             return;
+        }
+
+        if (typeof this.chart._syncReplayFormingDisplayCandle === 'function') {
+            try { this.chart._syncReplayFormingDisplayCandle(); } catch (_) {}
         }
         
         // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
@@ -3862,6 +3879,8 @@ class ReplaySystem {
     getCurrentAnimatedPrice() {
         if (!this.fullRawData || this.fullRawData.length === 0) return null;
 
+        let price = null;
+
         if (this.animatingCandle) {
             if (this.tickProgress > 0) {
                 if (!this.animatingCandle.cachedPath) {
@@ -3869,22 +3888,30 @@ class ReplaySystem {
                 }
                 const path = this.animatingCandle.cachedPath;
                 const pathIndex = Math.min(Math.max(0, this.tickProgress - 1), path.length - 1);
-                const price = path[pathIndex];
-                if (Number.isFinite(price)) return price;
-                if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
+                price = path[pathIndex];
+                if (!Number.isFinite(price) && Number.isFinite(this.animatingCandle.close)) {
+                    price = this.animatingCandle.close;
+                }
+            } else if (!this.isPlaying && Number.isFinite(this.animatingCandle.close)) {
+                price = this.animatingCandle.close;
+            } else {
+                const openPx = Number.parseFloat(this.animatingCandle.open);
+                if (Number.isFinite(openPx)) price = openPx;
             }
-            // When paused mid-candle, tickProgress is 0 but animatingCandle.close
-            // holds the last animated price. Use it instead of snapping to open.
-            if (!this.isPlaying && Number.isFinite(this.animatingCandle.close)) {
-                return this.animatingCandle.close;
-            }
-            const openPx = Number.parseFloat(this.animatingCandle.open);
-            if (Number.isFinite(openPx)) return openPx;
         }
 
-        // Fallback when no intra-candle animation is available.
-        const currentRaw = this.fullRawData[this.currentIndex];
-        return currentRaw ? currentRaw.c : null;
+        if (!Number.isFinite(price) && Number.isFinite(this.replayPlayheadPrice)) {
+            price = this.replayPlayheadPrice;
+        }
+        if (!Number.isFinite(price)) {
+            const currentRaw = this.fullRawData[this.currentIndex];
+            price = currentRaw ? currentRaw.c : null;
+        }
+
+        if (Number.isFinite(price)) {
+            this.replayPlayheadPrice = price;
+        }
+        return Number.isFinite(price) ? price : null;
     }
     
     /**
@@ -4131,6 +4158,10 @@ class ReplaySystem {
             last.v = animatedCandle.v;
         } else {
             this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
+        }
+
+        if (typeof this.chart._syncReplayFormingDisplayCandle === 'function') {
+            try { this.chart._syncReplayFormingDisplayCandle(); } catch (_) {}
         }
 
         if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
