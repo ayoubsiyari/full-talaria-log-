@@ -81,6 +81,19 @@ def main() -> int:
     stats = questdb_store.dataset_stats(args.file_id)
     print(json.dumps(stats, indent=2))
 
+    n1m = stats.get("tables", {}).get("ohlcv_1m", 0)
+    if n1m == 0:
+        print(
+            "\n⚠️  No 1m rows in QuestDB for this file — chart reads will be empty until you re-sync.\n"
+            "Re-import from CSV (file 22 ≈ 6M rows, ~1–2 min):\n"
+            f"  docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py --file-id {args.file_id}\n"
+            "Or all datasets:\n"
+            "  docker compose exec trading-chart-worker python3 scripts/migrate_csv_to_questdb.py\n"
+            "Until sync finishes, keep QUESTDB_TILES_FALLBACK=true so /bars falls back to tiles.\n"
+        )
+        if not args.probe and not args.rebuild_aggregates:
+            return 3
+
     if args.rebuild_aggregates:
         print(f"\nRebuilding aggregates for file {args.file_id} …")
         t0 = time.monotonic()

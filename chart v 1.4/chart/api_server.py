@@ -6911,7 +6911,9 @@ def _dataset_overview_entry(
         # downgrade healthy datasets to "building" in the admin overview.
         health = "healthy" if chart_complete else "building"
     elif latest_job and job_status == "failed":
-        health = "failed"
+        # Binaries/tiles can be 9/9 ready while QuestDB sync alone failed — don't show
+        # "Build failed" when the chart path is actually usable (tiles fallback).
+        health = "failed" if not chart_complete else "healthy"
     elif not ok:
         health = "integrity_issues"
     elif chart_complete:
@@ -6986,7 +6988,9 @@ def _dataset_file_health_for_session(
     if job_status in {"queued", "processing"}:
         health = "healthy" if chart_complete else "building"
     elif latest_job and job_status == "failed":
-        health = "failed"
+        # Binaries/tiles can be 9/9 ready while QuestDB sync alone failed — don't show
+        # "Build failed" when the chart path is actually usable (tiles fallback).
+        health = "failed" if not chart_complete else "healthy"
     elif not ok:
         health = "integrity_issues"
     elif chart_complete:
@@ -7272,8 +7276,13 @@ def build_binary_for_file(
                     qsync = questdb_store.sync_file_candles(file_id, candles)
                     print(f"  ✅ QuestDB: {qsync.get('inserted_1m', 0)} 1m rows synced")
                 except Exception as qexc:
-                    all_ok = False
                     print(f"  ⚠️ QuestDB sync failed for file {file_id}: {qexc}")
+                    # Only fail the whole build when QuestDB is the sole read path.
+                    if (
+                        questdb_store.questdb_read_primary()
+                        and not questdb_store.questdb_tiles_fallback()
+                    ):
+                        all_ok = False
 
             skip_tiles = (
                 questdb_store.questdb_enabled()
