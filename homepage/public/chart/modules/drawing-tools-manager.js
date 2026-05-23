@@ -793,39 +793,45 @@ class DrawingToolsManager {
         this._drawingsLoaded = false;
         this.loadDrawings();
         
-        // Listen for timeframe changes AND initial data load to refresh drawings
-        let lastTimeframe = this.chart.currentTimeframe;
+        // Listen for timeframe / data changes to refresh drawings after viewport settles
+        this._drawingsRefreshTimeframe = this.chart.currentTimeframe;
         window.__drawingToolsChartDataLoadedListeners = window.__drawingToolsChartDataLoadedListeners || {};
         const prevListener = window.__drawingToolsChartDataLoadedListeners[this._instanceKey];
         if (prevListener) {
             window.removeEventListener('chartDataLoaded', prevListener);
+        }
+        window.__drawingToolsTimeframeChangedListeners = window.__drawingToolsTimeframeChangedListeners || {};
+        const prevTfListener = window.__drawingToolsTimeframeChangedListeners[this._instanceKey];
+        if (prevTfListener) {
+            window.removeEventListener('timeframeChanged', prevTfListener);
         }
         this._chartDataLoadedListener = (event) => {
             const newTimeframe = event.detail?.timeframe;
 
             // If drawings were not loaded yet (chart had no data during init), load them now
             if (!this._drawingsLoaded) {
-                // [debug removed]
                 requestAnimationFrame(() => this.loadDrawings());
                 return;
             }
 
-            if (newTimeframe && newTimeframe !== lastTimeframe) {
-                // [debug removed]
-                lastTimeframe = newTimeframe;
-                
-                // Refresh drawings after a small delay to ensure data is resampled
-                requestAnimationFrame(() => {
-                    if (this.drawings.length > 0) {
-                        // [debug removed]
-                        this.refreshDrawingsForTimeframe();
-                        this.saveDrawings();
-                    }
-                });
+            if (newTimeframe && newTimeframe !== this._drawingsRefreshTimeframe) {
+                this._drawingsRefreshTimeframe = newTimeframe;
+                this.scheduleRefreshAfterTimeframe();
             }
         };
+        this._timeframeChangedListener = (event) => {
+            const chart = event.detail?.chart;
+            if (chart && chart !== this.chart) return;
+            const newTimeframe = event.detail?.timeframe;
+            if (!newTimeframe || newTimeframe === this._drawingsRefreshTimeframe) return;
+            if (!this._drawingsLoaded) return;
+            this._drawingsRefreshTimeframe = newTimeframe;
+            this.scheduleRefreshAfterTimeframe();
+        };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;
+        window.__drawingToolsTimeframeChangedListeners[this._instanceKey] = this._timeframeChangedListener;
         window.addEventListener('chartDataLoaded', this._chartDataLoadedListener);
+        window.addEventListener('timeframeChanged', this._timeframeChangedListener);
         
         // Initialize undo/redo manager
         if (typeof UndoRedoManager !== 'undefined') {
@@ -8731,6 +8737,49 @@ class DrawingToolsManager {
     }
 
     /**
+     * Defer timestamp→index refresh until TF switch, replay resample, and viewport
+     * centering are complete (avoids one-frame glitches during backtest TF hot-swap).
+     */
+    scheduleRefreshAfterTimeframe(options = {}) {
+        if (this._tfDrawingsRefreshToken) {
+            cancelAnimationFrame(this._tfDrawingsRefreshToken);
+            this._tfDrawingsRefreshToken = null;
+        }
+        const maxAttempts = Number.isFinite(options.maxAttempts) ? options.maxAttempts : 120;
+        let attempts = 0;
+        const tick = () => {
+            attempts += 1;
+            const chart = this.chart;
+            if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) {
+                if (attempts < maxAttempts) {
+                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                }
+                return;
+            }
+            if (chart._timeframeSwitching
+                || (chart.replaySystem && chart.replaySystem._timeframeChanging)) {
+                if (attempts < maxAttempts) {
+                    this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+                }
+                return;
+            }
+            this._tfDrawingsRefreshToken = null;
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (this.drawings.length > 0) {
+                        this.refreshDrawingsForTimeframe();
+                        this.saveDrawings();
+                    }
+                    if (chart.currentTimeframe) {
+                        this._drawingsRefreshTimeframe = chart.currentTimeframe;
+                    }
+                });
+            });
+        };
+        this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+    }
+
+    /**
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
@@ -8739,34 +8788,19 @@ class DrawingToolsManager {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
         }
-        
-        // [debug removed]
-        // [debug removed]
-        
-        // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-        // This ensures drawings with timestamps beyond current replay position are handled correctly
-        const replaySystem = this.chart.replaySystem;
-        const isReplayActive = replaySystem && replaySystem.isActive;
-        let conversionData = this.chart.data;
-        
-        if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-            // In replay mode, resample the FULL dataset to current timeframe
-            // This gives us all candles needed for timestamp lookup
-            try {
-                const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                conversionData = fullResampled;
-                // [debug removed]
-            } catch (error) {
-                console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-            }
-        }
-        
+
+        // Must match chart.data — the same series dataIndexToPixel/xScale use. Backtest loads
+        // bounded windows around the playhead; converting against fullRawData resample puts
+        // indices in the wrong coordinate space and shapes jump or break on TF switch.
+        const conversionData = this.chart.data;
+        const timeframe = this.chart.currentTimeframe;
+
         // Instead of destroying and recreating, just update the points
         this.drawings.forEach((drawing, index) => {
             // Use the STORED timestamps (not recalculated ones)
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
                 // Convert timestamps back to indices for the NEW timeframe data
-                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, this.chart.currentTimeframe);
+                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, timeframe);
                 
                 // Update the drawing's points AND chart reference
                 drawing.points = newPoints;

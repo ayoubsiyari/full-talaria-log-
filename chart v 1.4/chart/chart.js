@@ -13576,6 +13576,9 @@ class Chart {
                 if (typeof this.render === 'function') this.render();
             } catch (e) { /* ignore */ }
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
+            if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
+            }
         });
     }
 
@@ -25144,7 +25147,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a56';
+    window.TALARIA_CHART_BUILD = '20260522a57';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
