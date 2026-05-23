@@ -1930,6 +1930,12 @@ class Chart {
                 return response.json();
             })
             .then((result) => {
+                const src = result && result.source ? String(result.source) : 'unknown';
+                if (this._lastBarsSourceLogFileId !== String(fileId) || this._lastBarsSourceLog !== src) {
+                    this._lastBarsSourceLogFileId = String(fileId);
+                    this._lastBarsSourceLog = src;
+                    console.info(`[chart] file ${fileId} bar loads via: ${src}`);
+                }
                 if (this._smartPrefetchCache) {
                     this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload: result, fileId: String(fileId) });
                 }
@@ -14760,6 +14766,55 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
+        this._panTimeTickCache = null;
+    }
+
+    _clearPanTimeTickCache() {
+        this._panTimeTickCache = null;
+    }
+
+    /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
+    _buildPanTimeTicks() {
+        if (!this._panTimeTickCache) {
+            const ticks = this._buildTimeTicks();
+            this._panTimeTickCache = {
+                baseOffsetX: this.offsetX,
+                ticks: ticks.map((t) => ({ ...t })),
+            };
+            return ticks;
+        }
+        const dx = this.offsetX - this._panTimeTickCache.baseOffsetX;
+        return this._panTimeTickCache.ticks.map((t) => ({ ...t, x: t.x + dx }));
+    }
+
+    _startChartPanRenderLoop() {
+        if (this._chartPanRenderLoopActive) return;
+        this._chartPanRenderLoopActive = true;
+        const tick = () => {
+            if (!this._isChartPanDragging()) {
+                this._chartPanRenderLoopActive = false;
+                this._chartPanRenderLoopRaf = null;
+                return;
+            }
+            this.renderPending = false;
+            this.render();
+            if (!this._panScrollSyncRaf) {
+                this._panScrollSyncRaf = requestAnimationFrame(() => {
+                    this._panScrollSyncRaf = null;
+                    this.dispatchScrollSync(true);
+                });
+            }
+            this._chartPanRenderLoopRaf = requestAnimationFrame(tick);
+        };
+        this._chartPanRenderLoopRaf = requestAnimationFrame(tick);
+    }
+
+    _stopChartPanRenderLoop() {
+        this._chartPanRenderLoopActive = false;
+        if (this._chartPanRenderLoopRaf != null) {
+            cancelAnimationFrame(this._chartPanRenderLoopRaf);
+            this._chartPanRenderLoopRaf = null;
+        }
     }
 
     _clearAxisHighlightPanTransform() {
@@ -14905,19 +14960,7 @@ class Chart {
 
     /** Coalesce paints to one render per animation frame while panning. */
     _scheduleChartPanRender() {
-        if (this._chartPanFrameRaf != null) return;
-        this._chartPanFrameRaf = requestAnimationFrame(() => {
-            this._chartPanFrameRaf = null;
-            if (!this._isChartPanDragging()) return;
-            this.renderPending = false;
-            this.render();
-            if (!this._panScrollSyncRaf) {
-                this._panScrollSyncRaf = requestAnimationFrame(() => {
-                    this._panScrollSyncRaf = null;
-                    this.dispatchScrollSync(true);
-                });
-            }
-        });
+        this._startChartPanRenderLoop();
     }
 
     _scheduleChartPanFrame(clientX, clientY) {
@@ -14930,6 +14973,7 @@ class Chart {
             cancelAnimationFrame(this._chartPanFrameRaf);
             this._chartPanFrameRaf = null;
         }
+        this._stopChartPanRenderLoop();
         if (this._isChartPanDragging()) {
             this.renderPending = false;
             this.render();
@@ -14941,6 +14985,7 @@ class Chart {
             cancelAnimationFrame(this._chartPanFrameRaf);
             this._chartPanFrameRaf = null;
         }
+        this._stopChartPanRenderLoop();
     }
 
     scheduleRender() {
@@ -15161,8 +15206,8 @@ class Chart {
         // IMPORTANT: Calculate scales FIRST before drawing anything
         this.calculateScales();
 
-        // Build time-axis ticks ONCE – shared by drawGrid() and drawAxes() for perfect sync
-        this._timeTicks = this._buildTimeTicks();
+        // Build time-axis ticks — cache + shift while panning (avoids per-frame rebuild jank)
+        this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
 
         // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
         // Using full canvas width for bar count was too wide vs the drawable area and caused
@@ -15231,16 +15276,12 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes + news markers (lite).
+        // Fast path while dragging chart: candles + axes (lite, 60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
-            this.drawGrid();
-            this.drawVolume(visible, panOpts);
+            this.drawGrid({ panFast: true });
             this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
             this.drawAxes();
-            this.drawEconomicCalendarAxisMarkers({ panFast: true });
-            this.drawCurrentPriceLabel(visible);
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
@@ -15380,7 +15421,7 @@ class Chart {
      * Draw grid lines for better readability
      * Improved pattern inspired by D3.js best practices
      */
-    drawGrid() {
+    drawGrid(opts = {}) {
         // Skip if grid is disabled
         if (!this.chartSettings.showGrid || this.chartSettings.gridStyle === 'None') return;
         
@@ -15390,11 +15431,12 @@ class Chart {
         const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         const priceHeight = ch - volumeAreaHeight;
+        const panFast = !!opts.panFast;
         
         if (!this.xScale || !this.yScale) return;
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
-        const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
+        const showVertical = !panFast && (this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical');
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -15412,7 +15454,9 @@ class Chart {
             applyGridDash();
             
             // Use same tick calculation as y-axis to ensure alignment
-            const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
+            const numYTicks = panFast
+                ? Math.max(4, Math.min(6, Math.floor(priceHeight / 90)))
+                : Math.max(8, Math.min(15, Math.floor(ch / 60)));
             const yTicks = this._getYPriceTicks(numYTicks);
             
             yTicks.forEach(price => {
@@ -19367,6 +19411,8 @@ class Chart {
                 this.inertia.active = false;
                 this.inertia.velocityX = 0;
                 this.inertia.velocityY = 0;
+                this._stopChartPanRenderLoop();
+                this._clearPanTimeTickCache();
                 this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
                     this.dispatchScrollSync(true);
