@@ -513,8 +513,8 @@ class Chart {
             active: false,
             velocityX: 0,
             velocityY: 0,
-            friction: 0.92,              // Decay factor
-            minVelocity: 0.5,            // Stop threshold
+            friction: 0.94,              // Decay factor — higher = longer glide after flick
+            minVelocity: 0.35,           // Stop threshold
             lastTime: 0
         };
         
@@ -10652,12 +10652,20 @@ class Chart {
             const overshoot = this.offsetX - maxOffset;
             const resistance = 0.3;
             this.offsetX = maxOffset + overshoot * resistance;
-            if (this.movement) this.movement.velocityX *= 0.3;
+            if (this.inertia && this.inertia.active) {
+                this.inertia.velocityX *= 0.3;
+            } else if (this.movement) {
+                this.movement.velocityX *= 0.3;
+            }
         } else if (this.offsetX < minOffset) {
             const overshoot = minOffset - this.offsetX;
             const resistance = 0.2;
             this.offsetX = minOffset - overshoot * resistance;
-            if (this.movement) this.movement.velocityX *= 0.3;
+            if (this.inertia && this.inertia.active) {
+                this.inertia.velocityX *= 0.3;
+            } else if (this.movement) {
+                this.movement.velocityX *= 0.3;
+            }
         }
         
         // Constrain candle width with quantized steps (TradingView style)
@@ -14739,8 +14747,14 @@ class Chart {
         const maxOffset = cw - rightMargin;
         const lastCandleX = Math.max(0, (this.data.length - 1) * candleSpacing);
         const minOffset = -lastCandleX;
-        if (this.offsetX > maxOffset) this.offsetX = maxOffset;
-        else if (this.offsetX < minOffset) this.offsetX = minOffset;
+        // Soft elastic at edges while dragging — feels like sliding an image, not hitting a wall.
+        if (this.offsetX > maxOffset) {
+            const overshoot = this.offsetX - maxOffset;
+            this.offsetX = maxOffset + overshoot * 0.35;
+        } else if (this.offsetX < minOffset) {
+            const overshoot = minOffset - this.offsetX;
+            this.offsetX = minOffset - overshoot * 0.35;
+        }
     }
 
     _snapshotPanDrawingsLayer() {
@@ -18622,10 +18636,14 @@ class Chart {
                 requestAnimationFrame(runInertia);
             } else {
                 this.inertia.active = false;
+                this.inertia.velocityX = 0;
+                this.inertia.velocityY = 0;
+                try { this.constrainOffset(); } catch (_e) {}
                 this.dispatchScrollSync();
                 this._finishPanDrawingRedraw();
             }
         };
+        this._runPanInertia = runInertia;
         
         // ═══════════════════════════════════════════════════════════════════
         // STEP 3 — Rubber Band Resistance
@@ -18664,11 +18682,11 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            // 120ms (was 45ms) so back-to-back wheel ticks stay inside a single burst.
+            // 200ms so back-to-back wheel ticks stay inside a single burst.
             // While the burst flag is on, scheduleRender() forces synchronous render() and
             // constrainOffset() skips the proactive pan-load fetch — together those make
             // zoom-out feel smooth instead of network-stalled.
-            this._wheelBurstUntil = performance.now() + 120;
+            this._wheelBurstUntil = performance.now() + 200;
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
@@ -18677,7 +18695,7 @@ class Chart {
                 if (this.data && this.data.length > 0) {
                     try { this.constrainOffset(); } catch (_e) {}
                 }
-            }, 160);
+            }, 240);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
@@ -18772,13 +18790,10 @@ class Chart {
 
                 const newCandleSpacing = this.getCandleSpacing();
 
-                // Anchor zoom on the LAST visible candle near the right edge (TradingView-style)
-                const rightEdge = this.w - m.r;
-                const indexAtRight = (rightEdge - m.l - this.offsetX) / oldCandleSpacing;
-                const lastVisibleIndex = Math.max(0, Math.min(this.data.length - 1, Math.floor(indexAtRight)));
-
-                const oldAnchorX = m.l + lastVisibleIndex * oldCandleSpacing + this.offsetX;
-                this.offsetX = oldAnchorX - (m.l + lastVisibleIndex * newCandleSpacing);
+                // Anchor zoom at cursor position (TradingView-style) — chart stays glued under the mouse.
+                const anchorIndex = (mx - m.l - this.offsetX) / oldCandleSpacing;
+                const oldAnchorX = m.l + anchorIndex * oldCandleSpacing + this.offsetX;
+                this.offsetX = oldAnchorX - (m.l + anchorIndex * newCandleSpacing);
 
                 // Update zoomLevel index to nearest level so other logic stays consistent
                 let nearestIdx = 0;
@@ -18957,6 +18972,8 @@ class Chart {
             
             // Stop any inertia
             this.inertia.active = false;
+            this.inertia.velocityX = 0;
+            this.inertia.velocityY = 0;
             
             // Initialize drag state
             this.drag.active = true;
@@ -19063,10 +19080,13 @@ class Chart {
                 const dx = (e.clientX - this.drag.lastX) / zPan;
                 const dy = (e.clientY - this.drag.lastY) / zPan;
                 
-                // Calculate velocity for inertia
+                // Calculate velocity for inertia (smoothed so flick-release feels natural)
                 if (dt > 0) {
-                    this.inertia.velocityX = dx / (dt / 16.67);
-                    this.inertia.velocityY = dy / (dt / 16.67);
+                    const rawVx = dx / (dt / 16.67);
+                    const rawVy = dy / (dt / 16.67);
+                    const blend = 0.4;
+                    this.inertia.velocityX = this.inertia.velocityX * (1 - blend) + rawVx * blend;
+                    this.inertia.velocityY = this.inertia.velocityY * (1 - blend) + rawVy * blend;
                 }
                 this.movement.lastTime = now;
                 
@@ -19341,7 +19361,7 @@ class Chart {
                     this._suppressContextMenuUntil = performance.now() + this._contextMenuSuppressMs;
                 }
             }
-            // Handle pan end - no inertia, stop immediately
+            // Handle pan end — flick inertia when velocity is high (TradingView-style glide)
             else if (dragType === 'pan' && wasDragging) {
                 this._flushChartPanFrame();
                 this._cancelChartPanFrame();
@@ -19358,14 +19378,21 @@ class Chart {
                 }
                 this._clearPanDrawingsLayerTransform();
                 if (!isChartClick) {
-                    this.dispatchScrollSync(true);
-                    this.constrainOffset();
+                    const speed = Math.hypot(this.inertia.velocityX, this.inertia.velocityY);
+                    if (speed > this.inertia.minVelocity && typeof this._runPanInertia === 'function') {
+                        this.inertia.active = true;
+                        this.inertia.lastTime = performance.now();
+                        this._runPanInertia();
+                    } else {
+                        this.inertia.velocityX = 0;
+                        this.inertia.velocityY = 0;
+                        this.dispatchScrollSync(true);
+                        this.constrainOffset();
+                        this._finishPanDrawingRedraw();
+                        this.scheduleRender();
+                    }
                 }
                 this.scheduleChartViewSave();
-                if (!isChartClick) {
-                    this._finishPanDrawingRedraw();
-                    this.scheduleRender();
-                }
 
                 // Re-check replay follow indicator after the pan settles.
                 // This prevents needing an extra click for the jump-to-latest button to appear.

@@ -19405,14 +19405,17 @@ if homepage_dir.exists():
 
 @app.on_event("startup")
 async def _firstrate_scheduler_app_startup():
-    """Background thread: periodically queues FirstRate FX sync per uploads/firstrate_schedule.json."""
-    if questdb_store.questdb_enabled():
-        try:
-            questdb_store.ensure_schema()
-            print("✅ QuestDB schema ready")
-        except Exception as exc:
-            print(f"⚠️ QuestDB schema init failed: {exc}")
-    _start_firstrate_scheduler_thread()
+    """Background thread: QuestDB schema + FirstRate scheduler — must not block healthchecks."""
+    def _bootstrap() -> None:
+        if questdb_store.questdb_enabled():
+            try:
+                questdb_store.ensure_schema()
+                print("✅ QuestDB schema ready")
+            except Exception as exc:
+                print(f"⚠️ QuestDB schema init failed: {exc}")
+        _start_firstrate_scheduler_thread()
+
+    threading.Thread(target=_bootstrap, daemon=True, name="app-startup").start()
 
 
 if __name__ == "__main__":

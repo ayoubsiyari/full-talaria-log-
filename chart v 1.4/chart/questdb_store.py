@@ -115,6 +115,7 @@ def _pg_conn():
         url,
         gssencmode="disable",
         sslmode="disable",
+        connect_timeout=int(os.getenv("QUESTDB_PG_CONNECT_TIMEOUT", "3")),
     )
     try:
         conn.autocommit = True
