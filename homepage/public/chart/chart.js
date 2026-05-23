@@ -10628,8 +10628,8 @@ class Chart {
                 // Replay mode: load older history when scrolled near the left edge of loaded data.
                 const replayNearLeft = this.offsetX > maxOffset - nearEdgeThreshold;
                 const replayNearEmptyLeft = Array.isArray(this.data) && this.data.length > 0
-                    && spacing > 0
-                    && this.offsetX > maxOffset - spacing * 8;
+                    && candleSpacing > 0
+                    && this.offsetX > maxOffset - candleSpacing * 8;
                 if (replayNearLeft || replayNearEmptyLeft) {
                     this.checkViewportLoadMore('backward');
                 }
