@@ -2360,12 +2360,27 @@ class Chart {
         const newMs = this.parseTimeframe(normalizedTf);
         const rawMs = this._getNativeRawTfMs();
         if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(rawMs) || rawMs <= 0) return false;
-        // Zoom-out (coarser/equal TF): instant client resample — no server round-trip.
-        // Finer TFs (1D→1m) must refetch; upsampling daily bars into 1m is not valid.
-        if (newMs >= rawMs * 0.92) return true;
+        // Zoom-out (coarser/equal TF): instant client resample for small steps only.
+        // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
+        if (newMs >= rawMs * 0.92) {
+            if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
+                if (newMs / rawMs > 6) return false;
+            }
+            return true;
+        }
         if (this._isBacktestReplayActive()) return false;
         if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) return false;
         return false;
+    }
+
+    /** Timeframe for replay pan-left API calls (use display TF when zoomed out, e.g. 1D not underlying 1m). */
+    _getReplayPanFetchTimeframe() {
+        const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        if (!this.replaySystem?.isActive) return displayTf;
+        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
+        const displayMs = this.parseTimeframe(displayTf) || 60_000;
+        const rawMs = this.parseTimeframe(rawTf) || 60_000;
+        return displayMs >= rawMs ? displayTf : rawTf;
     }
 
     _getTfDataCache(fileId, timeframe) {
@@ -2928,7 +2943,7 @@ class Chart {
             try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
         }
 
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+        if (typeof replay.syncReplayViewportToPlayhead === 'function' && replay.autoScrollEnabled !== false) {
             replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: true });
         }
 
@@ -13392,18 +13407,18 @@ class Chart {
                 && Number.isFinite(newTfMs) && newTfMs > 0;
 
             if (needsServerRefetch) {
-                // Zoom-out (1m→15m→1D): instant client resample — no network wait.
-                if (this._canClientResampleToTimeframe(normalizedTf)) {
-                    this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                    if (this.currentFileId) {
-                        this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
-                    }
-                    return;
-                }
-                // Path C: backtest cache hit → hot-swap replay; else fetch + hot-swap (no exit/enter).
+                // Path C: cache → small-step resample → server refetch (1m→1D always refetches/cache).
                 this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
-                        if (!hit) this._refetchBacktestTimeframe(normalizedTf);
+                        if (hit) return;
+                        if (this._canClientResampleToTimeframe(normalizedTf)) {
+                            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                            if (this.currentFileId) {
+                                this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
+                            }
+                            return;
+                        }
+                        this._refetchBacktestTimeframe(normalizedTf);
                     })
                     .catch((e) => {
                         console.warn('[backtest] TF cache restore failed, refetching', e);
@@ -14002,7 +14017,8 @@ class Chart {
     _snapReplayViewportAfterTfSwitch(replay, options = {}) {
         if (!replay || !replay.isActive) return;
 
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+        if (replay.autoScrollEnabled !== false
+            && typeof replay.syncReplayViewportToPlayhead === 'function') {
             replay.syncReplayViewportToPlayhead(this, { resetPriceScale: true, render: false });
         }
 
@@ -14043,10 +14059,17 @@ class Chart {
     }
 
     _btTfCacheAnchorKey(sessionEndMs, playheadMs, timeframe) {
+        const tf = String(timeframe || '').toLowerCase().trim();
+        const tfMs = this.parseTimeframe(tf) || 3600000;
+        // Coarse TFs: one cache entry per session (1D bundle shared regardless of playhead).
+        if (tfMs >= 86400000) {
+            return sessionEndMs != null && Number.isFinite(sessionEndMs)
+                ? `sess:${Math.floor(sessionEndMs)}:${tf}`
+                : `sess:none:${tf}`;
+        }
         if (Number.isFinite(playheadMs)) {
-            const tfMs = this.parseTimeframe(timeframe) || 3600000;
             const bucketMs = Math.max(tfMs * 4, 3600000);
-            return `ph:${Math.floor(playheadMs / bucketMs)}:${String(timeframe || '').toLowerCase().trim()}`;
+            return `ph:${Math.floor(playheadMs / bucketMs)}:${tf}`;
         }
         return sessionEndMs != null && Number.isFinite(sessionEndMs)
             ? `end:${Math.floor(sessionEndMs)}`
@@ -14112,9 +14135,12 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const historyRange = Number.isFinite(playheadMs)
-            ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
-            : this._getBacktestSessionEndFetchRange(sessionEndMs);
+        const historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
+            ? (this._getBacktestInitialFetchRange(timeframe, session)
+                || this._getBacktestSessionEndFetchRange(sessionEndMs))
+            : (Number.isFinite(playheadMs)
+                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
+                : this._getBacktestSessionEndFetchRange(sessionEndMs));
         const fetchOpts = {
             skipSessionDates: true,
             limit: this._backtestFetchLimitForTimeframe(timeframe),
@@ -14301,7 +14327,7 @@ class Chart {
         
         this._panLoading = true;
 
-        const replayRawTf = isReplay ? (this.replaySystem.rawTimeframe || '1m') : null;
+        const replayRawTf = isReplay ? this._getReplayPanFetchTimeframe() : null;
         const tf = replayRawTf || this.currentTimeframe || '1m';
         const cursor = direction === 'backward' 
             ? this._serverCursors.firstTs 
@@ -19543,7 +19569,7 @@ class Chart {
                     chartWrapper.style.cursor = panCursor;
                 }
                 
-                if (this.replaySystem?.isActive && this.replaySystem.autoScrollEnabled) {
+                if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
             }
@@ -25111,7 +25137,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a54';
+    window.TALARIA_CHART_BUILD = '20260522a55';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
