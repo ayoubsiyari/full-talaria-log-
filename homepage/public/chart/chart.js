@@ -14010,12 +14010,14 @@ class Chart {
 
         last.c = replayPrice;
         if (coarseDisplay) {
-            const o = Number.isFinite(last.o) ? last.o : replayPrice;
-            last.h = Math.max(o, replayPrice);
-            last.l = Math.min(o, replayPrice);
-        } else {
-            if (Number.isFinite(last.h)) last.h = Math.max(last.h, replayPrice);
-            if (Number.isFinite(last.l)) last.l = Math.min(last.l, replayPrice);
+            // Coarse TF + replay playhead: do not draw a fake body from bucket open → playhead
+            // (that looked like a giant real candle and broke scaling). Use a flat playhead marker.
+            last.o = replayPrice;
+            last.h = replayPrice;
+            last.l = replayPrice;
+        } else if (Number.isFinite(last.h) && Number.isFinite(last.l)) {
+            last.h = Math.max(last.h, replayPrice);
+            last.l = Math.min(last.l, replayPrice);
         }
         return replayPrice;
     }
@@ -25225,7 +25227,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a65';
+    window.TALARIA_CHART_BUILD = '20260522a66';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
