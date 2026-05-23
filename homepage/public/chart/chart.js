@@ -1507,13 +1507,17 @@ class Chart {
                 }
             }
             if (!result) {
+                const initialRange = this._getBacktestInitialFetchRange(replayRawTf, session);
                 result = await this._fetchSmartWindow(
                     fileId,
                     replayRawTf,
                     session,
                     'end',
-                    historyRange,
-                    { skipSessionDates: true, limit: this.BACKTEST_SMART_INITIAL_LIMIT }
+                    initialRange || historyRange,
+                    {
+                        skipSessionDates: true,
+                        limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                    },
                 );
             }
 
@@ -13719,6 +13723,44 @@ class Chart {
     }
 
     /**
+     * Minimal first paint for backtest: session start → end plus a small lookback.
+     * Pre-session file history loads incrementally when the user pans left.
+     */
+    _getBacktestInitialFetchRange(timeframe, session) {
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        let sessionStartMs = null;
+        try {
+            const raw = session?.startDate || session?.start_date;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+
+        const tfMs = this.parseTimeframe(timeframe) || 60_000;
+        const anchor = Number.isFinite(sessionStartMs) ? sessionStartMs : sessionEndMs;
+        if (!Number.isFinite(anchor)) {
+            return sessionEndMs != null ? { endTs: Math.floor(sessionEndMs) } : null;
+        }
+
+        let lookbackBars = 80;
+        if (tfMs >= 7 * 86400000) lookbackBars = 26;
+        else if (tfMs >= 86400000) lookbackBars = 45;
+        else if (tfMs <= 3600000) lookbackBars = 320;
+
+        const startTs = anchor - lookbackBars * tfMs;
+        let endTs = Number.isFinite(sessionEndMs) ? sessionEndMs : anchor + 120 * tfMs;
+        if (Number.isFinite(sessionEndMs)) {
+            endTs = Math.max(anchor, sessionEndMs);
+        }
+
+        return {
+            startTs: Math.floor(startTs),
+            endTs: Math.floor(endTs),
+        };
+    }
+
+    /**
      * Backtest replay TF fetch window centered on the playhead (fine TFs) so switching
      * 1D→1m at April 2015 does not pull only the last N minutes before session end.
      */
@@ -14049,7 +14091,7 @@ class Chart {
                 return false;
             }
         }
-        if (direction === 'backward' && hasSessionStart) {
+        if (direction === 'backward' && hasSessionStart && !isReplay) {
             const firstCursorTs = Number(this._serverCursors.firstTs);
             if (Number.isFinite(firstCursorTs) && firstCursorTs <= sessionStartTs) {
                 this._serverCursors.hasMoreLeft = false;
@@ -14187,7 +14229,9 @@ class Chart {
                 }
 
                 const boundedCandles = newCandles.filter(c => {
-                    if (hasSessionStart && c.t < sessionStartTs) return false;
+                    if (hasSessionStart && c.t < sessionStartTs) {
+                        if (!(isReplay && direction === 'backward')) return false;
+                    }
                     if (hasSessionEnd && c.t > sessionEndTs) return false;
                     return true;
                 });
@@ -14196,7 +14240,7 @@ class Chart {
                     if (direction === 'forward' && hasSessionEnd) {
                         this._serverCursors.hasMoreRight = false;
                     }
-                    if (direction === 'backward' && hasSessionStart) {
+                    if (direction === 'backward' && hasSessionStart && !isReplay) {
                         this._serverCursors.hasMoreLeft = false;
                     }
                     return;
@@ -14206,12 +14250,6 @@ class Chart {
                     const hitSessionEnd = boundedCandles[boundedCandles.length - 1].t >= sessionEndTs;
                     if (hitSessionEnd) {
                         this._serverCursors.hasMoreRight = false;
-                    }
-                }
-                if (direction === 'backward' && hasSessionStart) {
-                    const hitSessionStart = boundedCandles[0].t <= sessionStartTs;
-                    if (hitSessionStart) {
-                        this._serverCursors.hasMoreLeft = false;
                     }
                 }
                 
@@ -14370,7 +14408,11 @@ class Chart {
                 
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
-                    if (typeof this.recalculateIndicators === 'function') this.recalculateIndicators();
+                    if (!(isReplay && direction === 'backward')) {
+                        if (typeof this.recalculateIndicators === 'function') {
+                            this.recalculateIndicators();
+                        }
+                    }
                     this.scheduleRender();
                 }
                 
@@ -14397,7 +14439,12 @@ class Chart {
                 // after this batch, fire the next fetch right away so the user
                 // sees continuous filling instead of small trickles.
                 if (typeof this.constrainOffset === 'function') {
-                    requestAnimationFrame(() => this.constrainOffset());
+                    requestAnimationFrame(() => {
+                        try { this.constrainOffset(); } catch (_e) {}
+                        if (this.replaySystem?.isActive) {
+                            this._scheduleReplayPanLoadLeft();
+                        }
+                    });
                 }
             });
 
@@ -15128,6 +15175,38 @@ class Chart {
         this.drag.lastX = clientX;
         this.drag.lastY = clientY;
         this._constrainOffsetDuringDrag();
+        if (this.replaySystem?.isActive && effectiveDx > 0.5) {
+            this._scheduleReplayPanLoadLeft();
+        }
+    }
+
+    /** True when replay viewport is near the left edge of loaded bars (or showing empty gap). */
+    _needsReplayHistoryLoadLeft() {
+        if (!this.replaySystem?.isActive || !this.data?.length) return false;
+        if (this._serverCursors && this._serverCursors.hasMoreLeft === false) return false;
+        const spacing = this.getCandleSpacing();
+        if (!Number.isFinite(spacing) || spacing <= 0) return false;
+        const m = this.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, this.w - m.l - m.r);
+        const rightMargin = Math.max(0, (this.timeScale?.rightOffsetCandles || 15)) * spacing;
+        const maxOffset = cw - rightMargin;
+        const nearLoadedLeft = this.offsetX > maxOffset - spacing * 10;
+        const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
+        const gapOnLeft = leftIdx < 6;
+        return nearLoadedLeft || gapOnLeft;
+    }
+
+    /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
+    _scheduleReplayPanLoadLeft() {
+        if (!this._needsReplayHistoryLoadLeft()) return;
+        if (this._panLoading) return;
+        clearTimeout(this._replayPanLoadTimer);
+        this._replayPanLoadTimer = setTimeout(() => {
+            this._replayPanLoadTimer = null;
+            if (this._needsReplayHistoryLoadLeft()) {
+                this.checkViewportLoadMore('backward');
+            }
+        }, 90);
     }
 
     /** Coalesce paints to one render per animation frame while panning. */
@@ -19594,6 +19673,9 @@ class Chart {
                 if (!isChartClick) {
                     this.dispatchScrollSync(true);
                     this.constrainOffset();
+                    if (this.replaySystem?.isActive) {
+                        this._scheduleReplayPanLoadLeft();
+                    }
                     this._finishPanDrawingRedraw();
                     this.scheduleRender();
                 }

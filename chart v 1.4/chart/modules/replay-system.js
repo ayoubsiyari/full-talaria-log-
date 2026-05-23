@@ -2187,9 +2187,7 @@ class ReplaySystem {
                 this.replayTimestamp = rd[this.currentIndex]?.t ?? this.replayTimestamp;
             }
         } else if (isBacktesting) {
-            // Backtest sessions load all daily history available on the server BEFORE
-            // session start so the user sees the lead-up. Replay must still begin at
-            // the first bar at/after session.startDate — find that index by timestamp.
+            // Backtest replay begins at session start; pre-session history loads on pan-left.
             let startIdx = Math.min(10, rd.length - 1);
             if (sessionStartMs != null && Array.isArray(rd) && rd.length > 0) {
                 let found = -1;
