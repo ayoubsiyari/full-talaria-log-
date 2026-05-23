@@ -8832,22 +8832,23 @@ class DrawingToolsManager {
 
         if (!Number.isFinite(minIdx) || !Number.isFinite(maxIdx)) return;
 
-        // After TF switch, center on drawings so they stay findable (playhead centering hides them).
-        const centerIdx = (minIdx + maxIdx) / 2;
-        let anchorTs = null;
-        if (Number.isFinite(minTs) && Number.isFinite(maxTs)) {
-            anchorTs = (minTs + maxTs) / 2;
-        } else if (typeof chart.estimateTimestampForDataIndex === 'function') {
-            anchorTs = chart.estimateTimestampForDataIndex(centerIdx);
-        }
-        if (anchorTs && typeof chart._restorePositionToTimestamp === 'function') {
-            chart._restorePositionToTimestamp(anchorTs, chart.candleWidth);
-        } else {
-            this._scrollViewportToFractionalIndex(centerIdx);
-        }
-        chart.renderPending = true;
-        if (typeof chart.render === 'function') {
-            try { chart.render(); } catch (_) {}
+        if (!this._areDrawingAnchorsVisible(minIdx, maxIdx)) {
+            const centerIdx = (minIdx + maxIdx) / 2;
+            let anchorTs = null;
+            if (Number.isFinite(minTs) && Number.isFinite(maxTs)) {
+                anchorTs = (minTs + maxTs) / 2;
+            } else if (typeof chart.estimateTimestampForDataIndex === 'function') {
+                anchorTs = chart.estimateTimestampForDataIndex(centerIdx);
+            }
+            if (anchorTs && typeof chart._restorePositionToTimestamp === 'function') {
+                chart._restorePositionToTimestamp(anchorTs, chart.candleWidth);
+            } else {
+                this._scrollViewportToFractionalIndex(centerIdx);
+            }
+            chart.renderPending = true;
+            if (typeof chart.render === 'function') {
+                try { chart.render(); } catch (_) {}
+            }
         }
 
         const firstT = chart.data[0]?.t;

@@ -2806,9 +2806,6 @@ class Chart {
             : this._getBacktestSessionEndMs(session);
 
         let savedReplayTimestamp = ctx.savedReplayTimestamp;
-        const savedReplayPlayheadPrice = Number.isFinite(ctx.savedReplayPlayheadPrice)
-            ? ctx.savedReplayPlayheadPrice
-            : this._captureReplayPlayheadPrice(replay);
         const savedCurrentIndex = ctx.savedCurrentIndex;
         const wasPlaying = !!ctx.wasPlaying;
         const wasAtSessionEnd = !!ctx.wasAtSessionEnd;
@@ -2879,7 +2876,6 @@ class Chart {
             try {
                 replay.applyPersistedState({
                     replayTimestamp: savedReplayTimestamp,
-                    replayPlayheadPrice: savedReplayPlayheadPrice,
                     speed: savedSpeed,
                     playbackMode: savedPlaybackMode || undefined,
                     deferChartSync: true,
@@ -3022,7 +3018,6 @@ class Chart {
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
             savedReplayTimestamp: this._captureReplayPlayheadMs(replay),
-            savedReplayPlayheadPrice: this._captureReplayPlayheadPrice(replay),
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
             wasAtSessionEnd: replay.isActive
@@ -13377,13 +13372,6 @@ class Chart {
             this.drawingManager.saveDrawings();
         }
 
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const captured = this._captureReplayPlayheadPrice(this.replaySystem);
-            if (Number.isFinite(captured)) {
-                this.replaySystem.replayPlayheadPrice = captured;
-            }
-        }
-
         // Begin the visual freeze + loading-dots indicator. Anything that triggers
         // render() between here and _endTimeframeSwitching() short-circuits, so the
         // last good frame stays on the canvas until the new TF's bars are ready.
@@ -13942,87 +13930,6 @@ class Chart {
     }
 
     /**
-     * Capture the replay playhead price before TF switch so coarse bars (1D) can align
-     * their forming candle close with the price line.
-     */
-    _captureReplayPlayheadPrice(replay) {
-        if (!replay) return null;
-        if (Number.isFinite(replay.replayPlayheadPrice)) {
-            return replay.replayPlayheadPrice;
-        }
-        if (replay.animatingCandle && Number.isFinite(replay.animatingCandle.close)) {
-            return replay.animatingCandle.close;
-        }
-        if (typeof replay.getCurrentAnimatedPrice === 'function') {
-            const animated = replay.getCurrentAnimatedPrice();
-            if (Number.isFinite(animated)) return animated;
-        }
-        if (Array.isArray(this.data) && this.data.length > 0) {
-            const last = this.data[this.data.length - 1];
-            if (last && Number.isFinite(last.c)) return last.c;
-        }
-        const idx = typeof replay.currentIndex === 'number' ? replay.currentIndex : -1;
-        if (Array.isArray(replay.fullRawData) && idx >= 0 && idx < replay.fullRawData.length) {
-            const c = replay.fullRawData[idx]?.c;
-            if (Number.isFinite(c)) return c;
-        }
-        return null;
-    }
-
-    /**
-     * Align the last resampled (forming) candle with the replay playhead price so the
-     * price line and last candle close always match — especially on coarse TFs (1D).
-     */
-    _syncReplayFormingDisplayCandle() {
-        const rs = this.replaySystem;
-        if (!rs?.isActive || !Array.isArray(this.data) || this.data.length === 0) {
-            return null;
-        }
-
-        let replayPrice = null;
-        if (rs.animatingCandle && typeof rs.getCurrentAnimatedPrice === 'function') {
-            replayPrice = rs.getCurrentAnimatedPrice();
-        }
-        if (!Number.isFinite(replayPrice) && Number.isFinite(rs.replayPlayheadPrice)) {
-            replayPrice = rs.replayPlayheadPrice;
-        }
-        if (!Number.isFinite(replayPrice) && typeof rs.getCurrentAnimatedPrice === 'function') {
-            replayPrice = rs.getCurrentAnimatedPrice();
-        }
-        if (!Number.isFinite(replayPrice) && Array.isArray(rs.fullRawData)) {
-            const idx = typeof rs.currentIndex === 'number' ? rs.currentIndex : -1;
-            if (idx >= 0 && idx < rs.fullRawData.length) {
-                replayPrice = rs.fullRawData[idx]?.c;
-            }
-        }
-        if (!Number.isFinite(replayPrice)) return null;
-
-        rs.replayPlayheadPrice = replayPrice;
-
-        const last = this.data[this.data.length - 1];
-        if (!last) return replayPrice;
-
-        const tfMs = this.parseTimeframe(this.currentTimeframe || '1m');
-        const rawMs = (Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2)
-            ? Math.abs(rs.fullRawData[1].t - rs.fullRawData[0].t)
-            : tfMs;
-        const coarseDisplay = Number.isFinite(tfMs) && Number.isFinite(rawMs) && tfMs >= rawMs * 0.95;
-
-        last.c = replayPrice;
-        if (coarseDisplay) {
-            // Coarse TF + replay playhead: do not draw a fake body from bucket open → playhead
-            // (that looked like a giant real candle and broke scaling). Use a flat playhead marker.
-            last.o = replayPrice;
-            last.h = replayPrice;
-            last.l = replayPrice;
-        } else if (Number.isFinite(last.h) && Number.isFinite(last.l)) {
-            last.h = Math.max(last.h, replayPrice);
-            last.l = Math.min(last.l, replayPrice);
-        }
-        return replayPrice;
-    }
-
-    /**
      * Same fetch window as initial backtest load (1D): anchor at session end, max batch.
      * All TF switches (including 1m) use this — not a replay-centered slice.
      */
@@ -14208,7 +14115,6 @@ class Chart {
         const sessionEndMs = this._getBacktestSessionEndMs(session);
 
         let savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
-        const savedReplayPlayheadPrice = this._captureReplayPlayheadPrice(replay);
         const savedCurrentIndex = typeof replay.currentIndex === 'number'
             ? replay.currentIndex
             : null;
@@ -14339,7 +14245,6 @@ class Chart {
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
             savedReplayTimestamp,
-            savedReplayPlayheadPrice,
             savedCurrentIndex,
             wasPlaying,
             wasAtSessionEnd,
@@ -17070,32 +16975,22 @@ class Chart {
      * Keeps render sources consistent across live mode, replay mode, and panel charts.
      */
     resolveEffectiveCurrentPrice(visible) {
-        if (this.replaySystem && this.replaySystem.isActive) {
-            if (typeof this._syncReplayFormingDisplayCandle === 'function') {
-                const synced = this._syncReplayFormingDisplayCandle();
-                if (Number.isFinite(synced)) return synced;
-            }
-            if (Array.isArray(this.data) && this.data.length > 0) {
-                const lastCandle = this.data[this.data.length - 1];
-                if (lastCandle && Number.isFinite(lastCandle.c)) return lastCandle.c;
+        // Price line always tracks the last bar of the displayed series (same as TradingView).
+        if (this.data && this.data.length > 0) {
+            const lastCandle = this.data[this.data.length - 1];
+            if (lastCandle && Number.isFinite(lastCandle.c)) {
+                return lastCandle.c;
             }
         }
-
-        let price = null;
 
         const lastVisible = (Array.isArray(visible) && visible.length > 0)
             ? visible[visible.length - 1]
             : null;
         if (lastVisible && Number.isFinite(lastVisible.c)) {
-            price = lastVisible.c;
+            return lastVisible.c;
         }
 
-        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
-            const lastCandle = this.data[this.data.length - 1];
-            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
-        }
-
-        return Number.isFinite(price) ? price : null;
+        return null;
     }
 
     /**
@@ -25227,7 +25122,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a66';
+    window.TALARIA_CHART_BUILD = '20260522a67';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
