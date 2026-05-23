@@ -11551,13 +11551,21 @@ async def admin_support_stats(request: Request):
             .count()
         )
         total_active = open_n + pending_n
-        total_all = db.query(SupportThread).count()
-        resolved_n = (
+        bug_error_cats = ("bug", "error")
+        bug_error_total = (
             db.query(SupportThread)
-            .filter(SupportThread.status.in_(("resolved", "closed")))
+            .filter(SupportThread.category.in_(bug_error_cats))
             .count()
         )
-        resolve_pct = round(resolved_n / total_all * 100) if total_all else 0
+        bug_error_resolved = (
+            db.query(SupportThread)
+            .filter(
+                SupportThread.category.in_(bug_error_cats),
+                SupportThread.status.in_(("resolved", "closed")),
+            )
+            .count()
+        )
+        resolve_pct = round(bug_error_resolved / bug_error_total * 100) if bug_error_total else 0
         by_category: dict[str, int] = {}
         by_category_pct: dict[str, int] = {}
         for cat in SUPPORT_CATEGORIES:
@@ -11578,8 +11586,8 @@ async def admin_support_stats(request: Request):
             "sla_overdue": overdue_n,
             "closed_today": closed_today,
             "total_active": total_active,
-            "total_all": total_all,
-            "resolved_count": resolved_n,
+            "bug_error_total": bug_error_total,
+            "bug_error_resolved": bug_error_resolved,
             "resolve_pct": resolve_pct,
             "by_category": by_category,
             "by_category_pct": by_category_pct,

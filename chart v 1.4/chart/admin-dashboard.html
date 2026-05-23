@@ -4042,11 +4042,11 @@ async function loadSupportTicketStats() {
   try {
     const s = await api('/api/admin/support/stats');
     const resolvePct = s.resolve_pct != null ? s.resolve_pct : 0;
-    const resolvedCount = s.resolved_count || 0;
-    const totalAll = s.total_all || 0;
+    const bugErrorResolved = s.bug_error_resolved || 0;
+    const bugErrorTotal = s.bug_error_total || 0;
     const byCatPct = s.by_category_pct || {};
     const parts = [
-      '<span class="support-ticket-stat ok">Resolve rate: ' + resolvePct + '%<span class="stat-pct">(' + resolvedCount + '/' + totalAll + ')</span></span>',
+      '<span class="support-ticket-stat ok">Bug/Error resolve: ' + resolvePct + '%<span class="stat-pct">(' + bugErrorResolved + '/' + bugErrorTotal + ')</span></span>',
       '<span class="support-ticket-stat">Open: ' + (s.open || 0) + '</span>',
       '<span class="support-ticket-stat">Pending: ' + (s.pending || 0) + '</span>',
       '<span class="support-ticket-stat">Unassigned: ' + (s.unassigned || 0) + '</span>',
