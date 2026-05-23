@@ -21134,9 +21134,9 @@ class Chart {
     }
 
     updateSVGPointerEvents() {
-        // Update SVG pointer-events based on tool state
-        // When drawing tool is active: SVG needs to capture all events for drawing
-        // When no tool is active: SVG is transparent to allow canvas panning, shapes handle their own events
+        // Root SVG stays pointer-events:none unless a mode truly needs full-layer capture.
+        // Selected shapes use per-element pointer-events (strokes/handles) so empty plot
+        // clicks pass through to the canvas for chart pan/zoom.
         const legacyToolActive = !!this.tool;
         const drawingManagerActive = !!(
             this.drawingManager && (
@@ -21154,16 +21154,10 @@ class Chart {
             document.getElementById('orderPanel').classList.contains('visible')
         );
 
-        const drawingSelectedOnChart = !!(
-            this.drawingManager &&
-            Array.isArray(this.drawingManager.selectedDrawings) &&
-            this.drawingManager.selectedDrawings.length > 0
-        );
-
-        if (legacyToolActive || drawingManagerActive || orderPreviewActive || drawingSelectedOnChart) {
-            this.svg.style('pointer-events', 'all'); // Capture all events for drawing
+        if (legacyToolActive || drawingManagerActive || orderPreviewActive) {
+            this.svg.style('pointer-events', 'all');
         } else {
-            this.svg.style('pointer-events', 'none'); // Let canvas handle panning, shapes handle their own events
+            this.svg.style('pointer-events', 'none');
         }
     }
 
@@ -25147,7 +25141,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a60';
+    window.TALARIA_CHART_BUILD = '20260522a61';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

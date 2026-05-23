@@ -6982,8 +6982,9 @@ class DrawingToolsManager {
 
     /**
      * Toggle SVG z-index and pointer-events based on drawing selection / active tool state.
-     * When a drawing is selected or a tool is active, increase SVG z-index to 11
-     * (above time-axis-zone z-index 10) and enable pointer-events so drawings can receive mouse events.
+     * When a drawing is selected or a tool is active, lift SVG above axis zones (z-index 11).
+     * Root SVG stays pointer-events:none so empty plot clicks reach the canvas for chart pan;
+     * strokes, handles, and hit-rings keep their own pointer-events on child elements.
      */
     _updateAxisZonePointerEvents() {
         const toolActive = !!this.currentTool;
@@ -6997,11 +6998,8 @@ class DrawingToolsManager {
                 this.svg.style('pointer-events', 'none');
             } else if (drawingSelected) {
                 this.svg.style('z-index', '11');
-                // VP/AV drawings: keep SVG pointer-events none so chart can pan through the body;
-                // resize handles have their own pointer-events and still work.
-                const onlyVpSelected = this.selectedDrawings.every(d =>
-                    d.type === 'volume-profile' || d.type === 'fixed-range-volume-profile' || d.type === 'anchored-volume-profile');
-                this.svg.style('pointer-events', onlyVpSelected ? 'none' : 'all');
+                // Pass-through on empty plot — pan/zoom uses the canvas; shape edges/handles stay interactive.
+                this.svg.style('pointer-events', 'none');
             } else if (hoverResizeHandles) {
                 this.svg.style('z-index', '11');
                 // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.
@@ -7914,10 +7912,10 @@ class DrawingToolsManager {
         }
 
         const forceFull = !!options.forceFull;
-        if (!forceFull && this._isDrawingEditActive()) {
+        const panFast = !forceFull && (options.panFast || this._isChartViewPanning());
+        if (!forceFull && this._isDrawingEditActive() && !panFast) {
             return;
         }
-        const panFast = !forceFull && (options.panFast || this._isChartViewPanning());
 
         // Update clip path dimensions in case chart was resized
         this.updateClipPath();
