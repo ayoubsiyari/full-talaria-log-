@@ -18740,7 +18740,8 @@ def _build_bars_payload(
             use_qdb = questdb_store.questdb_read_primary() or questdb_store.count_bars(file_id, "ohlcv_1m") > 0
             if use_qdb:
                 bars = questdb_store.query_bars(file_id, chosen, from_ms, to_ms, limit=limit)
-        except Exception:
+        except Exception as exc:
+            print(f"[questdb] query_bars failed file_id={file_id} resolution={chosen}: {exc}")
             bars = []
 
     if not bars and questdb_store.questdb_tiles_fallback():
