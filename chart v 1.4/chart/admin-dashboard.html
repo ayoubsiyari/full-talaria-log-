@@ -1482,19 +1482,377 @@ select { cursor:default; }
 /* ── Support chat ─────────────────────────────────── */
 .support-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) 1fr;
-  gap: 16px;
-  min-height: calc(100vh - 140px);
-  align-items: start;
+  grid-template-columns: minmax(300px, 340px) 1fr;
+  gap: 14px;
+  min-height: calc(100vh - 200px);
+  align-items: stretch;
+}
+.support-inbox-card,
+.support-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  max-height: calc(100vh - 200px);
+}
+.support-inbox-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 !important;
+}
+.support-inbox-filters {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.support-filter-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.support-filter-row.grid-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.support-filter-search {
+  width: 100%;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.support-filter-search:focus {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.1);
+}
+.support-inbox-filters select {
+  width: 100%;
+  font-size: 11px;
+  padding: 7px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.support-filter-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.support-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.support-filter-chip:hover { border-color: rgba(255, 255, 255, 0.12); color: var(--text-secondary); }
+.support-filter-chip:has(input:checked) {
+  border-color: rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--accent);
+}
+.support-filter-chip input { accent-color: var(--accent); margin: 0; }
+.support-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.support-filter-actions select {
+  width: auto;
+  flex: 1;
+  min-width: 110px;
+}
+.support-inbox-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.support-thread-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 !important;
+  min-height: 0;
+}
+.support-thread-row {
+  padding: 11px 12px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .15s ease;
+}
+.support-thread-row:hover { background: rgba(255,255,255,.03); }
+.support-thread-row.active {
+  background: var(--accent-subtle);
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+.support-thread-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.support-thread-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.support-thread-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.support-thread-ref {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 2px;
+}
+.support-thread-subj {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.support-thread-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+.support-thread-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-muted);
+}
+.support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
+.support-thread-pill.status-pending { color: #fde047; border-color: rgba(251, 191, 36, 0.35); }
+.support-thread-pill.status-resolved { color: #86efac; border-color: rgba(34, 197, 94, 0.35); }
+.support-thread-pill.status-closed { color: var(--text-muted); }
+.support-thread-pill.pri-urgent { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+.support-thread-pill.pri-high { color: #fdba74; border-color: rgba(251, 146, 60, 0.35); }
+.support-thread-pill.pri-low { color: #94a3b8; }
+.support-thread-pill.sla { color: #f87171; border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.12); }
+.support-thread-pill.reply { color: #fde047; border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.12); }
+.support-thread-pill.unread { color: #93c5fd; border-color: rgba(59, 130, 246, 0.35); background: rgba(59, 130, 246, 0.12); }
+.support-thread-user {
+  color: var(--text-secondary);
+  font-weight: 500;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.support-thread-assignee {
+  color: var(--text-muted);
+  margin-left: auto;
+}
+.support-thread-assignee::before { content: '→ '; opacity: .6; }
+.support-thread-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 .support-chat-column {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
+  min-height: 0;
+}
+.support-main-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.support-main-header .card-title {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+}
+.support-ticket-toolbar {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.1);
+}
+.support-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px 10px;
+  align-items: end;
+}
+.support-control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  min-width: 0;
+}
+.support-control-field select,
+.support-control-field input {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  width: 100%;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.support-control-field.wide { grid-column: span 2; }
+.support-controls-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.support-controls-actions select {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  min-width: 160px;
+}
+.support-messages-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 24px;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 220px;
+}
+.support-messages-empty svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.35;
+  margin-bottom: 4px;
+}
+.support-messages-empty p { font-size: 13px; margin: 0; }
+.support-messages-empty span { font-size: 11px; opacity: 0.8; }
+.support-composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+.support-composer-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.support-composer textarea {
+  width: 100%;
+  min-height: 72px;
+  max-height: 200px;
+  resize: vertical;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.support-composer textarea:focus {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.35);
+}
+.support-composer-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.support-composer-note:has(input:checked) {
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.12);
+  color: #d8b4fe;
+}
+.support-composer-note input { accent-color: var(--violet); margin: 0; }
+.support-file-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px dashed var(--border);
+  background: rgba(0, 0, 0, 0.1);
+}
+.support-file-hint input[type=file] {
+  font-size: 11px;
+  max-width: 100%;
 }
 @media (max-width: 900px) {
   .support-layout { grid-template-columns: 1fr; }
+  .support-inbox-card, .support-main { max-height: none; }
 }
 .support-user-card .crm-grid {
   display: grid;
@@ -1525,24 +1883,6 @@ select { cursor:default; }
   color: var(--text-muted);
   opacity: .7;
 }
-.support-thread-list {
-  max-height: calc(100vh - 180px);
-  overflow-y: auto;
-  padding: 0 !important;
-}
-.support-thread-row {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-subtle);
-  cursor:default;
-  font-size: 12px;
-}
-.support-thread-row:hover { background: rgba(255,255,255,.03); }
-.support-thread-row.active {
-  background: var(--accent-subtle);
-  border-left: 3px solid var(--accent);
-}
-.support-thread-subj { font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.support-thread-meta { font-size: 11px; color: var(--text-muted); }
 .support-stats-panel {
   display: flex;
   flex-direction: column;
@@ -1718,8 +2058,6 @@ select { cursor:default; }
   font-style: italic;
   padding: 4px 2px;
 }
-.support-filters { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; align-items:center; }
-.support-filters select, .support-filters input { font-size:12px; padding:6px 8px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--surface-raised); color:var(--text); }
 .support-badge { font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px; }
 .support-badge.sla { background:rgba(239,68,68,.15); color:#f87171; }
 .support-badge.pri-urgent { background:rgba(239,68,68,.2); color:#fca5a5; }
@@ -1729,7 +2067,7 @@ select { cursor:default; }
   font-weight:600;
   padding:2px 8px;
   border-radius:999px;
-  margin-right:6px;
+  margin-right:0;
   border:1px solid transparent;
   white-space:nowrap;
   vertical-align:middle;
@@ -1744,11 +2082,9 @@ select { cursor:default; }
 .support-cat-suggestions { background:rgba(168,85,247,.2); color:#d8b4fe; border-color:rgba(168,85,247,.4); }
 .support-cat-other { background:rgba(107,114,128,.18); color:#d1d5db; border-color:rgba(107,114,128,.35); }
 .support-msg.internal { border-left:3px solid #a78bfa; opacity:.95; }
-.support-ticket-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
-.support-ticket-controls select { font-size:12px; padding:4px 8px; }
-.support-activity { font-size:11px; color:var(--text-muted); max-height:120px; overflow-y:auto; margin-top:8px; }
+.support-activity { font-size:11px; color:var(--text-muted); max-height:120px; overflow-y:auto; margin-top:10px; padding-top:8px; border-top:1px solid var(--border-subtle); }
 .support-activity div { padding:4px 0; border-bottom:1px solid var(--border); }
-.support-main { display: flex; flex-direction: column; min-height: 400px; }
+.support-main { display: flex; flex-direction: column; min-height: 400px; flex: 1; }
 .support-messages {
   flex: 1;
   overflow-y: auto;
@@ -1756,8 +2092,7 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 280px;
-  max-height: calc(100vh - 320px);
+  min-height: 200px;
   background: rgba(0,0,0,.15);
 }
 .support-msg {
@@ -1785,45 +2120,6 @@ select { cursor:default; }
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: .04em;
-}
-.support-composer {
-  display: flex;
-  gap: 10px;
-  padding: 16px 20px;
-  border-top: 1px solid var(--border);
-  align-items: flex-end;
-}
-.support-composer-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.support-composer textarea {
-  flex: 1;
-  min-height: 72px;
-  max-height: 200px;
-  resize: vertical;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  padding: 10px 12px;
-  font-family: inherit;
-  font-size: 13px;
-}
-.support-file-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.support-file-hint input[type=file] {
-  font-size: 11px;
-  max-width: 100%;
 }
 .support-msg-img-wrap {
   margin-top: 8px;
@@ -3579,63 +3875,72 @@ select { cursor:default; }
       <div class="section" id="sec-support">
         <div id="supportTicketStats"></div>
         <div class="support-layout">
-          <div class="card" style="margin:0;display:flex;flex-direction:column;max-height:calc(100vh - 120px)">
+          <div class="card support-inbox-card">
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
               <div class="card-title">Inbox</div>
+              <span class="card-badge" id="supportInboxCount">0</span>
               <button type="button" class="btn sm" onclick="loadSupportThreads()">Refresh</button>
             </div>
-            <div class="card-body" style="padding:12px">
-              <div class="support-filters">
-                <input type="search" id="supportFilterQ" placeholder="Search subject or email…" style="flex:1;min-width:120px" onkeydown="if(event.key==='Enter')loadSupportThreads()" />
-                <select id="supportFilterStatus" onchange="loadSupportThreads()">
-                  <option value="">All status</option>
-                  <option value="open">Open</option>
-                  <option value="pending">Pending</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-                <select id="supportFilterPriority" onchange="loadSupportThreads()">
-                  <option value="">All priority</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="high">High</option>
-                  <option value="normal">Normal</option>
-                  <option value="low">Low</option>
-                </select>
-                <select id="supportFilterCategory" onchange="loadSupportThreads()">
-                  <option value="">All categories</option>
-                  <option value="billing">Billing</option>
-                  <option value="account">Account</option>
-                  <option value="access">Access</option>
-                  <option value="bug">Bug</option>
-                  <option value="error">Error</option>
-                  <option value="feature">Feature request</option>
-                  <option value="modifications">Modifications</option>
-                  <option value="suggestions">Suggestions / Features</option>
-                  <option value="other">Other</option>
-                </select>
-                <select id="supportFilterAssignee" onchange="loadSupportThreads()">
-                  <option value="">All assignees</option>
-                  <option value="0">Unassigned</option>
-                </select>
-                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
-                  <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
-                </label>
-                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
-                  <input type="checkbox" id="supportFilterMine" onchange="loadSupportThreads()" /> My tickets
-                </label>
-                <label style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
-                  <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
-                </label>
-                <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order">
-                  <option value="activity">Sort: activity</option>
-                  <option value="sla">Sort: SLA due</option>
-                  <option value="oldest">Sort: oldest</option>
-                </select>
-                <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
+            <div class="card-body support-inbox-body">
+              <div class="support-inbox-filters">
+                <div class="support-filter-row">
+                  <input type="search" class="support-filter-search" id="supportFilterQ" placeholder="Search subject or email…" onkeydown="if(event.key==='Enter')loadSupportThreads()" />
+                </div>
+                <div class="support-filter-row grid-row">
+                  <select id="supportFilterStatus" onchange="loadSupportThreads()">
+                    <option value="">All status</option>
+                    <option value="open">Open</option>
+                    <option value="pending">Pending</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                  <select id="supportFilterPriority" onchange="loadSupportThreads()">
+                    <option value="">All priority</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="high">High</option>
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                  </select>
+                  <select id="supportFilterCategory" onchange="loadSupportThreads()">
+                    <option value="">All categories</option>
+                    <option value="billing">Billing</option>
+                    <option value="account">Account</option>
+                    <option value="access">Access</option>
+                    <option value="bug">Bug</option>
+                    <option value="error">Error</option>
+                    <option value="feature">Feature request</option>
+                    <option value="modifications">Modifications</option>
+                    <option value="suggestions">Suggestions / Features</option>
+                    <option value="other">Other</option>
+                  </select>
+                  <select id="supportFilterAssignee" onchange="loadSupportThreads()">
+                    <option value="">All assignees</option>
+                    <option value="0">Unassigned</option>
+                  </select>
+                </div>
+                <div class="support-filter-toggles">
+                  <label class="support-filter-chip">
+                    <input type="checkbox" id="supportFilterSla" onchange="loadSupportThreads()" /> SLA overdue
+                  </label>
+                  <label class="support-filter-chip">
+                    <input type="checkbox" id="supportFilterMine" onchange="loadSupportThreads()" /> My tickets
+                  </label>
+                  <label class="support-filter-chip">
+                    <input type="checkbox" id="supportFilterNeedsReply" onchange="loadSupportThreads()" /> Needs reply
+                  </label>
+                </div>
+                <div class="support-filter-actions">
+                  <select id="supportFilterSort" onchange="loadSupportThreads()" title="Sort order">
+                    <option value="activity">Sort: activity</option>
+                    <option value="sla">Sort: SLA due</option>
+                    <option value="oldest">Sort: oldest</option>
+                  </select>
+                  <a class="btn sm" id="supportExportBtn" href="#" onclick="return supportExportCsv(event)">Export CSV</a>
+                </div>
               </div>
               <div class="support-thread-list" id="supportThreadList">
-                <div class="empty-state"><p>Loading…</p></div>
+                <div class="support-thread-empty">Loading…</div>
               </div>
             </div>
           </div>
@@ -3647,19 +3952,19 @@ select { cursor:default; }
               </div>
               <div class="card-body" id="supportUserCardBody"></div>
             </div>
-            <div class="card support-main" style="margin:0">
-              <div class="card-hdr" style="flex-wrap:wrap;gap:8px">
-                <div class="card-title" id="supportThreadTitle" style="flex:1;min-width:0">Select a ticket</div>
+            <div class="card support-main">
+              <div class="card-hdr support-main-header">
+                <div class="card-title" id="supportThreadTitle">Select a ticket</div>
                 <button type="button" class="btn sm" id="supportResolveBtn" style="display:none" onclick="supportSetStatus('resolved')">Resolve</button>
                 <button type="button" class="btn sm" id="supportReopenBtn" style="display:none" onclick="supportSetStatus('open')">Reopen</button>
                 <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportSetStatus('closed')">Close</button>
               </div>
-              <div class="card-body" style="padding:12px;border-bottom:1px solid var(--border)">
-                <div class="support-ticket-controls" id="supportTicketControls" style="display:none">
-                  <label style="font-size:11px;color:var(--text-muted)">Status
+              <div class="support-ticket-toolbar" id="supportTicketControls" style="display:none">
+                <div class="support-controls-grid">
+                  <label class="support-control-field">Status
                     <select id="supportTicketStatus" onchange="supportPatchTicketField('status', this.value)"></select>
                   </label>
-                  <label style="font-size:11px;color:var(--text-muted)">Priority
+                  <label class="support-control-field">Priority
                     <select id="supportTicketPriority" onchange="supportPatchTicketField('priority', this.value)">
                       <option value="low">Low</option>
                       <option value="normal">Normal</option>
@@ -3667,31 +3972,37 @@ select { cursor:default; }
                       <option value="urgent">Urgent</option>
                     </select>
                   </label>
-                  <label style="font-size:11px;color:var(--text-muted)">Category
+                  <label class="support-control-field">Category
                     <select id="supportTicketCategory" onchange="supportPatchTicketField('category', this.value)"></select>
                   </label>
-                  <label style="font-size:11px;color:var(--text-muted)">Assignee
+                  <label class="support-control-field">Assignee
                     <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
                   </label>
-                  <span id="supportTicketSlaLabel" class="support-badge sla" style="display:none"></span>
-                  <label style="font-size:11px;color:var(--text-muted)">Tags
-                    <input type="text" id="supportTicketTags" placeholder="v9-chart, billing" style="font-size:12px;padding:4px 8px;min-width:140px" onchange="supportPatchTicketField('tags', this.value)" />
+                  <label class="support-control-field wide">Tags
+                    <input type="text" id="supportTicketTags" placeholder="v9-chart, billing" onchange="supportPatchTicketField('tags', this.value)" />
                   </label>
-                  <label style="font-size:11px;color:var(--text-muted)">Related
-                    <input type="text" id="supportTicketRelated" placeholder="TAL-00123 or id" style="font-size:12px;padding:4px 8px;width:100px" onchange="supportPatchTicketRelated(this.value)" />
+                  <label class="support-control-field">Related
+                    <input type="text" id="supportTicketRelated" placeholder="TAL-00123" onchange="supportPatchTicketRelated(this.value)" />
                   </label>
-                  <select id="supportCannedSelect" style="margin-left:auto" onchange="supportInsertCanned(this)">
+                </div>
+                <div class="support-controls-actions">
+                  <span id="supportTicketSlaLabel" class="support-thread-pill sla" style="display:none"></span>
+                  <select id="supportCannedSelect" onchange="supportInsertCanned(this)">
                     <option value="">Canned reply…</option>
                   </select>
                 </div>
                 <div class="support-activity" id="supportTicketActivity" style="display:none"></div>
               </div>
               <div class="support-messages" id="supportMessages">
-                <div class="empty-state" style="padding:24px"><p style="color:var(--text-muted)">Choose a ticket to view messages</p></div>
+                <div class="support-messages-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                  <p>Choose a ticket to view messages</p>
+                  <span>Select from the inbox on the left</span>
+                </div>
               </div>
               <div class="support-composer">
                 <div class="support-composer-col">
-                  <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                  <label class="support-composer-note">
                     <input type="checkbox" id="supportInternalNote" /> Internal note (not emailed to user)
                   </label>
                   <textarea id="supportInput" placeholder="Public reply or internal note…" disabled></textarea>
@@ -4399,33 +4710,52 @@ function supportExportCsv(ev) {
 
 async function loadSupportThreads() {
   const box = $('supportThreadList');
+  const countEl = $('supportInboxCount');
   try {
     const data = await api('/api/admin/support/threads?' + supportBuildThreadQuery());
     supportThreads = data.threads || [];
+    if (countEl) countEl.textContent = String(supportThreads.length);
     if (!supportThreads.length) {
-      box.innerHTML = '<div class="empty-state" style="padding:24px"><p>No tickets match filters</p></div>';
+      box.innerHTML = '<div class="support-thread-empty">No tickets match filters</div>';
       return;
     }
     box.innerHTML = supportThreads.map(t => {
       const active = t.id === selectedSupportId ? ' active' : '';
       const who = esc(t.user_name || t.user_email || 'User #' + t.user_id);
       const ref = esc(t.ticket_ref || ('TAL-' + String(t.id).padStart(5, '0')));
-      const sla = t.sla_overdue ? '<span class="support-badge sla">SLA</span>' : '';
-      const pri = t.priority && t.priority !== 'normal' ? '<span class="support-badge pri-' + esc(t.priority) + '">' + esc(t.priority) + '</span>' : '';
-      const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : '—';
-      const catBadge = supportCategoryBadgeHtml(t.category);
-      const unread = t.staff_unread ? '<span class="support-badge" style="background:rgba(59,130,246,.25);color:#93c5fd">●</span>' : '';
-      const needs = t.needs_staff_reply ? '<span class="support-badge" style="background:rgba(251,191,36,.2);color:#fde047">Reply</span>' : '';
+      const status = esc(t.status || 'open');
+      const priority = esc(t.priority || 'normal');
+      const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : 'Unassigned';
+      const badges = [
+        t.staff_unread ? '<span class="support-thread-pill unread">Unread</span>' : '',
+        t.needs_staff_reply ? '<span class="support-thread-pill reply">Reply</span>' : '',
+        supportCategoryBadgeHtml(t.category),
+        t.sla_overdue ? '<span class="support-thread-pill sla">SLA</span>' : ''
+      ].filter(Boolean).join('');
+      const priPill = priority !== 'normal'
+        ? '<span class="support-thread-pill pri-' + priority + '">' + priority + '</span>'
+        : '';
       return `<div class="support-thread-row${active}" data-id="${t.id}">
-        <div class="support-thread-subj">${unread}${needs}${catBadge}${ref} · ${esc(t.subject)} ${pri}${sla}</div>
-        <div class="support-thread-meta">${who} · ${esc(t.status)} · ${esc(t.priority || 'normal')} · ${assignee} · ${timeAgo(t.last_message_at)}</div>
+        <div class="support-thread-top">
+          <div class="support-thread-badges">${badges}</div>
+          <span class="support-thread-time">${timeAgo(t.last_message_at)}</span>
+        </div>
+        <div class="support-thread-ref">${ref}</div>
+        <div class="support-thread-subj">${esc(t.subject)}</div>
+        <div class="support-thread-meta-row">
+          <span class="support-thread-pill status-${status}">${status}</span>
+          ${priPill}
+          <span class="support-thread-user">${who}</span>
+          <span class="support-thread-assignee">${assignee}</span>
+        </div>
       </div>`;
     }).join('');
     box.querySelectorAll('.support-thread-row').forEach(row => {
       row.addEventListener('click', () => selectSupportThread(parseInt(row.getAttribute('data-id'), 10)));
     });
   } catch (e) {
-    box.innerHTML = '<div class="empty-state"><p>' + esc(e.message || 'Failed to load') + '</p></div>';
+    if (countEl) countEl.textContent = '0';
+    box.innerHTML = '<div class="support-thread-empty">' + esc(e.message || 'Failed to load') + '</div>';
   }
 }
 
@@ -4434,7 +4764,7 @@ function renderSupportMessages() {
   const th = supportThreads.find(x => x.id === selectedSupportId);
   const ownerId = th ? th.user_id : null;
   if (!supportMessages.length) {
-    box.innerHTML = '<div class="empty-state" style="padding:24px"><p style="color:var(--text-muted)">No messages</p></div>';
+    box.innerHTML = '<div class="support-messages-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><p>No messages yet</p><span>Replies will appear here</span></div>';
     return;
   }
   box.innerHTML = supportMessages.map(m => {
@@ -4470,7 +4800,7 @@ function supportUpdateTicketControls(th) {
     if (ctrl) ctrl.style.display = 'none';
     return;
   }
-  if (ctrl) ctrl.style.display = 'flex';
+  if (ctrl) ctrl.style.display = 'block';
   const stSel = $('supportTicketStatus');
   if (stSel) {
     stSel.innerHTML = ['open', 'pending', 'resolved', 'closed'].map(s =>
@@ -4496,7 +4826,7 @@ function supportUpdateTicketControls(th) {
     if (th.sla_label) {
       slaEl.style.display = '';
       slaEl.textContent = th.sla_label;
-      slaEl.className = 'support-badge ' + (th.sla_overdue ? 'sla' : '');
+      slaEl.className = 'support-thread-pill sla';
     } else {
       slaEl.style.display = 'none';
       slaEl.textContent = '';
