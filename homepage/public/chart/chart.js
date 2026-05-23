@@ -2024,6 +2024,177 @@ class Chart {
         return { startTs: t0, endTs: t1 };
     }
 
+    /** Map a fractional bar index to epoch ms (extrapolates beyond loaded data). */
+    _indexToTimestamp(idx) {
+        const source = Array.isArray(this.rawData) && this.rawData.length
+            ? this.rawData
+            : (Array.isArray(this.data) ? this.data : []);
+        if (!source.length) return null;
+        const tfMs = this._inferMedianBarPeriodMs(source)
+            || this.parseTimeframe(this.currentTimeframe)
+            || 60_000;
+        const clamped = Math.max(0, Math.min(source.length - 1, Math.floor(idx)));
+        return source[clamped].t + (idx - clamped) * tfMs;
+    }
+
+    /** Pixel-accurate visible window — used for zoom-out background fill. */
+    _getVisibleFetchWindowFromPixels() {
+        if (!this.data || this.data.length === 0) return null;
+        const m = this.margin || { l: 60, r: 60 };
+        const plotRight = this.w - m.r;
+        const buf = 40;
+        const startIdx = Math.floor(this.pixelToDataIndex(m.l)) - buf;
+        const endIdx = Math.ceil(this.pixelToDataIndex(plotRight)) + buf;
+        const visibleBarCount = Math.max(1, endIdx - startIdx);
+        const fromMs = this._indexToTimestamp(startIdx);
+        const toMs = this._indexToTimestamp(endIdx);
+        if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return null;
+        const lo = Math.min(fromMs, toMs);
+        const hi = Math.max(fromMs, toMs);
+        const srcLen = this.data.length;
+        const loadedStart = Math.max(0, Math.floor(startIdx));
+        const loadedEnd = Math.min(srcLen - 1, Math.ceil(endIdx));
+        const loadedBarCount = loadedEnd >= loadedStart ? (loadedEnd - loadedStart + 1) : 0;
+        return {
+            fromMs: lo,
+            toMs: hi,
+            visibleBarCount,
+            loadedBarCount,
+            startIdx,
+            endIdx,
+        };
+    }
+
+    _scheduleZoomOutDataFill() {
+        this._zoomOutFillPending = true;
+        clearTimeout(this._zoomOutFillTimer);
+        this._zoomOutFillTimer = setTimeout(() => {
+            this._zoomOutFillTimer = null;
+            this._fillVisibleWindowAfterZoomOut().catch(() => {});
+        }, 150);
+    }
+
+    _deferIndicatorRecalcAfterZoomFill() {
+        clearTimeout(this._deferredIndicatorTimer);
+        this._deferredIndicatorTimer = setTimeout(() => {
+            this._deferredIndicatorTimer = null;
+            if (typeof this.recalculateIndicators === 'function') {
+                this.recalculateIndicators();
+            }
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        }, 450);
+    }
+
+    _applyZoomOutBars(incoming, win, serverTf) {
+        const sorted = incoming.slice().sort((a, b) => a.t - b.t);
+        if (!sorted.length) return false;
+        const chartTf = this.currentTimeframe || '1m';
+        const chartTfMs = this.parseTimeframe(chartTf) || 60_000;
+        const serverTfMs = this.parseTimeframe(serverTf || chartTf) || chartTfMs;
+        const existing = Array.isArray(this.rawData) && this.rawData.length ? this.rawData : this.data;
+
+        const useAsViewportSnapshot =
+            serverTfMs >= chartTfMs
+            && sorted.length >= Math.min(1800, Math.max(120, win.visibleBarCount * 0.45));
+
+        if (useAsViewportSnapshot) {
+            this.rawData = sorted;
+            this.data = sorted;
+        } else {
+            const tsSet = new Set(existing.map((c) => c.t));
+            const unique = sorted.filter((c) => !tsSet.has(c.t));
+            if (!unique.length) return false;
+            let merged = existing.concat(unique).sort((a, b) => a.t - b.t);
+            const cap = this._RAW_DATA_CAP || 8000;
+            if (merged.length > cap) {
+                const centerT = (win.fromMs + win.toMs) / 2;
+                merged = merged
+                    .slice()
+                    .sort((a, b) => Math.abs(a.t - centerT) - Math.abs(b.t - centerT))
+                    .slice(0, cap)
+                    .sort((a, b) => a.t - b.t);
+            }
+            this.rawData = merged;
+            this.data = this.resampleData(this.rawData, chartTf);
+        }
+
+        if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
+            this.dataPipeline.invalidateResampleCache();
+        }
+        if (this._serverCursors) {
+            this._serverCursors.firstTs = String(this.rawData[0].t);
+            this._serverCursors.lastTs = String(this.rawData[this.rawData.length - 1].t);
+            this._serverCursors.hasMoreLeft = win.startIdx < 0;
+            this._serverCursors.hasMoreRight = true;
+        }
+        return true;
+    }
+
+    async _fillVisibleWindowAfterZoomOut() {
+        if (this._zoomOutFillInflight || this._panLoading || this._timeframeSwitching) return;
+        if (!this.currentFileId || !this.data || this.data.length === 0) return;
+        if (this.replaySystem && this.replaySystem.isActive) return;
+
+        const win = this._getVisibleFetchWindowFromPixels();
+        if (!win) {
+            this._zoomOutFillPending = false;
+            return;
+        }
+
+        if (win.visibleBarCount < 96) {
+            this._zoomOutFillPending = false;
+            return;
+        }
+        if (win.loadedBarCount >= win.visibleBarCount * 0.82) {
+            this._zoomOutFillPending = false;
+            return;
+        }
+
+        this._zoomOutFillInflight = true;
+        try {
+            const payload = await this._fetchBarsWindow(
+                this.currentFileId,
+                win.fromMs,
+                win.toMs,
+                'auto',
+                2000,
+            );
+            let bars = Array.isArray(payload?.bars)
+                ? this._normalizeCandlesFromApi(payload.bars)
+                : [];
+            if (!bars.length) return;
+
+            const serverTf = payload.resolution || (this.currentTimeframe || '1m');
+            const applied = this._applyZoomOutBars(bars, win, serverTf);
+            if (!applied) return;
+
+            this.bumpDataVersion();
+            if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
+                this.dataPipeline.bumpDisplayVersion();
+            }
+            this._deferIndicatorRecalcAfterZoomFill();
+            this.scheduleRender();
+
+            const winAfter = this._getVisibleFetchWindowFromPixels();
+            if (
+                winAfter
+                && winAfter.visibleBarCount >= 96
+                && winAfter.loadedBarCount < winAfter.visibleBarCount * 0.82
+            ) {
+                setTimeout(() => this._fillVisibleWindowAfterZoomOut().catch(() => {}), 250);
+            } else {
+                requestAnimationFrame(() => {
+                    try { this.constrainOffset(); } catch (_e) {}
+                });
+            }
+        } catch (err) {
+            console.warn('[chart] zoom-out fill failed:', err);
+        } finally {
+            this._zoomOutFillInflight = false;
+            this._zoomOutFillPending = false;
+        }
+    }
+
     _scheduleViewportBarsFetch() {
         if (this._viewportBarsTimer) return;
         this._viewportBarsTimer = setTimeout(() => {
@@ -10627,7 +10798,8 @@ class Chart {
         const wheelActive = typeof this._wheelBurstUntil === 'number'
             && performance.now() < this._wheelBurstUntil;
         const panActive = this._isChartViewPanning();
-        if (!wheelActive && !panActive) {
+        const zoomFillActive = !!(this._zoomOutFillInflight || this._zoomOutFillPending);
+        if (!wheelActive && !panActive && !zoomFillActive) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
@@ -18736,9 +18908,13 @@ class Chart {
             clearTimeout(this._wheelPostBurstTimer);
             this._wheelPostBurstTimer = setTimeout(() => {
                 if (this.data && this.data.length > 0) {
-                    try { this.constrainOffset(); } catch (_e) {}
+                    if (this._lastWheelZoomDirection === -1) {
+                        this._scheduleZoomOutDataFill();
+                    } else {
+                        try { this.constrainOffset(); } catch (_e) {}
+                    }
                 }
-            }, 240);
+            }, 260);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
@@ -18850,6 +19026,7 @@ class Chart {
                 }
                 this.zoomLevel.candleWidthIndex = nearestIdx;
 
+                this._lastWheelZoomDirection = zoomDirection;
                 this.constrainOffset();
                 this.scheduleRender();
                 this.dispatchScrollSync();
