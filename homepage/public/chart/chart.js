@@ -1957,6 +1957,92 @@ class Chart {
         return inflight;
     }
 
+    /**
+     * Cursor-based pan pagination via GET /file/{id}/candles (ts < cursor, ORDER BY DESC).
+     * Correct for 1m replay pan-left; /bars?from=&to= returns ASC from window start (wrong edge).
+     */
+    async _fetchCandlesCursor(fileId, timeframe, cursorTs, direction = 'backward', limit = 2000) {
+        const storeTf = this._questdbStoreResolution(timeframe);
+        const params = new URLSearchParams({
+            timeframe: String(storeTf || '1m'),
+            limit: String(Math.max(100, Math.min(2000, Number(limit) || 2000))),
+            direction: direction === 'forward' ? 'forward' : 'backward',
+        });
+        if (Number.isFinite(Number(cursorTs))) {
+            params.set('cursor', String(Math.floor(Number(cursorTs))));
+        }
+
+        const cacheKey = `candles|${fileId}|${params.toString()}`;
+        if (this._smartPrefetchCache && this._smartPrefetchCache.has(cacheKey)) {
+            const entry = this._smartPrefetchCache.get(cacheKey);
+            if (entry && Date.now() - entry.at < (this._smartCacheTtlMs || 120000)) {
+                return entry.payload;
+            }
+        }
+        if (this._candlesInflight && this._candlesInflight.has(cacheKey)) {
+            return this._candlesInflight.get(cacheKey);
+        }
+
+        const fetchInit = {};
+        const signal = this._getTimeframeFetchSignal();
+        if (signal) fetchInit.signal = signal;
+
+        if (!this._candlesInflight) this._candlesInflight = new Map();
+        const inflight = fetch(`${this.apiUrl}/file/${fileId}/candles?${params.toString()}`, fetchInit)
+            .then((response) => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then((result) => {
+                const col = result && result.data;
+                let bars = [];
+                if (col && Array.isArray(col.t) && col.t.length) {
+                    bars = col.t.map((t, i) => ({
+                        t: col.t[i],
+                        o: col.o[i],
+                        h: col.h[i],
+                        l: col.l[i],
+                        c: col.c[i],
+                        v: col.v[i],
+                    }));
+                }
+                const payload = {
+                    bars,
+                    has_more_left: result.has_more_left,
+                    has_more_right: result.has_more_right,
+                    prev_cursor: result.prev_cursor,
+                    next_cursor: result.next_cursor,
+                    elapsed_ms: result.elapsed_ms,
+                    source: result.source || 'candles',
+                };
+                const src = String(payload.source);
+                if (this._lastBarsSourceLogFileId !== String(fileId) || this._lastBarsSourceLog !== src) {
+                    this._lastBarsSourceLogFileId = String(fileId);
+                    this._lastBarsSourceLog = src;
+                    console.info(`[chart] file ${fileId} pan loads via: ${src}`);
+                }
+                if (this._smartPrefetchCache) {
+                    this._smartPrefetchCache.set(cacheKey, { at: Date.now(), payload, fileId: String(fileId) });
+                }
+                return payload;
+            })
+            .finally(() => {
+                if (this._candlesInflight) this._candlesInflight.delete(cacheKey);
+            });
+
+        this._candlesInflight.set(cacheKey, inflight);
+        return inflight;
+    }
+
+    /** Keep pan cursors aligned with replay fullRawData edges (1m TF switch fix). */
+    _syncReplayPanCursorsFromFullRaw() {
+        const replay = this.replaySystem;
+        if (!replay || !Array.isArray(replay.fullRawData) || !replay.fullRawData.length) return;
+        if (!this._serverCursors) this._serverCursors = {};
+        this._serverCursors.firstTs = String(replay.fullRawData[0].t);
+        this._serverCursors.lastTs = String(replay.fullRawData[replay.fullRawData.length - 1].t);
+    }
+
     _smartPayloadFromBars(barsPayload) {
         const bars = Array.isArray(barsPayload?.bars) ? barsPayload.bars : [];
         if (!bars.length) return null;
@@ -2743,6 +2829,7 @@ class Chart {
             replay.tickPathCacheBuilt = false;
             replay.replayStartTimestamp = replay.fullRawData[0]?.t ?? replay.replayStartTimestamp;
             replay.replayEndTimestamp = replay.fullRawData[replay.fullRawData.length - 1]?.t ?? replay.replayEndTimestamp;
+            this._syncReplayPanCursorsFromFullRaw();
 
             let sessionStartMs = null;
             try {
@@ -10893,7 +10980,7 @@ class Chart {
             && performance.now() < this._wheelBurstUntil;
         const panActive = this._isChartViewPanning();
         const zoomFillActive = !!(this._zoomOutFillInflight || this._zoomOutFillPending);
-        if (!wheelActive && !panActive && !zoomFillActive) {
+        if (!wheelActive && !zoomFillActive) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
             const nearEdgeThreshold = 500 * candleSpacing;
             if (isReplayActive) {
@@ -10903,9 +10990,9 @@ class Chart {
                     && candleSpacing > 0
                     && this.offsetX > maxOffset - candleSpacing * 8;
                 if (replayNearLeft || replayNearEmptyLeft) {
-                    this.checkViewportLoadMore('backward');
+                    this.checkViewportLoadMore('backward', true);
                 }
-            } else {
+            } else if (!panActive) {
                 // Normal mode: trigger both directions based on viewport position
                 if (this.offsetX > maxOffset - nearEdgeThreshold) {
                     this.checkViewportLoadMore('backward');
@@ -14073,11 +14160,15 @@ class Chart {
         }
 
         this.totalCandles = result.total;
+        let hasMoreLeft = result.has_more_left !== false;
+        if (this.isBacktestMode) {
+            hasMoreLeft = true;
+        }
         this._serverCursors = {
             firstTs: result.first_cursor,
             lastTs: result.last_cursor,
-            hasMoreLeft: result.has_more_left,
-            hasMoreRight: result.has_more_right
+            hasMoreLeft,
+            hasMoreRight: result.has_more_right !== false,
         };
         this._panLoading = false;
         this._nativeRawFetchTf = timeframe;
@@ -14088,6 +14179,7 @@ class Chart {
             skipChartDataLoadedEvent: true,
             skipTimeframePrefetch: true,
         });
+        this._syncReplayPanCursorsFromFullRaw();
         this._saveBtTfDataCacheFromChart(this.currentFileId, timeframe);
         if (this._btTfDataCache) {
             const perFile = this._btTfDataCache.get(String(this.currentFileId));
@@ -14242,27 +14334,21 @@ class Chart {
         }
         this._panLoadLimit = panLimit;
         
-        if (!cursor) { this._panLoading = false; return false; }
-
         const barLimit = Math.min(2000, panLimit);
-        const tfMs = this.parseTimeframe(tf) || 60_000;
         const storeTf = this._questdbStoreResolution(tf);
-        const cursorNum = Number(cursor);
-        let fromMs = null;
-        let toMs = null;
-        if (Number.isFinite(cursorNum)) {
-            if (direction === 'backward') {
-                toMs = cursorNum;
-                fromMs = toMs - barLimit * tfMs;
-            } else {
-                fromMs = cursorNum;
-                toMs = fromMs + barLimit * tfMs;
-            }
+
+        // Replay: use fullRawData edges — _serverCursors can lag after 1m TF hot-swap.
+        let cursorNum = Number(cursor);
+        if (isReplay && Array.isArray(this.replaySystem.fullRawData) && this.replaySystem.fullRawData.length) {
+            cursorNum = direction === 'backward'
+                ? Number(this.replaySystem.fullRawData[0].t)
+                : Number(this.replaySystem.fullRawData[this.replaySystem.fullRawData.length - 1].t);
         }
+        if (!Number.isFinite(cursorNum)) { this._panLoading = false; return false; }
 
         const loadStartTs = Date.now();
 
-        this._fetchBarsWindow(this.currentFileId, fromMs, toMs, storeTf, barLimit)
+        this._fetchCandlesCursor(this.currentFileId, tf, cursorNum, direction, barLimit)
             .then((payload) => {
                 let bars = Array.isArray(payload?.bars) ? payload.bars : [];
                 if (bars.length && storeTf !== tf) {
@@ -14311,6 +14397,8 @@ class Chart {
                     this._serverCursors.firstTs = result.prev_cursor || this._serverCursors.firstTs;
                     if (typeof result.has_more_left === 'boolean') {
                         this._serverCursors.hasMoreLeft = result.has_more_left;
+                    } else if (this.isBacktestMode) {
+                        this._serverCursors.hasMoreLeft = true;
                     }
                 } else {
                     this._serverCursors.lastTs = result.next_cursor || this._serverCursors.lastTs;
@@ -14462,6 +14550,7 @@ class Chart {
                         this.viewportData.hasMoreLeft = !!this._serverCursors.hasMoreLeft;
                         this.viewportData.hasMoreRight = !!this._serverCursors.hasMoreRight;
                     }
+                    this._syncReplayPanCursorsFromFullRaw();
                     if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
                         this.dataPipeline.bumpDisplayVersion();
                     }
@@ -15307,13 +15396,24 @@ class Chart {
 
     /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
     _scheduleReplayPanLoadLeft() {
-        if (!this._needsReplayHistoryLoadLeft()) return;
+        if (!this.replaySystem?.isActive || !this.data?.length) return;
         if (this._panLoading) return;
+        const spacing = this.getCandleSpacing();
+        const m = this.margin || { l: 60, r: 60 };
+        const cw = Math.max(1, this.w - m.l - m.r);
+        const rightMargin = Math.max(0, (this.timeScale?.rightOffsetCandles || 15)) * spacing;
+        const maxOffset = cw - rightMargin;
+        const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
+        const gapOnLeft = leftIdx < 6;
+        const nearLoadedLeft = spacing > 0 && this.offsetX > maxOffset - spacing * 10;
+        const forceProbe = gapOnLeft || nearLoadedLeft;
+        if (!forceProbe && !this._needsReplayHistoryLoadLeft()) return;
         clearTimeout(this._replayPanLoadTimer);
         this._replayPanLoadTimer = setTimeout(() => {
             this._replayPanLoadTimer = null;
-            if (this._needsReplayHistoryLoadLeft()) {
-                this.checkViewportLoadMore('backward');
+            if (this._panLoading) return;
+            if (forceProbe || this._needsReplayHistoryLoadLeft()) {
+                this.checkViewportLoadMore('backward', forceProbe);
             }
         }, 90);
     }
@@ -25011,7 +25111,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a53';
+    window.TALARIA_CHART_BUILD = '20260522a54';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

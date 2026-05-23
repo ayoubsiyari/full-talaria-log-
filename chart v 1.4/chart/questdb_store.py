@@ -733,7 +733,7 @@ def query_bars_cursor(
     """
     rows = list(reversed(_fetch_all(sql, (fid, cur))))
     bars = _rows_to_bars(rows)
-    has_more_left = len(bars) >= limit
+    has_more_left = has_bars_before(file_id, res, bars[0]["t"]) if bars else False
     has_more_right = True
     return bars, has_more_left, has_more_right
 
