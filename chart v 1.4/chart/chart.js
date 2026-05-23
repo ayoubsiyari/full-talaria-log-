@@ -2335,10 +2335,6 @@ class Chart {
     _getNativeRawTfMs() {
         const replay = this.replaySystem;
         if (replay && replay.isActive) {
-            if (replay._masterFineRawTf) {
-                const ms = this.parseTimeframe(replay._masterFineRawTf);
-                if (Number.isFinite(ms) && ms > 0) return ms;
-            }
             const rawTf = replay.rawTimeframe;
             if (typeof rawTf === 'number' && rawTf > 0) return rawTf;
             if (typeof rawTf === 'string' && rawTf) {
@@ -2368,13 +2364,6 @@ class Chart {
         // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
         if (newMs >= rawMs * 0.92) {
             if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
-                const replay = this.replaySystem;
-                if (Array.isArray(replay._masterFineRawData) && replay._masterFineRawData.length) {
-                    const masterMs = this.parseTimeframe(replay._masterFineRawTf || replay.rawTimeframe);
-                    if (Number.isFinite(masterMs) && masterMs > 0 && newMs >= masterMs * 0.92) {
-                        return true;
-                    }
-                }
                 if (newMs / rawMs > 6) return false;
             }
             return true;
@@ -2384,15 +2373,11 @@ class Chart {
         return false;
     }
 
-    /** Timeframe for replay pan-left API calls (always use fine master when available). */
+    /** Timeframe for replay pan-left API calls (use display TF when zoomed out, e.g. 1D not underlying 1m). */
     _getReplayPanFetchTimeframe() {
-        const replay = this.replaySystem;
-        if (replay?.isActive && Array.isArray(replay._masterFineRawData) && replay._masterFineRawData.length) {
-            return String(replay._masterFineRawTf || replay.rawTimeframe || '1m').toLowerCase().trim();
-        }
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        if (!replay?.isActive) return displayTf;
-        const rawTf = String(replay.rawTimeframe || displayTf).toLowerCase().trim();
+        if (!this.replaySystem?.isActive) return displayTf;
+        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
         const displayMs = this.parseTimeframe(displayTf) || 60_000;
         const rawMs = this.parseTimeframe(rawTf) || 60_000;
         return displayMs >= rawMs ? displayTf : rawTf;
@@ -2851,18 +2836,18 @@ class Chart {
         this.manualRange = null;
 
         if (replay.isActive) {
-            if (typeof replay.applyHotSwapFetchedRawData === 'function') {
-                replay.applyHotSwapFetchedRawData(this.rawData, normalizedTf, savedReplayTimestamp);
-            } else {
-                replay.fullRawData = [...this.rawData];
-                replay.rawTimeframe = normalizedTf;
-                replay._fullRawDataMatchesTF = true;
-            }
+            replay.fullRawData = [...this.rawData];
             replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+            replay.rawTimeframe = normalizedTf;
+            replay._fullRawDataMatchesTF = true;
             replay.tickPathCache = {};
             replay.tickPathCacheBuilt = false;
             replay.replayStartTimestamp = replay.fullRawData[0]?.t ?? replay.replayStartTimestamp;
             replay.replayEndTimestamp = replay.fullRawData[replay.fullRawData.length - 1]?.t ?? replay.replayEndTimestamp;
+            if (Number.isFinite(savedReplayTimestamp)
+                && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+                replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+            }
             this._syncReplayPanCursorsFromFullRaw();
 
             let sessionStartMs = null;
@@ -13387,6 +13372,14 @@ class Chart {
         // last good frame stays on the canvas until the new TF's bars are ready.
         this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
 
+        // Lock replay playhead to the last visible candle before any fetch/resample path runs.
+        if (this.replaySystem && this.replaySystem.isActive) {
+            const ph = this._captureReplayPlayheadMs(this.replaySystem);
+            if (Number.isFinite(ph)) {
+                this.replaySystem.replayTimestamp = ph;
+            }
+        }
+
         // Trigger interval sync if enabled. Uses the local normalizedTf rather than
         // this.currentTimeframe so the deferred commit doesn't break sibling panels.
         if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
@@ -13402,25 +13395,6 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            const replay = this.replaySystem;
-
-            // Zoom-out with a fine master loaded: resample in-place (same playhead time/price).
-            if (this.isBacktestMode && Array.isArray(replay._masterFineRawData) && replay._masterFineRawData.length) {
-                const masterMs = this.parseTimeframe(replay._masterFineRawTf || replay.rawTimeframe);
-                const newMs = this.parseTimeframe(normalizedTf);
-                if (Number.isFinite(masterMs) && masterMs > 0
-                    && Number.isFinite(newMs) && newMs >= masterMs * 0.92) {
-                    replay.fullRawData = replay._masterFineRawData;
-                    replay.rawTimeframe = replay._masterFineRawTf;
-                    const ph = this._captureReplayPlayheadMs(replay);
-                    if (Number.isFinite(ph) && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                        replay.syncCurrentIndexFromReplayTimestamp(ph);
-                    }
-                    this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                    return;
-                }
-            }
-
             // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
             // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
             // them — refetch from the server with the session window clamp instead.
@@ -13930,8 +13904,17 @@ class Chart {
         if (!replay) return null;
 
         let ts = null;
+
+        // Last displayed candle — matches what the user sees before a TF switch.
+        if (Array.isArray(this.data) && this.data.length > 0) {
+            const lastBar = this.data[this.data.length - 1];
+            if (lastBar && Number.isFinite(lastBar.t)) {
+                ts = lastBar.t;
+            }
+        }
+
         const ac = replay.animatingCandle;
-        if (ac && Number.isFinite(ac.t)) {
+        if (!Number.isFinite(ts) && ac && Number.isFinite(ac.t)) {
             const tp = Number(replay.tickProgress) || 0;
             if (tp > 0 || (!replay.isPlaying && Number.isFinite(ac.close))) ts = ac.t;
         }
@@ -14585,15 +14568,6 @@ class Chart {
                     }
                     // Update replay system's master copy
                     this.replaySystem.fullRawData = merged;
-                    if (Array.isArray(this.replaySystem._masterFineRawData)
-                        && this.replaySystem._masterFineRawData === masterData) {
-                        this.replaySystem._masterFineRawData = merged;
-                    } else if (typeof this.replaySystem._updateMasterFineRawData === 'function') {
-                        this.replaySystem._updateMasterFineRawData(
-                            merged,
-                            this.replaySystem._masterFineRawTf || this.replaySystem.rawTimeframe || tf
-                        );
-                    }
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
                     if (direction === 'backward' && uniqueNew.length > 0) {
@@ -25160,7 +25134,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a68';
+    window.TALARIA_CHART_BUILD = '20260522a69';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

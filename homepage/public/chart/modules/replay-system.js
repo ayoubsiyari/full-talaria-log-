@@ -14,9 +14,6 @@ class ReplaySystem {
         this.fullRawData = null;
         this.fullData = null;
         this.rawTimeframe = '1m';
-        /** Finest loaded series for playhead/index; display TF resamples from a slice of this. */
-        this._masterFineRawData = null;
-        this._masterFineRawTf = null;
         this._fullRawDataMatchesTF = false;
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
@@ -108,24 +105,6 @@ class ReplaySystem {
         this.init();
     }
 
-    _parseTfMs(tf) {
-        const chart = this.chart;
-        if (!chart || typeof chart.parseTimeframe !== 'function') return NaN;
-        return chart.parseTimeframe(tf);
-    }
-
-    _updateMasterFineRawData(data, tf) {
-        if (!Array.isArray(data) || !data.length || !tf) return;
-        const newMs = this._parseTfMs(tf);
-        if (!Number.isFinite(newMs) || newMs <= 0) return;
-        const curMs = this._masterFineRawTf ? this._parseTfMs(this._masterFineRawTf) : NaN;
-        if (!Array.isArray(this._masterFineRawData) || !this._masterFineRawData.length
-            || !Number.isFinite(curMs) || curMs <= 0 || newMs < curMs * 0.92) {
-            this._masterFineRawData = data.slice();
-            this._masterFineRawTf = String(tf).toLowerCase().trim();
-        }
-    }
-
     /** Re-anchor playhead index from wall-clock replay time (stable across TF switches). */
     syncCurrentIndexFromReplayTimestamp(ts) {
         if (!Number.isFinite(ts) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
@@ -145,41 +124,6 @@ class ReplaySystem {
         return false;
     }
 
-    /**
-     * After a TF hot-swap fetch: keep fine master for playhead when zooming out;
-     * replace master when zooming in to a finer native series.
-     */
-    applyHotSwapFetchedRawData(fetchedRawData, fetchedTf, savedReplayTimestamp) {
-        if (!Array.isArray(fetchedRawData) || !fetchedRawData.length) return;
-        const tf = String(fetchedTf || '1m').toLowerCase().trim();
-        const incomingMs = this._parseTfMs(tf);
-        const masterTf = this._masterFineRawTf || this.rawTimeframe || tf;
-        const masterMs = this._parseTfMs(masterTf);
-        const hasMaster = Array.isArray(this._masterFineRawData) && this._masterFineRawData.length > 0;
-        const fetchedIsFiner = Number.isFinite(incomingMs) && incomingMs > 0
-            && Number.isFinite(masterMs) && masterMs > 0
-            && incomingMs < masterMs * 0.92;
-
-        if (fetchedIsFiner || !hasMaster) {
-            this._masterFineRawData = fetchedRawData.slice();
-            this._masterFineRawTf = tf;
-            this.fullRawData = this._masterFineRawData;
-            this.rawTimeframe = tf;
-        } else if (hasMaster && Number.isFinite(incomingMs) && incomingMs > masterMs * 0.92) {
-            this.fullRawData = this._masterFineRawData;
-            this.rawTimeframe = this._masterFineRawTf;
-        } else {
-            this.fullRawData = fetchedRawData.slice();
-            this.rawTimeframe = tf;
-            this._updateMasterFineRawData(fetchedRawData, tf);
-        }
-        this._fullRawDataMatchesTF = false;
-
-        if (Number.isFinite(savedReplayTimestamp)) {
-            this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
-        }
-    }
-
     applyPersistedState(state) {
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
@@ -197,36 +141,31 @@ class ReplaySystem {
                 : null;
 
             let idx = null;
-            if (idxFromState !== null) {
-                idx = idxFromState;
-            } else {
-                const rawTs = state.replayTimestamp;
-                let ts = null;
-                if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
-                    ts = rawTs;
-                } else if (typeof rawTs === 'string') {
-                    const n = Number(rawTs);
-                    if (Number.isFinite(n)) {
-                        ts = n;
-                    } else {
-                        const parsed = Date.parse(rawTs);
-                        if (Number.isFinite(parsed)) {
-                            ts = parsed;
-                        }
+            const rawTs = state.replayTimestamp;
+            let ts = null;
+            if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
+                ts = rawTs;
+            } else if (typeof rawTs === 'string') {
+                const n = Number(rawTs);
+                if (Number.isFinite(n)) {
+                    ts = n;
+                } else {
+                    const parsed = Date.parse(rawTs);
+                    if (Number.isFinite(parsed)) {
+                        ts = parsed;
                     }
                 }
+            }
 
-                if (ts !== null) {
-                    // Bars are sorted by period open `t`. A wall-clock `ts` that falls *inside*
-                    // a bar (e.g. 1m tick mid-session mapped onto 1D) must resolve to that bar's
-                    // index — "last bar with t <= ts". The old "first t >= ts" rule picked the
-                    // *next* period's bar (off-by-one on coarse TFs) and broke price continuity.
-                    const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
-                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
-                        : -1;
-                    const smin = this.sessionStartIndex || 0;
-                    idx = hit < 0 ? smin : Math.max(hit, smin);
-                }
+            // Timestamp wins over saved index — index is TF-specific, timestamp is cross-TF.
+            if (ts !== null) {
+                const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                    ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                    : -1;
+                const smin = this.sessionStartIndex || 0;
+                idx = hit < 0 ? smin : Math.max(hit, smin);
+            } else if (idxFromState !== null) {
+                idx = idxFromState;
             }
 
             if (idx !== null) {
@@ -1725,7 +1664,6 @@ class ReplaySystem {
         this.fullRawData = [...this.chart.rawData];
         this.fullData = [...this.chart.data];
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
-        this._updateMasterFineRawData(this.fullRawData, this.rawTimeframe);
         this._fullRawDataMatchesTF = false;
         
         // Set current index and initialize virtual timestamp (cannot roll before session floor)
@@ -2299,7 +2237,6 @@ class ReplaySystem {
         this.fullRawData = [...this.chart.rawData];
         this.fullData = [...this.chart.data];
         this.rawTimeframe = this.detectRawTimeframeFromData(this.fullRawData);
-        this._updateMasterFineRawData(this.fullRawData, this.rawTimeframe);
         this._fullRawDataMatchesTF = false;
         
         // === INITIALIZE VIRTUAL TIMESTAMP TRACKING ===
@@ -2614,9 +2551,15 @@ class ReplaySystem {
             return;
         }
         
-        // Resample for current timeframe
+        // Resample for current timeframe (skip when native QuestDB bars already match display TF)
         try {
-            this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
+            const displayTf = String(this.chart.currentTimeframe || '').toLowerCase().trim();
+            const rawTf = String(this.rawTimeframe || '').toLowerCase().trim();
+            if (this._fullRawDataMatchesTF && rawTf && rawTf === displayTf) {
+                this.chart.data = this.chart.rawData.slice();
+            } else {
+                this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
+            }
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
@@ -4711,7 +4654,10 @@ class ReplaySystem {
         }
 
         let idx = 0;
-        if (chart && typeof chart.findGoToTargetIndex === 'function') {
+        if (typeof this._findLastRawIndexAtOrBefore === 'function') {
+            const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
+            if (hit >= 0) idx = hit;
+        } else if (chart && typeof chart.findGoToTargetIndex === 'function') {
             idx = chart.findGoToTargetIndex(this.fullRawData, ts);
         }
         if (idx < 0) {
@@ -5587,7 +5533,13 @@ class ReplaySystem {
             mainChart._pendingChartViewSanityCheck = true;
 
             mainChart.rawData = slicedRawData;
-            mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
+            const displayTf = String(mainChart.currentTimeframe || '').toLowerCase().trim();
+            const rawTf = String(this.rawTimeframe || '').toLowerCase().trim();
+            if (this._fullRawDataMatchesTF && rawTf && rawTf === displayTf) {
+                mainChart.data = slicedRawData.slice();
+            } else {
+                mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
+            }
             if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();
         } catch (e) {
             console.warn('replay: main chart resample in syncPanelCharts failed', e);
