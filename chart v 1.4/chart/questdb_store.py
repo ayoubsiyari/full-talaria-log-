@@ -223,6 +223,21 @@ def count_bars(file_id: int, table: str = "ohlcv_1m") -> int:
     return int(row[0]) if row else 0
 
 
+def preagg_is_incomplete(file_id: int, resolution: str) -> bool:
+    """True when stored aggregate rows are far below what ohlcv_1m implies."""
+    res = normalize_resolution(resolution)
+    if res == "1m":
+        return False
+    table = resolution_table(res)
+    n1m = count_bars(file_id, "ohlcv_1m")
+    nagg = count_bars(file_id, table)
+    if n1m <= 0:
+        return nagg <= 0
+    mins = _MINUTES_PER_RES.get(res, 1)
+    expected_floor = max(10, n1m // (mins * 10))
+    return nagg < expected_floor
+
+
 def dataset_stats(file_id: int) -> dict[str, Any]:
     """Row counts per table + whether pre-aggregates look incomplete."""
     ensure_schema()
@@ -237,21 +252,6 @@ def dataset_stats(file_id: int) -> dict[str, Any]:
         for tf in ("1m", "5m", "15m", "1h", "4h", "1d", "1w")
     }
     return stats
-
-
-def preagg_is_incomplete(file_id: int, resolution: str) -> bool:
-    """True when stored aggregate rows are far below what ohlcv_1m implies."""
-    res = normalize_resolution(resolution)
-    if res == "1m":
-        return False
-    table = resolution_table(res)
-    n1m = count_bars(file_id, "ohlcv_1m")
-    nagg = count_bars(file_id, table)
-    if n1m <= 0:
-        return nagg <= 0
-    mins = _MINUTES_PER_RES.get(res, 1)
-    expected_floor = max(10, n1m // (mins * 10))
-    return nagg < expected_floor
 
 
 def _sample_for_resolution(resolution: str) -> str | None:
@@ -300,12 +300,20 @@ def _wait_1m_ingest_visible(file_id: int, expected: int, timeout: float = 180.0)
         return
     deadline = time.monotonic() + timeout
     target = max(1, int(expected * 0.995))
+    last_log = 0.0
     while time.monotonic() < deadline:
         visible = count_bars(file_id, "ohlcv_1m")
         if visible >= target:
+            print(f"  ✅ QuestDB visible: {visible:,} / {expected:,} rows", flush=True)
             time.sleep(0.25)
             return
+        now = time.monotonic()
+        if now - last_log >= 15.0:
+            print(f"  … waiting for ILP flush: {visible:,} / {target:,} visible", flush=True)
+            last_log = now
         time.sleep(0.5)
+    visible = count_bars(file_id, "ohlcv_1m")
+    print(f"  ⚠️ ILP flush timeout: {visible:,} / {target:,} visible after {int(timeout)}s", flush=True)
 
 
 def insert_1m_bars(file_id: int, candles: list[dict], batch_size: int = 5000) -> int:
@@ -402,10 +410,10 @@ def sync_file_candles(
     file_id: int,
     candles: list[dict],
     *,
-    rebuild_aggregates: bool | None = None,
+    rebuild_agg: bool | None = None,
 ) -> dict[str, Any]:
     """Full replace: delete existing rows, insert 1m; optional aggregate rebuild."""
-    do_rebuild = _should_rebuild_aggregates(rebuild_aggregates)
+    do_rebuild = _should_rebuild_aggregates(rebuild_agg)
     delete_file_data(file_id)
     inserted = insert_1m_bars(file_id, candles)
     _wait_1m_ingest_visible(
@@ -429,12 +437,12 @@ def append_1m_bars(
     file_id: int,
     candles: list[dict],
     *,
-    rebuild_aggregates: bool | None = None,
+    rebuild_agg: bool | None = None,
 ) -> dict[str, Any]:
     """Append new 1m rows; optional aggregate rebuild."""
     if not candles:
         return {"appended": 0}
-    do_rebuild = _should_rebuild_aggregates(rebuild_aggregates)
+    do_rebuild = _should_rebuild_aggregates(rebuild_agg)
     appended = insert_1m_bars(file_id, candles)
     expected = count_bars(file_id, "ohlcv_1m")
     _wait_1m_ingest_visible(file_id, expected, timeout=_ingest_wait_timeout(expected))

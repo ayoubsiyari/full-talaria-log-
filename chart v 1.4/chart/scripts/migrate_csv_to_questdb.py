@@ -30,8 +30,8 @@ import time
 import traceback
 
 # Avoid spawning binary/what-if background workers when importing api_server.
-os.environ.setdefault("APP_ROLE", "migrate")
-os.environ.setdefault("FIrstrate_SCHEDULE_DISABLE", "true")
+os.environ["APP_ROLE"] = "migrate"
+os.environ["FIrstrate_SCHEDULE_DISABLE"] = "true"
 
 _CHART_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _CHART_DIR not in sys.path:
@@ -84,7 +84,7 @@ def sync_one(file_id: int, force: bool, dry_run: bool) -> dict:
         result = questdb_store.sync_file_candles(
             file_id,
             candles,
-            rebuild_aggregates=False,
+            rebuild_agg=False,
         )
         elapsed = round(time.monotonic() - t0, 2)
         visible = int(result.get("visible_1m") or 0)
