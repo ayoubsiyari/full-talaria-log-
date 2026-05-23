@@ -1227,11 +1227,12 @@ class CoordinateUtils {
             interval = 60000; // Fallback to 1 minute
         }
         
-        // If index is within data range, use actual candle timestamp + fractional offset
+        // If index is within data range, use actual bucket span (handles weekend gaps on 1d/1h)
         if (baseIndex >= 0 && baseIndex < data.length) {
             const baseTs = data[baseIndex]?.t || 0;
-            // Add fractional offset within the candle for smooth brush strokes
-            return baseTs + (fraction * interval);
+            const nextTs = (baseIndex < data.length - 1) ? data[baseIndex + 1].t : (baseTs + interval);
+            const bucketMs = Math.max(1, nextTs - baseTs);
+            return baseTs + (fraction * bucketMs);
         }
         
         // Extrapolate for indices beyond data range (preserve fractional precision)
@@ -1275,57 +1276,39 @@ class CoordinateUtils {
             interval = 60000; // Fallback to 1 minute
         }
         
-        // Handle timestamps before first candle - extrapolate backward with FRACTIONAL precision
-        if (timestamp < firstCandle.t) {
-            const fractionalCandles = (firstCandle.t - timestamp) / interval;
-            return -fractionalCandles; // Return fractional negative index
+        const firstT = firstCandle.t;
+        const lastT = lastCandle.t;
+
+        // Extrapolate before/after loaded window (replay drawings off-screen left/right)
+        if (timestamp < firstT) {
+            return -(firstT - timestamp) / interval;
         }
-        
-        // Handle timestamps after last candle - extrapolate forward with FRACTIONAL precision
-        if (timestamp > lastCandle.t) {
-            const fractionalCandles = (timestamp - lastCandle.t) / interval;
-            return (data.length - 1) + fractionalCandles; // Return fractional index
+        if (timestamp > lastT) {
+            return (data.length - 1) + (timestamp - lastT) / interval;
         }
-        
-        // Find the candle that contains this timestamp WITH fractional position
-        // For resampled data (5m, 1h), calculate exact position within the candle
-        for (let i = 0; i < data.length; i++) {
-            const candle = data[i];
-            const nextCandle = data[i + 1];
-            
-            // If this is the last candle, or timestamp is before next candle
-            if (!nextCandle || timestamp < nextCandle.t) {
-                // Calculate fractional position within this candle
-                const fractionWithinCandle = (timestamp - candle.t) / interval;
-                return i + fractionWithinCandle;
-            }
-        }
-        
-        // Fallback: return last index
-        let left = 0;
-        let right = data.length - 1;
-        let closest = 0;
-        let minDiff = Infinity;
-        
-        while (left <= right) {
-            const mid = Math.floor((left + right) / 2);
-            const diff = Math.abs(data[mid].t - timestamp);
-            
-            if (diff < minDiff) {
-                minDiff = diff;
-                closest = mid;
-            }
-            
-            if (data[mid].t < timestamp) {
-                left = mid + 1;
-            } else if (data[mid].t > timestamp) {
-                right = mid - 1;
+
+        // Binary search: largest i where data[i].t <= timestamp
+        let lo = 0;
+        let hi = data.length - 1;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (data[mid].t <= timestamp) {
+                lo = mid;
             } else {
-                return mid; // Exact match
+                hi = mid - 1;
             }
         }
-        
-        return closest;
+
+        const i = lo;
+        const candleT = data[i].t;
+        if (timestamp === candleT) {
+            return i;
+        }
+
+        const nextT = (i < data.length - 1) ? data[i + 1].t : (candleT + interval);
+        const bucketMs = Math.max(1, nextT - candleT);
+        const fraction = Math.min(1, Math.max(0, (timestamp - candleT) / bucketMs));
+        return i + fraction;
     }
 
     /**
@@ -1368,6 +1351,24 @@ class CoordinateUtils {
                 y: p.price || p.y
             };
         });
+    }
+
+    /**
+     * Resolve live drawing points from persisted timestamp anchors + current chart.data.
+     * chart.data is the same series dataIndexToPixel/xScale use (required for TF switches).
+     */
+    static resolveDrawingPoints(drawing, chart) {
+        if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
+            return drawing?.points || [];
+        }
+        if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
+            return this.pointsFromTimestamps(
+                drawing.timestampPoints,
+                chart.data,
+                chart.currentTimeframe
+            );
+        }
+        return drawing.points || [];
     }
 
     /**

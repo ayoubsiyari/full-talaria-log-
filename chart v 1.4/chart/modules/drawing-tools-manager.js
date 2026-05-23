@@ -5247,6 +5247,8 @@ class DrawingToolsManager {
             drawing.group.style('display', null);
         }
 
+        this._syncDrawingPointsFromTimestamps(drawing);
+
         const scalesPayload = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
@@ -8561,21 +8563,8 @@ class DrawingToolsManager {
                 }
             };
             
-            // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                // In replay mode, resample the FULL dataset to current timeframe
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                    // [debug removed]
-                } catch (error) {
-                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-                }
-            }
+            // CRITICAL: Use chart.data — same coordinate space as dataIndexToPixel / xScale.
+            const conversionData = this._getDrawingConversionData();
             
             data.forEach((item, index) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -8780,6 +8769,46 @@ class DrawingToolsManager {
     }
 
     /**
+     * Series used for timestamp→index conversion. Must match chart.data (what xScale uses),
+     * not fullRawData resample — prefix replay slices differ from full-window resample.
+     */
+    _getDrawingConversionData() {
+        if (this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0) {
+            return this.chart.data;
+        }
+        return [];
+    }
+
+    /**
+     * Re-derive index points from stored timestamps before render / TF refresh.
+     * Skipped while the user is actively placing or dragging a drawing.
+     */
+    _syncDrawingPointsFromTimestamps(drawing) {
+        if (!drawing || !drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+            return;
+        }
+        if (
+            this.isDragging ||
+            this.isResizing ||
+            this.isDrawing ||
+            this.isDraggingFirstTwo ||
+            this.currentTool
+        ) {
+            return;
+        }
+        const conversionData = this._getDrawingConversionData();
+        if (!conversionData.length || typeof CoordinateUtils === 'undefined') {
+            return;
+        }
+        drawing.points = CoordinateUtils.pointsFromTimestamps(
+            drawing.timestampPoints,
+            conversionData,
+            this.chart.currentTimeframe
+        );
+        drawing.chart = this.chart;
+    }
+
+    /**
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
@@ -8789,37 +8818,19 @@ class DrawingToolsManager {
             return;
         }
 
-        // Must match chart.data — the same series dataIndexToPixel/xScale use. Backtest loads
-        // bounded windows around the playhead; converting against fullRawData resample puts
-        // indices in the wrong coordinate space and shapes jump or break on TF switch.
-        const conversionData = this.chart.data;
-        const timeframe = this.chart.currentTimeframe;
-
-        // Instead of destroying and recreating, just update the points
-        this.drawings.forEach((drawing, index) => {
-            // Use the STORED timestamps (not recalculated ones)
-            if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
-                // Convert timestamps back to indices for the NEW timeframe data
-                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, timeframe);
-                
-                // Update the drawing's points AND chart reference
-                drawing.points = newPoints;
-                drawing.chart = this.chart; // Update chart reference
-                
-                // Destroy old SVG elements
-                if (drawing.group) {
-                    drawing.group.remove();
-                    drawing.group = null;
-                }
-                
-                // Re-render with new points
-                this.renderDrawing(drawing);
+        this.drawings.forEach((drawing) => {
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                return;
             }
+            this._syncDrawingPointsFromTimestamps(drawing);
+
+            if (drawing.group) {
+                drawing.group.remove();
+                drawing.group = null;
+            }
+            this.renderDrawing(drawing);
         });
-        
-        // [debug removed]
-        
-        // Refresh object tree if available
+
         if (this.objectTreeManager) {
             this.objectTreeManager.refresh();
         }
