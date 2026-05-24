@@ -2844,10 +2844,6 @@ class Chart {
             replay.tickPathCacheBuilt = false;
             replay.replayStartTimestamp = replay.fullRawData[0]?.t ?? replay.replayStartTimestamp;
             replay.replayEndTimestamp = replay.fullRawData[replay.fullRawData.length - 1]?.t ?? replay.replayEndTimestamp;
-            if (Number.isFinite(savedReplayTimestamp)
-                && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-                replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
-            }
             this._syncReplayPanCursorsFromFullRaw();
 
             let sessionStartMs = null;
@@ -2889,7 +2885,9 @@ class Chart {
             }
         }
 
-        if (Number.isFinite(savedReplayTimestamp)
+        if (typeof replay.syncCurrentIndexForTfSwitch === 'function') {
+            replay.syncCurrentIndexForTfSwitch();
+        } else if (Number.isFinite(savedReplayTimestamp)
             && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
             replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
         }
@@ -13372,14 +13370,12 @@ class Chart {
         // last good frame stays on the canvas until the new TF's bars are ready.
         this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
 
-        // Lock replay playhead to the last visible candle before any fetch/resample path runs.
+        // Lock replay to the UTC calendar day of the last displayed candle before TF switch.
         if (this.replaySystem && this.replaySystem.isActive) {
-            if (typeof this.replaySystem.capturePlayheadSnapshot === 'function') {
-                this.replaySystem.capturePlayheadSnapshot({ forTfSwitch: true });
-            }
-            const ph = this._captureReplayPlayheadMs(this.replaySystem);
-            if (Number.isFinite(ph)) {
-                this.replaySystem.replayTimestamp = ph;
+            const replay = this.replaySystem;
+            const dayStart = this._captureReplayAnchorUtcDayStart(replay);
+            if (Number.isFinite(dayStart)) {
+                replay._anchorUtcDayStart = dayStart;
             }
         }
 
@@ -13903,6 +13899,20 @@ class Chart {
      * stays up across the entire fetch + re-enter-replay sequence, and is only
      * lifted by `_endTimeframeSwitching` once the replay viewport is final.
      */
+    _captureReplayAnchorUtcDayStart(replay) {
+        if (!replay) return null;
+        let ts = null;
+        if (Array.isArray(this.data) && this.data.length > 0) {
+            ts = this.data[this.data.length - 1].t;
+        } else if (Number.isFinite(replay.replayTimestamp)) {
+            ts = replay.replayTimestamp;
+        }
+        if (!Number.isFinite(ts)) return null;
+        const d = new Date(ts);
+        if (!Number.isFinite(d.getTime())) return null;
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    }
+
     _captureReplayPlayheadMs(replay) {
         if (!replay) return null;
 
@@ -16992,11 +17002,7 @@ class Chart {
      * Keeps render sources consistent across live mode, replay mode, and panel charts.
      */
     resolveEffectiveCurrentPrice(visible) {
-        const replay = this.replaySystem;
-        if (replay?.isActive && replay._playheadSnapshot && Number.isFinite(replay._playheadSnapshot.price)) {
-            return replay._playheadSnapshot.price;
-        }
-        // Price line always tracks the last bar of the displayed series (same as TradingView).
+        // Price line = close of the last displayed native/resampled bar (no synthetic patching).
         if (this.data && this.data.length > 0) {
             const lastCandle = this.data[this.data.length - 1];
             if (lastCandle && Number.isFinite(lastCandle.c)) {
@@ -25159,7 +25165,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a70';
+    window.TALARIA_CHART_BUILD = '20260522a71';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

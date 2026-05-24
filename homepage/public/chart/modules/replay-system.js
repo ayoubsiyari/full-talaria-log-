@@ -18,8 +18,8 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
-        /** Cross-TF playhead price/timestamp — preserved while switching timeframes in replay. */
-        this._playheadSnapshot = null;
+        /** UTC midnight (ms) of the replay day locked during a TF switch. */
+        this._anchorUtcDayStart = null;
 
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
@@ -113,54 +113,40 @@ class ReplaySystem {
         if (!Number.isFinite(ts) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
             return false;
         }
-        this.replayTimestamp = ts;
         const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
         const floor = this.sessionStartIndex || 0;
         if (hit >= floor) {
             this.currentIndex = hit;
+            const bar = this.fullRawData[hit];
+            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
             return true;
         }
         if (hit >= 0) {
             this.currentIndex = floor;
+            const bar = this.fullRawData[this.currentIndex];
+            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
             return true;
         }
         return false;
     }
 
-    /** Save the price/time the user sees now — survives native QuestDB TF refetches. */
-    capturePlayheadSnapshot(options = {}) {
-        const chart = this.chart;
-        if (!chart) return;
-        const forTfSwitch = !!options.forTfSwitch;
-        const ac = this.animatingCandle;
-        if (ac && Number.isFinite(ac.close) && (this.tickProgress > 0 || !this.isPlaying)) {
-            const ts = Number.isFinite(ac.t) ? ac.t
-                : (Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null);
-            this._playheadSnapshot = { ts, price: ac.close, forTfSwitch };
-            return;
+    /**
+     * After a TF switch: land on the last native bar of the anchored UTC calendar day.
+     * Daily bars open at midnight — zooming in uses end-of-day; mid-day progress is preserved.
+     */
+    syncCurrentIndexForTfSwitch() {
+        const dayStart = this._anchorUtcDayStart;
+        if (!Number.isFinite(dayStart)) {
+            return this.syncCurrentIndexFromReplayTimestamp(this.replayTimestamp);
         }
-        if (!Array.isArray(chart.data) || !chart.data.length) return;
-        const last = chart.data[chart.data.length - 1];
-        if (!last || !Number.isFinite(last.c)) return;
-        const ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp
-            : (Number.isFinite(last.t) ? last.t : null);
-        this._playheadSnapshot = { ts, price: last.c, forTfSwitch };
-    }
-
-    /** Align last displayed candle close with saved playhead price after a TF switch. */
-    _applyPlayheadSnapshotToDisplay() {
-        const snap = this._playheadSnapshot;
-        if (!snap || !snap.forTfSwitch || !Number.isFinite(snap.price)) return;
-        const data = this.chart?.data;
-        if (!Array.isArray(data) || !data.length) return;
-        const last = data[data.length - 1];
-        if (!last) return;
-        last.c = snap.price;
-        if (Number.isFinite(last.o)) {
-            last.h = Math.max(last.h, last.o, snap.price);
-            last.l = Math.min(last.l, last.o, snap.price);
+        const dayEnd = dayStart + 86400000 - 1;
+        let targetTs = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : dayStart;
+        if (targetTs <= dayStart + 60000) {
+            targetTs = dayEnd;
+        } else {
+            targetTs = Math.min(targetTs, dayEnd);
         }
-        snap.forTfSwitch = false;
+        return this.syncCurrentIndexFromReplayTimestamp(targetTs);
     }
 
     applyPersistedState(state) {
@@ -2606,11 +2592,6 @@ class ReplaySystem {
             console.error('❌ Error resampling data:', error);
             return;
         }
-
-        this._applyPlayheadSnapshotToDisplay();
-        if (!this._playheadSnapshot?.forTfSwitch) {
-            this.capturePlayheadSnapshot();
-        }
         
         // Recalculate indicators — on 1m near session end, rawData can be 50k–100k bars;
         // full recalc every frame freezes when pressing Play. Stride while playing; skip
@@ -4471,7 +4452,6 @@ class ReplaySystem {
         // Update button UI immediately
         this.syncPlayPauseButtonVisuals();
 
-        this.capturePlayheadSnapshot();
         this._flushReplayStateToSession();
     }
 
@@ -5357,8 +5337,8 @@ class ReplaySystem {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
 
-        if (Number.isFinite(savedReplayTimestamp)) {
-            this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+        if (Number.isFinite(savedReplayTimestamp) || Number.isFinite(this._anchorUtcDayStart)) {
+            this.syncCurrentIndexForTfSwitch();
         }
         
         // Update chart data with current position (client-side resample)
@@ -5377,8 +5357,8 @@ class ReplaySystem {
         
         // Restore view position and state after a short delay
         setTimeout(() => {
-            if (Number.isFinite(savedReplayTimestamp)) {
-                this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+            if (Number.isFinite(savedReplayTimestamp) || Number.isFinite(this._anchorUtcDayStart)) {
+                this.syncCurrentIndexForTfSwitch();
             } else {
                 this.currentIndex = savedCurrentIndex;
                 if (this.fullRawData[this.currentIndex]) {
@@ -5584,9 +5564,6 @@ class ReplaySystem {
                 mainChart.data = slicedRawData.slice();
             } else {
                 mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
-            }
-            if (typeof this._applyPlayheadSnapshotToDisplay === 'function') {
-                this._applyPlayheadSnapshotToDisplay();
             }
             if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();
         } catch (e) {
