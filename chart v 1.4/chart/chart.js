@@ -13374,6 +13374,9 @@ class Chart {
 
         // Lock replay playhead to the last visible candle before any fetch/resample path runs.
         if (this.replaySystem && this.replaySystem.isActive) {
+            if (typeof this.replaySystem.capturePlayheadSnapshot === 'function') {
+                this.replaySystem.capturePlayheadSnapshot({ forTfSwitch: true });
+            }
             const ph = this._captureReplayPlayheadMs(this.replaySystem);
             if (Number.isFinite(ph)) {
                 this.replaySystem.replayTimestamp = ph;
@@ -15794,11 +15797,13 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes (lite, 60fps loop).
+        // Fast path while dragging chart: candles + axes + price line (lite, 60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
             this.drawGrid({ panFast: true });
             this.drawCandles(visible, panOpts);
+            this.drawPriceLine(visible);
+            this.drawCurrentPriceLabel(visible);
             this.drawAxes();
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
@@ -15954,7 +15959,7 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
-        const showVertical = !panFast && (this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical');
+        const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -16987,6 +16992,10 @@ class Chart {
      * Keeps render sources consistent across live mode, replay mode, and panel charts.
      */
     resolveEffectiveCurrentPrice(visible) {
+        const replay = this.replaySystem;
+        if (replay?.isActive && replay._playheadSnapshot && Number.isFinite(replay._playheadSnapshot.price)) {
+            return replay._playheadSnapshot.price;
+        }
         // Price line always tracks the last bar of the displayed series (same as TradingView).
         if (this.data && this.data.length > 0) {
             const lastCandle = this.data[this.data.length - 1];
@@ -17009,38 +17018,54 @@ class Chart {
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
-        if (!visible || visible.length === 0) return;
         if (!this.yScale) return;
+
+        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
+        let displayCandle = null;
+
+        // Replay: always show playhead price even when user panned away from the last bar.
+        if (inReplayMode && this.data && this.data.length > 0) {
+            displayCandle = this.data[this.data.length - 1];
+        } else {
+            if (!visible || visible.length === 0) return;
+
+            const m = this.margin;
+            const rightBound = this.w - m.r - this.candleWidth;
+            let lastVisibleIdx = -1;
+            for (let i = visible.length - 1; i >= 0; i--) {
+                const idx = this.visibleStartIndex + i;
+                const x = this.dataIndexToPixel(idx);
+                if (x <= rightBound) {
+                    lastVisibleIdx = i;
+                    break;
+                }
+            }
+            if (lastVisibleIdx < 0) return;
+            displayCandle = visible[lastVisibleIdx];
+        }
 
         const m = this.margin;
         const ch = this.h - m.t - m.b;
         const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         
-        // Find the last candle index that is actually visible (not in price axis area)
-        let lastVisibleIdx = -1;
-        const rightBound = this.w - m.r - this.candleWidth;
-        for (let i = visible.length - 1; i >= 0; i--) {
-            const idx = this.visibleStartIndex + i;
-            const x = this.dataIndexToPixel(idx);
-            if (x <= rightBound) {
-                lastVisibleIdx = i; // Index within visible array
-                break;
-            }
-        }
-        if (lastVisibleIdx < 0) return;
+        if (!displayCandle) return;
 
         // Get the display data using cached HA from full data
-        let displayCandle = visible[lastVisibleIdx];
-        if (this.chartSettings.chartType === 'heikinashi') {
+        if (this.chartSettings.chartType === 'heikinashi' && !inReplayMode) {
             if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
                 this._haCache = this.calculateHeikinAshi(this.data);
                 this._haCacheVersion = this.dataVersion;
             }
-            const dataIdx = (this.visibleStartIndex || 0) + lastVisibleIdx;
-            displayCandle = this._haCache[dataIdx] || visible[lastVisibleIdx];
+            const dataIdx = this.data.length - 1;
+            displayCandle = this._haCache[dataIdx] || displayCandle;
+        } else if (this.chartSettings.chartType === 'heikinashi' && inReplayMode) {
+            if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
+                this._haCache = this.calculateHeikinAshi(this.data);
+                this._haCacheVersion = this.dataVersion;
+            }
+            displayCandle = this._haCache[this.data.length - 1] || displayCandle;
         }
-        if (!displayCandle) return;
         
         let currentPrice = this.resolveEffectiveCurrentPrice(visible);
         if (!Number.isFinite(currentPrice) && Number.isFinite(displayCandle.c)) {
@@ -17070,10 +17095,10 @@ class Chart {
         const radius = 2;
         
         // Check if in replay mode to combine labels (show progress while paused too)
-        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
+        const inReplayForLabel = inReplayMode;
         let countdownText = '';
         
-        if (inReplayMode) {
+        if (inReplayForLabel) {
             const timeframe = this.currentTimeframe || '1m';
             const totalSeconds = this.getTimeframeSeconds(timeframe);
             
@@ -25134,7 +25159,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a69';
+    window.TALARIA_CHART_BUILD = '20260522a70';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
