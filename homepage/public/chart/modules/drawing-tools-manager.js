@@ -1417,6 +1417,8 @@ class DrawingToolsManager {
                     if (this._isPointerOverChartAxis(drawEvent)) {
                         if (!this.isBoxShapeTool(this.currentTool)) return;
                         drawEvent = this._clampBoxShapeEventToPlot(drawEvent);
+                    } else if (this.isBoxShapeTool(this.currentTool) && this._isPointerOutsidePricePlot(drawEvent)) {
+                        drawEvent = this._clampBoxShapeEventToPlot(drawEvent);
                     }
                     // Mid-placement: SVG is pass-through — forward 2nd+ clicks for shapes/lines.
                     if (this.drawingState && this.drawingState.isDrawing) {
@@ -2945,7 +2947,9 @@ class DrawingToolsManager {
         }
 
         let point = this.isBoxShapeTool(this.currentTool)
-            ? this._getBoxShapePlacementPoint(event)
+            ? this._getBoxShapePlacementPoint(event, this.currentTool, {
+                usePreviewAnchor: !!(this.drawingState.isDrawing && this.drawingState.tempPoints.length > 0)
+            })
             : this.getDataPoint(event);
         this._lastMouseEvent = this._nativePointerEvent(event) || event;
         
@@ -3656,7 +3660,9 @@ class DrawingToolsManager {
 
         let point = (this.angleSnapTools.includes(this.currentTool) && committed.length > 0)
             ? this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool)
-            : this.getDataPoint(event);
+            : (this.isBoxShapeTool(this.currentTool)
+                ? this._getBoxShapePlacementPoint(event)
+                : this.getDataPoint(event));
 
         if (this.currentTool === 'parallel-channel' && committed.length === 2) {
             const p0 = committed[0];
@@ -3774,11 +3780,11 @@ class DrawingToolsManager {
             if (toolInfo && toolInfo.dragFirstTwo && this.drawingState.tempPoints.length === 1) {
                 const supportsClickAndDragPlacement = this.isCandleBoundTool(this.currentTool)
                     || this.isBoxShapeTool(this.currentTool);
+                let draggedEnough = true;
                 if (supportsClickAndDragPlacement) {
                     const startScreen = this.dragFirstTwoStartScreen;
                     const currentScreenX = Number(event.clientX);
                     const currentScreenY = Number(event.clientY);
-                    let draggedEnough = true;
 
                     if (
                         startScreen &&
