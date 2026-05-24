@@ -1276,6 +1276,7 @@ SUPPORT_BH_END_HOUR = max(1, min(24, int(os.getenv("SUPPORT_BH_END_HOUR", "17"))
 # Anti-spam / auth limits: Redis sliding window when REDIS_URL is set (shared across workers); else in-memory.
 SUPPORT_RATE_MSG_PER_MINUTE = max(1, int(os.getenv("SUPPORT_RATE_MSG_PER_MINUTE", "30")))
 SUPPORT_RATE_THREAD_PER_HOUR = max(1, int(os.getenv("SUPPORT_RATE_THREAD_PER_HOUR", "10")))
+SUPPORT_UNLIMITED_RATE_CATEGORIES = frozenset({"bug", "error"})
 SUPPORT_SLA_FIRST_RESPONSE_HOURS = max(1, int(os.getenv("SUPPORT_SLA_FIRST_RESPONSE_HOURS", "24")))
 SUPPORT_TICKET_URL_BASE = (
     os.getenv("SUPPORT_TICKET_URL_BASE", "/dashboard/profile/?tab=support&thread=").strip()
@@ -1304,6 +1305,11 @@ _support_rate_lock = threading.Lock()
 def _support_rate_exempt(user: User) -> bool:
     """Admins are not throttled so staff can reply without hitting user limits."""
     return getattr(user, "role", None) == "admin"
+
+
+def _support_category_rate_unlimited(cat: str | None) -> bool:
+    """Bug/error reports are never throttled — users may report multiple issues quickly."""
+    return (cat or "").strip().lower() in SUPPORT_UNLIMITED_RATE_CATEGORIES
 
 
 def _sliding_window_allow_local(bucket: dict, key, lock: threading.Lock, max_events: int, window_sec: float) -> bool:
@@ -11054,7 +11060,7 @@ async def support_create_thread(request: Request):
     structured_block = _support_format_structured_body(cat, structured_in if isinstance(structured_in, dict) else None)
     body = (structured_block + body.strip())[:SUPPORT_BODY_MAX]
     tags_valid = _support_validate_tags(tags_in)
-    if not _support_rate_exempt(user):
+    if not _support_rate_exempt(user) and not _support_category_rate_unlimited(cat):
         uid = int(user.id)
         if not _support_rate_allow_new_thread(uid):
             raise HTTPException(
@@ -11319,12 +11325,6 @@ async def support_post_message(thread_id: int, request: Request):
         if not body:
             raise HTTPException(status_code=400, detail="Message is required")
     body = body.strip()[:SUPPORT_BODY_MAX]
-    if not _support_rate_exempt(user):
-        if not _support_rate_allow_message(int(user.id)):
-            raise HTTPException(
-                status_code=429,
-                detail=f"Too many messages. Limit: {SUPPORT_RATE_MSG_PER_MINUTE} per minute. Wait briefly and try again.",
-            )
     db = SessionLocal()
     try:
         t = db.query(SupportThread).filter(SupportThread.id == thread_id).first()
@@ -11332,6 +11332,12 @@ async def support_post_message(thread_id: int, request: Request):
             raise HTTPException(status_code=404, detail="Thread not found")
         if not _support_user_can_access_thread(user, t):
             raise HTTPException(status_code=403, detail="Forbidden")
+        if not _support_rate_exempt(user) and not _support_category_rate_unlimited(t.category):
+            if not _support_rate_allow_message(int(user.id)):
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many messages. Limit: {SUPPORT_RATE_MSG_PER_MINUTE} per minute. Wait briefly and try again.",
+                )
         if t.status == "closed":
             raise HTTPException(status_code=400, detail="Ticket is closed")
         now = datetime.utcnow()
