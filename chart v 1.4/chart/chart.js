@@ -2659,8 +2659,28 @@ class Chart {
     }
 
     _saveBtTfDataCacheFromChart(fileId, timeframe) {
-        if (!fileId || !Array.isArray(this.rawData) || !this.rawData.length) return;
-        this._storeBtTfDataCacheEntry(fileId, timeframe, this.rawData, {
+        if (!fileId) return;
+        const tf = String(timeframe || '').toLowerCase().trim();
+        const nativeTf = String(this._nativeRawFetchTf || this.currentTimeframe || '').toLowerCase().trim();
+        const replay = this.replaySystem;
+        let source = null;
+
+        // During replay, chart.rawData is only the prefix up to the playhead — never cache that.
+        if (replay?.isActive && Array.isArray(replay.fullRawData) && replay.fullRawData.length) {
+            const replayNative = String(replay.rawTimeframe || nativeTf).toLowerCase().trim();
+            if (tf === replayNative || tf === nativeTf) {
+                source = replay.fullRawData;
+            }
+        }
+        if (!source && tf === nativeTf && Array.isArray(this.rawData) && this.rawData.length) {
+            const replaySlice = replay?.isActive
+                && Array.isArray(replay.fullRawData)
+                && this.rawData.length < replay.fullRawData.length;
+            source = replaySlice ? replay.fullRawData : this.rawData;
+        }
+        if (!Array.isArray(source) || !source.length) return;
+
+        this._storeBtTfDataCacheEntry(fileId, timeframe, source, {
             totalCandles: this.totalCandles,
             serverCursors: this._serverCursors,
             nativeRawFetchTf: this._nativeRawFetchTf || timeframe,
@@ -2889,9 +2909,7 @@ class Chart {
         if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
             const firstT = replay.fullRawData[0].t;
             const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
-            if (savedReplayTimestamp >= firstT && savedReplayTimestamp <= lastT) {
-                // Playhead inside loaded window — common case; skip blocking ensureGoTo fetch.
-            } else if (ctx.awaitPlayheadFetch) {
+            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
                 try {
                     const loaded = await this.ensureGoToWindowContainsTimestamp(
                         savedReplayTimestamp,
@@ -14157,7 +14175,10 @@ class Chart {
             return;
         }
 
-        if (loadId !== this._timeframeLoadSeq) return;
+        if (loadId !== this._timeframeLoadSeq) {
+            this._endTimeframeSwitching();
+            return;
+        }
 
         if (!this._smartResponseHasPayload(result)) {
             console.warn('[backtest] timeframe refetch returned no data');
@@ -25107,7 +25128,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a73';
+    window.TALARIA_CHART_BUILD = '20260522a74';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
