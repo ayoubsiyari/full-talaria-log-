@@ -22275,10 +22275,20 @@ class Chart {
             ? _dm.getActivePlacementSnapPrices()
             : [];
         const placementSnapActive = !!(shiftHeld && placementSnapYs.length > 0);
+        const dmPlacingBoxShape = !!(
+            _dm
+            && typeof _dm.isBoxShapeTool === 'function'
+            && (
+                (_dm.currentTool && _dm.isBoxShapeTool(_dm.currentTool) && _dm.drawingState?.isDrawing)
+                || (_dm.isResizing && _dm.resizingDrawing && _dm.isBoxShapeTool(_dm.resizingDrawing.type))
+                || (_dm.isCustomHandleDrag && _dm.customHandleDrawing && _dm.isBoxShapeTool(_dm.customHandleDrawing.type))
+            )
+        );
         const shouldSnapCrosshair = this.yScale && hasSnappedCandle && Number.isFinite(crosshairPrice)
             && (magnetActive || ctrlMagnetSnap)
             && !placementSnapActive
-            && !useShiftPreviewSnap;
+            && !useShiftPreviewSnap
+            && !dmPlacingBoxShape;
         if (shouldSnapCrosshair) {
             const candle = snappedCandle;
             const ohlc = [candle.o, candle.h, candle.l, candle.c];
@@ -25465,7 +25475,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260524a01';
+    window.TALARIA_CHART_BUILD = '20260524a02';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

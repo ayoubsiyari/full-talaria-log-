@@ -150,13 +150,13 @@ class DrawingToolsManager {
             'extended-line': { class: ExtendedLineTool, points: 2 },
             'cross-line': { class: CrossLineTool, points: 1 },
             
-            // Shapes
-            'rectangle': { class: RectangleTool, points: 2 },
-            'rotated-rectangle': { class: RotatedRectangleTool, points: 3 },
-            'ellipse': { class: EllipseTool, points: 2 },
-            'circle': { class: CircleTool, points: 2 },
-            'triangle': { class: TriangleTool, points: 3 },
-            'arc': { class: ArcTool, points: 2 },
+            // Shapes — dragFirstTwo: press-drag-release (TradingView-style) or click-click
+            'rectangle': { class: RectangleTool, points: 2, dragFirstTwo: true },
+            'rotated-rectangle': { class: RotatedRectangleTool, points: 3, dragFirstTwo: true },
+            'ellipse': { class: EllipseTool, points: 2, dragFirstTwo: true },
+            'circle': { class: CircleTool, points: 2, dragFirstTwo: true },
+            'triangle': { class: TriangleTool, points: 3, dragFirstTwo: true },
+            'arc': { class: ArcTool, points: 2, dragFirstTwo: true },
             'curve': { class: CurveTool, points: 2 },
             'double-curve': { class: DoubleCurveTool, points: 2 },
             
@@ -3764,7 +3764,8 @@ class DrawingToolsManager {
         if (this.currentTool && this.isDraggingFirstTwo) {
             const toolInfo = this.toolRegistry[this.currentTool];
             if (toolInfo && toolInfo.dragFirstTwo && this.drawingState.tempPoints.length === 1) {
-                const supportsClickAndDragPlacement = this.isCandleBoundTool(this.currentTool);
+                const supportsClickAndDragPlacement = this.isCandleBoundTool(this.currentTool)
+                    || this.isBoxShapeTool(this.currentTool);
                 if (supportsClickAndDragPlacement) {
                     const startScreen = this.dragFirstTwoStartScreen;
                     const currentScreenX = Number(event.clientX);
@@ -4408,6 +4409,21 @@ class DrawingToolsManager {
         return true;
     }
 
+    /** Price-plot pixel bounds (matches yScale range — excludes volume / indicator strips). */
+    _getPlotPixelBounds() {
+        const m = this.chart?.margin || { t: 5, r: 60, b: 30, l: 0 };
+        const w = this.chart?.w || this.chart?.canvas?.width || 800;
+        const h = this.chart?.h || this.chart?.canvas?.height || 600;
+        const volH = Number(this.chart?.volumeAreaHeight) || 0;
+        const indH = Number(this.chart?.separateIndicatorPanelHeight) || 0;
+        return {
+            minX: m.l,
+            maxX: w - m.r,
+            minY: m.t,
+            maxY: h - m.b - volH - indH
+        };
+    }
+
     /**
      * Get data point from mouse event
      * Returns {x: candleIndex, y: price}
@@ -4420,6 +4436,17 @@ class DrawingToolsManager {
 
         let [screenX, screenY] = this._eventCanvasLocalXY(event);
         const activeToolType = toolTypeOverride || this.currentTool;
+
+        // Box shapes: free placement anywhere on the plot grid — no OHLC magnet or bar-center snap.
+        if (this.isBoxShapeTool(activeToolType)) {
+            const bounds = this._getPlotPixelBounds();
+            screenX = Math.max(bounds.minX, Math.min(bounds.maxX, screenX));
+            screenY = Math.max(bounds.minY, Math.min(bounds.maxY, screenY));
+            return CoordinateUtils.screenToData(screenX, screenY, {
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale
+            }, this.chart, true);
+        }
 
         const isResizingVolumeProfileRightBoundary = this.isVolumeProfileToolType(activeToolType)
             && !!(
@@ -4456,10 +4483,10 @@ class DrawingToolsManager {
             screenX = isResizingVolumeProfileRightBoundary
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
-            const minY = m.t;
+            const plotBounds = this._getPlotPixelBounds();
             screenY = (isInteractingWithExistingVolumeProfile || allowRangeVerticalOverflow)
                 ? screenY
-                : Math.max(minY, Math.min(maxY, screenY));
+                : Math.max(plotBounds.minY, Math.min(plotBounds.maxY, screenY));
         }
         
         const magnetActive = this._isMagnetSnapActive(event);
