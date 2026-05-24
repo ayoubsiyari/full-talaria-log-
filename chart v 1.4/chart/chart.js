@@ -2624,9 +2624,8 @@ class Chart {
         const tf = String(timeframe).toLowerCase().trim();
         const entry = perFile.get(tf);
         if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return null;
-        const playheadMs = this._captureReplayPlayheadMs(this.replaySystem);
         const anchorKey = this._btTfCacheAnchorKey(
-            this._getBacktestSessionEndMs(), playheadMs, tf
+            this._getBacktestSessionEndMs(), null, tf
         );
         if (entry.anchorKey !== anchorKey) return null;
         return entry;
@@ -2637,9 +2636,6 @@ class Chart {
         if (!Array.isArray(rawData) || !rawData.length) return;
         const tf = String(timeframe).toLowerCase().trim();
         const sessionEndMs = this._getBacktestSessionEndMs();
-        const playheadMs = meta.playheadMs != null
-            ? meta.playheadMs
-            : this._captureReplayPlayheadMs(this.replaySystem);
         if (!this._btTfDataCache) this._btTfDataCache = new Map();
         const fid = String(fileId);
         if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
@@ -2650,7 +2646,7 @@ class Chart {
             : rawData.slice();
         perFile.set(tf, {
             at: Date.now(),
-            anchorKey: this._btTfCacheAnchorKey(sessionEndMs, playheadMs, tf),
+            anchorKey: this._btTfCacheAnchorKey(sessionEndMs, null, tf),
             rawData: storedRaw,
             totalCandles: meta.totalCandles != null ? meta.totalCandles : rawData.length,
             serverCursors: meta.serverCursors ? { ...meta.serverCursors } : null,
@@ -2885,18 +2881,9 @@ class Chart {
             }
         }
 
-        let coarsePeriodExclusiveEndTs = ctx.coarsePeriodExclusiveEndTs;
-        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
-            && typeof replay._findLastRawIndexAtOrBefore === 'function'
-            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
-            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
-            const smin = replay.sessionStartIndex || 0;
-            if (fineIdx >= smin) {
-                replay.currentIndex = fineIdx;
-                const b = replay.fullRawData[fineIdx];
-                if (b && Number.isFinite(b.t)) replay.replayTimestamp = b.t;
-            }
+        if (Number.isFinite(savedReplayTimestamp)
+            && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+            replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
         }
 
         if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
@@ -13377,6 +13364,16 @@ class Chart {
         // last good frame stays on the canvas until the new TF's bars are ready.
         this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
 
+        if (this.replaySystem && this.replaySystem.isActive && this.isBacktestMode && this.currentFileId) {
+            if (Array.isArray(this.rawData) && this.rawData.length > 0) {
+                this._saveBtTfDataCacheFromChart(this.currentFileId, this.currentTimeframe);
+            }
+            const ph = this._captureReplayPlayheadMs(this.replaySystem);
+            if (Number.isFinite(ph)) {
+                this.replaySystem.replayTimestamp = ph;
+            }
+        }
+
         // Trigger interval sync if enabled. Uses the local normalizedTf rather than
         // this.currentTimeframe so the deferred commit doesn't break sibling panels.
         if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
@@ -13392,36 +13389,20 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // Backtest sessions load 1D bars on open; if the user picks a smaller timeframe
-            // than the loaded raw bars (e.g. 1d -> 1m), client-side resample can't expand
-            // them — refetch from the server with the session window clamp instead.
-            const rawTfMs = Number(this.replaySystem.rawTimeframe)
-                || (typeof this.parseTimeframe === 'function'
-                    ? this.parseTimeframe(this.replaySystem.rawTimeframe)
-                    : NaN);
-            const newTfMs = typeof this.parseTimeframe === 'function'
-                ? this.parseTimeframe(normalizedTf)
-                : NaN;
-            // Always refetch from server during backtest when the timeframe changes.
-            // Client-side resample of fine rawData to a coarse TF loses deep history;
-            // TF cache restore skips replay re-init and breaks playhead / price scale on 1m↔1D toggles.
-            const needsServerRefetch = this.isBacktestMode
-                && this.currentFileId
-                && Number.isFinite(rawTfMs) && rawTfMs > 0
-                && Number.isFinite(newTfMs) && newTfMs > 0;
+            // 1) Same raw series — resample only (no network, replay index unchanged).
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                if (this.isBacktestMode && this.currentFileId) {
+                    this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
+                }
+                return;
+            }
 
-            if (needsServerRefetch) {
-                // Path C: cache → small-step resample → server refetch (1m→1D always refetches/cache).
+            // 2) Backtest — reuse cached native bars for this TF (fetched once per session).
+            if (this.isBacktestMode && this.currentFileId) {
                 this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
-                        if (this._canClientResampleToTimeframe(normalizedTf)) {
-                            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                            if (this.currentFileId) {
-                                this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
-                            }
-                            return;
-                        }
                         this._refetchBacktestTimeframe(normalizedTf);
                     })
                     .catch((e) => {
@@ -13431,7 +13412,7 @@ class Chart {
                 return;
             }
 
-            // Path B: client-side resample during replay (coarse/equal TF or non-backtest replay).
+            // 3) Non-backtest replay — client resample fallback.
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
@@ -14068,22 +14049,11 @@ class Chart {
         }
     }
 
-    _btTfCacheAnchorKey(sessionEndMs, playheadMs, timeframe) {
+    _btTfCacheAnchorKey(sessionEndMs, _playheadMs, timeframe) {
         const tf = String(timeframe || '').toLowerCase().trim();
-        const tfMs = this.parseTimeframe(tf) || 3600000;
-        // Coarse TFs: one cache entry per session (1D bundle shared regardless of playhead).
-        if (tfMs >= 86400000) {
-            return sessionEndMs != null && Number.isFinite(sessionEndMs)
-                ? `sess:${Math.floor(sessionEndMs)}:${tf}`
-                : `sess:none:${tf}`;
-        }
-        if (Number.isFinite(playheadMs)) {
-            const bucketMs = Math.max(tfMs * 4, 3600000);
-            return `ph:${Math.floor(playheadMs / bucketMs)}:${tf}`;
-        }
         return sessionEndMs != null && Number.isFinite(sessionEndMs)
-            ? `end:${Math.floor(sessionEndMs)}`
-            : 'none';
+            ? `sess:${Math.floor(sessionEndMs)}:${tf}`
+            : `sess:none:${tf}`;
     }
 
     async _refetchBacktestTimeframe(timeframe) {
@@ -14217,15 +14187,6 @@ class Chart {
         });
         this._syncReplayPanCursorsFromFullRaw();
         this._saveBtTfDataCacheFromChart(this.currentFileId, timeframe);
-        if (this._btTfDataCache) {
-            const perFile = this._btTfDataCache.get(String(this.currentFileId));
-            const tfKey = String(timeframe).toLowerCase().trim();
-            const entry = perFile && perFile.get(tfKey);
-            if (entry && Number.isFinite(playheadMs)) {
-                entry.anchorKey = this._btTfCacheAnchorKey(sessionEndMs, playheadMs, tfKey);
-            }
-        }
-
         if (this.hideLoader) this.hideLoader();
 
         if (!Array.isArray(this.rawData) || this.rawData.length === 0) {
@@ -25141,7 +25102,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a72';
+    window.TALARIA_CHART_BUILD = '20260522a73';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

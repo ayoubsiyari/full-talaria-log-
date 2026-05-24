@@ -105,6 +105,28 @@ class ReplaySystem {
         this.init();
     }
 
+    /** Map replay playhead to native bar index after a TF swap (timestamp-stable, no price patching). */
+    syncCurrentIndexFromReplayTimestamp(ts) {
+        if (!Number.isFinite(ts) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
+            return false;
+        }
+        const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
+        const floor = this.sessionStartIndex || 0;
+        if (hit >= floor) {
+            this.currentIndex = hit;
+            const bar = this.fullRawData[hit];
+            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
+            return true;
+        }
+        if (hit >= 0) {
+            this.currentIndex = floor;
+            const bar = this.fullRawData[this.currentIndex];
+            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
+            return true;
+        }
+        return false;
+    }
+
     applyPersistedState(state) {
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
