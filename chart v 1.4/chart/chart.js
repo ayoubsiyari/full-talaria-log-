@@ -15457,6 +15457,9 @@ class Chart {
             }
         }
         this._clearAxisHighlightPanTransform();
+        if (dm && typeof dm._clearDrawingGroupPanTransforms === 'function') {
+            dm._clearDrawingGroupPanTransforms();
+        }
         if (clearSnap) {
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
@@ -15531,6 +15534,9 @@ class Chart {
             dm.tempGroup.attr('transform', transform);
         }
         this._applyAxisHighlightPanTransform(dx, ty);
+        if (typeof dm.patchDrawingsDuringChartPan === 'function') {
+            dm.patchDrawingsDuringChartPan(dx, ty);
+        }
     }
 
     /** Move chart view 1:1 with pointer — called on every mousemove during pan. */
@@ -25303,7 +25309,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a84';
+    window.TALARIA_CHART_BUILD = '20260522a85';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

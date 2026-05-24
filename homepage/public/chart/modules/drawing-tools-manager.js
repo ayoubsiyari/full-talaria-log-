@@ -7799,7 +7799,9 @@ class DrawingToolsManager {
                 if (!drawing || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
                     return;
                 }
-                this._resolveDrawingPointsBeforeRender(drawing);
+                if (drawing.type !== 'fib-channel') {
+                    this._resolveDrawingPointsBeforeRender(drawing);
+                }
                 if (drawing.group && !drawing.group.empty()) {
                     if (!this.isDragging && !this._directMoveActive) {
                         const t = drawing.group.attr('transform');
@@ -8863,6 +8865,8 @@ class DrawingToolsManager {
         if (this._isDrawingEditActive()) return;
         if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
         this.drawings.forEach((drawing) => {
+            // Fib channel gets live geometry each pan frame; resync only on mouseup.
+            if (drawing && drawing.type === 'fib-channel') return;
             this._resolveDrawingPointsBeforeRender(drawing);
         });
         this.redrawAll({ panFast: true });
@@ -8875,6 +8879,57 @@ class DrawingToolsManager {
         if (this._isDrawingEditActive()) return;
         this.drawings.forEach((drawing) => {
             this._resolveDrawingPointsBeforeRender(drawing);
+        });
+    }
+
+    /** Fib channel + edge-anchored fib levels cannot rely on CSS translate alone during pan. */
+    _needsLivePanGeometryPatch(drawing) {
+        if (!drawing || drawing.visible === false || drawing.hidden === true) return false;
+        if (this._isHiddenByGlobalVisibility(drawing)) return false;
+        const t = drawing.type;
+        if (t === 'fib-channel') return true;
+        if (drawing.style && drawing.style.extendLines) {
+            return t === 'fibonacci-retracement' || t === 'fibonacci-extension';
+        }
+        return false;
+    }
+
+    /**
+     * Recompute geometry for edge-anchored tools while the pan layer CSS-slides.
+     * Counter-translate cancels the pan-layer shift so patched coords stay 1:1 with candles.
+     */
+    patchDrawingsDuringChartPan(dx, ty) {
+        if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
+        const ndx = Number.isFinite(dx) ? dx : 0;
+        const nty = Number.isFinite(ty) ? ty : 0;
+        if (!ndx && !nty) return;
+
+        const scales = {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale,
+            chart: this.chart,
+            labelsGroup: this.labelsGroup
+        };
+        const cancelT = `translate(${-ndx},${-nty})`;
+
+        this.drawings.forEach((drawing) => {
+            if (!this._needsLivePanGeometryPatch(drawing)) return;
+            if (!drawing.group || drawing.group.empty()) return;
+            const patched = this._tryPatchDrawingPanZoomGeometry(drawing, scales);
+            if (!patched) return;
+            drawing.group.attr('transform', cancelT);
+            if (typeof drawing.updateHandlePositions === 'function') {
+                try { drawing.updateHandlePositions(scales); } catch (_) {}
+            }
+        });
+    }
+
+    _clearDrawingGroupPanTransforms() {
+        if (!Array.isArray(this.drawings)) return;
+        this.drawings.forEach((drawing) => {
+            if (drawing && drawing.group && !drawing.group.empty()) {
+                drawing.group.attr('transform', null);
+            }
         });
     }
 
