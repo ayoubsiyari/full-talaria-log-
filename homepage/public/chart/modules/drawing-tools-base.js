@@ -1261,7 +1261,7 @@ class CoordinateUtils {
      * @param {string} timeframe - Current chart timeframe (e.g., '1m', '1h')
      * @returns {number} - Candle index (may be beyond data range for extrapolated positions)
      */
-    static timestampToIndex(timestamp, data, timeframe = null) {
+    static timestampToIndex(timestamp, data, timeframe = null, options = null) {
         if (!data || data.length === 0) {
             console.warn('⚠️ timestampToIndex: No data!');
             return 0;
@@ -1281,12 +1281,16 @@ class CoordinateUtils {
         
         const firstT = firstCandle.t;
         const lastT = lastCandle.t;
+        const replayClamp = !!(options && options.replayClampToLastBar);
 
         // Extrapolate before/after loaded window (replay drawings off-screen left/right)
         if (timestamp < firstT) {
             return -(firstT - timestamp) / interval;
         }
         if (timestamp > lastT) {
+            if (replayClamp) {
+                return data.length - 1;
+            }
             return (data.length - 1) + (timestamp - lastT) / interval;
         }
 
@@ -1340,13 +1344,13 @@ class CoordinateUtils {
      * @param {string} timeframe - Chart timeframe for interval calculation
      * @returns {Array} - Array of {x: index, y: price} points
      */
-    static pointsFromTimestamps(points, data, timeframe = null) {
+    static pointsFromTimestamps(points, data, timeframe = null, options = null) {
         if (!points || !data || data.length === 0) {
             return points;
         }
         
         return points.map(p => {
-            const index = this.timestampToIndex(p.timestamp || 0, data, timeframe);
+            const index = this.timestampToIndex(p.timestamp || 0, data, timeframe, options);
             
             // Don't clamp - allow extrapolated indices for replay mode
             return {
@@ -1364,11 +1368,15 @@ class CoordinateUtils {
         if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
             return drawing?.points || [];
         }
+        const tsOpts = (chart.replaySystem && chart.replaySystem.isActive)
+            ? { replayClampToLastBar: true }
+            : null;
         if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
             return this.pointsFromTimestamps(
                 drawing.timestampPoints,
                 chart.data,
-                chart.currentTimeframe
+                chart.currentTimeframe,
+                tsOpts
             );
         }
         return drawing.points || [];

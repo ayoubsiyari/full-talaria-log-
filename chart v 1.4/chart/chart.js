@@ -1167,15 +1167,11 @@ class Chart {
         if (mode === 'backtest' || mode === 'propfirm') {
             const isPropFirm = mode === 'propfirm';
 
-            // Backtest sessions always open on the 1D timeframe — overrides any
-            // persisted chart view timeframe (handled in loadTradingSessionState
-            // by checking this.isBacktestMode). Lower timeframes are reachable
-            // by the user via the timeframe bar; this just sets the default.
+            // Backtest TF is resolved in autoLoadBacktestingData from saved session state
+            // (refresh keeps the same TF the user had — not hardcoded 1D).
             this.isBacktestMode = true;
-            this.currentTimeframe = '1d';
             if (this._tfDataCache) this._tfDataCache.clear();
             if (this._btTfDataCache) this._btTfDataCache.clear();
-            try { this._emitTimeframeChanged(); } catch (e) {}
 
             // Subscription gate (mirrors api_server auth middleware) — blocks back after pricing, etc.
             try {
@@ -1417,6 +1413,15 @@ class Chart {
         }
         
         this.backtestingStarted = true;
+
+        const sessionIdForTf = this.getActiveTradingSessionId();
+        let initialTf = this._resolveBacktestInitialTimeframe(sessionIdForTf);
+        const serverTf = await this._fetchSavedSessionTimeframe(sessionIdForTf);
+        if (serverTf) initialTf = serverTf;
+        this.currentTimeframe = initialTf;
+        this._persistBacktestTimeframeChoice(initialTf);
+        try { this._emitTimeframeChanged(); } catch (_tfE) { /* ignore */ }
+        this._syncBacktestTimeframeUi(initialTf);
         
         const urlParams = new URLSearchParams(window.location.search);
         session = this.normalizeBacktestingSession(session);
@@ -1457,17 +1462,13 @@ class Chart {
         }
         
         try {
-            // Backtest sessions render the chart on 1D by default and load every
-            // available 1D bar on the server up to session end (so the user sees
-            // the full historical context BEFORE the replay start). The replay
-            // system still begins at session start (see enterReplayMode).
             this.isBacktestMode = true;
-            this.currentTimeframe = '1d';
+            const replayRawTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+            this.currentTimeframe = replayRawTf;
             if (this._tfDataCache) this._tfDataCache.clear();
             if (this._btTfDataCache) this._btTfDataCache.clear();
             try { this._emitTimeframeChanged(); } catch (e) {}
-
-            const replayRawTf = '1d';
+            this._syncBacktestTimeframeUi(replayRawTf);
             // Step 1 must stay active until the HTTP response is back — marking it complete before
             // await made the UI show "Calculating indicators" during the real network wait.
             this.updateLoaderStep(1, 'active');
@@ -4052,6 +4053,81 @@ class Chart {
         return `talaria_bt_sess_v1_${String(sessionId)}`;
     }
 
+    _backtestLastTimeframeStorageKey(sessionId) {
+        return `talaria_bt_last_tf_${String(sessionId)}`;
+    }
+
+    /** Allowed display timeframes for backtest open / refresh restore. */
+    _normalizeBacktestTimeframe(tf) {
+        if (!tf) return null;
+        const n = String(tf).toLowerCase().trim();
+        const allowed = new Set(['1m', '3m', '5m', '15m', '30m', '45m', '1h', '2h', '4h', '6h', '12h', '1d', '1w', '1mo']);
+        if (!allowed.has(n)) return null;
+        const ms = this.parseTimeframe(n);
+        return Number.isFinite(ms) && ms > 0 ? n : null;
+    }
+
+    /**
+     * Timeframe to use when opening or refreshing a backtest session.
+     * Prefers the TF the user had before refresh (local backup / server state), not hardcoded 1D.
+     * New sessions with no saved TF default to 1m (native replay bars — avoids 1D overlay quirks).
+     */
+    _resolveBacktestInitialTimeframe(sessionId) {
+        const pick = (tf) => this._normalizeBacktestTimeframe(tf);
+        if (sessionId) {
+            const backup = this._readTradingSessionLocalBackup(sessionId);
+            const fromBackup = pick(backup?.chartView?.timeframe) || pick(backup?.replay?.timeframe);
+            if (fromBackup) return fromBackup;
+            try {
+                const raw = userStorage.getItem(this._backtestLastTimeframeStorageKey(sessionId));
+                const fromKey = pick(raw);
+                if (fromKey) return fromKey;
+            } catch (_e) { /* ignore */ }
+        }
+        return '1m';
+    }
+
+    async _fetchSavedSessionTimeframe(sessionId) {
+        if (!sessionId) return null;
+        try {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
+                credentials: 'include',
+                cache: 'no-store',
+            });
+            if (!res.ok) return null;
+            const payload = await res.json();
+            const state = payload && payload.state ? payload.state : null;
+            if (!state) return null;
+            return this._normalizeBacktestTimeframe(state.chartView?.timeframe)
+                || this._normalizeBacktestTimeframe(state.replay?.timeframe)
+                || null;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    _persistBacktestTimeframeChoice(timeframe) {
+        const tf = this._normalizeBacktestTimeframe(timeframe);
+        if (!tf) return;
+        const sessionId = this.getActiveTradingSessionId();
+        if (sessionId) {
+            try {
+                userStorage.setItem(this._backtestLastTimeframeStorageKey(sessionId), tf);
+            } catch (_e) { /* ignore */ }
+        }
+    }
+
+    _syncBacktestTimeframeUi(timeframe) {
+        const tf = this._normalizeBacktestTimeframe(timeframe);
+        if (!tf) return;
+        if (window.timeframeFavorites && typeof window.timeframeFavorites.selectTimeframe === 'function') {
+            window.timeframeFavorites.selectTimeframe(tf);
+        }
+        document.querySelectorAll('.timeframe-btn, .sidebar-timeframe-btn, .sidebar-current-timeframe').forEach((b) => {
+            b.classList.toggle('active', b.dataset.timeframe === tf);
+        });
+    }
+
     /** Last time PATCH /state reported success — used to prefer fresher local backup when API save fails. */
     _sessionServerSyncStorageKey(sessionId) {
         return `talaria_sess_srv_sync_${String(sessionId)}`;
@@ -4166,11 +4242,15 @@ class Chart {
                     /* ignore */
                 }
             }
+            const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);
+            if (tf) {
+                payload.chartView = { timeframe: tf };
+            }
             if (this.replaySystem && this.replaySystem.isActive) {
                 payload.replay = {
                     currentIndex: this.replaySystem.currentIndex,
                     replayTimestamp: this.replaySystem.replayTimestamp,
-                    timeframe: this.currentTimeframe,
+                    timeframe: tf || this.currentTimeframe,
                     speed: this.replaySystem.speed,
                     tickElapsedMs: this.replaySystem.tickElapsedMs,
                     playbackMode: typeof this.replaySystem.getPlaybackMode === 'function'
@@ -4497,24 +4577,26 @@ class Chart {
                 if (typeof v.candleWidthIndex === 'number' && this.zoomLevel) {
                     this.zoomLevel.candleWidthIndex = v.candleWidthIndex;
                 }
-                if (v.timeframe && v.timeframe !== this.currentTimeframe && !this.isBacktestMode) {
-                    // Backtest sessions are pinned to 1D on open (see checkBacktestingMode);
-                    // ignore the persisted timeframe so reopening a session always starts on 1D.
-                    this.currentTimeframe = v.timeframe;
-                    if (this.currentSymbol) {
-                        this.updateChartTitle(this.currentSymbol);
-                    } else {
-                        this.updateChartOHLCSymbol(this.currentSymbol);
+                const restoredTf = this._normalizeBacktestTimeframe(v.timeframe);
+                if (restoredTf && restoredTf !== this.currentTimeframe) {
+                    if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
+                        // Initial load already fetched native bars for restoredTf; sync UI only.
+                        this.currentTimeframe = restoredTf;
+                        this._persistBacktestTimeframeChoice(restoredTf);
+                        this._syncBacktestTimeframeUi(restoredTf);
+                        try { this._emitTimeframeChanged(); } catch (_eTf) { /* ignore */ }
+                    } else if (!this.isBacktestMode) {
+                        this.currentTimeframe = restoredTf;
+                        if (this.currentSymbol) {
+                            this.updateChartTitle(this.currentSymbol);
+                        } else {
+                            this.updateChartOHLCSymbol(this.currentSymbol);
+                        }
+                        this._syncBacktestTimeframeUi(restoredTf);
+                        this._emitTimeframeChanged();
                     }
-                    // Update TimeframeFavorites UI to sync button display
-                    if (window.timeframeFavorites && typeof window.timeframeFavorites.selectTimeframe === 'function') {
-                        window.timeframeFavorites.selectTimeframe(v.timeframe);
-                    }
-                    // Fallback: update timeframe button UI directly
-                    document.querySelectorAll('.timeframe-btn, .sidebar-timeframe-btn, .sidebar-current-timeframe').forEach(b => {
-                        b.classList.toggle('active', b.dataset.timeframe === v.timeframe);
-                    });
-                    this._emitTimeframeChanged();
+                } else if (restoredTf && this.isBacktestMode) {
+                    this._syncBacktestTimeframeUi(restoredTf);
                 }
 
                 // On a backtest/replay refresh, enterReplayMode() ran first with the default
@@ -13523,6 +13605,9 @@ class Chart {
     _commitTimeframeChange(newTimeframe) {
         if (!newTimeframe) return;
         this.currentTimeframe = newTimeframe;
+        if (this.isBacktestMode) {
+            this._persistBacktestTimeframeChoice(newTimeframe);
+        }
         try { this.scheduleChartViewSave(); } catch (e) { /* ignore */ }
         try { this._emitTimeframeChanged(); } catch (e) { /* ignore */ }
         if (this.currentSymbol) {
@@ -25147,7 +25232,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a76';
+    window.TALARIA_CHART_BUILD = '20260522a77';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

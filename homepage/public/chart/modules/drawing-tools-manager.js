@@ -6210,24 +6210,56 @@ class DrawingToolsManager {
             .filter(d => d && d.type !== 'anchored-vwap');
         if (!drawings || drawings.length === 0) return;
 
+        const [moveMouseX, moveMouseY] = this._eventCanvasLocalXY(event);
+        const rawTargetNode = (src && src.target) || (event && event.target) || null;
+
+        // Reuse existing STROKE-ONLY hit test (same as selection) — not interior fill hits.
+        const strokeHits = this.findDrawingsAtPoint(moveMouseX, moveMouseY, { skipBodyFillHit: true });
+        const strokeHitIds = new Set(strokeHits.map((d) => d.id));
+
+        const movableDrawings = drawings.filter((d) => {
+            if (rawTargetNode && rawTargetNode.closest) {
+                if (rawTargetNode.closest('.shape-fill, .upper-fill, .lower-fill, .range-fill-hit')) {
+                    if (!rawTargetNode.closest(
+                        '.arrow-fill-hit, .position-zone, .rr-body-drag, .text-body-hit, '
+                        + '.emoji-glyph, .emoji-background, .image-content, .image-placeholder, .pin-body-hit'
+                    )) {
+                        return false;
+                    }
+                }
+                const bodyDragEl = rawTargetNode.closest(
+                    '.position-zone, .rr-body-drag, .text-body-hit, .emoji-glyph, .emoji-background, '
+                    + '.image-content, .image-placeholder, .pin-body-hit, .arrow-fill-hit'
+                );
+                if (bodyDragEl) {
+                    const dg = rawTargetNode.closest('.drawing');
+                    const hitId = dg ? d3.select(dg).attr('data-id') : null;
+                    if (hitId && d.id === hitId) return true;
+                }
+            }
+            return strokeHitIds.has(d.id);
+        });
+        if (movableDrawings.length === 0) return;
+
         this._directMoveActive = true;
         this.isDragging = true;
 
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
-            const [startMouseX, startMouseY] = this._eventCanvasLocalXY(event);
-            const shouldBlockVolumeProfileTextDirectMove = drawings.some((d) =>
-                this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
-                || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
+            const shouldBlockVolumeProfileTextDirectMove = movableDrawings.some((d) =>
+                this.isVolumeProfileLevelLineHit(d, moveMouseX, moveMouseY)
+                || this.isVolumeProfileValuesLabelHit(d, moveMouseX, moveMouseY)
             );
             if (shouldBlockVolumeProfileTextDirectMove) {
+                this._directMoveActive = false;
+                this.isDragging = false;
                 return;
             }
         }
 
-        const singleDragType = drawings.length === 1 ? drawings[0].type : null;
+        const singleDragType = movableDrawings.length === 1 ? movableDrawings[0].type : null;
         const startPoint = this.getDataPoint(event, singleDragType);
-        const startStates = drawings.map(d => ({
+        const startStates = movableDrawings.map(d => ({
             drawing: d,
             points: d.points.map(p => ({ ...p })),
             beforeState: this.history ? this.history.captureState(d) : null,
@@ -7346,6 +7378,9 @@ class DrawingToolsManager {
 
         const conversionData = this._getDrawingConversionData();
         const timeframe = this.chart && this.chart.currentTimeframe ? this.chart.currentTimeframe : null;
+        const tsOpts = (this.chart?.replaySystem?.isActive)
+            ? { replayClampToLastBar: true }
+            : null;
         const jsonForFrom = {
             ...json,
             points: Array.isArray(json.points) ? json.points.map(p => ({ ...p })) : []
@@ -7365,7 +7400,8 @@ class DrawingToolsManager {
             jsonForFrom.points = CoordinateUtils.pointsFromTimestamps(
                 timestampPoints,
                 conversionData,
-                timeframe
+                timeframe,
+                tsOpts
             );
             jsonForFrom.coordinateSystem = 'index';
         }
@@ -8690,7 +8726,15 @@ class DrawingToolsManager {
                         
                         // [debug removed]
                         // Convert to indices for rendering with correct timeframe
-                        item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
+                        const tsOpts = (this.chart?.replaySystem?.isActive)
+                            ? { replayClampToLastBar: true }
+                            : null;
+                        item.points = CoordinateUtils.pointsFromTimestamps(
+                            originalTimestampPoints,
+                            conversionData,
+                            this.chart.currentTimeframe,
+                            tsOpts
+                        );
                     }
                     
                     const drawing = toolInfo.class.fromJSON(item, this.chart);
@@ -8778,7 +8822,15 @@ class DrawingToolsManager {
                         timestamp: p.timestamp,
                         price: p.price || p.y
                     }));
-                    item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
+                    const tsOpts = (this.chart?.replaySystem?.isActive)
+                        ? { replayClampToLastBar: true }
+                        : null;
+                    item.points = CoordinateUtils.pointsFromTimestamps(
+                        originalTimestampPoints,
+                        conversionData,
+                        this.chart.currentTimeframe,
+                        tsOpts
+                    );
                 }
 
                 const drawing = toolInfo.class.fromJSON(item, this.chart);
@@ -8994,10 +9046,14 @@ class DrawingToolsManager {
         if (!conversionData.length || typeof CoordinateUtils === 'undefined') {
             return;
         }
+        const tsOpts = (this.chart?.replaySystem?.isActive)
+            ? { replayClampToLastBar: true }
+            : null;
         drawing.points = CoordinateUtils.pointsFromTimestamps(
             drawing.timestampPoints,
             conversionData,
-            this.chart.currentTimeframe
+            this.chart.currentTimeframe,
+            tsOpts
         ).map((pt, i) => {
             const src = drawing.timestampPoints[i];
             const price = src && Number.isFinite(src.price) ? src.price : pt.y;
@@ -9837,6 +9893,7 @@ class DrawingToolsManager {
      * @param {number} mouseY - Y coordinate in SVG space
      * @param {Object} options
      * @param {boolean} [options.includeVolumeProfileBodyHit] - legacy option (ignored); VP body/bar hits are always evaluated
+     * @param {boolean} [options.skipBodyFillHit] - skip rectangle/triangle/circle/ellipse interior hits (move-from-border only)
      * @returns {Array} - Drawings at this point: closest stroke first; on ties, higher z (later in
      *     `this.drawings` / visually on top) wins so selection matches what you see.
      */
@@ -10091,9 +10148,8 @@ class DrawingToolsManager {
                 }
             }
 
-            // Rectangle / triangle / circle / ellipse: allow whole-body selection and drag,
-            // not only narrow border strokes (fill has pointer-events:none).
-            if (!hitsById.has(drawing.id) && (drawing.type === 'rectangle' || drawing.type === 'triangle'
+            // Rectangle / triangle / circle / ellipse: whole-body selection; skip interior when moving (border/line only).
+            if (!options.skipBodyFillHit && !hitsById.has(drawing.id) && (drawing.type === 'rectangle' || drawing.type === 'triangle'
                 || drawing.type === 'circle' || drawing.type === 'ellipse')) {
                 try {
                     const points = drawing.points || [];
