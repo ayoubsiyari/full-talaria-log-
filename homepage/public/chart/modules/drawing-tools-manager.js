@@ -1297,7 +1297,7 @@ class DrawingToolsManager {
         // Mouse events for drawing
         svg.on('mousedown.drawing', (event) => this.handleMouseDown(event));
         svg.on('mousemove.drawing', (event) => this.handleMouseMove(event));
-        svg.on('mouseup.drawing', (event) => this.handleMouseUp(event));
+        svg.on('mouseup.drawing', (event) => this.handleMouseUp(this._normalizeBoxShapePointerEvent(event)));
 
         // Shift/Ctrl press or release: keep placement preview aligned with crosshair magnet snap
         document.addEventListener('keydown', (e) => {
@@ -1769,7 +1769,7 @@ class DrawingToolsManager {
                     if (!this.currentTool) return;
                     if (!(this.drawingState && this.drawingState.isDrawing)) return;
                     if (!this.isDrawingPath && !this.isDraggingFirstTwo) return;
-                    this.handleMouseUp(event);
+                    this.handleMouseUp(this._normalizeBoxShapePointerEvent(event));
                 };
                 document.addEventListener('mouseup', this._docDrawMouseUpBound);
             }
@@ -1778,12 +1778,7 @@ class DrawingToolsManager {
                 if (!this.currentTool) return;
                 if (!(this.drawingState && this.drawingState.isDrawing)) return;
                 if (!this.isDraggingFirstTwo) return;
-                let upEvent = event;
-                if (this._isPointerOverChartAxis(upEvent)) {
-                    if (!this.isBoxShapeTool(this.currentTool)) return;
-                    upEvent = this._clampBoxShapeEventToPlot(upEvent);
-                }
-                this.handleMouseUp(upEvent);
+                this.handleMouseUp(this._normalizeBoxShapePointerEvent(event));
             };
             canvas.addEventListener('mouseup', onCanvasMouseUp);
 
@@ -2949,7 +2944,9 @@ class DrawingToolsManager {
             return;
         }
 
-        let point = this.getDataPoint(event);
+        let point = this.isBoxShapeTool(this.currentTool)
+            ? this._getBoxShapePlacementPoint(event)
+            : this.getDataPoint(event);
         this._lastMouseEvent = this._nativePointerEvent(event) || event;
         
         const toolInfo = this.toolRegistry[this.currentTool];
@@ -3806,7 +3803,9 @@ class DrawingToolsManager {
 
                 let point = this.angleSnapTools.includes(this.currentTool)
                     ? this._resolveAnchorPointFromEvent(event, null, 1, this.currentTool)
-                    : this.getDataPoint(event);
+                    : (this.isBoxShapeTool(this.currentTool)
+                        ? this._getBoxShapePlacementPoint(event, this.currentTool, { usePreviewAnchor: draggedEnough })
+                        : this.getDataPoint(event));
                 
                 // Add second point
                 this.drawingState.addPoint(point);
@@ -4467,6 +4466,46 @@ class DrawingToolsManager {
             altKey: native.altKey,
             buttons: native.buttons
         };
+    }
+
+    /** Normalize pointer while placing box shapes (axes / volume strip → plot edge). */
+    _normalizeBoxShapePointerEvent(event) {
+        if (!event || !this.currentTool || !this.isBoxShapeTool(this.currentTool)) return event;
+        if (!(this.drawingState?.isDrawing || this.isDraggingFirstTwo)) return event;
+        const native = this._nativePointerEvent(event) || event;
+        if (this._isPointerOverChartAxis(native) || this._isPointerOutsidePricePlot(native)) {
+            return this._clampBoxShapeEventToPlot(native);
+        }
+        return event;
+    }
+
+    /**
+     * Box-shape anchor — use last live preview point on drag-release so finalize matches preview.
+     */
+    _getBoxShapePlacementPoint(event, toolTypeOverride = this.currentTool, opts = {}) {
+        const toolType = toolTypeOverride || this.currentTool;
+        if (!this.isBoxShapeTool(toolType)) {
+            return this.getDataPoint(event, toolType);
+        }
+        if (opts.usePreviewAnchor) {
+            if (Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length > 0) {
+                const last = this._activeTempPreviewPoints[this._activeTempPreviewPoints.length - 1];
+                if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
+                    return { x: last.x, y: last.y };
+                }
+            }
+            if (this._lastMouseEvent) {
+                const preview = this._computeInProgressPreviewPoints(this._lastMouseEvent);
+                if (preview && preview.length > 0) {
+                    const last = preview[preview.length - 1];
+                    if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
+                        return { x: last.x, y: last.y };
+                    }
+                }
+            }
+        }
+        const normalized = this._normalizeBoxShapePointerEvent(event);
+        return this.getDataPoint(normalized, toolType);
     }
 
     _replayTimestampOptsForDrawing(drawingType) {
