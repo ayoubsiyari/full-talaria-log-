@@ -774,6 +774,17 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         ? +tlStyle.fibBgOpacity
         : 0.12;
   }
+  if (
+    legacyTool &&
+    (v9IsFibCirclesType(legacyTool) || v9IsFibArcsType(legacyTool) || v9IsFibWedgeType(legacyTool)) &&
+    Array.isArray(tlStyle.fibLevels)
+  ) {
+    patch.levels = v9TlFibSpeedFanLevelsToChart(
+      tlStyle.fibLevels,
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+  }
   if (legacyTool === "brush" || legacyTool === "highlighter") {
     const p = parseColor(tlStyle.lineColor || "#787b86");
     const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
@@ -2215,20 +2226,18 @@ function v9EnsureFibLevelsTlForLegacy(out, legacyType, fall) {
 function v9ResolveFibLevelsRowsForDrawing(d, tlStyle) {
   if (!d || !tlStyle) return [];
   const t = d.type;
+  const cur = tlStyle.fibLevels;
+  if (Array.isArray(cur) && cur.length) return cur;
   if (v9IsClassicFibRetracementType(t)) return v9ResolveClassicFibLevelRowsForDrawing(d, tlStyle);
   if (v9IsFibChannelType(t)) {
     return v9ResolveFibChannelLevelRowsForDrawing(d, tlStyle);
   }
   if (v9IsFibSpeedFanType(t)) return v9ResolveFibSpeedFanPriceRowsForDrawing(d, tlStyle);
   if (v9IsTrendFibTimeType(t)) {
-    const cur = tlStyle.fibLevels;
-    if (Array.isArray(cur) && cur.length && !v9FibTlLevelsWrongForTool(t, cur)) return cur;
     const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
     if (fromDrawing?.length && !v9FibTlLevelsWrongForTool(t, fromDrawing)) return fromDrawing;
     return v9TrendFibTimeDefaultLevelsTl();
   }
-  const cur = tlStyle.fibLevels;
-  if (Array.isArray(cur) && cur.length && !v9FibTlLevelsWrongForTool(t, cur)) return cur;
   const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
   if (fromDrawing?.length && !v9FibTlLevelsWrongForTool(t, fromDrawing)) return fromDrawing;
   return v9DefaultFibLevelsTlForLegacy(t);
@@ -2443,9 +2452,8 @@ function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
 }
 
 function v9ResolveClassicFibLevelRowsForDrawing(d, tlStyle) {
-  if (v9FibTlLevelsMatchLegacyType(d.type, tlStyle.fibLevels)) {
-    return tlStyle.fibLevels;
-  }
+  const cur = tlStyle?.fibLevels;
+  if (Array.isArray(cur) && cur.length) return cur;
   const fromDrawing = v9FibLevelsChartToTl(d.levels);
   if (
     fromDrawing &&
@@ -2570,7 +2578,7 @@ function v9TlFibEnabledLevelsToChart(levels, fibLineType, fibLineWidth) {
 function v9ResolveFibChannelLevelRowsForDrawing(d, tlStyle) {
   const t = d && d.type;
   const cur = tlStyle?.fibLevels;
-  if (Array.isArray(cur) && cur.length && !v9FibTlLevelsWrongForTool(t, cur)) return cur;
+  if (Array.isArray(cur) && cur.length) return cur;
   const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
   if (fromDrawing?.length && !v9FibTlLevelsWrongForTool(t, fromDrawing)) return fromDrawing;
   return v9DefaultFibLevelsTlForLegacy(t);
@@ -2677,6 +2685,130 @@ function v9PatchFibLevelsInStyle(s, subToolIcon, fn) {
 function v9PatchFibTzLevelsInStyle(s, fn) {
   const rows = v9FibTzLevelsRowsForUi(s);
   return { ...s, fibTzLevels: fn(rows) };
+}
+
+/** Map all rows in a V9 level list to one color (quick bar master color). */
+function v9MapTlLevelRowColors(rows, colorVal) {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((l) => ({ ...l, color: colorVal }));
+}
+
+function v9LevelRowGradient(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  return `linear-gradient(90deg,${rows.map((l, i, a) => `${l.color} ${(i / (a.length - 1) * 100).toFixed(1)}%`).join(",")})`;
+}
+
+/** Quick-settings bar color stripe for multi-level tools. */
+function v9QuickBarLevelGradient(tlStyle, subToolIcon) {
+  if (!tlStyle || !subToolIcon) return null;
+  if (subToolIcon === "fibTimeZone") return v9LevelRowGradient(tlStyle.fibTzLevels);
+  if (subToolIcon.startsWith("fib")) return v9LevelRowGradient(tlStyle.fibLevels);
+  if (subToolIcon === "gannBox") {
+    return v9LevelRowGradient([
+      ...(tlStyle.gannPriceLevels || []),
+      ...(tlStyle.gannTimeLevels || []),
+    ]);
+  }
+  if (subToolIcon === "gannSquare") {
+    return v9LevelRowGradient([
+      ...(tlStyle.gannGridLevels || []),
+      ...(tlStyle.gannFanLevels || []),
+      ...(tlStyle.gannArcLevels || []),
+    ]);
+  }
+  if (subToolIcon === "gannFan") return v9LevelRowGradient(tlStyle.gannFanLevels);
+  if (subToolIcon === "channel" || subToolIcon === "flatChannel" || subToolIcon === "disjointCh") {
+    return v9LevelRowGradient(tlStyle.chLines);
+  }
+  if (subToolIcon === "regressionCh") return v9LevelRowGradient(tlStyle.regLines);
+  if (subToolIcon === "pitchfork") return v9LevelRowGradient(tlStyle.pfLevels);
+  return null;
+}
+
+/** Quick bar / color picker: multi-level tools store per-row colors separately from `lineColor`. */
+function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
+  const mapRows = (rows) => v9MapTlLevelRowColors(rows, colorVal);
+  if (subToolIcon === "fibTimeZone") {
+    return {
+      ...v9PatchFibTzLevelsInStyle(prev, mapRows),
+      lineColor: colorVal,
+    };
+  }
+  if (subToolIcon === "fibFan") {
+    return {
+      ...v9PatchFibLevelsInStyle(prev, subToolIcon, mapRows),
+      fibFanTimeLevels: mapRows(prev.fibFanTimeLevels),
+      lineColor: colorVal,
+    };
+  }
+  if (subToolIcon && subToolIcon.startsWith("fib")) {
+    return {
+      ...v9PatchFibLevelsInStyle(prev, subToolIcon, mapRows),
+      lineColor: colorVal,
+    };
+  }
+  if (subToolIcon === "gannBox") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      gannPriceLevels: mapRows(prev.gannPriceLevels),
+      gannTimeLevels: mapRows(prev.gannTimeLevels),
+    };
+  }
+  if (subToolIcon === "gannSquare") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      gannGridLevels: mapRows(prev.gannGridLevels),
+      gannFanLevels: mapRows(prev.gannFanLevels),
+      gannArcLevels: mapRows(prev.gannArcLevels),
+    };
+  }
+  if (subToolIcon === "gannFan") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      gannFanLevels: mapRows(prev.gannFanLevels),
+    };
+  }
+  if (subToolIcon === "channel" || subToolIcon === "flatChannel" || subToolIcon === "disjointCh") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      chLines: mapRows(prev.chLines),
+    };
+  }
+  if (subToolIcon === "pitchfork") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      pfLevels: mapRows(prev.pfLevels),
+    };
+  }
+  if (subToolIcon === "regressionCh") {
+    return {
+      ...prev,
+      lineColor: colorVal,
+      regLines: mapRows(prev.regLines),
+    };
+  }
+  return { ...prev, lineColor: colorVal };
+}
+
+function v9SelectionPatchNeedsFibEnsure(drawingType, patch) {
+  if (!patch || !drawingType) return false;
+  if (v9IsClassicFibRetracementType(drawingType) && patch.fibLevels) return true;
+  if (v9IsFibChannelType(drawingType) && patch.fibLevels) return true;
+  if (v9IsFibTimeZoneType(drawingType) && patch.fibTzLevels) return true;
+  if (v9IsFibSpeedFanType(drawingType) && (patch.fibLevels || patch.fibFanTimeLevels)) return true;
+  if (v9IsTrendFibTimeType(drawingType) && patch.fibLevels) return true;
+  if (v9IsFibCirclesType(drawingType) && patch.fibLevels) return true;
+  if (v9IsFibArcsType(drawingType) && patch.fibLevels) return true;
+  if (v9IsFibWedgeType(drawingType) && patch.fibLevels) return true;
+  if (drawingType === "gann-box" && (patch.gannPriceLevels || patch.gannTimeLevels)) return true;
+  if (drawingType === "gann-square-fixed" && (patch.gannGridLevels || patch.gannFanLevels || patch.gannArcLevels)) return true;
+  if (drawingType === "gann-fan" && patch.gannFanLevels) return true;
+  return false;
 }
 
 /** Copy `v9TlStylePatchFromDrawing` fib fields into dblclick partial-merge `out` (retracement already had this; channel/tz did not). */
@@ -2795,6 +2927,39 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("lineColor");
     line("lineWidth");
     line("lineType");
+    return;
+  }
+  if (drawingType === "gann-box") {
+    line("gannPriceLevels");
+    line("gannTimeLevels");
+    line("gannLineType");
+    line("gannLineWidth");
+    line("gannBackground");
+    line("gannBgOpacity");
+    line("lineColor");
+    line("lineWidth");
+    return;
+  }
+  if (drawingType === "gann-square-fixed") {
+    line("gannGridLevels");
+    line("gannFanLevels");
+    line("gannArcLevels");
+    line("gannLineType");
+    line("gannLineWidth");
+    line("gannBackground");
+    line("gannBgOpacity");
+    line("lineColor");
+    line("lineWidth");
+    return;
+  }
+  if (drawingType === "gann-fan") {
+    line("gannFanLevels");
+    line("gannLineType");
+    line("gannLineWidth");
+    line("gannBackground");
+    line("gannBgOpacity");
+    line("lineColor");
+    line("lineWidth");
   }
 }
 
@@ -10035,7 +10200,7 @@ const TalariaV8bLive = () => {
     setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
-    else if(targetKey === "tlLineColor") setTlStyle(s=>isFibTool ? {...v9PatchFibLevelsInStyle(s, groupSelected?.fib?.icon, rows=>rows.map(l=>({...l, color: colorVal}))), lineColor: colorVal} : {...s, lineColor: colorVal});
+    else if(targetKey === "tlLineColor") setTlStyle(s=>v9ApplyTlLineColorToStyle(s, colorVal, tlSubTool.icon));
     else if(targetKey === "tlBgColor") setTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType));
     else if(targetKey === "tlMidLineColor") setTlStyle(s=>({...s, midLineColor: colorVal}));
     else if(targetKey === "tlTextColor") setTlStyle(s=>({...s, textColor: colorVal}));
@@ -10047,7 +10212,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "regUpperBg") setTlStyle(s=>({...s, regUpperBg: colorVal}));
     else if(targetKey === "regLowerBg") setTlStyle(s=>({...s, regLowerBg: colorVal}));
     else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; const fibIcon = groupSelected?.fib?.icon; setTlStyle(s=>v9PatchFibLevelsInStyle(s, fibIcon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
+    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
     else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
     else if(targetKey === "fibTrendColor") setTlStyle(s=>({...s, lineColor: colorVal}));
     else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; setTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
@@ -11774,12 +11939,7 @@ const TalariaV8bLive = () => {
               const patch = v9TlStylePatchFromDrawing(drawing);
               if (patch) {
                 br.suppressForwardBridge.current = true;
-                if (
-                  (v9IsClassicFibRetracementType(drawing.type) && patch.fibLevels) ||
-                  (v9IsFibChannelType(drawing.type) && patch.fibLevels) ||
-                  (v9IsFibTimeZoneType(drawing.type) && patch.fibTzLevels) ||
-                  (v9IsFibSpeedFanType(drawing.type) && (patch.fibLevels || patch.fibFanTimeLevels))
-                ) {
+                if (v9SelectionPatchNeedsFibEnsure(drawing.type, patch)) {
                   flushSync(() =>
                     br.setTlStyle((s) =>
                       v9EnsureTlStyleArrays({ ...s, ...patch }, s, drawing.type),
@@ -12069,12 +12229,7 @@ const TalariaV8bLive = () => {
             const patch = v9TlStylePatchFromDrawing(live);
             if (patch) {
               br.suppressForwardBridge.current = true;
-              if (
-                (v9IsClassicFibRetracementType(live.type) && patch.fibLevels) ||
-                (v9IsFibChannelType(live.type) && patch.fibLevels) ||
-                (v9IsFibTimeZoneType(live.type) && patch.fibTzLevels) ||
-                (v9IsFibSpeedFanType(live.type) && (patch.fibLevels || patch.fibFanTimeLevels))
-              ) {
+              if (v9SelectionPatchNeedsFibEnsure(live.type, patch)) {
                 flushSync(() =>
                   br.setTlStyle((s) =>
                     v9EnsureTlStyleArrays({ ...s, ...patch }, s, live.type),
@@ -14846,7 +15001,7 @@ const TalariaV8bLive = () => {
                   {isFibTool && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && (()=>{
                     return <>
                       {/* Trend line checkbox + color */}
-                      {tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
+                      {tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
                         <div style={{ width:130 }}>{TlChk(tlStyle.fibTrendLine,"tlchk-fibTrend","Trend line",()=>setTlStyle(s=>({...s,fibTrendLine:!s.fibTrendLine})))}</div>
                         <div style={{ marginLeft:100, opacity:tlStyle.fibTrendLine?1:0.38, pointerEvents:tlStyle.fibTrendLine?"auto":"none", transition:"opacity 0.15s" }}>
                           {colorSwatch("fibTrendColor", tlStyle.lineColor)}
@@ -19900,15 +20055,7 @@ const TalariaV8bLive = () => {
             {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-col2" isAct={colorPicker==="tlLineColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.lineColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLineColor");}}}>
               {(_,isAct,col)=>{
-                const fibBar = isFibTool && tlStyle.fibLevels && tlStyle.fibLevels.length > 0
-                  ? `linear-gradient(90deg,${tlStyle.fibLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (tlSubTool.icon === "channel" && tlStyle.chLines && tlStyle.chLines.length > 0)
-                  ? `linear-gradient(90deg,${tlStyle.chLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (tlSubTool.icon === "regressionCh" && tlStyle.regLines && tlStyle.regLines.length > 0)
-                  ? `linear-gradient(90deg,${tlStyle.regLines.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : (tlSubTool.icon === "pitchfork" && tlStyle.pfLevels && tlStyle.pfLevels.length > 0)
-                  ? `linear-gradient(90deg,${tlStyle.pfLevels.map((l,i,a)=>`${l.color} ${(i/(a.length-1)*100).toFixed(1)}%`).join(",")})`
-                  : tlStyle.lineColor;
+                const fibBar = v9QuickBarLevelGradient(tlStyle, tlSubTool.icon) || tlStyle.lineColor;
                 return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={tlSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:fibBar,borderRadius:1}}/></div>;
               }}
             </TlBtn>}
@@ -27081,7 +27228,7 @@ const TalariaV8bLive = () => {
           onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
           onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
           onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>({...s,lineColor:cv}));else if(colorPicker==="tlBgColor")setTlStyle(s=>v9ApplyTlBgColorToStyle(s,cv,tlSubTool.icon,chartPrimarySelectedDrawingType));else if(colorPicker==="tlBorderColor")setTlStyle(s=>({...s,borderColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
+          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);const cv=cpBuildColor(p.r,p.g,p.b,cpA);if(colorPicker==="gotoNewColor")setGotoNewColor(cv);else if(colorPicker==="tlLineColor")setTlStyle(s=>v9ApplyTlLineColorToStyle(s,cv,tlSubTool.icon));else if(colorPicker==="tlBgColor")setTlStyle(s=>v9ApplyTlBgColorToStyle(s,cv,tlSubTool.icon,chartPrimarySelectedDrawingType));else if(colorPicker==="tlBorderColor")setTlStyle(s=>({...s,borderColor:cv}));else if(colorPicker==="tlTextColor")setTlStyle(s=>({...s,textColor:cv}));else if(colorPicker==="fibTrendColor")setTlStyle(s=>({...s,lineColor:cv}));else if(typeof colorPicker==="string"&&colorPicker.startsWith("fibLevel-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>v9PatchFibLevelsInStyle(s,tlSubTool.icon,rows=>rows.map((l,i)=>i===idx?{...l,color:cv}:l)));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("fibTzLevel-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>v9PatchFibTzLevelsInStyle(s,rows=>rows.map((l,i)=>i===idx?{...l,color:cv}:l)));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("gannPrice-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,gannPriceLevels:s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("gannTime-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,gannTimeLevels:s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("gannGrid-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,gannGridLevels:s.gannGridLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("gannFanLv-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,gannFanLevels:s.gannFanLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("gannArc-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,gannArcLevels:s.gannArcLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("chLine-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,chLines:s.chLines.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("regLine-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,regLines:s.regLines.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("pfLevel-")){const idx=+colorPicker.split("-")[1];setTlStyle(s=>({...s,pfLevels:s.pfLevels.map((l,i)=>i===idx?{...l,color:cv}:l)}));}else if(typeof colorPicker==="string"&&colorPicker.startsWith("ind-"))setIndSettDraft(s=>({...s,[colorPicker.slice(4)]:cv}));else updateSetting(colorPicker,cv);}}}
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}

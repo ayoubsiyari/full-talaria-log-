@@ -15308,12 +15308,9 @@ class Chart {
         return this._isChartViewPanning() && this._panSnapOffsetX != null;
     }
 
-    /** Pan transform fights replay tick redraws — reproject drawings each pan frame while playing. */
+    /** Pan transform: 1:1 with chart drag (fast). Baseline geometry set in prepareDrawingsForChartPan. */
     _shouldUsePanDrawingsTransform() {
-        if (!this._canPanTransformDrawings()) return false;
-        const rs = this.replaySystem;
-        if (rs && rs.isActive && rs.isPlaying) return false;
-        return true;
+        return this._canPanTransformDrawings();
     }
 
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
@@ -15356,6 +15353,12 @@ class Chart {
             this._panSnapYDomain = [Number(d[0]), Number(d[1])];
         } else {
             this._panSnapYDomain = null;
+        }
+        // Drop stale CSS translate; keep snap offsets for the pan loop.
+        this._clearPanDrawingsLayerTransform(false);
+        const dm = this.drawingManager;
+        if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
+            dm.prepareDrawingsForChartPan();
         }
     }
 
@@ -15431,7 +15434,7 @@ class Chart {
         ).attr('transform', timeT);
     }
 
-    _clearPanDrawingsLayerTransform() {
+    _clearPanDrawingsLayerTransform(clearSnap = true) {
         const dm = this.drawingManager;
         if (dm) {
             if (typeof dm._ensureDrawingsPanLayer === 'function') {
@@ -15454,9 +15457,11 @@ class Chart {
             }
         }
         this._clearAxisHighlightPanTransform();
-        this._panSnapOffsetX = null;
-        this._panSnapPriceOffset = null;
-        this._panSnapYDomain = null;
+        if (clearSnap) {
+            this._panSnapOffsetX = null;
+            this._panSnapPriceOffset = null;
+            this._panSnapYDomain = null;
+        }
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
@@ -21315,6 +21320,9 @@ class Chart {
 
     _finishPanDrawingRedraw() {
         if (this.drawingManager && this.xScale && this.yScale) {
+            if (typeof this.drawingManager.finalizeDrawingsAfterChartPan === 'function') {
+                this.drawingManager.finalizeDrawingsAfterChartPan();
+            }
             this.drawingManager.redrawAll({ forceFull: true });
         }
     }
@@ -25295,7 +25303,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a82';
+    window.TALARIA_CHART_BUILD = '20260522a84';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

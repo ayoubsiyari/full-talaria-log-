@@ -8698,7 +8698,6 @@ class DrawingToolsManager {
      */
     _resolveDrawingPointsBeforeRender(drawing) {
         if (!drawing || this._isDrawingEditActive()) return;
-        if (this._isChartViewPanning()) return;
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         this._syncDrawingPointsFromTimestamps(drawing);
     }
@@ -8854,6 +8853,29 @@ class DrawingToolsManager {
             runRefresh();
         };
         this._tfDrawingsRefreshToken = requestAnimationFrame(tick);
+    }
+
+    /**
+     * Finger-down on chart: sync timestamp anchors → indices, one panFast paint, then CSS
+     * translate during drag (all tools move 1:1 with candles — no per-frame full redraw).
+     */
+    prepareDrawingsForChartPan() {
+        if (this._isDrawingEditActive()) return;
+        if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
+        this.drawings.forEach((drawing) => {
+            this._resolveDrawingPointsBeforeRender(drawing);
+        });
+        this.redrawAll({ panFast: true });
+    }
+
+    /**
+     * Re-sync timestamp anchors after chart pan ends (playhead / offset changed).
+     */
+    finalizeDrawingsAfterChartPan() {
+        if (this._isDrawingEditActive()) return;
+        this.drawings.forEach((drawing) => {
+            this._resolveDrawingPointsBeforeRender(drawing);
+        });
     }
 
     /**
