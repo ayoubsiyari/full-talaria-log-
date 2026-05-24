@@ -156,10 +156,6 @@ class ParallelChannelTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         
         if (this.points.length < 2) return;
 
@@ -367,47 +363,13 @@ class ParallelChannelTool extends BaseDrawing {
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
-        const middleHandleSize = handleRadius * 2 + 2;
-        const middleHandleBgSize = middleHandleSize + 2;
-        const middleHandleCornerRadius = 2;
         
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
         group.selectAll('.resize-handle-hit').remove();
         
-        if (this.points.length < 2) return;
-        
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const p3 = this.points[2] || this.points[1];
-        
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const y1 = scales.yScale(p1.y);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        const y2 = scales.yScale(p2.y);
-        const x3 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p3.x) : scales.xScale(p3.x);
-        const y3 = scales.yScale(p3.y);
-        
-        // Vertical-only offset for handle positions
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const slope = dx !== 0 ? dy / dx : 0;
-        const yBaselineAtP3 = y1 + slope * (x3 - x1);
-        const offsetX = 0;
-        const offsetY = y3 - yBaselineAtP3;
-        
-        // Handle positions: corners + middle points on top and bottom lines
-        const handlePositions = [
-            { cx: x1, cy: y1, index: 'top-left', type: 'corner' },
-            { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, index: 'top-mid', type: 'middle' },
-            { cx: x2, cy: y2, index: 'top-right', type: 'corner' },
-            { cx: x1 + offsetX, cy: y1 + offsetY, index: 'bottom-left', type: 'corner' },
-            { cx: (x1 + x2) / 2 + offsetX, cy: (y1 + y2) / 2 + offsetY, index: 'bottom-mid', type: 'middle' },
-            { cx: x2 + offsetX, cy: y2 + offsetY, index: 'bottom-right', type: 'corner' }
-        ];
+        const handlePositions = this._parallelChannelHandlePositions(scales);
+        if (!handlePositions.length) return;
         
         handlePositions.forEach((pos) => {
             const isStringIndex = typeof pos.index === 'string';
@@ -460,6 +422,48 @@ class ParallelChannelTool extends BaseDrawing {
             }
             
             this.handles.push(handleGroup);
+        });
+    }
+
+    _parallelChannelHandlePositions(scales) {
+        if (!scales || this.points.length < 2) return [];
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const p3 = this.points[2] || this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x)
+            : scales.xScale(p1.x);
+        const y1 = scales.yScale(p1.y);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x)
+            : scales.xScale(p2.x);
+        const y2 = scales.yScale(p2.y);
+        const x3 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p3.x)
+            : scales.xScale(p3.x);
+        const y3 = scales.yScale(p3.y);
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const slope = dx !== 0 ? dy / dx : 0;
+        const yBaselineAtP3 = y1 + slope * (x3 - x1);
+        const offsetX = 0;
+        const offsetY = y3 - yBaselineAtP3;
+        return [
+            { cx: x1, cy: y1, index: 'top-left', type: 'corner' },
+            { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, index: 'top-mid', type: 'middle' },
+            { cx: x2, cy: y2, index: 'top-right', type: 'corner' },
+            { cx: x1 + offsetX, cy: y1 + offsetY, index: 'bottom-left', type: 'corner' },
+            { cx: (x1 + x2) / 2 + offsetX, cy: (y1 + y2) / 2 + offsetY, index: 'bottom-mid', type: 'middle' },
+            { cx: x2 + offsetX, cy: y2 + offsetY, index: 'bottom-right', type: 'corner' }
+        ];
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty() || !scales) return;
+        this._parallelChannelHandlePositions(scales).forEach((pos) => {
+            this.group.selectAll(`.resize-handle-group[data-point-index="${pos.index}"] circle`)
+                .attr('cx', pos.cx)
+                .attr('cy', pos.cy);
         });
     }
 
@@ -573,10 +577,6 @@ class RegressionTrendTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         
         if (this.points.length < 2) return;
 
@@ -1205,10 +1205,6 @@ class FlatTopBottomTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         
         if (this.points.length < 2) return;
 
@@ -1718,10 +1714,6 @@ class DisjointChannelTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         
         if (this.points.length < 2) return;
 

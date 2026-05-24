@@ -5276,17 +5276,20 @@ class DrawingToolsManager {
             typeof this.chart._isChartViewPanning === 'function' &&
             this.chart._isChartViewPanning()
         );
+        const activeHandleEdit = !!(this.isResizing || this.isCustomHandleDrag || this._skipHandleSetup);
+        // Reuse SVG + patch handle coords only for pan/zoom — not while dragging resize handles
+        // (skipping handle rebuild left stale handle DOM and trailing ghost points).
+        const useHotReuse = isPanZoomHotPath && !activeHandleEdit;
         const renderOpts = {
-            reuseGroup: isPanZoomHotPath,
-            // Multi-select skips axis labels but must still create endpoint handles for lines.
-            skipHandles: (isPanZoomHotPath || !!this._skipHandleSetup || skipInteraction) && !drawing.selected,
+            reuseGroup: useHotReuse,
+            skipHandles: useHotReuse,
             isPreview: false
         };
 
         // Render with current scales AND chart instance for accurate pixel calculation
         drawing.render(this._getDrawingsContentGroup(), scalesPayload, renderOpts);
 
-        if (isPanZoomHotPath && typeof drawing.updateHandlePositions === 'function') {
+        if (useHotReuse && typeof drawing.updateHandlePositions === 'function') {
             try { drawing.updateHandlePositions(scalesPayload); } catch (_) {}
         }
         
@@ -6335,9 +6338,7 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    self._skipHandleSetup = true;
-                    this.renderDrawing(drawing);
-                    self._skipHandleSetup = false;
+                    self.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
                     if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                         drawing.showAxisHighlights();
                     }
@@ -6410,9 +6411,7 @@ class DrawingToolsManager {
                             y: p.y + constrainedDy
                         }));
                         self.clampDrawingPointsToCandleRange(drawing);
-                        self._skipHandleSetup = true;
-                        self.renderDrawing(drawing);
-                        self._skipHandleSetup = false;
+                        self.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
                         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                             drawing.showAxisHighlights();
                         }
@@ -6531,10 +6530,8 @@ class DrawingToolsManager {
         // Update point
         drawing.points[index] = point;
         
-        // Re-render without recreating handles during active drag
-        this._skipHandleSetup = true;
+        // Full rebuild during drag so handles track geometry (reuseGroup skips handle recreate).
         this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
-        this._skipHandleSetup = false;
         this._syncAxisHighlightsLive(drawing);
         
         this._broadcastLiveEditUpdate(drawing);
@@ -6642,8 +6639,8 @@ class DrawingToolsManager {
             }
         }
 
-        // Always re-render during drag
-        this.scheduleRenderDrawing(drawing);
+        // Re-render synchronously during drag (RAF batching left handles stale / trailing).
+        this.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
         this._broadcastLiveEditUpdate(drawing);
         
         // Dispatch event to sync UI with drawing style changes (e.g., font size during text resize)
