@@ -2885,11 +2885,18 @@ class Chart {
             }
         }
 
-        if (typeof replay.syncCurrentIndexForTfSwitch === 'function') {
-            replay.syncCurrentIndexForTfSwitch();
-        } else if (Number.isFinite(savedReplayTimestamp)
-            && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
-            replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+        let coarsePeriodExclusiveEndTs = ctx.coarsePeriodExclusiveEndTs;
+        if (switchingToFiner && Number.isFinite(coarsePeriodExclusiveEndTs)
+            && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            const upperInclusive = coarsePeriodExclusiveEndTs - 1;
+            const fineIdx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, upperInclusive);
+            const smin = replay.sessionStartIndex || 0;
+            if (fineIdx >= smin) {
+                replay.currentIndex = fineIdx;
+                const b = replay.fullRawData[fineIdx];
+                if (b && Number.isFinite(b.t)) replay.replayTimestamp = b.t;
+            }
         }
 
         if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
@@ -13370,15 +13377,6 @@ class Chart {
         // last good frame stays on the canvas until the new TF's bars are ready.
         this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
 
-        // Lock replay to the UTC calendar day of the last displayed candle before TF switch.
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const replay = this.replaySystem;
-            const dayStart = this._captureReplayAnchorUtcDayStart(replay);
-            if (Number.isFinite(dayStart)) {
-                replay._anchorUtcDayStart = dayStart;
-            }
-        }
-
         // Trigger interval sync if enabled. Uses the local normalizedTf rather than
         // this.currentTimeframe so the deferred commit doesn't break sibling panels.
         if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
@@ -13559,16 +13557,6 @@ class Chart {
         this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
-        // Always recalculate Y-axis from the new TF's visible candles (stale manualRange
-        // from a prior TF made candles look flat — e.g. 1D range stuck on 15m).
-        this.autoScale = true;
-        this.priceOffset = 0;
-        this.priceZoom = 1;
-        this.manualCenterPrice = null;
-        this.manualRange = null;
-        if (this.priceScale) {
-            this.priceScale.autoScale = true;
-        }
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
         if (!wasSwitching) {
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
@@ -13899,35 +13887,12 @@ class Chart {
      * stays up across the entire fetch + re-enter-replay sequence, and is only
      * lifted by `_endTimeframeSwitching` once the replay viewport is final.
      */
-    _captureReplayAnchorUtcDayStart(replay) {
-        if (!replay) return null;
-        let ts = null;
-        if (Array.isArray(this.data) && this.data.length > 0) {
-            ts = this.data[this.data.length - 1].t;
-        } else if (Number.isFinite(replay.replayTimestamp)) {
-            ts = replay.replayTimestamp;
-        }
-        if (!Number.isFinite(ts)) return null;
-        const d = new Date(ts);
-        if (!Number.isFinite(d.getTime())) return null;
-        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-    }
-
     _captureReplayPlayheadMs(replay) {
         if (!replay) return null;
 
         let ts = null;
-
-        // Last displayed candle — matches what the user sees before a TF switch.
-        if (Array.isArray(this.data) && this.data.length > 0) {
-            const lastBar = this.data[this.data.length - 1];
-            if (lastBar && Number.isFinite(lastBar.t)) {
-                ts = lastBar.t;
-            }
-        }
-
         const ac = replay.animatingCandle;
-        if (!Number.isFinite(ts) && ac && Number.isFinite(ac.t)) {
+        if (ac && Number.isFinite(ac.t)) {
             const tp = Number(replay.tickProgress) || 0;
             if (tp > 0 || (!replay.isPlaying && Number.isFinite(ac.close))) ts = ac.t;
         }
@@ -15807,13 +15772,11 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes + price line (lite, 60fps loop).
+        // Fast path while dragging chart: candles + axes (lite, 60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
             this.drawGrid({ panFast: true });
             this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
-            this.drawCurrentPriceLabel(visible);
             this.drawAxes();
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
@@ -15969,7 +15932,7 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
-        const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
+        const showVertical = !panFast && (this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical');
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -17002,76 +16965,99 @@ class Chart {
      * Keeps render sources consistent across live mode, replay mode, and panel charts.
      */
     resolveEffectiveCurrentPrice(visible) {
-        // Price line = close of the last displayed native/resampled bar (no synthetic patching).
-        if (this.data && this.data.length > 0) {
-            const lastCandle = this.data[this.data.length - 1];
-            if (lastCandle && Number.isFinite(lastCandle.c)) {
-                return lastCandle.c;
-            }
-        }
+        let price = null;
 
         const lastVisible = (Array.isArray(visible) && visible.length > 0)
             ? visible[visible.length - 1]
             : null;
         if (lastVisible && Number.isFinite(lastVisible.c)) {
-            return lastVisible.c;
+            price = lastVisible.c;
         }
 
-        return null;
+        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
+            const lastCandle = this.data[this.data.length - 1];
+            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
+        }
+
+        if (this.replaySystem && this.replaySystem.isActive) {
+            const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
+            let replayPrice = null;
+
+            if (hasOwnData) {
+                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
+            } else {
+                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
+                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.animatingCandle) {
+                    replayPrice = this.replaySystem.animatingCandle.close;
+                }
+                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
+                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
+                }
+            }
+
+            const displayRef = (this.data && this.data.length > 0 && Number.isFinite(this.data[this.data.length - 1].c))
+                ? this.data[this.data.length - 1].c
+                : (lastVisible && Number.isFinite(lastVisible.c) ? lastVisible.c : null);
+
+            if (Number.isFinite(replayPrice)) {
+                if (!Number.isFinite(displayRef)) {
+                    price = replayPrice;
+                } else {
+                    const refMag = Math.abs(displayRef) || 1;
+                    const relDiff = Math.abs(replayPrice - displayRef) / refMag;
+                    // Pan-merge / index drift can make fullRawData[currentIndex] disagree with the
+                    // bars actually drawn — resolveEffectiveCurrentPrice then blows the Y domain and
+                    // candles look "hidden" at one edge. Trust the displayed series when disagreement is large.
+                    if (relDiff <= 0.12) {
+                        price = replayPrice;
+                    } else {
+                        price = displayRef;
+                    }
+                }
+            }
+        }
+
+        return Number.isFinite(price) ? price : null;
     }
 
     /**
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
+        if (!visible || visible.length === 0) return;
         if (!this.yScale) return;
-
-        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
-        let displayCandle = null;
-
-        // Replay: always show playhead price even when user panned away from the last bar.
-        if (inReplayMode && this.data && this.data.length > 0) {
-            displayCandle = this.data[this.data.length - 1];
-        } else {
-            if (!visible || visible.length === 0) return;
-
-            const m = this.margin;
-            const rightBound = this.w - m.r - this.candleWidth;
-            let lastVisibleIdx = -1;
-            for (let i = visible.length - 1; i >= 0; i--) {
-                const idx = this.visibleStartIndex + i;
-                const x = this.dataIndexToPixel(idx);
-                if (x <= rightBound) {
-                    lastVisibleIdx = i;
-                    break;
-                }
-            }
-            if (lastVisibleIdx < 0) return;
-            displayCandle = visible[lastVisibleIdx];
-        }
 
         const m = this.margin;
         const ch = this.h - m.t - m.b;
         const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         
-        if (!displayCandle) return;
+        // Find the last candle index that is actually visible (not in price axis area)
+        let lastVisibleIdx = -1;
+        const rightBound = this.w - m.r - this.candleWidth;
+        for (let i = visible.length - 1; i >= 0; i--) {
+            const idx = this.visibleStartIndex + i;
+            const x = this.dataIndexToPixel(idx);
+            if (x <= rightBound) {
+                lastVisibleIdx = i; // Index within visible array
+                break;
+            }
+        }
+        if (lastVisibleIdx < 0) return;
 
         // Get the display data using cached HA from full data
-        if (this.chartSettings.chartType === 'heikinashi' && !inReplayMode) {
+        let displayCandle = visible[lastVisibleIdx];
+        if (this.chartSettings.chartType === 'heikinashi') {
             if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
                 this._haCache = this.calculateHeikinAshi(this.data);
                 this._haCacheVersion = this.dataVersion;
             }
-            const dataIdx = this.data.length - 1;
-            displayCandle = this._haCache[dataIdx] || displayCandle;
-        } else if (this.chartSettings.chartType === 'heikinashi' && inReplayMode) {
-            if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
-                this._haCache = this.calculateHeikinAshi(this.data);
-                this._haCacheVersion = this.dataVersion;
-            }
-            displayCandle = this._haCache[this.data.length - 1] || displayCandle;
+            const dataIdx = (this.visibleStartIndex || 0) + lastVisibleIdx;
+            displayCandle = this._haCache[dataIdx] || visible[lastVisibleIdx];
         }
+        if (!displayCandle) return;
         
         let currentPrice = this.resolveEffectiveCurrentPrice(visible);
         if (!Number.isFinite(currentPrice) && Number.isFinite(displayCandle.c)) {
@@ -17101,10 +17087,10 @@ class Chart {
         const radius = 2;
         
         // Check if in replay mode to combine labels (show progress while paused too)
-        const inReplayForLabel = inReplayMode;
+        const inReplayMode = !!(this.replaySystem && this.replaySystem.isActive);
         let countdownText = '';
         
-        if (inReplayForLabel) {
+        if (inReplayMode) {
             const timeframe = this.currentTimeframe || '1m';
             const totalSeconds = this.getTimeframeSeconds(timeframe);
             
@@ -17138,19 +17124,9 @@ class Chart {
             const progress = Math.max(0, Math.min(1, rawProgress));
             
             const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
-            if (totalSeconds >= 86400) {
-                const hours = Math.floor(remainingSeconds / 3600);
-                const mins = Math.floor((remainingSeconds % 3600) / 60);
-                countdownText = mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-            } else if (totalSeconds >= 3600) {
-                const hours = Math.floor(remainingSeconds / 3600);
-                const mins = Math.floor((remainingSeconds % 3600) / 60);
-                countdownText = `${hours}:${String(mins).padStart(2, '0')}`;
-            } else {
-                const minutes = Math.floor(remainingSeconds / 60);
-                const seconds = remainingSeconds % 60;
-                countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            }
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         }
         
         // Calculate total label height
@@ -25165,7 +25141,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a71';
+    window.TALARIA_CHART_BUILD = '20260522a72';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

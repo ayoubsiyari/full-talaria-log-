@@ -18,9 +18,6 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
-        /** UTC midnight (ms) of the replay day locked during a TF switch. */
-        this._anchorUtcDayStart = null;
-
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
         this.replayTimestamp = null;      // Current virtual replay time (milliseconds)
@@ -108,47 +105,6 @@ class ReplaySystem {
         this.init();
     }
 
-    /** Re-anchor playhead index from wall-clock replay time (stable across TF switches). */
-    syncCurrentIndexFromReplayTimestamp(ts) {
-        if (!Number.isFinite(ts) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
-            return false;
-        }
-        const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
-        const floor = this.sessionStartIndex || 0;
-        if (hit >= floor) {
-            this.currentIndex = hit;
-            const bar = this.fullRawData[hit];
-            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
-            return true;
-        }
-        if (hit >= 0) {
-            this.currentIndex = floor;
-            const bar = this.fullRawData[this.currentIndex];
-            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * After a TF switch: land on the last native bar of the anchored UTC calendar day.
-     * Daily bars open at midnight — zooming in uses end-of-day; mid-day progress is preserved.
-     */
-    syncCurrentIndexForTfSwitch() {
-        const dayStart = this._anchorUtcDayStart;
-        if (!Number.isFinite(dayStart)) {
-            return this.syncCurrentIndexFromReplayTimestamp(this.replayTimestamp);
-        }
-        const dayEnd = dayStart + 86400000 - 1;
-        let targetTs = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : dayStart;
-        if (targetTs <= dayStart + 60000) {
-            targetTs = dayEnd;
-        } else {
-            targetTs = Math.min(targetTs, dayEnd);
-        }
-        return this.syncCurrentIndexFromReplayTimestamp(targetTs);
-    }
-
     applyPersistedState(state) {
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
@@ -166,44 +122,42 @@ class ReplaySystem {
                 : null;
 
             let idx = null;
-            const rawTs = state.replayTimestamp;
-            let ts = null;
-            if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
-                ts = rawTs;
-            } else if (typeof rawTs === 'string') {
-                const n = Number(rawTs);
-                if (Number.isFinite(n)) {
-                    ts = n;
-                } else {
-                    const parsed = Date.parse(rawTs);
-                    if (Number.isFinite(parsed)) {
-                        ts = parsed;
+            if (idxFromState !== null) {
+                idx = idxFromState;
+            } else {
+                const rawTs = state.replayTimestamp;
+                let ts = null;
+                if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
+                    ts = rawTs;
+                } else if (typeof rawTs === 'string') {
+                    const n = Number(rawTs);
+                    if (Number.isFinite(n)) {
+                        ts = n;
+                    } else {
+                        const parsed = Date.parse(rawTs);
+                        if (Number.isFinite(parsed)) {
+                            ts = parsed;
+                        }
                     }
                 }
-            }
 
-            // Timestamp wins over saved index — index is TF-specific, timestamp is cross-TF.
-            if (ts !== null) {
-                const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
-                    ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
-                    : -1;
-                const smin = this.sessionStartIndex || 0;
-                idx = hit < 0 ? smin : Math.max(hit, smin);
-            } else if (idxFromState !== null) {
-                idx = idxFromState;
+                if (ts !== null) {
+                    // Bars are sorted by period open `t`. A wall-clock `ts` that falls *inside*
+                    // a bar (e.g. 1m tick mid-session mapped onto 1D) must resolve to that bar's
+                    // index — "last bar with t <= ts". The old "first t >= ts" rule picked the
+                    // *next* period's bar (off-by-one on coarse TFs) and broke price continuity.
+                    const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                        : -1;
+                    const smin = this.sessionStartIndex || 0;
+                    idx = hit < 0 ? smin : Math.max(hit, smin);
+                }
             }
 
             if (idx !== null) {
                 const persistMinIdx = this.sessionStartIndex || 0;
                 this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
-                const wallTs = (typeof state.replayTimestamp === 'number' && Number.isFinite(state.replayTimestamp))
-                    ? state.replayTimestamp
-                    : (typeof state.replayTimestamp === 'string' ? Number(state.replayTimestamp) : NaN);
-                if (Number.isFinite(wallTs)) {
-                    this.replayTimestamp = wallTs;
-                } else {
-                    this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
-                }
+                this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
                 if (typeof state.playbackMode === 'string') {
@@ -2558,9 +2512,7 @@ class ReplaySystem {
         if (!midTickAnimation) {
             const curBar = this.fullRawData[this.currentIndex];
             if (curBar && Number.isFinite(curBar.t)) {
-                if (!Number.isFinite(this.replayTimestamp)) {
-                    this.replayTimestamp = curBar.t;
-                }
+                this.replayTimestamp = curBar.t;
             }
         }
 
@@ -2576,15 +2528,9 @@ class ReplaySystem {
             return;
         }
         
-        // Resample for current timeframe (skip when native QuestDB bars already match display TF)
+        // Resample for current timeframe
         try {
-            const displayTf = String(this.chart.currentTimeframe || '').toLowerCase().trim();
-            const rawTf = String(this.rawTimeframe || '').toLowerCase().trim();
-            if (this._fullRawDataMatchesTF && rawTf && rawTf === displayTf) {
-                this.chart.data = this.chart.rawData.slice();
-            } else {
-                this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
-            }
+            this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
@@ -3927,6 +3873,8 @@ class ReplaySystem {
                 if (Number.isFinite(price)) return price;
                 if (Number.isFinite(this.animatingCandle.close)) return this.animatingCandle.close;
             }
+            // When paused mid-candle, tickProgress is 0 but animatingCandle.close
+            // holds the last animated price. Use it instead of snapping to open.
             if (!this.isPlaying && Number.isFinite(this.animatingCandle.close)) {
                 return this.animatingCandle.close;
             }
@@ -3934,6 +3882,7 @@ class ReplaySystem {
             if (Number.isFinite(openPx)) return openPx;
         }
 
+        // Fallback when no intra-candle animation is available.
         const currentRaw = this.fullRawData[this.currentIndex];
         return currentRaw ? currentRaw.c : null;
     }
@@ -4679,10 +4628,7 @@ class ReplaySystem {
         }
 
         let idx = 0;
-        if (typeof this._findLastRawIndexAtOrBefore === 'function') {
-            const hit = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
-            if (hit >= 0) idx = hit;
-        } else if (chart && typeof chart.findGoToTargetIndex === 'function') {
+        if (chart && typeof chart.findGoToTargetIndex === 'function') {
             idx = chart.findGoToTargetIndex(this.fullRawData, ts);
         }
         if (idx < 0) {
@@ -5336,10 +5282,6 @@ class ReplaySystem {
         } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
-
-        if (Number.isFinite(savedReplayTimestamp) || Number.isFinite(this._anchorUtcDayStart)) {
-            this.syncCurrentIndexForTfSwitch();
-        }
         
         // Update chart data with current position (client-side resample)
         this.updateChartData(false);
@@ -5357,17 +5299,15 @@ class ReplaySystem {
         
         // Restore view position and state after a short delay
         setTimeout(() => {
-            if (Number.isFinite(savedReplayTimestamp) || Number.isFinite(this._anchorUtcDayStart)) {
-                this.syncCurrentIndexForTfSwitch();
-            } else {
-                this.currentIndex = savedCurrentIndex;
-                if (this.fullRawData[this.currentIndex]) {
-                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                }
+            // Restore exact position
+            this.currentIndex = savedCurrentIndex;
+            if (Number.isFinite(savedReplayTimestamp)) {
+                this.replayTimestamp = savedReplayTimestamp;
+            } else if (this.fullRawData[this.currentIndex]) {
+                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
             }
             this.tickProgress = savedTickProgress;
             this.tickElapsedMs = savedTickElapsedMs;
-            this.updateChartData(false);
             
             // Find containing candle in resampled data (last candle with t <= replay ts)
             // so timeframe switches never jump to a future candle.
@@ -5394,15 +5334,8 @@ class ReplaySystem {
             } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
                 this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
             }
-            // Refit Y-axis to the new timeframe's candles (do not restore pre-switch zoom).
-            this.chart.autoScale = true;
-            this.chart.priceOffset = 0;
-            this.chart.priceZoom = 1;
-            this.chart.manualCenterPrice = null;
-            this.chart.manualRange = null;
-            if (this.chart.priceScale) {
-                this.chart.priceScale.autoScale = true;
-            }
+            this.chart.priceOffset = savedPriceOffset;
+            this.chart.priceZoom = savedPriceZoom;
             
             if (typeof this.chart.constrainOffset === 'function') {
                 this.chart.constrainOffset();
@@ -5558,13 +5491,7 @@ class ReplaySystem {
             mainChart._pendingChartViewSanityCheck = true;
 
             mainChart.rawData = slicedRawData;
-            const displayTf = String(mainChart.currentTimeframe || '').toLowerCase().trim();
-            const rawTf = String(this.rawTimeframe || '').toLowerCase().trim();
-            if (this._fullRawDataMatchesTF && rawTf && rawTf === displayTf) {
-                mainChart.data = slicedRawData.slice();
-            } else {
-                mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
-            }
+            mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
             if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();
         } catch (e) {
             console.warn('replay: main chart resample in syncPanelCharts failed', e);
