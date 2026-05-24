@@ -1399,16 +1399,7 @@ class DrawingToolsManager {
         
         // Disable pointer events on all existing drawings when a tool is active
         if (toolName) {
-            this.drawings.forEach(drawing => {
-                if (drawing.group) {
-                    drawing.group.style('pointer-events', 'none');
-                    drawing.group.style('cursor', 'default');
-                    // While in draw mode, existing drawings must not steal hover cursor or events.
-                    drawing.group.selectAll('*')
-                        .style('pointer-events', 'none')
-                        .style('cursor', 'default');
-                }
-            });
+            this._applyPlacementModePointerEvents();
         }
         
         // Sync with favorites toolbar
@@ -1437,6 +1428,45 @@ class DrawingToolsManager {
         // [debug removed]
     }
 
+    /** True when placing a new drawing (armed tool or active in-progress shape). */
+    _isPlacementModeActive() {
+        return !!(this.currentTool || (this.drawingState && this.drawingState.isDrawing));
+    }
+
+    /** Make one finished drawing fully click-through (parent + all descendants). */
+    _disableDrawingPointerEvents(drawing) {
+        if (!drawing || !drawing.group) return;
+        drawing.group.style('pointer-events', 'none');
+        drawing.group.style('cursor', 'default');
+        drawing.group.selectAll('*')
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
+    }
+
+    _disableAllDrawingsPointerEvents() {
+        if (!Array.isArray(this.drawings)) return;
+        this.drawings.forEach((d) => this._disableDrawingPointerEvents(d));
+    }
+
+    /** While drawing, finished shapes must not steal mousedown from the SVG placement layer. */
+    _applyPlacementModePointerEvents() {
+        if (!this._isPlacementModeActive()) return;
+        this._disableAllDrawingsPointerEvents();
+        if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+            this.drawingsGroup.style('pointer-events', 'none');
+        }
+        if (this.labelsGroup && !this.labelsGroup.empty()) {
+            this.labelsGroup.style('pointer-events', 'none');
+        }
+        if (this.svg) {
+            this.svg.style('cursor', 'crosshair');
+            this.svg.style('pointer-events', 'all');
+        }
+        if (this.chart?.canvas) {
+            this.chart.canvas.style.cursor = 'crosshair';
+        }
+    }
+
     /**
      * Clear current tool (cursor mode)
      */
@@ -1463,6 +1493,12 @@ class DrawingToolsManager {
         
         // Reset SVG pointer-events to allow chart panning
         this.svg.style('pointer-events', 'none');
+        if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+            this.drawingsGroup.style('pointer-events', null);
+        }
+        if (this.labelsGroup && !this.labelsGroup.empty()) {
+            this.labelsGroup.style('pointer-events', null);
+        }
         
         // Re-enable pointer events on STROKES ONLY - fills remain non-interactive
         this.drawings.forEach(drawing => {
@@ -2212,6 +2248,8 @@ class DrawingToolsManager {
                     y: Number(event.clientY)
                 };
             }
+
+            this._applyPlacementModePointerEvents();
         }
         
         // Apply Shift key angle constraint for supported tools when placing second+ point
@@ -3430,7 +3468,7 @@ class DrawingToolsManager {
             const autoEditTools = ['note', 'callout', 'comment', 'signpost-2'];
             if (autoEditTools.includes(this.currentTool)) {
                 requestAnimationFrame(() => {
-                    this.selectDrawing(drawing);
+                    this.selectDrawing(drawing, false, { allowWhileArmed: true });
                     if (this.chart) this.chart.render();
                     requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
                 });
@@ -3444,7 +3482,7 @@ class DrawingToolsManager {
                 const persistentTools = ['brush', 'highlighter'];
                 const willKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
                 if (!willKeepTool) {
-                    this.selectDrawing(drawing);
+                    this.selectDrawing(drawing, false, { allowWhileArmed: true });
                 }
             }
         }
@@ -3477,6 +3515,8 @@ class DrawingToolsManager {
                 window.syncMagnetButton();
             }
             // Don't set cursor tool as active - let user click it to reactivate the last tool
+        } else {
+            this._applyPlacementModePointerEvents();
         }
     }
 
@@ -3916,6 +3956,9 @@ class DrawingToolsManager {
             // lightweight version that avoids the expensive per-element scan.
             this._applyMinimalPointerEvents(drawing);
         }
+        if (this._isPlacementModeActive()) {
+            this._disableDrawingPointerEvents(drawing);
+        }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
         this.raiseDrawingLayersAboveOrderPreviews();
@@ -3956,6 +3999,10 @@ class DrawingToolsManager {
      */
     _applyMinimalPointerEvents(drawing) {
         if (!drawing.group) return;
+        if (this._isPlacementModeActive()) {
+            this._disableDrawingPointerEvents(drawing);
+            return;
+        }
         drawing.group.style('pointer-events', 'none');
         // Keep fills non-interactive and strokes reachable for the SVG hit layer
         drawing.group.selectAll('.shape-fill, .upper-fill, .lower-fill, .line-visible-path')
@@ -4372,6 +4419,10 @@ class DrawingToolsManager {
         // Skip if we're in the middle of an active resize operation
         if (!this._skipHandleSetup && !drawing.locked && (drawing.selected || drawing.type === 'polyline' || drawing.type === 'path' || drawing.type === 'double-curve')) {
             this.setupHandleDrag(drawing);
+        }
+
+        if (this._isPlacementModeActive()) {
+            this._disableDrawingPointerEvents(drawing);
         }
     }
     
@@ -5467,7 +5518,11 @@ class DrawingToolsManager {
      * @param {Object} drawing - The drawing to select
      * @param {Boolean} addToSelection - If true, add to selection instead of replacing (Shift/Ctrl)
      */
-    selectDrawing(drawing, addToSelection = false) {
+    selectDrawing(drawing, addToSelection = false, options = {}) {
+        const allowWhileArmed = options.allowWhileArmed === true;
+        if (!allowWhileArmed && this._isPlacementModeActive()) {
+            return;
+        }
         // If eraser mode is active, delete the drawing instead of selecting
         if (this.eraserMode) {
             this.deleteDrawing(drawing); // Pass the drawing object, not ID
@@ -6322,7 +6377,13 @@ class DrawingToolsManager {
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-                this.renderDrawing(drawing, { skipInteraction: true });        });
+            const skipInteraction = this._isPlacementModeActive() || !needsFullInteraction;
+            this.renderDrawing(drawing, { skipInteraction });
+        });
+
+        if (this._isPlacementModeActive()) {
+            this._applyPlacementModePointerEvents();
+        }
         
         this.chart._isRendering = wasRendering;
         
@@ -8599,6 +8660,10 @@ class DrawingToolsManager {
      * Check proximity to drawings and change cursor when over a line
      */
     checkDrawingProximity(event) {
+        if (this._isPlacementModeActive()) {
+            return;
+        }
+
         const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
         
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -8678,14 +8743,14 @@ class DrawingToolsManager {
                 SVGHelpers.applyHoverEffect(hoveredDrawing.group, true);
                 if (!hoveredDrawing.selected) {
                     hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 1);
-                    if (!this.drawingState || !this.drawingState.isDrawing) {
+                    if (!this._isPlacementModeActive()) {
                         hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
                             .style('pointer-events', 'all');
                     }
                 }
 
                 const shouldBindHoverResize =
-                    (!this.drawingState || !this.drawingState.isDrawing) &&
+                    !this._isPlacementModeActive() &&
                     !this._skipHandleSetup &&
                     !this.isResizing &&
                     !hoveredDrawing.locked;
