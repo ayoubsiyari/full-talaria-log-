@@ -1841,6 +1841,10 @@ class DrawingToolsManager {
         this._marqueeJustCompletedAt = 0;
 
         this.currentTool = toolName;
+        // V9 uses drawingManager only — clear legacy chart.tool so chart.js SVG snap path never runs.
+        if (this.chart) {
+            this.chart.tool = null;
+        }
         this.deselectAll({ forSelectionChange: true });
         this.drawingState.reset();
         this.isDraggingFirstTwo = false;  // Reset drag state for multi-point tools
@@ -1911,6 +1915,9 @@ class DrawingToolsManager {
         this._cancelFreehandPreviewRaf();
         this._cancelTempPreviewRaf();
         this.currentTool = null;
+        if (this.chart) {
+            this.chart.tool = null;
+        }
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
         try {
@@ -3778,6 +3785,10 @@ class DrawingToolsManager {
         if (this.currentTool && this.isDraggingFirstTwo) {
             const toolInfo = this.toolRegistry[this.currentTool];
             if (toolInfo && toolInfo.dragFirstTwo && this.drawingState.tempPoints.length === 1) {
+                if (this._dragFirstTwoReleaseHandled) {
+                    return;
+                }
+                this._dragFirstTwoReleaseHandled = true;
                 const supportsClickAndDragPlacement = this.isCandleBoundTool(this.currentTool)
                     || this.isBoxShapeTool(this.currentTool);
                 let draggedEnough = true;
@@ -3821,12 +3832,15 @@ class DrawingToolsManager {
                 // If the tool is a simple 2-point tool, finalize immediately on mouseup
                 if (toolInfo.points === 2) {
                     this.finalizeDrawing();
+                    this._dragFirstTwoReleaseHandled = false;
                     return;
                 }
                 this.updateTempDrawing();
+                this._dragFirstTwoReleaseHandled = false;
                 return;
             }
         }
+        this._dragFirstTwoReleaseHandled = false;
         
         if (this.currentTool) {
             const toolInfo = this.toolRegistry[this.currentTool];
@@ -4494,7 +4508,18 @@ class DrawingToolsManager {
             return this.getDataPoint(event, toolType);
         }
         if (opts.usePreviewAnchor) {
-            if (Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length > 0) {
+            const liveEvent = this._nativePointerEvent(event) || event;
+            if (liveEvent) {
+                this._lastMouseEvent = liveEvent;
+                const previewNow = this._computeInProgressPreviewPoints(liveEvent);
+                if (previewNow && previewNow.length >= 2) {
+                    const last = previewNow[previewNow.length - 1];
+                    if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
+                        return { x: last.x, y: last.y };
+                    }
+                }
+            }
+            if (Array.isArray(this._activeTempPreviewPoints) && this._activeTempPreviewPoints.length >= 2) {
                 const last = this._activeTempPreviewPoints[this._activeTempPreviewPoints.length - 1];
                 if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
                     return { x: last.x, y: last.y };
@@ -4502,7 +4527,7 @@ class DrawingToolsManager {
             }
             if (this._lastMouseEvent) {
                 const preview = this._computeInProgressPreviewPoints(this._lastMouseEvent);
-                if (preview && preview.length > 0) {
+                if (preview && preview.length >= 2) {
                     const last = preview[preview.length - 1];
                     if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
                         return { x: last.x, y: last.y };
@@ -4631,6 +4656,14 @@ class DrawingToolsManager {
             || toolType === 'ellipse'
             || toolType === 'circle'
             || toolType === 'arc';
+    }
+
+    _snapshotBoxShapeIndexAnchors(drawing) {
+        if (!drawing || !this.isBoxShapeTool(drawing.type) || !Array.isArray(drawing.points)) {
+            return;
+        }
+        drawing._indexAnchorPoints = drawing.points.map((p) => ({ x: p.x, y: p.y }));
+        drawing.coordinateSystem = 'index';
     }
 
     /** Brush/highlighter/path store dense fractional bar indices — avoid timestamp resync on every render. */
@@ -5297,9 +5330,11 @@ class DrawingToolsManager {
         // Set chart reference for timestamp conversion
         drawing.chart = this.chart;
 
-        // Persist new drawings in timestamp space so timeframe switches keep them visible
-        // (same behavior expected from original chart).
-        if (
+        // Box shapes keep fractional index anchors (empty grid / future bars). Timestamp
+        // resync on every render was snapping them back toward loaded candles in replay.
+        if (this.isBoxShapeTool(drawing.type)) {
+            this._snapshotBoxShapeIndexAnchors(drawing);
+        } else if (
             drawing &&
             Array.isArray(drawing.points) &&
             this.chart &&
@@ -6777,8 +6812,12 @@ class DrawingToolsManager {
             this.renderDrawing(drawing);
         }
 
-        // Recalculate timestamps from new positions
-        drawing.recalculateTimestamps();
+        if (drawing && this.isBoxShapeTool(drawing.type)) {
+            this._snapshotBoxShapeIndexAnchors(drawing);
+        } else {
+            // Recalculate timestamps from new positions
+            drawing.recalculateTimestamps();
+        }
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
         
@@ -6879,8 +6918,12 @@ class DrawingToolsManager {
         }
 
         this.isCustomHandleDrag = false;
-        // Recalculate timestamps from new positions
-        drawing.recalculateTimestamps();
+        if (drawing && this.isBoxShapeTool(drawing.type)) {
+            this._snapshotBoxShapeIndexAnchors(drawing);
+        } else {
+            // Recalculate timestamps from new positions
+            drawing.recalculateTimestamps();
+        }
         this.customHandleDrawing = null;
         this.customHandleRole = null;
         this.customHandleStart = null;
@@ -8704,6 +8747,9 @@ class DrawingToolsManager {
                     if (originalTimestampPoints) {
                         drawing.timestampPoints = originalTimestampPoints;
                     }
+                    if (this.isBoxShapeTool(drawing.type)) {
+                        this._snapshotBoxShapeIndexAnchors(drawing);
+                    }
                     
                     this.drawings.push(drawing);
                     this.renderDrawing(drawing);
@@ -9083,8 +9129,17 @@ class DrawingToolsManager {
             return;
         }
         const forceResync = options.forceResync === true;
-        if ((this.isFreehandStrokeTool(drawing.type) || this.isBoxShapeTool(drawing.type)) && !forceResync) {
+        if (this.isFreehandStrokeTool(drawing.type)) {
             return;
+        }
+        // Never re-derive box shape anchors from timestamps during pan/zoom/replay render.
+        if (this.isBoxShapeTool(drawing.type)) {
+            if (!options.allowTimeframeResync) {
+                if (Array.isArray(drawing._indexAnchorPoints) && drawing._indexAnchorPoints.length > 0) {
+                    drawing.points = drawing._indexAnchorPoints.map((p) => ({ x: p.x, y: p.y }));
+                }
+                return;
+            }
         }
         if (this._isDrawingEditActive()) {
             return;
@@ -9124,7 +9179,10 @@ class DrawingToolsManager {
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return;
             }
-            this._syncDrawingPointsFromTimestamps(drawing, { forceResync: true });
+            this._syncDrawingPointsFromTimestamps(drawing, {
+                forceResync: true,
+                allowTimeframeResync: !this.isBoxShapeTool(drawing.type)
+            });
         });
 
         this._ensureDrawingsVisibleAfterTfRefresh();
@@ -9133,7 +9191,10 @@ class DrawingToolsManager {
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return;
             }
-            this._syncDrawingPointsFromTimestamps(drawing, { forceResync: true });
+            this._syncDrawingPointsFromTimestamps(drawing, {
+                forceResync: true,
+                allowTimeframeResync: !this.isBoxShapeTool(drawing.type)
+            });
 
             if (drawing.group) {
                 drawing.group.remove();
