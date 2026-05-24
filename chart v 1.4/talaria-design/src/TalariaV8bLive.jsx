@@ -14071,7 +14071,7 @@ const TalariaV8bLive = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","ellipse","circle","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
@@ -15245,7 +15245,8 @@ const TalariaV8bLive = () => {
               ] : (tlSubTool.icon === "flatChannel" || tlSubTool.icon === "disjointCh" || tlSubTool.icon === "channel") ? [
                 ["Extend", [["extendLeft","Left"],["extendRight","Right"]]],
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
-              ] : (tlSubTool.icon === "extendedLine" || tlSubTool.icon === "crossLine" || tlSubTool.icon === "polyline" || tlSubTool.icon === "pathTool" || tlSubTool.icon === "triangle" || tlSubTool.icon === "arcShape" || tlSubTool.icon === "ellipse" || tlSubTool.icon === "circle" || tlSubTool.icon === "arrowMarker" || tlSubTool.icon === "arrowUp" || tlSubTool.icon === "arrowDn" || tlSubTool.icon === "regressionCh") ? [
+              ] : (tlSubTool.icon === "ellipse" || tlSubTool.icon === "circle") ? [
+              ] : (tlSubTool.icon === "extendedLine" || tlSubTool.icon === "crossLine" || tlSubTool.icon === "polyline" || tlSubTool.icon === "pathTool" || tlSubTool.icon === "triangle" || tlSubTool.icon === "arcShape" || tlSubTool.icon === "arrowMarker" || tlSubTool.icon === "arrowUp" || tlSubTool.icon === "arrowDn" || tlSubTool.icon === "regressionCh") ? [
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
               ] : (tlSubTool.icon === "draw" || tlSubTool.icon === "brush") ? [
                 ["Labels", [["priceLabels","Price"],["timeLabels","Time"]]],
@@ -20078,7 +20079,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 2t: text color — hidden for pattern tools */}
-            {!["draw","brush"].includes(tlSubTool.icon) && !isFibTool && !isPatternTool && !["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","regressionCh","pitchfork"].includes(tlSubTool.icon) && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
+            {!["draw","brush"].includes(tlSubTool.icon) && !isFibTool && !isPatternTool && !["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","ellipse","circle","regressionCh","pitchfork"].includes(tlSubTool.icon) && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>

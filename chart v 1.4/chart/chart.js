@@ -17257,62 +17257,64 @@ class Chart {
     }
 
     /**
-     * Resolve effective current price used by both price-line and axis label.
-     * Keeps render sources consistent across live mode, replay mode, and panel charts.
+     * Close of the last bar actually painted (matches drawCandles / price line).
      */
-    resolveEffectiveCurrentPrice(visible) {
-        let price = null;
+    _getPaintedLastClose(visible) {
+        const chartType = this.chartSettings?.chartType || 'candles';
+        const lastDataIdx = this.data && this.data.length > 0 ? this.data.length - 1 : -1;
+
+        if (chartType === 'heikinashi' && lastDataIdx >= 0) {
+            if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
+                this._haCache = this.calculateHeikinAshi(this.data);
+                this._haCacheVersion = this.dataVersion;
+            }
+            const ha = this._haCache[lastDataIdx];
+            if (ha && Number.isFinite(ha.c)) return ha.c;
+        }
 
         const lastVisible = (Array.isArray(visible) && visible.length > 0)
             ? visible[visible.length - 1]
             : null;
-        if (lastVisible && Number.isFinite(lastVisible.c)) {
-            price = lastVisible.c;
-        }
+        if (lastVisible && Number.isFinite(lastVisible.c)) return lastVisible.c;
 
-        if (!Number.isFinite(price) && this.data && this.data.length > 0) {
-            const lastCandle = this.data[this.data.length - 1];
-            if (lastCandle && Number.isFinite(lastCandle.c)) price = lastCandle.c;
+        if (lastDataIdx >= 0) {
+            const lastData = this.data[lastDataIdx];
+            if (lastData && Number.isFinite(lastData.c)) return lastData.c;
         }
+        return null;
+    }
+
+    /**
+     * Resolve effective current price used by both price-line and axis label.
+     * Keeps render sources consistent across live mode, replay mode, and panel charts.
+     */
+    resolveEffectiveCurrentPrice(visible) {
+        let price = this._getPaintedLastClose(visible);
 
         if (this.replaySystem && this.replaySystem.isActive) {
+            const rs = this.replaySystem;
             const hasOwnData = Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0;
-            let replayPrice = null;
 
             if (hasOwnData) {
-                if (this.data && this.data.length > 0) replayPrice = this.data[this.data.length - 1].c;
-            } else {
-                if (typeof this.replaySystem.getCurrentAnimatedPrice === 'function') {
-                    replayPrice = this.replaySystem.getCurrentAnimatedPrice();
+                if (this.data && this.data.length > 0 && Number.isFinite(this.data[this.data.length - 1].c)) {
+                    price = this.data[this.data.length - 1].c;
                 }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.animatingCandle) {
-                    replayPrice = this.replaySystem.animatingCandle.close;
-                }
-                if (!Number.isFinite(replayPrice) && this.replaySystem.fullRawData) {
-                    replayPrice = this.replaySystem.fullRawData[this.replaySystem.currentIndex]?.c;
-                }
+                return Number.isFinite(price) ? price : null;
             }
 
-            const displayRef = (this.data && this.data.length > 0 && Number.isFinite(this.data[this.data.length - 1].c))
-                ? this.data[this.data.length - 1].c
-                : (lastVisible && Number.isFinite(lastVisible.c) ? lastVisible.c : null);
+            // Trust the painted last bar (includes walk-forward trim + tick patch on chart.data).
+            // Do not override with fullRawData[currentIndex] — that causes the price-line gap.
+            if (Number.isFinite(price)) return price;
 
-            if (Number.isFinite(replayPrice)) {
-                if (!Number.isFinite(displayRef)) {
-                    price = replayPrice;
-                } else {
-                    const refMag = Math.abs(displayRef) || 1;
-                    const relDiff = Math.abs(replayPrice - displayRef) / refMag;
-                    // Pan-merge / index drift can make fullRawData[currentIndex] disagree with the
-                    // bars actually drawn — resolveEffectiveCurrentPrice then blows the Y domain and
-                    // candles look "hidden" at one edge. Trust the displayed series when disagreement is large.
-                    if (relDiff <= 0.12) {
-                        price = replayPrice;
-                    } else {
-                        price = displayRef;
-                    }
-                }
+            if (typeof rs.getCurrentAnimatedPrice === 'function') {
+                const ap = rs.getCurrentAnimatedPrice();
+                if (Number.isFinite(ap)) return ap;
             }
+            const rb = rs.fullRawData && typeof rs.currentIndex === 'number'
+                ? rs.fullRawData[rs.currentIndex]
+                : null;
+            if (rb && Number.isFinite(rb.c)) return rb.c;
+            return null;
         }
 
         return Number.isFinite(price) ? price : null;
@@ -17355,9 +17357,9 @@ class Chart {
         }
         if (!displayCandle) return;
         
-        let currentPrice = this.resolveEffectiveCurrentPrice(visible);
-        if (!Number.isFinite(currentPrice) && Number.isFinite(displayCandle.c)) {
-            currentPrice = displayCandle.c;
+        let currentPrice = this._getPaintedLastClose(visible);
+        if (!Number.isFinite(currentPrice)) {
+            currentPrice = this.resolveEffectiveCurrentPrice(visible);
         }
 
         if (!Number.isFinite(currentPrice)) return;
@@ -25463,7 +25465,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a86';
+    window.TALARIA_CHART_BUILD = '20260522a87';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

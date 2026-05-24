@@ -4174,6 +4174,9 @@ class ReplaySystem {
             last.v = animatedCandle.v;
         } else {
             this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
+            if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
+                this.chart._trimLastDataBarToReplayPlayhead();
+            }
         }
 
         if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
