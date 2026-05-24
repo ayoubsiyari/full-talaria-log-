@@ -5384,8 +5384,8 @@ class DrawingToolsManager {
             this.chart._isChartViewPanning()
         );
         const activeHandleEdit = !!(this.isResizing || this.isCustomHandleDrag || this._skipHandleSetup);
-        // Reuse SVG geometry during pan/zoom and live handle edits; patch handle positions separately.
-        const useHotReuse = isPanZoomHotPath || activeHandleEdit;
+        // Pan/zoom: reuse geometry + patch handles. Handle drag: reuse only on explicit hotPath frames.
+        const useHotReuse = activeHandleEdit ? !!opts.hotPath : isPanZoomHotPath;
         const renderOpts = {
             reuseGroup: useHotReuse,
             skipHandles: useHotReuse,
@@ -7981,6 +7981,12 @@ class DrawingToolsManager {
                 }
                 this._resolveDrawingPointsBeforeRender(drawing);
                 if (drawing.group && !drawing.group.empty()) {
+                    if (!this.isDragging && !this._directMoveActive) {
+                        const t = drawing.group.attr('transform');
+                        if (t && /translate\s*\(/.test(t)) {
+                            drawing.group.attr('transform', null);
+                        }
+                    }
                     drawing.render(this._getDrawingsContentGroup(), scales, renderOpts);
                     if (typeof drawing.updateHandlePositions === 'function') {
                         try { drawing.updateHandlePositions(scales); } catch (_) {}

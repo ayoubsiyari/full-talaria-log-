@@ -19199,6 +19199,9 @@ class Chart {
                         try { this.constrainOffset(); } catch (_e) {}
                     }
                 }
+                if (typeof this._finishPanDrawingRedraw === 'function') {
+                    this._finishPanDrawingRedraw();
+                }
             }, 260);
 
             // No zoom if we have no data
@@ -21131,7 +21134,9 @@ class Chart {
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
-            if (this._isChartViewPanning()) {
+            const wheelActive = typeof this._wheelBurstUntil === 'number'
+                && performance.now() < this._wheelBurstUntil;
+            if (this._isChartViewPanning() || wheelActive) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();
