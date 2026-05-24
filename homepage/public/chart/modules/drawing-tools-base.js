@@ -1682,7 +1682,11 @@ class CoordinateUtils {
         if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
             return drawing?.points || [];
         }
-        const tsOpts = (chart.replaySystem && chart.replaySystem.isActive)
+        const tsOpts = (chart.replaySystem && chart.replaySystem.isActive
+            && drawing.type !== 'brush' && drawing.type !== 'highlighter'
+            && drawing.type !== 'rectangle' && drawing.type !== 'rotated-rectangle'
+            && drawing.type !== 'triangle' && drawing.type !== 'ellipse'
+            && drawing.type !== 'circle' && drawing.type !== 'arc')
             ? { replayClampToLastBar: true }
             : null;
         if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {

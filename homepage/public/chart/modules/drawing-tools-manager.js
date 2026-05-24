@@ -1157,15 +1157,12 @@ class DrawingToolsManager {
      * Update clip path dimensions based on chart margins
      */
     updateClipPath() {
-        const m = this.chart.margin;
-        const w = this.chart.w || this.chart.canvas?.width || 800;
-        const h = this.chart.h || this.chart.canvas?.height || 600;
-        
+        const bounds = this._getPlotPixelBounds();
         this.svg.select('.chart-clip-rect')
-            .attr('x', m.l)
-            .attr('y', m.t)
-            .attr('width', w - m.l - m.r)
-            .attr('height', h - m.t - m.b);
+            .attr('x', bounds.minX)
+            .attr('y', bounds.minY)
+            .attr('width', Math.max(0, bounds.maxX - bounds.minX))
+            .attr('height', Math.max(0, bounds.maxY - bounds.minY));
     }
 
     /** Inner layer for pan CSS translate — clip stays on outer .drawings group. */
@@ -1416,15 +1413,17 @@ class DrawingToolsManager {
 
                 // Armed draw tool: select existing shapes on click; start new stroke on empty plot.
                 if (this.currentTool) {
-                    if (this._isPointerOverChartAxis(event)) {
-                        return;
+                    let drawEvent = event;
+                    if (this._isPointerOverChartAxis(drawEvent)) {
+                        if (!this.isBoxShapeTool(this.currentTool)) return;
+                        drawEvent = this._clampBoxShapeEventToPlot(drawEvent);
                     }
                     // Mid-placement: SVG is pass-through — forward 2nd+ clicks for shapes/lines.
                     if (this.drawingState && this.drawingState.isDrawing) {
                         if (this.isDrawingPath || this.isDraggingFirstTwo) {
                             return;
                         }
-                        this.handleMouseDown(event);
+                        this.handleMouseDown(drawEvent);
                         event.preventDefault();
                         event.stopPropagation();
                         if (typeof event.stopImmediatePropagation === 'function') {
@@ -1457,7 +1456,7 @@ class DrawingToolsManager {
                     suppressNextCanvasClick = true;
                     return;
                     }
-                    this.handleMouseDown(event);
+                    this.handleMouseDown(drawEvent);
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -1749,7 +1748,9 @@ class DrawingToolsManager {
 
             const onCanvasMouseMove = (event) => {
                 if (!this.currentTool) return;
-                if (this._isPointerOverChartAxis(event)) return;
+                const placingBox = this.isBoxShapeTool(this.currentTool)
+                    && this.drawingState && this.drawingState.isDrawing;
+                if (!placingBox && this._isPointerOverChartAxis(event)) return;
                 const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
                 if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
                     this.handleMouseMove(event);
@@ -1777,8 +1778,12 @@ class DrawingToolsManager {
                 if (!this.currentTool) return;
                 if (!(this.drawingState && this.drawingState.isDrawing)) return;
                 if (!this.isDraggingFirstTwo) return;
-                if (this._isPointerOverChartAxis(event)) return;
-                this.handleMouseUp(event);
+                let upEvent = event;
+                if (this._isPointerOverChartAxis(upEvent)) {
+                    if (!this.isBoxShapeTool(this.currentTool)) return;
+                    upEvent = this._clampBoxShapeEventToPlot(upEvent);
+                }
+                this.handleMouseUp(upEvent);
             };
             canvas.addEventListener('mouseup', onCanvasMouseUp);
 
@@ -1789,7 +1794,9 @@ class DrawingToolsManager {
                 }
                 const onWrapperDrawMove = (event) => {
                     if (!this.currentTool) return;
-                    if (this._isPointerOverChartAxis(event)) return;
+                    const placingBox = this.isBoxShapeTool(this.currentTool)
+                        && this.drawingState && this.drawingState.isDrawing;
+                    if (!placingBox && this._isPointerOverChartAxis(event)) return;
                     const drawingActive = !!(this.drawingState && this.drawingState.isDrawing);
                     if (drawingActive || this.isDrawingPath || this.isDraggingFirstTwo) {
                         this.handleMouseMove(event);
@@ -3507,8 +3514,12 @@ class DrawingToolsManager {
 
         const placingLine = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing
             && this.angleSnapTools.includes(this.currentTool));
+        const placingBox = !!(this.currentTool && this.isBoxShapeTool(this.currentTool)
+            && this.drawingState && this.drawingState.isDrawing);
         if (placingLine && this._isPointerOverChartAxis(event)) {
             event = this._clampPlacementEventToPlot(event);
+        } else if (placingBox && (this._isPointerOverChartAxis(event) || this._isPointerOutsidePricePlot(event))) {
+            event = this._clampBoxShapeEventToPlot(event);
         } else if (this.currentTool && this._isPointerOverChartAxis(event)) {
             return;
         }
@@ -4409,19 +4420,64 @@ class DrawingToolsManager {
         return true;
     }
 
-    /** Price-plot pixel bounds (matches yScale range — excludes volume / indicator strips). */
+    /** Price-plot pixel bounds (same math as chart yScale range — excludes volume / indicator strips). */
     _getPlotPixelBounds() {
-        const m = this.chart?.margin || { t: 5, r: 60, b: 30, l: 0 };
-        const w = this.chart?.w || this.chart?.canvas?.width || 800;
-        const h = this.chart?.h || this.chart?.canvas?.height || 600;
-        const volH = Number(this.chart?.volumeAreaHeight) || 0;
-        const indH = Number(this.chart?.separateIndicatorPanelHeight) || 0;
+        const chart = this.chart;
+        const m = chart?.margin || { t: 5, r: 60, b: 30, l: 0 };
+        const w = chart?.w || chart?.canvas?.width || 800;
+        const h = chart?.h || chart?.canvas?.height || 600;
+        const innerH = Math.max(0, h - m.t - m.b);
+        const showVolume = !!(chart?.chartSettings && chart.chartSettings.showVolume);
+        const volFraction = showVolume ? (Number(chart?.volumeHeight) || 0.15) : 0;
+        const volH = innerH * volFraction;
+        const indH = Number(chart?.separateIndicatorPanelHeight) || 0;
         return {
             minX: m.l,
             maxX: w - m.r,
             minY: m.t,
             maxY: h - m.b - volH - indH
         };
+    }
+
+    _isPointerOutsidePricePlot(event) {
+        const bounds = this._getPlotPixelBounds();
+        const [, my] = this._eventCanvasLocalXY(event);
+        return my < bounds.minY || my > bounds.maxY;
+    }
+
+    /** Clamp pointer to the price plot while placing box shapes (volume strip / axes). */
+    _clampBoxShapeEventToPlot(event) {
+        if (!this.chart || !event) return event;
+        const bounds = this._getPlotPixelBounds();
+        let [screenX, screenY] = this._eventCanvasLocalXY(event);
+        screenX = Math.max(bounds.minX, Math.min(bounds.maxX, screenX));
+        screenY = Math.max(bounds.minY, Math.min(bounds.maxY, screenY));
+        const rect = (typeof this.chart._pointerLayoutRect === 'function')
+            ? this.chart._pointerLayoutRect()
+            : null;
+        if (!rect) return event;
+        const z = (typeof this.chart._v9LayoutZoom === 'function') ? this.chart._v9LayoutZoom() : 1;
+        const native = this._nativePointerEvent(event) || {};
+        return {
+            clientX: rect.left + screenX * z,
+            clientY: rect.top + screenY * z,
+            shiftKey: native.shiftKey,
+            ctrlKey: native.ctrlKey,
+            metaKey: native.metaKey,
+            altKey: native.altKey,
+            buttons: native.buttons
+        };
+    }
+
+    _replayTimestampOptsForDrawing(drawingType) {
+        if (
+            this.chart?.replaySystem?.isActive
+            && !this.isFreehandStrokeTool(drawingType)
+            && !this.isBoxShapeTool(drawingType)
+        ) {
+            return { replayClampToLastBar: true };
+        }
+        return null;
     }
 
     /**
@@ -5849,13 +5905,17 @@ class DrawingToolsManager {
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
-            const ptr = self._eventCanvasLocalXY(src);
+            const clamped = self.isBoxShapeTool(drawing.type)
+                ? self._clampBoxShapeEventToPlot(src)
+                : src;
+            const ptr = self._eventCanvasLocalXY(clamped);
             const screenX = ptr[0];
             const screenY = ptr[1];
+            const continuous = self.isBoxShapeTool(drawing.type);
             const point = CoordinateUtils.screenToData(screenX, screenY, {
                 xScale: self.chart.xScale,
                 yScale: self.chart.yScale
-            }, self.chart, false);
+            }, self.chart, continuous);
             return self.clampPointToCandleRange(point, drawing.type);
         };
 
@@ -7210,9 +7270,7 @@ class DrawingToolsManager {
 
         const conversionData = this._getDrawingConversionData();
         const timeframe = this.chart && this.chart.currentTimeframe ? this.chart.currentTimeframe : null;
-        const tsOpts = (this.chart?.replaySystem?.isActive)
-            ? { replayClampToLastBar: true }
-            : null;
+        const tsOpts = this._replayTimestampOptsForDrawing(json.type);
         const jsonForFrom = {
             ...json,
             points: Array.isArray(json.points) ? json.points.map(p => ({ ...p })) : []
@@ -7250,14 +7308,9 @@ class DrawingToolsManager {
         }
 
         let [screenX, screenY] = this._clientXYToLayoutXY(clientX, clientY);
-        const m = this.chart.margin;
-        if (m) {
-            const minX = m.l;
-            const maxX = this.chart.w - m.r;
-            const maxY = this.chart.h - m.b;
-            screenX = Math.max(minX, Math.min(maxX, screenX));
-            screenY = Math.max(0, Math.min(maxY, screenY));
-        }
+        const bounds = this._getPlotPixelBounds();
+        screenX = Math.max(bounds.minX, Math.min(bounds.maxX, screenX));
+        screenY = Math.max(bounds.minY, Math.min(bounds.maxY, screenY));
 
         const point = CoordinateUtils.screenToData(screenX, screenY, {
             xScale: this.chart.xScale,
@@ -8590,9 +8643,7 @@ class DrawingToolsManager {
                         
                         // [debug removed]
                         // Convert to indices for rendering with correct timeframe
-                        const tsOpts = (this.chart?.replaySystem?.isActive)
-                            ? { replayClampToLastBar: true }
-                            : null;
+                        const tsOpts = this._replayTimestampOptsForDrawing(item.type);
                         item.points = CoordinateUtils.pointsFromTimestamps(
                             originalTimestampPoints,
                             conversionData,
@@ -8686,9 +8737,7 @@ class DrawingToolsManager {
                         timestamp: p.timestamp,
                         price: p.price || p.y
                     }));
-                    const tsOpts = (this.chart?.replaySystem?.isActive)
-                        ? { replayClampToLastBar: true }
-                        : null;
+                    const tsOpts = this._replayTimestampOptsForDrawing(item.type);
                     item.points = CoordinateUtils.pointsFromTimestamps(
                         originalTimestampPoints,
                         conversionData,
@@ -8989,7 +9038,7 @@ class DrawingToolsManager {
             return;
         }
         const forceResync = options.forceResync === true;
-        if (this.isFreehandStrokeTool(drawing.type) && !forceResync) {
+        if ((this.isFreehandStrokeTool(drawing.type) || this.isBoxShapeTool(drawing.type)) && !forceResync) {
             return;
         }
         if (this._isDrawingEditActive()) {
@@ -8999,9 +9048,7 @@ class DrawingToolsManager {
         if (!conversionData.length || typeof CoordinateUtils === 'undefined') {
             return;
         }
-        const tsOpts = (this.chart?.replaySystem?.isActive && !this.isFreehandStrokeTool(drawing.type))
-            ? { replayClampToLastBar: true }
-            : null;
+        const tsOpts = this._replayTimestampOptsForDrawing(drawing.type);
         drawing.points = CoordinateUtils.pointsFromTimestamps(
             drawing.timestampPoints,
             conversionData,

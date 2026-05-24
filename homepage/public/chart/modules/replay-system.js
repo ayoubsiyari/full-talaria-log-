@@ -33,6 +33,9 @@ class ReplaySystem {
         this.isPlayStarting = false;
         this._playStartRaf1 = null;
         this._playStartRaf2 = null;
+        /** Pending onTimeframeChange restore timer (cancelled on rapid TF toggles). */
+        this._tfChangeRestoreTimer = null;
+        this._tfChangeSeq = 0;
 
         // Tick animation state
         this.playbackMode = 'tick'; // 'tick' (animated) | 'candle' (no intra-candle animation)
@@ -2593,6 +2596,9 @@ class ReplaySystem {
                         || (this.currentIndex % stride === 0);
                 }
                 if (!runRecalc && !this.isPlaying && this._isAtLastLoadedBar()) {
+                    runRecalc = false;
+                }
+                if (this._tfSwitchSkipHeavyIndicators) {
                     runRecalc = false;
                 }
                 if (runRecalc) {
@@ -5229,21 +5235,34 @@ class ReplaySystem {
      * Handle timeframe change during replay
      * Uses VIRTUAL TIME to maintain consistent price across all timeframes
      * @param {Object} [initiatorChart] - Chart instance that called setTimeframe (defaults to main {@link #chart})
+     * @param {Object} [options]
+     * @param {Function} [options.onReady] - Called when resample + viewport are committed (lifts chart freeze overlay)
      */
-    onTimeframeChange(initiatorChart) {
+    onTimeframeChange(initiatorChart, options = {}) {
         if (!this.isActive) {
+            if (typeof options.onReady === 'function') {
+                try { options.onReady(); } catch (_e) { /* ignore */ }
+            }
             return;
         }
 
-        if (this._timeframeChanging) {
-            return;
+        // Rapid TF toggles: cancel a pending restore and run the latest switch (do not no-op).
+        if (this._tfChangeRestoreTimer) {
+            clearTimeout(this._tfChangeRestoreTimer);
+            this._tfChangeRestoreTimer = null;
         }
+        const changeSeq = ++this._tfChangeSeq;
+        const onReady = typeof options.onReady === 'function' ? options.onReady : null;
+        const signalReady = () => {
+            if (changeSeq !== this._tfChangeSeq) return;
+            if (onReady) {
+                try { onReady(); } catch (_e) { /* ignore */ }
+            }
+        };
 
         const initiator = initiatorChart || this.chart;
 
         // Follower panel (not the ReplaySystem's main chart ref): only resample/scroll that tile.
-        // The previous implementation always ran updateChartData + main-chart centering, which
-        // rewrote main while the panel's TF changed — jumpy/hidden candles on 1h+ in multi-panel.
         if (initiator !== this.chart) {
             this._timeframeChanging = true;
             try {
@@ -5269,17 +5288,18 @@ class ReplaySystem {
                 console.warn('replay onTimeframeChange (follower panel):', e);
             } finally {
                 this._timeframeChanging = false;
+                signalReady();
             }
             return;
         }
 
-        // === CRITICAL: LOCK THE STATE DURING TIMEFRAME CHANGE ===
+        // === LOCK during resample; unlock synchronously once bars + viewport are ready ===
         this._timeframeChanging = true;
-        
+        this._tfSwitchSkipHeavyIndicators = true;
+
         const wasPlaying = this.isPlaying;
         const savedSpeed = this.speed;
-        
-        // === SAVE VIRTUAL TIME STATE ===
+
         const savedCurrentIndex = this.currentIndex;
         const savedTickProgress = this.tickProgress;
         const savedTickElapsedMs = this.tickElapsedMs;
@@ -5291,22 +5311,17 @@ class ReplaySystem {
             : (Number.isFinite(this.replayTimestamp)
                 ? this.replayTimestamp
                 : (this.fullRawData[this.currentIndex]?.t ?? null));
-        
-        
-        // === STOP ANIMATION CLEANLY ===
+
         if (this.tickInterval) {
             clearTimeout(this.tickInterval);
             this.tickInterval = null;
         }
         this.isPlaying = false;
         this.animatingCandle = null;
-        
-        // Save view position
+
         const savedPriceOffset = this.chart.priceOffset;
         const savedPriceZoom = this.chart.priceZoom;
 
-        // Pre-arm SL/TP / pending guards before updateChartData → updatePositions(), same as seekTo().
-        // Without this, the new TF's resampled last candle can include full-bucket H/L and spuriously hit TP/SL.
         const omPre = this._resolveOrderManagerForReplayGuards(this.chart);
         let guardTs = savedReplayTimestamp;
         if (!Number.isFinite(Number(guardTs))) {
@@ -5319,123 +5334,101 @@ class ReplaySystem {
         } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
-        
-        // Update chart data with current position (client-side resample)
-        this.updateChartData(false);
-        
-        // Fire event for drawings refresh
-        window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-            detail: { 
-                chart: this.chart,
-                data: this.chart.data,
-                rawData: this.chart.rawData,
-                symbol: this.chart.currentSymbol,
-                timeframe: this.chart.currentTimeframe
-            }
-        }));
-        
-        // Restore view position and state after a short delay
-        setTimeout(() => {
-            // Restore exact position
-            this.currentIndex = savedCurrentIndex;
-            if (Number.isFinite(savedReplayTimestamp)) {
-                this.replayTimestamp = savedReplayTimestamp;
-            } else if (this.fullRawData[this.currentIndex]) {
-                this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-            }
-            this.tickProgress = savedTickProgress;
-            this.tickElapsedMs = savedTickElapsedMs;
-            
-            // Find containing candle in resampled data (last candle with t <= replay ts)
-            // so timeframe switches never jump to a future candle.
-            const replayTsForMapping = Number.isFinite(savedReplayTimestamp)
-                ? savedReplayTimestamp
-                : (this.replayTimestamp ?? this.fullRawData[this.currentIndex]?.t ?? null);
-            let targetViewIndex = 0;
-            for (let i = 0; i < this.chart.data.length; i++) {
-                if (replayTsForMapping == null || this.chart.data[i].t <= replayTsForMapping) {
-                    targetViewIndex = i;
-                } else {
-                    break;
-                }
-            }
-            
-            // TradingView-style: center playhead on every timeframe switch.
-            const candleSpacing = this.chart.getCandleSpacing ? this.chart.getCandleSpacing() :
-                (this.chart.candleWidth + (this.chart.candleGap || 2));
-            const centeredOffset = typeof this.getReplayCenterPlayheadOffset === 'function'
-                ? this.getReplayCenterPlayheadOffset(this.chart)
-                : null;
-            if (Number.isFinite(centeredOffset)) {
-                this.chart.offsetX = centeredOffset;
-            } else if (Number.isFinite(candleSpacing) && candleSpacing > 0) {
-                this.chart.offsetX = this.chart.w / 2 - (targetViewIndex * candleSpacing) - candleSpacing / 2;
-            }
+
+        try {
+            this.updateChartData(false);
             this.chart.priceOffset = savedPriceOffset;
             this.chart.priceZoom = savedPriceZoom;
-            
-            if (typeof this.chart.constrainOffset === 'function') {
-                this.chart.constrainOffset();
+            if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                this.syncReplayViewportToPlayhead(this.chart, {
+                    centerPlayhead: true,
+                    resetPriceScale: false,
+                    render: true,
+                });
+            } else if (typeof this.chart.render === 'function') {
+                this.chart.renderPending = true;
+                this.chart.render();
             }
-            
-            this.chart.renderPending = true;
-            this.chart.render();
-            
             this.updateSlider();
             this.updateTimeDisplay();
+
+            window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                detail: {
+                    chart: this.chart,
+                    data: this.chart.data,
+                    rawData: this.chart.rawData,
+                    symbol: this.chart.currentSymbol,
+                    timeframe: this.chart.currentTimeframe,
+                },
+            }));
 
             const omPost = this._resolveOrderManagerForReplayGuards(this.chart);
             if (omPost && typeof omPost._refreshAllGuardsToCurrentCandle === 'function') {
                 try { omPost._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
             }
-            
-            // === UNLOCK STATE ===
-            this._timeframeChanging = false;
-
-            // updatePositions was skipped while _timeframeChanging (order-manager deferral);
-            // when paused, nothing else runs until the next tick — refresh PnL / lines once here.
             if (!wasPlaying && omPost && typeof omPost.updatePositions === 'function') {
                 try { omPost.updatePositions(); } catch (_e5) { /* ignore */ }
             }
-            
-            
-            // === RECREATE ANIMATING CANDLE STATE ===
-            const nextCandle = this.fullRawData[this.currentIndex + 1];
-            if (wasPlaying && nextCandle && savedTickProgress > 0) {
-                const tickPath = this.getTickPath(nextCandle);
-                const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
-                const currentPrice = pathIndex >= 0 ? tickPath[pathIndex] : nextCandle.o;
-                
-                this.animatingCandle = {
-                    target: nextCandle,
-                    open: nextCandle.o,
-                    high: Math.max(nextCandle.o, currentPrice),
-                    low: Math.min(nextCandle.o, currentPrice),
-                    close: currentPrice,
-                    targetHigh: nextCandle.h,
-                    targetLow: nextCandle.l,
-                    targetClose: nextCandle.c,
-                    volume: (nextCandle.v || 0) * (savedTickProgress / (this.ticksPerCandle || 72)),
-                    targetVolume: nextCandle.v || 0,
-                    t: nextCandle.t,
-                    cachedPath: tickPath
-                };
-                
-                for (let i = 0; i <= pathIndex; i++) {
-                    this.animatingCandle.high = Math.max(this.animatingCandle.high, tickPath[i]);
-                    this.animatingCandle.low = Math.min(this.animatingCandle.low, tickPath[i]);
+        } catch (e) {
+            console.warn('replay onTimeframeChange:', e);
+        } finally {
+            this._tfSwitchSkipHeavyIndicators = false;
+            this._timeframeChanging = false;
+            signalReady();
+        }
+
+        // Defer play resume only — must not block TF unlock or overlay lift.
+        this._tfChangeRestoreTimer = setTimeout(() => {
+            this._tfChangeRestoreTimer = null;
+            if (changeSeq !== this._tfChangeSeq) return;
+            try {
+                this.currentIndex = savedCurrentIndex;
+                if (Number.isFinite(savedReplayTimestamp)) {
+                    this.replayTimestamp = savedReplayTimestamp;
+                } else if (this.fullRawData[this.currentIndex]) {
+                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
                 }
-                
-                this.updateChartWithAnimatedCandle();
+                this.tickProgress = savedTickProgress;
+                this.tickElapsedMs = savedTickElapsedMs;
+
+                const nextCandle = this.fullRawData[this.currentIndex + 1];
+                if (wasPlaying && nextCandle && savedTickProgress > 0) {
+                    const tickPath = this.getTickPath(nextCandle);
+                    const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
+                    const currentPrice = pathIndex >= 0 ? tickPath[pathIndex] : nextCandle.o;
+
+                    this.animatingCandle = {
+                        target: nextCandle,
+                        open: nextCandle.o,
+                        high: Math.max(nextCandle.o, currentPrice),
+                        low: Math.min(nextCandle.o, currentPrice),
+                        close: currentPrice,
+                        targetHigh: nextCandle.h,
+                        targetLow: nextCandle.l,
+                        targetClose: nextCandle.c,
+                        volume: (nextCandle.v || 0) * (savedTickProgress / (this.ticksPerCandle || 72)),
+                        targetVolume: nextCandle.v || 0,
+                        t: nextCandle.t,
+                        cachedPath: tickPath,
+                    };
+
+                    for (let i = 0; i <= pathIndex; i++) {
+                        this.animatingCandle.high = Math.max(this.animatingCandle.high, tickPath[i]);
+                        this.animatingCandle.low = Math.min(this.animatingCandle.low, tickPath[i]);
+                    }
+
+                    this.updateChartWithAnimatedCandle();
+                }
+
+                if (wasPlaying) {
+                    this._preserveTickProgress = true;
+                    this.speed = this.normalizeSpeed(savedSpeed);
+                    this.play();
+                }
+            } catch (e) {
+                console.warn('replay onTimeframeChange resume:', e);
             }
-            
-            // === RESUME PLAYBACK IF WAS PLAYING ===
-            if (wasPlaying) {
-                this._preserveTickProgress = true;
-                this.speed = this.normalizeSpeed(savedSpeed);
-                this.play();
-            }
-        }, 50);
+        }, 0);
     }
     
     /**

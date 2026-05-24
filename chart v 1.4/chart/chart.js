@@ -13688,11 +13688,26 @@ class Chart {
             this.priceOffset = 0;
             this.autoScale = true;
             this._chartViewRestored = false;
-            this.replaySystem.onTimeframeChange(this);
+            let replayTfEnded = false;
+            const finishReplayTfSwitch = () => {
+                if (replayTfEnded) return;
+                replayTfEnded = true;
+                if (this._replayTfSwitchWatchdog) {
+                    clearTimeout(this._replayTfSwitchWatchdog);
+                    this._replayTfSwitchWatchdog = null;
+                }
+                this._endTimeframeSwitching();
+            };
+            this._replayTfSwitchWatchdog = setTimeout(finishReplayTfSwitch, 3000);
+            try {
+                this.replaySystem.onTimeframeChange(this, { onReady: finishReplayTfSwitch });
+            } catch (err) {
+                console.warn('[chart] replay onTimeframeChange failed', err);
+                finishReplayTfSwitch();
+            }
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 requestAnimationFrame(() => this.compareOverlay.refreshForTimeframe(normalizedTf));
             }
-            this._endTimeframeSwitching();
             return;
         }
 
@@ -25444,7 +25459,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260524a03';
+    window.TALARIA_CHART_BUILD = '20260524a05';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
