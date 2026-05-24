@@ -4126,7 +4126,10 @@ class DrawingToolsManager {
     /**
      * Snap placement price to nearest OHLC — same rules as Chart.updateCrosshair (30px weak, Ctrl = force).
      */
-    _applyOHLCMagnetSnap(point, screenY, event) {
+    _applyOHLCMagnetSnap(point, screenY, event, toolTypeOverride = null) {
+        const toolType = toolTypeOverride || this.currentTool;
+        // Shapes anchor to arbitrary price/time on the full plot — never snap Y to OHLC.
+        if (this.isBoxShapeTool(toolType)) return point;
         if (!point || !this._isMagnetSnapActive(event)) return point;
         const data = this.chart && this.chart.data;
         if (!Array.isArray(data) || data.length === 0) return point;
@@ -4194,7 +4197,7 @@ class DrawingToolsManager {
             point = this.constrainToAngle(refPoint, point);
         }
         const [, screenY] = this._eventCanvasLocalXY(native);
-        point = this._applyOHLCMagnetSnap(point, screenY, native);
+        point = this._applyOHLCMagnetSnap(point, screenY, native, toolType);
         return point;
     }
 
@@ -4379,6 +4382,13 @@ class DrawingToolsManager {
             return true;
         }
         if (
+            this.isBoxShapeTool(toolType)
+            && this.drawingState?.isDrawing
+            && !this.isDrawingPath
+        ) {
+            return true;
+        }
+        if (
             this.currentTool
             && toolType === this.currentTool
             && this.drawingState?.isDrawing
@@ -4446,9 +4456,10 @@ class DrawingToolsManager {
             screenX = isResizingVolumeProfileRightBoundary
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
+            const minY = m.t;
             screenY = (isInteractingWithExistingVolumeProfile || allowRangeVerticalOverflow)
                 ? screenY
-                : Math.max(0, Math.min(maxY, screenY));
+                : Math.max(minY, Math.min(maxY, screenY));
         }
         
         const magnetActive = this._isMagnetSnapActive(event);
@@ -4463,7 +4474,7 @@ class DrawingToolsManager {
         }, this.chart, useFractionalBarIndex);
 
         // Match crosshair: weak/strong toolbar magnet + Ctrl always run OHLC snap (even during smooth preview / resize).
-        point = this._applyOHLCMagnetSnap(point, screenY, event);
+        point = this._applyOHLCMagnetSnap(point, screenY, event, activeToolType);
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
@@ -4482,6 +4493,16 @@ class DrawingToolsManager {
 
     isCandleBoundTool(toolType) {
         return toolType === 'volume-profile' || toolType === 'fixed-range-volume-profile';
+    }
+
+    /** Rectangle/circle/ellipse/etc. — free placement anywhere on the plot grid (not OHLC-bound). */
+    isBoxShapeTool(toolType) {
+        return toolType === 'rectangle'
+            || toolType === 'rotated-rectangle'
+            || toolType === 'triangle'
+            || toolType === 'ellipse'
+            || toolType === 'circle'
+            || toolType === 'arc';
     }
 
     /** Brush/highlighter/path store dense fractional bar indices — avoid timestamp resync on every render. */

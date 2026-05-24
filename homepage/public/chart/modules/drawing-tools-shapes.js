@@ -26,6 +26,12 @@ function isRectangleExtendOn(style, key) {
         || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
 }
 
+function shapeMiddleLineEnabled(style) {
+    const sm = style && style.showMiddleLine;
+    return sm === true || sm === 1
+        || (typeof sm === 'string' && /^(true|1|yes)$/i.test(String(sm).trim()));
+}
+
 /** Plot L/R in the same pixel space as chart.dataIndexToPixel (margin.l … w − margin.r). */
 function getRectanglePlotHorizontalBounds(scales) {
     const chart = scales && scales.chart;
@@ -404,16 +410,11 @@ class RectangleTool extends BaseDrawing {
         ];
         appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
 
-        this.renderTextLabel({ x, y, width, height }, scaleFactor);
-
         // Handles on original corners only (TradingView); fill/border use extended width above.
         this.createBoxHandles(this.group, scales, { useExtendedHorizontal: false });
 
         // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
-        const sm = this.style.showMiddleLine;
-        const middleLineOn =
-            sm === true || sm === 1
-            || (typeof sm === 'string' && /^(true|1|yes)$/i.test(String(sm).trim()));
+        const middleLineOn = shapeMiddleLineEnabled(this.style);
         if (middleLineOn) {
             const midLineColor = this.style.middleLineColor || '#2962FF';
             const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
@@ -432,6 +433,9 @@ class RectangleTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .raise();
         }
+
+        // Text after middle line; centered labels sit in the upper half when midline is on.
+        this.renderTextLabel({ x, y, width, height }, scaleFactor);
 
         return this.group;
     }
@@ -628,8 +632,13 @@ class RectangleTool extends BaseDrawing {
                 topY = y + height + textMargin;
                 break;
             default:
-                // Middle - position text inside the rectangle centered
-                topY = y + (height - blockHeight) / 2;
+                // Middle — when a midline is shown, keep text in the upper half so it does not sit on the line.
+                if (shapeMiddleLineEnabled(this.style)) {
+                    const upperHalf = height / 2;
+                    topY = y + Math.max(0, (upperHalf - blockHeight) / 2);
+                } else {
+                    topY = y + (height - blockHeight) / 2;
+                }
         }
 
         const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
@@ -663,6 +672,8 @@ class RectangleTool extends BaseDrawing {
                 .attr('xml:space', 'preserve')
                 .text(sanitized);
         });
+
+        labelGroup.raise();
     }
 
     static fromJSON(data) {
