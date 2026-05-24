@@ -10610,7 +10610,7 @@ class DrawingToolsManager {
         return true;
     }
 
- 10870|    _distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh) {
+    _distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh) {
         const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
         const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
         const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
