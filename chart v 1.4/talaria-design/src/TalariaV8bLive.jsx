@@ -978,11 +978,52 @@ const V9_IND_VIS_METAS = [
 ];
 
 function v9DefaultIndicatorVisibilityDraftPatch() {
+  return v9DefaultVisibilityTlRows();
+}
+
+/** Default Visibility tab rows for drawings + tlStyle (Apply default must not strip these). */
+function v9DefaultVisibilityTlRows() {
   const patch = {};
   V9_IND_VIS_METAS.forEach(([key,,, hardMax]) => {
     patch[key] = { checked: true, min: 1, max: hardMax };
   });
   return patch;
+}
+
+function v9NormalizeTlVisRow(key, row) {
+  const meta = V9_IND_VIS_METAS.find(([k]) => k === key);
+  const hm = meta ? meta[3] : 60;
+  if (!row || typeof row !== "object") {
+    return { checked: true, min: 1, max: hm };
+  }
+  let min = Number(row.min);
+  let max = Number(row.max);
+  if (!Number.isFinite(min)) min = 1;
+  if (!Number.isFinite(max)) max = hm;
+  min = Math.max(1, Math.min(min, hm - 1));
+  max = Math.max(min + 1, Math.min(max, hm));
+  return { checked: row.checked !== false, min, max };
+}
+
+function v9EnsureTlStyleVisibilityRows(out, fall = {}) {
+  const visDefaults = v9DefaultVisibilityTlRows();
+  V9_IND_VIS_METAS.forEach(([key,,, hardMax]) => {
+    const d = visDefaults[key];
+    const cur = out[key];
+    const prev = fall[key];
+    if (!cur || typeof cur !== "object") {
+      out[key] = prev && typeof prev === "object" ? { ...d, ...prev } : { ...d };
+      return;
+    }
+    let min = Number(cur.min);
+    let max = Number(cur.max);
+    if (!Number.isFinite(min)) min = Number(prev && prev.min) || 1;
+    if (!Number.isFinite(max)) max = Number(prev && prev.max) || hardMax;
+    min = Math.max(1, Math.min(min, hardMax - 1));
+    max = Math.max(min + 1, Math.min(max, hardMax));
+    out[key] = { checked: cur.checked !== false, min, max };
+  });
+  return out;
 }
 
 function v9IndicatorVisibilityDraftFromIndicator(existingIndicator) {
@@ -1879,6 +1920,7 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   if (legacyType === "regression-trend" && (!Array.isArray(out.regLines) || out.regLines.length < 3)) {
     out.regLines = v9DefaultRegLinesTl();
   }
+  v9EnsureTlStyleVisibilityRows(out, fall);
   return out;
 }
 
@@ -3730,6 +3772,7 @@ function v9FreshTlStyleDefaults() {
     borderColor: V9_DEFAULT_TL_LINE_COLOR,
     borderType: "solid",
     borderWidth: "1",
+    ...v9DefaultVisibilityTlRows(),
   };
 }
 
@@ -16621,7 +16664,7 @@ const TalariaV8bLive = () => {
                     <div style={{ textAlign:"center", fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em" }}>MAX</div>
                   </div>
                   {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl],idx,arr)=>{
-                    const v=tlStyle[k]; const hm=hardMax[k];
+                    const v=v9NormalizeTlVisRow(k, tlStyle[k]); const hm=hardMax[k];
                     const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
                     const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
                     const hkMin=`tl-vis-min-${k}`, hkMax=`tl-vis-max-${k}`;
@@ -17500,7 +17543,7 @@ const TalariaV8bLive = () => {
                     <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MAX</div>
                   </div>
                   {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl],idx,arr)=>{
-                    const v=txtStyle[k]; const hm=hardMax[k];
+                    const v=v9NormalizeTlVisRow(k, txtStyle[k]); const hm=hardMax[k];
                     const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
                     const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
                     const hkMin=`txt-vis-min-${k}`, hkMax=`txt-vis-max-${k}`;
@@ -18313,7 +18356,7 @@ const TalariaV8bLive = () => {
                       <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: c.tm, letterSpacing: "0.06em" }}>MAX</div>
                     </div>
                     {[["visMinutes", "Minutes"], ["visHours", "Hours"], ["visDays", "Days"], ["visWeeks", "Weeks"], ["visMonths", "Months"]].map(([k, lbl]) => {
-                      const v = indSettDraft[k] || { checked: true, min: 1, max: hardMax[k] };
+                      const v = v9NormalizeTlVisRow(k, indSettDraft[k]);
                       const hm = hardMax[k];
                       const pctMin = (v.min - 1) / Math.max(1, hm - 1) * 100;
                       const pctMax = (v.max - 1) / Math.max(1, hm - 1) * 100;
@@ -18940,7 +18983,7 @@ const TalariaV8bLive = () => {
                       <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MAX</div>
                     </div>
                     {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl])=>{
-                      const v=vwapStyle[k]; const hm=hardMax[k];
+                      const v=v9NormalizeTlVisRow(k, vwapStyle[k]); const hm=hardMax[k];
                       const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
                       const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
                       const hkMin=`vwap-vis-min-${k}`, hkMax=`vwap-vis-max-${k}`;
@@ -19329,7 +19372,7 @@ const TalariaV8bLive = () => {
                       <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MAX</div>
                     </div>
                     {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl])=>{
-                      const v=vpStyle[k]; const hm=hardMax[k];
+                      const v=v9NormalizeTlVisRow(k, vpStyle[k]); const hm=hardMax[k];
                       const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
                       const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
                       const hkMin=`vp-vis-min-${k}`,hkMax=`vp-vis-max-${k}`;
@@ -19706,7 +19749,7 @@ const TalariaV8bLive = () => {
                       <div style={{textAlign:"center",fontSize:9,fontWeight:700,color:c.tm,letterSpacing:"0.06em"}}>MAX</div>
                     </div>
                     {[["visMinutes","Minutes"],["visHours","Hours"],["visDays","Days"],["visWeeks","Weeks"],["visMonths","Months"]].map(([k,lbl])=>{
-                      const v=avStyle[k]; const hm=hardMax[k];
+                      const v=v9NormalizeTlVisRow(k, avStyle[k]); const hm=hardMax[k];
                       const pctMin=(v.min-1)/Math.max(1,hm-1)*100;
                       const pctMax=(v.max-1)/Math.max(1,hm-1)*100;
                       const hkMin=`av-vis-min-${k}`,hkMax=`av-vis-max-${k}`;
