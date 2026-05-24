@@ -2860,7 +2860,10 @@ class Chart {
 
         this._commitTimeframeChange(normalizedTf);
         this._nativeRawFetchTf = normalizedTf;
-        this.data = this.resampleData(this.rawData, normalizedTf);
+        // Replay must not paint the full cached series — updateChartData slices to playhead.
+        if (!replay.isActive) {
+            this.data = this.resampleData(this.rawData, normalizedTf);
+        }
         this._panLoading = false;
         this._chartViewRestored = false;
 
@@ -2943,6 +2946,13 @@ class Chart {
             try { replay.updateChartData(true); } catch (e) {
                 console.warn('[backtest] updateChartData after TF hot-swap failed', e);
             }
+        }
+
+        if (typeof this.recalculateIndicators === 'function') {
+            try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+        }
+        if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
+            try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_dr) { /* ignore */ }
         }
 
         if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
@@ -17108,9 +17118,16 @@ class Chart {
             const progress = Math.max(0, Math.min(1, rawProgress));
             
             const remainingSeconds = Math.ceil(totalSeconds * (1 - progress));
-            const minutes = Math.floor(remainingSeconds / 60);
-            const seconds = remainingSeconds % 60;
-            countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            if (totalSeconds >= 3600) {
+                const hours = Math.floor(remainingSeconds / 3600);
+                const minutes = Math.floor((remainingSeconds % 3600) / 60);
+                const seconds = remainingSeconds % 60;
+                countdownText = `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            } else {
+                const minutes = Math.floor(remainingSeconds / 60);
+                const seconds = remainingSeconds % 60;
+                countdownText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
         }
         
         // Calculate total label height
@@ -25130,7 +25147,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a75';
+    window.TALARIA_CHART_BUILD = '20260522a76';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

@@ -6127,8 +6127,15 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     ctx.imageSmoothingEnabled = true;
     
     boxes.forEach(function(box) {
-        const x1 = self.dataIndexToPixel(box.startIndex);
-        const x2 = self.dataIndexToPixel(box.endIndex);
+        let startIdx = box.startIndex;
+        let endIdx = box.endIndex;
+        if (self.replaySystem && self.replaySystem.isActive && self.data && self.data.length > 0) {
+            const maxIdx = self.data.length - 1;
+            startIdx = Math.min(Math.max(startIdx, 0), maxIdx);
+            endIdx = Math.min(Math.max(endIdx, 0), maxIdx);
+        }
+        const x1 = self.dataIndexToPixel(startIdx);
+        const x2 = self.dataIndexToPixel(endIdx);
         const yTop = self.yScale(box.high);
         const yBot = self.yScale(box.low);
         
@@ -6467,8 +6474,15 @@ Chart.prototype.drawIctFvgBoxes = function(data, style, startIndex = 0, endIndex
 
     data.boxes.forEach(function(box) {
         if (box.endIndex < startIndex || box.startIndex > endIndex) return;
-        const x1 = this.dataIndexToPixel(box.startIndex);
-        const x2 = this.dataIndexToPixel(box.endIndex);
+        let si = box.startIndex;
+        let ei = box.endIndex;
+        if (this.replaySystem && this.replaySystem.isActive && n > 0) {
+            const maxIdx = n - 1;
+            si = Math.min(Math.max(si, 0), maxIdx);
+            ei = Math.min(Math.max(ei, 0), maxIdx);
+        }
+        const x1 = this.dataIndexToPixel(si);
+        const x2 = this.dataIndexToPixel(ei);
         const topP = Math.max(box.top, box.bottom);
         const botP = Math.min(box.top, box.bottom);
         const yTop = this.yScale(topP);

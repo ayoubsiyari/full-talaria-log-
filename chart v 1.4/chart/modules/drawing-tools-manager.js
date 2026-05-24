@@ -7346,6 +7346,9 @@ class DrawingToolsManager {
 
         const conversionData = this._getDrawingConversionData();
         const timeframe = this.chart && this.chart.currentTimeframe ? this.chart.currentTimeframe : null;
+        const tsOpts = (this.chart?.replaySystem?.isActive)
+            ? { replayClampToLastBar: true }
+            : null;
         const jsonForFrom = {
             ...json,
             points: Array.isArray(json.points) ? json.points.map(p => ({ ...p })) : []
@@ -7365,7 +7368,8 @@ class DrawingToolsManager {
             jsonForFrom.points = CoordinateUtils.pointsFromTimestamps(
                 timestampPoints,
                 conversionData,
-                timeframe
+                timeframe,
+                tsOpts
             );
             jsonForFrom.coordinateSystem = 'index';
         }
@@ -8690,7 +8694,15 @@ class DrawingToolsManager {
                         
                         // [debug removed]
                         // Convert to indices for rendering with correct timeframe
-                        item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
+                        const tsOpts = (this.chart?.replaySystem?.isActive)
+                            ? { replayClampToLastBar: true }
+                            : null;
+                        item.points = CoordinateUtils.pointsFromTimestamps(
+                            originalTimestampPoints,
+                            conversionData,
+                            this.chart.currentTimeframe,
+                            tsOpts
+                        );
                     }
                     
                     const drawing = toolInfo.class.fromJSON(item, this.chart);
@@ -8994,10 +9006,14 @@ class DrawingToolsManager {
         if (!conversionData.length || typeof CoordinateUtils === 'undefined') {
             return;
         }
+        const tsOpts = (this.chart?.replaySystem?.isActive)
+            ? { replayClampToLastBar: true }
+            : null;
         drawing.points = CoordinateUtils.pointsFromTimestamps(
             drawing.timestampPoints,
             conversionData,
-            this.chart.currentTimeframe
+            this.chart.currentTimeframe,
+            tsOpts
         ).map((pt, i) => {
             const src = drawing.timestampPoints[i];
             const price = src && Number.isFinite(src.price) ? src.price : pt.y;
