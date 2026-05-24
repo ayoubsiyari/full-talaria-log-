@@ -3941,8 +3941,39 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
   const { dm, tb, live } = v9ResolveDrawingToolbarForDrawing(drawing);
   if (!live) return false;
   if (dm && typeof dm.applyBuiltinDefaultStyleToDrawing === "function") {
-    if (!dm.applyBuiltinDefaultStyleToDrawing(live)) return false;
+    if (dm.applyBuiltinDefaultStyleToDrawing(live)) {
+      v9NotifyDrawingTemplateApplied(live, true);
+      v9NotifyDrawingAction("Default style applied");
+      return true;
+    }
+  }
+  // V9-only fallback when drawingManager helper is unavailable or drawing not tracked yet.
+  const defaults = v9BuildDefaultTlStyleForDrawingType(live.type);
+  if (defaults && dm) {
+    if (!live.style) live.style = {};
+    const stylePatch = v9BuildLegacyStylePatchFromTlStyle(defaults, live.type);
+    const resetKeys = new Set([
+      "stroke", "color", "lineColor", "strokeWidth", "opacity",
+      "dashArray", "strokeDasharray", "borderDasharray", "borderWidth",
+      "fill", "backgroundColor", "showBackground", "borderEnabled", "borderColor",
+      "middleLineColor", "middleLineDash", "middleLineWidth", "showMiddleLine",
+      "startStyle", "endStyle", "extendLeft", "extendRight",
+      "showPriceLabel", "showTimeLabel",
+    ]);
+    for (const k of Object.keys(live.style)) {
+      if (resetKeys.has(k)) delete live.style[k];
+    }
+    Object.assign(live.style, stylePatch);
+    v9ApplyTlStyleExtrasToDrawing(live, defaults, dm);
+    try {
+      if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(live);
+      if (tb && typeof tb.onUpdate === "function") tb.onUpdate(live);
+      else dm.renderDrawing?.(live);
+    } catch (_) {
+      try { dm.renderDrawing?.(live); } catch (_) {}
+    }
     v9NotifyDrawingTemplateApplied(live, true);
+    v9NotifyDrawingAction("Default style applied");
     return true;
   }
   if (tb && typeof tb.applyDefaultTemplate === "function") {
@@ -16743,7 +16774,12 @@ const TalariaV8bLive = () => {
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 <div style={{padding:"4px 0"}}>
                   {[["Save as",()=>{setTxtSaveAsMode(true);setTxtNewTplName("");}],
-                    ["Apply default",()=>{setTxtBarDrop(null);}]
+                    ["Apply default", ()=>{
+                      const d = getPrimarySelectedDrawingForActiveChart(editingDrawingRef.current?.drawing);
+                      if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                      if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
+                      setTxtBarDrop(null);
+                    }]
                   ].map(([lbl,action])=>{
                     const isH=hov===`txtTpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
                     return (

@@ -8887,6 +8887,146 @@ class DrawingToolsManager {
     }
 
     /**
+     * Baseline style patch for a tool type (light gray lines + fill) before V9/saved overrides.
+     */
+    getDefaultToolStylePatch(toolType) {
+        if (!toolType || toolType === 'long-position' || toolType === 'short-position') {
+            return {};
+        }
+        const stroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+            ? DRAWING_TOOL_DEFAULT_STROKE
+            : '#8C8C8C';
+        const fill = typeof DRAWING_TOOL_DEFAULT_FILL !== 'undefined'
+            ? DRAWING_TOOL_DEFAULT_FILL
+            : 'rgba(140, 140, 140, 0.2)';
+
+        if (toolType === 'brush') {
+            return {
+                stroke,
+                color: stroke,
+                lineColor: stroke,
+                strokeWidth: 2,
+                opacity: 1,
+                dashArray: '',
+                strokeDasharray: '',
+                showPriceLabel: false,
+                showTimeLabel: false,
+            };
+        }
+
+        if (toolType === 'highlighter') {
+            const hlStroke = 'rgba(140, 140, 140, 0.35)';
+            return {
+                stroke: hlStroke,
+                color: hlStroke,
+                lineColor: hlStroke,
+                strokeWidth: 20,
+                opacity: 1,
+                dashArray: '',
+                strokeDasharray: '',
+                showPriceLabel: false,
+                showTimeLabel: false,
+            };
+        }
+
+        return {
+            stroke,
+            color: stroke,
+            lineColor: stroke,
+            strokeWidth: 2,
+            opacity: 1,
+            dashArray: '',
+            strokeDasharray: '',
+            borderDasharray: '',
+            fill,
+            backgroundColor: fill,
+            showBackground: true,
+            borderEnabled: true,
+            borderColor: stroke,
+            borderWidth: 1,
+            middleLineColor: stroke,
+            middleLineDash: '',
+            showMiddleLine: false,
+            ...(typeof AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES !== 'undefined' && AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES.has(toolType)
+                || toolType === 'brush' || toolType === 'highlighter'
+                ? { showPriceLabel: false, showTimeLabel: false }
+                : {}),
+        };
+    }
+
+    /**
+     * Reset a drawing to built-in defaults (light gray stroke/fill) — "Apply default" in toolbar.
+     */
+    applyBuiltinDefaultStyleToDrawing(drawing) {
+        if (!drawing || !drawing.type) return false;
+        if (drawing.type === 'long-position' || drawing.type === 'short-position') return false;
+
+        const tracked = this.drawings.find((d) => d === drawing || (d.id != null && drawing.id != null && d.id === drawing.id));
+        if (!tracked) return false;
+        drawing = tracked;
+
+        const patch = this.getDefaultToolStylePatch(drawing.type);
+        if (!drawing.style) drawing.style = {};
+
+        const resetKeys = new Set([
+            'stroke', 'color', 'lineColor', 'strokeWidth', 'opacity',
+            'dashArray', 'strokeDasharray', 'borderDasharray', 'borderWidth',
+            'fill', 'backgroundColor', 'showBackground', 'borderEnabled', 'borderColor',
+            'middleLineColor', 'middleLineDash', 'middleLineWidth', 'showMiddleLine',
+            'startStyle', 'endStyle', 'extendLeft', 'extendRight',
+            'showPriceLabel', 'showTimeLabel',
+        ]);
+        for (const k of Object.keys(drawing.style)) {
+            if (resetKeys.has(k)) delete drawing.style[k];
+        }
+        Object.assign(drawing.style, patch);
+
+        const tb = this.toolbar;
+        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(drawing); } catch (_) {}
+        try {
+            if (tb && typeof tb.onUpdate === 'function') tb.onUpdate(drawing);
+            else this.renderDrawing(drawing);
+        } catch (_) {
+            try { this.renderDrawing(drawing); } catch (_) {}
+        }
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            try { drawing.showAxisHighlights(); } catch (_) {}
+        }
+        if (this.chart && typeof this.chart.scheduleRender === 'function') {
+            this.chart.scheduleRender();
+        }
+        return true;
+    }
+
+    /**
+     * Style for in-progress preview + new placements. Prefer V9 armed toolbar (window.__v9ArmedDrawStyle).
+     */
+    getArmedToolStyle(toolType) {
+        const tool = toolType || this.currentTool;
+        if (!tool) return {};
+        const base = this.getDefaultToolStylePatch(tool);
+        try {
+            if (typeof window !== 'undefined' && window.__v9ArmedDrawStyle) {
+                const armed = window.__v9ArmedDrawStyle;
+                if (armed.tool === tool && armed.patch && typeof armed.patch === 'object') {
+                    return { ...base, ...armed.patch };
+                }
+            }
+        } catch (_) {}
+        const saved = this.getSavedToolStyle(tool);
+        return saved && typeof saved === 'object' ? { ...base, ...saved } : { ...base };
+    }
+
+    _applyArmedStyleExtras(drawing) {
+        if (!drawing) return;
+        try {
+            if (typeof window !== 'undefined' && typeof window.__v9ApplyPlacedDrawingExtras === 'function') {
+                window.__v9ApplyPlacedDrawingExtras(drawing, this);
+            }
+        } catch (_) {}
+    }
+
+    /**
      * Get saved extra risk settings for position tools
      */
     getSavedToolRiskSettings(toolType) {
