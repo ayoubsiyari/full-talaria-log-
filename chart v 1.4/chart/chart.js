@@ -15236,6 +15236,17 @@ class Chart {
             }
         }
         
+        // During pan, freeze the Y domain from finger-down so horizontal grid lines do not
+        // jump or vanish as auto-scale reacts to the changing visible bar window.
+        if (this._isChartViewPanning() && this._panSnapYDomain && this._panSnapYDomain.length === 2) {
+            const snapMin = this._panSnapYDomain[0];
+            const snapMax = this._panSnapYDomain[1];
+            const snapPo = Number.isFinite(this._panSnapPriceOffset) ? this._panSnapPriceOffset : this.priceOffset;
+            const priceDy = this.priceOffset - snapPo;
+            domainMin = snapMin + priceDy;
+            domainMax = snapMax + priceDy;
+        }
+
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
         this.xScale = d3.scaleLinear()
             .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
@@ -15328,6 +15339,12 @@ class Chart {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
         this._panTimeTickCache = null;
+        if (this.yScale) {
+            const d = this.yScale.domain();
+            this._panSnapYDomain = [Number(d[0]), Number(d[1])];
+        } else {
+            this._panSnapYDomain = null;
+        }
     }
 
     _clearPanTimeTickCache() {
@@ -15427,6 +15444,7 @@ class Chart {
         this._clearAxisHighlightPanTransform();
         this._panSnapOffsetX = null;
         this._panSnapPriceOffset = null;
+        this._panSnapYDomain = null;
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
@@ -15883,10 +15901,14 @@ class Chart {
         // Fast path while dragging chart: candles + axes (lite, 60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
-            this.drawGrid({ panFast: true });
+            // Vertical under candles; horizontal redrawn after axes so LOD candles do not hide price levels.
+            this.drawGrid({ panFast: true, skipHorizontal: true });
             this.drawCandles(visible, panOpts);
-            this.drawPriceLine(visible);
             this.drawAxes();
+            // Margin may widen after axis labels — refresh scales (Y domain stays pan-frozen).
+            this.calculateScales();
+            this.drawGrid({ panFast: true, skipVertical: true });
+            this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
             if (this._shouldUsePanDrawingsTransform()) {
                 this._applyPanDrawingsLayerTransform();
@@ -16032,17 +16054,17 @@ class Chart {
         if (!this.chartSettings.showGrid || this.chartSettings.gridStyle === 'None') return;
         
         const m = this.margin;
-        const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
         const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         const priceHeight = ch - volumeAreaHeight;
-        const panFast = !!opts.panFast;
         
         if (!this.xScale || !this.yScale) return;
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
         const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
+        const skipHorizontal = !!opts.skipHorizontal;
+        const skipVertical = !!opts.skipVertical;
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -16054,15 +16076,13 @@ class Chart {
         };
         
         // Horizontal grid lines (price levels) - aligned with y-axis labels
-        if (showHorizontal) {
+        if (showHorizontal && !skipHorizontal) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = gridLW;
             applyGridDash();
             
-            // Use same tick calculation as y-axis to ensure alignment
-            const numYTicks = panFast
-                ? Math.max(4, Math.min(6, Math.floor(priceHeight / 90)))
-                : Math.max(8, Math.min(15, Math.floor(ch / 60)));
+            // Match y-axis tick density (pan used to draw only 4–6 lines → looked like grid vanished).
+            const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
             const yTicks = this._getYPriceTicks(numYTicks);
             
             yTicks.forEach(price => {
@@ -16079,7 +16099,7 @@ class Chart {
         }
         
         // Vertical grid lines – use same tick positions as time-axis labels for perfect sync
-        if (showVertical && this._timeTicks && this._timeTicks.length > 0) {
+        if (showVertical && !skipVertical && this._timeTicks && this._timeTicks.length > 0) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = gridLW;
             applyGridDash();
@@ -25263,7 +25283,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a80';
+    window.TALARIA_CHART_BUILD = '20260522a81';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).
