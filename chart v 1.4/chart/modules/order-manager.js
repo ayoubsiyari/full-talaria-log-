@@ -24229,10 +24229,19 @@ class OrderManager {
 
             const pbMode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
             const chartTfMatchesRaw = this._replayChartTimeframeMatchesRawStep(ch, rs);
+            const nativePeriodMs = typeof ch._getNativeRawStepMs === 'function' ? ch._getNativeRawStepMs() : null;
+            const trimReplayBar = (bar, series, idx, periodMs) => {
+                if (!bar || typeof ch._trimBarOhlcToReplayPlayhead !== 'function') return bar;
+                return ch._trimBarOhlcToReplayPlayhead(bar, series, idx, periodMs);
+            };
             const useRawReplayBar = pbMode === 'candle' || chartTfMatchesRaw;
             if (useRawReplayBar && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
-                const coerced = coerceBar(ch.rawData[ch.rawData.length - 1]);
-                if (coerced) return coerced;
+                const lastIdx = ch.rawData.length - 1;
+                let coerced = coerceBar(ch.rawData[lastIdx]);
+                if (coerced) {
+                    coerced = trimReplayBar(coerced, ch.rawData, lastIdx, nativePeriodMs);
+                    return coerced;
+                }
             }
 
             // Tick replay + coarse chart TF: `ch.data[last]` is a resampled bucket whose H/L
@@ -24240,14 +24249,25 @@ class OrderManager {
             // minutes replay has not reached yet. SL/TP must use the walk-forward raw bar at
             // the playhead (`rawData[last]`), same as when chart TF matches native file spacing.
             if (pbMode === 'tick' && !chartTfMatchesRaw && Array.isArray(ch.rawData) && ch.rawData.length > 0) {
-                const coerced = coerceBar(ch.rawData[ch.rawData.length - 1]);
-                if (coerced) return coerced;
+                const lastIdx = ch.rawData.length - 1;
+                let coerced = coerceBar(ch.rawData[lastIdx]);
+                if (coerced) {
+                    coerced = trimReplayBar(coerced, ch.rawData, lastIdx, nativePeriodMs);
+                    return coerced;
+                }
             }
 
             if (Array.isArray(ch.data) && ch.data.length > 0) {
-                const last = ch.data[ch.data.length - 1];
-                const coerced = coerceBar(last);
-                if (coerced) return coerced;
+                const lastIdx = ch.data.length - 1;
+                const last = ch.data[lastIdx];
+                let coerced = coerceBar(last);
+                if (coerced) {
+                    const tfMs = typeof ch.parseTimeframe === 'function'
+                        ? ch.parseTimeframe(ch.currentTimeframe)
+                        : null;
+                    coerced = trimReplayBar(coerced, ch.data, lastIdx, tfMs);
+                    return coerced;
+                }
             }
 
             const rawData = (rs.fullRawData && rs.fullRawData.length)

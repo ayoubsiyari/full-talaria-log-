@@ -2620,6 +2620,140 @@ class Chart {
         return Number.isFinite(t) ? Math.floor(t) : null;
     }
 
+    /** Active replay virtual time (intraday moment preserved across coarse TF switches). */
+    _getReplayPlayheadMs() {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive) return null;
+        if (Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
+        if (Array.isArray(rs.fullRawData) && typeof rs.currentIndex === 'number') {
+            const bar = rs.fullRawData[rs.currentIndex];
+            if (bar && Number.isFinite(bar.t)) return bar.t;
+        }
+        return null;
+    }
+
+    _getNativeRawStepMs() {
+        const rs = this.replaySystem;
+        if (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
+            const step = Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t);
+            if (Number.isFinite(step) && step > 0) return step;
+        }
+        if (rs && rs.rawTimeframe && typeof this.parseTimeframe === 'function') {
+            const ms = this.parseTimeframe(rs.rawTimeframe);
+            if (Number.isFinite(ms) && ms > 0) return ms;
+        }
+        return this._estimateTimeframeStepMs();
+    }
+
+    _getBarPeriodEndMs(barStart, series, barIdx, periodMs) {
+        if (!Number.isFinite(barStart)) return null;
+        if (Array.isArray(series) && Number.isFinite(barIdx) && barIdx + 1 < series.length) {
+            const nextT = Number(series[barIdx + 1].t);
+            if (Number.isFinite(nextT) && nextT > barStart) return nextT;
+        }
+        if (Number.isFinite(periodMs) && periodMs > 0) return barStart + periodMs;
+        return null;
+    }
+
+    /**
+     * Walk-forward OHLC up to replay playhead using finer TF cache (1m saved before TF switch).
+     * Prevents full-day wicks from triggering TP/SL after 1m→1D switch at an intraday moment.
+     */
+    _getWalkForwardOhlcToPlayhead(periodStartMs, playheadMs, nativePeriodMs) {
+        if (!Number.isFinite(periodStartMs) || !Number.isFinite(playheadMs)) return null;
+        if (playheadMs < periodStartMs) return null;
+        const fileId = this.currentFileId;
+        if (!fileId || typeof this._getBtTfDataCache !== 'function') return null;
+
+        const nativeMs = Number.isFinite(nativePeriodMs) && nativePeriodMs > 0
+            ? nativePeriodMs
+            : this._getNativeRawStepMs();
+        const candidates = ['1m', '5m', '15m', '30m', '1h', '4h'];
+
+        for (let ci = 0; ci < candidates.length; ci++) {
+            const tf = candidates[ci];
+            const tfMs = this.parseTimeframe(tf);
+            if (!Number.isFinite(tfMs) || tfMs <= 0 || tfMs >= nativeMs) continue;
+
+            const entry = this._getBtTfDataCache(fileId, tf);
+            const rd = entry?.rawData;
+            if (!Array.isArray(rd) || !rd.length) continue;
+
+            let o = null;
+            let h = null;
+            let l = null;
+            let c = null;
+            let v = 0;
+            let count = 0;
+
+            for (let i = 0; i < rd.length; i++) {
+                const b = rd[i];
+                const t = Number(b?.t);
+                if (!Number.isFinite(t)) continue;
+                if (t < periodStartMs) continue;
+                if (t > playheadMs) break;
+
+                const bo = Number(b.o ?? b.open);
+                const bh = Number(b.h ?? b.high);
+                const bl = Number(b.l ?? b.low);
+                const bc = Number(b.c ?? b.close);
+                if (!count && Number.isFinite(bo)) o = bo;
+                if (Number.isFinite(bh)) h = !count ? bh : Math.max(h, bh);
+                if (Number.isFinite(bl)) l = !count ? bl : Math.min(l, bl);
+                if (Number.isFinite(bc)) c = bc;
+                v += Number(b.v ?? b.volume) || 0;
+                count++;
+            }
+
+            if (count > 0 && Number.isFinite(c)) {
+                return { o, h, l, c, v };
+            }
+        }
+        return null;
+    }
+
+    _trimBarOhlcToReplayPlayhead(bar, series, barIdx, periodMs) {
+        if (!bar || typeof bar !== 'object') return bar;
+        const barT = Number(bar.t);
+        const playhead = this._getReplayPlayheadMs();
+        if (!Number.isFinite(barT) || !Number.isFinite(playhead)) return bar;
+
+        const periodEnd = this._getBarPeriodEndMs(barT, series, barIdx, periodMs);
+        if (periodEnd != null && playhead >= periodEnd - 1) return bar;
+
+        const partial = this._getWalkForwardOhlcToPlayhead(barT, playhead, periodMs);
+        if (!partial) return bar;
+
+        return Object.assign({}, bar, {
+            o: partial.o != null ? partial.o : bar.o,
+            h: partial.h != null ? partial.h : bar.h,
+            l: partial.l != null ? partial.l : bar.l,
+            c: partial.c != null ? partial.c : bar.c,
+            v: partial.v != null ? partial.v : bar.v,
+        });
+    }
+
+    /** Trim last resampled display bar so candle wick matches replay playhead (not full coarse period). */
+    _trimLastDataBarToReplayPlayhead() {
+        const rs = this.replaySystem;
+        if (!rs || !rs.isActive || !Array.isArray(this.data) || !this.data.length) return;
+
+        const playhead = this._getReplayPlayheadMs();
+        if (!Number.isFinite(playhead)) return;
+
+        const lastIdx = this.data.length - 1;
+        const bar = this.data[lastIdx];
+        if (!bar || !Number.isFinite(bar.t)) return;
+
+        const tfMs = typeof this.parseTimeframe === 'function'
+            ? this.parseTimeframe(this.currentTimeframe)
+            : null;
+        const trimmed = this._trimBarOhlcToReplayPlayhead(bar, this.data, lastIdx, tfMs);
+        if (trimmed !== bar) {
+            this.data[lastIdx] = trimmed;
+        }
+    }
+
     _getBtTfDataCache(fileId, timeframe) {
         if (!fileId || !timeframe || !this._btTfDataCache) return null;
         const perFile = this._btTfDataCache.get(String(fileId));
@@ -2806,9 +2940,16 @@ class Chart {
 
         const omTf = this.orderManager
             || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
-        if (omTf && typeof omTf._refreshAllGuardsToCurrentCandle === 'function') {
-            try { omTf._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
+        if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function') {
+            const guardTs = Number.isFinite(Number(savedReplayTimestamp))
+                ? Number(savedReplayTimestamp)
+                : (typeof this._getReplayPlayheadMs === 'function' ? this._getReplayPlayheadMs() : null);
+            if (Number.isFinite(guardTs)) {
+                try { omTf._refreshAllGuardsToTimestamp(guardTs, -1); } catch (_e3) { /* ignore */ }
+            }
         }
+
+        if (replay) replay._timeframeChanging = false;
 
         const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
         if (shouldResumePlay && typeof replay.play === 'function') {
@@ -2944,6 +3085,8 @@ class Chart {
         if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
             try { omTf._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
         }
+
+        replay._timeframeChanging = true;
 
         if (typeof replay.updateChartData === 'function') {
             try { replay.updateChartData(true); } catch (e) {
@@ -22330,6 +22473,16 @@ class Chart {
                 ? this.estimateTimestampForDataIndex(idxForTime)
                 : null;
             if (timestamp != null && !Number.isFinite(timestamp)) timestamp = null;
+
+            const rsCross = this.replaySystem;
+            const playheadMs = (rsCross && rsCross.isActive && typeof this._getReplayPlayheadMs === 'function')
+                ? this._getReplayPlayheadMs()
+                : null;
+            if (rsCross && rsCross.isActive && Number.isFinite(playheadMs)
+                && Number.isFinite(snappedIdx) && this.data.length > 0
+                && Math.abs(snappedIdx - (this.data.length - 1)) < 0.01) {
+                timestamp = playheadMs;
+            }
             
             // Show time label if we have a valid timestamp
             if (timestamp && timestamp > 0) {
@@ -22342,7 +22495,8 @@ class Chart {
                 // Format based on timeframe - match x-axis label style + Settings time format
                 let timeStr;
                 const isDailyOrHigher = timeframeMs >= 86400000; // 1 day or more
-                if (isDailyOrHigher) {
+                const hasIntradayClock = !!(tzDate.getUTCHours() || tzDate.getUTCMinutes() || tzDate.getUTCSeconds());
+                if (isDailyOrHigher && !(rsCross && rsCross.isActive && hasIntradayClock)) {
                     // Daily/weekly/monthly: include year so the cursor label always
                     // identifies which year the bar belongs to ("Apr 28, 2026").
                     timeStr = `${month} ${day}, ${year}`;
@@ -25309,7 +25463,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a85';
+    window.TALARIA_CHART_BUILD = '20260522a86';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

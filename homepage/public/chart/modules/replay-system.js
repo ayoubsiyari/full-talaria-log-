@@ -115,7 +115,14 @@ class ReplaySystem {
         if (hit >= floor) {
             this.currentIndex = hit;
             const bar = this.fullRawData[hit];
-            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
+            const next = this.fullRawData[hit + 1];
+            const barT = bar && Number.isFinite(bar.t) ? bar.t : null;
+            const barEnd = next && Number.isFinite(next.t) ? next.t : null;
+            if (barT != null && ts >= barT && (barEnd == null || ts < barEnd)) {
+                this.replayTimestamp = ts;
+            } else if (barT != null) {
+                this.replayTimestamp = barT;
+            }
             return true;
         }
         if (hit >= 0) {
@@ -2534,7 +2541,15 @@ class ReplaySystem {
         if (!midTickAnimation) {
             const curBar = this.fullRawData[this.currentIndex];
             if (curBar && Number.isFinite(curBar.t)) {
-                this.replayTimestamp = curBar.t;
+                const barT = curBar.t;
+                const next = this.fullRawData[this.currentIndex + 1];
+                const barEnd = next && Number.isFinite(next.t) ? next.t : null;
+                const existing = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+                if (existing != null && existing >= barT && (barEnd == null || existing < barEnd)) {
+                    // Keep intraday playhead when native TF is coarser (e.g. 1m moment on 1D bar).
+                } else {
+                    this.replayTimestamp = barT;
+                }
             }
         }
 
@@ -2553,6 +2568,9 @@ class ReplaySystem {
         // Resample for current timeframe
         try {
             this.chart.data = this.chart.resampleData(this.chart.rawData, this.chart.currentTimeframe);
+            if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
+                this.chart._trimLastDataBarToReplayPlayhead();
+            }
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
@@ -5095,39 +5113,33 @@ class ReplaySystem {
             return;
         }
 
-        const currentBar = this.fullRawData[this.currentIndex];
-        if (!currentBar || !currentBar.t) {
+        const displayTs = Number.isFinite(this.replayTimestamp)
+            ? this.replayTimestamp
+            : (this.fullRawData[this.currentIndex]?.t ?? null);
+        if (!Number.isFinite(displayTs)) {
             return;
         }
 
         // Use timezone manager if available
         if (window.timezoneManager) {
-            const timeStr = window.timezoneManager.formatTime(currentBar.t, 'full');
+            const timeStr = window.timezoneManager.formatTime(displayTs, 'full');
             this.timeLabel.textContent = timeStr;
             try {
-                const ts = Number.isFinite(this.replayTimestamp)
-                    ? this.replayTimestamp
-                    : currentBar.t;
-                if (Number.isFinite(ts)) {
-                    const sym = this.chart && this.chart.currentSymbol
-                        ? String(this.chart.currentSymbol)
-                        : '';
-                    window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                        detail: {
-                            timestamp: ts,
-                            symbol: sym,
-                            // Multichart fan-out dedupes on (timestamp, index): futures
-                            // stitched series can repeat bar timestamps; index disambiguates.
-                            currentIndex: this.currentIndex,
-                        }
-                    }));
-                }
+                window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
+                    detail: {
+                        timestamp: displayTs,
+                        symbol: this.chart && this.chart.currentSymbol
+                            ? String(this.chart.currentSymbol)
+                            : '',
+                        currentIndex: this.currentIndex,
+                    }
+                }));
             } catch (e) { /* ignore */ }
             return;
         }
 
         // Fallback to local time
-        const date = new Date(currentBar.t);
+        const date = new Date(displayTs);
         
         // Get day of week abbreviation
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -5149,16 +5161,13 @@ class ReplaySystem {
 
         // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
         try {
-            const ts = Number.isFinite(this.replayTimestamp)
-                ? this.replayTimestamp
-                : (currentBar && currentBar.t);
-            if (Number.isFinite(ts)) {
+            if (Number.isFinite(displayTs)) {
                 const sym = this.chart && this.chart.currentSymbol
                     ? String(this.chart.currentSymbol)
                     : '';
                 window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
                     detail: {
-                        timestamp: ts,
+                        timestamp: displayTs,
                         symbol: sym,
                         currentIndex: this.currentIndex,
                     }
