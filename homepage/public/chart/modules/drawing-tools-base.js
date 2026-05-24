@@ -246,6 +246,261 @@ class BaseDrawing {
     }
 
     /**
+     * Pan/zoom hot path: update existing SVG geometry in place (no DOM teardown).
+     * Subclasses return true when geometry was patched successfully.
+     */
+    patchPanZoomGeometry(scales) {
+        return false;
+    }
+
+    static fibIndexToPixel(scales, xIdx) {
+        if (!scales || !Number.isFinite(xIdx)) return NaN;
+        return scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(xIdx)
+            : scales.xScale(xIdx);
+    }
+
+    static fibPriceToPixel(scales, price) {
+        if (!scales || !Number.isFinite(price)) return NaN;
+        return scales.yScale(price);
+    }
+
+    static computeTwoPointHorizontalFibLayout(tool, scales) {
+        if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 2) return null;
+        const p1 = tool.points[0];
+        const p2 = tool.points[1];
+        if (!p1 || !p2) return null;
+
+        const x1 = BaseDrawing.fibIndexToPixel(scales, p1.x);
+        const y1 = BaseDrawing.fibPriceToPixel(scales, p1.y);
+        const x2 = BaseDrawing.fibIndexToPixel(scales, p2.x);
+        const y2 = BaseDrawing.fibPriceToPixel(scales, p2.y);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+
+        const xRange = scales.xScale.range();
+        const chartWidth = xRange[1] - xRange[0];
+        let fibX1;
+        let fibX2;
+        let fibWidth;
+        if (tool.style && tool.style.extendLines) {
+            fibX1 = xRange[0];
+            fibX2 = xRange[1];
+            fibWidth = chartWidth;
+        } else {
+            fibX1 = Math.min(x1, x2);
+            fibX2 = Math.max(x1, x2);
+            fibWidth = Math.abs(x2 - x1);
+            if (fibWidth < 50) {
+                const centerX = (x1 + x2) / 2;
+                fibWidth = 100;
+                fibX1 = centerX - 50;
+                fibX2 = centerX + 50;
+            }
+        }
+
+        const priceDiff = p2.y - p1.y;
+        const reverse = !!(tool.style && tool.style.reverse);
+        const getPriceAtLevel = (levelValue) => {
+            if (!reverse) return p1.y + (priceDiff * levelValue);
+            return p1.y + (priceDiff * (1 - levelValue));
+        };
+
+        const levels = [];
+        (tool.levels || []).forEach((level, i) => {
+            if (!level || level.visible === false) return;
+            const priceAtLevel = getPriceAtLevel(level.value);
+            const yAtLevel = BaseDrawing.fibPriceToPixel(scales, priceAtLevel);
+            if (!Number.isFinite(yAtLevel)) return;
+            let nextY = null;
+            const nextLevel = tool.levels[i + 1];
+            if (nextLevel && nextLevel.visible !== false) {
+                nextY = BaseDrawing.fibPriceToPixel(scales, getPriceAtLevel(nextLevel.value));
+            }
+            levels.push({ value: level.value, y: yAtLevel, nextY });
+        });
+
+        return { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels };
+    }
+
+    static patchTwoPointHorizontalFib(tool, scales) {
+        if (!tool || !tool.group || tool.group.empty() || !scales) return false;
+        if (!tool.group.select('line[data-level]').node()) return false;
+
+        const layout = BaseDrawing.computeTwoPointHorizontalFibLayout(tool, scales);
+        if (!layout) return false;
+
+        const { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels } = layout;
+        const group = tool.group;
+        const trend = group.select('.fib-trend-line');
+        if (!trend.empty()) {
+            trend.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
+        }
+
+        levels.forEach(({ value, y, nextY }) => {
+            const key = `${value}`;
+            group.selectAll(`line[data-level="${key}"]`)
+                .attr('x1', fibX1)
+                .attr('y1', y)
+                .attr('x2', fibX2)
+                .attr('y2', y);
+            if (nextY != null && Number.isFinite(nextY)) {
+                group.selectAll(`rect[data-fib-zone="${key}"]`)
+                    .attr('x', fibX1)
+                    .attr('y', Math.min(y, nextY))
+                    .attr('width', fibWidth)
+                    .attr('height', Math.abs(nextY - y));
+            }
+            group.selectAll(`text[data-fib-label="${key}"]`)
+                .attr('x', fibX2 + 5)
+                .attr('y', y + 4);
+        });
+
+        const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
+        group.style('opacity', opacity).attr('transform', null);
+        return true;
+    }
+
+    static patchFibTimeZone(tool, scales) {
+        if (!tool || !tool.group || tool.group.empty() || !scales) return false;
+        if (!tool.group.select('.fib-tz-vertical').node()) return false;
+        if (!Array.isArray(tool.points) || tool.points.length < 2) return false;
+
+        const xIndex1 = tool.points[0].x;
+        const xIndex2 = tool.points[1].x;
+        const baseDx = xIndex2 - xIndex1;
+        if (!baseDx) return false;
+
+        const x1 = BaseDrawing.fibIndexToPixel(scales, xIndex1);
+        const y1 = BaseDrawing.fibPriceToPixel(scales, tool.points[0].y);
+        const x2 = BaseDrawing.fibIndexToPixel(scales, xIndex2);
+        const y2 = BaseDrawing.fibPriceToPixel(scales, tool.points[1].y);
+        const chartHeight = scales.chart?.h || 500;
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
+
+        const group = tool.group;
+        group.select('.fib-tz-anchor')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2);
+
+        group.selectAll('.fib-tz-vertical').each(function () {
+            const fibN = parseFloat(d3.select(this).attr('data-fib-tz'));
+            if (!Number.isFinite(fibN)) return;
+            const xIndex = xIndex1 + (baseDx * fibN);
+            const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
+            if (!Number.isFinite(x)) return;
+            d3.select(this)
+                .attr('x1', x).attr('y1', 0)
+                .attr('x2', x).attr('y2', chartHeight);
+        });
+
+        group.selectAll('.fib-tz-label').each(function () {
+            const fibN = parseFloat(d3.select(this).attr('data-fib-tz'));
+            if (!Number.isFinite(fibN)) return;
+            const xIndex = xIndex1 + (baseDx * fibN);
+            const x = BaseDrawing.fibIndexToPixel(scales, xIndex);
+            if (!Number.isFinite(x)) return;
+            d3.select(this).attr('x', x + 3);
+        });
+
+        const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
+        group.style('opacity', opacity).attr('transform', null);
+        return true;
+    }
+
+    static patchFibChannel(tool, scales) {
+        if (!tool || !tool.group || tool.group.empty() || !scales) return false;
+        if (!tool.group.select('line[data-fib-channel-level]').node()) return false;
+        if (!Array.isArray(tool.points) || tool.points.length < 3) return false;
+
+        const getX = (p) => BaseDrawing.fibIndexToPixel(scales, p.x);
+        const getY = (p) => BaseDrawing.fibPriceToPixel(scales, p.y);
+        const x1 = getX(tool.points[0]);
+        const y1 = getY(tool.points[0]);
+        const x2 = getX(tool.points[1]);
+        const y2 = getY(tool.points[1]);
+        const x3 = getX(tool.points[2]);
+        const y3 = getY(tool.points[2]);
+        if (![x1, y1, x2, y2, x3, y3].every(Number.isFinite)) return false;
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.hypot(dx, dy);
+        if (!len) return false;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+        const channelOffset = (x3 - x1) * nx + (y3 - y1) * ny;
+        const extendLines = !!tool.style.extendLines;
+        const reverse = !!tool.style.reverse;
+        const xRange = scales.xScale.range();
+        const getSegment = (xA, yA, xB, yB) => {
+            if (!extendLines) return { x1: xA, y1: yA, x2: xB, y2: yB };
+            const xMin = Math.min(xRange[0], xRange[1]);
+            const xMax = Math.max(xRange[0], xRange[1]);
+            const dx2 = xB - xA;
+            if (Math.abs(dx2) < 1e-6) return { x1: xA, y1: yA, x2: xB, y2: yB };
+            const m = (yB - yA) / dx2;
+            return {
+                x1: xMin,
+                y1: yA + m * (xMin - xA),
+                x2: xMax,
+                y2: yA + m * (xMax - xA)
+            };
+        };
+
+        const group = tool.group;
+        group.selectAll('line[data-fib-channel-level]').each(function () {
+            const lvl = parseFloat(d3.select(this).attr('data-fib-channel-level'));
+            if (!Number.isFinite(lvl)) return;
+            const actualLevel = reverse ? (1 - lvl) : lvl;
+            const offset = channelOffset * actualLevel;
+            const seg = getSegment(x1 + nx * offset, y1 + ny * offset, x2 + nx * offset, y2 + ny * offset);
+            d3.select(this)
+                .attr('x1', seg.x1).attr('y1', seg.y1)
+                .attr('x2', seg.x2).attr('y2', seg.y2);
+        });
+
+        group.selectAll('text[data-fib-channel-label]').each(function () {
+            const lvl = parseFloat(d3.select(this).attr('data-fib-channel-label'));
+            if (!Number.isFinite(lvl)) return;
+            const actualLevel = reverse ? (1 - lvl) : lvl;
+            const offset = channelOffset * actualLevel;
+            const seg = getSegment(x1 + nx * offset, y1 + ny * offset, x2 + nx * offset, y2 + ny * offset);
+            d3.select(this).attr('x', seg.x2 + 5).attr('y', seg.y2 + 4);
+        });
+
+        if (tool.style.showZones) {
+            const zoneLevels = (tool.levels || [])
+                .map((l) => {
+                    const rawValue = typeof l === 'object' ? l.value : l;
+                    const enabled = typeof l === 'object' ? l.enabled !== false : true;
+                    const color = typeof l === 'object' ? (l.color || tool.style.stroke) : tool.style.stroke;
+                    const value = parseFloat(rawValue);
+                    const actual = reverse ? (1 - value) : value;
+                    return { value, actual, enabled, color };
+                })
+                .filter((l) => l.enabled && l.value != null && Number.isFinite(l.value) && Number.isFinite(l.actual))
+                .sort((a, b) => a.actual - b.actual);
+
+            group.selectAll('path[data-fib-zone-idx]').each(function () {
+                const idx = parseInt(d3.select(this).attr('data-fib-zone-idx'), 10);
+                if (!Number.isFinite(idx) || idx < 0 || idx >= zoneLevels.length - 1) return;
+                const aV1 = zoneLevels[idx].actual;
+                const aV2 = zoneLevels[idx + 1].actual;
+                const off1 = channelOffset * aV1;
+                const off2 = channelOffset * aV2;
+                const a1 = getSegment(x1 + nx * off1, y1 + ny * off1, x2 + nx * off1, y2 + ny * off1);
+                const a2 = getSegment(x1 + nx * off2, y1 + ny * off2, x2 + nx * off2, y2 + ny * off2);
+                d3.select(this).attr('d', `M ${a1.x1},${a1.y1} L ${a1.x2},${a1.y2} L ${a2.x2},${a2.y2} L ${a2.x1},${a2.y1} Z`);
+            });
+        }
+
+        const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
+        group.style('opacity', opacity).attr('transform', null);
+        return true;
+    }
+
+    /**
      * Patch resize-handle positions without recreating handle DOM (hot path).
      */
     updateHandlePositions(scales) {

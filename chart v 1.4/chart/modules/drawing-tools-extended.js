@@ -48,10 +48,6 @@ class HighlighterTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        if (this.group) {
-            this.group.remove();
-        }
-
         if (this.points.length < 2) return;
 
         this._prepareRenderGroup(container, 'drawing highlighter', renderOpts);

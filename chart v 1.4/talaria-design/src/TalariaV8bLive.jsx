@@ -742,6 +742,38 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibLineWidth,
     );
   }
+  if (legacyTool && v9IsTrendFibTimeType(legacyTool)) {
+    const fibDashStr =
+      tlStyle.fibLineType === "bold"
+        ? ""
+        : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
+          ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
+          : "");
+    const trendDashStr =
+      tlStyle.fibTimeTrendType === "bold"
+        ? ""
+        : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType] !== undefined
+          ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType]
+          : "6,6");
+    const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
+    const trendW = parseInt(String(tlStyle.fibTimeTrendWidth), 10) || parseInt(String(tlStyle.lineWidth), 10) || 1;
+    patch.levels = v9TlFibSpeedFanLevelsToChart(
+      v9ResolveTrendFibTimeLevelsForDrawing({ levels: patch.levels, type: legacyTool }, tlStyle),
+      tlStyle.fibLineType,
+      tlStyle.fibLineWidth,
+    );
+    patch.trendLineEnabled = tlStyle.fibTrendLine !== false;
+    patch.trendLineColor = tlStyle.lineColor;
+    patch.trendLineWidth = trendW;
+    patch.trendLineDasharray = trendDashStr;
+    patch.levelsLineWidth = levelsW;
+    patch.levelsLineDasharray = fibDashStr;
+    patch.showZones = tlStyle.fibBackground !== false;
+    patch.backgroundOpacity =
+      tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+        ? +tlStyle.fibBgOpacity
+        : 0.12;
+  }
   if (legacyTool === "brush" || legacyTool === "highlighter") {
     const p = parseColor(tlStyle.lineColor || "#787b86");
     const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
@@ -1838,6 +1870,22 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
         { on: true, value: "1", color: "#4CAF50" },
       ];
     }
+  } else if (legacyType === "trend-fib-time") {
+    if (
+      !Array.isArray(out.fibLevels) ||
+      !out.fibLevels.length ||
+      v9FibTlLevelsLookLikeSpeedFan(out.fibLevels)
+    ) {
+      out.fibLevels = v9TrendFibTimeDefaultLevelsTl();
+    }
+    if (!out.fibTimeTrendType) out.fibTimeTrendType = fall.fibTimeTrendType || "dashed";
+    if (out.fibTimeTrendWidth == null || out.fibTimeTrendWidth === "") {
+      out.fibTimeTrendWidth = fall.fibTimeTrendWidth != null ? fall.fibTimeTrendWidth : "1";
+    }
+    if (out.fibBackground == null) out.fibBackground = fall.fibBackground !== false;
+    if (out.fibBgOpacity == null || out.fibBgOpacity === "") {
+      out.fibBgOpacity = fall.fibBgOpacity != null ? fall.fibBgOpacity : "0.12";
+    }
   }
   if (out.fibLineWidth == null || out.fibLineWidth === "") {
     out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
@@ -2045,6 +2093,38 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   }
 }
 
+function v9TrendFibTimeDefaultLevelsTl() {
+  return [
+    { on: true, value: "0", color: "#787B86" },
+    { on: true, value: "0.382", color: "#FF9800" },
+    { on: true, value: "0.5", color: "#FFEB3B" },
+    { on: true, value: "0.618", color: "#4CAF50" },
+    { on: true, value: "1", color: "#2962FF" },
+    { on: true, value: "1.618", color: "#E91E63" },
+    { on: false, value: "2.618", color: "#673AB7" },
+    { on: false, value: "4.236", color: "#3F51B5" },
+  ];
+}
+
+function v9FibTlLevelsLookLikeSpeedFan(fibLevels) {
+  if (!Array.isArray(fibLevels) || !fibLevels.length) return false;
+  const vals = fibLevels
+    .map((l) => parseFloat(l && l.value))
+    .filter((n) => Number.isFinite(n));
+  return vals.includes(0.75) || vals.includes(0.25);
+}
+
+function v9ResolveTrendFibTimeLevelsForDrawing(d, tlStyle) {
+  if (Array.isArray(tlStyle?.fibLevels) && tlStyle.fibLevels.length && !v9FibTlLevelsLookLikeSpeedFan(tlStyle.fibLevels)) {
+    return tlStyle.fibLevels;
+  }
+  const fromDrawing = v9FibSpeedFanLevelsChartToTl(d.levels);
+  if (fromDrawing && fromDrawing.length && !v9FibTlLevelsLookLikeSpeedFan(fromDrawing)) {
+    return fromDrawing;
+  }
+  return v9TrendFibTimeDefaultLevelsTl();
+}
+
 function v9IsTrendFibTimeType(t) {
   return t === "trend-fib-time";
 }
@@ -2063,7 +2143,7 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
       ? ""
       : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType] !== undefined
         ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibTimeTrendType]
-        : "");
+        : "6,6");
   const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
   const trendW =
     parseInt(String(tlStyle.fibTimeTrendWidth), 10) ||
@@ -2071,7 +2151,7 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
     1;
 
   d.levels = v9TlFibSpeedFanLevelsToChart(
-    tlStyle.fibLevels,
+    v9ResolveTrendFibTimeLevelsForDrawing(d, tlStyle),
     tlStyle.fibLineType,
     tlStyle.fibLineWidth,
   );
@@ -3472,6 +3552,21 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
       savedLevels && savedLevels.length
         ? v9FibTzLevelsChartToTl(savedLevels)
         : v9FibTzDefaultLevelsTl();
+  }
+  if (v9IsTrendFibTimeType(legacy)) {
+    const savedLevels = Array.isArray(saved.levels)
+      ? saved.levels
+      : Array.isArray(styleForPatch.levels)
+        ? styleForPatch.levels
+        : null;
+    out.fibLevels =
+      savedLevels && savedLevels.length && !v9FibTlLevelsLookLikeSpeedFan(v9FibSpeedFanLevelsChartToTl(savedLevels))
+        ? v9FibSpeedFanLevelsChartToTl(savedLevels)
+        : v9TrendFibTimeDefaultLevelsTl();
+    out.fibTimeTrendType = out.fibTimeTrendType || "dashed";
+    out.fibTimeTrendWidth = out.fibTimeTrendWidth || "1";
+    out.fibBackground = out.fibBackground !== false;
+    out.fibBgOpacity = out.fibBgOpacity != null ? out.fibBgOpacity : "0.12";
   }
   return out;
 }

@@ -32,6 +32,10 @@ class FibChannelTool extends BaseDrawing {
             : defaultLevels;
     }
 
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchFibChannel(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -176,6 +180,7 @@ class FibChannelTool extends BaseDrawing {
                     const a1 = getSegment(x1 + nx * off1, y1 + ny * off1, x2 + nx * off1, y2 + ny * off1);
                     const a2 = getSegment(x1 + nx * off2, y1 + ny * off2, x2 + nx * off2, y2 + ny * off2);
                     this.group.insert('path', ':first-child')
+                        .attr('data-fib-zone-idx', i)
                         .attr('d', `M ${a1.x1},${a1.y1} L ${a1.x2},${a1.y2} L ${a2.x2},${a2.y2} L ${a2.x1},${a2.y1} Z`)
                         .attr('fill', zoneLevels[i].color)
                         .attr('opacity', zoneOpacity)
@@ -213,6 +218,7 @@ class FibChannelTool extends BaseDrawing {
                 // Hit area (solid, nearly invisible) so dashed lines are easy to click
                 this.group.append('line')
                     .attr('class', 'fib-level-hit')
+                    .attr('data-fib-channel-level', lvl)
                     .attr('x1', seg.x1)
                     .attr('y1', seg.y1)
                     .attr('x2', seg.x2)
@@ -225,6 +231,7 @@ class FibChannelTool extends BaseDrawing {
                     .style('cursor', 'move');
 
                 this.group.append('line')
+                    .attr('data-fib-channel-level', lvl)
                     .attr('x1', seg.x1)
                     .attr('y1', seg.y1)
                     .attr('x2', seg.x2)
@@ -247,6 +254,7 @@ class FibChannelTool extends BaseDrawing {
                 const labelText = `${baseLabel}${priceText}`;
 
                 this.group.append('text')
+                    .attr('data-fib-channel-label', lvl)
                     .attr('x', seg.x2 + 5)
                     .attr('y', seg.y2 + 4)
                     .attr('fill', color)
@@ -327,6 +335,10 @@ class FibTimeZoneTool extends BaseDrawing {
         this.style.fibNumbers = this.levels;
     }
 
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchFibTimeZone(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -360,6 +372,7 @@ class FibTimeZoneTool extends BaseDrawing {
 
         // Anchor segment (TradingView-like)
         this.group.append('line')
+            .attr('class', 'fib-tz-anchor')
             .attr('x1', x1).attr('y1', y1)
             .attr('x2', x2).attr('y2', y2)
             .attr('stroke', '#787b86')
@@ -392,7 +405,8 @@ class FibTimeZoneTool extends BaseDrawing {
 
                 // Hit area (solid, nearly invisible) so verticals are easy to click
                 this.group.append('line')
-                    .attr('class', 'fib-level-hit')
+                    .attr('class', 'fib-level-hit fib-tz-vertical')
+                    .attr('data-fib-tz', fib)
                     .attr('x1', x).attr('y1', 0)
                     .attr('x2', x).attr('y2', chartHeight)
                     .attr('stroke', 'rgba(255,255,255,0.001)')
@@ -403,6 +417,8 @@ class FibTimeZoneTool extends BaseDrawing {
                     .style('cursor', 'move');
 
                 this.group.append('line')
+                    .attr('class', 'fib-tz-vertical')
+                    .attr('data-fib-tz', fib)
                     .attr('x1', x).attr('y1', 0)
                     .attr('x2', x).attr('y2', chartHeight)
                     .attr('stroke', color)
@@ -413,6 +429,8 @@ class FibTimeZoneTool extends BaseDrawing {
                     .style('cursor', 'move');
 
                 this.group.append('text')
+                    .attr('class', 'fib-tz-label')
+                    .attr('data-fib-tz', fib)
                     .attr('x', x + 3)
                     .attr('y', 15)
                     .attr('fill', color)

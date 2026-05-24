@@ -39,6 +39,10 @@ class FibonacciRetracementTool extends BaseDrawing {
         }));
     }
 
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchTwoPointHorizontalFib(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -133,6 +137,7 @@ class FibonacciRetracementTool extends BaseDrawing {
                 const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
                 if (!Number.isFinite(nextY)) continue;
                 this.group.insert('rect', ':first-child')
+                    .attr('data-fib-zone', level.value)
                     .attr('x', fibX1)
                     .attr('y', Math.min(yAtLevel, nextY))
                     .attr('width', fibWidth)
@@ -187,6 +192,7 @@ class FibonacciRetracementTool extends BaseDrawing {
 
             this.group.append('text')
                 .attr('class', 'non-interactive-text')
+                .attr('data-fib-label', level.value)
                 .attr('x', textX)
                 .attr('y', textY)
                 .attr('text-anchor', 'start')
@@ -290,6 +296,10 @@ class FibonacciExtensionTool extends BaseDrawing {
         }));
     }
 
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchTwoPointHorizontalFib(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -383,6 +393,7 @@ class FibonacciExtensionTool extends BaseDrawing {
                 const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
                 if (!Number.isFinite(nextY)) continue;
                 this.group.insert('rect', ':first-child')
+                    .attr('data-fib-zone', level.value)
                     .attr('x', fibX1)
                     .attr('y', Math.min(yAtLevel, nextY))
                     .attr('width', fibWidth)
@@ -436,6 +447,7 @@ class FibonacciExtensionTool extends BaseDrawing {
 
             this.group.append('text')
                 .attr('class', 'non-interactive-text')
+                .attr('data-fib-label', level.value)
                 .attr('x', textX)
                 .attr('y', textY)
                 .attr('text-anchor', 'start')

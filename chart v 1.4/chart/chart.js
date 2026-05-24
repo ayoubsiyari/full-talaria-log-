@@ -596,6 +596,8 @@ class Chart {
         /** Native resolution of rawData from the last server fetch (used for client-resample gate) */
         this._nativeRawFetchTf = null;
         this._sessionStateSaveDebounceMs = 4000;
+        /** Faster cloud sync when only shapes changed (not journal/replay). */
+        this._sessionDrawingsSaveDebounceMs = 1200;
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
         this._replaySessionStateLastPatchAt = 0;
@@ -4879,8 +4881,18 @@ class Chart {
     }
 
     _armSessionStateSaveDebounce() {
-        const debounceMs =
+        const patch = this._pendingSessionStatePatch;
+        let debounceMs =
             Number(this._sessionStateSaveDebounceMs) > 0 ? Number(this._sessionStateSaveDebounceMs) : 4000;
+        if (patch && typeof patch === 'object') {
+            const keys = Object.keys(patch);
+            const drawingsOnly = keys.length === 1 && keys[0] === 'drawings';
+            if (drawingsOnly) {
+                debounceMs = Number(this._sessionDrawingsSaveDebounceMs) > 0
+                    ? Number(this._sessionDrawingsSaveDebounceMs)
+                    : 1200;
+            }
+        }
         if (this._sessionStateSaveTimer) {
             clearTimeout(this._sessionStateSaveTimer);
         }
@@ -25283,7 +25295,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a81';
+    window.TALARIA_CHART_BUILD = '20260522a82';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

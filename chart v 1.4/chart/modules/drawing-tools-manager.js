@@ -2301,6 +2301,7 @@ class DrawingToolsManager {
             this.isCustomHandleDrag ||
             this.isCustomHandleDragging ||
             this.isDraggingFirstTwo ||
+            this._freehandHandleWholeMove ||
             (this.drawingState && this.drawingState.isDrawing)
         );
     }
@@ -4483,6 +4484,11 @@ class DrawingToolsManager {
         return toolType === 'volume-profile' || toolType === 'fixed-range-volume-profile';
     }
 
+    /** Brush/highlighter/path store dense fractional bar indices — avoid timestamp resync on every render. */
+    isFreehandStrokeTool(toolType) {
+        return toolType === 'brush' || toolType === 'highlighter' || toolType === 'path';
+    }
+
     clampPointToCandleRange(point, toolType = this.currentTool) {
         if (!point || !this.isCandleBoundTool(toolType) || !Number.isFinite(point.x)) {
             return point;
@@ -4664,6 +4670,7 @@ class DrawingToolsManager {
 
             const tempDrawing = new toolInfo.class(previewPoints, styleOverrides);
             this.applySavedStyle(tempDrawing);
+            this._applyArmedStyleExtras(tempDrawing);
             
             // Pass isPreview flag for regression trend to show simple line while dragging
             const isPreview = this.drawingState.isDrawing;
@@ -5309,8 +5316,11 @@ class DrawingToolsManager {
             isPreview: false
         };
 
-        // Render with current scales AND chart instance for accurate pixel calculation
-        drawing.render(this._getDrawingsContentGroup(), scalesPayload, renderOpts);
+        const patched = useHotReuse && this._tryPatchDrawingPanZoomGeometry(drawing, scalesPayload);
+        if (!patched) {
+            // Render with current scales AND chart instance for accurate pixel calculation
+            drawing.render(this._getDrawingsContentGroup(), scalesPayload, renderOpts);
+        }
 
         if (useHotReuse && typeof drawing.updateHandlePositions === 'function') {
             try { drawing.updateHandlePositions(scalesPayload); } catch (_) {}
@@ -6408,6 +6418,9 @@ class DrawingToolsManager {
                             drawing,
                             startPoints: drawing.points.map(p => ({ ...p })),
                             startDataPoint: self.getDataPoint(event.sourceEvent, drawing.type),
+                            startTransform: self._parseGroupTranslate(
+                                drawing.group ? drawing.group.attr('transform') : null
+                            ),
                             beforeState: self.history ? self.history.captureState(drawing) : null
                         };
                         const cvs = (self.chart && self.chart.canvas) || document.getElementById('chartCanvas');
@@ -6446,20 +6459,16 @@ class DrawingToolsManager {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
                     const fm = self._freehandHandleWholeMove;
                     if (fm && fm.drawing === drawing) {
-                        const cur = self.getDataPoint(event.sourceEvent, drawing.type);
-                        const rawDx = cur.x - fm.startDataPoint.x;
-                        const rawDy = cur.y - fm.startDataPoint.y;
-                        const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(drawing, rawDx, rawDy);
-                        drawing.points = fm.startPoints.map(p => ({
-                            x: p.x + constrainedDx,
-                            y: p.y + constrainedDy
-                        }));
-                        self.clampDrawingPointsToCandleRange(drawing);
-                        self.renderDrawing(drawing, { skipAxisHighlights: true, hotPath: true, skipInteraction: true });
-                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                            drawing.showAxisHighlights();
-                        }
-                        self._broadcastLiveEditUpdate(drawing);
+                        self._applyDrawingTransformDrag(
+                            [{
+                                drawing,
+                                points: fm.startPoints,
+                                startTransform: fm.startTransform
+                            }],
+                            fm.startDataPoint,
+                            event.sourceEvent,
+                            drawing.type
+                        );
                         return;
                     }
                     // Check if we're in custom handle drag mode
@@ -6478,6 +6487,11 @@ class DrawingToolsManager {
                 .on('end', function(event) {
                     const fm = self._freehandHandleWholeMove;
                     if (fm && fm.drawing === drawing) {
+                        self._commitDrawingTransformDrag([{
+                            drawing,
+                            points: fm.startPoints,
+                            startTransform: fm.startTransform
+                        }]);
                         if (self.history && fm.beforeState) {
                             const moved = drawing.points.some((p, i) =>
                                 p.x !== fm.startPoints[i].x || p.y !== fm.startPoints[i].y
@@ -6489,6 +6503,7 @@ class DrawingToolsManager {
                         if (typeof drawing.recalculateTimestamps === 'function') {
                             drawing.recalculateTimestamps();
                         }
+                        self.renderDrawing(drawing);
                         self.persistPositionToolDefaults(drawing);
                         self.saveDrawings();
                         const di = self.drawings.indexOf(drawing);
@@ -7792,7 +7807,10 @@ class DrawingToolsManager {
                             drawing.group.attr('transform', null);
                         }
                     }
-                    drawing.render(this._getDrawingsContentGroup(), scales, renderOpts);
+                    const patched = this._tryPatchDrawingPanZoomGeometry(drawing, scales);
+                    if (!patched) {
+                        drawing.render(this._getDrawingsContentGroup(), scales, renderOpts);
+                    }
                     if (typeof drawing.updateHandlePositions === 'function') {
                         try { drawing.updateHandlePositions(scales); } catch (_) {}
                     }
@@ -8075,8 +8093,11 @@ class DrawingToolsManager {
             }
         }
         
-        // 3. Save to API for cross-device sync (background, debounced)
-        if (!isUndoRedo && !skipRemote) {
+        // 3. Legacy cross-device API — skip during backtest; session PATCH is the cloud store.
+        const activeSessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+            ? this.chart.getActiveTradingSessionId()
+            : null;
+        if (!isUndoRedo && !skipRemote && !activeSessionId) {
             try {
                 this.scheduleSaveToAPI(data);
             } catch (error) {
@@ -8104,9 +8125,10 @@ class DrawingToolsManager {
         });
 
         if (!isUndoRedo && !skipRemote) {
+            const hasSession = !!activeSessionId;
             this._drawingsPendingTargets = {
-                session: !!(this.chart && typeof this.chart.getActiveTradingSessionId === 'function' && this.chart.getActiveTradingSessionId()),
-                api: !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'))
+                session: hasSession,
+                api: !hasSession && !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')),
             };
             this._syncDrawingsSaveUiFromTargets();
         }
@@ -8676,8 +8698,18 @@ class DrawingToolsManager {
      */
     _resolveDrawingPointsBeforeRender(drawing) {
         if (!drawing || this._isDrawingEditActive()) return;
+        if (this._isChartViewPanning()) return;
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         this._syncDrawingPointsFromTimestamps(drawing);
+    }
+
+    _tryPatchDrawingPanZoomGeometry(drawing, scales) {
+        if (!drawing || !scales || typeof drawing.patchPanZoomGeometry !== 'function') return false;
+        try {
+            return !!drawing.patchPanZoomGeometry(scales);
+        } catch (_) {
+            return false;
+        }
     }
 
     _areDrawingAnchorsVisible(minIdx, maxIdx, padBars = 8) {
@@ -8827,8 +8859,12 @@ class DrawingToolsManager {
     /**
      * Re-derive index points from stored timestamps (TF switch / load only — not every render).
      */
-    _syncDrawingPointsFromTimestamps(drawing) {
+    _syncDrawingPointsFromTimestamps(drawing, options = {}) {
         if (!drawing || !drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+            return;
+        }
+        const forceResync = options.forceResync === true;
+        if (this.isFreehandStrokeTool(drawing.type) && !forceResync) {
             return;
         }
         if (this._isDrawingEditActive()) {
@@ -8838,7 +8874,7 @@ class DrawingToolsManager {
         if (!conversionData.length || typeof CoordinateUtils === 'undefined') {
             return;
         }
-        const tsOpts = (this.chart?.replaySystem?.isActive)
+        const tsOpts = (this.chart?.replaySystem?.isActive && !this.isFreehandStrokeTool(drawing.type))
             ? { replayClampToLastBar: true }
             : null;
         drawing.points = CoordinateUtils.pointsFromTimestamps(
@@ -8871,7 +8907,7 @@ class DrawingToolsManager {
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return;
             }
-            this._syncDrawingPointsFromTimestamps(drawing);
+            this._syncDrawingPointsFromTimestamps(drawing, { forceResync: true });
         });
 
         this._ensureDrawingsVisibleAfterTfRefresh();
@@ -8880,7 +8916,7 @@ class DrawingToolsManager {
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
                 return;
             }
-            this._syncDrawingPointsFromTimestamps(drawing);
+            this._syncDrawingPointsFromTimestamps(drawing, { forceResync: true });
 
             if (drawing.group) {
                 drawing.group.remove();
