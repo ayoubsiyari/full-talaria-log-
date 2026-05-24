@@ -652,7 +652,6 @@ class PanelManager {
                 const pc = this._getPanelChartInstance(panel);
                 if (!pc) return;
                 panel.timeframe = timeframe;
-                pc.currentTimeframe = timeframe;
                 // Prevent ping-pong recursion: setTimeframe() on follower panels
                 // must not re-enter panelManager.syncInterval().
                 pc._suppressIntervalSync = true;
