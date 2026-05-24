@@ -381,7 +381,6 @@ class RectangleTool extends BaseDrawing {
         }
 
         const fillPaint = shapeBackgroundFill(this.style, this.style.fill);
-        const borderOn = shapeBorderVisible(this.style);
 
         this.group.append('rect')
             .attr('class', 'shape-fill')
@@ -716,7 +715,6 @@ class EllipseTool extends BaseDrawing {
         const ry = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y)) / 2;
 
         const fillPaint = shapeBackgroundFill(this.style, this.style.fill);
-        const borderOn = shapeBorderVisible(this.style);
 
         this.group.append('ellipse')
             .attr('class', 'shape-fill')

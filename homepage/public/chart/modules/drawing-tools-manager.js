@@ -2508,44 +2508,8 @@ class DrawingToolsManager {
                     return;
                 }
 
-                const lineTypeSet = new Set([
-                    'trendline',
-                    'horizontal',
-                    'vertical',
-                    'ray',
-                    'horizontal-ray',
-                    'extended-line',
-                    'cross-line',
-                    'arrow',
-                    'arrow-marker',
-                    'arrow-mark-up',
-                    'arrow-mark-down',
-                    'curve',
-                    'double-curve',
-                    'polyline',
-                    'path'
-                ]);
-
-                const isFibLikeType = (type) => !!type && (
-                    type.startsWith('fibonacci-') ||
-                    type.startsWith('fib-') ||
-                    type.startsWith('trend-fib-') ||
-                    type === 'pitchfork' ||
-                    type === 'pitchfan'
-                );
-
-                const isPatternLikeType = (type) => !!type && (
-                    type.includes('pattern') ||
-                    type.startsWith('elliott-') ||
-                    type === 'head-shoulders' ||
-                    type === 'three-drives' ||
-                    type === 'cyclic-lines' ||
-                    type === 'time-cycles' ||
-                    type === 'sine-line'
-                );
-
                 const allowsDirectMoveFromHitZone = (type) => (
-                    lineTypeSet.has(type) || isFibLikeType(type) || isPatternLikeType(type)
+                    typeof isLineLikeDrawingType === 'function' && isLineLikeDrawingType(type)
                 );
 
                 const shapeTypeSet = new Set([
@@ -9884,26 +9848,10 @@ class DrawingToolsManager {
                 }
             }
 
-            const isFibLikeType = !!drawing.type && (
-                drawing.type.startsWith('fibonacci-') ||
-                drawing.type.startsWith('fib-') ||
-                drawing.type.startsWith('trend-fib-') ||
-                drawing.type === 'pitchfork' ||
-                drawing.type === 'pitchfan'
-            );
-
-            const isPatternLikeType = !!drawing.type && (
-                drawing.type.includes('pattern') ||
-                drawing.type.startsWith('elliott-') ||
-                drawing.type === 'head-shoulders' ||
-                drawing.type === 'three-drives' ||
-                drawing.type === 'cyclic-lines' ||
-                drawing.type === 'time-cycles' ||
-                drawing.type === 'sine-line'
-            );
-
-            const hitTolerance = (isFibLikeType || isPatternLikeType) ? 18 : baseHitTolerance;
-            const minLineHitTolerance = (isFibLikeType || isPatternLikeType) ? 14 : 0;
+            const strokeTolerances = typeof getDrawingStrokeHitTolerances === 'function'
+                ? getDrawingStrokeHitTolerances(drawing.type)
+                : { hitTolerance: 12, minLineHitTolerance: 0, lineHitTolerance: 8 };
+            const { hitTolerance, minLineHitTolerance } = strokeTolerances;
 
             // Two-point line tools: endpoint proximity (trend line handles sit on anchors, not extended stroke)
             if ((drawing.type === 'trendline' || drawing.type === 'ray' || drawing.type === 'arrow'
@@ -10217,102 +10165,16 @@ class DrawingToolsManager {
                         }
                     }
 
-                    const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
-                    const isHitArea = elementSel.classed('shape-border-hit');
+                    const { isHit, distance: hitDistance } = this._measureElementStrokeHit(
+                        element,
+                        elementSel,
+                        mouseX,
+                        mouseY,
+                        point,
+                        { hitTolerance, minLineHitTolerance }
+                    );
 
-                    const pointerEvents = elementSel.style('pointer-events') || elementSel.attr('pointer-events') || '';
-                    const isTransparentStrokeHitArea = (stroke === 'transparent' || stroke === 'none' || !stroke) && pointerEvents === 'stroke';
-
-                    if (!stroke || stroke === 'none' || stroke === 'transparent') {
-                        if (!isHitArea && !isTransparentStrokeHitArea) continue;
-                    }
-                    
-                    // Skip fill-only elements
-                    const isFillElement = d3.select(element).classed('shape-fill') || 
-                                          d3.select(element).classed('upper-fill') || 
-                                          d3.select(element).classed('lower-fill');
-                    if (isFillElement) continue;
-                    
-                    let isStrokeHit = false;
-                    let hitDistance = Infinity;
-
-                    // Prefer native stroke hit-testing so hover matches selectable zone exactly
-                    if (typeof element.isPointInStroke === 'function') {
-                        try {
-                            isStrokeHit = element.isPointInStroke(point);
-                        } catch (_e) { isStrokeHit = false; }
-                        if (isStrokeHit) hitDistance = 0;
-                    }
-                    
-                    // For lines, always check geometric distance as fallback
-                    // (isPointInStroke can fail for transparent strokes in some browsers)
-                    if (!isStrokeHit && element.tagName === 'line') {
-                        const x1 = parseFloat(element.getAttribute('x1'));
-                        const y1 = parseFloat(element.getAttribute('y1'));
-                        const x2 = parseFloat(element.getAttribute('x2'));
-                        const y2 = parseFloat(element.getAttribute('y2'));
-                        
-                        if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) continue;
-                        
-                        const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
-                        const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        // For invisible hit-area lines, use the full stroke-width as tolerance
-                        const effectiveTolerance = isHitArea
-                            ? Math.max((strokeWidth / 2) + 0.5, 12)
-                            : Math.max((strokeWidth / 2) + 0.5, minLineHitTolerance);
-                        
-                        isStrokeHit = distance <= effectiveTolerance;
-                        if (isStrokeHit) hitDistance = distance;
-                    }
-                    // Rect/circle/ellipse: compute border distance explicitly for stable overlap priority
-                    else if (!isStrokeHit && element.tagName === 'rect') {
-                        const rx = parseFloat(element.getAttribute('x')) || 0;
-                        const ry = parseFloat(element.getAttribute('y')) || 0;
-                        const rw = parseFloat(element.getAttribute('width')) || 0;
-                        const rh = parseFloat(element.getAttribute('height')) || 0;
-                        const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
-                        const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
-                        const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
-                        const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
-                        const distRight = this.pointToLineDistance(mouseX, mouseY, rx + rw, ry, rx + rw, ry + rh);
-                        const minDist = Math.min(distTop, distBottom, distLeft, distRight);
-                        isStrokeHit = minDist <= effectiveTolerance;
-                        if (isStrokeHit) hitDistance = minDist;
-                    }
-                    else if (!isStrokeHit && element.tagName === 'circle') {
-                        const cx = parseFloat(element.getAttribute('cx')) || 0;
-                        const cy = parseFloat(element.getAttribute('cy')) || 0;
-                        const r = parseFloat(element.getAttribute('r')) || 0;
-                        const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
-                        if (r > 0) {
-                            const dx = mouseX - cx;
-                            const dy = mouseY - cy;
-                            const dist = Math.sqrt(dx * dx + dy * dy);
-                            const distFromBorder = Math.abs(dist - r);
-                            isStrokeHit = distFromBorder <= effectiveTolerance;
-                            if (isStrokeHit) hitDistance = distFromBorder;
-                        }
-                    }
-                    else if (!isStrokeHit && element.tagName === 'ellipse') {
-                        const cx = parseFloat(element.getAttribute('cx')) || 0;
-                        const cy = parseFloat(element.getAttribute('cy')) || 0;
-                        const erx = parseFloat(element.getAttribute('rx')) || 0;
-                        const ery = parseFloat(element.getAttribute('ry')) || 0;
-                        const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max((strokeWidth / 2) + 0.5, 10);
-                        if (erx > 0 && ery > 0) {
-                            const ndx = (mouseX - cx) / erx;
-                            const ndy = (mouseY - cy) / ery;
-                            const normalizedDist = Math.sqrt(ndx * ndx + ndy * ndy);
-                            const distFromBorder = Math.abs(normalizedDist - 1) * Math.min(erx, ery);
-                            isStrokeHit = distFromBorder <= effectiveTolerance;
-                            if (isStrokeHit) hitDistance = distFromBorder;
-                        }
-                    }
-                    
-                    if (isStrokeHit) {
+                    if (isHit) {
                         bestDistance = Math.min(bestDistance, hitDistance);
                     }
                 }
@@ -10329,44 +10191,8 @@ class DrawingToolsManager {
         // Sort by closest border first; if tied, prefer topmost (higher z)
         const hits = Array.from(hitsById.values());
 
-        const lineTypeSet = new Set([
-            'trendline',
-            'horizontal',
-            'vertical',
-            'ray',
-            'horizontal-ray',
-            'extended-line',
-            'cross-line',
-            'arrow',
-            'arrow-marker',
-            'arrow-mark-up',
-            'arrow-mark-down',
-            'curve',
-            'double-curve',
-            'polyline',
-            'path'
-        ]);
-
-        const isFibLikeDrawingType = (type) => !!type && (
-            type.startsWith('fibonacci-') ||
-            type.startsWith('fib-') ||
-            type.startsWith('trend-fib-') ||
-            type === 'pitchfork' ||
-            type === 'pitchfan'
-        );
-
-        const isPatternLikeDrawingType = (type) => !!type && (
-            type.includes('pattern') ||
-            type.startsWith('elliott-') ||
-            type === 'head-shoulders' ||
-            type === 'three-drives' ||
-            type === 'cyclic-lines' ||
-            type === 'time-cycles' ||
-            type === 'sine-line'
-        );
-
-        const isLineLikeDrawingType = (type) => (
-            lineTypeSet.has(type) || isFibLikeDrawingType(type) || isPatternLikeDrawingType(type)
+        const lineLikeType = (type) => (
+            typeof isLineLikeDrawingType === 'function' && isLineLikeDrawingType(type)
         );
 
         // One ordering for hit list + click selection: nearest stroke, then line tools over fills/blobs on ties,
@@ -10375,8 +10201,8 @@ class DrawingToolsManager {
         hits.sort((a, b) => {
             const aType = a.drawing && a.drawing.type;
             const bType = b.drawing && b.drawing.type;
-            const aIsLine = isLineLikeDrawingType(aType);
-            const bIsLine = isLineLikeDrawingType(bType);
+            const aIsLine = lineLikeType(aType);
+            const bIsLine = lineLikeType(bType);
 
             if (a.distance !== b.distance) return a.distance - b.distance;
 
@@ -10397,16 +10223,19 @@ class DrawingToolsManager {
      * @returns {Array} - Array of line info objects { drawing, element, drawingId, type, lineIndex }
      */
     findLinesAtPoint(mouseX, mouseY) {
-        const hitTolerance = 8; // pixels - how close to a line to consider it a hit
+        const defaultLineHitTolerance = 8;
         const linesAtPoint = [];
+        const point = this.svg.node().createSVGPoint();
+        point.x = mouseX;
+        point.y = mouseY;
         
         for (const drawing of this.drawings) {
             if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
 
-            const drawingType = drawing.type || '';
-            const isFibLikeDrawing = drawingType.startsWith('fibonacci-') || drawingType.startsWith('fib-') || drawingType.startsWith('trend-fib-') || drawingType === 'pitchfork' || drawingType === 'pitchfan';
-            const isPatternLikeDrawing = drawingType.includes('pattern') || drawingType.startsWith('elliott-') || drawingType === 'head-shoulders' || drawingType === 'three-drives' || drawingType === 'cyclic-lines' || drawingType === 'time-cycles' || drawingType === 'sine-line';
-            const lineHitTolerance = (isFibLikeDrawing || isPatternLikeDrawing) ? 14 : hitTolerance;
+            const strokeTolerances = typeof getDrawingStrokeHitTolerances === 'function'
+                ? getDrawingStrokeHitTolerances(drawing.type)
+                : { lineHitTolerance: defaultLineHitTolerance };
+            const lineHitTolerance = strokeTolerances.lineHitTolerance ?? defaultLineHitTolerance;
             
             try {
                 // Get all line elements and paths with strokes (not fills)
@@ -10425,49 +10254,33 @@ class DrawingToolsManager {
                     }
 
                     const elementSel = d3.select(element);
-                    const opacity = elementSel.style('opacity');
-                    if (opacity === '0') {
-                        lineIndex++;
-                        continue;
-                    }
-
                     const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
                     if (stroke === 'transparent' || stroke === 'none') {
                         lineIndex++;
                         continue;
                     }
-                    
-                    const x1 = parseFloat(element.getAttribute('x1'));
-                    const y1 = parseFloat(element.getAttribute('y1'));
-                    const x2 = parseFloat(element.getAttribute('x2'));
-                    const y2 = parseFloat(element.getAttribute('y2'));
-                    
-                    if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
-                        lineIndex++;
-                        continue;
-                    }
-                    
-                    // Check if mouseX is within the line's X range (for horizontal-ish lines)
-                    const minX = Math.min(x1, x2);
-                    const maxX = Math.max(x1, x2);
-                    const isWithinXRange = mouseX >= minX - lineHitTolerance && mouseX <= maxX + lineHitTolerance;
-                    
-                    if (isWithinXRange) {
-                        const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
-                        const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max(lineHitTolerance, strokeWidth * 2);
-                        
-                        if (distance <= effectiveTolerance) {
-                            linesAtPoint.push({
-                                drawing: drawing,
-                                element: element,
-                                drawingId: drawing.id,
-                                type: 'line',
-                                lineIndex: lineIndex,
-                                distance: distance,
-                                y: (y1 + y2) / 2 // Store Y position for sorting
-                            });
-                        }
+
+                    const { isHit, distance } = this._measureElementStrokeHit(
+                        element,
+                        elementSel,
+                        mouseX,
+                        mouseY,
+                        point,
+                        { lineHitTolerance, requireLineXRange: true }
+                    );
+
+                    if (isHit) {
+                        const y1 = parseFloat(element.getAttribute('y1'));
+                        const y2 = parseFloat(element.getAttribute('y2'));
+                        linesAtPoint.push({
+                            drawing: drawing,
+                            element: element,
+                            drawingId: drawing.id,
+                            type: 'line',
+                            lineIndex: lineIndex,
+                            distance: distance,
+                            y: (y1 + y2) / 2
+                        });
                     }
                     lineIndex++;
                 }
@@ -10630,87 +10443,17 @@ class DrawingToolsManager {
                 const shapeElements = drawing.group.selectAll('rect, circle, ellipse').nodes();
                 let shapeIndex = 0;
                 for (const element of shapeElements) {
-                    const opacity = d3.select(element).style('opacity');
-                    if (opacity === '0') {
-                        shapeIndex++;
-                        continue;
-                    }
-                    
-                    const stroke = d3.select(element).attr('stroke');
-                    if (!stroke || stroke === 'transparent' || stroke === 'none') {
-                        shapeIndex++;
-                        continue;
-                    }
-                    
-                    // Skip fill elements
-                    const isFillElement = d3.select(element).classed('shape-fill') || 
-                                          d3.select(element).classed('upper-fill') || 
-                                          d3.select(element).classed('lower-fill');
-                    if (isFillElement) {
-                        shapeIndex++;
-                        continue;
-                    }
-                    
-                    const strokeWidth = parseFloat(d3.select(element).attr('stroke-width')) || 2;
-                    const isShapeBorderHit = element.classList && element.classList.contains('shape-border-hit');
-                    const effectiveTolerance = isShapeBorderHit
-                        ? Math.max(hitTolerance, strokeWidth / 2)
-                        : Math.max(hitTolerance, strokeWidth * 2);
-                    let isOnBorder = false;
-                    
-                    // For rect, manually check distance to each edge
-                    if (element.tagName === 'rect') {
-                        const rx = parseFloat(element.getAttribute('x')) || 0;
-                        const ry = parseFloat(element.getAttribute('y')) || 0;
-                        const rw = parseFloat(element.getAttribute('width')) || 0;
-                        const rh = parseFloat(element.getAttribute('height')) || 0;
-                        
-                        // Check distance to each of the 4 edges
-                        const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
-                        const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
-                        const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
-                        const distRight = this.pointToLineDistance(mouseX, mouseY, rx + rw, ry, rx + rw, ry + rh);
-                        
-                        const minDist = Math.min(distTop, distBottom, distLeft, distRight);
-                        isOnBorder = minDist <= effectiveTolerance;
-                    }
-                    // For ellipse, manually check distance to ellipse border
-                    else if (element.tagName === 'ellipse') {
-                        const cx = parseFloat(element.getAttribute('cx')) || 0;
-                        const cy = parseFloat(element.getAttribute('cy')) || 0;
-                        const erx = parseFloat(element.getAttribute('rx')) || 0;
-                        const ery = parseFloat(element.getAttribute('ry')) || 0;
-                        
-                        if (erx > 0 && ery > 0) {
-                            const maxTol = Math.max(0.5, Math.min(erx, ery) - 1);
-                            const tol = Math.min(effectiveTolerance, maxTol);
-                            // Normalize point to unit circle space
-                            const dx = (mouseX - cx) / erx;
-                            const dy = (mouseY - cy) / ery;
-                            const normalizedDist = Math.sqrt(dx * dx + dy * dy);
-                            // Point is on border if normalized distance is close to 1
-                            const distFromBorder = Math.abs(normalizedDist - 1) * Math.min(erx, ery);
-                            isOnBorder = distFromBorder <= tol;
-                        }
-                    }
-                    // For circle, manually check distance to circle border
-                    else if (element.tagName === 'circle') {
-                        const cx = parseFloat(element.getAttribute('cx')) || 0;
-                        const cy = parseFloat(element.getAttribute('cy')) || 0;
-                        const cr = parseFloat(element.getAttribute('r')) || 0;
-                        
-                        if (cr > 0) {
-                            const maxTol = Math.max(0.5, cr - 1);
-                            const tol = Math.min(effectiveTolerance, maxTol);
-                            const dx = mouseX - cx;
-                            const dy = mouseY - cy;
-                            const dist = Math.sqrt(dx * dx + dy * dy);
-                            const distFromBorder = Math.abs(dist - cr);
-                            isOnBorder = distFromBorder <= tol;
-                        }
-                    }
-                    
-                    if (isOnBorder) {
+                    const elementSel = d3.select(element);
+                    const { isHit } = this._measureElementStrokeHit(
+                        element,
+                        elementSel,
+                        mouseX,
+                        mouseY,
+                        point,
+                        { hitTolerance: lineHitTolerance, lineHitTolerance, requireLineXRange: true }
+                    );
+
+                    if (isHit) {
                         const bbox = element.getBBox();
                         linesAtPoint.push({
                             drawing: drawing,
@@ -10865,6 +10608,138 @@ class DrawingToolsManager {
         }
 
         return true;
+    }
+
+ 10870|    _distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh) {
+        const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
+        const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
+        const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
+        const distRight = this.pointToLineDistance(mouseX, mouseY, rx + rw, ry, rx + rw, ry + rh);
+        return Math.min(distTop, distBottom, distLeft, distRight);
+    }
+
+    _distanceToCircleBorder(mouseX, mouseY, cx, cy, r) {
+        const dx = mouseX - cx;
+        const dy = mouseY - cy;
+        return Math.abs(Math.sqrt(dx * dx + dy * dy) - r);
+    }
+
+    _distanceToEllipseBorder(mouseX, mouseY, cx, cy, erx, ery) {
+        const ndx = (mouseX - cx) / erx;
+        const ndy = (mouseY - cy) / ery;
+        const normalizedDist = Math.sqrt(ndx * ndx + ndy * ndy);
+        return Math.abs(normalizedDist - 1) * Math.min(erx, ery);
+    }
+
+    /**
+     * Shared stroke hit test for SVG elements (lines, rects, circles, ellipses, paths).
+     * Used by findDrawingsAtPoint and findLinesAtPoint.
+     */
+    _measureElementStrokeHit(element, elementSel, mouseX, mouseY, point, options = {}) {
+        const {
+            hitTolerance = 12,
+            minLineHitTolerance = 0,
+            lineHitTolerance = 8,
+            requireLineXRange = false,
+            skipHitAreaPaths = false
+        } = options;
+
+        const opacity = elementSel.style('opacity');
+        if (opacity === '0') return { isHit: false, distance: Infinity };
+
+        const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
+        const isHitArea = elementSel.classed('shape-border-hit');
+        const pointerEvents = elementSel.style('pointer-events') || elementSel.attr('pointer-events') || '';
+        const isTransparentStrokeHitArea = (stroke === 'transparent' || stroke === 'none' || !stroke) && pointerEvents === 'stroke';
+
+        if (!stroke || stroke === 'none' || stroke === 'transparent') {
+            if (!isHitArea && !isTransparentStrokeHitArea) return { isHit: false, distance: Infinity };
+        }
+
+        const isFillElement = elementSel.classed('shape-fill')
+            || elementSel.classed('upper-fill')
+            || elementSel.classed('lower-fill');
+        if (isFillElement) return { isHit: false, distance: Infinity };
+
+        if (skipHitAreaPaths && isHitArea && element.tagName === 'path') {
+            return { isHit: false, distance: Infinity };
+        }
+
+        let isStrokeHit = false;
+        let hitDistance = Infinity;
+
+        if (typeof element.isPointInStroke === 'function') {
+            try {
+                isStrokeHit = element.isPointInStroke(point);
+            } catch (_e) {
+                isStrokeHit = false;
+            }
+            if (isStrokeHit) hitDistance = 0;
+        }
+
+        if (!isStrokeHit && element.tagName === 'line') {
+            const x1 = parseFloat(element.getAttribute('x1'));
+            const y1 = parseFloat(element.getAttribute('y1'));
+            const x2 = parseFloat(element.getAttribute('x2'));
+            const y2 = parseFloat(element.getAttribute('y2'));
+            if ([x1, y1, x2, y2].every(Number.isFinite)) {
+                if (requireLineXRange) {
+                    const minX = Math.min(x1, x2);
+                    const maxX = Math.max(x1, x2);
+                    if (mouseX < minX - lineHitTolerance || mouseX > maxX + lineHitTolerance) {
+                        return { isHit: false, distance: Infinity };
+                    }
+                }
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+                const effectiveTolerance = isHitArea
+                    ? Math.max((strokeWidth / 2) + 0.5, requireLineXRange ? lineHitTolerance : 12)
+                    : Math.max((strokeWidth / 2) + 0.5, requireLineXRange ? Math.max(lineHitTolerance, strokeWidth * 2) : minLineHitTolerance);
+                isStrokeHit = distance <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distance;
+            }
+        } else if (!isStrokeHit && element.tagName === 'rect') {
+            const rx = parseFloat(element.getAttribute('x')) || 0;
+            const ry = parseFloat(element.getAttribute('y')) || 0;
+            const rw = parseFloat(element.getAttribute('width')) || 0;
+            const rh = parseFloat(element.getAttribute('height')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.max(hitTolerance, strokeWidth / 2)
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            const minDist = this._distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh);
+            isStrokeHit = minDist <= effectiveTolerance;
+            if (isStrokeHit) hitDistance = minDist;
+        } else if (!isStrokeHit && element.tagName === 'circle') {
+            const cx = parseFloat(element.getAttribute('cx')) || 0;
+            const cy = parseFloat(element.getAttribute('cy')) || 0;
+            const r = parseFloat(element.getAttribute('r')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.min(Math.max(0.5, r - 1), Math.max(hitTolerance, strokeWidth / 2))
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            if (r > 0) {
+                const distFromBorder = this._distanceToCircleBorder(mouseX, mouseY, cx, cy, r);
+                isStrokeHit = distFromBorder <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distFromBorder;
+            }
+        } else if (!isStrokeHit && element.tagName === 'ellipse') {
+            const cx = parseFloat(element.getAttribute('cx')) || 0;
+            const cy = parseFloat(element.getAttribute('cy')) || 0;
+            const erx = parseFloat(element.getAttribute('rx')) || 0;
+            const ery = parseFloat(element.getAttribute('ry')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.min(Math.max(0.5, Math.min(erx, ery) - 1), Math.max(hitTolerance, strokeWidth / 2))
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            if (erx > 0 && ery > 0) {
+                const distFromBorder = this._distanceToEllipseBorder(mouseX, mouseY, cx, cy, erx, ery);
+                isStrokeHit = distFromBorder <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distFromBorder;
+            }
+        }
+
+        return { isHit: isStrokeHit, distance: hitDistance };
     }
 
     /**

@@ -53,6 +53,65 @@ const AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES = new Set([
     'arrow-mark-down'
 ]);
 
+/** Line tools that support direct move from stroke hit (plus fib/pattern families). */
+const DIRECT_MOVE_LINE_TYPE_SET = new Set([
+    'trendline',
+    'horizontal',
+    'vertical',
+    'ray',
+    'horizontal-ray',
+    'extended-line',
+    'cross-line',
+    'arrow',
+    'arrow-marker',
+    'arrow-mark-up',
+    'arrow-mark-down',
+    'curve',
+    'double-curve',
+    'polyline',
+    'path'
+]);
+
+const FIB_LIKE_DRAWING_TYPES_EXACT = new Set(['pitchfork', 'pitchfan']);
+
+const PATTERN_LIKE_DRAWING_TYPES_EXACT = new Set([
+    'head-shoulders',
+    'three-drives',
+    'cyclic-lines',
+    'time-cycles',
+    'sine-line'
+]);
+
+function isFibLikeDrawingType(type) {
+    if (!type) return false;
+    return type.startsWith('fibonacci-')
+        || type.startsWith('fib-')
+        || type.startsWith('trend-fib-')
+        || FIB_LIKE_DRAWING_TYPES_EXACT.has(type);
+}
+
+function isPatternLikeDrawingType(type) {
+    if (!type) return false;
+    return type.includes('pattern')
+        || type.startsWith('elliott-')
+        || PATTERN_LIKE_DRAWING_TYPES_EXACT.has(type);
+}
+
+function isLineLikeDrawingType(type) {
+    return DIRECT_MOVE_LINE_TYPE_SET.has(type)
+        || isFibLikeDrawingType(type)
+        || isPatternLikeDrawingType(type);
+}
+
+function getDrawingStrokeHitTolerances(type) {
+    const loose = isFibLikeDrawingType(type) || isPatternLikeDrawingType(type);
+    return {
+        hitTolerance: loose ? 18 : 12,
+        minLineHitTolerance: loose ? 14 : 0,
+        lineHitTolerance: loose ? 14 : 8
+    };
+}
+
 // ============================================================================
 // Base Drawing Class
 // ============================================================================
