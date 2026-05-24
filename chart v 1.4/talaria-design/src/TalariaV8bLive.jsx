@@ -8423,7 +8423,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260520a30-channel-chlines-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a12-checkbox-fix";
   }, []);
 
   useEffect(() => {
@@ -10148,6 +10148,16 @@ const TalariaV8bLive = () => {
     upsertCustomTemplate(name, settings);
     setTplNameInput("");
   };
+  const tlChkLastActRef = useRef(Object.create(null));
+  const runTlCheckboxToggle = (hKey, toggle) => {
+    if (typeof toggle !== "function") return;
+    const now = Date.now();
+    const last = tlChkLastActRef.current[hKey] || 0;
+    if (now - last < 320) return;
+    tlChkLastActRef.current[hKey] = now;
+    flushSync(() => { toggle(); });
+  };
+
   // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
   const Chk = (on, settKey, hKey, label) => {
     const isH = swHov === hKey;
@@ -10168,7 +10178,18 @@ const TalariaV8bLive = () => {
         </>}
       </svg>
     );
-    const shared = {onClick:()=>updateSetting(settKey,!on),onMouseEnter:()=>setSwHov(hKey),onMouseLeave:()=>setSwHov(null),style:{cursor:"default",userSelect:"none",WebkitUserSelect:"none"}};
+    const shared = {
+      ...modalPointerActivate(() => runTlCheckboxToggle(hKey, () => {
+        setSettings(prev => {
+          const next = { ...prev, [settKey]: !prev[settKey] };
+          if (tplWatchKeys.has(settKey) && prev.chartTemplate !== "CUSTOM") next.chartTemplate = "CUSTOM";
+          return next;
+        });
+      })),
+      onMouseEnter: () => setSwHov(hKey),
+      onMouseLeave: () => setSwHov(null),
+      style: { cursor: "default", userSelect: "none", WebkitUserSelect: "none" },
+    };
     if (label) return <>
       <div {...shared} style={{...shared.style,display:"inline-flex",alignItems:"center",gap:6,flexShrink:0}}>
         <div style={{width:10,height:10,flexShrink:0}}>{indicator}</div>
@@ -10200,9 +10221,7 @@ const TalariaV8bLive = () => {
     );
     return (
       <div
-        onPointerDown={(e) => { e.stopPropagation(); toggle(); }}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
+        {...modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle))}
         onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
         style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"default",userSelect:"none",WebkitUserSelect:"none",
                 opacity: on && isH ? 0.65 : 1, transition:"opacity 0.12s"}}>
@@ -12647,7 +12666,16 @@ const TalariaV8bLive = () => {
       };
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || (d.type !== "rectangle" && d.type !== "rotated-rectangle")) return;
+        if (!d || !d.style) return;
+        const extendable = new Set([
+          "rectangle",
+          "rotated-rectangle",
+          "parallel-channel",
+          "flat-top-bottom",
+          "disjoint-channel",
+          "regression-trend",
+        ]);
+        if (!extendable.has(d.type)) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -14004,7 +14032,10 @@ const TalariaV8bLive = () => {
 
       {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
       {effectiveTlGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
-        <div data-sdrop="1" onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
+        <div data-sdrop="1"
+          onPointerDown={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
           style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
@@ -14183,7 +14214,7 @@ const TalariaV8bLive = () => {
             );
           })()}
           {/* scrollable content */}
-          <div style={{ padding:"16px 18px 12px" }}>
+          <div style={{ padding:"16px 18px 12px" }} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
 
             {/* ── STYLE TAB ── */}
             {tlSettTab==="style" && <>
@@ -14839,16 +14870,29 @@ const TalariaV8bLive = () => {
                         return <React.Fragment key={srcIdx}>
                           {isRegCh
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, ()=>setTlStyle(s=>{
+                                  const nextLines = s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
+                                  return stKey === "chLines"
+                                    ? { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) }
+                                    : { ...s, [stKey]: nextLines };
+                                }))}
                               </div>
                             : tlSubTool.icon === "channel" ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>{
+                                  const nextLines = s.chLines.map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
+                                  return { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) };
+                                }))}
                               </div>
                             ) : (
                               <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
                                 <div style={{ width:22, flexShrink:0 }}>
-                                  {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, "", ()=>setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l)})))}
+                                  {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, "", ()=>setTlStyle(s=>{
+                                    const nextLines = s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
+                                    return stKey === "chLines"
+                                      ? { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) }
+                                      : { ...s, [stKey]: nextLines };
+                                  }))}
                                 </div>
                                 <div style={{ position:"relative", width:68, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                                   <input value={ln.value}
@@ -17057,7 +17101,10 @@ const TalariaV8bLive = () => {
           : [["style","Style"],...((isPriceNote||isPin||isSignpost)?[["text","Text"]]:[]),...(hasCoords?[["coordinates","Coordinates"]]:[]),["visibility","Visibility"]];
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
-        <div data-sdrop="1" onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
+        <div data-sdrop="1"
+          onPointerDown={e=>e.stopPropagation()}
+          onMouseDown={e=>e.stopPropagation()}
+          onClick={e=>{e.stopPropagation();setTxtSizeOpen(false);}}
           style={{position:"fixed",left:txtSettPos.x,top:txtSettPos.y,zIndex:11000,width:420,fontFamily:F,
                   background:c.sf,border:`1px solid ${c.brH}`,
                   boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
@@ -17885,7 +17932,10 @@ const TalariaV8bLive = () => {
           }
           if (p.type === "checkbox") {
             return row(
-              <input type="checkbox" checked={!!raw} onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.checked }))}
+              <input type="checkbox" checked={!!raw}
+                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.checked }))}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
                 style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
             );
@@ -18755,7 +18805,10 @@ const TalariaV8bLive = () => {
         );
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
-          <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
+          <div data-sdrop="1"
+            onPointerDown={e=>e.stopPropagation()}
+            onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
             style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
@@ -19139,7 +19192,10 @@ const TalariaV8bLive = () => {
         );
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
-          <div data-sdrop="1" onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
+          <div data-sdrop="1"
+            onPointerDown={e=>e.stopPropagation()}
+            onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
             style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
@@ -19528,7 +19584,10 @@ const TalariaV8bLive = () => {
         );
         const tabs=[["style","Style"],["inputs","Inputs"],["coordinates","Coordinates"],["visibility","Visibility"]];
         return (
-          <div data-sdrop="1" onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
+          <div data-sdrop="1"
+            onPointerDown={e=>e.stopPropagation()}
+            onMouseDown={e=>e.stopPropagation()}
+            onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
             style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
