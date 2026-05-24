@@ -3590,53 +3590,6 @@ class DrawingToolsManager {
             return;
         }
         
-        // Handle dragging - use pixel-based transform for smooth movement
-        if (this.isDragging && this.draggingDrawing && this.dragStartScreen && !this._directMoveActive) {
-            // If mouse button is no longer pressed (e.g. mouseup happened outside SVG), end drag.
-            // This prevents drawings from "sticking" to the cursor.
-            if (event.buttons !== undefined && event.buttons === 0) {
-                this.endDrag();
-                return;
-            }
-            if (event.buttons !== undefined && (event.buttons & 1) === 0) {
-                return;
-            }
-            const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
-            
-            // Calculate pixel delta
-            const pixelDx = currentScreenX - this.dragStartScreen.x;
-            const pixelDy = currentScreenY - this.dragStartScreen.y;
-            
-            if (this.draggingMultiple && this.multiDragStartPositions) {
-                // Move all selected drawings with pixel-based transform
-                this.multiDragStartPositions.forEach(({ drawing, startTransform }) => {
-                    if (drawing.group) {
-                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
-                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                    }
-                    const startEntry = this.multiDragStartPositions.find((m) => m.drawing === drawing);
-                    if (startEntry && Array.isArray(startEntry.points)) {
-                        const previewPoints = this._translatePointsByPixels(startEntry.points, pixelDx, pixelDy, drawing.type);
-                        this._broadcastLiveEditUpdate(drawing, previewPoints);
-                    }
-                });
-            } else {
-                // Move single drawing with pixel-based transform
-                if (this.draggingDrawing.group && this.dragStartOriginalPos) {
-                    const newX = this.dragStartOriginalPos.x + pixelDx;
-                    const newY = this.dragStartOriginalPos.y + pixelDy;
-                    this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
-                }
-                if (Array.isArray(this.singleDragStartPoints)) {
-                    const previewPoints = this._translatePointsByPixels(this.singleDragStartPoints, pixelDx, pixelDy, this.draggingDrawing.type);
-                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
-                }
-            }
-            this._syncAxisHighlightsDuringDrag(pixelDx, pixelDy);
-            return;
-        }
-        
         // Handle resizing
         if (this.isResizing && this.resizingDrawing) {
             if (event.buttons !== undefined && event.buttons === 0) {
@@ -3912,9 +3865,9 @@ class DrawingToolsManager {
             }
         }
 
-        // Handle drag/resize end
-        if (this.isDragging) {
-            this.endDrag();
+        // Handle drag/resize end (direct move uses document mouseup; d3 drag uses its own end handler)
+        if (this.isDragging && !this._directMoveActive) {
+            this._resetDragInteractionState();
         }
         if (this.isResizing && this.resizingDrawing) {
             this.endHandleDrag(this.resizingDrawing);
@@ -6189,20 +6142,52 @@ class DrawingToolsManager {
         );
     }
 
+    _stopDirectMoveListeners() {
+        if (this._directMoveMoveHandler) {
+            document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
+        }
+        if (this._directMoveUpHandler) {
+            document.removeEventListener('mouseup', this._directMoveUpHandler, true);
+        }
+        this._directMoveMoveHandler = null;
+        this._directMoveUpHandler = null;
+    }
+
+    /** Clear drag flags and preview transforms without committing geometry. */
+    _resetDragInteractionState() {
+        if (this.chart && typeof this.chart._clearAxisHighlightPanTransform === 'function') {
+            this.chart._clearAxisHighlightPanTransform();
+        }
+        if (this.draggingDrawing && this.draggingDrawing.group) {
+            this.draggingDrawing.group.attr('transform', null);
+        }
+        if (Array.isArray(this.multiDragStartPositions)) {
+            this.multiDragStartPositions.forEach(({ drawing }) => {
+                if (drawing && drawing.group) {
+                    drawing.group.attr('transform', null);
+                }
+            });
+        }
+        this._stopDirectMoveListeners();
+        this._directMoveActive = false;
+        this.isDragging = false;
+        this.draggingDrawing = null;
+        this.dragStartPoint = null;
+        this.dragStartScreen = null;
+        this.dragStartOriginalPos = null;
+        this.draggingMultiple = false;
+        this.multiDragStartPositions = null;
+        this.singleDragStartPoints = null;
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+        if (canvas) canvas.style.cursor = '';
+        if (this.svg) this.svg.style('cursor', '');
+    }
+
     _startDirectMoveDrag(drawingOrDrawings, event) {
         const src = this._nativePointerEvent(event);
         if (this.isRectSelecting || this._ctrlMarqueePending) return;
 
-        const stopDirectMoveListeners = () => {
-            if (this._directMoveMoveHandler) {
-                document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
-            }
-            if (this._directMoveUpHandler) {
-                document.removeEventListener('mouseup', this._directMoveUpHandler, true);
-            }
-            this._directMoveMoveHandler = null;
-            this._directMoveUpHandler = null;
-        };
+        const stopDirectMoveListeners = () => this._stopDirectMoveListeners();
 
         stopDirectMoveListeners();
 
@@ -6315,7 +6300,7 @@ class DrawingToolsManager {
             });
 
             this.saveDrawings();
-            if (startStates.length.length === 1 && startStates[0].drawing) {
+            if (startStates.length === 1 && startStates[0].drawing) {
                 this._refreshSingleSelectionChrome(startStates[0].drawing);
             }
         };
@@ -8666,26 +8651,49 @@ class DrawingToolsManager {
         
         // [debug removed]
 
-        // Clear any existing drawings before loading to prevent duplicates
-        // (can happen when loadDrawings is called multiple times via chartDataLoaded retry)
-        if (this.drawings.length > 0) {
-            this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
-            this.drawings = [];
-            if (this.drawingsGroup) this._clearDrawingsContentGroup();
-        }
-
-        // Mark as loaded regardless of whether there are saved drawings
-        this._drawingsLoaded = true;
-
+        // Nothing in storage/API — keep shapes already restored from session state / backup.
         if (!saved) {
+            this._drawingsLoaded = true;
             if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
                 this.chart._applyPendingSessionDrawingsAfterManagerLoad();
             }
             return;
         }
+
+        let data;
+        try {
+            data = JSON.parse(saved);
+        } catch (error) {
+            console.error('❌ Failed to load drawings:', error);
+            this._drawingsLoaded = true;
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
+            return;
+        }
+        if (!Array.isArray(data)) {
+            this._drawingsLoaded = true;
+            return;
+        }
+
+        // Mark as loaded regardless of whether there are saved drawings
+        this._drawingsLoaded = true;
+
+        if (data.length === 0) {
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
+            return;
+        }
+
+        // Clear existing drawings only when replacing with non-empty persisted data.
+        if (this.drawings.length > 0) {
+            this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
+            this.drawings = [];
+            if (this.drawingsGroup) this._clearDrawingsContentGroup();
+        }
         
         try {
-            const data = JSON.parse(saved);
             // [debug removed]
 
             const normalizeDashPatterns = (node) => {

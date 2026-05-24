@@ -4011,6 +4011,17 @@ class Chart {
     }
 
     /** Session GET /state returned drawings before OHLC existed — applied after DrawingToolsManager finishes its first load. */
+    _applySessionDrawingsRestore(drawings) {
+        if (!Array.isArray(drawings) || drawings.length === 0) return;
+        if (!this.drawingManager || typeof this.drawingManager.loadDrawingsFromData !== 'function') return;
+        if (this.data && this.data.length > 0) {
+            this._pendingSessionDrawingsFromState = null;
+            this.drawingManager.loadDrawingsFromData(drawings);
+        } else {
+            this._pendingSessionDrawingsFromState = drawings;
+        }
+    }
+
     _applyPendingSessionDrawingsAfterManagerLoad() {
         try {
             const pending = this._pendingSessionDrawingsFromState;
@@ -4258,6 +4269,13 @@ class Chart {
                     isActive: true,
                 };
             }
+            if (this.drawingManager && Array.isArray(this.drawingManager.drawings)) {
+                try {
+                    payload.drawings = this.drawingManager.drawings.map((d) => (
+                        typeof d.toJSON === 'function' ? d.toJSON() : d
+                    ));
+                } catch (_drawE) { /* ignore */ }
+            }
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
         } catch (e) {
             console.warn('local session backup write failed', e);
@@ -4346,6 +4364,8 @@ class Chart {
             }
         }
 
+        this._applySessionDrawingsRestore(backup.drawings);
+
         if (typeof this.showNotification === 'function') {
             this.showNotification(
                 'Restored trades from browser backup — API save failed. Configure nginx /api proxy so data syncs to the server.'
@@ -4406,17 +4426,15 @@ class Chart {
             if (
                 this.drawingManager &&
                 Array.isArray(state.drawings) &&
-                state.drawings.length > 0 &&
-                typeof this.drawingManager.loadDrawingsFromData === 'function'
+                state.drawings.length > 0
             ) {
-                if (this.data && this.data.length > 0) {
-                    this._pendingSessionDrawingsFromState = null;
-                    this.drawingManager.loadDrawingsFromData(state.drawings);
-                } else {
-                    this._pendingSessionDrawingsFromState = state.drawings;
-                }
+                this._applySessionDrawingsRestore(state.drawings);
             } else if (Array.isArray(state.drawings) && state.drawings.length === 0) {
                 this._pendingSessionDrawingsFromState = null;
+                const backupDrawings = this._readTradingSessionLocalBackup(sessionId);
+                if (backupDrawings && Array.isArray(backupDrawings.drawings) && backupDrawings.drawings.length > 0) {
+                    this._applySessionDrawingsRestore(backupDrawings.drawings);
+                }
             }
 
             // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
@@ -5184,6 +5202,9 @@ class Chart {
                     const flushPendingSessionState = () => {
                         try {
                             this._flushReplayDashboardCoverageNow();
+                            if (this.drawingManager && typeof this.drawingManager._flushScheduledSaveDrawings === 'function') {
+                                this.drawingManager._flushScheduledSaveDrawings();
+                            }
                             if (this._sessionStateSaveTimer) {
                                 clearTimeout(this._sessionStateSaveTimer);
                                 this._sessionStateSaveTimer = null;
@@ -15856,7 +15877,9 @@ class Chart {
             const panOpts = { panFast: true };
             this.drawGrid({ panFast: true });
             this.drawCandles(visible, panOpts);
+            this.drawPriceLine(visible);
             this.drawAxes();
+            this.drawCurrentPriceLabel(visible);
             if (this._canPanTransformDrawings()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
@@ -16011,7 +16034,7 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
         
         const showHorizontal = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Horizontal';
-        const showVertical = !panFast && (this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical');
+        const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -25232,7 +25255,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a77';
+    window.TALARIA_CHART_BUILD = '20260522a79';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

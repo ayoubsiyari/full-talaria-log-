@@ -6315,7 +6315,7 @@ class DrawingToolsManager {
             });
 
             this.saveDrawings();
-            if (startStates.length.length === 1 && startStates[0].drawing) {
+            if (startStates.length === 1 && startStates[0].drawing) {
                 this._refreshSingleSelectionChrome(startStates[0].drawing);
             }
         };
@@ -8666,26 +8666,49 @@ class DrawingToolsManager {
         
         // [debug removed]
 
-        // Clear any existing drawings before loading to prevent duplicates
-        // (can happen when loadDrawings is called multiple times via chartDataLoaded retry)
-        if (this.drawings.length > 0) {
-            this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
-            this.drawings = [];
-            if (this.drawingsGroup) this._clearDrawingsContentGroup();
-        }
-
-        // Mark as loaded regardless of whether there are saved drawings
-        this._drawingsLoaded = true;
-
+        // Nothing in storage/API — keep shapes already restored from session state / backup.
         if (!saved) {
+            this._drawingsLoaded = true;
             if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
                 this.chart._applyPendingSessionDrawingsAfterManagerLoad();
             }
             return;
         }
+
+        let data;
+        try {
+            data = JSON.parse(saved);
+        } catch (error) {
+            console.error('❌ Failed to load drawings:', error);
+            this._drawingsLoaded = true;
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
+            return;
+        }
+        if (!Array.isArray(data)) {
+            this._drawingsLoaded = true;
+            return;
+        }
+
+        // Mark as loaded regardless of whether there are saved drawings
+        this._drawingsLoaded = true;
+
+        if (data.length === 0) {
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
+            return;
+        }
+
+        // Clear existing drawings only when replacing with non-empty persisted data.
+        if (this.drawings.length > 0) {
+            this.drawings.forEach(d => { try { d.destroy(); } catch(e) {} });
+            this.drawings = [];
+            if (this.drawingsGroup) this._clearDrawingsContentGroup();
+        }
         
         try {
-            const data = JSON.parse(saved);
             // [debug removed]
 
             const normalizeDashPatterns = (node) => {
