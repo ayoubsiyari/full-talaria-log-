@@ -85,6 +85,101 @@ function shapeBorderVisible(style) {
     return !style || style.borderEnabled !== false;
 }
 
+/**
+ * Append visible border + transparent hit-stroke lines for shape edges.
+ * @param {d3.Selection} group
+ * @param {Array<{x1:number,y1:number,x2:number,y2:number,name?:string}>} edges
+ * @param {Object} style
+ * @param {number} scaledStrokeWidth
+ * @param {{ hitWidth?: number, respectBorderToggle?: boolean }} [opts]
+ */
+function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts = {}) {
+    const respectBorderToggle = opts.respectBorderToggle !== false;
+    const borderOn = respectBorderToggle ? shapeBorderVisible(style) : true;
+    const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
+
+    edges.forEach((edge) => {
+        if (borderOn) {
+            group.append('line')
+                .attr('class', 'shape-border')
+                .attr('x1', edge.x1)
+                .attr('y1', edge.y1)
+                .attr('x2', edge.x2)
+                .attr('y2', edge.y2)
+                .attr('stroke', style.stroke)
+                .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', style.strokeDasharray || '')
+                .attr('opacity', style.opacity)
+                .attr('data-edge', edge.name || '')
+                .attr('data-original-width', style.strokeWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
+
+        group.append('line')
+            .attr('class', 'shape-border-hit')
+            .attr('x1', edge.x1)
+            .attr('y1', edge.y1)
+            .attr('x2', edge.x2)
+            .attr('y2', edge.y2)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', hitWidth)
+            .attr('data-edge', edge.name || '')
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+    });
+}
+
+/**
+ * Append visible border + hit-stroke segments along a closed/open polyline.
+ * @param {d3.Selection} group
+ * @param {Array<{x:number,y:number}>} polyPts
+ * @param {Object} style
+ * @param {number} scaledStrokeWidth
+ * @param {{ hitWidth?: number, closed?: boolean }} [opts]
+ */
+function appendShapeBorderPolylineLines(group, polyPts, style, scaledStrokeWidth, opts = {}) {
+    const closed = opts.closed !== false;
+    const borderOn = shapeBorderVisible(style);
+    const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
+    const n = polyPts.length;
+    if (n < 2) return;
+
+    const segmentCount = closed ? n : n - 1;
+    for (let i = 0; i < segmentCount; i++) {
+        const pA = polyPts[i];
+        const pB = polyPts[(i + 1) % n];
+
+        if (borderOn) {
+            group.append('line')
+                .attr('class', 'shape-border')
+                .attr('x1', pA.x)
+                .attr('y1', pA.y)
+                .attr('x2', pB.x)
+                .attr('y2', pB.y)
+                .attr('stroke', style.stroke)
+                .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', style.strokeDasharray || '')
+                .attr('opacity', style.opacity)
+                .attr('data-original-width', style.strokeWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
+
+        group.append('line')
+            .attr('class', 'shape-border-hit')
+            .attr('x1', pA.x)
+            .attr('y1', pA.y)
+            .attr('x2', pB.x)
+            .attr('y2', pB.y)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', hitWidth)
+            .attr('opacity', style.opacity)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+    }
+}
+
 /** Axis-aligned box bounds in data space (top = higher price). */
 function boxBoundsFromPoints(points) {
     const p1 = points[0];
@@ -303,42 +398,12 @@ class RectangleTool extends BaseDrawing {
         
         // Draw border as 4 separate lines (like parallel channel) for precise hit detection
         const edges = [
-            { x1: x, y1: y, x2: x + width, y2: y, name: 'top' },           // Top
-            { x1: x, y1: y + height, x2: x + width, y2: y + height, name: 'bottom' }, // Bottom
-            { x1: x, y1: y, x2: x, y2: y + height, name: 'left' },         // Left
-            { x1: x + width, y1: y, x2: x + width, y2: y + height, name: 'right' }  // Right
+            { x1: x, y1: y, x2: x + width, y2: y, name: 'top' },
+            { x1: x, y1: y + height, x2: x + width, y2: y + height, name: 'bottom' },
+            { x1: x, y1: y, x2: x, y2: y + height, name: 'left' },
+            { x1: x + width, y1: y, x2: x + width, y2: y + height, name: 'right' }
         ];
-        
-        edges.forEach(edge => {
-            if (borderOn) {
-                this.group.append('line')
-                    .attr('class', 'shape-border')
-                    .attr('x1', edge.x1)
-                    .attr('y1', edge.y1)
-                    .attr('x2', edge.x2)
-                    .attr('y2', edge.y2)
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', scaledStrokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
-                    .attr('opacity', this.style.opacity)
-                    .attr('data-edge', edge.name)
-                    .attr('data-original-width', this.style.strokeWidth)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-            }
-
-            this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', edge.x1)
-                .attr('y1', edge.y1)
-                .attr('x2', edge.x2)
-                .attr('y2', edge.y2)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', Math.max(16, scaledStrokeWidth * 5))
-                .attr('data-edge', edge.name)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-        });
+        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
 
         this.renderTextLabel({ x, y, width, height }, scaleFactor);
 
@@ -679,38 +744,7 @@ class EllipseTool extends BaseDrawing {
             });
         }
 
-        for (let i = 0; i < segments; i++) {
-            const pA = pts[i];
-            const pB = pts[(i + 1) % segments];
-
-            if (borderOn) {
-                this.group.append('line')
-                    .attr('class', 'shape-border')
-                    .attr('x1', pA.x)
-                    .attr('y1', pA.y)
-                    .attr('x2', pB.x)
-                    .attr('y2', pB.y)
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', scaledStrokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
-                    .attr('opacity', this.style.opacity)
-                    .attr('data-original-width', this.style.strokeWidth)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-            }
-
-            this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', pA.x)
-                .attr('y1', pA.y)
-                .attr('x2', pB.x)
-                .attr('y2', pB.y)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', hitWidth)
-                .attr('opacity', this.style.opacity)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-        }
+        appendShapeBorderPolylineLines(this.group, pts, this.style, scaledStrokeWidth, { hitWidth });
 
         // Create 8-point resize handles (4 corners + 4 sides) like TradingView
         this.createBoxHandles(this.group, scales);
@@ -1013,36 +1047,7 @@ class TriangleTool extends BaseDrawing {
             { x1: pts[1].x, y1: pts[1].y, x2: pts[2].x, y2: pts[2].y, name: 'edge2' },
             { x1: pts[2].x, y1: pts[2].y, x2: pts[0].x, y2: pts[0].y, name: 'edge3' }
         ];
-        
-        edges.forEach(edge => {
-            // Visible line with scaled stroke width
-            this.group.append('line')
-                .attr('class', 'shape-border')
-                .attr('x1', edge.x1)
-                .attr('y1', edge.y1)
-                .attr('x2', edge.x2)
-                .attr('y2', edge.y2)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || null)
-                .attr('opacity', this.style.opacity)
-                .attr('data-edge', edge.name)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            
-            this.group.append('line')
-                .attr('class', 'shape-border-hit')
-                .attr('x1', edge.x1)
-                .attr('y1', edge.y1)
-                .attr('x2', edge.x2)
-                .attr('y2', edge.y2)
-                .attr('stroke', 'transparent')
-                .attr('stroke-width', Math.max(16, scaledStrokeWidth * 5))
-                .attr('data-edge', edge.name)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-        });
+        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth, { respectBorderToggle: false });
 
         // Create resize handles at vertices
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);

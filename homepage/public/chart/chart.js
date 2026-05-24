@@ -15285,6 +15285,14 @@ class Chart {
         return this._isChartViewPanning() && this._panSnapOffsetX != null;
     }
 
+    /** Pan transform fights replay tick redraws — reproject drawings each pan frame while playing. */
+    _shouldUsePanDrawingsTransform() {
+        if (!this._canPanTransformDrawings()) return false;
+        const rs = this.replaySystem;
+        if (rs && rs.isActive && rs.isPlaying) return false;
+        return true;
+    }
+
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
     _isChartPanDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
@@ -15880,7 +15888,7 @@ class Chart {
             this.drawPriceLine(visible);
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
-            if (this._canPanTransformDrawings()) {
+            if (this._shouldUsePanDrawingsTransform()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
                 this._clearPanDrawingsLayerTransform();
@@ -25255,7 +25263,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a79';
+    window.TALARIA_CHART_BUILD = '20260522a80';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

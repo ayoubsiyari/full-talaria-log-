@@ -10867,6 +10867,138 @@ class DrawingToolsManager {
         return true;
     }
 
+ 10870|    _distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh) {
+        const distTop = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx + rw, ry);
+        const distBottom = this.pointToLineDistance(mouseX, mouseY, rx, ry + rh, rx + rw, ry + rh);
+        const distLeft = this.pointToLineDistance(mouseX, mouseY, rx, ry, rx, ry + rh);
+        const distRight = this.pointToLineDistance(mouseX, mouseY, rx + rw, ry, rx + rw, ry + rh);
+        return Math.min(distTop, distBottom, distLeft, distRight);
+    }
+
+    _distanceToCircleBorder(mouseX, mouseY, cx, cy, r) {
+        const dx = mouseX - cx;
+        const dy = mouseY - cy;
+        return Math.abs(Math.sqrt(dx * dx + dy * dy) - r);
+    }
+
+    _distanceToEllipseBorder(mouseX, mouseY, cx, cy, erx, ery) {
+        const ndx = (mouseX - cx) / erx;
+        const ndy = (mouseY - cy) / ery;
+        const normalizedDist = Math.sqrt(ndx * ndx + ndy * ndy);
+        return Math.abs(normalizedDist - 1) * Math.min(erx, ery);
+    }
+
+    /**
+     * Shared stroke hit test for SVG elements (lines, rects, circles, ellipses, paths).
+     * Used by findDrawingsAtPoint and findLinesAtPoint.
+     */
+    _measureElementStrokeHit(element, elementSel, mouseX, mouseY, point, options = {}) {
+        const {
+            hitTolerance = 12,
+            minLineHitTolerance = 0,
+            lineHitTolerance = 8,
+            requireLineXRange = false,
+            skipHitAreaPaths = false
+        } = options;
+
+        const opacity = elementSel.style('opacity');
+        if (opacity === '0') return { isHit: false, distance: Infinity };
+
+        const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
+        const isHitArea = elementSel.classed('shape-border-hit');
+        const pointerEvents = elementSel.style('pointer-events') || elementSel.attr('pointer-events') || '';
+        const isTransparentStrokeHitArea = (stroke === 'transparent' || stroke === 'none' || !stroke) && pointerEvents === 'stroke';
+
+        if (!stroke || stroke === 'none' || stroke === 'transparent') {
+            if (!isHitArea && !isTransparentStrokeHitArea) return { isHit: false, distance: Infinity };
+        }
+
+        const isFillElement = elementSel.classed('shape-fill')
+            || elementSel.classed('upper-fill')
+            || elementSel.classed('lower-fill');
+        if (isFillElement) return { isHit: false, distance: Infinity };
+
+        if (skipHitAreaPaths && isHitArea && element.tagName === 'path') {
+            return { isHit: false, distance: Infinity };
+        }
+
+        let isStrokeHit = false;
+        let hitDistance = Infinity;
+
+        if (typeof element.isPointInStroke === 'function') {
+            try {
+                isStrokeHit = element.isPointInStroke(point);
+            } catch (_e) {
+                isStrokeHit = false;
+            }
+            if (isStrokeHit) hitDistance = 0;
+        }
+
+        if (!isStrokeHit && element.tagName === 'line') {
+            const x1 = parseFloat(element.getAttribute('x1'));
+            const y1 = parseFloat(element.getAttribute('y1'));
+            const x2 = parseFloat(element.getAttribute('x2'));
+            const y2 = parseFloat(element.getAttribute('y2'));
+            if ([x1, y1, x2, y2].every(Number.isFinite)) {
+                if (requireLineXRange) {
+                    const minX = Math.min(x1, x2);
+                    const maxX = Math.max(x1, x2);
+                    if (mouseX < minX - lineHitTolerance || mouseX > maxX + lineHitTolerance) {
+                        return { isHit: false, distance: Infinity };
+                    }
+                }
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+                const effectiveTolerance = isHitArea
+                    ? Math.max((strokeWidth / 2) + 0.5, requireLineXRange ? lineHitTolerance : 12)
+                    : Math.max((strokeWidth / 2) + 0.5, requireLineXRange ? Math.max(lineHitTolerance, strokeWidth * 2) : minLineHitTolerance);
+                isStrokeHit = distance <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distance;
+            }
+        } else if (!isStrokeHit && element.tagName === 'rect') {
+            const rx = parseFloat(element.getAttribute('x')) || 0;
+            const ry = parseFloat(element.getAttribute('y')) || 0;
+            const rw = parseFloat(element.getAttribute('width')) || 0;
+            const rh = parseFloat(element.getAttribute('height')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.max(hitTolerance, strokeWidth / 2)
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            const minDist = this._distanceToRectBorder(mouseX, mouseY, rx, ry, rw, rh);
+            isStrokeHit = minDist <= effectiveTolerance;
+            if (isStrokeHit) hitDistance = minDist;
+        } else if (!isStrokeHit && element.tagName === 'circle') {
+            const cx = parseFloat(element.getAttribute('cx')) || 0;
+            const cy = parseFloat(element.getAttribute('cy')) || 0;
+            const r = parseFloat(element.getAttribute('r')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.min(Math.max(0.5, r - 1), Math.max(hitTolerance, strokeWidth / 2))
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            if (r > 0) {
+                const distFromBorder = this._distanceToCircleBorder(mouseX, mouseY, cx, cy, r);
+                isStrokeHit = distFromBorder <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distFromBorder;
+            }
+        } else if (!isStrokeHit && element.tagName === 'ellipse') {
+            const cx = parseFloat(element.getAttribute('cx')) || 0;
+            const cy = parseFloat(element.getAttribute('cy')) || 0;
+            const erx = parseFloat(element.getAttribute('rx')) || 0;
+            const ery = parseFloat(element.getAttribute('ry')) || 0;
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = requireLineXRange
+                ? Math.min(Math.max(0.5, Math.min(erx, ery) - 1), Math.max(hitTolerance, strokeWidth / 2))
+                : Math.max((strokeWidth / 2) + 0.5, 10);
+            if (erx > 0 && ery > 0) {
+                const distFromBorder = this._distanceToEllipseBorder(mouseX, mouseY, cx, cy, erx, ery);
+                isStrokeHit = distFromBorder <= effectiveTolerance;
+                if (isStrokeHit) hitDistance = distFromBorder;
+            }
+        }
+
+        return { isHit: isStrokeHit, distance: hitDistance };
+    }
+
     /**
      * Calculate distance from a point to a line segment
      * @param {number} px - Point X

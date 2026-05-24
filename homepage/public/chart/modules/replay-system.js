@@ -2585,7 +2585,10 @@ class ReplaySystem {
             }
         }
         if (this.chart.drawingManager && typeof this.chart.drawingManager.redrawAll === 'function') {
-            this.chart.drawingManager.redrawAll();
+            const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
+            if (!panning) {
+                this.chart.drawingManager.redrawAll();
+            }
         }
         
         // Auto-scroll to show the latest candles (only if enabled and user hasn't manually panned)
