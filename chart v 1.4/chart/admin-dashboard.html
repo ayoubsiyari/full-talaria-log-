@@ -249,7 +249,7 @@ body {
 }
 
 .content { flex: 1; overflow-y: auto; padding: 28px 32px 40px; }
-.content.support-workspace { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 16px; }
+.content.support-workspace { overflow: hidden; display: flex; flex-direction: column; padding: 16px 24px 12px; }
 #sec-support.active {
   display: flex;
   flex-direction: column;
@@ -1711,13 +1711,42 @@ select { cursor:default; }
 .support-chat-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.support-chat-column .support-main {
+  flex: 1;
+  min-height: 0;
+}
+.support-user-card {
+  flex-shrink: 0;
+}
+.support-user-card.is-collapsed .support-collapsible-body {
+  display: none;
+}
+.support-user-card .support-collapse-icon {
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform .2s ease;
+}
+.support-user-card.is-collapsed .support-collapse-icon { transform: rotate(-90deg); }
+.support-user-summary {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+.support-panel-toggle {
+  cursor: pointer;
+  user-select: none;
 }
 .support-main-header {
   flex-wrap: wrap;
   gap: 8px;
+  flex-shrink: 0;
 }
 .support-main-header .card-title {
   flex: 1;
@@ -1725,10 +1754,52 @@ select { cursor:default; }
   line-height: 1.35;
 }
 .support-ticket-toolbar {
-  padding: 12px 14px;
+  padding: 0;
   border-bottom: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
 }
+.support-ticket-toolbar.is-collapsed .support-toolbar-body {
+  display: none;
+}
+.support-toolbar-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.support-toolbar-toggle:hover { background: rgba(255, 255, 255, 0.03); color: var(--text); }
+.support-toolbar-toggle .support-toolbar-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 500;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.support-toolbar-body {
+  padding: 0 14px 12px;
+}
+.support-toolbar-toggle .support-collapse-icon {
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform .2s ease;
+  flex-shrink: 0;
+}
+.support-ticket-toolbar.is-collapsed .support-collapse-icon { transform: rotate(-90deg); }
 .support-controls-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -1816,27 +1887,7 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.support-messages::before,
-.support-messages::after {
-  content: '';
-  position: sticky;
-  left: 0;
-  right: 0;
-  height: 10px;
-  flex-shrink: 0;
-  pointer-events: none;
-  z-index: 1;
-}
-.support-messages::before {
-  top: 0;
-  margin: -16px -20px 6px;
-  background: linear-gradient(180deg, rgba(0,0,0,.28), transparent);
-}
-.support-messages::after {
-  bottom: 0;
-  margin: 6px -20px -16px;
-  background: linear-gradient(0deg, rgba(0,0,0,.28), transparent);
+  scroll-behavior: smooth;
 }
 .support-composer {
   display: flex;
@@ -3999,12 +4050,13 @@ select { cursor:default; }
             </div>
           </div>
           <div class="support-chat-column">
-            <div class="card support-user-card" id="supportUserCard" style="margin:0;display:none">
-              <div class="card-hdr">
+            <div class="card support-user-card is-collapsed" id="supportUserCard" style="margin:0;display:none">
+              <div class="card-hdr support-panel-toggle" onclick="supportToggleUserCard(event)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                <div class="card-title">Requester</div>
+                <div class="card-title">Requester<span class="support-user-summary" id="supportUserSummary"></span></div>
+                <span class="support-collapse-icon">▾</span>
               </div>
-              <div class="card-body" id="supportUserCardBody"></div>
+              <div class="card-body support-collapsible-body" id="supportUserCardBody"></div>
             </div>
             <div class="card support-main">
               <div class="card-hdr support-main-header">
@@ -4013,45 +4065,54 @@ select { cursor:default; }
                 <button type="button" class="btn sm" id="supportReopenBtn" style="display:none" onclick="supportSetStatus('open')">Reopen</button>
                 <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportSetStatus('closed')">Close</button>
               </div>
-              <div class="support-ticket-toolbar" id="supportTicketControls" style="display:none">
-                <div class="support-controls-grid">
-                  <label class="support-control-field">Status
-                    <select id="supportTicketStatus" onchange="supportPatchTicketField('status', this.value)"></select>
-                  </label>
-                  <label class="support-control-field">Priority
-                    <select id="supportTicketPriority" onchange="supportPatchTicketField('priority', this.value)">
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
+              <div class="support-ticket-toolbar is-collapsed" id="supportTicketControls" style="display:none">
+                <button type="button" class="support-toolbar-toggle" onclick="supportToggleTicketToolbar(event)">
+                  <span>Ticket details</span>
+                  <span class="support-toolbar-quick" id="supportToolbarQuick"></span>
+                  <span class="support-collapse-icon">▾</span>
+                </button>
+                <div class="support-toolbar-body">
+                  <div class="support-controls-grid">
+                    <label class="support-control-field">Status
+                      <select id="supportTicketStatus" onchange="supportPatchTicketField('status', this.value)"></select>
+                    </label>
+                    <label class="support-control-field">Priority
+                      <select id="supportTicketPriority" onchange="supportPatchTicketField('priority', this.value)">
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                    </label>
+                    <label class="support-control-field">Category
+                      <select id="supportTicketCategory" onchange="supportPatchTicketField('category', this.value)"></select>
+                    </label>
+                    <label class="support-control-field">Assignee
+                      <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
+                    </label>
+                    <label class="support-control-field wide">Tags
+                      <input type="text" id="supportTicketTags" placeholder="v9-chart, billing" onchange="supportPatchTicketField('tags', this.value)" />
+                    </label>
+                    <label class="support-control-field">Related
+                      <input type="text" id="supportTicketRelated" placeholder="TAL-00123" onchange="supportPatchTicketRelated(this.value)" />
+                    </label>
+                  </div>
+                  <div class="support-controls-actions">
+                    <span id="supportTicketSlaLabel" class="support-thread-pill sla" style="display:none"></span>
+                    <select id="supportCannedSelect" onchange="supportInsertCanned(this)">
+                      <option value="">Canned reply…</option>
                     </select>
-                  </label>
-                  <label class="support-control-field">Category
-                    <select id="supportTicketCategory" onchange="supportPatchTicketField('category', this.value)"></select>
-                  </label>
-                  <label class="support-control-field">Assignee
-                    <select id="supportTicketAssignee" onchange="supportPatchTicketField('assigned_to_user_id', this.value)"></select>
-                  </label>
-                  <label class="support-control-field wide">Tags
-                    <input type="text" id="supportTicketTags" placeholder="v9-chart, billing" onchange="supportPatchTicketField('tags', this.value)" />
-                  </label>
-                  <label class="support-control-field">Related
-                    <input type="text" id="supportTicketRelated" placeholder="TAL-00123" onchange="supportPatchTicketRelated(this.value)" />
-                  </label>
+                  </div>
+                  <div class="support-activity" id="supportTicketActivity" style="display:none"></div>
                 </div>
-                <div class="support-controls-actions">
-                  <span id="supportTicketSlaLabel" class="support-thread-pill sla" style="display:none"></span>
-                  <select id="supportCannedSelect" onchange="supportInsertCanned(this)">
-                    <option value="">Canned reply…</option>
-                  </select>
-                </div>
-                <div class="support-activity" id="supportTicketActivity" style="display:none"></div>
               </div>
-              <div class="support-messages" id="supportMessages">
-                <div class="support-messages-empty">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                  <p>Choose a ticket to view messages</p>
-                  <span>Select from the inbox on the left</span>
+              <div class="support-messages-wrap">
+                <div class="support-messages" id="supportMessages">
+                  <div class="support-messages-empty">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    <p>Choose a ticket to view messages</p>
+                    <span>Select from the inbox on the left</span>
+                  </div>
                 </div>
               </div>
               <div class="support-composer">
@@ -4497,14 +4558,55 @@ function applySupportReadReceipt(d) {
   renderSupportMessages();
 }
 
+function supportToggleUserCard(e) {
+  if (e && e.target && e.target.closest('a,button,input,select,textarea')) return;
+  const card = $('supportUserCard');
+  if (card) card.classList.toggle('is-collapsed');
+}
+
+function supportToggleTicketToolbar(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const bar = $('supportTicketControls');
+  if (bar) bar.classList.toggle('is-collapsed');
+}
+
+function supportRefreshToolbarQuick(th) {
+  const el = $('supportToolbarQuick');
+  if (!el) return;
+  if (!th) {
+    el.innerHTML = '';
+    return;
+  }
+  const parts = [
+    '<span class="support-thread-pill status-' + esc(th.status || 'open') + '">' + esc(th.status || 'open') + '</span>'
+  ];
+  if (th.priority && th.priority !== 'normal') {
+    parts.push('<span class="support-thread-pill pri-' + esc(th.priority) + '">' + esc(th.priority) + '</span>');
+  }
+  if (th.sla_overdue) {
+    parts.push('<span class="support-thread-pill sla">SLA overdue</span>');
+  } else if (th.sla_label) {
+    parts.push('<span class="support-thread-pill">' + esc(th.sla_label) + '</span>');
+  }
+  el.innerHTML = parts.join('');
+}
+
 function renderSupportUserCRM(req) {
   const card = $('supportUserCard');
   const body = $('supportUserCardBody');
+  const summaryEl = $('supportUserSummary');
   if (!req || !body) {
     if (card) card.style.display = 'none';
+    if (summaryEl) summaryEl.textContent = '';
     return;
   }
   card.style.display = 'block';
+  if (summaryEl) {
+    summaryEl.textContent = ' · ' + (req.name || req.email || ('User #' + req.id));
+  }
   const sub = req.subscription;
   const subLine = sub
     ? (sub.plan_name || '—') + ' · ' + (sub.status || '') + (sub.period_end ? ' · renews ' + sub.period_end : '')
@@ -4842,7 +4944,9 @@ function renderSupportMessages() {
     }
     return `<div class="support-msg ${cls}${intCls}"><div class="support-msg-hdr">${esc(label)} · ${esc(m.sender_name || '')}</div>${esc(m.body || '')}${attHtml}${readLine}</div>`;
   }).join('');
-  box.scrollTop = box.scrollHeight;
+  requestAnimationFrame(function () {
+    box.scrollTop = box.scrollHeight;
+  });
 }
 
 function supportUpdateTicketControls(th) {
@@ -4852,6 +4956,7 @@ function supportUpdateTicketControls(th) {
   const reopenBtn = $('supportReopenBtn');
   if (!th) {
     if (ctrl) ctrl.style.display = 'none';
+    supportRefreshToolbarQuick(null);
     return;
   }
   if (ctrl) ctrl.style.display = 'block';
@@ -4892,6 +4997,7 @@ function supportUpdateTicketControls(th) {
   if (resolveBtn) resolveBtn.style.display = (!closed && !resolved) ? '' : 'none';
   if (closeBtn) closeBtn.style.display = (!closed) ? '' : 'none';
   if (reopenBtn) reopenBtn.style.display = (closed || resolved) ? '' : 'none';
+  supportRefreshToolbarQuick(th);
 }
 
 async function loadSupportTicketActivity(threadId) {
@@ -5141,6 +5247,8 @@ function navigate(section) {
   }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const contentEl = document.querySelector('.content');
+  if (contentEl) contentEl.classList.toggle('support-workspace', section === 'support');
   const sec = $('sec-' + section);
   const nav = document.querySelector(`.nav-item[data-section="${section}"]`);
   if (sec) sec.classList.add('active');
