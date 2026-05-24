@@ -1823,3 +1823,171 @@
     max-width: 320px;
   }
 }
+
+/* —— Price Behavior Explorer —— */
+.bt-os-pb-root {
+  gap: 14px;
+}
+
+.bt-os-pb-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.bt-os-pb-kpi {
+  padding: 10px 12px;
+  border-radius: var(--bt-radius-md);
+  border: 1px solid var(--bt-border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bt-os-pb-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bt-text-dim);
+  margin-bottom: 4px;
+}
+
+.bt-os-pb-kpi-value {
+  font-family: var(--bt-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--bt-text);
+}
+
+.bt-os-pb-kpi-hint {
+  font-size: 10px;
+  color: var(--bt-text-dim);
+  margin-top: 4px;
+  line-height: 1.3;
+}
+
+.bt-os-pb-split {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.bt-os-pb-list-wrap {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.bt-os-pb-row-active {
+  background: var(--bt-accent-soft);
+}
+
+.bt-os-pb-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bt-text-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--bt-border);
+}
+
+.bt-os-pb-badge--ok {
+  color: var(--bt-green);
+  border-color: rgba(0, 212, 161, 0.35);
+  background: var(--bt-green-muted);
+}
+
+.bt-os-pb-detail-card .bt-os-chart-title {
+  margin-bottom: 8px;
+}
+
+.bt-os-pb-warn {
+  color: var(--bt-amber);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.bt-os-pb-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bt-border);
+}
+
+.bt-os-pb-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.bt-os-pb-metric span {
+  color: var(--bt-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.bt-os-pb-metric strong {
+  font-family: var(--bt-mono);
+  font-size: 13px;
+}
+
+.bt-os-pb-vars {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--bt-text-secondary);
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bt-os-pb-vars-label {
+  display: inline-block;
+  min-width: 36px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--bt-text-dim);
+  margin-right: 8px;
+}
+
+.bt-os-pb-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--bt-text-dim);
+  border: 1px dashed var(--bt-border);
+  border-radius: var(--bt-radius-md);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.bt-os-pb-chart-empty code {
+  font-family: var(--bt-mono);
+  font-size: 11px;
+  color: var(--bt-cyan);
+}
+
+.bt-os-pb-empty p {
+  margin: 0;
+  color: var(--bt-text-dim);
+  font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .bt-os-pb-split {
+    grid-template-columns: 1fr;
+  }
+
+  .bt-os-pb-list-wrap {
+    max-height: 240px;
+  }
+}

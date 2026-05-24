@@ -6,6 +6,7 @@ import { ArrowLeft, Filter } from "lucide-react";
 import "./sessions-dashboard.css";
 import "./backtest-os-dashboard.css";
 import { BacktestOsDashboardLayout } from "./BacktestOsDashboardLayout";
+import type { PriceBehaviorTrade } from "./priceBehaviorUtils";
 import { PnlCalendarHeatmap } from "./PnlCalendarHeatmap";
 import type { BacktestOsChartPack } from "./BacktestOsCharts";
 import type { OsMetricCard } from "./backtestOsTypes";
@@ -60,6 +61,13 @@ type Trade = {
   rMultiple?: number | string;
   mae_r?: number | string;
   mfe_r?: number | string;
+  capture_ratio?: number | string;
+  bar_high_r?: number[];
+  bar_low_r?: number[];
+  bar_close_r?: number[];
+  post_exit_bar_high_r?: number[];
+  post_exit_bar_low_r?: number[];
+  post_exit_bar_close_r?: number[];
   rewardToRiskRatio?: number | string;
   quantity?: number | string;
   spread_pips_at_entry?: number | string;
@@ -493,7 +501,12 @@ export function SessionAnalyticsPanel({
           spread_pips_at_entry: n(t.spread_pips_at_entry),
           commission_at_entry: n(t.commission_at_entry),
           pip_value_at_entry: n(t.pip_value_at_entry),
-          capture_ratio: n(t.mfe_r) > 0 ? n(t.rMultiple ?? t.rewardToRiskRatio) / n(t.mfe_r) : 0,
+          capture_ratio:
+            n(t.capture_ratio) > 0
+              ? n(t.capture_ratio)
+              : n(t.mfe_r) > 0
+                ? n(t.rMultiple ?? t.rewardToRiskRatio) / n(t.mfe_r)
+                : 0,
           hasMae: t.mae_r !== undefined && t.mae_r !== null && String(t.mae_r).trim() !== "",
           hasMfe: t.mfe_r !== undefined && t.mfe_r !== null && String(t.mfe_r).trim() !== "",
           setup,
@@ -1592,6 +1605,7 @@ export function SessionAnalyticsPanel({
           talariaScore={quantDashboard.talariaScore}
           scoreTrend={quantDashboard.scoreTrend}
           calendarSection={<PnlCalendarHeatmap trades={filteredTrades} />}
+          priceBehaviorTrades={filteredTrades as PriceBehaviorTrade[]}
           advancedSection={(
             <>
 

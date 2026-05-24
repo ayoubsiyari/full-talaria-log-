@@ -2631,6 +2631,13 @@ class Chart {
         return entry;
     }
 
+    _btTfCacheSeriesKey(rawData) {
+        if (!Array.isArray(rawData) || !rawData.length) return '';
+        const first = rawData[0]?.t;
+        const last = rawData[rawData.length - 1]?.t;
+        return `${rawData.length}:${first}:${last}`;
+    }
+
     _storeBtTfDataCacheEntry(fileId, timeframe, rawData, meta = {}) {
         if (!this.isBacktestMode || !fileId || !timeframe) return;
         if (!Array.isArray(rawData) || !rawData.length) return;
@@ -2641,9 +2648,15 @@ class Chart {
         if (!this._btTfDataCache.has(fid)) this._btTfDataCache.set(fid, new Map());
         const perFile = this._btTfDataCache.get(fid);
         const maxCacheBars = 12000;
-        const storedRaw = rawData.length > maxCacheBars
-            ? rawData.slice(rawData.length - maxCacheBars)
-            : rawData.slice();
+        const existingEntry = perFile.get(tf);
+        let storedRaw;
+        if (rawData.length > maxCacheBars) {
+            storedRaw = rawData.slice(rawData.length - maxCacheBars);
+        } else if (existingEntry?.rawData === rawData || meta.reuseArrayReference) {
+            storedRaw = rawData;
+        } else {
+            storedRaw = rawData.slice();
+        }
         perFile.set(tf, {
             at: Date.now(),
             anchorKey: this._btTfCacheAnchorKey(sessionEndMs, null, tf),
@@ -2680,10 +2693,17 @@ class Chart {
         }
         if (!Array.isArray(source) || !source.length) return;
 
+        const existing = this._getBtTfDataCache(fileId, tf);
+        if (existing?.rawData === source) return;
+        if (existing && this._btTfCacheSeriesKey(existing.rawData) === this._btTfCacheSeriesKey(source)) {
+            return;
+        }
+
         this._storeBtTfDataCacheEntry(fileId, timeframe, source, {
             totalCandles: this.totalCandles,
             serverCursors: this._serverCursors,
             nativeRawFetchTf: this._nativeRawFetchTf || timeframe,
+            reuseArrayReference: replay?.isActive && source === replay.fullRawData,
         });
     }
 
@@ -2852,8 +2872,10 @@ class Chart {
         this.manualRange = null;
 
         if (replay.isActive) {
-            replay.fullRawData = [...this.rawData];
-            replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+            replay.fullRawData = ctx.fromCache
+                ? this.rawData
+                : [...this.rawData];
+            replay.fullData = Array.isArray(this.data) ? this.data : null;
             replay.rawTimeframe = normalizedTf;
             replay._fullRawDataMatchesTF = true;
             replay.tickPathCache = {};
@@ -2904,24 +2926,6 @@ class Chart {
         if (Number.isFinite(savedReplayTimestamp)
             && typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
             replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
-        }
-
-        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const firstT = replay.fullRawData[0].t;
-            const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
-            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
-                try {
-                    const loaded = await this.ensureGoToWindowContainsTimestamp(
-                        savedReplayTimestamp,
-                        { usingReplay: true }
-                    );
-                    if (loaded && typeof replay.goToReplayTimestamp === 'function') {
-                        replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
-                    }
-                } catch (e) {
-                    console.warn('[backtest] playhead window fetch after TF hot-swap failed', e);
-                }
-            }
         }
 
         const omTf = this.orderManager
@@ -3016,12 +3020,13 @@ class Chart {
             }
         }
 
-        this.rawData = entry.rawData.slice();
+        this.rawData = entry.rawData;
         this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
         this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
         this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
+            fromCache: true,
             savedReplayTimestamp: this._captureReplayPlayheadMs(replay),
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
@@ -13410,9 +13415,6 @@ class Chart {
             // 1) Same raw series — resample only (no network, replay index unchanged).
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                if (this.isBacktestMode && this.currentFileId) {
-                    this._saveBtTfDataCacheFromChart(this.currentFileId, normalizedTf);
-                }
                 return;
             }
 
@@ -25128,7 +25130,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260522a74';
+    window.TALARIA_CHART_BUILD = '20260522a75';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

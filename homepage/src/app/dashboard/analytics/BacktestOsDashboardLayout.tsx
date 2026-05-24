@@ -21,6 +21,8 @@ import {
   type AdvancedDashboardViewId,
 } from "./advancedDashboardNav";
 import type { QuantKpiItem, TalariaScoreBreakdown } from "./quantMetricHelpers";
+import { PriceBehaviorExplorer } from "./PriceBehaviorExplorer";
+import type { PriceBehaviorTrade } from "./priceBehaviorUtils";
 
 export type { BacktestOsChartPack } from "./BacktestOsCharts";
 export type { AdvancedDashboardViewId };
@@ -40,7 +42,6 @@ function SectionHeader({ tag, tagClass, title }: { tag: string; tagClass: string
 
 const PLACEHOLDER_VIEWS: AdvancedDashboardViewId[] = [
   "correlation-independence",
-  "price-behavior",
   "tag-analysis",
   "edge-finder",
   "behavioral-patterns",
@@ -67,6 +68,8 @@ export type BacktestOsDashboardLayoutProps = {
   quantKpis?: QuantKpiItem[];
   talariaScore?: TalariaScoreBreakdown | null;
   scoreTrend?: number[];
+  /** Filtered journal rows for Price Behavior Explorer (session state). */
+  priceBehaviorTrades?: PriceBehaviorTrade[];
 };
 
 export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps) {
@@ -89,6 +92,7 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
     quantKpis = [],
     talariaScore = null,
     scoreTrend = [],
+    priceBehaviorTrades = [],
   } = props;
 
   const [view, setView] = useState<AdvancedDashboardViewId>(DEFAULT_ADVANCED_VIEW);
@@ -159,6 +163,20 @@ export function BacktestOsDashboardLayout(props: BacktestOsDashboardLayoutProps)
                 winLoss={chartPack.winLoss}
                 duration={chartPack.duration}
               />
+            </div>
+          </div>
+        );
+
+      case "price-behavior":
+        return (
+          <div className="bt-os-cluster">
+            <div className="bt-os-section">
+              <SectionHeader
+                tag="Excursion"
+                tagClass="bt-os-tag-trade"
+                title="Price behavior explorer"
+              />
+              <PriceBehaviorExplorer trades={priceBehaviorTrades} />
             </div>
           </div>
         );
