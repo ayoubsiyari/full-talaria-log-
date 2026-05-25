@@ -177,6 +177,21 @@ class BaseDrawing {
         return { isPreview: false, reuseGroup: false, skipHandles: false };
     }
 
+    /** Truthy style flag (boolean, 1, or persisted string "true"). */
+    static isStyleFlagOn(style, key) {
+        const v = style && style[key];
+        return v === true || v === 1
+            || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
+    }
+
+    /** Same dash resolution as TrendlineTool (`strokeDasharray ?? dashArray ?? ''`). */
+    static resolveStrokeDasharray(style) {
+        if (!style) return '';
+        const raw = style.strokeDasharray ?? style.dashArray ?? '';
+        if (raw === '0' || raw === 'none' || raw == null || raw === '') return '';
+        return String(raw);
+    }
+
     _shouldCreateHandles(opts = {}) {
         if (opts.skipHandles) return false;
         const mgr = this.chart && this.chart.drawingManager;
@@ -1828,19 +1843,14 @@ class SVGHelpers {
         return { left: plotLeft, right: plotLeft + 1 };
     }
 
-    /** Truthy style flag (boolean, 1, or persisted string "true"). */
+    /** @deprecated Use BaseDrawing.isStyleFlagOn */
     static isStyleFlagOn(style, key) {
-        const v = style && style[key];
-        return v === true || v === 1
-            || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
+        return BaseDrawing.isStyleFlagOn(style, key);
     }
 
-    /** Same dash resolution as TrendlineTool (`strokeDasharray ?? dashArray ?? ''`). */
+    /** @deprecated Use BaseDrawing.resolveStrokeDasharray */
     static resolveStrokeDasharray(style) {
-        if (!style) return '';
-        const raw = style.strokeDasharray ?? style.dashArray ?? '';
-        if (raw === '0' || raw === 'none' || raw == null || raw === '') return '';
-        return String(raw);
+        return BaseDrawing.resolveStrokeDasharray(style);
     }
 
     /**
