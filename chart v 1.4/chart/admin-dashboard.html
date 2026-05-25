@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260524e">
+<meta name="x-admin-build" content="tickets-layout-20260524f">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -261,7 +261,7 @@ body {
   flex: 1;
   min-height: 0;
   height: 100%;
-  padding: 6px 10px 8px;
+  padding: 4px 6px 4px;
 }
 #sec-support.active {
   display: grid !important;
@@ -270,13 +270,49 @@ body {
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  gap: 8px;
+  gap: 4px;
 }
-#sec-support #supportTicketStats {
+.support-stats-shell {
   flex-shrink: 0;
-  max-height: 18vh;
+  min-width: 0;
+}
+.support-stats-shell.is-collapsed #supportTicketStats { display: none; }
+.support-stats-shell:not(.is-collapsed) #supportTicketStats {
+  max-height: 24vh;
   overflow-y: auto;
-  margin-bottom: 0;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+}
+.support-stats-expand {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: rgba(12, 18, 32, 0.42);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  user-select: none;
+}
+.support-stats-expand:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-secondary); }
+.support-stats-shell:not(.is-collapsed) .support-stats-expand {
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  border-bottom: 0;
+}
+.support-stats-shell.is-collapsed .support-collapse-icon { transform: rotate(-90deg); }
+@media (min-width: 1101px) {
+  .content.support-workspace .support-layout {
+    min-height: calc(100vh - var(--header-h) - 44px);
+    height: 100%;
+  }
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -1507,8 +1543,8 @@ select { cursor:default; }
 /* ── Support chat ─────────────────────────────────── */
 .support-layout {
   display: grid;
-  grid-template-columns: minmax(340px, 42%) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(300px, 36%) minmax(0, 1fr);
+  gap: 8px;
   min-height: 0;
   height: 100%;
   width: 100%;
@@ -1542,11 +1578,11 @@ select { cursor:default; }
   border-right: 0;
   border-top: 0;
   flex-shrink: 0;
-  max-height: 22vh;
+  max-height: 18vh;
   overflow: hidden;
 }
 .card.support-main > .support-user-card .support-collapsible-body {
-  max-height: 16vh;
+  max-height: 14vh;
   overflow-y: auto;
 }
 .card.support-main > .card-hdr.support-main-header { grid-area: header; }
@@ -1569,13 +1605,18 @@ select { cursor:default; }
   overflow: hidden;
 }
 .support-inbox-filters {
-  padding: 12px 14px 10px;
+  padding: 8px 10px 6px;
   border-bottom: 1px solid var(--border-subtle);
   background: rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
+}
+@media (min-width: 1101px) {
+  .support-inbox-filters .support-filter-row.grid-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 .support-filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .support-filter-row.grid-row {
@@ -1585,8 +1626,8 @@ select { cursor:default; }
 }
 .support-filter-search {
   width: 100%;
-  font-size: 14px;
-  padding: 10px 12px;
+  font-size: 13px;
+  padding: 8px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--surface-raised);
@@ -1599,8 +1640,8 @@ select { cursor:default; }
 }
 .support-inbox-filters select {
   width: 100%;
-  font-size: 13px;
-  padding: 9px 10px;
+  font-size: 12px;
+  padding: 7px 8px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--surface-raised);
@@ -1898,8 +1939,8 @@ select { cursor:default; }
 }
 .support-composer {
   display: flex;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 10px 12px;
   border-top: 1px solid var(--border);
   align-items: flex-end;
   background: var(--bg-elevated);
@@ -1907,8 +1948,8 @@ select { cursor:default; }
 }
 .support-composer textarea {
   width: 100%;
-  min-height: 88px;
-  max-height: 200px;
+  min-height: 72px;
+  max-height: 180px;
   resize: vertical;
   background: var(--surface-raised);
   border: 1px solid var(--border);
@@ -1985,18 +2026,18 @@ select { cursor:default; }
   max-width: 100%;
 }
 @media (max-width: 1100px) {
-  .content.support-workspace { overflow: auto; padding: 8px 10px; height: auto; }
+  .content.support-workspace { overflow: auto; padding: 6px 8px; height: auto; }
   #sec-support.active { display: block !important; height: auto; }
-  #sec-support #supportTicketStats { max-height: none; }
+  .support-stats-shell:not(.is-collapsed) #supportTicketStats { max-height: none; }
   .support-layout {
     grid-template-columns: 1fr;
     height: auto;
-    min-height: calc(100vh - var(--header-h) - 120px);
+    min-height: calc(100vh - var(--header-h) - 80px);
   }
   .support-inbox-card,
   .card.support-main {
-    min-height: min(520px, 70vh);
-    height: min(520px, 70vh);
+    min-height: min(640px, 78vh);
+    height: min(640px, 78vh);
   }
 }
 .support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
@@ -4020,7 +4061,13 @@ select { cursor:default; }
 
       <!-- ════════ TICKETS SECTION ════════ -->
       <div class="section" id="sec-support">
-        <div id="supportTicketStats"></div>
+        <div class="support-stats-shell is-collapsed" id="supportTicketStatsShell">
+          <button type="button" class="support-stats-expand" onclick="supportToggleTicketStats(event)" aria-expanded="false">
+            <span>Ticket queue stats</span>
+            <span class="support-collapse-icon">▾</span>
+          </button>
+          <div id="supportTicketStats"></div>
+        </div>
         <div class="support-layout">
           <div class="card support-inbox-card">
             <div class="card-hdr">
@@ -4613,6 +4660,18 @@ function supportToggleTicketToolbar(e) {
   }
   const bar = $('supportTicketControls');
   if (bar) bar.classList.toggle('is-collapsed');
+}
+
+function supportToggleTicketStats(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const shell = $('supportTicketStatsShell');
+  if (!shell) return;
+  shell.classList.toggle('is-collapsed');
+  const btn = shell.querySelector('.support-stats-expand');
+  if (btn) btn.setAttribute('aria-expanded', shell.classList.contains('is-collapsed') ? 'false' : 'true');
 }
 
 function supportRefreshToolbarQuick(th) {
