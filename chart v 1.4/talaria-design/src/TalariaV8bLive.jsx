@@ -666,7 +666,7 @@ function v9ChartVertToUi(chartVert) {
   return v === "middle" ? "center" : v;
 }
 
-const V9_DASH_TO_LEGACY = { solid: "", dashed: "5,5", dotted: "2,4", dashdot: "7,4,2,4" };
+const V9_DASH_TO_LEGACY = { solid: "", dashed: "10,6", dotted: "2,2", dashdot: "8,4,2,4" };
 
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
@@ -1539,7 +1539,7 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
     return true;
   }
   const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
-  if (dm && v9IsDrawingSelectedInDm(dm, d) && drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
+  if (dm && v9IsActiveStyleBridgeTarget(dm, d) && drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
     return true;
   }
   if (!legacyTool) {
@@ -1549,7 +1549,9 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
   if (d.type === legacyTool) return true;
   const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
   if (!drawingGroup || !toolGroup || drawingGroup !== toolGroup) return false;
-  if (V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) return false;
+  if (V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
+    return !!(dm && v9IsActiveStyleBridgeTarget(dm, d));
+  }
   return true;
 }
 
@@ -1569,6 +1571,17 @@ function v9IsDrawingSelectedInDm(dm, d) {
     );
   }
   return false;
+}
+
+/** Floating toolbar target — selection flags can lag behind `toolbar.show`. */
+function v9IsToolbarCurrentDrawing(dm, d) {
+  if (!dm || !d) return false;
+  const cur = dm.toolbar && dm.toolbar.currentDrawing;
+  return !!(cur && v9IsSameDrawingSession(d, cur));
+}
+
+function v9IsActiveStyleBridgeTarget(dm, d) {
+  return v9IsDrawingSelectedInDm(dm, d) || v9IsToolbarCurrentDrawing(dm, d);
 }
 
 /** While the V9 settings panel is open, never push tlStyle onto a different shape/type. */
@@ -1619,8 +1632,13 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
 
 const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
   const map = {};
-  Object.entries({ solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
-  map['7,4'] = 'dashed'; map['4,4'] = 'dashed'; map['1,3'] = 'dotted';
+  Object.entries({ solid: '', dashed: '10,6', dotted: '2,2', dashdot: '8,4,2,4' }).forEach(([k, v]) => { map[v] = k; });
+  map['0'] = 'solid';
+  map['5,5'] = 'dashed';
+  map['7,4'] = 'dashed';
+  map['4,4'] = 'dashed';
+  map['2,4'] = 'dotted';
+  map['1,3'] = 'dotted';
   return map;
 })();
 
@@ -11626,7 +11644,7 @@ const TalariaV8bLive = () => {
   // drawing is already selected by drawing-tools-manager before editDrawing.
   useEffect(() => {
     // Map from drawing.style.dashArray back to V9 lineType.
-    const LEGACY_DASH_TO_V9 = { '': 'solid', '5,5': 'dashed', '2,4': 'dotted', '7,4,2,4': 'dashdot' };
+    const LEGACY_DASH_TO_V9 = V9_LEGACY_DASH_STRING_TO_LINE_TYPE;
 
     const hook = (drawing, x, y) => {
       try {
@@ -11719,7 +11737,7 @@ const TalariaV8bLive = () => {
           ...prev,
           lineColor: sPartial.stroke || sPartial.color || prev.lineColor,
           lineWidth: String(sPartial.strokeWidth ?? prev.lineWidth),
-          lineType: LEGACY_DASH_TO_V9[(sPartial.dashArray ?? sPartial.strokeDasharray ?? '')] || prev.lineType,
+          lineType: LEGACY_DASH_TO_V9[String(sPartial.dashArray ?? sPartial.strokeDasharray ?? '').replace(/\s+/g, '')] || prev.lineType,
           bgColor: sPartial.fill || sPartial.backgroundColor || prev.bgColor,
           showBg: typeof sPartial.showBackground === 'boolean'
             ? sPartial.showBackground
@@ -12940,6 +12958,31 @@ const TalariaV8bLive = () => {
     tlStyle.gannBgOpacity,
     tool, groupSelected,
   ]);
+
+  /** Line-style picks must repaint the selected drawing immediately (Arrow + other rect-group tools). */
+  const applyTlLineType = useCallback((lineType) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, lineType })));
+    try {
+      v9StyleBridgeFlushRef.current?.();
+    } catch (_) {}
+  }, []);
+
+  // Keep V9 `tlStyle.lineType` in sync when the legacy DOM toolbar changes dash (chart already repaints via onUpdate).
+  useEffect(() => {
+    const onLegacyLineStyle = (e) => {
+      try {
+        const raw = e?.detail?.dash;
+        if (raw == null) return;
+        const norm = String(raw).replace(/\s+/g, "");
+        const lineType =
+          V9_LEGACY_DASH_STRING_TO_LINE_TYPE[norm] ?? (norm && norm !== "0" ? "dashed" : "solid");
+        suppressForwardBridge.current = true;
+        setTlStyle((s) => (s.lineType === lineType ? s : { ...s, lineType }));
+      } catch (_) {}
+    };
+    window.addEventListener("talaria:v9-drawing-line-style", onLegacyLineStyle);
+    return () => window.removeEventListener("talaria:v9-drawing-line-style", onLegacyLineStyle);
+  }, []);
 
   // Coordinates + visibility tab only — never run on lineColor etc., or moved shapes snap back.
   useLayoutEffect(() => {
@@ -14377,7 +14420,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="type" && dropShell("type",56,false,
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=tlStyle.lineType===v,isH=hov===`tlt-${v}`;
-                          return(<div key={v} onClick={()=>{setTlStyle(s=>({...s,lineType:v}));setTlStyleDrop(null);}}
+                          return(<div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
                             onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -14560,7 +14603,7 @@ const TalariaV8bLive = () => {
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=tlStyle.lineType===v; const isH=hov===`tlt-${v}`;
                           return (
-                            <div key={v} onClick={()=>{setTlStyle(s=>({...s,lineType:v}));setTlStyleDrop(null);}}
+                            <div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -15076,7 +15119,7 @@ const TalariaV8bLive = () => {
                                 [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                   const isA=tlStyle.lineType===v; const isH=hov===`pfmt-${v}`;
                                   return (
-                                    <div key={v} onClick={()=>{setTlStyle(s=>({...s,lineType:v}));setTlStyleDrop(null);}}
+                                    <div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
                                       onMouseEnter={()=>setHov(`pfmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                                background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18616,7 +18659,7 @@ const TalariaV8bLive = () => {
               ["dotted",  "2,4"],
               ["dashdot", "7,4,2,4"],
             ].map(([v, da])=>(
-              <div key={v} onClick={()=>{setTlStyle(s=>({...s,lineType:v}));setTlBarDrop(null);}}
+              <div key={v} onClick={()=>{applyTlLineType(v);setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbsty-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"8px 12px", cursor:"default",
                          background:hov===`tbsty-${v}`||tlStyle.lineType===v?c.hv:"transparent", transition:"background 0.1s" }}>

@@ -1526,6 +1526,14 @@ class DrawingToolbar {
                     const dash = item.dataset.dash;
                     drawing.style.dashArray = dash;
                     drawing.style.strokeDasharray = dash;
+
+                    try {
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('talaria:v9-drawing-line-style', {
+                                detail: { dash: dash === '0' ? '' : dash, drawing }
+                            }));
+                        }
+                    } catch (_) {}
                     
                     // Update button icon
                     styleBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 32 24"><line x1="2" y1="12" x2="30" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${dash}"/></svg>`;
