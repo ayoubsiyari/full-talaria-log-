@@ -259,7 +259,7 @@ class DrawingToolbar {
         const isRiskReward = drawing.type === 'long-position' || drawing.type === 'short-position';
         
         // All drawing tools now support template system
-        const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel'];
+        const lineTools = ['trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray', 'extended-line', 'cross-line', 'path', 'curve', 'double-curve', 'parallel-channel', 'regression-trend', 'flat-top-bottom', 'disjoint-channel', 'arrow'];
         // Template system available for all tools except a few exceptions
         const noTemplateTools = []; // Empty - all tools get templates now
         const isBrushTool = !noTemplateTools.includes(drawing.type);

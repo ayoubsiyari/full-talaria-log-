@@ -13625,7 +13625,8 @@ class Chart {
      *
      * Execution paths after the freeze overlay arms:
      *  A) TF data cache hit → restore bars, no network
-     *  B) Replay active → onTimeframeChange (resample same 1m fullRawData master; no native TF refetch)
+     *  B) Replay + client resample (coarse/equal TF) → onTimeframeChange, no network
+     *  C) Replay + backtest finer TF → _refetchBacktestTimeframe (network + replay re-init)
      *  D) Live + fileId + client resample gate → resample rawData, no network
      *  E) Live + fileId → _loadTimeframeFromServer (GET /smart)
      *  F) Local CSV only → resample rawData, no network
@@ -13658,6 +13659,16 @@ class Chart {
         // last good frame stays on the canvas until the new TF's bars are ready.
         this._beginTimeframeSwitching(this.currentTimeframe, normalizedTf);
 
+        if (this.replaySystem && this.replaySystem.isActive && this.isBacktestMode && this.currentFileId) {
+            if (Array.isArray(this.rawData) && this.rawData.length > 0) {
+                this._saveBtTfDataCacheFromChart(this.currentFileId, this.currentTimeframe);
+            }
+            const ph = this._captureReplayPlayheadMs(this.replaySystem);
+            if (Number.isFinite(ph)) {
+                this.replaySystem.replayTimestamp = ph;
+            }
+        }
+
         // Trigger interval sync if enabled. Uses the local normalizedTf rather than
         // this.currentTimeframe so the deferred commit doesn't break sibling panels.
         if (!this._suppressIntervalSync && window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.interval) {
@@ -13673,16 +13684,41 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // Restore pre-May-9 behavior: keep 1m fullRawData master, resample display TF only.
-            // Server refetch / hot-swap to native 15m/1D bars broke OHLC consistency across TFs.
-            const ph = this._captureReplayPlayheadMs(this.replaySystem);
-            if (Number.isFinite(ph)) {
-                this.replaySystem.replayTimestamp = ph;
+            // 1) Same raw series — resample only (no network, replay index unchanged).
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                return;
             }
+
+            // 2) Backtest — reuse cached native bars for this TF (fetched once per session).
+            if (this.isBacktestMode && this.currentFileId) {
+                this._applyBacktestTimeframeFromCache(normalizedTf)
+                    .then((hit) => {
+                        if (hit) return;
+                        this._refetchBacktestTimeframe(normalizedTf);
+                    })
+                    .catch((e) => {
+                        console.warn('[backtest] TF cache restore failed, refetching', e);
+                        this._refetchBacktestTimeframe(normalizedTf);
+                    });
+                return;
+            }
+
+            // 3) Non-backtest replay — client resample fallback.
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                return;
+            }
+
+            // Client-side resample path: commit synchronously THEN let replay redraw,
+            // so onTimeframeChange's resampleData() reads the new timeframe.
             this._commitTimeframeChange(normalizedTf);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
+            // TradingView-style reset on every TF switch (double-click parity).
+            // Reset BEFORE onTimeframeChange so the replay viewport is computed
+            // against default candleWidth + autoScale, identical to a fresh load.
             this.candleWidth = DEFAULT_CANDLE_WIDTH;
             this.priceZoom = 1;
             this.priceOffset = 0;
@@ -25479,7 +25515,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260524a15';
+    window.TALARIA_CHART_BUILD = '20260525a01';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

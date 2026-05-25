@@ -727,6 +727,11 @@ function v9PushLineTypeToSelectedDrawings(lineType, flushBridgeRef) {
       if (dm.selectedDrawing) push(dm.selectedDrawing);
       if (Array.isArray(dm.selectedDrawings)) dm.selectedDrawings.forEach(push);
       if (dm.toolbar && dm.toolbar.currentDrawing) push(dm.toolbar.currentDrawing);
+      if (Array.isArray(dm.drawings)) {
+        dm.drawings.forEach((d) => {
+          if (d && d.type === 'arrow' && d.selected) push(d);
+        });
+      }
     });
   } catch (_) {}
   try {
@@ -1589,7 +1594,7 @@ function v9EffectiveLegacyToolForDrawing(d, bridgeTool, editingSession) {
   ) {
     return editingSession.drawing.type;
   }
-  const g = d && v9DrawingTypeToPanelGroup(d.type);
+  const g = d && v9StyleBridgeDrawingGroup(d.type);
   if (g && V9_EXACT_STYLE_MATCH_GROUPS.has(g)) return d.type;
   return bridgeTool;
 }
@@ -1605,7 +1610,7 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
   // Arrow is grouped under Shapes in the UI but is a stroked line tool — always patch when selected.
-  if (d.type === 'arrow' && dm && v9IsActiveStyleBridgeTarget(dm, d)) return true;
+  if (d.type === 'arrow' && dm && (v9IsActiveStyleBridgeTarget(dm, d) || d.selected)) return true;
   if (
     editingSession?.drawing &&
     v9IsSameDrawingSession(d, editingSession.drawing)

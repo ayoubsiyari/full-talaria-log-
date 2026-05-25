@@ -2898,9 +2898,7 @@ class DrawingToolsManager {
         // If a persistent tool (brush/highlighter) is active, right-click deactivates it
         const persistentTools = ['brush', 'highlighter'];
         if (!this.drawingState.isDrawing && this.currentTool && persistentTools.includes(this.currentTool)) {
-            // [debug removed]
             this.clearTool();
-            // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
             const cursorBtn = document.getElementById('cursorTool');
@@ -2909,6 +2907,11 @@ class DrawingToolsManager {
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
             }
+            try {
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                    window.dispatchEvent(new CustomEvent('v9DrawingToolCleared'));
+                }
+            } catch (_) {}
             return;
         }
         
@@ -3300,21 +3303,27 @@ class DrawingToolsManager {
                 return;
             }
 
-            // Use saved style for preview to match final drawing
-            const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
-            const styleOverrides = {
-                ...savedStyle,
-                opacity: 0.85
-            };
-
-            if (this.currentTool === 'short-position') {
-                styleOverrides.orientation = 'short';
+            // Fib/Gann line tools: preview always uses each tool's built-in default level colors.
+            const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool);
+            let styleOverrides;
+            if (useFibDefaultPreview) {
+                styleOverrides = { opacity: 0.85 };
+            } else {
+                const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
+                styleOverrides = {
+                    ...savedStyle,
+                    opacity: 0.85
+                };
+                if (this.currentTool === 'short-position') {
+                    styleOverrides.orientation = 'short';
+                }
             }
 
             const tempDrawing = new toolInfo.class(previewPoints, styleOverrides);
             
-            // Apply saved style to preview for consistent appearance
-            this.applySavedStyle(tempDrawing);
+            if (!useFibDefaultPreview) {
+                this.applySavedStyle(tempDrawing);
+            }
             
             // Pass isPreview flag for regression trend to show simple line while dragging
             const isPreview = this.drawingState.isDrawing;
@@ -3835,31 +3844,40 @@ class DrawingToolsManager {
             this.objectTreeManager.refresh();
         }
         
-        // Auto-select the newly drawn shape to show resize handles immediately
-        // Deselect all other drawings without triggering full redraw
-        this.drawings.forEach(d => {
-            if (d !== drawing) d.deselect();
-        });
-        this.toolbar.hide();
-        
-        // Select the new drawing and re-render to show handles
-        drawing.select();
-        this.selectedDrawing = drawing;
-        this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
-        this.renderDrawing(drawing);
+        // Brush/highlighter stay armed until right-click — do not auto-select the stroke
+        // (V9 toolbar.show would clear the active draw tool).
+        const keepFreehandToolArmed = this._isPersistentFreehandTool(this.currentTool)
+            && this._isPersistentFreehandTool(drawing.type);
 
-        // Show toolbar immediately after drawing is completed
-        if (drawing.group && this.toolbar) {
-            try {
-                const node = drawing.group.node();
-                const bbox = node ? node.getBBox() : null;
-                if (bbox && bbox.width > 0) {
-                    const svgRect = this.svg.node().getBoundingClientRect();
-                    const x = svgRect.left + bbox.x + (bbox.width / 2);
-                    const y = svgRect.top + bbox.y;
-                    this.toolbar.show(drawing, x, y);
-                }
-            } catch (e) {}
+        if (!keepFreehandToolArmed) {
+            // Auto-select the newly drawn shape to show resize handles immediately
+            this.drawings.forEach(d => {
+                if (d !== drawing) d.deselect();
+            });
+            this.toolbar.hide();
+
+            drawing.select();
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];
+            this.renderDrawing(drawing);
+
+            if (drawing.group && this.toolbar) {
+                try {
+                    const node = drawing.group.node();
+                    const bbox = node ? node.getBBox() : null;
+                    if (bbox && bbox.width > 0) {
+                        const svgRect = this.svg.node().getBoundingClientRect();
+                        const x = svgRect.left + bbox.x + (bbox.width / 2);
+                        const y = svgRect.top + bbox.y;
+                        this.toolbar.show(drawing, x, y);
+                    }
+                } catch (e) {}
+            }
+        } else {
+            this.toolbar.hide();
+            this.selectedDrawing = null;
+            this.selectedDrawings = [];
+            this._applyPlacementModePointerEvents();
         }
         
         // [debug removed]
@@ -4464,7 +4482,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
@@ -4508,6 +4526,11 @@ class DrawingToolsManager {
 
                     // Selection-only helper zone for docked volume profile.
                     if (isVolumeProfileSelectHit) {
+                        return false;
+                    }
+
+                    // Fib/Gann: thick invisible hit strokes are for selection only — move from visible lines.
+                    if (targetSelection.classed('fib-level-hit')) {
                         return false;
                     }
                     
@@ -4782,6 +4805,13 @@ class DrawingToolsManager {
                 || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
             );
             if (shouldBlockVolumeProfileTextDirectMove) {
+                return;
+            }
+            const shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) =>
+                this._drawingRequiresStrokeOnlyDrag(d.type)
+                && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY)
+            );
+            if (shouldBlockStrokeOnlyToolBodyMove) {
                 return;
             }
         }
@@ -7367,6 +7397,80 @@ class DrawingToolsManager {
         }
     }
 
+    _isFibLikeDrawingType(type) {
+        return !!type && (
+            type.startsWith('fibonacci-') ||
+            type.startsWith('fib-') ||
+            type.startsWith('trend-fib-') ||
+            type === 'pitchfork' ||
+            type === 'pitchfan'
+        );
+    }
+
+    _isPatternLikeDrawingType(type) {
+        return !!type && (
+            type.includes('pattern') ||
+            type.startsWith('elliott-') ||
+            type === 'head-shoulders' ||
+            type === 'three-drives' ||
+            type === 'cyclic-lines' ||
+            type === 'time-cycles' ||
+            type === 'sine-line'
+        );
+    }
+
+    _drawingRequiresStrokeOnlyDrag(type) {
+        return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type);
+    }
+
+    _isPersistentFreehandTool(type) {
+        return type === 'brush' || type === 'highlighter';
+    }
+
+    /**
+     * True when (mx, my) is on a visible stroke (not fib-level-hit padding or zone fills).
+     */
+    _isPointOnDrawingVisibleStroke(drawing, mouseX, mouseY) {
+        if (!drawing?.group) return false;
+
+        const loose = this._drawingRequiresStrokeOnlyDrag(drawing.type);
+        const lineHitTolerance = loose ? 14 : 8;
+        const minLineHitTolerance = loose ? 14 : 0;
+        const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;
+
+        const elements = drawing.group.selectAll('line, path, polyline').nodes();
+        for (const element of elements) {
+            const elementSel = d3.select(element);
+            if (elementSel.classed('fib-level-hit')) continue;
+            if (elementSel.style('opacity') === '0') continue;
+
+            const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
+            if (!stroke || stroke === 'transparent' || stroke === 'none') continue;
+            if (elementSel.classed('shape-fill') || elementSel.classed('upper-fill') || elementSel.classed('lower-fill')) continue;
+            if (elementSel.classed('shape-border-hit')) continue;
+
+            if (element.tagName === 'line') {
+                const x1 = parseFloat(element.getAttribute('x1'));
+                const y1 = parseFloat(element.getAttribute('y1'));
+                const x2 = parseFloat(element.getAttribute('x2'));
+                const y2 = parseFloat(element.getAttribute('y2'));
+                if ([x1, y1, x2, y2].some((v) => !Number.isFinite(v))) continue;
+
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+                const effectiveTolerance = Math.max(lineHitTolerance, minLineHitTolerance, (strokeWidth / 2) + 0.5);
+                if (distance <= effectiveTolerance) return true;
+                continue;
+            }
+
+            if (point && typeof element.isPointInStroke === 'function' && element.isPointInStroke(point)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Selected drawings under (mx, my): stroke hit first, then visual bounds for fill/body drags.
      */
@@ -7402,7 +7506,12 @@ class DrawingToolsManager {
         const strokeSelected = selected.filter((d) => strokeHits.includes(d));
         if (strokeSelected.length > 0) return strokeSelected;
 
-        return selected.filter((d) => this._isPointInDrawingVisualBounds(d, mx, my));
+        return selected.filter((d) => {
+            if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
+                return this._isPointOnDrawingVisibleStroke(d, mx, my);
+            }
+            return this._isPointInDrawingVisualBounds(d, mx, my);
+        });
     }
 
     /**
@@ -7416,6 +7525,9 @@ class DrawingToolsManager {
             : 1;
         const pad = padding * z;
         return selected.some((d) => {
+            if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
+                return this._isPointOnDrawingVisibleStroke(d, mx, my);
+            }
             const groupNode = d?.group?.node?.();
             if (!groupNode) return false;
             try {
