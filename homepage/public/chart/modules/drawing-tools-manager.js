@@ -27,6 +27,7 @@
 
 class DrawingToolsManager {
     constructor(chartInstance) {
+        if (typeof window !== 'undefined') window.__TALARIA_DM_BUILD__ = '20260524a16';
         this.chart = chartInstance;
         this.svg = chartInstance.svg;
         this.drawings = [];
