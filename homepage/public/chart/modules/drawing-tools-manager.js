@@ -1072,7 +1072,9 @@ class DrawingToolsManager {
                         if (typeof event.stopImmediatePropagation === 'function') {
                             event.stopImmediatePropagation();
                         }
-                        this._startDirectMoveDrag(selectedAtPoint, event);
+                        this._cancelChartCtrlMarqueeIfActive();
+                        const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+                        this._startDirectMoveDrag(toMove.length ? toMove : selectedAtPoint, event);
                         suppressNextCanvasClick = true;
                         return;
                     }
@@ -1901,8 +1903,8 @@ class DrawingToolsManager {
             // If user already has a selection, and the mouse is over a selected drawing,
             // start a direct drag for that selection even if another drawing is on top.
             // This avoids relying on DOM event targeting (which always hits the topmost SVG element).
-            if (this.selectedDrawings && this.selectedDrawings.length > 0 && drawingsAtPoint.length > 0) {
-                const selectedAtPoint = this.selectedDrawings.filter(d => drawingsAtPoint.includes(d) && !d.locked);
+            if (this.selectedDrawings && this.selectedDrawings.length > 0) {
+                const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
                 const hasSelectedVolumeProfileAtPoint = selectedAtPoint.some(d => this.isVolumeProfileToolType(d.type));
                 const shouldBlockSelectedVolumeProfileTextDirectMove = (isVolumeProfileLevelLineTarget || isVolumeProfileValuesLabelTarget)
                     && hasSelectedVolumeProfileAtPoint;
@@ -1913,7 +1915,8 @@ class DrawingToolsManager {
                 if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
                     event.stopPropagation();
-                    this._startDirectMoveDrag(selectedAtPoint, event);
+                    const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+                    this._startDirectMoveDrag(toMove.length ? toMove : selectedAtPoint, event);
                     return;
                 }
             }
@@ -3077,7 +3080,7 @@ class DrawingToolsManager {
      * Returns {x: candleIndex, y: price}
      * For freehand tools (path, brush, highlighter), uses continuous coordinates for smooth curves
      */
-    getDataPoint(event, toolTypeOverride = this.currentTool) {
+    getDataPoint(event, toolTypeOverride = this.currentTool, options = {}) {
         let [screenX, screenY] = this._eventCanvasLocalXY(event);
         const activeToolType = toolTypeOverride || this.currentTool;
 
@@ -3135,7 +3138,7 @@ class DrawingToolsManager {
         
         // Apply magnet mode only when explicitly active (not via stuck key flag)
         // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
-        const keyHeld = event && (event.metaKey || event.ctrlKey);
+        const keyHeld = !options.suppressKeyMagnet && event && (event.metaKey || event.ctrlKey);
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
@@ -4767,10 +4770,22 @@ class DrawingToolsManager {
         };
 
         stopDirectMoveListeners();
+        this._cancelChartCtrlMarqueeIfActive();
+
+        if (this.isDragging) {
+            this.endDrag();
+        }
 
         const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
             .filter(d => d && d.type !== 'anchored-vwap');
         if (!drawings || drawings.length === 0) return;
+
+        drawings.forEach((d) => {
+            if (d?.group?.attr('transform')) {
+                d.group.attr('transform', null);
+                this.renderDrawing(d);
+            }
+        });
 
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
@@ -4785,7 +4800,8 @@ class DrawingToolsManager {
         }
 
         const singleDragType = drawings.length === 1 ? drawings[0].type : null;
-        const startPoint = this.getDataPoint(event, singleDragType);
+        const pointOpts = { suppressKeyMagnet: true };
+        const startPoint = this.getDataPoint(event, singleDragType, pointOpts);
         const startStates = drawings.map(d => ({
             drawing: d,
             points: d.points.map(p => ({ ...p })),
@@ -4801,7 +4817,7 @@ class DrawingToolsManager {
                 this.chart.updateCrosshair(e);
             }
 
-            const p = this.getDataPoint(e, singleDragType);
+            const p = this.getDataPoint(e, singleDragType, pointOpts);
             const dx = p.x - startPoint.x;
             const dy = p.y - startPoint.y;
 
@@ -7365,6 +7381,30 @@ class DrawingToolsManager {
     }
 
     /**
+     * Selected drawings under (mx, my): stroke hit first, then visual bounds for fill/body drags.
+     */
+    _isPointInDrawingVisualBounds(drawing, mx, my) {
+        const groupNode = drawing?.group?.node?.();
+        if (!groupNode) return false;
+        try {
+            const br = groupNode.getBoundingClientRect();
+            const z = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+                ? this.chart._v9LayoutZoom()
+                : 1;
+            const layoutRect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
+                ? this.chart._pointerLayoutRect()
+                : (this.chart?.canvas?.parentElement || this.chart?.canvas)?.getBoundingClientRect();
+            if (!layoutRect) return false;
+            const clientX = layoutRect.left + mx * z;
+            const clientY = layoutRect.top + my * z;
+            return clientX >= br.left && clientX <= br.right
+                && clientY >= br.top && clientY <= br.bottom;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
      * Selected drawings under (mx, my): stroke hit first, then bbox for fill/body drags.
      */
     _getSelectedDrawingsAtPoint(mx, my) {
@@ -7375,16 +7415,25 @@ class DrawingToolsManager {
         const strokeSelected = selected.filter((d) => strokeHits.includes(d));
         if (strokeSelected.length > 0) return strokeSelected;
 
-        return selected.filter((d) => {
-            if (!d.group) return false;
-            try {
-                const bbox = d.group.node().getBBox();
-                return mx >= bbox.x && mx <= bbox.x + bbox.width
-                    && my >= bbox.y && my <= bbox.y + bbox.height;
-            } catch (_) {
-                return false;
-            }
-        });
+        return selected.filter((d) => this._isPointInDrawingVisualBounds(d, mx, my));
+    }
+
+    /**
+     * Stop an in-progress chart Ctrl+marquee so it cannot fight a drawing move drag.
+     */
+    _cancelChartCtrlMarqueeIfActive() {
+        const chart = this.chart;
+        if (!chart) return;
+        if (chart.ctrlMarqueeSelect) {
+            chart.ctrlMarqueeSelect.active = false;
+        }
+        if (chart.drag && chart.drag.type === 'ctrlMarqueeSelect') {
+            chart.drag.active = false;
+            chart.drag.type = null;
+        }
+        if (typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
     }
 
     /**
@@ -7416,6 +7465,7 @@ class DrawingToolsManager {
      */
     completeCtrlMarqueeFromChart(rectX, rectY, rectWidth, rectHeight) {
         if (rectWidth < 3 && rectHeight < 3) return;
+        if (this._directMoveMoveHandler) return;
 
         const selectedDrawings = [];
         this.drawings.forEach((drawing) => {
