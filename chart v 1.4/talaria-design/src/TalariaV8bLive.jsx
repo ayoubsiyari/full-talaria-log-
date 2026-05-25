@@ -4917,7 +4917,7 @@ const TalariaV8bLive = () => {
   const [dialog, setDialog] = useState(false);
   const [dlgTab, setDlgTab] = useState("style");
   const [tickCandle, setTickCandle] = useState("candle");
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(false);
   const [replayPlayStarting, setReplayPlayStarting] = useState(false);
   const [speed, setSpeed] = useState(30);
   const [buySell, setBuySell] = useState("buy");
@@ -6072,6 +6072,18 @@ const TalariaV8bLive = () => {
     });
     return ["Auto", ...smaller];
   }, [tf]);
+
+  // Instant sync when replay play/pause changes (Space, legacy toolbar, V9 button).
+  useEffect(() => {
+    const onReplayPlayState = (e) => {
+      const d = e && e.detail;
+      if (!d) return;
+      if (typeof d.isPlaying === 'boolean') setPlaying(d.isPlaying);
+      if (typeof d.isPlayStarting === 'boolean') setReplayPlayStarting(d.isPlayStarting);
+    };
+    window.addEventListener('talariaReplayPlayState', onReplayPlayState);
+    return () => window.removeEventListener('talariaReplayPlayState', onReplayPlayState);
+  }, []);
 
   // Poll replaySystem state and reflect into V9 (legacy hotkeys / clone toolbar
   // can change isPlaying/playbackMode/speed without going through V9 buttons).
@@ -8445,7 +8457,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a14-channel-negative-levels-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a15-replay-play-pause-fix";
   }, []);
 
   useEffect(() => {
@@ -23527,13 +23539,16 @@ const TalariaV8bLive = () => {
                   return;
                 }
                 if (!rs) { setPlaying(p=>!p); setReplayPlayStarting(false); return; }
-                if (rs.isPlaying) {
-                  if (typeof rs.pause === 'function') rs.pause();
+                const wasPlaying = !!rs.isPlaying;
+                if (typeof rs.togglePlay === 'function') {
+                  rs.togglePlay();
+                } else if (wasPlaying) {
+                  rs.pause?.();
                 } else {
-                  if (typeof rs.play === 'function') rs.play();
+                  rs.play?.();
                 }
-                setPlaying(!!rs.isPlaying);
-                if (typeof rs.isPlayStarting === 'boolean') setReplayPlayStarting(!!rs.isPlayStarting);
+                setPlaying(!wasPlaying);
+                setReplayPlayStarting(!!rs.isPlayStarting);
               }}
               onMouseEnter={e=>{setHov("rp-play");showTip(replayPlayStarting?"Starting…":playing?"Pause":"Play",e.currentTarget,"top");}} onMouseLeave={()=>{setHov(null);hideTip();}}
               style={{padding:"4px 5px",position:"relative",background:hov==="rp-play"?c.hv:"transparent",border:"none",cursor:"default",display:"flex",alignItems:"center",transition:"background 0.12s"}}>

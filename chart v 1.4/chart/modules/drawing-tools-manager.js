@@ -40,7 +40,7 @@ class DrawingToolsManager {
         this.magnetKeyHeld = false; // Command/Ctrl key held for temporary magnet
         this.keepDrawingMode = false; // New: Keep drawing mode toggle
         this.eraserMode = false; // Eraser mode - click to delete drawings
-        this.ctrlSelectMode = false; // Ctrl key held for hover-to-select mode
+        this.ctrlSelectMode = false; // legacy flag — multi-select is click/marquee only (no Ctrl+hover sweep)
         this.riskRewardPreview = null;
         this.isDraggingFirstTwo = false;
         this.dragFirstTwoStart = null;
@@ -99,6 +99,7 @@ class DrawingToolsManager {
 
         // SVG layers
         this.drawingsGroup = null;
+        this.drawingsPanLayer = null;
         this.tempGroup = null;
         
         // Tools that support angle snapping with Shift key
@@ -1361,6 +1362,12 @@ class DrawingToolsManager {
         }
     }
 
+    /** Shift/Ctrl/Cmd held — add/toggle in multi-selection (TradingView-style). */
+    _isMultiSelectEvent(event) {
+        const ev = event && (event.sourceEvent || event);
+        return !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));
+    }
+
     /**
      * Set the current drawing tool
      */
@@ -2166,8 +2173,8 @@ class DrawingToolsManager {
                     return;
                 }
 
-                // Pass shift key state for multi-selection
-                this.selectDrawing(drawing, event.shiftKey);
+                // Pass modifier for multi-selection (Shift / Ctrl / Cmd)
+                this.selectDrawing(drawing, this._isMultiSelectEvent(event));
 
                 if (event.altKey && drawingsAtPoint.length > 1) {
                     event.preventDefault();
@@ -2203,8 +2210,8 @@ class DrawingToolsManager {
                     event.stopPropagation();
                 }
             } else {
-                // Clicked on empty space - deselect all (unless Shift is held)
-                if (!event.shiftKey) {
+                // Clicked on empty space - deselect all (unless adding to selection)
+                if (!this._isMultiSelectEvent(event)) {
                     this.deselectAll({ fromCanvasBackground: true });
                 }
                 // Ensure SVG is transparent so canvas can receive panning events
@@ -2977,10 +2984,6 @@ class DrawingToolsManager {
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
-            // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
-            if (event.ctrlKey && !this.currentTool) {
-                this.ctrlSelectMode = true;
-            }
         }
         
         // Delete key - delete selected drawing(s)
@@ -4262,9 +4265,9 @@ class DrawingToolsManager {
             
             self._drawingClickTimes[drawing.id] = now;
             
-            // Single click - select (with Shift for multi-select)
+            // Single click - select (Shift/Ctrl/Cmd toggles multi-select)
             if (!self.currentTool && !drawing.locked) {
-                self.selectDrawing(drawing, event.shiftKey);
+                self.selectDrawing(drawing, self._isMultiSelectEvent(event));
             }
         };
         
@@ -4325,11 +4328,6 @@ class DrawingToolsManager {
         // Hover handlers
         const handleMouseEnter = function(event) {
             if (self.currentTool) return;
-            
-            // Ctrl+hover to select (multi-select mode)
-            if (self.ctrlSelectMode && !drawing.locked) {
-                self.selectDrawing(drawing, true);
-            }
             
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
@@ -4586,7 +4584,7 @@ class DrawingToolsManager {
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
-                        self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                        self.selectDrawing(drawing, self._isMultiSelectEvent(event.sourceEvent));
                     }
                     
                     // Store original points and start position
@@ -4974,7 +4972,7 @@ class DrawingToolsManager {
                     const isFreehandStroke = drawing.type === 'brush' || drawing.type === 'highlighter';
                     if (isFreehandStroke) {
                         if (!drawing.selected) {
-                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                            self.selectDrawing(drawing, self._isMultiSelectEvent(event.sourceEvent));
                         }
                         self._freehandHandleWholeMove = {
                             drawing,
@@ -6343,8 +6341,13 @@ class DrawingToolsManager {
 
     /**
      * Redraw all drawings (called on zoom/pan)
+     * @param {Object} [options]
+     * @param {boolean} [options.panFast] - Lighter redraw during chart pan drag
+     * @param {boolean} [options.forceFull] - Full interaction setup after pan ends
      */
-    redrawAll() {
+    redrawAll(options = {}) {
+        const panFast = !!options.panFast;
+        const forceFull = !!options.forceFull;
         // Check if scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Scales not ready for drawing');
@@ -6352,7 +6355,9 @@ class DrawingToolsManager {
         }
         
         // Update clip path dimensions in case chart was resized
-        this.updateClipPath();
+        if (!panFast) {
+            this.updateClipPath();
+        }
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (would cause stack overflow when scheduleRender is synchronous)
@@ -6372,12 +6377,13 @@ class DrawingToolsManager {
         // work after a redraw (SVG groups are recreated here).
         this.drawings.forEach(drawing => {
             const needsFullInteraction =
+                forceFull ||
                 !!drawing.selected ||
                 (this.selectedDrawings && this.selectedDrawings.includes(drawing)) ||
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-            const skipInteraction = this._isPlacementModeActive() || !needsFullInteraction;
+            const skipInteraction = panFast || this._isPlacementModeActive() || !needsFullInteraction;
             this.renderDrawing(drawing, { skipInteraction });
         });
 
@@ -6389,6 +6395,33 @@ class DrawingToolsManager {
         
         this.raiseDrawingLayersAboveOrderPreviews();
     }
+
+    /** Optional pan wrapper — chart applies CSS translate to drawingsGroup when unset. */
+    _ensureDrawingsPanLayer() {
+        if (!this.svg || this.svg.empty()) return;
+        if (this.drawingsPanLayer && !this.drawingsPanLayer.empty()) return;
+        this.drawingsPanLayer = null;
+    }
+
+    /** Snapshot drawing geometry at pan start (before CSS translate loop). */
+    prepareDrawingsForChartPan() {
+        this.redrawAll({ panFast: true });
+    }
+
+    /** Clear pan transforms after mouse-up before final full redraw. */
+    finalizeDrawingsAfterChartPan() {
+        this._clearDrawingGroupPanTransforms();
+    }
+
+    _clearDrawingGroupPanTransforms() {
+        const groups = [this.drawingsGroup, this.labelsGroup, this.tempGroup, this.drawingsPanLayer];
+        groups.forEach((g) => {
+            if (g && !g.empty()) g.attr('transform', null);
+        });
+    }
+
+    /** Hook for per-shape pan patches; bulk movement uses group CSS translate. */
+    patchDrawingsDuringChartPan(_dx, _ty) {}
 
     /**
  

@@ -676,24 +676,38 @@ class KeyboardShortcutsManager {
     replayPlayPause() {
         if (this.isReplayActive()) {
             const replay = this.chart.replaySystem;
-            
-            // Toggle play state
+            const wasPlaying = !!replay.isPlaying;
+
             replay.togglePlay();
-            
-            // Force sync UI after a small delay to ensure state has changed
+
             setTimeout(() => {
                 if (replay.syncPlayPauseUI) {
                     replay.syncPlayPauseUI();
                 }
             }, 10);
-            
-            // Show notification based on current state
-            const isPlaying = replay.isPlaying;
-            this.showNotification(isPlaying ? '▶ Playing' : '⏸ Paused');
+
+            // play() defers isPlaying=true — use pre-toggle state for the toast label.
+            this._showReplayPlayPauseToast(wasPlaying ? '⏸ Paused' : '▶ Playing');
         } else {
             // If not in replay mode, reset view
             this.resetChart();
         }
+    }
+
+    /** Replace prior play/pause toast so rapid Space presses do not stack duplicates. */
+    _showReplayPlayPauseToast(message) {
+        if (this._replayPlayPauseToastDismiss) {
+            try { this._replayPlayPauseToastDismiss(); } catch (_) { /* ignore */ }
+            this._replayPlayPauseToastDismiss = null;
+        }
+        if (typeof window !== 'undefined' && window.__TalariaToastStack) {
+            this._replayPlayPauseToastDismiss = window.__TalariaToastStack.show(
+                String(message != null ? message : ''),
+                { type: 'info', duration: 1200 },
+            );
+            return;
+        }
+        this.showNotification(message);
     }
     
     /**

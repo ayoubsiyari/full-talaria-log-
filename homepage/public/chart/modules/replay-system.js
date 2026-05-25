@@ -1013,6 +1013,19 @@ class ReplaySystem {
     /**
      * Sync play / pause / loading spinner on speed-bar and legacy replay toolbar buttons.
      */
+    _emitReplayPlayState() {
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talariaReplayPlayState', {
+                    detail: {
+                        isPlaying: !!this.isPlaying,
+                        isPlayStarting: !!this.isPlayStarting,
+                    },
+                }));
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     syncPlayPauseButtonVisuals() {
         const loading = !!this.isPlayStarting;
         const playing = !!this.isPlaying;
@@ -1051,6 +1064,7 @@ class ReplaySystem {
 
         applyReplayToolbarBtn(document.getElementById('replayPlayPause'));
         applyReplayToolbarBtn(document.getElementById('replayPlayPauseClone'));
+        this._emitReplayPlayState();
     }
 
     /**
