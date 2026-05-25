@@ -11443,6 +11443,7 @@ def _admin_support_query_threads(
     priority: str | None,
     category: str | None,
     assigned_to: int | None,
+    user_id: int | None,
     q: str | None,
     sla_overdue: bool,
     needs_reply: bool,
@@ -11462,6 +11463,8 @@ def _admin_support_query_threads(
             query = query.filter(SupportThread.assigned_to_user_id.is_(None))
         else:
             query = query.filter(SupportThread.assigned_to_user_id == int(assigned_to))
+    if user_id is not None:
+        query = query.filter(SupportThread.user_id == int(user_id))
     if q and q.strip():
         needle = f"%{q.strip()}%"
         user_ids = [
@@ -11684,6 +11687,40 @@ async def admin_support_agents(request: Request):
         db.close()
 
 
+@app.get("/api/admin/support/requesters")
+async def admin_support_requesters(request: Request):
+    """Distinct users who have submitted support tickets (for inbox filter)."""
+    _require_admin(request)
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(
+                User.id,
+                User.name,
+                User.email,
+                func.count(SupportThread.id).label("ticket_count"),
+            )
+            .join(SupportThread, SupportThread.user_id == User.id)
+            .group_by(User.id, User.name, User.email)
+            .order_by(func.count(SupportThread.id).desc(), User.name.asc(), User.email.asc())
+            .limit(500)
+            .all()
+        )
+        return {
+            "requesters": [
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "email": r.email,
+                    "ticket_count": int(r.ticket_count or 0),
+                }
+                for r in rows
+            ]
+        }
+    finally:
+        db.close()
+
+
 @app.get("/api/admin/support/threads")
 async def admin_support_list_threads(
     request: Request,
@@ -11692,6 +11729,7 @@ async def admin_support_list_threads(
     category: str | None = None,
     assigned_to: int | None = None,
     assigned_to_me: bool = False,
+    user_id: int | None = None,
     needs_reply: bool = False,
     sort: str = "activity",
     q: str | None = None,
@@ -11711,6 +11749,7 @@ async def admin_support_list_threads(
             priority=priority,
             category=category,
             assigned_to=assignee_filter,
+            user_id=user_id,
             q=q,
             sla_overdue=sla_overdue,
             needs_reply=needs_reply,
