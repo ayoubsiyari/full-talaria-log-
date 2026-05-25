@@ -253,7 +253,19 @@ body {
 /* ── Sections ───────────────────────────────────── */
 .section { display: none; animation: fadeIn .32s cubic-bezier(0.22, 1, 0.36, 1); }
 .section.active { display: block; }
-#sec-support.active { min-height: calc(100vh - var(--header-h) - 48px); }
+#sec-support.active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.content:has(#sec-support.active) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 16px;
+}
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Cards ──────────────────────────────────────── */
@@ -1483,9 +1495,11 @@ select { cursor:default; }
 /* ── Support chat ─────────────────────────────────── */
 .support-layout {
   display: grid;
-  grid-template-columns: minmax(400px, 34%) 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
-  min-height: calc(100vh - 300px);
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   align-items: stretch;
 }
 .support-inbox-card,
@@ -1493,7 +1507,10 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   margin: 0;
-  min-height: calc(100vh - 300px);
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 .card.support-main,
 .card.support-inbox-card {
@@ -1503,7 +1520,7 @@ select { cursor:default; }
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 420px;
+  min-height: 0;
   padding: 0 !important;
 }
 .support-inbox-filters {
@@ -1593,9 +1610,31 @@ select { cursor:default; }
 }
 .support-thread-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 !important;
-  min-height: 360px;
+  scrollbar-gutter: stable;
+}
+.support-thread-list::-webkit-scrollbar,
+.support-messages::-webkit-scrollbar {
+  width: 10px;
+}
+.support-thread-list::-webkit-scrollbar-track,
+.support-messages::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+}
+.support-thread-list::-webkit-scrollbar-thumb,
+.support-messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.support-thread-list::-webkit-scrollbar-thumb:hover,
+.support-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: padding-box;
 }
 .support-thread-row {
   padding: 14px 16px 13px;
@@ -1692,10 +1731,14 @@ select { cursor:default; }
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 .support-chat-column .support-main {
   flex: 1;
-  min-height: calc(100vh - 300px);
+  min-height: 0;
+  height: 100%;
 }
 .support-user-card { flex-shrink: 0; }
 .support-user-card.is-collapsed .support-collapsible-body { display: none; }
@@ -1814,15 +1857,15 @@ select { cursor:default; }
 }
 .support-messages-wrap {
   flex: 1;
-  min-height: 520px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: rgba(0,0,0,.15);
+  overflow: hidden;
 }
 .support-messages {
   flex: 1;
-  min-height: 520px;
-  max-height: calc(100vh - 380px);
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 20px 24px;
@@ -1830,6 +1873,7 @@ select { cursor:default; }
   flex-direction: column;
   gap: 14px;
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 .support-messages-empty {
   flex: 1;
@@ -1920,10 +1964,23 @@ select { cursor:default; }
   max-width: 100%;
 }
 @media (max-width: 1100px) {
-  .support-layout { grid-template-columns: 1fr; min-height: 0; }
-  .support-inbox-card, .support-main, .support-chat-column .support-main { min-height: 0; }
-  .support-messages { max-height: none; min-height: 420px; }
-  .support-messages-wrap { min-height: 420px; }
+  .content:has(#sec-support.active) { overflow-y: auto; display: block; }
+  #sec-support.active { display: block; min-height: 0; }
+  .support-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    height: auto;
+  }
+  .support-inbox-card,
+  .support-main,
+  .support-chat-column .support-main {
+    min-height: 0;
+    height: min(520px, 60vh);
+  }
+  .support-thread-list,
+  .support-messages {
+    min-height: 240px;
+  }
 }
 .support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
 .support-thread-pill.status-pending { color: #fde047; border-color: rgba(251, 191, 36, 0.35); }
@@ -1969,6 +2026,8 @@ select { cursor:default; }
   flex-direction: column;
   gap: 12px;
   margin-bottom: 14px;
+  flex-shrink: 0;
+  width: 100%;
 }
 .support-stats-section {
   background: rgba(12, 18, 32, 0.42);

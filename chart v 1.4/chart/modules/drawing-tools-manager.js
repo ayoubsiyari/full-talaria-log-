@@ -1063,6 +1063,23 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
+                // Ctrl+drag on already-selected drawing (incl. fill/body) → move, not marquee.
+                if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
+                    const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+                    const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
+                    if (selectedAtPoint.length > 0) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        this._startDirectMoveDrag(selectedAtPoint, event);
+                        suppressNextCanvasClick = true;
+                        return;
+                    }
+                    return;
+                }
+
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
                 if (event.button !== 0 || this.currentTool || this.isRectSelecting || event.shiftKey || event.altKey) {
@@ -1271,7 +1288,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                const selectedAtPoint = (this.selectedDrawings || []).filter(d => drawingsAtPoint.includes(d) && !d.locked);
+                const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
 
                 event.preventDefault();
                 event.stopPropagation();
@@ -7381,6 +7398,29 @@ class DrawingToolsManager {
             this.pathTooltip.remove();
             this.pathTooltip = null;
         }
+    }
+
+    /**
+     * Selected drawings under (mx, my): stroke hit first, then bbox for fill/body drags.
+     */
+    _getSelectedDrawingsAtPoint(mx, my) {
+        const selected = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+        if (selected.length === 0) return [];
+
+        const strokeHits = this.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
+        const strokeSelected = selected.filter((d) => strokeHits.includes(d));
+        if (strokeSelected.length > 0) return strokeSelected;
+
+        return selected.filter((d) => {
+            if (!d.group) return false;
+            try {
+                const bbox = d.group.node().getBBox();
+                return mx >= bbox.x && mx <= bbox.x + bbox.width
+                    && my >= bbox.y && my <= bbox.y + bbox.height;
+            } catch (_) {
+                return false;
+            }
+        });
     }
 
     /**

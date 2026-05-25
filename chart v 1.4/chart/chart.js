@@ -19783,7 +19783,9 @@ class Chart {
             if (mode !== 'chart') return false;
 
             // Ctrl+marquee is for empty space / unselected hits — not for moving already-selected drawings.
-            if (
+            if (typeof dm._getSelectedDrawingsAtPoint === 'function') {
+                if (dm._getSelectedDrawingsAtPoint(mx, my).length > 0) return false;
+            } else if (
                 typeof dm.findDrawingsAtPoint === 'function'
                 && Array.isArray(dm.selectedDrawings)
                 && dm.selectedDrawings.length > 0

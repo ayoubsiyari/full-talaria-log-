@@ -27,7 +27,6 @@
 
 class DrawingToolsManager {
     constructor(chartInstance) {
-        if (typeof window !== 'undefined') window.__TALARIA_DM_BUILD__ = '20260524a18';
         this.chart = chartInstance;
         this.svg = chartInstance.svg;
         this.drawings = [];
@@ -41,7 +40,7 @@ class DrawingToolsManager {
         this.magnetKeyHeld = false; // Command/Ctrl key held for temporary magnet
         this.keepDrawingMode = false; // New: Keep drawing mode toggle
         this.eraserMode = false; // Eraser mode - click to delete drawings
-        this.ctrlSelectMode = false; // legacy flag — multi-select is click/marquee only (no Ctrl+hover sweep)
+        this.ctrlSelectMode = false; // Ctrl key held for hover-to-select mode
         this.riskRewardPreview = null;
         this.isDraggingFirstTwo = false;
         this.dragFirstTwoStart = null;
@@ -1062,28 +1061,22 @@ class DrawingToolsManager {
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
 
-            // Mousedown on canvas for rectangular selection
+            // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
-                // Ctrl+click toggles ONE shape; Ctrl+drag draws a marquee (see completeRectangularSelection).
-                if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
+                // Ctrl+drag on already-selected drawing (incl. fill/body) → move, not marquee.
+                if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
                     const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-                    const hits = this._resolveDrawingsAtPointer(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
-                    if (hits.length > 0) {
-                        const pick = this._pickDrawingForClick(event, hits);
-                        if (pick) this.selectDrawing(pick, true);
+                    const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
+                    if (selectedAtPoint.length > 0) {
                         event.preventDefault();
                         event.stopPropagation();
                         if (typeof event.stopImmediatePropagation === 'function') {
                             event.stopImmediatePropagation();
                         }
+                        this._startDirectMoveDrag(selectedAtPoint, event);
+                        suppressNextCanvasClick = true;
                         return;
                     }
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    this.startRectangularSelection(event);
                     return;
                 }
 
@@ -1295,7 +1288,7 @@ class DrawingToolsManager {
                     return;
                 }
 
-                const selectedAtPoint = (this.selectedDrawings || []).filter(d => drawingsAtPoint.includes(d) && !d.locked);
+                const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
 
                 event.preventDefault();
                 event.stopPropagation();
@@ -1372,74 +1365,6 @@ class DrawingToolsManager {
                 dblclick: onDblClick
             };
         }
-    }
-
-    /** Shift/Ctrl/Cmd held — add/toggle in multi-selection (TradingView-style). */
-    _isMultiSelectEvent(event) {
-        const ev = event && (event.sourceEvent || event);
-        return !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));
-    }
-
-    /** Min drag (px) before Ctrl+marquee selects every intersecting shape. Below = toggle one shape only. */
-    static get MARQUEE_MIN_PX() { return 5; }
-
-    /** Filled shapes ignore pointer-events on `.shape-fill`; use bbox for body hits under the cursor. */
-    _findShapeBodiesAtPoint(mouseX, mouseY) {
-        const bodyTypes = new Set([
-            'rectangle', 'rotated-rectangle', 'triangle', 'ellipse', 'circle',
-            'parallel-channel', 'flat-top-bottom', 'disjoint-channel', 'anchored-vwap',
-        ]);
-        const hits = [];
-        for (let i = 0; i < this.drawings.length; i++) {
-            const drawing = this.drawings[i];
-            if (!drawing || !drawing.group || !bodyTypes.has(drawing.type)) continue;
-            if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
-            try {
-                const bbox = drawing.group.node().getBBox();
-                if (
-                    mouseX >= bbox.x && mouseX <= bbox.x + bbox.width
-                    && mouseY >= bbox.y && mouseY <= bbox.y + bbox.height
-                ) {
-                    hits.push({ drawing, z: i });
-                }
-            } catch (_) { /* ignore */ }
-        }
-        hits.sort((a, b) => b.z - a.z);
-        return hits.map((h) => h.drawing);
-    }
-
-    /** Stroke hits + shape body hits, topmost (last drawn) first. */
-    _resolveDrawingsAtPointer(mouseX, mouseY, options = {}) {
-        const strokeHits = this.findDrawingsAtPoint(mouseX, mouseY, options) || [];
-        const bodyHits = this._findShapeBodiesAtPoint(mouseX, mouseY) || [];
-        const byId = new Map();
-        strokeHits.forEach((d) => {
-            const z = this.drawings.indexOf(d);
-            if (z >= 0) byId.set(d.id, { drawing: d, z });
-        });
-        bodyHits.forEach((d) => {
-            const z = this.drawings.indexOf(d);
-            if (z < 0) return;
-            const prev = byId.get(d.id);
-            if (!prev || prev.z < z) byId.set(d.id, { drawing: d, z });
-        });
-        return [...byId.values()].sort((a, b) => b.z - a.z).map((v) => v.drawing);
-    }
-
-    /** Prefer the SVG element actually clicked; fall back to topmost geometric hit. */
-    _pickDrawingForClick(event, drawingsAtPoint) {
-        const list = Array.isArray(drawingsAtPoint) ? drawingsAtPoint : [];
-        if (!list.length) return null;
-        const raw = event && (event.target || (event.sourceEvent && event.sourceEvent.target));
-        if (raw && raw.closest) {
-            const g = raw.closest('.drawing');
-            if (g) {
-                const id = g.getAttribute('data-id');
-                const domHit = list.find((d) => d && d.id === id);
-                if (domHit) return domHit;
-            }
-        }
-        return list[0];
     }
 
     /**
@@ -2036,7 +1961,8 @@ class DrawingToolsManager {
                         drawing = drawingsAtPoint[0];
                     }
                 } else {
-                    drawing = this._pickDrawingForClick(event, drawingsAtPoint) || drawingsAtPoint[0];
+                    // Normal click - select the topmost drawing (first in list)
+                    drawing = drawingsAtPoint[0];
                 }
                 
                 // Find the corresponding DOM group for handle detection
@@ -2246,8 +2172,8 @@ class DrawingToolsManager {
                     return;
                 }
 
-                // Pass modifier for multi-selection (Shift / Ctrl / Cmd)
-                this.selectDrawing(drawing, this._isMultiSelectEvent(event));
+                // Pass shift key state for multi-selection
+                this.selectDrawing(drawing, event.shiftKey);
 
                 if (event.altKey && drawingsAtPoint.length > 1) {
                     event.preventDefault();
@@ -2283,8 +2209,8 @@ class DrawingToolsManager {
                     event.stopPropagation();
                 }
             } else {
-                // Clicked on empty space - deselect all (unless adding to selection)
-                if (!this._isMultiSelectEvent(event)) {
+                // Clicked on empty space - deselect all (unless Shift is held)
+                if (!event.shiftKey) {
                     this.deselectAll({ fromCanvasBackground: true });
                 }
                 // Ensure SVG is transparent so canvas can receive panning events
@@ -3057,6 +2983,10 @@ class DrawingToolsManager {
         // Note: magnetKeyHeld is no longer used for snap - event.metaKey/ctrlKey checked directly
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
+            // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
+            if (event.ctrlKey && !this.currentTool) {
+                this.ctrlSelectMode = true;
+            }
         }
         
         // Delete key - delete selected drawing(s)
@@ -4338,9 +4268,9 @@ class DrawingToolsManager {
             
             self._drawingClickTimes[drawing.id] = now;
             
-            // Single click - select (Shift/Ctrl/Cmd toggles multi-select)
+            // Single click - select (with Shift for multi-select)
             if (!self.currentTool && !drawing.locked) {
-                self.selectDrawing(drawing, self._isMultiSelectEvent(event));
+                self.selectDrawing(drawing, event.shiftKey);
             }
         };
         
@@ -4401,6 +4331,11 @@ class DrawingToolsManager {
         // Hover handlers
         const handleMouseEnter = function(event) {
             if (self.currentTool) return;
+            
+            // Ctrl+hover to select (multi-select mode)
+            if (self.ctrlSelectMode && !drawing.locked) {
+                self.selectDrawing(drawing, true);
+            }
             
             // Check if hovering on inline-editable text - use move cursor
             const target = event?.target ? d3.select(event.target) : null;
@@ -4657,7 +4592,7 @@ class DrawingToolsManager {
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
-                        self.selectDrawing(drawing, self._isMultiSelectEvent(event.sourceEvent));
+                        self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                     }
                     
                     // Store original points and start position
@@ -5045,7 +4980,7 @@ class DrawingToolsManager {
                     const isFreehandStroke = drawing.type === 'brush' || drawing.type === 'highlighter';
                     if (isFreehandStroke) {
                         if (!drawing.selected) {
-                            self.selectDrawing(drawing, self._isMultiSelectEvent(event.sourceEvent));
+                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                         }
                         self._freehandHandleWholeMove = {
                             drawing,
@@ -7466,7 +7401,80 @@ class DrawingToolsManager {
     }
 
     /**
-     * Start rectangular selection (Ctrl+drag)
+     * Selected drawings under (mx, my): stroke hit first, then bbox for fill/body drags.
+     */
+    _getSelectedDrawingsAtPoint(mx, my) {
+        const selected = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+        if (selected.length === 0) return [];
+
+        const strokeHits = this.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
+        const strokeSelected = selected.filter((d) => strokeHits.includes(d));
+        if (strokeSelected.length > 0) return strokeSelected;
+
+        return selected.filter((d) => {
+            if (!d.group) return false;
+            try {
+                const bbox = d.group.node().getBBox();
+                return mx >= bbox.x && mx <= bbox.x + bbox.width
+                    && my >= bbox.y && my <= bbox.y + bbox.height;
+            } catch (_) {
+                return false;
+            }
+        });
+    }
+
+    /**
+     * True when the cursor tool is active (no drawing tool armed).
+     */
+    _isCursorSelectMode() {
+        return !this.currentTool;
+    }
+
+    /**
+     * Whether a Ctrl+marquee gesture is in progress (chart canvas or legacy SVG rect).
+     */
+    isCtrlMarqueeGestureActive() {
+        return !!(
+            this.isRectSelecting
+            || (this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active)
+        );
+    }
+
+    /**
+     * Called by chart.js when Ctrl+drag marquee begins on the canvas.
+     */
+    prepareCtrlMarqueeSelectFromChart() {
+        this.cancelRectangularSelection();
+    }
+
+    /**
+     * Apply Ctrl+marquee selection from chart.js canvas coordinates.
+     */
+    completeCtrlMarqueeFromChart(rectX, rectY, rectWidth, rectHeight) {
+        if (rectWidth < 3 && rectHeight < 3) return;
+
+        const selectedDrawings = [];
+        this.drawings.forEach((drawing) => {
+            if (!drawing.locked && this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) {
+                selectedDrawings.push(drawing);
+            }
+        });
+
+        this.deselectAll({ forSelectionChange: true });
+        selectedDrawings.forEach((drawing) => {
+            this.selectDrawing(drawing, true);
+        });
+    }
+
+    /**
+     * Cancel an in-progress Ctrl+marquee initiated from chart.js.
+     */
+    cancelCtrlMarqueeSelectFromChart() {
+        this.cancelRectangularSelection();
+    }
+
+    /**
+     * Start rectangular selection (Ctrl+drag) — legacy SVG path; prefer chart.js marquee.
      */
     startRectangularSelection(event) {
         // Prevent default behavior and stop propagation
@@ -7564,22 +7572,6 @@ class DrawingToolsManager {
         const y = parseFloat(this.rectSelectRect.attr('y'));
         const width = parseFloat(this.rectSelectRect.attr('width'));
         const height = parseFloat(this.rectSelectRect.attr('height'));
-
-        const minPx = DrawingToolsManager.MARQUEE_MIN_PX;
-        if (width < minPx && height < minPx) {
-            const cx = x + width / 2;
-            const cy = y + height / 2;
-            const hits = this._resolveDrawingsAtPointer(cx, cy, { includeVolumeProfileBodyHit: true });
-            if (hits.length > 0) {
-                this.selectDrawing(hits[0], true);
-            }
-            this.rectSelectRect.remove();
-            this.rectSelectRect = null;
-            this.rectSelectStart = null;
-            this.isRectSelecting = false;
-            this.svg.style('pointer-events', 'none');
-            return;
-        }
         
         // Find drawings that intersect with the rectangle
         const selectedDrawings = [];
