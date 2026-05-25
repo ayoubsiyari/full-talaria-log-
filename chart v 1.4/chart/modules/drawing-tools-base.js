@@ -1835,6 +1835,14 @@ class SVGHelpers {
             || (typeof v === 'string' && /^(true|1|yes)$/i.test(String(v).trim()));
     }
 
+    /** Same dash resolution as TrendlineTool (`strokeDasharray ?? dashArray ?? ''`). */
+    static resolveStrokeDasharray(style) {
+        if (!style) return '';
+        const raw = style.strokeDasharray ?? style.dashArray ?? '';
+        if (raw === '0' || raw === 'none' || raw == null || raw === '') return '';
+        return String(raw);
+    }
+
     /**
      * Apply selection effect to drawing
      */

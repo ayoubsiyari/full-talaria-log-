@@ -1125,8 +1125,7 @@ class ArrowTool extends BaseDrawing {
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
-        const rawDash = this.style.strokeDasharray ?? this.style.dashArray ?? '';
-        const strokeDasharray = rawDash && rawDash !== '0' ? String(rawDash) : null;
+        const strokeDasharray = BaseDrawing.resolveStrokeDasharray(this.style);
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing arrow', renderOpts);
@@ -1134,14 +1133,6 @@ class ArrowTool extends BaseDrawing {
 
         const p1 = this.points[0];
         const p2 = this.points[1];
-
-        // Create arrow marker if it doesn't exist
-        const markerId = `arrow-marker-${this.id}`;
-        SVGHelpers.createArrowMarker(
-            d3.select(container.node().ownerSVGElement),
-            markerId,
-            this.style.stroke
-        );
 
         // Convert data indices to screen coordinates
         let x1 = scales.chart && scales.chart.dataIndexToPixel ? 
@@ -1153,7 +1144,29 @@ class ArrowTool extends BaseDrawing {
         
         // Store original coordinates for text positioning and arrowhead placement
         const origX1 = x1, origY1 = y1, origX2 = x2, origY2 = y2;
-        const arrowAngle = Math.atan2(y2 - y1, x2 - x1);
+        const adx = origX2 - origX1;
+        const ady = origY2 - origY1;
+        const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+        const ux = adx / alen;
+        const uy = ady / alen;
+        const headLen = Math.max(8, scaledStrokeWidth * 5);
+        const headHalf = Math.max(4, scaledStrokeWidth * 2.5);
+        const shaftEndX = origX2 - ux * headLen;
+        const shaftEndY = origY2 - uy * headLen;
+
+        const appendVisibleShaft = (sx1, sy1, sx2, sy2) => this.group.append('line')
+            .attr('x1', sx1)
+            .attr('y1', sy1)
+            .attr('x2', sx2)
+            .attr('y2', sy2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStrokeWidth)
+            .attr('stroke-dasharray', strokeDasharray)
+            .attr('opacity', this.style.opacity)
+            .attr('data-original-width', this.style.strokeWidth)
+            .style('shape-rendering', 'geometricPrecision')
+            .style('pointer-events', 'none')
+            .style('cursor', 'move');
         
         // Extend line if needed
         if (this.style.extendLeft || this.style.extendRight) {
@@ -1285,18 +1298,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const line1 = this.group.append('line')
-                .attr('x1', x1)
-                .attr('y1', y1)
-                .attr('x2', split1X)
-                .attr('y2', split1Y)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', strokeDasharray)
-                .attr('opacity', this.style.opacity)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
+            appendVisibleShaft(x1, y1, split1X, split1Y);
 
             this.group.append('line')
                 .attr('x1', split2X)
@@ -1309,20 +1311,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const line2 = this.group.append('line')
-                .attr('x1', split2X)
-                .attr('y1', split2Y)
-                .attr('x2', x2)
-                .attr('y2', y2)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', strokeDasharray)
-                .attr('opacity', this.style.opacity)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
-
-            // arrowhead rendered separately at origX2 — see below
+            appendVisibleShaft(split2X, split2Y, shaftEndX, shaftEndY);
         } else {
             this.group.append('line')
                 .attr('x1', x1)
@@ -1335,31 +1324,15 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            this.group.append('line')
-                .attr('x1', x1)
-                .attr('y1', y1)
-                .attr('x2', x2)
-                .attr('y2', y2)
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', strokeDasharray)
-                .attr('opacity', this.style.opacity)
-                .attr('data-original-width', this.style.strokeWidth)
-                .style('pointer-events', 'none')
-                .style('cursor', 'move');
+            appendVisibleShaft(x1, y1, shaftEndX, shaftEndY);
         }
 
-        // Arrowhead always anchored at origX2/origY2 regardless of extending
-        this.group.append('line')
-            .attr('x1', origX2 - 0.5 * Math.cos(arrowAngle))
-            .attr('y1', origY2 - 0.5 * Math.sin(arrowAngle))
-            .attr('x2', origX2)
-            .attr('y2', origY2)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStrokeWidth)
-            .attr('stroke-dasharray', strokeDasharray)
-            .attr('opacity', this.style.opacity)
-            .attr('marker-end', `url(#${markerId})`)
+        // Solid arrowhead at tip (same approach as TrendlineTool endStyle === 'arrow')
+        const headBaseX = origX2 - ux * headLen;
+        const headBaseY = origY2 - uy * headLen;
+        this.group.append('polygon')
+            .attr('points', `${origX2},${origY2} ${headBaseX - uy * headHalf},${headBaseY + ux * headHalf} ${headBaseX + uy * headHalf},${headBaseY - ux * headHalf}`)
+            .attr('fill', this.style.stroke)
             .style('pointer-events', 'none');
 
         this.renderTextLabel({ x1, y1, x2, y2, scales });

@@ -1594,17 +1594,25 @@ function v9EffectiveLegacyToolForDrawing(d, bridgeTool, editingSession) {
   return bridgeTool;
 }
 
+/** Line tools in the Shapes rail (e.g. arrow) use trendline-style bridge rules, not rect subtype blocking. */
+function v9StyleBridgeDrawingGroup(type) {
+  if (type === 'arrow') return 'trendline';
+  return v9DrawingTypeToPanelGroup(type);
+}
+
 /** Only push tlStyle onto drawings that match the armed legacy tool's rail (never trendline ← rectangle). */
 function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
   if (!d || !d.type || !d.style) return false;
   if (v9DrawingTypeToPanelGroup(d.type) === 'text') return false;
+  // Arrow is grouped under Shapes in the UI but is a stroked line tool — always patch when selected.
+  if (d.type === 'arrow' && dm && v9IsActiveStyleBridgeTarget(dm, d)) return true;
   if (
     editingSession?.drawing &&
     v9IsSameDrawingSession(d, editingSession.drawing)
   ) {
     return true;
   }
-  const drawingGroup = v9DrawingTypeToPanelGroup(d.type);
+  const drawingGroup = v9StyleBridgeDrawingGroup(d.type);
   if (dm && v9IsActiveStyleBridgeTarget(dm, d) && drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
     return true;
   }
@@ -1613,7 +1621,7 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
     return true;
   }
   if (d.type === legacyTool) return true;
-  const toolGroup = v9DrawingTypeToPanelGroup(legacyTool);
+  const toolGroup = legacyTool ? v9StyleBridgeDrawingGroup(legacyTool) : null;
   if (!drawingGroup || !toolGroup || drawingGroup !== toolGroup) return false;
   if (V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
     return !!(dm && v9IsActiveStyleBridgeTarget(dm, d));
