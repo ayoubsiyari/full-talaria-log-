@@ -19782,6 +19782,17 @@ class Chart {
             const mode = detectCursorMode(mx, my);
             if (mode !== 'chart') return false;
 
+            // Ctrl+marquee is for empty space / unselected hits — not for moving already-selected drawings.
+            if (
+                typeof dm.findDrawingsAtPoint === 'function'
+                && Array.isArray(dm.selectedDrawings)
+                && dm.selectedDrawings.length > 0
+            ) {
+                const atPoint = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
+                const hitsSelected = atPoint.some((d) => d && !d.locked && dm.selectedDrawings.includes(d));
+                if (hitsSelected) return false;
+            }
+
             this.inertia.active = false;
             this.drag.active = true;
             this.drag.type = 'ctrlMarqueeSelect';
@@ -19827,6 +19838,14 @@ class Chart {
             }
 
             if (this.tool) return;
+
+            // Ctrl in cursor mode: marquee or drawing move — never chart pan.
+            if (e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                const dm = this.drawingManager;
+                if (dm && typeof dm._isCursorSelectMode === 'function' && dm._isCursorSelectMode()) {
+                    return;
+                }
+            }
 
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = detectCursorMode(mx, my);

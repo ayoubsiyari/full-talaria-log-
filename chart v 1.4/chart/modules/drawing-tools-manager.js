@@ -1061,20 +1061,8 @@ class DrawingToolsManager {
                 canvas.removeEventListener('dblclick', existing.dblclick, true);
             }
 
-            // Mousedown on canvas for rectangular selection
+            // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
-                // Check for Ctrl+drag to start rectangular selection
-                if (event.ctrlKey && !event.shiftKey && !this.currentTool) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
-                    }
-                    // [debug removed]
-                    this.startRectangularSelection(event);
-                    return;
-                }
-
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
                 if (event.button !== 0 || this.currentTool || this.isRectSelecting || event.shiftKey || event.altKey) {
@@ -7396,7 +7384,57 @@ class DrawingToolsManager {
     }
 
     /**
-     * Start rectangular selection (Ctrl+drag)
+     * True when the cursor tool is active (no drawing tool armed).
+     */
+    _isCursorSelectMode() {
+        return !this.currentTool;
+    }
+
+    /**
+     * Whether a Ctrl+marquee gesture is in progress (chart canvas or legacy SVG rect).
+     */
+    isCtrlMarqueeGestureActive() {
+        return !!(
+            this.isRectSelecting
+            || (this.chart && this.chart.ctrlMarqueeSelect && this.chart.ctrlMarqueeSelect.active)
+        );
+    }
+
+    /**
+     * Called by chart.js when Ctrl+drag marquee begins on the canvas.
+     */
+    prepareCtrlMarqueeSelectFromChart() {
+        this.cancelRectangularSelection();
+    }
+
+    /**
+     * Apply Ctrl+marquee selection from chart.js canvas coordinates.
+     */
+    completeCtrlMarqueeFromChart(rectX, rectY, rectWidth, rectHeight) {
+        if (rectWidth < 3 && rectHeight < 3) return;
+
+        const selectedDrawings = [];
+        this.drawings.forEach((drawing) => {
+            if (!drawing.locked && this.isDrawingInRectangle(drawing, rectX, rectY, rectWidth, rectHeight)) {
+                selectedDrawings.push(drawing);
+            }
+        });
+
+        this.deselectAll({ forSelectionChange: true });
+        selectedDrawings.forEach((drawing) => {
+            this.selectDrawing(drawing, true);
+        });
+    }
+
+    /**
+     * Cancel an in-progress Ctrl+marquee initiated from chart.js.
+     */
+    cancelCtrlMarqueeSelectFromChart() {
+        this.cancelRectangularSelection();
+    }
+
+    /**
+     * Start rectangular selection (Ctrl+drag) — legacy SVG path; prefer chart.js marquee.
      */
     startRectangularSelection(event) {
         // Prevent default behavior and stop propagation
