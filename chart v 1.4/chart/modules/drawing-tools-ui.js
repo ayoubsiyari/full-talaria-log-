@@ -19994,6 +19994,7 @@ body.light-mode .template-save-dialog .dialog-title {
                 } else if (prop === 'lineType') {
 
                     drawing.style.strokeDasharray = value;
+                    drawing.style.dashArray = value;
 
                     // Force immediate update of path and line elements
 
@@ -22774,7 +22775,10 @@ body.light-mode .template-save-dialog .dialog-title {
 
         }
 
-        if (this.pendingChanges.lineType !== undefined) drawing.style.strokeDasharray = this.pendingChanges.lineType;
+        if (this.pendingChanges.lineType !== undefined) {
+            drawing.style.strokeDasharray = this.pendingChanges.lineType;
+            drawing.style.dashArray = this.pendingChanges.lineType;
+        }
 
         if (this.pendingChanges.lineWidth) drawing.style.strokeWidth = parseInt(this.pendingChanges.lineWidth);
 

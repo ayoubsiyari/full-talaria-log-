@@ -1125,7 +1125,8 @@ class ArrowTool extends BaseDrawing {
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
-        const strokeDasharray = this.style.strokeDasharray ?? this.style.dashArray ?? '';
+        const rawDash = this.style.strokeDasharray ?? this.style.dashArray ?? '';
+        const strokeDasharray = rawDash && rawDash !== '0' ? String(rawDash) : null;
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing arrow', renderOpts);
