@@ -668,6 +668,72 @@ function v9ChartVertToUi(chartVert) {
 
 const V9_DASH_TO_LEGACY = { solid: "", dashed: "10,6", dotted: "2,2", dashdot: "8,4,2,4" };
 
+function v9LegacyDashStringFromLineType(lineType) {
+  return V9_DASH_TO_LEGACY[lineType] ?? "";
+}
+
+/** Immediate dash on visible strokes (settings panel does this for width; V9 bar must too). */
+function v9ApplyDashToDrawingDom(d, dashStr) {
+  if (!d || !d.style) return;
+  const norm = dashStr && dashStr !== "0" ? String(dashStr) : "";
+  d.style.strokeDasharray = norm;
+  d.style.dashArray = norm;
+  if (!d.group || (typeof d.group.empty === "function" && d.group.empty())) return;
+  const dashAttr = norm || null;
+  const d3g = typeof d3 !== "undefined" ? d3 : null;
+  if (!d3g) return;
+  try {
+    d.group.selectAll("line").each(function applyDashToVisibleLine() {
+      const el = d3g.select(this);
+      const stroke = el.attr("stroke");
+      if (!stroke || stroke === "transparent" || stroke === "none") return;
+      if (dashAttr) el.attr("stroke-dasharray", dashAttr);
+      else el.attr("stroke-dasharray", null);
+    });
+  } catch (_) {}
+}
+
+function v9PushLineTypeToSelectedDrawings(lineType, flushBridgeRef) {
+  const dashArr = v9LegacyDashStringFromLineType(lineType);
+  const seen = new Set();
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      const push = (raw) => {
+        const d = resolveLiveDrawingInDm(dm, raw);
+        if (!d || !d.style) return;
+        if (d.id != null) {
+          if (seen.has(d.id)) return;
+          seen.add(d.id);
+        }
+        v9ApplyDashToDrawingDom(d, dashArr);
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onBeforeUpdate === "function") {
+            dm.toolbar.onBeforeUpdate(d);
+          }
+        } catch (_) {}
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onUpdate === "function") {
+            dm.toolbar.onUpdate(d);
+          } else if (typeof dm.renderDrawing === "function") {
+            dm.renderDrawing(d);
+          }
+        } catch (_) {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (dm.chart && dm.chart.scheduleRender) dm.chart.scheduleRender();
+      };
+      if (dm.selectedDrawing) push(dm.selectedDrawing);
+      if (Array.isArray(dm.selectedDrawings)) dm.selectedDrawings.forEach(push);
+      if (dm.toolbar && dm.toolbar.currentDrawing) push(dm.toolbar.currentDrawing);
+    });
+  } catch (_) {}
+  try {
+    flushBridgeRef?.current?.();
+  } catch (_) {}
+}
+
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
@@ -12962,9 +13028,7 @@ const TalariaV8bLive = () => {
   /** Line-style picks must repaint the selected drawing immediately (Arrow + other rect-group tools). */
   const applyTlLineType = useCallback((lineType) => {
     flushSync(() => setTlStyle((s) => ({ ...s, lineType })));
-    try {
-      v9StyleBridgeFlushRef.current?.();
-    } catch (_) {}
+    v9PushLineTypeToSelectedDrawings(lineType, v9StyleBridgeFlushRef);
   }, []);
 
   // Keep V9 `tlStyle.lineType` in sync when the legacy DOM toolbar changes dash (chart already repaints via onUpdate).
