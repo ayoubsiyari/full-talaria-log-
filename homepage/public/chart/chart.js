@@ -19721,17 +19721,16 @@ class Chart {
             const mode = detectCursorMode(mx, my);
             if (mode !== 'chart') return false;
 
-            // Ctrl+marquee is for empty space / unselected hits — not for moving already-selected drawings.
-            if (typeof dm._getSelectedDrawingsAtPoint === 'function') {
-                if (dm._getSelectedDrawingsAtPoint(mx, my).length > 0) return false;
-            } else if (
-                typeof dm.findDrawingsAtPoint === 'function'
-                && Array.isArray(dm.selectedDrawings)
-                && dm.selectedDrawings.length > 0
-            ) {
-                const atPoint = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true }) || [];
-                const hitsSelected = atPoint.some((d) => d && !d.locked && dm.selectedDrawings.includes(d));
-                if (hitsSelected) return false;
+            // Ctrl+marquee is for empty space — not near/on already-selected drawings.
+            if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length > 0) {
+                if (typeof dm._getSelectedDrawingsAtPoint === 'function'
+                    && dm._getSelectedDrawingsAtPoint(mx, my).length > 0) {
+                    return false;
+                }
+                if (typeof dm._isPointNearAnySelectedDrawing === 'function'
+                    && dm._isPointNearAnySelectedDrawing(mx, my)) {
+                    return false;
+                }
             }
 
             this.inertia.active = false;

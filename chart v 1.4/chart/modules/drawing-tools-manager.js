@@ -1062,22 +1062,11 @@ class DrawingToolsManager {
 
             // Mousedown on canvas for drawing drag/select (Ctrl+marquee is handled by chart.js)
             const onMouseDown = (event) => {
-                // Ctrl+drag on already-selected drawing (incl. fill/body) → move, not marquee.
+                if (this._tryStartCtrlSelectionMove(event)) {
+                    suppressNextCanvasClick = true;
+                    return;
+                }
                 if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
-                    const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
-                    const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
-                    if (selectedAtPoint.length > 0) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (typeof event.stopImmediatePropagation === 'function') {
-                            event.stopImmediatePropagation();
-                        }
-                        this._cancelChartCtrlMarqueeIfActive();
-                        const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
-                        this._startDirectMoveDrag(toMove.length ? toMove : selectedAtPoint, event);
-                        suppressNextCanvasClick = true;
-                        return;
-                    }
                     return;
                 }
 
@@ -1673,6 +1662,10 @@ class DrawingToolsManager {
     handleMouseDown(event) {
         // Ignore right-click - handled by contextmenu event
         if (event.button === 2) {
+            return;
+        }
+
+        if (this._tryStartCtrlSelectionMove(event)) {
             return;
         }
 
@@ -4479,6 +4472,11 @@ class DrawingToolsManager {
             d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
+                    const src = event.sourceEvent || event;
+                    if (!self.currentTool && src && src.ctrlKey && !src.shiftKey
+                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.includes(drawing)) {
+                        return false;
+                    }
                     // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
                     const isResizeHandle = targetSelection.classed('resize-handle') || targetSelection.classed('resize-handle-hit');
@@ -4758,18 +4756,7 @@ class DrawingToolsManager {
     }
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
-        const stopDirectMoveListeners = () => {
-            if (this._directMoveMoveHandler) {
-                document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
-            }
-            if (this._directMoveUpHandler) {
-                document.removeEventListener('mouseup', this._directMoveUpHandler, true);
-            }
-            this._directMoveMoveHandler = null;
-            this._directMoveUpHandler = null;
-        };
-
-        stopDirectMoveListeners();
+        this._stopDirectMoveDrag();
         this._cancelChartCtrlMarqueeIfActive();
 
         if (this.isDragging) {
@@ -4846,7 +4833,7 @@ class DrawingToolsManager {
         this._directMoveUpHandler = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            stopDirectMoveListeners();
+            this._stopDirectMoveDrag();
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
                 this.chart.updateCrosshair(e);
@@ -7419,6 +7406,71 @@ class DrawingToolsManager {
     }
 
     /**
+     * Padding around selected bounds so Ctrl near a selection starts move, not marquee.
+     */
+    _isPointNearAnySelectedDrawing(mx, my, padding = 20) {
+        const selected = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+        if (selected.length === 0) return false;
+        const z = (this.chart && typeof this.chart._v9LayoutZoom === 'function')
+            ? this.chart._v9LayoutZoom()
+            : 1;
+        const pad = padding * z;
+        return selected.some((d) => {
+            const groupNode = d?.group?.node?.();
+            if (!groupNode) return false;
+            try {
+                const br = groupNode.getBoundingClientRect();
+                const layoutRect = (this.chart && typeof this.chart._pointerLayoutRect === 'function')
+                    ? this.chart._pointerLayoutRect()
+                    : (this.chart?.canvas?.parentElement || this.chart?.canvas)?.getBoundingClientRect();
+                if (!layoutRect) return false;
+                const clientX = layoutRect.left + mx * z;
+                const clientY = layoutRect.top + my * z;
+                return clientX >= br.left - pad && clientX <= br.right + pad
+                    && clientY >= br.top - pad && clientY <= br.bottom + pad;
+            } catch (_) {
+                return false;
+            }
+        });
+    }
+
+    _stopDirectMoveDrag() {
+        if (this._directMoveMoveHandler) {
+            document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
+            this._directMoveMoveHandler = null;
+        }
+        if (this._directMoveUpHandler) {
+            document.removeEventListener('mouseup', this._directMoveUpHandler, true);
+            this._directMoveUpHandler = null;
+        }
+    }
+
+    /**
+     * Ctrl+drag on the current selection → move all selected drawings (not marquee).
+     * @returns {boolean} true when the gesture was consumed
+     */
+    _tryStartCtrlSelectionMove(event) {
+        if (!event || event.button !== 0 || !event.ctrlKey || event.shiftKey || this.currentTool || this.isRectSelecting) {
+            return false;
+        }
+        const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+        if (toMove.length === 0) return false;
+
+        const [mx, my] = this._eventCanvasLocalXY(event);
+        const onSelection = this._getSelectedDrawingsAtPoint(mx, my).length > 0
+            || this._isPointNearAnySelectedDrawing(mx, my);
+        if (!onSelection) return false;
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        }
+        this._startDirectMoveDrag(toMove, event);
+        return true;
+    }
+
+    /**
      * Stop an in-progress chart Ctrl+marquee so it cannot fight a drawing move drag.
      */
     _cancelChartCtrlMarqueeIfActive() {
@@ -7458,6 +7510,10 @@ class DrawingToolsManager {
      */
     prepareCtrlMarqueeSelectFromChart() {
         this.cancelRectangularSelection();
+        this._stopDirectMoveDrag();
+        if (this.isDragging) {
+            this.endDrag();
+        }
     }
 
     /**
