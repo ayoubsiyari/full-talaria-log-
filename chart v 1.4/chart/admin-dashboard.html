@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="x-admin-build" content="tickets-layout-20260524b">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -253,15 +254,7 @@ body {
 /* ── Sections ───────────────────────────────────── */
 .section { display: none; animation: fadeIn .32s cubic-bezier(0.22, 1, 0.36, 1); }
 .section.active { display: block; }
-#sec-support.active {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-}
-.content:has(#sec-support.active) {
+.content.support-workspace {
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -269,6 +262,14 @@ body {
   min-height: 0;
   padding-bottom: 16px;
 }
+#sec-support.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+#sec-support #supportTicketStats { flex-shrink: 0; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ── Cards ──────────────────────────────────────── */
@@ -1500,33 +1501,18 @@ select { cursor:default; }
   display: grid;
   grid-template-columns: minmax(380px, 42%) minmax(0, 1fr);
   gap: 20px;
+  flex: 1;
   min-height: 0;
-  height: 100%;
-  width: 100%;
   align-items: stretch;
-}
-.support-inbox-card {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
   overflow: hidden;
 }
-.support-inbox-card > .card-hdr {
-  flex-shrink: 0;
-}
+.support-inbox-card,
 .support-main {
   display: flex;
   flex-direction: column;
   margin: 0;
-  width: 100%;
-  min-width: 0;
   min-height: 0;
-  flex: 1;
-  overflow: hidden;
+  height: 100%;
 }
 .card.support-main,
 .card.support-inbox-card {
@@ -1627,31 +1613,10 @@ select { cursor:default; }
 }
 .support-thread-list {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 !important;
-  scrollbar-gutter: stable;
-}
-.support-thread-list::-webkit-scrollbar,
-.support-messages::-webkit-scrollbar {
-  width: 10px;
-}
-.support-thread-list::-webkit-scrollbar-track,
-.support-messages::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.15);
-}
-.support-thread-list::-webkit-scrollbar-thumb,
-.support-messages::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.support-thread-list::-webkit-scrollbar-thumb:hover,
-.support-messages::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
-  background-clip: padding-box;
 }
 .support-thread-row {
   padding: 14px 16px 13px;
@@ -1748,7 +1713,6 @@ select { cursor:default; }
   flex-direction: column;
   gap: 14px;
   min-width: 0;
-  width: 100%;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -1757,6 +1721,7 @@ select { cursor:default; }
   flex: 1;
   min-height: 0;
 }
+.support-inbox-card > .card-hdr,
 .support-main > .card-hdr,
 .support-main > .support-ticket-toolbar,
 .support-main > .support-composer {
@@ -1887,7 +1852,7 @@ select { cursor:default; }
 }
 .support-messages {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 20px 24px;
@@ -1895,7 +1860,6 @@ select { cursor:default; }
   flex-direction: column;
   gap: 14px;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
 }
 .support-messages-empty {
   flex: 1;
@@ -1986,30 +1950,11 @@ select { cursor:default; }
   max-width: 100%;
 }
 @media (max-width: 1100px) {
-  .content:has(#sec-support.active) {
-    overflow-y: auto;
-    display: block;
-    min-height: 0;
-  }
-  #sec-support.active {
-    display: block;
-    min-height: 0;
-  }
-  .support-layout {
-    grid-template-columns: 1fr;
-    height: auto;
-    min-height: 0;
-  }
-  .support-inbox-card,
-  .support-chat-column {
-    height: auto;
-    min-height: 420px;
-    max-height: min(560px, 65vh);
-  }
-  .support-chat-column .support-main {
-    min-height: 420px;
-    max-height: min(560px, 65vh);
-  }
+  .content.support-workspace { overflow: auto; }
+  #sec-support.active { overflow: visible; }
+  .support-layout { grid-template-columns: 1fr; overflow: visible; height: auto; }
+  .support-inbox-card, .support-main, .support-chat-column { height: auto; max-height: none; }
+  .support-inbox-card, .support-chat-column .support-main { min-height: 420px; }
 }
 .support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
 .support-thread-pill.status-pending { color: #fde047; border-color: rgba(251, 191, 36, 0.35); }
@@ -2253,6 +2198,11 @@ select { cursor:default; }
 .support-msg.internal { border-left:3px solid #a78bfa; opacity:.95; }
 .support-activity { font-size:11px; color:var(--text-muted); max-height:120px; overflow-y:auto; margin-top:10px; padding-top:8px; border-top:1px solid var(--border-subtle); }
 .support-activity div { padding:4px 0; border-bottom:1px solid var(--border); }
+.support-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
 .support-msg {
   max-width: 88%;
   padding: 12px 16px;
@@ -5305,6 +5255,8 @@ function navigate(section) {
   }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const contentEl = document.querySelector('.content');
+  if (contentEl) contentEl.classList.toggle('support-workspace', section === 'support');
   const sec = $('sec-' + section);
   const nav = document.querySelector(`.nav-item[data-section="${section}"]`);
   if (sec) sec.classList.add('active');
