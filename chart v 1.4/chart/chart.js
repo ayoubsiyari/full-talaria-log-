@@ -15437,21 +15437,7 @@ class Chart {
 
     /** Pan transform: 1:1 with chart drag (fast). Baseline geometry set in prepareDrawingsForChartPan. */
     _shouldUsePanDrawingsTransform() {
-        if (!this._canPanTransformDrawings()) return false;
-        if (this._panDrawingsForceLiveRedraw) return false;
-        return !this._panDrawingsNeedLiveRebuild();
-    }
-
-    /** Live-rebuild drawings during pan when replay future margin or newly exposed range needs fresh scales. */
-    _panDrawingsNeedLiveRebuild() {
-        const lastRealIdx = (this.data && this.data.length) ? this.data.length - 1 : 0;
-        const span = this._getVisibleIndexSpan();
-        const showingFutureSpace = span.last > lastRealIdx + 0.01;
-        if (showingFutureSpace) return true;
-        const snap = this._panSnapVisibleSpan;
-        if (!snap) return false;
-        const pad = 1;
-        return span.last > snap.last + pad || span.first < snap.first - pad;
+        return this._canPanTransformDrawings();
     }
 
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
@@ -15488,8 +15474,6 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
-        this._panSnapVisibleSpan = this._getVisibleIndexSpan();
-        this._panDrawingsForceLiveRedraw = false;
         this._panTimeTickCache = null;
         if (this.yScale) {
             const d = this.yScale.domain();
@@ -15509,56 +15493,16 @@ class Chart {
         this._panTimeTickCache = null;
     }
 
-    /** Visible candle index span (can extend past loaded data in replay future margin). */
-    _getVisibleIndexSpan() {
-        const m = this.margin || { l: 0, r: 0 };
-        const candleSpacing = this.getCandleSpacing();
-        if (!Number.isFinite(candleSpacing) || candleSpacing <= 0) {
-            return { first: 0, last: 0 };
-        }
-        const cw = Math.max(0, this.w - m.l - m.r);
-        const first = -this.offsetX / candleSpacing;
-        return { first, last: first + cw / candleSpacing };
-    }
-
-    _storePanTimeTickCache(ticks) {
-        const list = Array.isArray(ticks) ? ticks : [];
-        let minIdx = Infinity;
-        let maxIdx = -Infinity;
-        for (let i = 0; i < list.length; i++) {
-            const idx = list[i].idx;
-            if (idx < minIdx) minIdx = idx;
-            if (idx > maxIdx) maxIdx = idx;
-        }
-        this._panTimeTickCache = {
-            baseOffsetX: this.offsetX,
-            ticks: list.map((t) => ({ ...t })),
-            minIdx: Number.isFinite(minIdx) ? minIdx : 0,
-            maxIdx: Number.isFinite(maxIdx) ? maxIdx : 0,
-        };
-        return list;
-    }
-
     /** Shift cached time-axis ticks during pan instead of rebuilding every frame. */
     _buildPanTimeTicks() {
-        const lastRealIdx = (this.data && this.data.length) ? this.data.length - 1 : 0;
-        const span = this._getVisibleIndexSpan();
-
         if (!this._panTimeTickCache) {
-            return this._storePanTimeTickCache(this._buildTimeTicks());
+            const ticks = this._buildTimeTicks();
+            this._panTimeTickCache = {
+                baseOffsetX: this.offsetX,
+                ticks: ticks.map((t) => ({ ...t })),
+            };
+            return ticks;
         }
-
-        // Replay future margin + newly exposed history need fresh extrapolated labels —
-        // shifting a snapshot hides upcoming dates until mouse-up.
-        const pad = 1;
-        const showingFutureSpace = span.last > lastRealIdx + 0.01;
-        const viewportExtended = span.last > this._panTimeTickCache.maxIdx + pad
-            || span.first < this._panTimeTickCache.minIdx - pad;
-        if (showingFutureSpace || viewportExtended) {
-            this._clearPanTimeTickCache();
-            return this._storePanTimeTickCache(this._buildTimeTicks());
-        }
-
         const dx = this.offsetX - this._panTimeTickCache.baseOffsetX;
         return this._panTimeTickCache.ticks.map((t) => ({ ...t, x: t.x + dx }));
     }
@@ -15647,8 +15591,6 @@ class Chart {
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
             this._panSnapYDomain = null;
-            this._panSnapVisibleSpan = null;
-            this._panDrawingsForceLiveRedraw = false;
         }
     }
 
@@ -16118,13 +16060,10 @@ class Chart {
             this.drawGrid({ panFast: true, skipVertical: true });
             this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
-            if (this._panDrawingsNeedLiveRebuild()) {
-                this._panDrawingsForceLiveRedraw = true;
-            }
             if (this._shouldUsePanDrawingsTransform()) {
                 this._applyPanDrawingsLayerTransform();
             } else {
-                this._clearPanDrawingsLayerTransform(false);
+                this._clearPanDrawingsLayerTransform();
                 this.redrawDrawings();
             }
             this._syncOrderOverlaysDuringPan(true, { lite: true });
@@ -17258,7 +17197,7 @@ class Chart {
      */
     drawAxisHighlightZones() {
         // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
-        if (this._isChartViewPanning() && this._shouldUsePanDrawingsTransform()) return;
+        if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
@@ -25541,7 +25480,7 @@ class Chart {
 // before our DOMContentLoaded auto-init runs (or instead of it).
 if (typeof window !== 'undefined') {
     window.Chart = Chart;
-    window.TALARIA_CHART_BUILD = '20260524a14';
+    window.TALARIA_CHART_BUILD = '20260524a15';
 }
 
 // Initialize chart when DOM is ready (or immediately if DOM already loaded).

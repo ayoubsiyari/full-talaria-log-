@@ -99,7 +99,6 @@ class DrawingToolsManager {
 
         // SVG layers
         this.drawingsGroup = null;
-        this.drawingsPanLayer = null;
         this.tempGroup = null;
         
         // Tools that support angle snapping with Shift key
@@ -6349,13 +6348,8 @@ class DrawingToolsManager {
 
     /**
      * Redraw all drawings (called on zoom/pan)
-     * @param {Object} [options]
-     * @param {boolean} [options.panFast] - Lighter redraw during chart pan drag
-     * @param {boolean} [options.forceFull] - Full interaction setup after pan ends
      */
-    redrawAll(options = {}) {
-        const panFast = !!options.panFast;
-        const forceFull = !!options.forceFull;
+    redrawAll() {
         // Check if scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Scales not ready for drawing');
@@ -6363,9 +6357,7 @@ class DrawingToolsManager {
         }
         
         // Update clip path dimensions in case chart was resized
-        if (!panFast) {
-            this.updateClipPath();
-        }
+        this.updateClipPath();
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (would cause stack overflow when scheduleRender is synchronous)
@@ -6385,13 +6377,12 @@ class DrawingToolsManager {
         // work after a redraw (SVG groups are recreated here).
         this.drawings.forEach(drawing => {
             const needsFullInteraction =
-                forceFull ||
                 !!drawing.selected ||
                 (this.selectedDrawings && this.selectedDrawings.includes(drawing)) ||
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
                 drawing.type === 'double-curve';
-            const skipInteraction = panFast || this._isPlacementModeActive() || !needsFullInteraction;
+            const skipInteraction = this._isPlacementModeActive() || !needsFullInteraction;
             this.renderDrawing(drawing, { skipInteraction });
         });
 
@@ -6403,33 +6394,6 @@ class DrawingToolsManager {
         
         this.raiseDrawingLayersAboveOrderPreviews();
     }
-
-    /** Optional pan wrapper — chart applies CSS translate to drawingsGroup when unset. */
-    _ensureDrawingsPanLayer() {
-        if (!this.svg || this.svg.empty()) return;
-        if (this.drawingsPanLayer && !this.drawingsPanLayer.empty()) return;
-        this.drawingsPanLayer = null;
-    }
-
-    /** Snapshot drawing geometry at pan start (before CSS translate loop). */
-    prepareDrawingsForChartPan() {
-        this.redrawAll({ panFast: true });
-    }
-
-    /** Clear pan transforms after mouse-up before final full redraw. */
-    finalizeDrawingsAfterChartPan() {
-        this._clearDrawingGroupPanTransforms();
-    }
-
-    _clearDrawingGroupPanTransforms() {
-        const groups = [this.drawingsGroup, this.labelsGroup, this.tempGroup, this.drawingsPanLayer];
-        groups.forEach((g) => {
-            if (g && !g.empty()) g.attr('transform', null);
-        });
-    }
-
-    /** Hook for per-shape pan patches; bulk movement uses group CSS translate. */
-    patchDrawingsDuringChartPan(_dx, _ty) {}
 
     /**
  
