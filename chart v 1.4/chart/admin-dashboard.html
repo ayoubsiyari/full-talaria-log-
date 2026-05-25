@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260524d">
+<meta name="x-admin-build" content="tickets-layout-20260524e">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -260,19 +260,21 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: 10px 20px 12px;
+  height: 100%;
+  padding: 6px 10px 8px;
 }
 #sec-support.active {
-  display: flex;
-  flex-direction: column;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
-  gap: 10px;
+  gap: 8px;
 }
 #sec-support #supportTicketStats {
   flex-shrink: 0;
-  max-height: 22vh;
+  max-height: 18vh;
   overflow-y: auto;
   margin-bottom: 0;
 }
@@ -1505,34 +1507,57 @@ select { cursor:default; }
 /* ── Support chat ─────────────────────────────────── */
 .support-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  flex: 1;
-  min-height: 520px;
+  grid-template-columns: minmax(340px, 42%) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
   align-items: stretch;
   overflow: hidden;
 }
-.support-inbox-card {
+.support-inbox-card,
+.card.support-main {
   display: flex;
   flex-direction: column;
   margin: 0;
   min-height: 0;
   height: 100%;
-}
-.support-main {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  min-height: 0;
   overflow: hidden;
 }
-.support-chat-column .support-main {
-  flex: 1 1 0;
-  min-height: 0;
-  height: auto;
+.card.support-main {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "requester"
+    "header"
+    "toolbar"
+    "messages"
+    "composer";
 }
-.card.support-main,
-.card.support-inbox-card {
+.card.support-main > .support-user-card {
+  grid-area: requester;
+  margin: 0;
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  flex-shrink: 0;
+  max-height: 22vh;
+  overflow: hidden;
+}
+.card.support-main > .support-user-card .support-collapsible-body {
+  max-height: 16vh;
+  overflow-y: auto;
+}
+.card.support-main > .card-hdr.support-main-header { grid-area: header; }
+.card.support-main > .support-ticket-toolbar { grid-area: toolbar; }
+.card.support-main > .support-messages-wrap { grid-area: messages; }
+.card.support-main > .support-composer { grid-area: composer; }
+.support-chat-column {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 .support-inbox-body {
@@ -1725,28 +1750,13 @@ select { cursor:default; }
   color: var(--text-muted);
   font-size: 14px;
 }
-.support-chat-column {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-.support-chat-column .support-main {
-  flex: 1 1 0;
-  min-height: 0;
-  height: auto;
-}
 .support-inbox-card > .card-hdr,
-.support-main > .card-hdr,
-.support-main > .support-ticket-toolbar,
-.support-main > .support-composer {
+.card.support-main > .card-hdr,
+.card.support-main > .support-ticket-toolbar,
+.card.support-main > .support-composer {
   flex-shrink: 0;
 }
-.support-main > .support-messages-wrap {
-  flex: 1 1 0;
+.card.support-main > .support-messages-wrap {
   min-height: 0;
   overflow: hidden;
 }
@@ -1866,22 +1876,21 @@ select { cursor:default; }
   min-width: 180px;
 }
 .support-messages-wrap {
-  flex: 1 1 0;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: rgba(0,0,0,.15);
   overflow: hidden;
-  position: relative;
-  z-index: 0;
 }
 .support-messages {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 20px 24px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1890,18 +1899,16 @@ select { cursor:default; }
 .support-composer {
   display: flex;
   gap: 12px;
-  padding: 18px 20px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border);
   align-items: flex-end;
-  background: var(--surface-raised);
+  background: var(--bg-elevated);
   flex-shrink: 0;
-  position: relative;
-  z-index: 1;
 }
 .support-composer textarea {
   width: 100%;
-  min-height: 120px;
-  max-height: 280px;
+  min-height: 88px;
+  max-height: 200px;
   resize: vertical;
   background: var(--surface-raised);
   border: 1px solid var(--border);
@@ -1978,19 +1985,18 @@ select { cursor:default; }
   max-width: 100%;
 }
 @media (max-width: 1100px) {
-  .content.support-workspace { overflow: auto; padding: 12px 16px; }
-  #sec-support.active { overflow: visible; }
+  .content.support-workspace { overflow: auto; padding: 8px 10px; height: auto; }
+  #sec-support.active { display: block !important; height: auto; }
   #sec-support #supportTicketStats { max-height: none; }
   .support-layout {
     grid-template-columns: 1fr;
-    overflow: visible;
     height: auto;
-    min-height: 0;
+    min-height: calc(100vh - var(--header-h) - 120px);
   }
   .support-inbox-card,
-  .support-chat-column .support-main {
-    min-height: min(560px, 72vh);
-    height: min(560px, 72vh);
+  .card.support-main {
+    min-height: min(520px, 70vh);
+    height: min(520px, 70vh);
   }
 }
 .support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
@@ -4086,15 +4092,15 @@ select { cursor:default; }
             </div>
           </div>
           <div class="support-chat-column">
-            <div class="card support-user-card is-collapsed" id="supportUserCard" style="margin:0;display:none">
-              <div class="card-hdr support-panel-toggle" onclick="supportToggleUserCard(event)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                <div class="card-title">Requester<span class="support-user-summary" id="supportUserSummary"></span></div>
-                <span class="support-collapse-icon">▾</span>
-              </div>
-              <div class="card-body support-collapsible-body" id="supportUserCardBody"></div>
-            </div>
             <div class="card support-main">
+              <div class="card support-user-card is-collapsed" id="supportUserCard" style="margin:0;display:none">
+                <div class="card-hdr support-panel-toggle" onclick="supportToggleUserCard(event)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  <div class="card-title">Requester<span class="support-user-summary" id="supportUserSummary"></span></div>
+                  <span class="support-collapse-icon">▾</span>
+                </div>
+                <div class="card-body support-collapsible-body" id="supportUserCardBody"></div>
+              </div>
               <div class="card-hdr support-main-header">
                 <div class="card-title" id="supportThreadTitle">Select a ticket</div>
                 <button type="button" class="btn sm" id="supportResolveBtn" style="display:none" onclick="supportSetStatus('resolved')">Resolve</button>
