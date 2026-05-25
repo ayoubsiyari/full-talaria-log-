@@ -467,6 +467,11 @@ const V9_DRAWING_TOOL_GROUP_IDS = new Set([
   "trendline", "rect", "channel", "brush2", "fib", "pattern", "measure", "text", "brush",
 ]);
 
+function v9IsPersistentFreehandArmed(dm) {
+  const t = dm && dm.currentTool;
+  return t === "brush" || t === "highlighter";
+}
+
 function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
   if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return false;
   return nextToolId !== currentTool;
@@ -11324,6 +11329,7 @@ const TalariaV8bLive = () => {
     const syncRailIfCursor = (dm, mirrored) => {
       try {
         if (editingDrawingRef.current) return;
+        if (v9IsPersistentFreehandArmed(dm)) return;
         // panel-manager.selectPanel clears non-focused tiles with clearTool(true).
         // Syncing React from those mirrored clears races the tool bridge and forces
         // the V9 rail back to Cursor even when the user immediately picks a draw tool.
@@ -12011,7 +12017,8 @@ const TalariaV8bLive = () => {
           }
           br.setTlBarSelected(true);
           br.setTlBarSelectedType(drawing && drawing.type);
-          if (drawing && drawing.type && (!editRef || !editRef.current)) {
+          const freehandStillArmed = v9IsPersistentFreehandArmed(dm);
+          if (drawing && drawing.type && (!editRef || !editRef.current) && !freehandStillArmed) {
             const g = br.drawingTypeToPanelGroupRef.current(drawing.type);
             if (g) {
               let icon = br.LEGACY_TYPE_TO_V9_ICON[drawing.type];
@@ -12042,7 +12049,7 @@ const TalariaV8bLive = () => {
               br.setBtnPressed(null);
             }
           }
-          if (!editRef || !editRef.current) {
+          if ((!editRef || !editRef.current) && !freehandStillArmed) {
             try {
               if (dm && typeof dm.clearTool === 'function') dm.clearTool();
               else if (dm) dm.currentTool = null;

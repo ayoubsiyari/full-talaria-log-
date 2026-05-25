@@ -2898,9 +2898,7 @@ class DrawingToolsManager {
         // If a persistent tool (brush/highlighter) is active, right-click deactivates it
         const persistentTools = ['brush', 'highlighter'];
         if (!this.drawingState.isDrawing && this.currentTool && persistentTools.includes(this.currentTool)) {
-            // [debug removed]
             this.clearTool();
-            // Update UI - remove active from all tools except the persistent cursor button
             document.querySelectorAll('.tool-btn:not(#keepDrawingMode):not(#magnetMode)').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tool-group-btn:not(#magnetMode):not(#magnetModeToolbar):not(#cursorTool)').forEach(b => b.classList.remove('active'));
             const cursorBtn = document.getElementById('cursorTool');
@@ -2909,6 +2907,11 @@ class DrawingToolsManager {
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
             }
+            try {
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                    window.dispatchEvent(new CustomEvent('v9DrawingToolCleared'));
+                }
+            } catch (_) {}
             return;
         }
         
@@ -3841,31 +3844,40 @@ class DrawingToolsManager {
             this.objectTreeManager.refresh();
         }
         
-        // Auto-select the newly drawn shape to show resize handles immediately
-        // Deselect all other drawings without triggering full redraw
-        this.drawings.forEach(d => {
-            if (d !== drawing) d.deselect();
-        });
-        this.toolbar.hide();
-        
-        // Select the new drawing and re-render to show handles
-        drawing.select();
-        this.selectedDrawing = drawing;
-        this.selectedDrawings = [drawing];  // Update selectedDrawings array for deselect to work
-        this.renderDrawing(drawing);
+        // Brush/highlighter stay armed until right-click — do not auto-select the stroke
+        // (V9 toolbar.show would clear the active draw tool).
+        const keepFreehandToolArmed = this._isPersistentFreehandTool(this.currentTool)
+            && this._isPersistentFreehandTool(drawing.type);
 
-        // Show toolbar immediately after drawing is completed
-        if (drawing.group && this.toolbar) {
-            try {
-                const node = drawing.group.node();
-                const bbox = node ? node.getBBox() : null;
-                if (bbox && bbox.width > 0) {
-                    const svgRect = this.svg.node().getBoundingClientRect();
-                    const x = svgRect.left + bbox.x + (bbox.width / 2);
-                    const y = svgRect.top + bbox.y;
-                    this.toolbar.show(drawing, x, y);
-                }
-            } catch (e) {}
+        if (!keepFreehandToolArmed) {
+            // Auto-select the newly drawn shape to show resize handles immediately
+            this.drawings.forEach(d => {
+                if (d !== drawing) d.deselect();
+            });
+            this.toolbar.hide();
+
+            drawing.select();
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];
+            this.renderDrawing(drawing);
+
+            if (drawing.group && this.toolbar) {
+                try {
+                    const node = drawing.group.node();
+                    const bbox = node ? node.getBBox() : null;
+                    if (bbox && bbox.width > 0) {
+                        const svgRect = this.svg.node().getBoundingClientRect();
+                        const x = svgRect.left + bbox.x + (bbox.width / 2);
+                        const y = svgRect.top + bbox.y;
+                        this.toolbar.show(drawing, x, y);
+                    }
+                } catch (e) {}
+            }
+        } else {
+            this.toolbar.hide();
+            this.selectedDrawing = null;
+            this.selectedDrawings = [];
+            this._applyPlacementModePointerEvents();
         }
         
         // [debug removed]
@@ -7409,6 +7421,10 @@ class DrawingToolsManager {
 
     _drawingRequiresStrokeOnlyDrag(type) {
         return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type);
+    }
+
+    _isPersistentFreehandTool(type) {
+        return type === 'brush' || type === 'highlighter';
     }
 
     /**
