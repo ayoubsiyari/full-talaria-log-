@@ -1125,6 +1125,7 @@ class ArrowTool extends BaseDrawing {
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
+        const strokeDasharray = this.style.strokeDasharray ?? this.style.dashArray ?? '';
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing arrow', renderOpts);
@@ -1290,6 +1291,7 @@ class ArrowTool extends BaseDrawing {
                 .attr('y2', split1Y)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', strokeDasharray)
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1313,6 +1315,7 @@ class ArrowTool extends BaseDrawing {
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', strokeDasharray)
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1338,6 +1341,7 @@ class ArrowTool extends BaseDrawing {
                 .attr('y2', y2)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', strokeDasharray)
                 .attr('opacity', this.style.opacity)
                 .attr('data-original-width', this.style.strokeWidth)
                 .style('pointer-events', 'none')
@@ -1352,6 +1356,7 @@ class ArrowTool extends BaseDrawing {
             .attr('y2', origY2)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', scaledStrokeWidth)
+            .attr('stroke-dasharray', strokeDasharray)
             .attr('opacity', this.style.opacity)
             .attr('marker-end', `url(#${markerId})`)
             .style('pointer-events', 'none');
