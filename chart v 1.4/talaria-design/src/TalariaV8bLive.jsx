@@ -668,6 +668,40 @@ function v9ChartVertToUi(chartVert) {
 
 const V9_DASH_TO_LEGACY = { solid: "", dashed: "10,6", dotted: "2,2", dashdot: "8,4,2,4" };
 
+/** V9 cursor rail icon → chart.js `setCursorType` argument. */
+const V9_ICON_TO_CHART_CURSOR = {
+  crosshair: "cross",
+  cursorDot: "dot",
+  cursorArrow: "arrow",
+  eraser: "eraser",
+};
+
+function v9ResolveChartCursorType(v9Tool, groupSelected) {
+  if (v9Tool !== "crosshair") return null;
+  const sub = groupSelected && groupSelected.crosshair;
+  const icon = sub && sub.icon ? sub.icon : "crosshair";
+  return V9_ICON_TO_CHART_CURSOR[icon] ?? "cross";
+}
+
+function v9ApplyChartCursorType(cursorType) {
+  if (!cursorType || typeof window === "undefined") return;
+  try {
+    const ch =
+      typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+    if (ch && typeof ch.setCursorType === "function") {
+      ch.setCursorType(cursorType);
+      return;
+    }
+    if (window.chart && typeof window.chart.setCursorType === "function") {
+      window.chart.setCursorType(cursorType);
+    }
+  } catch (err) {
+    console.warn("[V9 cursor bridge] setCursorType failed:", err);
+  }
+}
+
 function v9LegacyDashStringFromLineType(lineType) {
   return V9_DASH_TO_LEGACY[lineType] ?? "";
 }
@@ -11412,6 +11446,35 @@ const TalariaV8bLive = () => {
     // mounts/unmounts (1 ↔ N panels) and pick the right routing branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, groupSelected, layoutPanels.n]);
+
+  // Cursor sub-tools (Cross / Dot / Arrow / Eraser) — chart.js owns cursorType;
+  // V9 only updates React state unless we call setCursorType here.
+  useEffect(() => {
+    if (editingDrawingRef.current) return;
+    if (tool !== "crosshair") return;
+    const cursorType = v9ResolveChartCursorType(tool, groupSelected);
+    if (!cursorType) return;
+    let cancelled = false;
+    let attempts = 0;
+    const apply = () => {
+      if (cancelled) return;
+      const ch =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      if (!ch || typeof ch.setCursorType !== "function") {
+        if (++attempts < 50) setTimeout(apply, 100);
+        return;
+      }
+      const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+      if (grid && typeof grid.runCommandIframes === "function") {
+        void grid.runCommandIframes("setChartCursorType", { cursorType }).catch(() => {});
+      }
+      v9ApplyChartCursorType(cursorType);
+    };
+    apply();
+    return () => { cancelled = true; };
+  }, [tool, groupSelected?.crosshair?.icon, groupSelected?.crosshair?.label]);
 
   // Keep V9 left rail in sync when legacy drawing mode ends: (1) finalizeDrawing
   // clears the tool after a completed stroke; (2) clearTool runs in many paths

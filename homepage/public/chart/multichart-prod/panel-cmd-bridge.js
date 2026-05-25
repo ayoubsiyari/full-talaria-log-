@@ -560,6 +560,14 @@
                     else dmc.currentTool = null;
                     return;
                 }
+                case 'setChartCursorType': {
+                    var ct = args.cursorType ? String(args.cursorType) : 'cross';
+                    if (typeof ch.setCursorType !== 'function') {
+                        throw new Error('chart.setCursorType is not a function');
+                    }
+                    ch.setCursorType(ct);
+                    return;
+                }
 
                 // ─── indicators ────────────────────────────────────────
                 //
@@ -1231,6 +1239,7 @@
                 'loadFile',
                 'setActiveDrawingTool',
                 'clearActiveDrawingTool',
+                'setChartCursorType',
                 'addIndicator',
                 'removeIndicator',
                 'getIndicators',
