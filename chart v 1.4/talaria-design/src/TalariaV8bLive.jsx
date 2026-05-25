@@ -1711,6 +1711,34 @@ function v9ParallelChannelMidLinePatchFromChLines(chLines) {
   };
 }
 
+/** While typing a parallel-channel level (allows leading minus). */
+const V9_PARTIAL_LEVEL_VALUE_RE = /^-?$|^-?\d*\.?\d*$/;
+
+function v9StepChannelLevelValue(raw, delta, step = 0.01) {
+  const cur = parseFloat(String(raw));
+  const base = Number.isFinite(cur) ? cur : 0;
+  const next = base + delta * step;
+  return Number.isFinite(next) ? next.toFixed(2) : String(raw ?? "0");
+}
+
+/** Writable chLines/regLines rows — bootstrap from drawing when state list is empty. */
+function v9EnsureChLinesRows(s, stKey = "chLines", drawing = null) {
+  const existing = Array.isArray(s[stKey]) ? s[stKey] : [];
+  if (existing.length > 0) return existing.map((row) => ({ ...row }));
+  if (stKey === "chLines") {
+    return v9ResolveParallelChannelChLines(s, drawing).map((row) => ({ ...row }));
+  }
+  return [];
+}
+
+function v9PatchChLinesRowValue(s, idx, value, stKey = "chLines", drawing = null) {
+  const base = v9EnsureChLinesRows(s, stKey, drawing);
+  if (idx < 0 || idx >= base.length) return s;
+  base[idx] = { ...base[idx], value };
+  if (stKey !== "chLines") return { ...s, [stKey]: base };
+  return { ...s, chLines: base, ...v9ParallelChannelMidLinePatchFromChLines(base) };
+}
+
 function v9ChLinesToParallelLevels(chLines) {
   if (!Array.isArray(chLines)) return [];
   return chLines.map((ln, idx) => {
@@ -6609,13 +6637,7 @@ const TalariaV8bLive = () => {
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
     visMonths: { checked: true, min: 1, max: 120 },
     midLine: false, midLineColor: "#8C8C8C", midLineType: "dashed", midLineWidth: "1",
-    chLines: [
-      { on: true, value: "1.00", color: V9_DEFAULT_TL_LINE_COLOR, type: "solid", width: "2" },
-      { on: true, value: "0.75", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
-      { on: true, value: "0.50", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
-      { on: true, value: "0.25", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "1" },
-      { on: true, value: "0.00", color: V9_DEFAULT_TL_LINE_COLOR, type: "solid", width: "2" },
-    ],
+    chLines: v9DefaultParallelChannelChLines(V9_DEFAULT_TL_LINE_COLOR),
     regLines: [
       { on: true, label: "Middle Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
       { on: true, label: "Upper Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
@@ -8423,7 +8445,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a12-checkbox-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a14-channel-negative-levels-fix";
   }, []);
 
   useEffect(() => {
@@ -14843,6 +14865,7 @@ const TalariaV8bLive = () => {
                           tlStyle,
                           editingDrawingRef.current?.drawing,
                         );
+                    const editDrawing = editingDrawingRef.current?.drawing;
                     const lines = !isRegCh && tlSubTool.icon === "channel"
                       ? rawLines.filter(
                           (ln, idx) =>
@@ -14896,14 +14919,14 @@ const TalariaV8bLive = () => {
                                 </div>
                                 <div style={{ position:"relative", width:68, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                                   <input value={ln.value}
-                                    onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,i)=>i===srcIdx?{...l,value:val}:l)}));}}
+                                    onChange={e=>{const val=e.target.value;if(!V9_PARTIAL_LEVEL_VALUE_RE.test(val))return;setTlStyle(s=>v9PatchChLinesRowValue(s,srcIdx,val,stKey,editDrawing));}}
                                     onClick={e=>e.stopPropagation()}
                                     className="tlr-nospinner"
                                     style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stKey]: s[stKey].map((l,j)=>j===srcIdx?{...l,value:(Math.max(0,+(+l.value+delta*0.01).toFixed(2))).toFixed(2)}:l)})))}
+                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>v9PatchChLinesRowValue(s,srcIdx,v9StepChannelLevelValue(ln.value,delta),stKey,editDrawing)))}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -16365,10 +16388,8 @@ const TalariaV8bLive = () => {
 
             {/* ── INPUT TAB (parallel channel levels) ── */}
             {tlSettTab==="input" && tlSubTool.icon === "channel" && (() => {
-              const lines = v9ResolveParallelChannelChLines(
-                tlStyle,
-                editingDrawingRef.current?.drawing,
-              );
+              const editDrawing = editingDrawingRef.current?.drawing;
+              const lines = v9ResolveParallelChannelChLines(tlStyle, editDrawing);
               const stKey = "chLines";
               const cpKey = "chLine";
               return (
@@ -16388,14 +16409,14 @@ const TalariaV8bLive = () => {
                         </div>
                         <div style={{ position:"relative", width:68, marginRight:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                           <input value={ln.value}
-                            onChange={e => { const val = e.target.value; if (/^[0-9.]*$/.test(val)) setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, i) => i === idx ? { ...l, value: val } : l) })); }}
+                            onChange={e => { const val = e.target.value; if (!V9_PARTIAL_LEVEL_VALUE_RE.test(val)) return; setTlStyle(s => v9PatchChLinesRowValue(s, idx, val, stKey, editDrawing)); }}
                             onClick={e => e.stopPropagation()}
                             className="tlr-nospinner"
                             style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => ({ ...s, [stKey]: s[stKey].map((l, j) => j === idx ? { ...l, value: (Math.max(0, +(+l.value + delta * 0.01).toFixed(2))).toFixed(2) } : l) })))}
+                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => v9PatchChLinesRowValue(s, idx, v9StepChannelLevelValue(ln.value, delta), stKey, editDrawing)))}
                                 onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
