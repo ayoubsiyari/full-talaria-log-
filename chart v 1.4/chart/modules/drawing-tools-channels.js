@@ -692,7 +692,6 @@ class RegressionTrendTool extends BaseDrawing {
 
         // chartData already retrieved at the top of the function
         if (!chartData || chartData.length === 0) {
-            console.warn('Regression Trend: No chart data available');
             return;
         }
 
@@ -717,7 +716,6 @@ class RegressionTrendTool extends BaseDrawing {
         }
 
         if (sourceData.length < 2) {
-            console.warn('Regression Trend: Not enough data points', sourceData.length);
             return;
         }
 

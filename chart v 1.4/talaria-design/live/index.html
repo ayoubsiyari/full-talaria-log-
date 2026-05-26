@@ -1275,7 +1275,7 @@
          ────────────────────────────────────────────────────────────── -->
 
     <!-- Tier A — preferences-sync MUST run before preferences-init (defines window.preferencesSync). -->
-    <script defer src="/chart/modules/preferences-sync.js?v=20260525a12"></script>
+    <script defer src="/chart/modules/preferences-sync.js?v=20260525a15"></script>
     <script defer src="/chart/modules/preferences-init.js?v=20260525a11"></script>
     <script defer src="/chart/modules/market-calculations.js?v=20260525a11"></script>
     <script defer src="/chart/modules/chart-env.defaults.js?v=20260525a11"></script>
@@ -1301,7 +1301,7 @@
     <script defer src="/chart/modules/drawing-tools-extended.js?v=20260525a11"></script>
     <script defer src="/chart/modules/drawing-tools-patterns.js?v=20260525a11"></script>
     <script defer src="/chart/modules/drawing-tools-fib-gann.js?v=20260525a11"></script>
-    <script defer src="/chart/modules/drawing-tools-channels.js?v=20260525a11"></script>
+    <script defer src="/chart/modules/drawing-tools-channels.js?v=20260525a15"></script>
     <script defer src="/chart/modules/drawing-tools-ui.js?v=20260525a11"></script>
 
     <!-- Drawing-tool support (color picker, toolbar UI, undo/redo). -->
@@ -1311,7 +1311,7 @@
 
     <!-- Drawing-tools manager — orchestrator. Must load AFTER all individual
          drawing-tools-*.js so the registry is populated before init. -->
-    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260525a12"></script>
+    <script defer src="/chart/modules/drawing-tools-manager.js?v=20260525a15"></script>
     <script defer src="/chart/modules/favorites-manager.js?v=20260525a11"></script>
     <script defer src="/chart/modules/keyboard-shortcuts.js?v=20260525a11"></script>
 
@@ -1331,7 +1331,7 @@
          as a callable. Its DOMContentLoaded handler fires after main.jsx has
          mounted React (deferred too), so the #chartCanvas element exists.
          Bump ?v= whenever /chart assets change so browsers/CDNs don’t serve stale JS. -->
-    <script defer src="/chart/chart.js?v=20260525a11"></script>
+    <script defer src="/chart/chart.js?v=20260525a15"></script>
     <!-- V9 React theme panel → chart.chartSettings (shared with legacy-index.html). Must load after chart.js. -->
     <script defer src="/chart/modules/v9-theme-bridge.js?v=20260525a11"></script>
 

@@ -52,8 +52,6 @@ class DrawingToolsManager {
         this._drawingsPendingTargets = { session: false, api: false };
         this._drawingsFlushAllInProgress = false;
         this._drawingsSaveBtn = null;
-        this._loadDrawingsInFlight = false;
-        this._loadDrawingsPromise = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -536,7 +534,7 @@ class DrawingToolsManager {
             const newTimeframe = event.detail?.timeframe;
 
             // If drawings were not loaded yet (chart had no data during init), load them now
-            if (!this._drawingsLoaded && !this._loadDrawingsInFlight) {
+            if (!this._drawingsLoaded) {
                 // [debug removed]
                 requestAnimationFrame(() => this.loadDrawings());
                 return;
@@ -6685,7 +6683,6 @@ class DrawingToolsManager {
      * Schedule API save with debouncing to avoid excessive requests
      */
     scheduleSaveToAPI(data) {
-        if (this._isCloudDrawingsApiBlocked()) return;
         // Clear existing timer
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);
@@ -6695,18 +6692,6 @@ class DrawingToolsManager {
         this._apiSaveTimer = setTimeout(() => {
             this.saveDrawingsToAPI(data);
         }, 2000);
-    }
-
-    _isCloudDrawingsApiBlocked() {
-        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
-        return !!(ps && typeof ps.isCloudAuthBlocked === 'function' && ps.isCloudAuthBlocked());
-    }
-
-    _markCloudDrawingsAuthFailed(reason) {
-        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
-        if (ps && typeof ps.markCloudAuthFailed === 'function') {
-            ps.markCloudAuthFailed(reason);
-        }
     }
 
     /**
@@ -6720,7 +6705,7 @@ class DrawingToolsManager {
                 : null;
 
             const token = localStorage.getItem('token');
-            if (!token || this._isCloudDrawingsApiBlocked()) {
+            if (!token) {
                 return;
             }
 
@@ -6740,8 +6725,8 @@ class DrawingToolsManager {
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
-            } else if (response.status === 401 || response.status === 403) {
-                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - drawings saved locally only');
             } else {
                 console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
             }
@@ -6911,7 +6896,7 @@ class DrawingToolsManager {
                 : null;
             
             const token = localStorage.getItem('token');
-            if (!token || this._isCloudDrawingsApiBlocked()) {
+            if (!token) {
                 // User not logged in, skip API load
                 return null;
             }
@@ -6934,8 +6919,8 @@ class DrawingToolsManager {
                 if (result.success && result.drawings && result.drawings.length > 0) {
                     return result.drawings;
                 }
-            } else if (response.status === 401 || response.status === 403) {
-                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - using local drawings only');
             }
             
             return null;
@@ -6950,19 +6935,6 @@ class DrawingToolsManager {
      * Converts timestamps to indices for current timeframe
      */
     async loadDrawings() {
-        if (this._drawingsLoaded) return;
-        if (this._loadDrawingsInFlight && this._loadDrawingsPromise) {
-            return this._loadDrawingsPromise;
-        }
-        this._loadDrawingsInFlight = true;
-        this._loadDrawingsPromise = this._loadDrawingsBody().finally(() => {
-            this._loadDrawingsInFlight = false;
-            this._loadDrawingsPromise = null;
-        });
-        return this._loadDrawingsPromise;
-    }
-
-    async _loadDrawingsBody() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
             return; // _drawingsLoaded stays false — listener will retry
