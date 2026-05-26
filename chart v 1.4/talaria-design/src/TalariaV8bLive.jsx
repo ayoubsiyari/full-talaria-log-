@@ -2417,6 +2417,7 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
     }
   }
   v9EnsureFibLevelsTlForLegacy(out, legacyType, fall);
+  v9EnsureGannLevelsTlForLegacy(out, legacyType);
   if (legacyType === "trend-fib-time") {
     if (!out.fibTimeTrendType) out.fibTimeTrendType = fall.fibTimeTrendType || "dashed";
     if (out.fibTimeTrendWidth == null || out.fibTimeTrendWidth === "") {
@@ -3639,6 +3640,108 @@ function v9GannTlLevelsToChartRatioLevels(arr) {
   }));
 }
 
+/** Default Gann Fan Input rows — multipliers match `GannFanTool` (`drawing-tools-fib-gann.js`). */
+function v9GannFanDefaultLevelsTl() {
+  return [
+    { on: true, value: "0.125", color: "#ff9800" },
+    { on: true, value: "0.25", color: "#4caf50" },
+    { on: true, value: "0.333", color: "#00c853" },
+    { on: true, value: "0.5", color: "#00bcd4" },
+    { on: true, value: "1", color: "#2962ff" },
+    { on: true, value: "2", color: "#9c27b0" },
+    { on: true, value: "3", color: "#e91e63" },
+    { on: true, value: "4", color: "#f23645" },
+    { on: true, value: "8", color: "#b71c1c" },
+  ];
+}
+
+const V9_GANN_FAN_VALUE_TO_LABEL = {
+  0.125: "1/8",
+  0.25: "1/4",
+  0.333: "1/3",
+  0.5: "1/2",
+  1: "1/1",
+  2: "2/1",
+  3: "3/1",
+  4: "4/1",
+  8: "8/1",
+};
+
+function v9GannFanLabelForValue(value) {
+  const v = parseFloat(value);
+  if (!Number.isFinite(v)) return "";
+  for (const [k, lbl] of Object.entries(V9_GANN_FAN_VALUE_TO_LABEL)) {
+    if (Math.abs(v - parseFloat(k)) < 0.02) return lbl;
+  }
+  return "";
+}
+
+function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
+  if (!out || !legacyType) return;
+  if (legacyType === "gann-fan") {
+    if (!Array.isArray(out.gannFanLevels) || !out.gannFanLevels.length) {
+      out.gannFanLevels = v9GannFanDefaultLevelsTl();
+    }
+    return;
+  }
+  if (legacyType === "gann-box") {
+    if (!Array.isArray(out.gannPriceLevels) || !out.gannPriceLevels.length) {
+      out.gannPriceLevels = [
+        { on: true, value: "0", color: "#787B86" },
+        { on: true, value: "0.25", color: "#2196F3" },
+        { on: true, value: "0.5", color: "#4CAF50" },
+        { on: true, value: "0.75", color: "#FF9800" },
+        { on: true, value: "1", color: "#787B86" },
+      ];
+    }
+    if (!Array.isArray(out.gannTimeLevels) || !out.gannTimeLevels.length) {
+      out.gannTimeLevels = [
+        { on: true, value: "0", color: "#787B86" },
+        { on: true, value: "0.25", color: "#2196F3" },
+        { on: true, value: "0.382", color: "#FF9800" },
+        { on: true, value: "0.5", color: "#4CAF50" },
+        { on: true, value: "0.618", color: "#F44336" },
+        { on: true, value: "0.75", color: "#9C27B0" },
+        { on: true, value: "1", color: "#787B86" },
+      ];
+    }
+    return;
+  }
+  if (legacyType === "gann-square-fixed") {
+    if (!Array.isArray(out.gannGridLevels) || !out.gannGridLevels.length) {
+      out.gannGridLevels = [
+        { on: true, value: "0", color: "#787B86" },
+        { on: true, value: "0.125", color: "#2196F3" },
+        { on: true, value: "0.25", color: "#4CAF50" },
+        { on: true, value: "0.375", color: "#FF9800" },
+        { on: true, value: "0.5", color: "#FFEB3B" },
+        { on: true, value: "0.625", color: "#FF9800" },
+        { on: true, value: "0.75", color: "#4CAF50" },
+        { on: true, value: "0.875", color: "#2196F3" },
+        { on: true, value: "1", color: "#787B86" },
+      ];
+    }
+    if (!Array.isArray(out.gannFanLevels) || !out.gannFanLevels.length) {
+      out.gannFanLevels = [
+        { on: true, value: "1", color: "#F44336" },
+        { on: true, value: "2", color: "#FF9800" },
+        { on: true, value: "3", color: "#FFEB3B" },
+        { on: true, value: "4", color: "#4CAF50" },
+        { on: true, value: "8", color: "#2196F3" },
+      ];
+    }
+    if (!Array.isArray(out.gannArcLevels) || !out.gannArcLevels.length) {
+      out.gannArcLevels = [
+        { on: true, value: "0", color: "#787B86" },
+        { on: true, value: "0.25", color: "#2196F3" },
+        { on: true, value: "0.5", color: "#4CAF50" },
+        { on: true, value: "0.75", color: "#FF9800" },
+        { on: true, value: "1", color: "#787B86" },
+      ];
+    }
+  }
+}
+
 /** Map chart `levelsLineDasharray` → V9 gann line type (bold / dotted / dashed / dashdot). */
 function v9GannDashArrayToLineType(dashRaw) {
   const raw = String(dashRaw ?? "").replace(/\s+/g, "");
@@ -3692,15 +3795,19 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
   const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
   const tl = tlStyle.gannFanLevels;
-  if (!Array.isArray(tl)) return;
+  if (!Array.isArray(tl) || !tl.length) return;
   d.style.fanLevels = tl.map((l, i) => {
     const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
     const p = prev[i];
+    const label =
+      (p && p.label != null && `${p.label}` !== "")
+        ? `${p.label}`
+        : v9GannFanLabelForValue(value);
     return {
       value,
       enabled: l && l.on !== false,
       color: (l && l.color) ? l.color : (d.style.stroke || "#4caf50"),
-      ...(p && p.label != null ? { label: p.label } : {}),
+      ...(label ? { label } : {}),
     };
   });
 }
@@ -16933,11 +17040,7 @@ const TalariaV8bLive = () => {
               if (tlSubTool.icon === "gannFan") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 12px" }}>GANN FAN LEVELS</div>
                 {levelsRow}
-                {mkSection("FAN LEVELS","gannFanLevels","gannFanLv",[
-                  {on:true,value:"1",color:"#F44336"},{on:true,value:"2",color:"#FF9800"},
-                  {on:true,value:"3",color:"#FFEB3B"},{on:true,value:"4",color:"#4CAF50"},
-                  {on:true,value:"8",color:"#2196F3"},
-                ])}
+                {mkSection("FAN LEVELS","gannFanLevels","gannFanLv",v9GannFanDefaultLevelsTl())}
               </>;
               if (tlSubTool.icon === "gannSquare") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 12px" }}>GANN SQUARE LEVELS</div>

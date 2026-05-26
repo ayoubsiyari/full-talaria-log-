@@ -9389,6 +9389,16 @@ class DrawingToolsManager {
         }
         Object.assign(drawing.style, patch);
 
+        if (drawing.type === 'gann-fan') {
+            const fan = drawing.style.fanLevels;
+            if (!Array.isArray(fan) || !fan.length) {
+                const GannFan = typeof GannFanTool !== 'undefined' ? GannFanTool : null;
+                if (GannFan && typeof GannFan.defaultFanLevels === 'function') {
+                    drawing.style.fanLevels = GannFan.defaultFanLevels().map((l) => ({ ...l }));
+                }
+            }
+        }
+
         const tb = this.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(drawing); } catch (_) {}
         try {

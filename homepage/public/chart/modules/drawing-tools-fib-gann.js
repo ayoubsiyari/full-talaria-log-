@@ -3218,6 +3218,20 @@ class GannSquareTool extends BaseDrawing {
 // Gann Fan Tool
 // ============================================================================
 class GannFanTool extends BaseDrawing {
+    static defaultFanLevels() {
+        return [
+            { value: 0.125, label: '1/8', enabled: true, color: '#ff9800' },
+            { value: 0.25, label: '1/4', enabled: true, color: '#4caf50' },
+            { value: 1 / 3, label: '1/3', enabled: true, color: '#00c853' },
+            { value: 0.5, label: '1/2', enabled: true, color: '#00bcd4' },
+            { value: 1, label: '1/1', enabled: true, color: '#2962ff' },
+            { value: 2, label: '2/1', enabled: true, color: '#9c27b0' },
+            { value: 3, label: '3/1', enabled: true, color: '#e91e63' },
+            { value: 4, label: '4/1', enabled: true, color: '#f23645' },
+            { value: 8, label: '8/1', enabled: true, color: '#b71c1c' }
+        ];
+    }
+
     constructor(points = [], style = {}) {
         super('gann-fan', points, style);
         this.requiredPoints = 2;
@@ -3226,19 +3240,7 @@ class GannFanTool extends BaseDrawing {
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
 
-        // Fan levels use a multiplier of the 1/1 slope.
-        // Label format matches TradingView-style fractions seen in the screenshot.
-        const defaultFanLevels = [
-            { value: 0.125, label: '1/8', enabled: true, color: '#ff9800' },
-            { value: 0.25,  label: '1/4', enabled: true, color: '#4caf50' },
-            { value: 1 / 3, label: '1/3', enabled: true, color: '#00c853' },
-            { value: 0.5,   label: '1/2', enabled: true, color: '#00bcd4' },
-            { value: 1,     label: '1/1', enabled: true, color: '#2962ff' },
-            { value: 2,     label: '2/1', enabled: true, color: '#9c27b0' },
-            { value: 3,     label: '3/1', enabled: true, color: '#e91e63' },
-            { value: 4,     label: '4/1', enabled: true, color: '#f23645' },
-            { value: 8,     label: '8/1', enabled: true, color: '#b71c1c' }
-        ];
+        const defaultFanLevels = GannFanTool.defaultFanLevels();
 
         // Back-compat: migrate style.angles (label like 1×8) into style.fanLevels.
         if (!this.style) this.style = {};
@@ -3423,7 +3425,12 @@ class GannFanTool extends BaseDrawing {
             return { x: endX, y: endY };
         };
 
-        const levelsAll = (Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [])
+        const fanLevelsRaw = Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [];
+        const fanLevelsSource = fanLevelsRaw.length > 0
+            ? fanLevelsRaw
+            : GannFanTool.defaultFanLevels().map((l) => ({ ...l }));
+
+        const levelsAll = fanLevelsSource
             .map(l => {
                 const v = l && l.value != null ? parseFloat(l.value) : NaN;
                 return {
