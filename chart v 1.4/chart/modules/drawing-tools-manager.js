@@ -3405,98 +3405,29 @@ class DrawingToolsManager {
             return;
         }
 
-        // For text tools, prompt for text input
-        if (this.currentTool === 'text' || this.currentTool === 'notebox') {
-            const point = this.drawingState.tempPoints[0];
-            // Use dataIndexToPixel for accurate positioning
-            const x = this.chart.dataIndexToPixel ? 
-                this.chart.dataIndexToPixel(point.x) : this.chart.xScale(point.x);
-            const y = this.chart.yScale(point.y);
+        if (typeof drawing.setText === 'function' && this._shouldAutoEditTextOnPlace(this.currentTool)) {
+            drawing.setText('');
+        }
 
-            // InlineTextEditor is positioned in page coordinates (absolute in body).
-            // Convert SVG pixel coords to page coords so the editor appears exactly where the drawing will be.
-            let editX = x;
-            let editY = y;
-            try {
-                const svgNode = this.svg && typeof this.svg.node === 'function' ? this.svg.node() : this.svg;
-                if (svgNode && typeof svgNode.createSVGPoint === 'function' && typeof svgNode.getScreenCTM === 'function') {
-                    const ctm = svgNode.getScreenCTM();
-                    if (ctm) {
-                        const pt = svgNode.createSVGPoint();
-                        pt.x = x;
-                        pt.y = y;
-                        const screenPt = pt.matrixTransform(ctm);
-                        editX = screenPt.x + window.scrollX;
-                        editY = screenPt.y + window.scrollY;
-                    }
-                } else if (svgNode && typeof svgNode.getBoundingClientRect === 'function') {
-                    const rect = svgNode.getBoundingClientRect();
-                    editX = rect.left + window.scrollX + x;
-                    editY = rect.top + window.scrollY + y;
-                }
-            } catch (e) {
-                editX = x;
-                editY = y;
-            }
+        this.addDrawing(drawing);
 
-            const isNoteBox = this.currentTool === 'notebox';
-            const defaultText = isNoteBox ? 'Note' : 'Text';
-            const existingText = drawing.text && drawing.text !== defaultText ? drawing.text : '';
-            const placeholder = isNoteBox ? 'Enter note text…' : 'Enter text…';
-
-            const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
-            const fontSize = savedStyle.fontSize || (isNoteBox ? 12 : 14);
-            const fontFamily = savedStyle.fontFamily || 'Roboto, sans-serif';
-            const fontWeight = savedStyle.fontWeight || 'normal';
-            const fontStyle = savedStyle.fontStyle || 'normal';
-            const textColor = savedStyle.textColor || '#FFFFFF';
-            const textAlign = savedStyle.textAlign || 'left';
-
-            // For text tool: adjust y up by ~fontSize so editor top aligns with SVG text top
-            const editorY = isNoteBox ? editY : editY - fontSize;
-
-            this.textEditor.show(editX, editorY, existingText, (text) => {
-                const normalized = (text || '').replace(/\r\n/g, '\n');
-                if (normalized && normalized.trim()) {
-                    drawing.setText(normalized);
-                    this.addDrawing(drawing);
-                }
-            }, placeholder, isNoteBox ? {
-                hideSelector: '.temp-drawing text'
-            } : {
-                inline: true,
-                showBorder: true,
-                fontSize: `${fontSize}px`,
-                fontFamily,
-                fontWeight,
-                fontStyle,
-                color: textColor,
-                textAlign,
-                hideSelector: '.temp-drawing text'
+        if (this._shouldAutoEditTextOnPlace(this.currentTool)) {
+            requestAnimationFrame(() => {
+                this.selectDrawing(drawing, false, { allowWhileArmed: true });
+                if (this.chart) this.chart.render();
+                requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
             });
-        } 
-        else {
-            this.addDrawing(drawing);
-            // Auto-open inline text editor immediately after placing these tools
-            const autoEditTools = ['note', 'callout', 'comment', 'signpost-2'];
-            if (autoEditTools.includes(this.currentTool)) {
-                requestAnimationFrame(() => {
-                    this.selectDrawing(drawing, false, { allowWhileArmed: true });
-                    if (this.chart) this.chart.render();
-                    requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
-                });
-            } else {
-                // Select the drawing synchronously so it is already selected when
-                // clearTool() runs below. clearTool sees selectedDrawings.length > 0
-                // and keeps SVG pointer-events:"all" via _updateAxisZonePointerEvents,
-                // letting the user click empty space to deselect. The drawing stays
-                // visible — only handles and the floating toolbar disappear on deselect.
-                // Skip in keep-drawing-mode / persistent tools: user wants to keep drawing.
-                const persistentTools = ['brush', 'highlighter'];
-                const willKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
-                if (!willKeepTool) {
-                    this.selectDrawing(drawing, false, { allowWhileArmed: true });
-                }
+        } else {
+            // Select the drawing synchronously so it is already selected when
+            // clearTool() runs below. clearTool sees selectedDrawings.length > 0
+            // and keeps SVG pointer-events:"all" via _updateAxisZonePointerEvents,
+            // letting the user click empty space to deselect. The drawing stays
+            // visible — only handles and the floating toolbar disappear on deselect.
+            // Skip in keep-drawing-mode / persistent tools: user wants to keep drawing.
+            const persistentTools = ['brush', 'highlighter'];
+            const willKeepTool = this.keepDrawingMode || persistentTools.includes(this.currentTool);
+            if (!willKeepTool) {
+                this.selectDrawing(drawing, false, { allowWhileArmed: true });
             }
         }
         
@@ -3768,6 +3699,7 @@ class DrawingToolsManager {
             const t = String(raw == null ? '' : raw).trim();
             if (!t) return true;
             if (/^add text$/i.test(t)) return true;
+            if (/^type here$/i.test(t)) return true;
             if (t === 'text') return true;
             return false;
         };
@@ -4486,7 +4418,17 @@ class DrawingToolsManager {
             || type === 'flag-mark'
             || type === 'pin'
             || type === 'notebox'
-            || type === 'anchored-text';
+            || type === 'anchored-text'
+            || type === 'label';
+    }
+
+    /** Open inline editor right after first placement (not for auto-priced labels). */
+    _shouldAutoEditTextOnPlace(toolName) {
+        return this._isTextDrawingType(toolName)
+            && toolName !== 'price-note'
+            && toolName !== 'price-label'
+            && toolName !== 'price-label-2'
+            && toolName !== 'flag-mark';
     }
 
     /**
@@ -5846,9 +5788,15 @@ class DrawingToolsManager {
     _triggerAutoInlineEdit(drawing) {
         if (!drawing || !drawing.group) return;
 
+        const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+        const placeholder = helpers ? helpers.TEXT_TOOL_PLACEHOLDER : 'Type here';
+        const isPlaceholderText = helpers
+            ? (t) => helpers.isTextToolPlaceholder(t)
+            : (t) => !String(t || '').trim();
+
         const onSave = (text, confirmed = false) => {
             const normalized = (text || '').replace(/\r\n/g, '\n');
-            if (!normalized.trim()) {
+            if (!normalized.trim() || isPlaceholderText(normalized)) {
                 if (confirmed) {
                     // User explicitly pressed Enter with empty text — delete the drawing.
                     this.deleteDrawing(drawing);
@@ -5861,8 +5809,12 @@ class DrawingToolsManager {
             if (this.chart) this.chart.render();
         };
 
+        const storedText = drawing.text || '';
+        const initialText = isPlaceholderText(storedText) ? '' : storedText;
+
         const inlineOpts = {
             inline: true,
+            placeholderMode: !String(initialText).trim(),
             fontSize: `${drawing.style.fontSize || 13}px`,
             fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
             fontWeight: drawing.style.fontWeight || 'normal',
@@ -5871,7 +5823,8 @@ class DrawingToolsManager {
             noWrap: true,
             hideSelector: `.drawing[data-id="${drawing.id}"] text`,
             onInput: (newText) => {
-                drawing.setText((newText || '').replace(/\r\n/g, '\n'));
+                const next = (newText || '').replace(/\r\n/g, '\n');
+                drawing.setText(isPlaceholderText(next) ? '' : next);
                 if (typeof drawing._updateCommentBubble === 'function') {
                     drawing._updateCommentBubble();
                 } else if (drawing._lastContainer && drawing._lastScales) {
@@ -5887,8 +5840,6 @@ class DrawingToolsManager {
             editableNode = drawing.group.select('.inline-editable-text').node();
         }
 
-        const initialText = drawing.text ? drawing.text : '';
-
         if (editableNode) {
             const rect = editableNode.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
@@ -5897,7 +5848,7 @@ class DrawingToolsManager {
                     rect.top + window.scrollY,
                     initialText,
                     onSave,
-                    'Enter text\u2026',
+                    placeholder,
                     inlineOpts
                 );
                 return;
@@ -5928,7 +5879,7 @@ class DrawingToolsManager {
                 fallbackY - 80,
                 initialText,
                 onSave,
-                'Enter text\u2026',
+                placeholder,
                 inlineOpts
             );
         }

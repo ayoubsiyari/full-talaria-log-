@@ -3,11 +3,33 @@
  * Implements: Text, Note Box
  */
 
+const TEXT_TOOL_PLACEHOLDER = 'Type here';
+const TEXT_TOOL_PLACEHOLDER_COLOR = 'rgba(120, 123, 134, 0.75)';
+
+function isTextToolPlaceholder(text) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return true;
+    if (/^add text$/i.test(t)) return true;
+    if (/^type here$/i.test(t)) return true;
+    if (/^enter text/i.test(t)) return true;
+    if (t === 'text') return true;
+    if (t === 'note') return true;
+    if (t === 'anchored text') return true;
+    return false;
+}
+
+function resolveTextToolDisplay(text, placeholder = TEXT_TOOL_PLACEHOLDER) {
+    if (isTextToolPlaceholder(text)) {
+        return { text: placeholder, isPlaceholder: true };
+    }
+    return { text: String(text == null ? '' : text), isPlaceholder: false };
+}
+
 // ============================================================================
 // Text Tool
 // ============================================================================
 class TextTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Text') {
+    constructor(points = [], style = {}, text = '') {
         super('text', points, style);
         this.requiredPoints = 1;
         this.text = text;
@@ -116,16 +138,20 @@ class TextTool extends BaseDrawing {
 
         const lineHeight = scaledFontSize * 1.2;
         const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
+        const display = resolveTextToolDisplay(this.text);
+        if (display.isPlaceholder) {
+            textElement.attr('fill', TEXT_TOOL_PLACEHOLDER_COLOR);
+        }
         const lines = this.style.wrapText
             ? TextTool.wrapTextLines(
-                this.text || '',
+                display.text,
                 maxWrapWidth,
                 scaledFontSize,
                 this.style.fontFamily,
                 this.style.fontWeight,
                 this.style.fontStyle
             )
-            : (this.text || '').split('\n');
+            : display.text.split('\n');
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
             textElement.append('tspan')
@@ -556,7 +582,7 @@ class TextTool extends BaseDrawing {
 // Note Box Tool (Text with background)
 // ============================================================================
 class NoteBoxTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Note') {
+    constructor(points = [], style = {}, text = '') {
         super('notebox', points, style);
         this.requiredPoints = 1;
         this.text = text;
@@ -586,13 +612,15 @@ class NoteBoxTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
 
+        const noteboxDisplay = resolveTextToolDisplay(this.text);
+
         // Create temporary text element to measure size
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
-            .text(this.text);
+            .text(noteboxDisplay.text);
         
         const textBBox = tempText.node().getBBox();
         tempText.remove();
@@ -631,7 +659,7 @@ class NoteBoxTool extends BaseDrawing {
         const textElement = this.group.append('text')
             .attr('x', x + this.style.padding)
             .attr('y', y - this.style.padding)
-            .attr('fill', this.style.textColor)
+            .attr('fill', noteboxDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -641,7 +669,7 @@ class NoteBoxTool extends BaseDrawing {
             .style('user-select', 'none');
 
         // Handle text wrapping if needed
-        const words = this.text.split(' ');
+        const words = noteboxDisplay.text.split(/\s+/).filter((w) => w.length > 0);
         let line = '';
         let lineNumber = 0;
         const lineHeight = this.style.fontSize * 1.2;
@@ -1250,8 +1278,9 @@ class NoteTool extends BaseDrawing {
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
         };
 
+        const noteDisplay = resolveTextToolDisplay(this.text);
         // Split only on explicit newlines — no auto word-wrap
-        const wrappedLines = (this.text || '').split('\n');
+        const wrappedLines = noteDisplay.text.split('\n');
         const lineHeight = scaledFontSize * 1.3;
         const totalTextHeight = wrappedLines.length * lineHeight;
 
@@ -1302,7 +1331,7 @@ class NoteTool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', this.style.textColor)
+            .attr('fill', noteDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -1857,7 +1886,8 @@ class PinTool extends BaseDrawing {
         const bulbCenterY = y - pinHeight + pinRadius; // Center of the circular bulb
 
         // Text box above the pin (only if text exists) - hidden by default, shown on hover
-        const displayText = this.text || '';
+        const pinDisplay = resolveTextToolDisplay(this.text);
+        const displayText = pinDisplay.text;
         let textBoxGroup = null;
         
         const boxGap = 8;
@@ -2341,7 +2371,7 @@ class TableTool extends BaseDrawing {
 // Callout Tool - Clean speech bubble with customizable direction
 // ============================================================================
 class CalloutTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Add text') {
+    constructor(points = [], style = {}, text = '') {
         super('callout', points, style);
         this.requiredPoints = 2;
         this.text = text;
@@ -2395,12 +2425,13 @@ class CalloutTool extends BaseDrawing {
         };
 
         // Split only on explicit newlines — no auto word-wrap
+        const calloutDisplay = resolveTextToolDisplay(this.text);
         const calloutWrapLines = (rawText) => {
-            const lines = (rawText || 'Add text').split('\n');
+            const lines = String(rawText || '').split('\n');
             return lines.length ? lines : [''];
         };
 
-        const wrappedLines = calloutWrapLines(this.text);
+        const wrappedLines = calloutWrapLines(calloutDisplay.text);
         const lineHeight = this.style.fontSize * 1.3;
 
         // Measure actual max line width (no cap — box grows with text)
@@ -2493,7 +2524,7 @@ class CalloutTool extends BaseDrawing {
             .attr('x', bubbleX + padding)
             .attr('y', textStartY)
             .attr('text-anchor', 'start')
-            .attr('fill', this.style.textColor)
+            .attr('fill', calloutDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', _cFontFamily)
             .attr('font-weight', _cFontWeight)
@@ -2692,7 +2723,7 @@ class CommentTool extends BaseDrawing {
     constructor(points = [], style = {}, text = '') {
         super('comment', points, style);
         this.requiredPoints = 1;
-        this.text = text || 'text';
+        this.text = text || '';
         this.style.backgroundColor = style.backgroundColor || '#2962FF';
         this.style.borderColor = style.borderColor || 'transparent';
         this.style.textColor = style.textColor || '#FFFFFF';
@@ -2736,8 +2767,9 @@ class CommentTool extends BaseDrawing {
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
+        const commentDisplay = resolveTextToolDisplay(this.text);
         // Split on explicit newlines only
-        const lines = (this.text || 'text').split('\n');
+        const lines = commentDisplay.text.split('\n');
         const lineHeight = _cFontSize * 1.3;
         let maxLineW = minWidth - padding * 2;
         lines.forEach(l => { const lw = measureW(l || ' '); if (lw > maxLineW) maxLineW = lw; });
@@ -2800,7 +2832,7 @@ class CommentTool extends BaseDrawing {
             .attr('x', textX)
             .attr('y', textStartY)
             .attr('text-anchor', textAnchor)
-            .attr('fill', this.style.textColor)
+            .attr('fill', commentDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${_cFontSize}px`)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
@@ -3302,10 +3334,10 @@ class PriceLabel2Tool extends BaseDrawing {
 // Signpost 2 Tool - Vertical line with text label below
 // ============================================================================
 class Signpost2Tool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'add text') {
+    constructor(points = [], style = {}, text = '') {
         super('signpost-2', points, style);
         this.requiredPoints = 1;
-        this.text = text || 'add text';
+        this.text = text || '';
         this.style.stroke = style.stroke || '#787b86';
         this.style.borderColor = style.borderColor !== undefined ? style.borderColor : (style.stroke || '#787b86');
         this.style.strokeWidth = style.strokeWidth || 2;
@@ -3365,7 +3397,8 @@ class Signpost2Tool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        const displayText = this.text || 'add text';
+        const signDisplay = resolveTextToolDisplay(this.text);
+        const displayText = signDisplay.text;
         const padding = 10;
 
         // Measure text
@@ -3421,7 +3454,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', x1)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
-            .attr('fill', this.style.textColor)
+            .attr('fill', signDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -3565,7 +3598,7 @@ class Signpost2Tool extends BaseDrawing {
     }
 
     setText(newText) { 
-        this.text = newText || 'add text'; 
+        this.text = newText || ''; 
         this.meta.updatedAt = Date.now();
     }
     
@@ -3764,6 +3797,10 @@ class FlagMarkTool extends BaseDrawing {
 // ============================================================================
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        TEXT_TOOL_PLACEHOLDER,
+        TEXT_TOOL_PLACEHOLDER_COLOR,
+        isTextToolPlaceholder,
+        resolveTextToolDisplay,
         TextTool,
         NoteBoxTool,
         AnchoredTextTool,
@@ -3778,5 +3815,14 @@ if (typeof module !== 'undefined' && module.exports) {
         Signpost2Tool,
         SignpostTool,
         FlagMarkTool
+    };
+}
+
+if (typeof window !== 'undefined') {
+    window.DrawingTextHelpers = {
+        TEXT_TOOL_PLACEHOLDER,
+        TEXT_TOOL_PLACEHOLDER_COLOR,
+        isTextToolPlaceholder,
+        resolveTextToolDisplay
     };
 }

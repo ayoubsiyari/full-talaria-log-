@@ -270,6 +270,8 @@ function getSettingsTextInputDisplayValue(text) {
 
     if (/^add text$/i.test(t)) return '';
 
+    if (/^type here$/i.test(t)) return '';
+
     if (t === 'text') return '';
 
     return raw;
@@ -33463,6 +33465,23 @@ class InlineTextEditor {
 
         this.hideStyleEl = null;
 
+        this._placeholderMode = false;
+
+    }
+
+    _ensurePlaceholderStyles() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('inline-text-editor-placeholder-style')) return;
+        const style = document.createElement('style');
+        style.id = 'inline-text-editor-placeholder-style';
+        style.textContent = `
+            .inline-text-editor-field[data-placeholder]:empty::before {
+                content: attr(data-placeholder);
+                color: rgba(120, 123, 134, 0.85);
+                pointer-events: none;
+            }
+        `;
+        document.head.appendChild(style);
     }
 
 
@@ -33500,6 +33519,13 @@ class InlineTextEditor {
         const textAlign = typeof opts.textAlign === 'string' ? opts.textAlign : 'left';
 
         const maxWidth = Number.isFinite(opts.maxWidth) ? opts.maxWidth : 320;
+
+        const placeholderMode = opts.placeholderMode === true
+            || (!String(initialText || '').trim() && opts.placeholderMode !== false);
+
+        this._placeholderMode = placeholderMode;
+
+        this._ensurePlaceholderStyles();
 
 
 
@@ -33613,6 +33639,8 @@ class InlineTextEditor {
 
                 .attr('contenteditable', 'true')
 
+                .attr('class', 'inline-text-editor-field')
+
                 .attr('spellcheck', 'false')
 
                 .style('min-width', '4px')
@@ -33653,7 +33681,9 @@ class InlineTextEditor {
 
 
 
-            if (initialText) {
+            if (placeholderMode) {
+                contentEl.attr('data-placeholder', placeholder);
+            } else if (initialText) {
 
                 if (initialText.includes('\n')) {
 
@@ -33791,7 +33821,16 @@ class InlineTextEditor {
 
             node.focus();
 
-            if (initialText) {
+            if (placeholderMode) {
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.setStart(node, 0);
+                range.collapse(true);
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+            } else if (initialText) {
 
                 // Select all existing text when re-editing (TradingView style — type to replace)
 
@@ -33967,7 +34006,11 @@ class InlineTextEditor {
 
         textareaNode.focus();
 
-        textareaNode.select();
+        if (placeholderMode) {
+            textareaNode.setSelectionRange(0, 0);
+        } else if (initialText) {
+            textareaNode.select();
+        }
 
         
 
@@ -34029,7 +34072,11 @@ class InlineTextEditor {
 
             }
 
-            this.onSave(text, confirmed);
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            const isPlaceholder = helpers
+                ? helpers.isTextToolPlaceholder(text)
+                : !String(text || '').trim();
+            this.onSave(isPlaceholder ? '' : text, confirmed);
 
         }
 
