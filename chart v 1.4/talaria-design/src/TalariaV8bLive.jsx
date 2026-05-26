@@ -727,7 +727,7 @@ function v9ApplyDashToDrawingDom(d, dashStr) {
   } catch (_) {}
 }
 
-function v9PushLineTypeToSelectedDrawings(lineType, flushBridgeRef) {
+function v9PushLineTypeToSelectedDrawings(lineType) {
   const dashArr = v9LegacyDashStringFromLineType(lineType);
   const seen = new Set();
   try {
@@ -767,9 +767,6 @@ function v9PushLineTypeToSelectedDrawings(lineType, flushBridgeRef) {
         });
       }
     });
-  } catch (_) {}
-  try {
-    flushBridgeRef?.current?.();
   } catch (_) {}
 }
 
@@ -1839,6 +1836,54 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
     if (dm.selectedDrawing) pushPair(dm, dm.selectedDrawing);
   });
   return targets;
+}
+
+/**
+ * Apply full `tlStyle` → selected/edited drawings immediately (all TlChk toggles, first click).
+ * Does not re-run the layout bridge (avoids stale-state revert on checkbox toggles).
+ */
+function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
+  if (!tlStyle) return;
+  const editingRefDrawing = opts.editingRefDrawing ?? null;
+  const resolveLegacyTool = opts.resolveLegacyTool;
+  const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
+  const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
+  const chartsToRender = new Set();
+  try {
+    const pairs = collectV9BridgeTargetPairs(editingRefDrawing);
+    pairs.forEach(({ dm, d }) => {
+      if (!d || !d.style) return;
+      const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
+      if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
+      if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+      const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
+      const tb = dm.toolbar;
+      try {
+        if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
+      } catch (_) {}
+      Object.assign(d.style, stylePatch);
+      v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm);
+      try {
+        if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+        else if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+      } catch (_) {
+        try {
+          dm.renderDrawing?.(d);
+        } catch (_) {}
+      }
+      if (d.selected && typeof d.showAxisHighlights === "function") {
+        try {
+          d.showAxisHighlights();
+        } catch (_) {}
+      }
+      if (dm.chart) chartsToRender.add(dm.chart);
+    });
+    chartsToRender.forEach((c) => {
+      if (c && typeof c.scheduleRender === "function") c.scheduleRender();
+    });
+  } catch (err) {
+    console.warn("[V9 tlStyle flush] failed:", err);
+  }
 }
 
 const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
@@ -10442,13 +10487,21 @@ const TalariaV8bLive = () => {
     setTplNameInput("");
   };
   const tlChkLastActRef = useRef(Object.create(null));
+  const tlStyleLiveRef = useRef(tlStyle);
+  tlStyleLiveRef.current = tlStyle;
   const runTlCheckboxToggle = (hKey, toggle) => {
     if (typeof toggle !== "function") return;
     const now = Date.now();
     const last = tlChkLastActRef.current[hKey] || 0;
-    if (now - last < 320) return;
+    if (now - last < 100) return;
     tlChkLastActRef.current[hKey] = now;
-    flushSync(() => { toggle(); });
+    flushSync(() => {
+      toggle();
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
   };
 
   // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
@@ -12925,11 +12978,10 @@ const TalariaV8bLive = () => {
   };
 
   const toggleTlShowBg = () => {
-    setTlStyle((s) => {
-      const next = { ...s, showBg: !s.showBg };
-      queueMicrotask(() => flushV9ShapeBackgroundToChart(next));
-      return next;
+    flushSync(() => {
+      setTlStyle((s) => ({ ...s, showBg: !s.showBg }));
     });
+    flushV9ShapeBackgroundToChart(tlStyleLiveRef.current);
   };
 
   const flushV9ShapeBorderToChart = (tl) => {
@@ -12974,11 +13026,10 @@ const TalariaV8bLive = () => {
   };
 
   const toggleTlShowBorder = () => {
-    setTlStyle((s) => {
-      const next = { ...s, showBorder: !s.showBorder };
-      queueMicrotask(() => flushV9ShapeBorderToChart(next));
-      return next;
+    flushSync(() => {
+      setTlStyle((s) => ({ ...s, showBorder: !s.showBorder }));
     });
+    flushV9ShapeBorderToChart(tlStyleLiveRef.current);
   };
 
   // Extend left/right — immediate repaint (TradingView toggles without waiting for OK).
@@ -13233,7 +13284,11 @@ const TalariaV8bLive = () => {
   /** Line-style picks must repaint the selected drawing immediately (Arrow + other rect-group tools). */
   const applyTlLineType = useCallback((lineType) => {
     flushSync(() => setTlStyle((s) => ({ ...s, lineType })));
-    v9PushLineTypeToSelectedDrawings(lineType, v9StyleBridgeFlushRef);
+    v9PushLineTypeToSelectedDrawings(lineType);
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
   }, []);
 
   /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
@@ -15124,15 +15179,17 @@ const TalariaV8bLive = () => {
                     const da = (v) => (v === "dotted" ? "2,4" : v === "dashed" ? "7,4" : v === "dashdot" ? "7,4,2,4" : undefined);
                     const midOp = tlStyle.midLine ? 1 : 0.38;
                     const midPE = tlStyle.midLine ? "auto" : "none";
-                    const toggleMidLine = () =>
-                      setTlStyle((s) => {
-                        const nextOn = !s.midLine;
-                        const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLine: nextOn });
-                        queueMicrotask(() =>
-                          flushV9MiddleLineToChart({ ...s, midLine: nextOn, chLines }, nextOn),
-                        );
-                        return { ...s, midLine: nextOn, chLines };
+                    const toggleMidLine = () => {
+                      flushSync(() => {
+                        setTlStyle((s) => {
+                          const nextOn = !s.midLine;
+                          const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLine: nextOn });
+                          return { ...s, midLine: nextOn, chLines };
+                        });
                       });
+                      const snap = tlStyleLiveRef.current;
+                      flushV9MiddleLineToChart(snap, snap.midLine);
+                    };
                     return (
                       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, rowGap:0, alignItems:"start", marginBottom:8 }}>
                         <div/><div/>
@@ -15756,11 +15813,10 @@ const TalariaV8bLive = () => {
                   <div style={{ display:"flex", alignItems:"center", marginLeft:"auto" }}>
                     {pairs.map(([k,lbl]) => <div key={k} style={{ width:66 }}>{TlChk(tlStyle[k],`tlchk-${k}`,lbl,()=>{
                       if (k === "extendLeft" || k === "extendRight") {
-                        setTlStyle((s) => {
-                          const next = { ...s, [k]: !s[k] };
-                          flushV9ExtendToChart(next);
-                          return next;
+                        flushSync(() => {
+                          setTlStyle((s) => ({ ...s, [k]: !s[k] }));
                         });
+                        flushV9ExtendToChart(tlStyleLiveRef.current);
                       } else {
                         setTlStyle((s) => ({ ...s, [k]: !s[k] }));
                       }

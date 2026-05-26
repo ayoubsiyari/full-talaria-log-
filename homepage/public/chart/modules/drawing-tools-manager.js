@@ -52,8 +52,6 @@ class DrawingToolsManager {
         this._drawingsPendingTargets = { session: false, api: false };
         this._drawingsFlushAllInProgress = false;
         this._drawingsSaveBtn = null;
-        this._loadDrawingsInFlight = false;
-        this._loadDrawingsPromise = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -536,7 +534,7 @@ class DrawingToolsManager {
             const newTimeframe = event.detail?.timeframe;
 
             // If drawings were not loaded yet (chart had no data during init), load them now
-            if (!this._drawingsLoaded && !this._loadDrawingsInFlight) {
+            if (!this._drawingsLoaded) {
                 // [debug removed]
                 requestAnimationFrame(() => this.loadDrawings());
                 return;
@@ -4041,8 +4039,8 @@ class DrawingToolsManager {
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
         drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke):not(.rr-avg-zone-edge), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
-        // Flat top/bottom & disjoint channel: move only from stroked edges, not fill bbox.
-        if (drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel') {
+        // Channel tools with fill: move only from lines, not filled interior.
+        if (this._isWedgeChannelStrokeOnlyType(drawing.type)) {
             drawing.group.selectAll('line:not(.shape-border-hit)')
                 .style('pointer-events', 'stroke');
         }
@@ -4551,8 +4549,8 @@ class DrawingToolsManager {
                     const isTextBodyHit = targetSelection.classed('text-body-hit');
                     const hasStroke = targetSelection.attr('stroke') && targetSelection.attr('stroke') !== 'none';
 
-                    // Flat top/bottom & disjoint channel: only drag from channel lines, not fill interior.
-                    if (!self.currentTool && (drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel')
+                    // Channel tools with fill: only drag from lines, not filled interior.
+                    if (!self.currentTool && self._isWedgeChannelStrokeOnlyType(drawing.type)
                         && !isPositionZone && !isTextElement && !isEmojiElement) {
                         const srcEvent = event.sourceEvent || event;
                         const svgNode = self.svg && self.svg.node ? self.svg.node() : null;
@@ -6685,7 +6683,6 @@ class DrawingToolsManager {
      * Schedule API save with debouncing to avoid excessive requests
      */
     scheduleSaveToAPI(data) {
-        if (this._isCloudDrawingsApiBlocked()) return;
         // Clear existing timer
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);
@@ -6695,18 +6692,6 @@ class DrawingToolsManager {
         this._apiSaveTimer = setTimeout(() => {
             this.saveDrawingsToAPI(data);
         }, 2000);
-    }
-
-    _isCloudDrawingsApiBlocked() {
-        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
-        return !!(ps && typeof ps.isCloudAuthBlocked === 'function' && ps.isCloudAuthBlocked());
-    }
-
-    _markCloudDrawingsAuthFailed(reason) {
-        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
-        if (ps && typeof ps.markCloudAuthFailed === 'function') {
-            ps.markCloudAuthFailed(reason);
-        }
     }
 
     /**
@@ -6720,7 +6705,7 @@ class DrawingToolsManager {
                 : null;
 
             const token = localStorage.getItem('token');
-            if (!token || this._isCloudDrawingsApiBlocked()) {
+            if (!token) {
                 return;
             }
 
@@ -6740,8 +6725,8 @@ class DrawingToolsManager {
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
-            } else if (response.status === 401 || response.status === 403) {
-                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - drawings saved locally only');
             } else {
                 console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
             }
@@ -6911,7 +6896,7 @@ class DrawingToolsManager {
                 : null;
             
             const token = localStorage.getItem('token');
-            if (!token || this._isCloudDrawingsApiBlocked()) {
+            if (!token) {
                 // User not logged in, skip API load
                 return null;
             }
@@ -6934,8 +6919,8 @@ class DrawingToolsManager {
                 if (result.success && result.drawings && result.drawings.length > 0) {
                     return result.drawings;
                 }
-            } else if (response.status === 401 || response.status === 403) {
-                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - using local drawings only');
             }
             
             return null;
@@ -6950,19 +6935,6 @@ class DrawingToolsManager {
      * Converts timestamps to indices for current timeframe
      */
     async loadDrawings() {
-        if (this._drawingsLoaded) return;
-        if (this._loadDrawingsInFlight && this._loadDrawingsPromise) {
-            return this._loadDrawingsPromise;
-        }
-        this._loadDrawingsInFlight = true;
-        this._loadDrawingsPromise = this._loadDrawingsBody().finally(() => {
-            this._loadDrawingsInFlight = false;
-            this._loadDrawingsPromise = null;
-        });
-        return this._loadDrawingsPromise;
-    }
-
-    async _loadDrawingsBody() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
             return; // _drawingsLoaded stays false — listener will retry
@@ -7467,7 +7439,13 @@ class DrawingToolsManager {
 
     _drawingRequiresStrokeOnlyDrag(type) {
         return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type)
-            || type === 'flat-top-bottom' || type === 'disjoint-channel';
+            || type === 'flat-top-bottom' || type === 'disjoint-channel'
+            || type === 'parallel-channel' || type === 'regression-trend';
+    }
+
+    _isWedgeChannelStrokeOnlyType(type) {
+        return type === 'flat-top-bottom' || type === 'disjoint-channel'
+            || type === 'parallel-channel' || type === 'regression-trend';
     }
 
     _isPersistentFreehandTool(type) {
@@ -7481,7 +7459,7 @@ class DrawingToolsManager {
         if (!drawing?.group) return false;
 
         const loose = this._drawingRequiresStrokeOnlyDrag(drawing.type);
-        const wedgeChannel = drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel';
+        const wedgeChannel = this._isWedgeChannelStrokeOnlyType(drawing.type);
         const lineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 8);
         const minLineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 0);
         const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;

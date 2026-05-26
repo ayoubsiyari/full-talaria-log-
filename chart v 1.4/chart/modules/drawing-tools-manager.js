@@ -4039,6 +4039,11 @@ class DrawingToolsManager {
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
         drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke):not(.rr-avg-zone-edge), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
+        // Channel tools with fill: move only from lines, not filled interior.
+        if (this._isWedgeChannelStrokeOnlyType(drawing.type)) {
+            drawing.group.selectAll('line:not(.shape-border-hit)')
+                .style('pointer-events', 'stroke');
+        }
         // Long/short R/R: informational labels (P&L pill, TP/SL captions) must not capture drags — the blanket
         // `text { pointer-events: all }` rule above would otherwise steal hits from .rr-primary-entry-drag-hit.
         if (drawing.type === 'long-position' || drawing.type === 'short-position') {
@@ -4543,6 +4548,19 @@ class DrawingToolsManager {
                     const isEmojiElement = targetSelection.classed('emoji-glyph') || targetSelection.classed('emoji-background');
                     const isTextBodyHit = targetSelection.classed('text-body-hit');
                     const hasStroke = targetSelection.attr('stroke') && targetSelection.attr('stroke') !== 'none';
+
+                    // Channel tools with fill: only drag from lines, not filled interior.
+                    if (!self.currentTool && self._isWedgeChannelStrokeOnlyType(drawing.type)
+                        && !isPositionZone && !isTextElement && !isEmojiElement) {
+                        const srcEvent = event.sourceEvent || event;
+                        const svgNode = self.svg && self.svg.node ? self.svg.node() : null;
+                        if (svgNode && srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                            const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
+                            if (!self._isPointOnDrawingVisibleStroke(drawing, mouseX, mouseY)) {
+                                return false;
+                            }
+                        }
+                    }
 
                     // For circle/ellipse, enforce border-only drag by checking distance to border.
                     // This matches the rectangle behavior (only draggable from edges) even when an
@@ -7420,7 +7438,14 @@ class DrawingToolsManager {
     }
 
     _drawingRequiresStrokeOnlyDrag(type) {
-        return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type);
+        return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type)
+            || type === 'flat-top-bottom' || type === 'disjoint-channel'
+            || type === 'parallel-channel' || type === 'regression-trend';
+    }
+
+    _isWedgeChannelStrokeOnlyType(type) {
+        return type === 'flat-top-bottom' || type === 'disjoint-channel'
+            || type === 'parallel-channel' || type === 'regression-trend';
     }
 
     _isPersistentFreehandTool(type) {
@@ -7434,8 +7459,9 @@ class DrawingToolsManager {
         if (!drawing?.group) return false;
 
         const loose = this._drawingRequiresStrokeOnlyDrag(drawing.type);
-        const lineHitTolerance = loose ? 14 : 8;
-        const minLineHitTolerance = loose ? 14 : 0;
+        const wedgeChannel = this._isWedgeChannelStrokeOnlyType(drawing.type);
+        const lineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 8);
+        const minLineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 0);
         const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;
 
         const elements = drawing.group.selectAll('line, path, polyline').nodes();
@@ -7444,10 +7470,11 @@ class DrawingToolsManager {
             if (elementSel.classed('fib-level-hit')) continue;
             if (elementSel.style('opacity') === '0') continue;
 
+            const isHitLine = elementSel.classed('shape-border-hit');
             const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
-            if (!stroke || stroke === 'transparent' || stroke === 'none') continue;
+            if (!isHitLine && (!stroke || stroke === 'transparent' || stroke === 'none')) continue;
             if (elementSel.classed('shape-fill') || elementSel.classed('upper-fill') || elementSel.classed('lower-fill')) continue;
-            if (elementSel.classed('shape-border-hit')) continue;
+            if (isHitLine && !wedgeChannel) continue;
 
             if (element.tagName === 'line') {
                 const x1 = parseFloat(element.getAttribute('x1'));
@@ -7463,7 +7490,7 @@ class DrawingToolsManager {
                 continue;
             }
 
-            if (point && typeof element.isPointInStroke === 'function' && element.isPointInStroke(point)) {
+            if (!isHitLine && point && typeof element.isPointInStroke === 'function' && element.isPointInStroke(point)) {
                 return true;
             }
         }

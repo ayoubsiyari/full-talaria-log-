@@ -9,26 +9,6 @@ class PreferencesSyncManager {
         this.syncTimer = null;
         this.pendingUpdates = {};
         this.isLoaded = false;
-        /** When true, cloud GET/POST is skipped (401/403 — stale token or no journal access). */
-        this._cloudAuthBlocked = false;
-    }
-
-    /** Stop hammering /api/chart/* after auth failure; localStorage remains the source of truth. */
-    markCloudAuthFailed(reason) {
-        if (this._cloudAuthBlocked) return;
-        this._cloudAuthBlocked = true;
-        if (this.syncTimer) {
-            clearTimeout(this.syncTimer);
-            this.syncTimer = null;
-        }
-        this.pendingUpdates = {};
-        if (reason && typeof console !== 'undefined' && console.warn) {
-            console.warn('⚠️ Cloud chart sync disabled (auth):', reason);
-        }
-    }
-
-    isCloudAuthBlocked() {
-        return !!this._cloudAuthBlocked;
     }
 
     /**
@@ -38,7 +18,7 @@ class PreferencesSyncManager {
         try {
             const token = localStorage.getItem('token');
             
-            if (token && !this._cloudAuthBlocked) {
+            if (token) {
                 // Try loading from API
                 const response = await fetch('/api/chart/preferences', {
                     method: 'GET',
@@ -48,9 +28,7 @@ class PreferencesSyncManager {
                     credentials: 'include'
                 });
 
-                if (response.status === 401 || response.status === 403) {
-                    this.markCloudAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
-                } else if (response.ok) {
+                if (response.ok) {
                     const result = await response.json();
                     if (result.success) {
                         this.preferences = result.preferences;
@@ -251,10 +229,8 @@ class PreferencesSyncManager {
     async syncToAPI() {
         try {
             const token = localStorage.getItem('token');
-            if (!token || this._cloudAuthBlocked) {
-                if (!token) {
-                    console.log('⚠️ Not authenticated - preferences saved locally only');
-                }
+            if (!token) {
+                console.log('⚠️ Not authenticated - preferences saved locally only');
                 this.pendingUpdates = {};
                 return;
             }
@@ -277,8 +253,9 @@ class PreferencesSyncManager {
                 const result = await response.json();
                 console.log('✅ Preferences synced to cloud');
                 this.pendingUpdates = {};
-            } else if (response.status === 401 || response.status === 403) {
-                this.markCloudAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
+            } else if (response.status === 401) {
+                console.warn('⚠️ Not authenticated - preferences saved locally only');
+                this.pendingUpdates = {};
             } else {
                 console.warn('⚠️ Failed to sync preferences to cloud:', response.statusText);
             }
