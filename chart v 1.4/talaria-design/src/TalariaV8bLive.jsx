@@ -773,14 +773,66 @@ function v9PushLineTypeToSelectedDrawings(lineType, flushBridgeRef) {
   } catch (_) {}
 }
 
+/** Stable sig so reg line on/off toggles always re-run the style bridge. */
+function v9RegLinesBridgeSig(regLines) {
+  if (!Array.isArray(regLines)) return "";
+  return regLines
+    .map((l) => `${l.on === false ? 0 : 1}:${l.color}:${l.type}:${l.width}`)
+    .join("|");
+}
+
+/** Immediate regression-channel style apply (checkboxes must not wait on layout bridge). */
+function v9PushRegressionStyleToSelectedDrawings(tlStyle) {
+  if (!tlStyle || !Array.isArray(tlStyle.regLines) || tlStyle.regLines.length < 3) return;
+  const seen = new Set();
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      const push = (raw) => {
+        const d = resolveLiveDrawingInDm(dm, raw);
+        if (!d || d.type !== "regression-trend" || !d.style) return;
+        if (d.id != null) {
+          if (seen.has(d.id)) return;
+          seen.add(d.id);
+        }
+        v9ApplyRegressionStyleFromTl(d.style, tlStyle);
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onBeforeUpdate === "function") {
+            dm.toolbar.onBeforeUpdate(d);
+          }
+        } catch (_) {}
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onUpdate === "function") {
+            dm.toolbar.onUpdate(d);
+          } else if (typeof dm.renderDrawing === "function") {
+            dm.renderDrawing(d);
+          }
+        } catch (_) {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (dm.chart && dm.chart.scheduleRender) dm.chart.scheduleRender();
+      };
+      if (dm.selectedDrawing) push(dm.selectedDrawing);
+      if (Array.isArray(dm.selectedDrawings)) dm.selectedDrawings.forEach(push);
+      if (dm.toolbar && dm.toolbar.currentDrawing) push(dm.toolbar.currentDrawing);
+    });
+  } catch (_) {}
+}
+
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
+  const isRegCh = legacyTool === "regression-trend";
   const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
   const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
   const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
   const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
   const shapeBgOn = tlStyle.showBg !== false;
+  const regMidOn =
+    isRegCh && Array.isArray(tlStyle.regLines) && tlStyle.regLines[0]
+      ? tlStyle.regLines[0].on !== false
+      : !!tlStyle.midLine;
   const patch = {
     stroke: tlStyle.lineColor,
     color: tlStyle.lineColor,
@@ -823,10 +875,14 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     })(),
     textHAlign: tlStyle.horizAlign || "center",
     textAlign: tlStyle.horizAlign || "center",
-    showMiddleLine: !!tlStyle.midLine,
-    middleLineColor: tlStyle.midLineColor,
-    middleLineWidth: midWidthNum,
-    middleLineDash: midDashArr,
+    showMiddleLine: regMidOn,
+    ...(isRegCh
+      ? {}
+      : {
+          middleLineColor: tlStyle.midLineColor,
+          middleLineWidth: midWidthNum,
+          middleLineDash: midDashArr,
+        }),
   };
   if (legacyTool && v9IsClassicFibRetracementType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
     patch.levels = v9TlFibLevelsToChart(
@@ -13080,6 +13136,7 @@ const TalariaV8bLive = () => {
     tlStyle.vertAlign, tlStyle.horizAlign,
     tlStyle.chLines,
     tlStyle.regLines,
+    v9RegLinesBridgeSig(tlStyle.regLines),
     tlStyle.regUpperBg,
     tlStyle.regLowerBg,
     tlStyle.source,
@@ -13130,6 +13187,20 @@ const TalariaV8bLive = () => {
   const applyTlLineType = useCallback((lineType) => {
     flushSync(() => setTlStyle((s) => ({ ...s, lineType })));
     v9PushLineTypeToSelectedDrawings(lineType, v9StyleBridgeFlushRef);
+  }, []);
+
+  /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
+  const applyRegLineRowToggle = useCallback((srcIdx) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const nextLines = (s.regLines || []).map((l, i) =>
+          i === srcIdx ? { ...l, on: !l.on } : l,
+        );
+        const next = { ...s, regLines: nextLines };
+        v9PushRegressionStyleToSelectedDrawings(next);
+        return next;
+      });
+    });
   }, []);
 
   // Keep V9 `tlStyle.lineType` in sync when the legacy DOM toolbar changes dash (chart already repaints via onUpdate).
@@ -15120,12 +15191,7 @@ const TalariaV8bLive = () => {
                         return <React.Fragment key={srcIdx}>
                           {isRegCh
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, ()=>setTlStyle(s=>{
-                                  const nextLines = s[stKey].map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
-                                  return stKey === "chLines"
-                                    ? { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) }
-                                    : { ...s, [stKey]: nextLines };
-                                }))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, () => applyRegLineRowToggle(srcIdx))}
                               </div>
                             : tlSubTool.icon === "channel" ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
