@@ -924,9 +924,35 @@ function v9PushFlatTopBottomInputToSelectedDrawings(tlStyle) {
   } catch (_) {}
 }
 
+/**
+ * Clone `tlStyle` and restore empty per-tool level lists (Apply default must not wipe Input rows / chart levels).
+ */
+function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
+  if (!tlStyle || !legacyType) return tlStyle;
+  const out = { ...tlStyle };
+  v9EnsureFibLevelsTlForLegacy(out, legacyType, tlStyle);
+  v9EnsureGannLevelsTlForLegacy(out, legacyType);
+  if (legacyType === "parallel-channel" && (!Array.isArray(out.chLines) || !out.chLines.length)) {
+    out.chLines = v9DefaultParallelChannelChLines(out.lineColor || V9_DEFAULT_TL_LINE_COLOR);
+  }
+  if (legacyType === "pitchfork" && (!Array.isArray(out.pfLevels) || !out.pfLevels.length)) {
+    out.pfLevels = v9DefaultPfLevelsTl();
+  }
+  if (legacyType === "regression-trend" && (!Array.isArray(out.regLines) || out.regLines.length < 3)) {
+    out.regLines = v9DefaultRegLinesTl();
+  }
+  if (!Array.isArray(out.showInfoTypes) || !out.showInfoTypes.length) {
+    out.showInfoTypes = Array.isArray(tlStyle.showInfoTypes) && tlStyle.showInfoTypes.length
+      ? [...tlStyle.showInfoTypes]
+      : ["Price range"];
+  }
+  return out;
+}
+
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
+  if (legacyTool) tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, legacyTool);
   const isRegCh = legacyTool === "regression-trend";
   const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
   const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
@@ -992,11 +1018,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         }),
   };
   if (legacyTool && v9IsClassicFibRetracementType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
-    patch.levels = v9TlFibLevelsToChart(
+    const chartLevels = v9TlFibLevelsToChart(
       tlStyle.fibLevels,
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    if (chartLevels.length) patch.levels = chartLevels;
     const classicTrendDash =
       tlStyle.lineType === "bold"
         ? ""
@@ -1027,14 +1054,16 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.extendLines = !!tlStyle.fibExtendLines;
   }
   if (legacyTool && v9IsFibChannelType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
-    patch.levels = v9TlFibEnabledLevelsToChart(
+    const chartLevels = v9TlFibEnabledLevelsToChart(
       tlStyle.fibLevels,
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    if (chartLevels.length) patch.levels = chartLevels;
   }
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
-    patch.levels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
+    const chartLevels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
+    if (chartLevels.length) patch.levels = chartLevels;
     const trendDashStr =
       tlStyle.lineType === "bold"
         ? ""
@@ -1051,11 +1080,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineDasharray = trendDashStr;
   }
   if (legacyTool && v9IsFibSpeedFanType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
-    patch.levels = v9TlFibSpeedFanLevelsToChart(
+    const chartLevels = v9TlFibSpeedFanLevelsToChart(
       tlStyle.fibLevels,
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    if (chartLevels.length) patch.levels = chartLevels;
     const fanTrendDash =
       tlStyle.lineType === "bold"
         ? ""
@@ -1083,11 +1113,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
           : "6,6");
     const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
     const trendW = parseInt(String(tlStyle.fibTimeTrendWidth), 10) || parseInt(String(tlStyle.lineWidth), 10) || 1;
-    patch.levels = v9TlFibSpeedFanLevelsToChart(
+    const chartLevels = v9TlFibSpeedFanLevelsToChart(
       v9ResolveTrendFibTimeLevelsForDrawing({ levels: patch.levels, type: legacyTool }, tlStyle),
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    if (chartLevels.length) patch.levels = chartLevels;
     patch.trendLineEnabled = tlStyle.fibTrendLine !== false;
     patch.trendLineColor = tlStyle.lineColor;
     patch.trendLineWidth = trendW;
@@ -1105,11 +1136,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     (v9IsFibCirclesType(legacyTool) || v9IsFibArcsType(legacyTool) || v9IsFibWedgeType(legacyTool)) &&
     Array.isArray(tlStyle.fibLevels)
   ) {
-    patch.levels = v9TlFibSpeedFanLevelsToChart(
+    const chartLevels = v9TlFibSpeedFanLevelsToChart(
       tlStyle.fibLevels,
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    if (chartLevels.length) patch.levels = chartLevels;
     patch.showZones = tlStyle.fibBackground !== false;
     patch.backgroundOpacity =
       tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
@@ -2742,6 +2774,7 @@ function v9DefaultFibLevelsTlForLegacy(legacyType) {
     "fib-speed-fan": v9FibSpeedFanDefaultPriceLevelsTl,
     "trend-fib-time": v9TrendFibTimeDefaultLevelsTl,
     "fib-circles": v9FibCirclesDefaultLevelsTl,
+    "fib-spiral": v9FibCirclesDefaultLevelsTl,
     "fib-arcs": v9FibArcsDefaultLevelsTl,
     "fib-wedge": v9FibWedgeDefaultLevelsTl,
   };
@@ -2803,6 +2836,10 @@ function v9EnsureFibLevelsTlForLegacy(out, legacyType, fall) {
   }
   const defaults = v9DefaultFibLevelsTlForLegacy(legacyType);
   if (!defaults.length) return;
+  if (!Array.isArray(out.fibLevels) || !out.fibLevels.length) {
+    out.fibLevels = defaults.map((r) => ({ ...r }));
+    return;
+  }
   if (v9FibTlLevelsWrongForTool(legacyType, out.fibLevels)) {
     out.fibLevels = defaults.map((r) => ({ ...r }));
   }
@@ -3778,16 +3815,26 @@ function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
 function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-box" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
-  d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
+  if (Array.isArray(tlStyle.gannPriceLevels) && tlStyle.gannPriceLevels.length) {
+    d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
+  }
+  if (Array.isArray(tlStyle.gannTimeLevels) && tlStyle.gannTimeLevels.length) {
+    d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
+  }
 }
 
 function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-square-fixed" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
-  d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
-  d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+  if (Array.isArray(tlStyle.gannGridLevels) && tlStyle.gannGridLevels.length) {
+    d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
+  }
+  if (Array.isArray(tlStyle.gannFanLevels) && tlStyle.gannFanLevels.length) {
+    d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+  }
+  if (Array.isArray(tlStyle.gannArcLevels) && tlStyle.gannArcLevels.length) {
+    d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+  }
 }
 
 function v9ApplyGannFanFromTlStyle(d, tlStyle) {
@@ -3812,9 +3859,18 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
   });
 }
 
+/** Re-apply level geometry after built-in stroke reset (Apply default). */
+function v9RestoreDrawingLevelsAfterBuiltinDefault(drawing, dm) {
+  if (!drawing || !drawing.type) return;
+  const tl = v9BuildDefaultTlStyleForDrawingType(drawing.type);
+  if (!tl) return;
+  v9ApplyTlStyleExtrasToDrawing(drawing, tl, dm);
+}
+
 /** Fib / channel / Gann extras after base style patch (new drawings + bridge). */
 function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   if (!d || !tlStyle) return;
+  tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, d.type);
   const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
   if (typeof tlStyle.textContent === "string") {
     d.text = tlStyle.textContent;
@@ -3917,6 +3973,9 @@ if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
     if (!armed || !armed.tlStyle || !drawing) return;
     if (armed.tool && drawing.type !== armed.tool) return;
     v9ApplyTlStyleExtrasToDrawing(drawing, armed.tlStyle, null);
+  };
+  window.__v9RestoreDrawingLevelsAfterBuiltinDefault = (drawing, dm) => {
+    v9RestoreDrawingLevelsAfterBuiltinDefault(drawing, dm);
   };
 }
 

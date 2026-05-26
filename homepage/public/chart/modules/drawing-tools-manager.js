@@ -9389,15 +9389,12 @@ class DrawingToolsManager {
         }
         Object.assign(drawing.style, patch);
 
-        if (drawing.type === 'gann-fan') {
-            const fan = drawing.style.fanLevels;
-            if (!Array.isArray(fan) || !fan.length) {
-                const GannFan = typeof GannFanTool !== 'undefined' ? GannFanTool : null;
-                if (GannFan && typeof GannFan.defaultFanLevels === 'function') {
-                    drawing.style.fanLevels = GannFan.defaultFanLevels().map((l) => ({ ...l }));
-                }
+        try {
+            if (typeof window !== 'undefined'
+                && typeof window.__v9RestoreDrawingLevelsAfterBuiltinDefault === 'function') {
+                window.__v9RestoreDrawingLevelsAfterBuiltinDefault(drawing, this);
             }
-        }
+        } catch (_) {}
 
         const tb = this.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(drawing); } catch (_) {}
