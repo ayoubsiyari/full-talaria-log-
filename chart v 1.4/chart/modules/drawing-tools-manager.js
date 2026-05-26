@@ -4211,15 +4211,6 @@ class DrawingToolsManager {
                 
                 // [debug removed]
 
-                // Text tools: never open settings from chrome click timing — use tool handlers / gear
-                if (self._isTextDrawingType(drawing.type)) {
-                    self._drawingClickTimes[drawing.id] = 0;
-                    if (!drawing.locked && !self.currentTool) {
-                        self.selectDrawing(drawing, event.shiftKey);
-                    }
-                    return;
-                }
-                
                 if (!drawing.locked) {
                     self.selectDrawing(drawing);
                     self.editDrawing(drawing, event.pageX, event.pageY);
@@ -4260,13 +4251,6 @@ class DrawingToolsManager {
             if (self.eraserMode) return;
             
             // [debug removed]
-
-            if (self._isTextDrawingType(drawing.type)) {
-                if (!drawing.locked && !self.currentTool) {
-                    self.selectDrawing(drawing);
-                }
-                return;
-            }
             
             if (!drawing.locked) {
                 self.selectDrawing(drawing);

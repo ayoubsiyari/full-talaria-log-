@@ -382,8 +382,12 @@ class TextTool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            if (!self.locked) {
-                startInlineEdit();
+            const manager = self.chart && self.chart.drawingManager;
+            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
+                if (typeof manager.selectDrawing === 'function') {
+                    manager.selectDrawing(self);
+                }
+                manager.editDrawing(self, event.pageX, event.pageY);
             }
         };
 
@@ -1172,7 +1176,7 @@ class AnchoredTextTool extends BaseDrawing {
         [background.node(), textElement.node()].forEach((n) => {
             n.addEventListener('mousedown', handleMouseDown, true);
             n.addEventListener('click', handleInlineEdit, true);
-            n.addEventListener('dblclick', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleOpenSettings, true);
         });
 
         return this.group;
@@ -1510,6 +1514,24 @@ class NoteTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
+        const handleOpenSettings = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
+                if (typeof manager.selectDrawing === 'function') {
+                    manager.selectDrawing(self);
+                }
+                manager.editDrawing(self, event.pageX, event.pageY);
+            }
+        };
+
         const handleSingleClick = function(event) {
             event.stopPropagation();
             event.preventDefault();
@@ -1532,9 +1554,7 @@ class NoteTool extends BaseDrawing {
             self._lastClickTime = now;
 
             if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                if (!self.locked) {
-                    startInlineEdit();
-                }
+                handleOpenSettings(event);
                 return;
             }
 
@@ -1556,37 +1576,11 @@ class NoteTool extends BaseDrawing {
         };
 
         const handleDblClick = function(event) {
-            event.stopPropagation();
-            event.preventDefault();
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-            if (!self.locked) {
-                startInlineEdit();
-            }
-        };
-
-        const handleOpenSettings = function(event) {
-            event.stopPropagation();
-            event.preventDefault();
-
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
-            }
+            handleOpenSettings(event);
         };
         
         // Use native addEventListener with capture phase - won't be overwritten by d3
-        // 1st click = select, 2nd click = edit, dblclick = inline edit, drag = move
+        // 1st click = select, 2nd click = edit, dblclick = settings, drag = move
         const noteTextHitNodes = [textBox.node(), textElement.node()];
         textElement.selectAll('tspan').each(function() {
             noteTextHitNodes.push(this);
@@ -2670,7 +2664,7 @@ class CalloutTool extends BaseDrawing {
 
         textElement.node().addEventListener('mousedown', handleMouseDown, true);
         textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         // Resize handles
         const handleRadius = 4;
@@ -3460,7 +3454,8 @@ class Signpost2Tool extends BaseDrawing {
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
-            .style('pointer-events', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'move')
             .text(displayText);
 
         // Single click to edit text, double click to open settings
@@ -3579,7 +3574,10 @@ class Signpost2Tool extends BaseDrawing {
         // Use native listeners so D3 manager handlers don't override these
         textBox.node().addEventListener('mousedown', handleMouseDown, true);
         textBox.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
+        textBox.node().addEventListener('dblclick', handleOpenSettings, true);
+        textElement.node().addEventListener('mousedown', handleMouseDown, true);
+        textElement.node().addEventListener('click', handleInlineEdit, true);
+        textElement.node().addEventListener('dblclick', handleOpenSettings, true);
 
         // Small circle at the anchor point
         this.group.append('circle')
