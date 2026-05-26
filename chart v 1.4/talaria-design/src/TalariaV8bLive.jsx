@@ -820,6 +820,45 @@ function v9PushRegressionStyleToSelectedDrawings(tlStyle) {
   } catch (_) {}
 }
 
+/** Immediate flat top/bottom input apply (Show Prices must not wait on layout bridge). */
+function v9PushFlatTopBottomInputToSelectedDrawings(tlStyle) {
+  if (!tlStyle) return;
+  const seen = new Set();
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      const push = (raw) => {
+        const d = resolveLiveDrawingInDm(dm, raw);
+        if (!d || d.type !== "flat-top-bottom" || !d.style) return;
+        if (d.id != null) {
+          if (seen.has(d.id)) return;
+          seen.add(d.id);
+        }
+        d.style.showHandlePrices = tlStyle.flatChPrices !== false;
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onBeforeUpdate === "function") {
+            dm.toolbar.onBeforeUpdate(d);
+          }
+        } catch (_) {}
+        try {
+          if (dm.toolbar && typeof dm.toolbar.onUpdate === "function") {
+            dm.toolbar.onUpdate(d);
+          } else if (typeof dm.renderDrawing === "function") {
+            dm.renderDrawing(d);
+          }
+        } catch (_) {
+          try {
+            dm.renderDrawing?.(d);
+          } catch (_) {}
+        }
+        if (dm.chart && dm.chart.scheduleRender) dm.chart.scheduleRender();
+      };
+      if (dm.selectedDrawing) push(dm.selectedDrawing);
+      if (Array.isArray(dm.selectedDrawings)) dm.selectedDrawings.forEach(push);
+      if (dm.toolbar && dm.toolbar.currentDrawing) push(dm.toolbar.currentDrawing);
+    });
+  } catch (_) {}
+}
+
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
@@ -850,6 +889,9 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     endStyle: tlStyle.ep2,
     extendLeft: !!tlStyle.extendLeft,
     extendRight: !!tlStyle.extendRight,
+    ...(legacyTool === "flat-top-bottom"
+      ? { showHandlePrices: tlStyle.flatChPrices !== false }
+      : {}),
     showPriceLabel: !!tlStyle.priceLabels,
     showTimeLabel: !!tlStyle.timeLabels,
     rangeMode:
@@ -3421,6 +3463,9 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   if (d.type === "parallel-channel") {
     d.levels = v9ChLinesToParallelLevels(v9SyncParallelChannelMidLineToChLines(tlStyle));
   }
+  if (d.type === "flat-top-bottom") {
+    d.style.showHandlePrices = tlStyle.flatChPrices !== false;
+  }
   if (d.type === "regression-trend") {
     v9ApplyRegressionStyleFromTl(d.style, tlStyle);
     const sty = d.style;
@@ -3552,6 +3597,7 @@ function v9TlStylePatchFromDrawing(d) {
       || (typeof s.extendLeft === 'string' && /^(true|1|yes)$/i.test(String(s.extendLeft).trim()))),
     extendRight: !!(s.extendRight === true || s.extendRight === 1
       || (typeof s.extendRight === 'string' && /^(true|1|yes)$/i.test(String(s.extendRight).trim()))),
+    ...(d.type === "flat-top-bottom" ? { flatChPrices: s.showHandlePrices !== false } : {}),
     ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
     ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
     ...(s.labelColor ? { labelColor: s.labelColor } : {}),
@@ -13129,6 +13175,7 @@ const TalariaV8bLive = () => {
     tlStyle.showBorder, tlStyle.borderColor, tlStyle.borderType, tlStyle.borderWidth,
     tlStyle.midLine, tlStyle.midLineColor, tlStyle.midLineType, tlStyle.midLineWidth,
     tlStyle.ep1, tlStyle.ep2, tlStyle.extendLeft, tlStyle.extendRight,
+    tlStyle.flatChPrices,
     tlStyle.priceLabels, tlStyle.timeLabels, tlStyle.rangeType,
     tlStyle.showInfo, tlStyle.showInfoTypes,
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
@@ -13198,6 +13245,16 @@ const TalariaV8bLive = () => {
         );
         const next = { ...s, regLines: nextLines };
         v9PushRegressionStyleToSelectedDrawings(next);
+        return next;
+      });
+    });
+  }, []);
+
+  const applyFlatChPricesToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, flatChPrices: !s.flatChPrices };
+        v9PushFlatTopBottomInputToSelectedDrawings(next);
         return next;
       });
     });
@@ -16805,7 +16862,7 @@ const TalariaV8bLive = () => {
             {/* ── INPUT TAB (flat / disjoint channel) ── */}
             {tlSettTab==="input" && (tlSubTool.icon === "flatChannel" || tlSubTool.icon === "disjointCh") && (
               <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", () => setTlStyle(s => ({ ...s, flatChPrices: !s.flatChPrices })))}
+                {TlChk(tlStyle.flatChPrices, "tlchk-flatChPrices-in", "Show Prices", applyFlatChPricesToggle)}
               </div>
             )}
 
