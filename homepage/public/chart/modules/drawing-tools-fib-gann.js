@@ -3267,6 +3267,54 @@ class GannFanTool extends BaseDrawing {
         }
     }
 
+    onPointHandleDrag(index, context = {}) {
+        const { point, scales } = context;
+        if (!point || !scales) return false;
+
+        if (index === 0) {
+            if (!this.points[0] || !this.points[1]) return false;
+            const dx = point.x - this.points[0].x;
+            const dy = point.y - this.points[0].y;
+            this.points = this.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+            return true;
+        }
+
+        if (index !== 1 || !this.points[0]) return false;
+
+        const chart = scales.chart;
+        const xScale = scales.xScale;
+        const yScale = scales.yScale;
+        if (!yScale) return false;
+
+        const toPxX = (p) => (chart && typeof chart.dataIndexToPixel === 'function')
+            ? chart.dataIndexToPixel(p.x)
+            : (xScale ? xScale(p.x) : p.x);
+        const toPxY = (p) => yScale(p.y);
+        const invPxX = (px) => (chart && typeof chart.pixelToDataIndex === 'function')
+            ? chart.pixelToDataIndex(px)
+            : (xScale && typeof xScale.invert === 'function' ? xScale.invert(px) : point.x);
+        const invPxY = (py) => (yScale && typeof yScale.invert === 'function')
+            ? yScale.invert(py)
+            : point.y;
+
+        const x1 = toPxX(this.points[0]);
+        const y1 = toPxY(this.points[0]);
+        const xM = toPxX(point);
+        const yM = toPxY(point);
+        const dx = xM - x1;
+        const dy = yM - y1;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-6) return false;
+
+        const ux = dx / len;
+        const uy = dy / len;
+        this.points[1] = {
+            x: invPxX(x1 + ux * len),
+            y: invPxY(y1 + uy * len),
+        };
+        return true;
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -3295,12 +3343,35 @@ class GannFanTool extends BaseDrawing {
 
         const baseDx = x2 - x1;
         const baseDy = y2 - y1;
+        const fanLen = Math.hypot(baseDx, baseDy);
 
-        // Always project to the right edge (end of chart).
-        // Use a positive dx for slope so point order (left/right) doesn't flip the fan direction.
-        const xBound = xMax;
-        const safeDx = Math.abs(baseDx) || 1e-6;
-        const baseSlope = (baseDx === 0) ? (baseDy >= 0 ? 1e6 : -1e6) : (baseDy / safeDx);
+        const invPxX = (px) => (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
+            ? scales.chart.pixelToDataIndex(px)
+            : (scales.xScale && typeof scales.xScale.invert === 'function' ? scales.xScale.invert(px) : this.points[1].x);
+        const invPxY = (py) => (scales.yScale && typeof scales.yScale.invert === 'function')
+            ? scales.yScale.invert(py)
+            : this.points[1].y;
+
+        // Second handle sits on the 1/1 ray (matches rendered fan direction).
+        if (fanLen > 1e-6) {
+            const ux = baseDx / fanLen;
+            const uy = baseDy / fanLen;
+            const along = (x2 - x1) * ux + (y2 - y1) * uy;
+            const hx = x1 + ux * along;
+            const hy = y1 + uy * along;
+            this.virtualPoints = [
+                this.points[0],
+                { x: invPxX(hx), y: invPxY(hy) },
+            ];
+        } else {
+            this.virtualPoints = [this.points[0], this.points[1]];
+        }
+
+        // Extend rays in the direction of anchor #2 (not always to the right).
+        const xBound = baseDx >= 0 ? xMax : xMin;
+        const baseSlope = (Math.abs(baseDx) < 1e-6)
+            ? (baseDy >= 0 ? 1e6 : -1e6)
+            : (baseDy / baseDx);
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
@@ -3407,7 +3478,7 @@ class GannFanTool extends BaseDrawing {
 
         const baseLineWidth = (this.style.strokeWidth != null && !isNaN(parseInt(this.style.strokeWidth))) ? parseInt(this.style.strokeWidth) : 1;
         const scaledStroke = Math.max(0.5, (globalWidth !== null ? globalWidth : baseLineWidth) * scaleFactor);
-        const labelDx = Math.abs(xBound - x1) * 0.35;
+        const labelDx = (xBound - x1) * 0.35;
 
         rays.forEach(ray => {
             const perLevelWidth = (ray.lineWidth != null && !isNaN(parseInt(ray.lineWidth))) ? parseInt(ray.lineWidth) : null;
