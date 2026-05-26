@@ -1910,7 +1910,13 @@ function v9RegLinesFromRegressionStyle(s) {
   const lw = String(parseInt(s.lowerStrokeWidth, 10) || 2);
   const stroke = s.stroke || "#9c27b0";
   return [
-    { on: true, label: "Middle Line", color: stroke, type: v9RegDashStringToType(s.strokeDasharray), width: sw },
+    {
+      on: s.showMiddleLine !== false,
+      label: "Middle Line",
+      color: stroke,
+      type: v9RegDashStringToType(s.strokeDasharray),
+      width: sw,
+    },
     {
       on: s.useUpperDeviation !== false,
       label: "Upper Line",
@@ -1956,6 +1962,7 @@ function v9ApplyRegLinesToRegressionStyle(style, regLines) {
   style.stroke = mid.color;
   style.strokeWidth = mid.type === "bold" ? Math.max(midW, 3) : midW;
   style.strokeDasharray = dashStr(mid);
+  style.showMiddleLine = mid.on !== false;
   style.upperStroke = up.color;
   style.upperStrokeWidth = up.type === "bold" ? Math.max(upW, 3) : upW;
   style.upperStrokeDasharray = dashStr(up);

@@ -517,6 +517,7 @@ class RegressionTrendTool extends BaseDrawing {
         this.style.lowerDeviation = style.lowerDeviation !== undefined ? style.lowerDeviation : -2;
         this.style.useUpperDeviation = style.useUpperDeviation !== false;
         this.style.useLowerDeviation = style.useLowerDeviation !== false;
+        this.style.showMiddleLine = style.showMiddleLine !== false;
         this.style.source = style.source || 'close';
         this.style.showPearsonsR = style.showPearsonsR !== undefined ? style.showPearsonsR : false;
         this.ensureTextDefaults();
@@ -842,30 +843,31 @@ class RegressionTrendTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        // Draw main regression line (on top of fills)
-        visualGroup.append('line')
-            .attr('class', 'main-line')
-            .attr('x1', startX)
-            .attr('y1', midStartY)
-            .attr('x2', endX)
-            .attr('y2', midEndY)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStrokeWidth)
-            .attr('stroke-dasharray', this.style.strokeDasharray)
-            .style('cursor', 'move')
-            .style('pointer-events', 'stroke');
-        
-        // Add invisible wider hit area for easier selection
-        visualGroup.append('line')
-            .attr('class', 'main-line-hit shape-border-hit')
-            .attr('x1', startX)
-            .attr('y1', midStartY)
-            .attr('x2', endX)
-            .attr('y2', midEndY)
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(16, this.style.strokeWidth * 5))
-            .style('cursor', 'move')
-            .style('pointer-events', 'stroke');
+        // Draw main regression line (on top of fills) — optional via showMiddleLine (V9 Middle Line checkbox)
+        if (this.style.showMiddleLine !== false) {
+            visualGroup.append('line')
+                .attr('class', 'main-line')
+                .attr('x1', startX)
+                .attr('y1', midStartY)
+                .attr('x2', endX)
+                .attr('y2', midEndY)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', scaledStrokeWidth)
+                .attr('stroke-dasharray', this.style.strokeDasharray)
+                .style('cursor', 'move')
+                .style('pointer-events', 'stroke');
+
+            visualGroup.append('line')
+                .attr('class', 'main-line-hit shape-border-hit')
+                .attr('x1', startX)
+                .attr('y1', midStartY)
+                .attr('x2', endX)
+                .attr('y2', midEndY)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, this.style.strokeWidth * 5))
+                .style('cursor', 'move')
+                .style('pointer-events', 'stroke');
+        }
 
         // Draw deviation channels using the already calculated positions
         if (this.style.useUpperDeviation) {
