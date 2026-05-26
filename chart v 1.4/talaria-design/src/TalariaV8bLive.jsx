@@ -1966,6 +1966,20 @@ function v9ApplyRegLinesToRegressionStyle(style, regLines) {
   style.useLowerDeviation = lo.on !== false;
 }
 
+/** Regression channel line rows + upper/lower band fills (`upperFill` / `lowerFill`). */
+function v9ApplyRegressionStyleFromTl(style, tlStyle) {
+  if (!style || !tlStyle) return;
+  if (Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
+    v9ApplyRegLinesToRegressionStyle(style, tlStyle.regLines);
+  }
+  if (tlStyle.regUpperBg != null && String(tlStyle.regUpperBg).trim() !== "") {
+    style.upperFill = tlStyle.regUpperBg;
+  }
+  if (tlStyle.regLowerBg != null && String(tlStyle.regLowerBg).trim() !== "") {
+    style.lowerFill = tlStyle.regLowerBg;
+  }
+}
+
 /** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
 const V9_PF_UI_TO_CHART = {
   Original: "original",
@@ -3344,10 +3358,8 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   if (d.type === "parallel-channel") {
     d.levels = v9ChLinesToParallelLevels(v9SyncParallelChannelMidLineToChLines(tlStyle));
   }
-  if (d.type === "regression-trend" && Array.isArray(tlStyle.regLines) && tlStyle.regLines.length >= 3) {
-    v9ApplyRegLinesToRegressionStyle(d.style, tlStyle.regLines);
-  }
   if (d.type === "regression-trend") {
+    v9ApplyRegressionStyleFromTl(d.style, tlStyle);
     const sty = d.style;
     sty.source = v9UiSourceToChartSource(tlStyle.source);
     sty.showPearsonsR = !!tlStyle.regPearsonR;
@@ -3550,6 +3562,8 @@ function v9TlStylePatchFromDrawing(d) {
             },
             regPearsonR: !!s.showPearsonsR,
             source: v9ChartSourceToUiSource(s.source),
+            regUpperBg: s.upperFill || s.fill || V9_DEFAULT_TL_SHAPE_FILL,
+            regLowerBg: s.lowerFill || s.fill || V9_DEFAULT_TL_SHAPE_FILL,
           };
         })()
       : {}),
@@ -11955,6 +11969,8 @@ const TalariaV8bLive = () => {
               if (p.regLowerDev) out.regLowerDev = p.regLowerDev;
               if (p.regPearsonR !== undefined) out.regPearsonR = p.regPearsonR;
               if (p.source) out.source = p.source;
+              if (p.regUpperBg) out.regUpperBg = p.regUpperBg;
+              if (p.regLowerBg) out.regLowerBg = p.regLowerBg;
             }
             if (drawing.type === "pitchfork") {
               if (p.pfLevels) out.pfLevels = p.pfLevels;
@@ -13057,6 +13073,8 @@ const TalariaV8bLive = () => {
     tlStyle.vertAlign, tlStyle.horizAlign,
     tlStyle.chLines,
     tlStyle.regLines,
+    tlStyle.regUpperBg,
+    tlStyle.regLowerBg,
     tlStyle.source,
     tlStyle.regUpperDev,
     tlStyle.regLowerDev,
