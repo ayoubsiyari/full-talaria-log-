@@ -1710,6 +1710,8 @@ function v9TxtStylePatchFromDrawing(d) {
     const stroke = s.stroke;
     out.borderColor = stroke && stroke !== "none" ? stroke : out.borderColor;
     out.borderOn = !!(stroke && stroke !== "none");
+    out.wrapText = !!s.wrapText;
+    out.anchored = !!s.anchored;
   } else if (t === "notebox") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
@@ -1725,12 +1727,20 @@ function v9TxtStylePatchFromDrawing(d) {
     const fill = s.fill;
     out.bgColor = fill ?? out.bgColor;
     out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
+    const stroke = s.stroke;
+    if (stroke && stroke !== "none") {
+      out.borderColor = stroke;
+      out.borderOn = true;
+    } else {
+      out.borderOn = false;
+    }
   } else if (t === "price-note") {
     const fill = s.fill;
     out.bgColor = fill ?? out.bgColor;
     out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
     out.borderColor = s.borderColor ?? out.borderColor;
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+    out.lineColor = s.stroke && s.stroke !== "none" ? s.stroke : "#787B86";
   } else if (t === "callout") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
@@ -1750,8 +1760,11 @@ function v9TxtStylePatchFromDrawing(d) {
     out.borderColor = s.borderColor || "#555";
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
   } else if (t === "signpost" || t === "signpost-2") {
-    out.bgColor = s.color || "#787b86";
+    out.bgColor = s.fill || s.color || s.stroke || "#787b86";
     out.bgOn = true;
+    const brd = s.borderColor;
+    out.borderColor = brd ?? out.borderColor;
+    out.borderOn = !!(brd && brd !== "none" && brd !== "transparent");
   } else if (t === "flag-mark") {
     out.bgColor = s.fill || s.stroke || "#787b86";
     out.bgOn = true;
@@ -1804,6 +1817,9 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "none";
     s.stroke = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.stroke) : "none";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 200;
+    s.anchored = !!txt.anchored;
     return;
   }
   if (t === "notebox") {
@@ -1830,6 +1846,13 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyCommon();
     applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
+    if (txt.borderOn) {
+      s.stroke = txt.borderColor != null ? txt.borderColor : s.stroke || "#787b86";
+      s.strokeWidth = Math.max(Number(s.strokeWidth) || 0, 1) || 1;
+    } else {
+      s.stroke = "none";
+      s.strokeWidth = 0;
+    }
     return;
   }
   if (t === "price-note") {
@@ -1837,6 +1860,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor || "#787b86") : "none";
+    if (txt.lineColor != null) s.stroke = txt.lineColor;
     return;
   }
   if (t === "label") {
@@ -1855,7 +1879,13 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     return;
   }
   if (t === "signpost" || t === "signpost-2") {
-    if (txt.bgOn && txt.bgColor != null) s.color = txt.bgColor;
+    applyCommon();
+    if (txt.bgOn && txt.bgColor != null) {
+      s.fill = txt.bgColor;
+      s.stroke = txt.bgColor;
+      s.color = txt.bgColor;
+    }
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
     if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
     return;
   }
@@ -7465,16 +7495,10 @@ const TalariaV8bLive = () => {
     bgOn: false, bgColor: "#000000",
     borderOn: true, borderColor: "#787B86",
     wrapText: false, anchored: false,
-    notePt1Price: "0.00000", notePt1Bar: "0", notePt2Price: "0.00000", notePt2Bar: "0",
-    priceNotePt1Price: "0.00000", priceNotePt1Bar: "0", priceNotePt2Price: "0.00000", priceNotePt2Bar: "0",
-    calloutPt1Price: "0.00000", calloutPt1Bar: "0", calloutPt2Price: "0.00000", calloutPt2Bar: "0",
-    commentPt1Price: "0.00000", commentPt1Bar: "0",
-    pinLabelColor: "#4A6AFF", pinPt1Price: "0.00000", pinPt1Bar: "0",
-    priceLabelPt1Price: "0.00000", priceLabelPt1Bar: "0",
-    signpostPt1Price: "0.00000", signpostPt1Bar: "0",
-    flagPt1Price: "0.00000", flagPt1Bar: "0",
-    imageDataUrl: "", imageTransparency: 0, imagePt1Price: "0.00000", imagePt1Bar: "0",
-    emojiPt1Price: "0.00000", emojiPt1Bar: "0",
+    lineColor: "#787B86",
+    pt1Price: "0.00000", pt1Bar: "0", pt2Price: "0.00000", pt2Bar: "0",
+    pinLabelColor: "#4A6AFF",
+    imageDataUrl: "", imageTransparency: 0,
     visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
     visMonths: { checked: true, min: 1, max: 120 },
@@ -11081,6 +11105,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "txtTextColor") setTxtStyle(s=>({...s, textColor: colorVal}));
     else if(targetKey === "txtBgColor") setTxtStyle(s=>({...s, bgColor: colorVal}));
     else if(targetKey === "txtBorderColor") setTxtStyle(s=>({...s, borderColor: colorVal}));
+    else if(targetKey === "txtLineColor") setTxtStyle(s=>({...s, lineColor: colorVal}));
     else if(targetKey === "pinLabelColor") setTxtStyle(s=>({...s, pinLabelColor: colorVal}));
     else if(targetKey === "vwap_vwapColor")  setVwapStyle(s=>({...s, vwapColor:  colorVal}));
     else if(targetKey === "vwap_band1Color") setVwapStyle(s=>({...s, band1Color: colorVal}));
@@ -12286,11 +12311,26 @@ const TalariaV8bLive = () => {
             setTlStyle((s) => ({ ...s, ...patch }));
           }
         }
+        const gTxt = drawingTypeToPanelGroupRef.current(d.type);
+        if (gTxt === "text") {
+          const tp = {
+            ...v9TxtStylePatchFromDrawing(d),
+            ...v9CoordPatchFromDrawing(d),
+            ...v9VisibilityPatchFromDrawing(d),
+          };
+          if (tp && Object.keys(tp).length) {
+            suppressTxtForwardBridge.current = true;
+            flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
+          }
+          if (typeof d.locked === "boolean") setTxtLocked(!!d.locked);
+        }
         requestAnimationFrame(() => {
           suppressForwardBridge.current = false;
+          suppressTxtForwardBridge.current = false;
         });
       } catch (err) {
         suppressForwardBridge.current = false;
+        suppressTxtForwardBridge.current = false;
         console.warn("[V9] template style sync failed:", err);
       }
     };
@@ -12849,11 +12889,16 @@ const TalariaV8bLive = () => {
           if (drawing && drawing.type && !editRef?.current) {
             const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
             if (gTxt === "text") {
-              const tp = v9TxtStylePatchFromDrawing(drawing);
+              const tp = {
+                ...v9TxtStylePatchFromDrawing(drawing),
+                ...v9CoordPatchFromDrawing(drawing),
+                ...v9VisibilityPatchFromDrawing(drawing),
+              };
               if (tp && Object.keys(tp).length) {
                 br.suppressTxtForwardBridge.current = true;
                 br.setTxtStyle((s) => ({ ...s, ...tp }));
               }
+              if (typeof drawing.locked === "boolean") br.setTxtLocked(!!drawing.locked);
             }
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
               const rs = drawing.style || {};
@@ -13074,6 +13119,7 @@ const TalariaV8bLive = () => {
             br.suppressTxtForwardBridge.current = true;
             flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
           }
+          if (typeof live.locked === "boolean") br.setTxtLocked(!!live.locked);
         }
         if (g && !br.editingDrawingRef?.current) {
           let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
@@ -13896,6 +13942,8 @@ const TalariaV8bLive = () => {
     txtStyle.bgOn,
     txtStyle.borderOn,
     txtStyle.wrapText,
+    txtStyle.anchored,
+    txtStyle.lineColor,
     txtStyle.content,
     txtStyle.horizAlign,
     txtStyle.pinLabelColor,
@@ -17806,10 +17854,14 @@ const TalariaV8bLive = () => {
               );
             })()}
           </TxBtn>}
-          {/* tool color button — note and priceNote: line/border accent (stroke on chart) */}
-          {(txtSubTool.icon === "note" || txtSubTool.icon === "priceNote") && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
+          {/* tool color button — note: leader/box stroke; priceNote: leader line only */}
+          {txtSubTool.icon === "note" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn ? txtStyle.borderColor : "rgba(120,123,134,0.38)",borderRadius:1,opacity:txtStyle.borderOn ? 1 : 0.85}}/></div>}
+          </TxBtn>}
+          {txtSubTool.icon === "priceNote" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtLineColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.lineColor||"rgba(120,123,134,0.38)",borderRadius:1}}/></div>}
           </TxBtn>}
           {/* tool color button — pin only */}
           {txtSubTool.icon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
@@ -17877,7 +17929,18 @@ const TalariaV8bLive = () => {
             })()}
           </div>}
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);setTxtLocked(v=>!v);}}>
+          <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{
+            setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
+            const next = !txtLocked; setTxtLocked(next);
+            try {
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
+                if (!sel || !sel.length) return;
+                sel.forEach((d) => { if (d && drawingTypeToPanelGroupRef.current(d.type) === "text") d.locked = next; });
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
+            } catch (_) {}
+          }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TxBtn>
           {!["note","priceNote","callout","comment","priceLabel","signpost","flag","image"].includes(txtSubTool.icon) && <TxBtn id="txt-anchor" isAct={txtStyle.anchored} onClick={()=>{setTxtBarDrop(null);setTxtStyle(s=>({...s,anchored:!s.anchored}));}}>
@@ -17888,7 +17951,19 @@ const TalariaV8bLive = () => {
               <path d="M5,20 Q5,15.5 12,15.5 Q19,15.5 19,20"/>
             </svg>}
           </TxBtn>}
-          <TxBtn id="txt-del" isDel onClick={()=>{setTxtBarDrop(null);}}>
+          <TxBtn id="txt-del" isDel onClick={()=>{
+            setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
+            try {
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const sel = dm.selectedDrawings && dm.selectedDrawings.length
+                  ? dm.selectedDrawings.filter((d) => d && drawingTypeToPanelGroupRef.current(d.type) === "text")
+                  : (dm.selectedDrawing && drawingTypeToPanelGroupRef.current(dm.selectedDrawing.type) === "text" ? [dm.selectedDrawing] : []);
+                if (!sel.length) return;
+                sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch (_) {} });
+                if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
+              });
+            } catch (err) { console.warn("[V9 txt delete] failed:", err); }
+          }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
@@ -17985,7 +18060,7 @@ const TalariaV8bLive = () => {
           <div onPointerDown={e=>{
             e.preventDefault();
             const sx=e.clientX,sy=e.clientY,px=txtSettPos.x,py=txtSettPos.y;
-            const cpWasOpen=colorPicker==="txtTextColor"||colorPicker==="txtBgColor"||colorPicker==="txtBorderColor"||colorPicker==="pinLabelColor";
+            const cpWasOpen=colorPicker==="txtTextColor"||colorPicker==="txtBgColor"||colorPicker==="txtBorderColor"||colorPicker==="txtLineColor"||colorPicker==="pinLabelColor";
             const cpStart={top:cpPos.top,left:cpPos.left};
             const onMove=ev=>{const dx=(ev.clientX-sx)/Z,dy=(ev.clientY-sy)/Z;const nx=Math.max(0,Math.min(window.innerWidth-420-8,px+dx));const ny=Math.max(0,Math.min(window.innerHeight-44-8,py+dy));const adx=nx-px,ady=ny-py;setTxtSettPos({x:nx,y:ny});if(cpWasOpen)setCpPos({top:cpStart.top+ady,left:cpStart.left+adx});};
             const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
@@ -18420,7 +18495,6 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               );
-              const pfx = isNote ? "note" : isPriceNote ? "priceNote" : isCallout ? "callout" : isComment ? "comment" : isPin ? "pin" : isPriceLabel ? "priceLabel" : isSignpost ? "signpost" : isFlag ? "flag" : isImage ? "image" : "emoji";
               const twoPoints = !isComment && !isPin && !isPriceLabel && !isSignpost && !isFlag && !isImage && !isEmoji;
               const col = twoPoints ? "80px 1fr 1fr" : "80px 1fr";
               return (
@@ -18433,13 +18507,13 @@ const TalariaV8bLive = () => {
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:col,alignItems:"center"}}>
                     <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Price</span>
-                    <div style={{padding:"6px 8px"}}>{spinInput(`${pfx}Pt1Price`,"price")}</div>
-                    {twoPoints && <div style={{padding:"6px 8px"}}>{spinInput(`${pfx}Pt2Price`,"price")}</div>}
+                    <div style={{padding:"6px 8px"}}>{spinInput("pt1Price","price")}</div>
+                    {twoPoints && <div style={{padding:"6px 8px"}}>{spinInput("pt2Price","price")}</div>}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:col,alignItems:"center"}}>
                     <span style={{fontSize:12,color:c.ts,padding:"8px 12px"}}>Bar</span>
-                    <div style={{padding:"6px 8px"}}>{spinInput(`${pfx}Pt1Bar`,"bar")}</div>
-                    {twoPoints && <div style={{padding:"6px 8px"}}>{spinInput(`${pfx}Pt2Bar`,"bar")}</div>}
+                    <div style={{padding:"6px 8px"}}>{spinInput("pt1Bar","bar")}</div>
+                    {twoPoints && <div style={{padding:"6px 8px"}}>{spinInput("pt2Bar","bar")}</div>}
                   </div>
                 </div>
               );

@@ -17,8 +17,42 @@ class TextTool extends BaseDrawing {
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         this.style.textAlign = style.textAlign || 'left';
+        this.style.wrapText = !!style.wrapText;
+        this.style.anchored = !!style.anchored;
+        this.style.maxWidth = style.maxWidth || 200;
+        this.style.anchorLength = style.anchorLength || 24;
         // Store base scale for chart zoom scaling
         this.baseScale = null;
+    }
+
+    /** Word-wrap plain text to fit maxWidth (px); preserves explicit newlines. */
+    static wrapTextLines(rawText, maxWidth, fontSize, fontFamily, fontWeight, fontStyle) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.font = `${fontStyle || 'normal'} ${fontWeight || 'normal'} ${fontSize}px ${fontFamily || 'Roboto, sans-serif'}`;
+        const out = [];
+        const paragraphs = String(rawText || '').split('\n');
+        paragraphs.forEach((para) => {
+            const words = para.split(/\s+/).filter((w) => w.length > 0);
+            if (!words.length) {
+                out.push('');
+                return;
+            }
+            let line = '';
+            words.forEach((word) => {
+                const test = line ? `${line} ${word}` : word;
+                let w = 0;
+                try { w = ctx.measureText(test).width; } catch (e) { w = test.length * fontSize * 0.55; }
+                if (w > maxWidth && line) {
+                    out.push(line);
+                    line = word;
+                } else {
+                    line = test;
+                }
+            });
+            if (line) out.push(line);
+        });
+        return out.length ? out : [''];
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -40,6 +74,30 @@ class TextTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
 
+        if (this.style.anchored) {
+            const anchorLen = (this.style.anchorLength || 24) * scaleFactor;
+            const anchorColor = (this.style.stroke && this.style.stroke !== 'none')
+                ? this.style.stroke
+                : (this.style.textColor || '#787b86');
+            this.group.append('line')
+                .attr('class', 'text-anchor-stem')
+                .attr('x1', x)
+                .attr('y1', y)
+                .attr('x2', x)
+                .attr('y2', y + anchorLen)
+                .attr('stroke', anchorColor)
+                .attr('stroke-width', Math.max(1, 1.5 * scaleFactor))
+                .attr('stroke-linecap', 'round')
+                .style('pointer-events', 'none');
+            this.group.append('circle')
+                .attr('class', 'text-anchor-dot')
+                .attr('cx', x)
+                .attr('cy', y + anchorLen)
+                .attr('r', Math.max(2, 3 * scaleFactor))
+                .attr('fill', anchorColor)
+                .style('pointer-events', 'none');
+        }
+
         // Draw the text with scaled font size (no transform locking)
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
@@ -57,7 +115,17 @@ class TextTool extends BaseDrawing {
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
-        const lines = (this.text || '').split('\n');
+        const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
+        const lines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                this.text || '',
+                maxWrapWidth,
+                scaledFontSize,
+                this.style.fontFamily,
+                this.style.fontWeight,
+                this.style.fontStyle
+            )
+            : (this.text || '').split('\n');
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
             textElement.append('tspan')
