@@ -370,17 +370,27 @@ class FibTimeZoneTool extends BaseDrawing {
         const x2 = getXFromIndex(xIndex2);
         const y2 = getY(this.points[1]);
 
-        // Anchor segment (TradingView-like)
-        this.group.append('line')
-            .attr('class', 'fib-tz-anchor')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', '#787b86')
-            .attr('stroke-width', Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor))
-            .attr('stroke-dasharray', '6,6')
-            .attr('opacity', 0.7)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // Trend / anchor line between the two anchor points (Style → Trend line)
+        const trendEnabled = this.style.trendLineEnabled !== false;
+        const trendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
+        const trendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '6,6';
+        const baseTrendWidth = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth)))
+            ? parseInt(this.style.trendLineWidth)
+            : ((this.style.strokeWidth != null && !isNaN(parseInt(this.style.strokeWidth))) ? parseInt(this.style.strokeWidth) : 1);
+        const scaledTrendWidth = Math.max(0.5, baseTrendWidth * scaleFactor);
+
+        if (trendEnabled) {
+            this.group.append('line')
+                .attr('class', 'fib-tz-anchor fib-trend-line')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', trendColor)
+                .attr('stroke-width', scaledTrendWidth)
+                .attr('stroke-dasharray', trendDash)
+                .attr('opacity', 0.7)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // Draw vertical lines at Fibonacci intervals
         (this.levels || []).forEach((fibObj) => {
@@ -514,16 +524,26 @@ class FibSpeedFanTool extends BaseDrawing {
         const y2 = getY(p2);
         const chartWidth = scales.chart?.w || 2000;
 
-        // Anchor segment (TradingView-like)
-        this.group.append('line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', '#787b86')
-            .attr('stroke-width', Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor))
-            .attr('stroke-dasharray', '6,6')
-            .attr('opacity', 0.7)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // Anchor / trend segment between the two anchor points
+        const fanTrendEnabled = this.style.trendLineEnabled !== false;
+        const fanTrendColor = this.style.trendLineColor || this.style.stroke || '#787b86';
+        const fanTrendDash = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '6,6';
+        const fanTrendBaseW = (this.style.trendLineWidth != null && !isNaN(parseInt(this.style.trendLineWidth)))
+            ? parseInt(this.style.trendLineWidth)
+            : ((this.style.strokeWidth != null && !isNaN(parseInt(this.style.strokeWidth))) ? parseInt(this.style.strokeWidth) : 1);
+        const fanTrendW = Math.max(0.5, fanTrendBaseW * scaleFactor);
+        if (fanTrendEnabled) {
+            this.group.append('line')
+                .attr('class', 'fib-trend-line fib-fan-anchor')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', fanTrendColor)
+                .attr('stroke-width', fanTrendW)
+                .attr('stroke-dasharray', fanTrendDash)
+                .attr('opacity', 0.7)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         const dx = x2 - x1;
         const dy = y2 - y1;
@@ -1568,14 +1588,30 @@ class FibWedgeTool extends BaseDrawing {
 
         const boundaryWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
 
-        this.group.append('line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', boundaryWidth)
-            .attr('opacity', 0.9)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        if (this.style.trendLineEnabled !== false) {
+            const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
+            const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
+            const tHit = Math.max(10, tW * 6);
+            const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
+            const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
+            this.group.append('line')
+                .attr('class', 'fib-wedge-trend-hit')
+                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', tHit)
+                .attr('stroke-dasharray', '')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            this.group.append('line')
+                .attr('class', 'fib-wedge-trend fib-trend-line')
+                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
+                .attr('stroke', tCol)
+                .attr('stroke-width', tW)
+                .attr('stroke-dasharray', tDash)
+                .attr('opacity', 0.85)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         if (this.points.length < 3) {
             if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
