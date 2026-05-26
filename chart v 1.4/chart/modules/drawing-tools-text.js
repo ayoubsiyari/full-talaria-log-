@@ -1355,15 +1355,30 @@ class NoteTool extends BaseDrawing {
         const startInlineEdit = function() {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            const placeholderLabel = helpers ? helpers.TEXT_TOOL_PLACEHOLDER : 'Type here';
+            const isPlaceholder = helpers
+                ? helpers.isTextToolPlaceholder(self.text)
+                : !String(self.text || '').trim();
+            const initialText = isPlaceholder ? '' : (self.text || '');
+
             if (editor && typeof editor.show === 'function') {
                 // Always resolve a live element — selectDrawing re-renders so the
                 // captured textElement may be detached (getBoundingClientRect → 0,0).
-                const liveNode = (self.group && typeof self.group.select === 'function')
+                const liveText = (self.group && typeof self.group.select === 'function')
                     ? self.group.select('text.inline-editable-text').node()
                     : null;
-                const targetNode = (liveNode && document.contains(liveNode))
-                    ? liveNode : textElement.node();
-                const bbox = targetNode.getBoundingClientRect();
+                const liveBox = (self.group && typeof self.group.select === 'function')
+                    ? self.group.select('rect.note-body-hit').node()
+                    : null;
+                let targetNode = (liveText && document.contains(liveText))
+                    ? liveText
+                    : ((liveBox && document.contains(liveBox)) ? liveBox : textElement.node());
+                let bbox = targetNode.getBoundingClientRect();
+                if ((bbox.width <= 0 || bbox.height <= 0) && liveBox && document.contains(liveBox)) {
+                    targetNode = liveBox;
+                    bbox = targetNode.getBoundingClientRect();
+                }
                 const editX = bbox.left + window.scrollX;
                 const editY = bbox.top + window.scrollY;
 
@@ -1374,21 +1389,28 @@ class NoteTool extends BaseDrawing {
                 editor.show(
                     editX,
                     editY,
-                    self.text || '',
-                    (newText) => {
+                    initialText,
+                    (newText, confirmed) => {
                         const normalized = (newText || '').replace(/\r\n/g, '\n');
-                        if (!normalized.trim()) {
-                            if (manager && typeof manager.deleteDrawing === 'function') {
+                        const empty = helpers
+                            ? helpers.isTextToolPlaceholder(normalized)
+                            : !normalized.trim();
+                        if (empty) {
+                            if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
                                 manager.deleteDrawing(self);
                                 return;
                             }
+                            self.setText('');
+                            if (self.chart) self.chart.render();
+                            return;
                         }
                         self.setText(normalized);
                         if (self.chart) self.chart.render();
                     },
-                    'Add text',
+                    placeholderLabel,
                     {
                         inline: true,
+                        placeholderMode: !String(initialText).trim(),
                         fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
@@ -1396,9 +1418,10 @@ class NoteTool extends BaseDrawing {
                         color: self.style.textColor,
                         textAlign: 'left',
                         noWrap: true,
-                        hideSelector: `.drawing[data-id="${self.id}"] text`,
+                        hideSelector: `.drawing[data-id="${self.id}"] text, .drawing[data-id="${self.id}"] rect.note-body-hit`,
                         onInput: (newText) => {
-                            self.setText((newText || '').replace(/\r\n/g, '\n'));
+                            const next = (newText || '').replace(/\r\n/g, '\n');
+                            self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
                             if (self._lastContainer && self._lastScales) {
                                 self.render(self._lastContainer, self._lastScales);
                             }
@@ -1532,7 +1555,7 @@ class NoteTool extends BaseDrawing {
             }
         };
 
-        const handleSingleClick = function(event) {
+        const handleTextClick = function(event) {
             event.stopPropagation();
             event.preventDefault();
 
@@ -1546,41 +1569,49 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // Double-click detection via timestamps stored on the instance so it
-            // survives re-renders (selectDrawing replaces DOM nodes, breaking the
-            // native dblclick event which would fire on the common ancestor).
-            const now = Date.now();
-            const timeSinceLastClick = now - (self._lastClickTime || 0);
-            self._lastClickTime = now;
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            const isPlaceholder = helpers
+                ? helpers.isTextToolPlaceholder(self.text)
+                : !String(self.text || '').trim();
+            const manager = self.chart && self.chart.drawingManager;
 
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                handleOpenSettings(event);
-                return;
-            }
-
-            // 1st click on unselected → select only
             if (!self.selected) {
-                const manager = self.chart && self.chart.drawingManager;
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
                     document.body.classList.add('text-selected');
                 }
+                if (isPlaceholder) {
+                    requestAnimationFrame(() => startInlineEdit());
+                }
                 return;
             }
 
-            // Already selected, single click → open inline editor after delay
+            // Selected: click text → edit (placeholder opens immediately)
+            if (isPlaceholder) {
+                startInlineEdit();
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 startInlineEdit();
             }, CLICK_DELAY);
         };
 
-        const handleDblClick = function(event) {
-            handleOpenSettings(event);
+        const handleTextDblClick = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
+            }
         };
         
         // Use native addEventListener with capture phase - won't be overwritten by d3
-        // 1st click = select, 2nd click = edit, dblclick = settings, drag = move
+        // Click/dblclick on label = inline edit; leader line uses manager → settings
         const noteTextHitNodes = [textBox.node(), textElement.node()];
         textElement.selectAll('tspan').each(function() {
             noteTextHitNodes.push(this);
@@ -1588,8 +1619,8 @@ class NoteTool extends BaseDrawing {
         noteTextHitNodes.forEach((node) => {
             if (!node) return;
             node.addEventListener('mousedown', handleMouseDown, true);
-            node.addEventListener('click', handleSingleClick, true);
-            node.addEventListener('dblclick', handleDblClick, true);
+            node.addEventListener('click', handleTextClick, true);
+            node.addEventListener('dblclick', handleTextDblClick, true);
         });
 
         // Create handles at both endpoints
