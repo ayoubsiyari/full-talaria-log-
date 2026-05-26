@@ -712,6 +712,9 @@ class NoteBoxTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -721,6 +724,7 @@ class NoteBoxTool extends BaseDrawing {
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -1047,6 +1051,9 @@ class AnchoredTextTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -1056,6 +1063,7 @@ class AnchoredTextTool extends BaseDrawing {
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -1158,6 +1166,17 @@ class AnchoredTextTool extends BaseDrawing {
         tool.id = data.id; tool.visible = data.visible; tool.meta = data.meta; tool.chart = chart;
         return tool;
     }
+}
+
+/** Start moving an annotation when the user drags from its text/box (not only the leader line). */
+function v9StartAnnotationDragFromTextPointer(self, event) {
+    const manager = self.chart && self.chart.drawingManager;
+    if (!manager || typeof manager.startDrag !== 'function' || self.locked) return false;
+    if (!self.selected && typeof manager.selectDrawing === 'function') {
+        manager.selectDrawing(self);
+    }
+    manager.startDrag(self, event);
+    return true;
 }
 
 // ============================================================================
@@ -1275,7 +1294,7 @@ class NoteTool extends BaseDrawing {
 
         // Background rectangle - use fill for background color
         const textBox = this.group.append('rect')
-            .attr('class', 'inline-editable-text')
+            .attr('class', 'inline-editable-text note-body-hit text-body-hit')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -1452,6 +1471,9 @@ class NoteTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -1461,6 +1483,7 @@ class NoteTool extends BaseDrawing {
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -2521,6 +2544,9 @@ class CalloutTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -2530,6 +2556,7 @@ class CalloutTool extends BaseDrawing {
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -2854,6 +2881,9 @@ class CommentTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -2863,6 +2893,7 @@ class CommentTool extends BaseDrawing {
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);

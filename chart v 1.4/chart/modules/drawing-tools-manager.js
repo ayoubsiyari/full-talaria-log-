@@ -4453,6 +4453,10 @@ class DrawingToolsManager {
     /**
      * Setup drag behavior for moving entire drawing
      */
+    _isAnnotationTextLabelDrawingType(type) {
+        return type === 'note' || type === 'price-note' || type === 'callout' || type === 'comment';
+    }
+
     setupDrawingDrag(drawing) {
         const self = this;
         let dragStartPoints = null;
@@ -4487,7 +4491,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         
@@ -4547,7 +4551,14 @@ class DrawingToolsManager {
                     const isShapeBorder = targetSelection.classed('shape-border');
                     const isEmojiElement = targetSelection.classed('emoji-glyph') || targetSelection.classed('emoji-background');
                     const isTextBodyHit = targetSelection.classed('text-body-hit');
+                    const isNoteBodyHit = targetSelection.classed('note-body-hit');
+                    const isInlineEditable = targetSelection.classed('inline-editable-text');
                     const hasStroke = targetSelection.attr('stroke') && targetSelection.attr('stroke') !== 'none';
+
+                    if (self._isAnnotationTextLabelDrawingType(drawing.type)
+                        && (isTextElement || isInlineEditable || isTextBodyHit || isNoteBodyHit)) {
+                        return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle;
+                    }
 
                     // Channel tools with fill: only drag from lines, not filled interior.
                     if (!self.currentTool && self._isWedgeChannelStrokeOnlyType(drawing.type)
