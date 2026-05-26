@@ -161,7 +161,7 @@ class TextTool extends BaseDrawing {
         
         // Add background rectangle if enabled
         const padding = 6;
-        const hasBackground = this.style.fill && this.style.fill !== 'none';
+        const hasBackground = this.style.fill && this.style.fill !== 'none' && this.style.fill !== 'transparent';
         const hasBorder = this.style.stroke && this.style.stroke !== 'none';
         
         if (hasBackground || hasBorder) {
@@ -209,9 +209,9 @@ class TextTool extends BaseDrawing {
             .attr('width', bbox.width)
             .attr('height', bbox.height)
             .attr('fill', 'transparent')
-            .attr('stroke', this.selected ? '#2962FF' : 'none')
-            .attr('stroke-width', this.selected ? 1 : 0)
-            .attr('stroke-dasharray', this.selected ? '4,3' : 'none')
+            .attr('stroke', this.selected && !hasBorder ? '#2962FF' : 'none')
+            .attr('stroke-width', this.selected && !hasBorder ? 1 : 0)
+            .attr('stroke-dasharray', this.selected && !hasBorder ? '4,3' : 'none')
             .attr('rx', 4)
             .attr('ry', 4)
             .style('pointer-events', 'all')

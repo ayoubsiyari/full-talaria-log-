@@ -952,6 +952,7 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
 /** Maps V9 `tlStyle` → chart.js `drawing.style` patch (preview + new placements). */
 function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (!tlStyle) return {};
+  if (legacyTool && v9IsTextLegacyDrawingType(legacyTool)) return {};
   if (legacyTool) tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, legacyTool);
   const isRegCh = legacyTool === "regression-trend";
   const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
@@ -1244,10 +1245,36 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   return patch;
 }
 
+/** True when chart.js type is handled by the Text & Labels rail (`txtStyle` bridge). */
+function v9IsTextLegacyDrawingType(type) {
+  return v9DrawingTypeToPanelGroup(type) === "text";
+}
+
+/** Style patch for new text-tool placements from V9 `txtStyle` (not `tlStyle` shape defaults). */
+function v9BuildTxtStyleLegacyPatch(txt, legacyTool) {
+  if (!txt || !legacyTool) return {};
+  const d = { type: legacyTool, style: {}, text: "" };
+  v9ApplyTxtStyleToDrawing(d, txt);
+  return { ...d.style };
+}
+
 /** Keeps drawing-tools-manager preview/finalize in sync with the armed V9 toolbar. */
-function v9PushArmedDrawStyle(legacyTool, tlStyle) {
+function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
   if (typeof window === "undefined") return;
-  if (!legacyTool || !tlStyle) {
+  if (!legacyTool) {
+    window.__v9ArmedDrawStyle = null;
+    return;
+  }
+  if (v9IsTextLegacyDrawingType(legacyTool) && txtStyleArg) {
+    window.__v9ArmedDrawStyle = {
+      tool: legacyTool,
+      patch: v9BuildTxtStyleLegacyPatch(txtStyleArg, legacyTool),
+      txtStyle: txtStyleArg,
+      updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
+    };
+    return;
+  }
+  if (!tlStyle) {
     window.__v9ArmedDrawStyle = null;
     return;
   }
@@ -3998,11 +4025,28 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
 
 if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
   window.__v9PlacedDrawingHooksInstalled = true;
-  window.__v9ApplyPlacedDrawingExtras = (drawing) => {
+  window.__v9ApplyPlacedDrawingExtras = (drawing, dm) => {
     const armed = window.__v9ArmedDrawStyle;
-    if (!armed || !armed.tlStyle || !drawing) return;
+    if (!armed || !drawing) return;
     if (armed.tool && drawing.type !== armed.tool) return;
-    v9ApplyTlStyleExtrasToDrawing(drawing, armed.tlStyle, null);
+    if (armed.txtStyle && v9IsTextLegacyDrawingType(drawing.type)) {
+      if (!drawing.style) drawing.style = {};
+      v9ApplyTxtStyleToDrawing(drawing, armed.txtStyle);
+      const manager = dm || null;
+      try {
+        const tb = manager && manager.toolbar;
+        if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(drawing);
+        if (tb && typeof tb.onUpdate === "function") tb.onUpdate(drawing);
+        else if (manager && typeof manager.renderDrawing === "function") manager.renderDrawing(drawing);
+      } catch (_) {
+        try {
+          if (manager && typeof manager.renderDrawing === "function") manager.renderDrawing(drawing);
+        } catch (_) {}
+      }
+      return;
+    }
+    if (!armed.tlStyle) return;
+    v9ApplyTlStyleExtrasToDrawing(drawing, armed.tlStyle, dm || null);
   };
   window.__v9RestoreDrawingLevelsAfterBuiltinDefault = (drawing, dm) => {
     v9RestoreDrawingLevelsAfterBuiltinDefault(drawing, dm);
@@ -7493,7 +7537,7 @@ const TalariaV8bLive = () => {
     fontSize: 14, textColor: "#ffffff", italic: false, bold: false, content: "",
     horizAlign: "left",
     bgOn: false, bgColor: "#000000",
-    borderOn: true, borderColor: "#787B86",
+    borderOn: false, borderColor: "#787B86",
     wrapText: false, anchored: false,
     lineColor: "#787B86",
     pt1Price: "0.00000", pt1Bar: "0", pt2Price: "0.00000", pt2Bar: "0",
@@ -13584,6 +13628,10 @@ const TalariaV8bLive = () => {
     if (v9LastHydratedLegacyRef.current === legacy) return;
 
     v9LastHydratedLegacyRef.current = legacy;
+    if (v9IsTextLegacyDrawingType(legacy)) {
+      v9PushArmedDrawStyle(legacy, null, txtStyle);
+      return;
+    }
     const freshDefaults = v9FreshTlStyleDefaults();
     let dm = null;
     try {
@@ -13608,7 +13656,7 @@ const TalariaV8bLive = () => {
         return next;
       });
     });
-  }, [tool, groupSelected, legacyHydrateNonce]);
+  }, [tool, groupSelected, legacyHydrateNonce, txtStyle]);
 
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
@@ -13667,9 +13715,14 @@ const TalariaV8bLive = () => {
     };
     v9StyleBridgeFlushRef.current = runForwardBridge;
 
+    const armedTxt = legacyTool && v9IsTextLegacyDrawingType(legacyTool);
     if (!styleBridgeReady.current) {
       styleBridgeReady.current = true;
-      v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
+      v9PushArmedDrawStyle(
+        legacyTool,
+        armedTxt ? null : (legacyTool ? tlStyle : null),
+        armedTxt ? txtStyle : null,
+      );
       return;
     }
     // Skip the pass triggered by reading a selected drawing's style into tlStyle.
@@ -13678,7 +13731,11 @@ const TalariaV8bLive = () => {
     // drawing is selected (with the cursor / crosshair active in the left
     // rail) still propagate to the selected drawing.
 
-    v9PushArmedDrawStyle(legacyTool, legacyTool ? tlStyle : null);
+    v9PushArmedDrawStyle(
+      legacyTool,
+      armedTxt ? null : (legacyTool ? tlStyle : null),
+      armedTxt ? txtStyle : null,
+    );
     // Do NOT persist style as default for this tool — each new drawing starts fresh.
 
     // Mutate currently-selected drawing(s) and repaint immediately.
@@ -13949,6 +14006,38 @@ const TalariaV8bLive = () => {
     txtStyle.pinLabelColor,
     tool,
     groupSelected,
+  ]);
+
+  // Keep armed text-tool placements on txtStyle (avoids tlStyle shape stroke + txt border double outline).
+  useLayoutEffect(() => {
+    if (editingDrawingRef.current) return;
+    if (tool !== "text") return;
+    const legacy = (() => {
+      const sub = groupSelected.text;
+      if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
+        return V9_ICON_TO_LEGACY[sub.icon];
+      }
+      return V9_GROUP_DEFAULT.text || "text";
+    })();
+    if (!legacy || !v9IsTextLegacyDrawingType(legacy)) return;
+    v9PushArmedDrawStyle(legacy, null, txtStyle);
+  }, [
+    tool,
+    groupSelected.text,
+    txtStyle.textColor,
+    txtStyle.fontSize,
+    txtStyle.bold,
+    txtStyle.italic,
+    txtStyle.borderColor,
+    txtStyle.bgColor,
+    txtStyle.bgOn,
+    txtStyle.borderOn,
+    txtStyle.wrapText,
+    txtStyle.anchored,
+    txtStyle.lineColor,
+    txtStyle.horizAlign,
+    txtStyle.pinLabelColor,
+    txtStyle.content,
   ]);
 
   useLayoutEffect(() => {

@@ -9337,6 +9337,27 @@ class DrawingToolsManager {
             };
         }
 
+        const textAnnotationTypes = new Set([
+            'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+            'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin', 'table', 'emoji', 'image',
+        ]);
+        if (textAnnotationTypes.has(toolType)) {
+            return {
+                textColor: '#FFFFFF',
+                fontSize: 14,
+                fontFamily: 'Roboto, sans-serif',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+                textAlign: 'left',
+                fill: 'none',
+                stroke: 'none',
+                backgroundColor: 'transparent',
+                showBackground: false,
+                borderEnabled: false,
+                borderColor: 'none',
+            };
+        }
+
         return {
             stroke,
             color: stroke,
