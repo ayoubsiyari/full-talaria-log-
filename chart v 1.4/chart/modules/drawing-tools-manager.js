@@ -4162,7 +4162,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
-                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), .fib-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -7425,6 +7425,27 @@ class DrawingToolsManager {
         );
     }
 
+    /**
+     * Fib / Gann / Elliott-style tools: allow dblclick in the filled zone between levels,
+     * not only on thin strokes (zone rects use pointer-events: none).
+     */
+    _isPointInFibLikeDrawingBody(drawing, mouseX, mouseY) {
+        if (!drawing?.group || !this._isFibLikeDrawingType(drawing.type)) return false;
+        try {
+            const node = drawing.group.node && drawing.group.node();
+            if (!node || typeof node.getBBox !== 'function') return false;
+            const bbox = node.getBBox();
+            if (!bbox || bbox.width <= 0 || bbox.height <= 0) return false;
+            const pad = 8;
+            return mouseX >= bbox.x - pad
+                && mouseX <= bbox.x + bbox.width + pad
+                && mouseY >= bbox.y - pad
+                && mouseY <= bbox.y + bbox.height + pad;
+        } catch (_) {
+            return false;
+        }
+    }
+
     _isPatternLikeDrawingType(type) {
         return !!type && (
             type.includes('pattern') ||
@@ -8026,13 +8047,12 @@ class DrawingToolsManager {
                 }
             }
 
-            const isFibLikeType = !!drawing.type && (
-                drawing.type.startsWith('fibonacci-') ||
-                drawing.type.startsWith('fib-') ||
-                drawing.type.startsWith('trend-fib-') ||
-                drawing.type === 'pitchfork' ||
-                drawing.type === 'pitchfan'
-            );
+            const isFibLikeType = this._isFibLikeDrawingType(drawing.type);
+
+            if (isFibLikeType && !hitsById.has(drawing.id) && this._isPointInFibLikeDrawingBody(drawing, mouseX, mouseY)) {
+                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                continue;
+            }
 
             const isPatternLikeType = !!drawing.type && (
                 drawing.type.includes('pattern') ||

@@ -344,6 +344,12 @@ class FibTimeZoneTool extends BaseDrawing {
         const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
+        if (Array.isArray(this.style.levels) && this.style.levels.length) {
+            this.levels = this.style.levels;
+        } else if (Array.isArray(this.style.fibNumbers) && this.style.fibNumbers.length) {
+            this.levels = this.style.fibNumbers;
+        }
+
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
 
@@ -399,8 +405,11 @@ class FibTimeZoneTool extends BaseDrawing {
             const color = typeof fibObj === 'object' ? fibObj.color : this.style.stroke;
             const baseWidth = (typeof fibObj === 'object' && fibObj.lineWidth != null && !isNaN(parseInt(fibObj.lineWidth))) ? parseInt(fibObj.lineWidth) : this.style.strokeWidth;
             const baseType = (typeof fibObj === 'object' && fibObj.lineType != null) ? `${fibObj.lineType}` : '';
-            const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : baseWidth;
-            const lineType = globalLevelsDash !== null ? globalLevelsDash : baseType;
+            const perWidth = (typeof fibObj === 'object' && fibObj.lineWidth != null && !isNaN(parseInt(fibObj.lineWidth)))
+                ? parseInt(fibObj.lineWidth) : null;
+            const perType = (typeof fibObj === 'object' && fibObj.lineType != null) ? `${fibObj.lineType}` : null;
+            const lineWidth = perWidth !== null ? perWidth : (globalLevelsWidth !== null ? globalLevelsWidth : baseWidth);
+            const lineType = perType !== null ? perType : (globalLevelsDash !== null ? globalLevelsDash : baseType);
 
             if (!enabled) return;
 

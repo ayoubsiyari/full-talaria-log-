@@ -3133,13 +3133,6 @@ function v9ApplyFibChannelFromTlStyle(d, tlStyle, widthFallback) {
 
 function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibTimeZoneType(d.type)) return;
-  const fibDashStr =
-    tlStyle.fibLineType === "bold"
-      ? ""
-      : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType] !== undefined
-        ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibLineType]
-        : "");
-  const levelsW = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
   const levelRows = v9FibTzLevelsRowsForUi(tlStyle);
   const chartLevels = v9TlFibTzLevelsToChart(levelRows);
   d.levels = chartLevels;
@@ -3152,8 +3145,10 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
     parseInt(String(tlStyle.lineWidth), 10) ||
     (typeof widthFallback === "number" ? widthFallback : 1) ||
     1;
-  st.levelsLineWidth = levelsW;
-  st.levelsLineDasharray = fibDashStr;
+  // Per-level lineType/lineWidth come from Input tab rows (v9TlFibTzLevelsToChart); do not
+  // set global levelsLine* or render will ignore per-row STYLE / THICKNESS.
+  delete st.levelsLineWidth;
+  delete st.levelsLineDasharray;
   const trendDashStr =
     tlStyle.lineType === "bold"
       ? ""
@@ -9310,7 +9305,11 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     // Include `measure` — opening Style sets tool to the drawing’s panel group; omitting it
     // immediately cleared tlSettOpen whenever the active rail tool was Range / measure.
-    if (!lineShapeRailActive) {
+    const editingPanelOpen =
+      (tlSettOpen || closing.has("tlsett")) &&
+      editingDrawingRef.current?.panelGroup &&
+      TL_LINE_SHAPE_GROUPS.has(editingDrawingRef.current.panelGroup);
+    if (!lineShapeRailActive && !editingPanelOpen) {
       setTlSettOpen(false);
       setTlBarDrop(null);
     }
@@ -12373,11 +12372,13 @@ const TalariaV8bLive = () => {
           setAvSettTab("style");
         } else {
           closeIndSett();
-          setTlBarSelected(true);
-          setTlBarSelectedType(drawing.type);
-          setTlSettPos({ x: px, y: py });
-          setTlSettOpen(true);
-          setTlSettTab(v9DefaultTlSettTabForDrawing(drawing));
+          flushSync(() => {
+            setTlBarSelected(true);
+            setTlBarSelectedType(drawing.type);
+            setTlSettPos({ x: px, y: py });
+            setTlSettOpen(true);
+            setTlSettTab(v9DefaultTlSettTabForDrawing(drawing));
+          });
         }
         return true;
       } catch (err) {
