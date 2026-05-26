@@ -125,19 +125,28 @@ function cpBuildColor(r, g, b, a) {
 }
 
 /** Settings color swatch — soft border stays visible when fill is dark or transparent. */
-function v9TlColorSwatchBoxStyle(color, { active = false, hover = false } = {}) {
-  const on = active || hover;
+function v9TlColorSwatchBoxStyle(color, opts = {}) {
+  const {
+    active = false,
+    hover = false,
+    disabled = false,
+    size = 26,
+    borderRadius,
+    extra = null,
+  } = opts;
+  const on = (active || hover) && !disabled;
   const raw = color != null ? String(color).trim() : "";
   const isEmpty =
     !raw || raw === "none" || raw === "transparent" || raw === "rgba(0,0,0,0)";
   const fill = isEmpty ? "rgba(255,255,255,0.06)" : raw;
   return {
-    width: 26,
-    height: 26,
+    width: size,
+    height: size,
     background: fill,
-    cursor: "default",
+    cursor: disabled ? "not-allowed" : "default",
     flexShrink: 0,
     boxSizing: "border-box",
+    opacity: disabled ? 0.35 : 1,
     border: `1px solid ${on ? "rgba(140, 160, 255, 0.72)" : "rgba(140, 160, 255, 0.42)"}`,
     outline: active ? "2px solid rgba(140,160,255,0.55)" : "none",
     outlineOffset: 1,
@@ -145,6 +154,8 @@ function v9TlColorSwatchBoxStyle(color, { active = false, hover = false } = {}) 
       ? "inset 0 0 0 1px rgba(255,255,255,0.24), 0 0 6px rgba(74,106,255,0.35)"
       : "inset 0 0 0 1px rgba(255,255,255,0.2), 0 0 0 1px rgba(0,0,0,0.45)",
     transition: "border-color 0.12s, box-shadow 0.12s",
+    ...(borderRadius != null ? { borderRadius } : {}),
+    ...(extra && typeof extra === "object" ? extra : {}),
   };
 }
 
@@ -17520,18 +17531,16 @@ const TalariaV8bLive = () => {
           setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
           cpBarAnchorRef.current = null; setColorPicker(key);
         };
-        const TxtSwatch = ({ck, val, disabled}) => {
-          const isAct = colorPicker === ck; const isH = hov === ck;
-          return (
-            <div onMouseEnter={()=>!disabled&&setHov(ck)} onMouseLeave={()=>setHov(null)}
-              onClick={e=>!disabled&&openTxtCP(e,ck,val)}
-              style={{width:26,height:26,background:val,flexShrink:0,cursor:"default",
-                border:`1px solid ${isAct||isH?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                outline:isAct?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,
-                boxShadow:isAct||isH?`0 0 8px ${val}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                transition:"border-color 0.12s,box-shadow 0.12s",opacity:disabled?0.3:1}}/>
-          );
-        };
+        const TxtSwatch = ({ck, val, disabled}) => (
+          <div onMouseEnter={()=>!disabled&&setHov(ck)} onMouseLeave={()=>setHov(null)}
+            onClick={e=>!disabled&&openTxtCP(e,ck,val)}
+            style={v9TlColorSwatchBoxStyle(val, {
+              active: colorPicker === ck,
+              hover: hov === ck,
+              disabled,
+              extra: disabled ? { opacity: 0.3 } : null,
+            })}/>
+        );
         const isNote = txtSubTool.icon === "note";
         const isPriceNote = txtSubTool.icon === "priceNote";
         const isCallout = txtSubTool.icon === "callout";
@@ -18370,11 +18379,7 @@ const TalariaV8bLive = () => {
             return row(
               <div onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
                 onClick={(e) => { e.stopPropagation(); openIndCP(e, p.id, colStr); }}
-                style={{ width: 26, height: 26, background: colStr, flexShrink: 0, cursor: "default",
-                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
-                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none", outlineOffset: 1,
-                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
-                  transition: "border-color 0.12s, box-shadow 0.12s" }} />
+                style={v9TlColorSwatchBoxStyle(colStr, { active: isAct, hover: isH })} />
             );
           }
           if (p.type === "checkbox") {
@@ -18490,19 +18495,11 @@ const TalariaV8bLive = () => {
                   e.stopPropagation();
                   openIndCP(e, pid, colStr);
                 }}
-                style={{
-                  width: 26,
-                  height: 26,
+                style={v9TlColorSwatchBoxStyle(colStr, {
+                  active: isAct,
+                  hover: isH,
                   borderRadius: 4,
-                  background: colStr,
-                  flexShrink: 0,
-                  cursor: "default",
-                  border: `1px solid ${isAct || isH ? "rgba(255,255,255,0.5)" : c.hvLn}`,
-                  outline: isAct ? "2px solid rgba(140,160,255,0.55)" : "none",
-                  outlineOffset: 1,
-                  boxShadow: isAct || isH ? `0 0 8px ${colStr}` : "inset 0 1px 3px rgba(0,0,0,0.5)",
-                  transition: "border-color 0.12s, box-shadow 0.12s",
-                }}
+                })}
               />
             );
           };
@@ -19111,12 +19108,11 @@ const TalariaV8bLive = () => {
         const vSwatch=(key,color,disabled)=>(
           <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             onClick={e=>{if(!disabled)openVCP(e,key,color);}}
-            style={{width:26,height:26,background:color,cursor:disabled?"not-allowed":"default",
-                    opacity:disabled?0.35:1,flexShrink:0,
-                    border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                    outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,
-                    boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                    transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+            style={v9TlColorSwatchBoxStyle(color, {
+              active: colorPicker === key,
+              hover: swHov === key,
+              disabled,
+            })}/>
         );
         const typeBtn=(rowKey,val,disabled)=>{
           const dk=`vwap-type-${rowKey}`,isOpen=vwapStyleDrop===dk,isH=hov===dk;
@@ -19575,12 +19571,11 @@ const TalariaV8bLive = () => {
         const vpSwatch=(key,color,disabled)=>(
           <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             onClick={e=>{if(!disabled)openVCP(e,key,color);}}
-            style={{width:26,height:26,background:color,cursor:disabled?"not-allowed":"default",
-                    opacity:disabled?0.35:1,flexShrink:0,
-                    border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                    outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,
-                    boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                    transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+            style={v9TlColorSwatchBoxStyle(color, {
+              active: colorPicker === key,
+              hover: swHov === key,
+              disabled,
+            })}/>
         );
         const vpDrop=(dk,val,options,onPick,disabled,w)=>{
           const isOpen=vpStyleDrop===dk,isH=hov===dk;
@@ -19967,12 +19962,11 @@ const TalariaV8bLive = () => {
         const avSwatch=(key,color,disabled)=>(
           <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             onClick={e=>{if(!disabled)openAVCP(e,key,color);}}
-            style={{width:26,height:26,background:color,cursor:disabled?"not-allowed":"default",
-                    opacity:disabled?0.35:1,flexShrink:0,
-                    border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                    outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,
-                    boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                    transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+            style={v9TlColorSwatchBoxStyle(color, {
+              active: colorPicker === key,
+              hover: swHov === key,
+              disabled,
+            })}/>
         );
         const avDrop=(dk,val,options,onPick,disabled,w)=>{
           const isOpen=avStyleDrop===dk,isH=hov===dk;
@@ -21776,7 +21770,7 @@ const TalariaV8bLive = () => {
                   <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0"}}>
                     <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
                     <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,key)}
-                      style={{width:26,height:26,background:settings[key],border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov===key||colorPicker===key?`0 0 8px ${settings[key]}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                      style={v9TlColorSwatchBoxStyle(settings[key], { active: colorPicker === key, hover: swHov === key })}/>
                   </div>
                 ))}
               </div>
@@ -21790,7 +21784,7 @@ const TalariaV8bLive = () => {
                   <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0"}}>
                     <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
                     <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,key)}
-                      style={{width:26,height:26,background:settings[key],border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov===key||colorPicker===key?`0 0 8px ${settings[key]}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                      style={v9TlColorSwatchBoxStyle(settings[key], { active: colorPicker === key, hover: swHov === key })}/>
                   </div>
                 ))}
               </div>
@@ -21804,7 +21798,15 @@ const TalariaV8bLive = () => {
                   onMouseEnter={()=>settings.unifiedBarColor&&setSwHov("unifiedBarColorVal")}
                   onMouseLeave={()=>setSwHov(null)}
                   onClick={(e)=>settings.unifiedBarColor&&openCP(e,"unifiedBarColorVal")}
-                  style={{width:26,height:26,background:settings.unifiedBarColorVal,border:`1px solid ${swHov==="unifiedBarColorVal"||colorPicker==="unifiedBarColorVal"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="unifiedBarColorVal"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="unifiedBarColorVal"||colorPicker==="unifiedBarColorVal"?`0 0 8px ${settings.unifiedBarColorVal}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s,opacity 0.18s",opacity:settings.unifiedBarColor?1:0.3,filter:settings.unifiedBarColor?"none":"grayscale(1) brightness(0.5)"}}
+                  style={v9TlColorSwatchBoxStyle(settings.unifiedBarColorVal, {
+                    active: colorPicker === "unifiedBarColorVal",
+                    hover: swHov === "unifiedBarColorVal",
+                    extra: {
+                      opacity: settings.unifiedBarColor ? 1 : 0.3,
+                      filter: settings.unifiedBarColor ? "none" : "grayscale(1) brightness(0.5)",
+                      transition: "border-color 0.12s, box-shadow 0.12s, opacity 0.18s",
+                    },
+                  })}
                 />
               </div>
             </div>
@@ -21817,7 +21819,7 @@ const TalariaV8bLive = () => {
                 <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 0"}}>
                   <span style={{fontSize:13,color:c.ts}}>{lbl}</span>
                   <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,key)}
-                    style={{width:26,height:26,background:settings[key],border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov===key||colorPicker===key?`0 0 8px ${settings[key]}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                    style={v9TlColorSwatchBoxStyle(settings[key], { active: colorPicker === key, hover: swHov === key })}/>
                 </div>
               ))}
               {/* Grid Lines row */}
@@ -21845,7 +21847,7 @@ const TalariaV8bLive = () => {
                       {settDrop!=="gridThick"&&swHov==="gtb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                     </div>
                     <div onMouseEnter={()=>setSwHov("gridColor")} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,"gridColor")}
-                      style={{width:26,height:26,background:settings.gridColor,border:`1px solid ${swHov==="gridColor"||colorPicker==="gridColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="gridColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="gridColor"||colorPicker==="gridColor"?`0 0 8px ${settings.gridColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                      style={v9TlColorSwatchBoxStyle(settings.gridColor, { active: colorPicker === "gridColor", hover: swHov === "gridColor" })}/>
                   </div>
                 );
               })()}
@@ -21853,7 +21855,7 @@ const TalariaV8bLive = () => {
               <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
                 {Chk(settings.crosshairOn,"crosshairOn","chkCross","Crosshair")}
                 <div onMouseEnter={()=>setSwHov("crosshairColor")} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,"crosshairColor")}
-                  style={{width:26,height:26,background:settings.crosshairColor,border:`1px solid ${swHov==="crosshairColor"||colorPicker==="crosshairColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="crosshairColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="crosshairColor"||colorPicker==="crosshairColor"?`0 0 8px ${settings.crosshairColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                  style={v9TlColorSwatchBoxStyle(settings.crosshairColor, { active: colorPicker === "crosshairColor", hover: swHov === "crosshairColor" })}/>
               </div>
               {/* Price Line row */}
               {(()=>{
@@ -21880,7 +21882,7 @@ const TalariaV8bLive = () => {
                       {settDrop!=="priceThick"&&swHov==="ptb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
                     </div>
                     <div onMouseEnter={()=>setSwHov("priceLineColor")} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,"priceLineColor")}
-                      style={{width:26,height:26,background:settings.priceLineColor,border:`1px solid ${swHov==="priceLineColor"||colorPicker==="priceLineColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,outline:colorPicker==="priceLineColor"?"2px solid rgba(140,160,255,0.55)":"none",outlineOffset:1,cursor:"default",flexShrink:0,boxShadow:swHov==="priceLineColor"||colorPicker==="priceLineColor"?`0 0 8px ${settings.priceLineColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                      style={v9TlColorSwatchBoxStyle(settings.priceLineColor, { active: colorPicker === "priceLineColor", hover: swHov === "priceLineColor" })}/>
                   </div>
                 );
               })()}
@@ -24258,11 +24260,14 @@ const TalariaV8bLive = () => {
                               <input type="text" placeholder="e.g. Weekly open…" value={gotoNewName} onChange={e=>{e.stopPropagation();setGotoNewName(e.target.value);}} style={{...iSt,flex:1,width:"auto"}}/>
                               <div onMouseEnter={()=>setHov("goto-color-btn")} onMouseLeave={()=>setHov(null)}
                                 onClick={e=>{e.stopPropagation();openGotoCP(e);}}
-                                style={{width:24,flexShrink:0,background:gotoNewColor,boxSizing:"border-box",
-                                  border:`1px solid ${hov==="goto-color-btn"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                                  cursor:"default",
-                                  boxShadow:hov==="goto-color-btn"?`0 0 8px ${gotoNewColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                                  transition:"border-color 0.12s,box-shadow 0.12s"}}/>
+                                style={{
+                                  ...v9TlColorSwatchBoxStyle(gotoNewColor, {
+                                    active: colorPicker === "gotoNewColor",
+                                    hover: hov === "goto-color-btn",
+                                    size: 24,
+                                  }),
+                                  flexShrink: 0,
+                                }}/>
                             </div>
                           </div>
 
