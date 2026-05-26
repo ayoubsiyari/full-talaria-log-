@@ -11531,21 +11531,28 @@ def _admin_support_query_threads(
 
 
 @app.get("/api/admin/support/stats")
-async def admin_support_stats(request: Request):
+async def admin_support_stats(request: Request, user_id: int | None = None):
     _require_admin(request)
     db = SessionLocal()
     try:
         now = datetime.utcnow()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        open_n = db.query(SupportThread).filter(SupportThread.status == "open").count()
-        pending_n = db.query(SupportThread).filter(SupportThread.status == "pending").count()
+
+        def base_q():
+            q = db.query(SupportThread)
+            if user_id is not None:
+                q = q.filter(SupportThread.user_id == int(user_id))
+            return q
+
+        open_n = base_q().filter(SupportThread.status == "open").count()
+        pending_n = base_q().filter(SupportThread.status == "pending").count()
         unassigned_n = (
-            db.query(SupportThread)
+            base_q()
             .filter(SupportThread.status.in_(("open", "pending")), SupportThread.assigned_to_user_id.is_(None))
             .count()
         )
         overdue_n = (
-            db.query(SupportThread)
+            base_q()
             .filter(
                 SupportThread.status.in_(("open", "pending")),
                 SupportThread.first_responded_at.is_(None),
@@ -11555,19 +11562,19 @@ async def admin_support_stats(request: Request):
             .count()
         )
         closed_today = (
-            db.query(SupportThread)
+            base_q()
             .filter(SupportThread.status == "closed", SupportThread.closed_at >= today_start)
             .count()
         )
         total_active = open_n + pending_n
         bug_error_cats = ("bug", "error")
         bug_error_total = (
-            db.query(SupportThread)
+            base_q()
             .filter(SupportThread.category.in_(bug_error_cats))
             .count()
         )
         bug_error_resolved = (
-            db.query(SupportThread)
+            base_q()
             .filter(
                 SupportThread.category.in_(bug_error_cats),
                 SupportThread.status.in_(("resolved", "closed")),
@@ -11579,7 +11586,7 @@ async def admin_support_stats(request: Request):
         by_category_pct: dict[str, int] = {}
         for cat in SUPPORT_CATEGORIES:
             n = (
-                db.query(SupportThread)
+                base_q()
                 .filter(
                     SupportThread.category == cat,
                     SupportThread.status.in_(("open", "pending")),
@@ -11588,6 +11595,11 @@ async def admin_support_stats(request: Request):
             )
             by_category[cat] = n
             by_category_pct[cat] = round(n / total_active * 100) if total_active else 0
+        requester = None
+        if user_id is not None:
+            u = db.query(User).filter(User.id == int(user_id)).first()
+            if u:
+                requester = {"id": u.id, "name": u.name, "email": u.email}
         return {
             "open": open_n,
             "pending": pending_n,
@@ -11601,6 +11613,7 @@ async def admin_support_stats(request: Request):
             "by_category": by_category,
             "by_category_pct": by_category_pct,
             "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
+            "requester": requester,
         }
     finally:
         db.close()

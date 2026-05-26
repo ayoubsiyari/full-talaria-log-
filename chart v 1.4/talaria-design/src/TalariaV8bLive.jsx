@@ -564,6 +564,20 @@ function v9HideFloatingBarLineStyleAndWidth(icon) {
   return false;
 }
 
+/** Hide floating-toolbar text color (A) when the tool has no Text tab / editable text color. */
+function v9HideFloatingBarTextColor(icon) {
+  if (!icon || typeof icon !== "string") return true;
+  if (icon.startsWith("fib")) return true;
+  if (icon === "gannBox" || icon === "gannSquare" || icon === "gannFan") return true;
+  if (V9_RAIL_ICONS_BY_GROUP.pattern.has(icon)) return true;
+  if (icon === "measure") return true;
+  return [
+    "draw", "brush", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
+    "triangle", "arcShape", "ellipse", "circle", "regressionCh", "pitchfork",
+    "channel", "flatChannel", "disjointCh",
+  ].includes(icon);
+}
+
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
   if (!allowed) return sel || fallback;
@@ -20825,8 +20839,8 @@ const TalariaV8bLive = () => {
                 <div style={{width:12,height:2,background:tlStyle.textColor||"#ffffff",borderRadius:1}}/>
               </div>}
             </TlBtn>}
-            {/* btn 2t: text color — hidden for pattern tools */}
-            {!["draw","brush"].includes(tlSubTool.icon) && !isFibTool && !isPatternTool && !["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","ellipse","circle","regressionCh","pitchfork"].includes(tlSubTool.icon) && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
+            {/* btn 2t: text color — only when settings has a Text tab (not fib/gann/levels-only tools) */}
+            {!v9HideFloatingBarTextColor(tlSubTool.icon) && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>

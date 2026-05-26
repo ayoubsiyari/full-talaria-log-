@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260524g">
+<meta name="x-admin-build" content="tickets-layout-20260524h">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4784,7 +4784,11 @@ async function loadSupportTicketStats() {
   const el = $('supportTicketStats');
   if (!el) return;
   try {
-    const s = await api('/api/admin/support/stats');
+    const req = ($('supportFilterRequester') && $('supportFilterRequester').value) || '';
+    const statsParams = new URLSearchParams();
+    if (req !== '') statsParams.set('user_id', req);
+    const statsUrl = '/api/admin/support/stats' + (statsParams.toString() ? ('?' + statsParams.toString()) : '');
+    const s = await api(statsUrl);
     const resolvePct = s.resolve_pct != null ? s.resolve_pct : 0;
     const bugErrorResolved = s.bug_error_resolved || 0;
     const bugErrorTotal = s.bug_error_total || 0;
@@ -4794,6 +4798,9 @@ async function loadSupportTicketStats() {
     const errorCount = byCat.error || 0;
     const bugPct = byCatPct.bug || 0;
     const errorPct = byCatPct.error || 0;
+    const requesterScope = s.requester
+      ? esc((s.requester.name || s.requester.email || ('User #' + s.requester.id)).trim())
+      : '';
 
     function supportStatsBar(kind, pct) {
       const width = Math.max(0, Math.min(100, pct || 0));
@@ -4814,10 +4821,20 @@ async function loadSupportTicketStats() {
       supportStatsKpi('Closed today', s.closed_today || 0, 'ok')
     ].join('');
 
+    const queueHdr = requesterScope
+      ? 'Queue overview · ' + requesterScope
+      : 'Queue overview';
+    const metricsHdr = requesterScope
+      ? 'Bug &amp; error metrics · ' + requesterScope
+      : 'Bug &amp; error metrics';
+    const resolveMeta = requesterScope
+      ? bugErrorResolved + ' of ' + bugErrorTotal + ' closed for this user'
+      : bugErrorResolved + ' of ' + bugErrorTotal + ' closed';
+
     const focusCards = [
       '<div class="support-stats-focus-card resolve">',
       '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">Bug / Error resolve</div><div class="focus-meta">' + bugErrorResolved + ' of ' + bugErrorTotal + ' closed</div></div>',
+      '    <div><div class="focus-title">Bug / Error resolve</div><div class="focus-meta">' + resolveMeta + '</div></div>',
       '    <div class="focus-value">' + resolvePct + '%</div>',
       '  </div>',
       supportStatsBar('resolve', resolvePct),
@@ -4867,11 +4884,11 @@ async function loadSupportTicketStats() {
     el.innerHTML =
       '<div class="support-stats-panel">' +
         '<div class="support-stats-section">' +
-          '<div class="support-stats-section-hdr">Queue overview</div>' +
+          '<div class="support-stats-section-hdr">' + queueHdr + '</div>' +
           '<div class="support-stats-kpi-row">' + queueRow + '</div>' +
         '</div>' +
         '<div class="support-stats-section focus">' +
-          '<div class="support-stats-section-hdr">Bug &amp; error metrics</div>' +
+          '<div class="support-stats-section-hdr">' + metricsHdr + '</div>' +
           '<div class="support-stats-focus-grid">' + focusCards + '</div>' +
         '</div>' +
         '<div class="support-stats-section">' +
@@ -4998,7 +5015,10 @@ async function loadSupportThreads() {
   const box = $('supportThreadList');
   const countEl = $('supportInboxCount');
   try {
-    const data = await api('/api/admin/support/threads?' + supportBuildThreadQuery());
+    const [data] = await Promise.all([
+      api('/api/admin/support/threads?' + supportBuildThreadQuery()),
+      loadSupportTicketStats()
+    ]);
     supportThreads = data.threads || [];
     if (countEl) countEl.textContent = String(supportThreads.length);
     if (!supportThreads.length) {
@@ -5273,7 +5293,6 @@ async function sendSupportReply() {
     supportMessages = data.messages || [];
     renderSupportMessages();
     await loadSupportThreads();
-    await loadSupportTicketStats();
     if (selectedSupportId) await selectSupportThread(selectedSupportId);
   } catch (e) { toast(e.message || 'Send failed', 'err'); }
 }
@@ -5295,7 +5314,6 @@ async function loadSupport() {
   ensureLiveSupportSocket();
   bindSupportComposerHandlers();
   await Promise.all([
-    loadSupportTicketStats(),
     loadSupportAgents(),
     loadSupportRequesters(),
     loadSupportCannedReplies()

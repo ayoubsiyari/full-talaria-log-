@@ -25621,6 +25621,7 @@ async function _talariaInitializeChart() {
 (function initTalariaCloudSaveUi() {
     if (typeof window === 'undefined') return;
     const state = { sessionPending: false, drawingsPending: false };
+    let lastDispatchedPending = null;
 
     function refresh() {
         const pending = !!(state.sessionPending || state.drawingsPending);
@@ -25639,6 +25640,8 @@ async function _talariaInitializeChart() {
                 );
             }
         }
+        if (lastDispatchedPending === pending) return;
+        lastDispatchedPending = pending;
         try {
             window.dispatchEvent(
                 new CustomEvent('talariaCloudSaveStatus', { detail: { pending, saved: !pending } })
