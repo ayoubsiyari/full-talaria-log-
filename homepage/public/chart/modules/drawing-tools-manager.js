@@ -52,6 +52,8 @@ class DrawingToolsManager {
         this._drawingsPendingTargets = { session: false, api: false };
         this._drawingsFlushAllInProgress = false;
         this._drawingsSaveBtn = null;
+        this._loadDrawingsInFlight = false;
+        this._loadDrawingsPromise = null;
         
         // Rectangular selection
         this.isRectSelecting = false;
@@ -534,7 +536,7 @@ class DrawingToolsManager {
             const newTimeframe = event.detail?.timeframe;
 
             // If drawings were not loaded yet (chart had no data during init), load them now
-            if (!this._drawingsLoaded) {
+            if (!this._drawingsLoaded && !this._loadDrawingsInFlight) {
                 // [debug removed]
                 requestAnimationFrame(() => this.loadDrawings());
                 return;
@@ -4039,6 +4041,11 @@ class DrawingToolsManager {
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
         drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke):not(.rr-avg-zone-edge), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
+        // Flat top/bottom & disjoint channel: move only from stroked edges, not fill bbox.
+        if (drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel') {
+            drawing.group.selectAll('line:not(.shape-border-hit)')
+                .style('pointer-events', 'stroke');
+        }
         // Long/short R/R: informational labels (P&L pill, TP/SL captions) must not capture drags — the blanket
         // `text { pointer-events: all }` rule above would otherwise steal hits from .rr-primary-entry-drag-hit.
         if (drawing.type === 'long-position' || drawing.type === 'short-position') {
@@ -4543,6 +4550,19 @@ class DrawingToolsManager {
                     const isEmojiElement = targetSelection.classed('emoji-glyph') || targetSelection.classed('emoji-background');
                     const isTextBodyHit = targetSelection.classed('text-body-hit');
                     const hasStroke = targetSelection.attr('stroke') && targetSelection.attr('stroke') !== 'none';
+
+                    // Flat top/bottom & disjoint channel: only drag from channel lines, not fill interior.
+                    if (!self.currentTool && (drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel')
+                        && !isPositionZone && !isTextElement && !isEmojiElement) {
+                        const srcEvent = event.sourceEvent || event;
+                        const svgNode = self.svg && self.svg.node ? self.svg.node() : null;
+                        if (svgNode && srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                            const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
+                            if (!self._isPointOnDrawingVisibleStroke(drawing, mouseX, mouseY)) {
+                                return false;
+                            }
+                        }
+                    }
 
                     // For circle/ellipse, enforce border-only drag by checking distance to border.
                     // This matches the rectangle behavior (only draggable from edges) even when an
@@ -6665,6 +6685,7 @@ class DrawingToolsManager {
      * Schedule API save with debouncing to avoid excessive requests
      */
     scheduleSaveToAPI(data) {
+        if (this._isCloudDrawingsApiBlocked()) return;
         // Clear existing timer
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);
@@ -6674,6 +6695,18 @@ class DrawingToolsManager {
         this._apiSaveTimer = setTimeout(() => {
             this.saveDrawingsToAPI(data);
         }, 2000);
+    }
+
+    _isCloudDrawingsApiBlocked() {
+        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
+        return !!(ps && typeof ps.isCloudAuthBlocked === 'function' && ps.isCloudAuthBlocked());
+    }
+
+    _markCloudDrawingsAuthFailed(reason) {
+        const ps = typeof window !== 'undefined' ? window.preferencesSync : null;
+        if (ps && typeof ps.markCloudAuthFailed === 'function') {
+            ps.markCloudAuthFailed(reason);
+        }
     }
 
     /**
@@ -6687,7 +6720,7 @@ class DrawingToolsManager {
                 : null;
 
             const token = localStorage.getItem('token');
-            if (!token) {
+            if (!token || this._isCloudDrawingsApiBlocked()) {
                 return;
             }
 
@@ -6707,8 +6740,8 @@ class DrawingToolsManager {
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
-            } else if (response.status === 401) {
-                console.warn('⚠️ Not authenticated - drawings saved locally only');
+            } else if (response.status === 401 || response.status === 403) {
+                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
             } else {
                 console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
             }
@@ -6878,7 +6911,7 @@ class DrawingToolsManager {
                 : null;
             
             const token = localStorage.getItem('token');
-            if (!token) {
+            if (!token || this._isCloudDrawingsApiBlocked()) {
                 // User not logged in, skip API load
                 return null;
             }
@@ -6901,8 +6934,8 @@ class DrawingToolsManager {
                 if (result.success && result.drawings && result.drawings.length > 0) {
                     return result.drawings;
                 }
-            } else if (response.status === 401) {
-                console.warn('⚠️ Not authenticated - using local drawings only');
+            } else if (response.status === 401 || response.status === 403) {
+                this._markCloudDrawingsAuthFailed(response.status === 401 ? 'session expired' : 'journal access denied');
             }
             
             return null;
@@ -6917,6 +6950,19 @@ class DrawingToolsManager {
      * Converts timestamps to indices for current timeframe
      */
     async loadDrawings() {
+        if (this._drawingsLoaded) return;
+        if (this._loadDrawingsInFlight && this._loadDrawingsPromise) {
+            return this._loadDrawingsPromise;
+        }
+        this._loadDrawingsInFlight = true;
+        this._loadDrawingsPromise = this._loadDrawingsBody().finally(() => {
+            this._loadDrawingsInFlight = false;
+            this._loadDrawingsPromise = null;
+        });
+        return this._loadDrawingsPromise;
+    }
+
+    async _loadDrawingsBody() {
         if (!this.chart || !this.chart.data || this.chart.data.length === 0) {
             console.warn(`⚠️ Cannot load drawings yet - chart has no data`);
             return; // _drawingsLoaded stays false — listener will retry
@@ -7420,7 +7466,8 @@ class DrawingToolsManager {
     }
 
     _drawingRequiresStrokeOnlyDrag(type) {
-        return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type);
+        return this._isFibLikeDrawingType(type) || this._isPatternLikeDrawingType(type)
+            || type === 'flat-top-bottom' || type === 'disjoint-channel';
     }
 
     _isPersistentFreehandTool(type) {
@@ -7434,8 +7481,9 @@ class DrawingToolsManager {
         if (!drawing?.group) return false;
 
         const loose = this._drawingRequiresStrokeOnlyDrag(drawing.type);
-        const lineHitTolerance = loose ? 14 : 8;
-        const minLineHitTolerance = loose ? 14 : 0;
+        const wedgeChannel = drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel';
+        const lineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 8);
+        const minLineHitTolerance = wedgeChannel ? 10 : (loose ? 14 : 0);
         const point = (typeof DOMPoint !== 'undefined') ? new DOMPoint(mouseX, mouseY) : null;
 
         const elements = drawing.group.selectAll('line, path, polyline').nodes();
@@ -7444,10 +7492,11 @@ class DrawingToolsManager {
             if (elementSel.classed('fib-level-hit')) continue;
             if (elementSel.style('opacity') === '0') continue;
 
+            const isHitLine = elementSel.classed('shape-border-hit');
             const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
-            if (!stroke || stroke === 'transparent' || stroke === 'none') continue;
+            if (!isHitLine && (!stroke || stroke === 'transparent' || stroke === 'none')) continue;
             if (elementSel.classed('shape-fill') || elementSel.classed('upper-fill') || elementSel.classed('lower-fill')) continue;
-            if (elementSel.classed('shape-border-hit')) continue;
+            if (isHitLine && !wedgeChannel) continue;
 
             if (element.tagName === 'line') {
                 const x1 = parseFloat(element.getAttribute('x1'));
@@ -7463,7 +7512,7 @@ class DrawingToolsManager {
                 continue;
             }
 
-            if (point && typeof element.isPointInStroke === 'function' && element.isPointInStroke(point)) {
+            if (!isHitLine && point && typeof element.isPointInStroke === 'function' && element.isPointInStroke(point)) {
                 return true;
             }
         }
