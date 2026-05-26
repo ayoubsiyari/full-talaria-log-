@@ -124,6 +124,30 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Settings color swatch — soft border stays visible when fill is dark or transparent. */
+function v9TlColorSwatchBoxStyle(color, { active = false, hover = false } = {}) {
+  const on = active || hover;
+  const raw = color != null ? String(color).trim() : "";
+  const isEmpty =
+    !raw || raw === "none" || raw === "transparent" || raw === "rgba(0,0,0,0)";
+  const fill = isEmpty ? "rgba(255,255,255,0.06)" : raw;
+  return {
+    width: 26,
+    height: 26,
+    background: fill,
+    cursor: "default",
+    flexShrink: 0,
+    boxSizing: "border-box",
+    border: `1px solid ${on ? "rgba(140, 160, 255, 0.72)" : "rgba(140, 160, 255, 0.42)"}`,
+    outline: active ? "2px solid rgba(140,160,255,0.55)" : "none",
+    outlineOffset: 1,
+    boxShadow: on
+      ? "inset 0 0 0 1px rgba(255,255,255,0.24), 0 0 6px rgba(74,106,255,0.35)"
+      : "inset 0 0 0 1px rgba(255,255,255,0.2), 0 0 0 1px rgba(0,0,0,0.45)",
+    transition: "border-color 0.12s, box-shadow 0.12s",
+  };
+}
+
 /** tlLineColor is border/stroke for filled shapes — show OPACITY in the picker (not just draw/brush). */
 const V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS = new Set([
   "rect", "ellipse", "circle", "triangle", "arcShape",
@@ -14679,11 +14703,10 @@ const TalariaV8bLive = () => {
                 const colorSwatch = (key, color) => (
                   <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                     onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
-                    style={{ width:26, height:26, background:color, cursor:"default", flexShrink:0,
-                             border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                             outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none", outlineOffset:1,
-                             boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                             transition:"border-color 0.12s,box-shadow 0.12s" }}/>
+                    style={v9TlColorSwatchBoxStyle(color, {
+                      active: colorPicker === key,
+                      hover: swHov === key,
+                    })}/>
                 );
                 const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
                 const hasBg = ["polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
@@ -15882,11 +15905,10 @@ const TalariaV8bLive = () => {
                     {/* color button — standard design */}
                     <div onMouseEnter={()=>setSwHov("tlTextColor")} onMouseLeave={()=>setSwHov(null)}
                       onClick={e=>{e.stopPropagation();openCP(e,"tlTextColor",tlStyle.textColor);}}
-                      style={{ width:26, height:26, background:tlStyle.textColor, cursor:"default", flexShrink:0,
-                               border:`1px solid ${swHov==="tlTextColor"||colorPicker==="tlTextColor"?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                               outline:colorPicker==="tlTextColor"?`2px solid rgba(140,160,255,0.55)`:"none", outlineOffset:1,
-                               boxShadow:swHov==="tlTextColor"||colorPicker==="tlTextColor"?`0 0 8px ${tlStyle.textColor}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                               transition:"border-color 0.12s,box-shadow 0.12s" }}/>
+                      style={v9TlColorSwatchBoxStyle(tlStyle.textColor, {
+                        active: colorPicker === "tlTextColor",
+                        hover: swHov === "tlTextColor",
+                      })}/>
                     {/* size dropdown */}
                     <div style={{ position:"relative" }}>
                       <div onClick={e=>{e.stopPropagation();if(tlStyleDrop==="textSize"||closing.has("tlFontSizeDrop")){closeFontSizeDrop();}else{setTlStyleDrop("textSize");}}}
@@ -16005,11 +16027,10 @@ const TalariaV8bLive = () => {
               const fibColorSwatch = (key, color) => (
                 <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                   onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
-                  style={{ width:26, height:26, background:color, cursor:"default", flexShrink:0,
-                           border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                           outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none", outlineOffset:1,
-                           boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                           transition:"border-color 0.12s,box-shadow 0.12s" }}/>
+                  style={v9TlColorSwatchBoxStyle(color, {
+                    active: colorPicker === key,
+                    hover: swHov === key,
+                  })}/>
               );
               if (fi === "fibSpiral") return (
                 <div style={{ padding:"8px 0" }}>
@@ -16510,11 +16531,10 @@ const TalariaV8bLive = () => {
               const gannColorSwatch = (key, color) => (
                 <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                   onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
-                  style={{ width:26, height:26, background:color, cursor:"default", flexShrink:0,
-                           border:`1px solid ${swHov===key||colorPicker===key?"rgba(255,255,255,0.5)":"`+c.hvLn+`"}`,
-                           outline:colorPicker===key?`2px solid rgba(140,160,255,0.55)`:"none", outlineOffset:1,
-                           boxShadow:swHov===key||colorPicker===key?`0 0 8px ${color}`:"inset 0 1px 3px rgba(0,0,0,0.5)",
-                           transition:"border-color 0.12s,box-shadow 0.12s" }}/>
+                  style={v9TlColorSwatchBoxStyle(color, {
+                    active: colorPicker === key,
+                    hover: swHov === key,
+                  })}/>
               );
               const mkLevelRow = (levelKey, idx, swatchPrefix) => {
                 const arr = tlStyle[levelKey];
