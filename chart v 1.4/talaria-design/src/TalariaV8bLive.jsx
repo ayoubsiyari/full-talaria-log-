@@ -555,6 +555,25 @@ const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
 ]);
 
+/** Rail icons with no settings Text tab (and no working quick-menu text color). Shared by settings tabs + floating bar. */
+const V9_ICONS_WITHOUT_TEXT_TAB = (() => {
+  const s = new Set([
+    ...V9_RAIL_ICONS_BY_GROUP.fib,
+    ...V9_RAIL_ICONS_BY_GROUP.pattern,
+    ...V9_RAIL_ICONS_BY_GROUP.measure,
+    ...V9_RAIL_ICONS_BY_GROUP.brush2,
+    "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
+    "triangle", "arcShape", "ellipse", "circle",
+    "channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork",
+  ]);
+  return s;
+})();
+
+function v9ToolHasTextTab(icon) {
+  if (!icon || typeof icon !== "string") return false;
+  return !V9_ICONS_WITHOUT_TEXT_TAB.has(icon);
+}
+
 /** Hide floating-toolbar line STYLE + THICKNESS when the settings panel already exposes them. */
 function v9HideFloatingBarLineStyleAndWidth(icon) {
   if (!icon || typeof icon !== "string") return false;
@@ -564,18 +583,9 @@ function v9HideFloatingBarLineStyleAndWidth(icon) {
   return false;
 }
 
-/** Hide floating-toolbar text color (A) when the tool has no Text tab / editable text color. */
+/** Hide floating-toolbar text color (A) when the tool has no Text tab. */
 function v9HideFloatingBarTextColor(icon) {
-  if (!icon || typeof icon !== "string") return true;
-  if (icon.startsWith("fib")) return true;
-  if (icon === "gannBox" || icon === "gannSquare" || icon === "gannFan") return true;
-  if (V9_RAIL_ICONS_BY_GROUP.pattern.has(icon)) return true;
-  if (icon === "measure") return true;
-  return [
-    "draw", "brush", "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
-    "triangle", "arcShape", "ellipse", "circle", "regressionCh", "pitchfork",
-    "channel", "flatChannel", "disjointCh",
-  ].includes(icon);
+  return !v9ToolHasTextTab(icon);
 }
 
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
@@ -1128,6 +1138,47 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       patch.trendLineColor = tlStyle.lineColor;
       patch.trendLineWidth = parseInt(String(tlStyle.fibWedgeTrendWidth), 10) || 1;
       patch.trendLineDasharray = wedgeTrendDash;
+    }
+  }
+  if (
+    legacyTool === "gann-box" ||
+    legacyTool === "gann-square-fixed" ||
+    legacyTool === "gann-fan"
+  ) {
+    const gannDashStr =
+      tlStyle.gannLineType === "bold"
+        ? ""
+        : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType] !== undefined
+          ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.gannLineType]
+          : "");
+    patch.levelsLineWidth = parseInt(String(tlStyle.gannLineWidth), 10) || 2;
+    patch.levelsLineDasharray = gannDashStr;
+    patch.showZones =
+      legacyTool === "gann-square-fixed" || legacyTool === "gann-fan"
+        ? tlStyle.gannBackground !== false
+        : !!tlStyle.gannBackground;
+    patch.backgroundOpacity =
+      tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
+        ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
+        : 0.12;
+    if (legacyTool === "gann-box") {
+      if (Array.isArray(tlStyle.gannPriceLevels)) {
+        patch.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
+      }
+      if (Array.isArray(tlStyle.gannTimeLevels)) {
+        patch.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
+      }
+    }
+    if (legacyTool === "gann-square-fixed") {
+      if (Array.isArray(tlStyle.gannGridLevels)) {
+        patch.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
+      }
+      if (Array.isArray(tlStyle.gannFanLevels)) {
+        patch.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+      }
+      if (Array.isArray(tlStyle.gannArcLevels)) {
+        patch.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+      }
     }
   }
   if (legacyTool === "brush" || legacyTool === "highlighter") {
@@ -13496,6 +13547,24 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Gann Input-tab Levels STYLE — first-click chart sync (same stale-bridge race as TlChk). */
+  const applyTlGannLineType = useCallback((gannLineType) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, gannLineType })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Gann Input-tab Levels THICKNESS — first-click chart sync. */
+  const applyTlGannLineWidth = useCallback((gannLineWidth) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, gannLineWidth })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
   const applyRegLineRowToggle = useCallback((srcIdx) => {
     flushSync(() => {
@@ -14823,7 +14892,7 @@ const TalariaV8bLive = () => {
           <div style={{ height:1, background:c.br, flexShrink:0 }}/>
           {/* tabs */}
           {(()=>{
-            const noTextTab = isFibTool || isGannTool || isPatternTool || effectiveTlGroup === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","ellipse","circle","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
+            const noTextTab = !v9ToolHasTextTab(tlSubTool.icon);
             const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
@@ -16793,7 +16862,7 @@ const TalariaV8bLive = () => {
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                         const isA=tlStyle.gannLineType===v; const isH=hov===`gannlt-${v}`;
                         return (
-                          <div key={v} onClick={()=>{setTlStyle(s=>({...s,gannLineType:v}));setTlStyleDrop(null);}}
+                          <div key={v} onClick={()=>{applyTlGannLineType(v);setTlStyleDrop(null);}}
                             onMouseEnter={()=>setHov(`gannlt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -16823,7 +16892,7 @@ const TalariaV8bLive = () => {
                       ["1","2","3","4"].map(w=>{
                         const isA=tlStyle.gannLineWidth===w; const isH=hov===`gannlw-${w}`;
                         return (
-                          <div key={w} onClick={()=>{setTlStyle(s=>({...s,gannLineWidth:w}));setTlStyleDrop(null);}}
+                          <div key={w} onClick={()=>{applyTlGannLineWidth(w);setTlStyleDrop(null);}}
                             onMouseEnter={()=>setHov(`gannlw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -20541,6 +20610,11 @@ const TalariaV8bLive = () => {
           );
         };
         const TlSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
+        const tlQuickBarIcon =
+          (chartPrimarySelectedDrawingType && v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, tlBarDrawingGroup))
+          || tlSubTool.icon;
+        const hideQuickBarTextColor = v9HideFloatingBarTextColor(tlQuickBarIcon);
+        const hideQuickBarLineStyle = v9HideFloatingBarLineStyleAndWidth(tlQuickBarIcon);
         return (
         <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
           onMouseDown={(e) => e.stopPropagation()}
@@ -20831,8 +20905,8 @@ const TalariaV8bLive = () => {
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
-            {/* btn 2b-pat-fcol: font/label color for pattern + Elliott tools */}
-            {isPatternTool && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
+            {/* btn 2b-pat-fcol: label color — only when settings exposes a Text tab (pattern uses Style tab Label row instead) */}
+            {isPatternTool && !hideQuickBarTextColor && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
@@ -20840,7 +20914,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 2t: text color — only when settings has a Text tab (not fib/gann/levels-only tools) */}
-            {!v9HideFloatingBarTextColor(tlSubTool.icon) && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
+            {!hideQuickBarTextColor && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
@@ -20853,7 +20927,7 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?(tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor)):tlStyle.bgColor}/></svg>}
             </TlBtn>}
             {/* btn 3: line style — hidden when settings panel has STYLE/THICKNESS (fib, gann, channel, …) */}
-            {!v9HideFloatingBarLineStyleAndWidth(tlSubTool.icon) && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
+            {!hideQuickBarLineStyle && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives"].includes(tlQuickBarIcon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
               {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                 <svg width={20} height={8} viewBox="0 0 20 8">
@@ -20864,7 +20938,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 4: line width */}
-            {!v9HideFloatingBarLineStyleAndWidth(tlSubTool.icon) && !["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
+            {!hideQuickBarLineStyle && !["arrowMarker","arrowUp","arrowDn"].includes(tlQuickBarIcon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
               {(_,isAct,col)=> tlSubTool.icon === "brush"
                 ? <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
