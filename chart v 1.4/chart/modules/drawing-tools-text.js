@@ -25,6 +25,26 @@ function resolveTextToolDisplay(text, placeholder = TEXT_TOOL_PLACEHOLDER) {
     return { text: String(text == null ? '' : text), isPlaceholder: false };
 }
 
+/** Timestamp double-click: select when unselected, edit only when already selected. */
+function handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, minMs, maxMs, onEdit) {
+    if (timeSinceLastClick >= maxMs || timeSinceLastClick <= minMs) {
+        return false;
+    }
+    if (self.locked) {
+        return true;
+    }
+    const manager = self.chart && self.chart.drawingManager;
+    if (self.selected) {
+        if (typeof onEdit === 'function') {
+            onEdit();
+        }
+    } else if (manager && typeof manager.selectDrawing === 'function') {
+        manager.selectDrawing(self);
+        document.body.classList.add('text-selected');
+    }
+    return true;
+}
+
 // ============================================================================
 // Text Tool
 // ============================================================================
@@ -271,9 +291,11 @@ class TextTool extends BaseDrawing {
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -352,10 +374,7 @@ class TextTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                if (!self.locked) {
-                    startInlineEdit();
-                }
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
                 return;
             }
 
@@ -1577,6 +1596,7 @@ class NoteTool extends BaseDrawing {
             event.stopPropagation();
 
             if (moved) {
+                moved = false;
                 return;
             }
 
@@ -1590,10 +1610,7 @@ class NoteTool extends BaseDrawing {
             self._lastClickTime = now;
 
             // Double-click (timestamp fallback when native dblclick is lost after re-render)
-            if (timeSinceLastClick < 450 && timeSinceLastClick > 20) {
-                if (!self.locked) {
-                    startInlineEdit();
-                }
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 20, 450, startInlineEdit)) {
                 return;
             }
 
