@@ -1569,33 +1569,24 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
-            const isPlaceholder = helpers
-                ? helpers.isTextToolPlaceholder(self.text)
-                : !String(self.text || '').trim();
+            // Timestamp dblclick (survives re-render when native dblclick does not fire)
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
+                if (!self.locked) {
+                    startInlineEdit();
+                }
+                return;
+            }
+
+            // Single click → select only (never start edit on one click)
             const manager = self.chart && self.chart.drawingManager;
-
-            if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
-                }
-                if (isPlaceholder) {
-                    requestAnimationFrame(() => startInlineEdit());
-                }
-                return;
+            if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                manager.selectDrawing(self);
+                document.body.classList.add('text-selected');
             }
-
-            // Selected: click text → edit (placeholder opens immediately)
-            if (isPlaceholder) {
-                startInlineEdit();
-                return;
-            }
-
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                startInlineEdit();
-            }, CLICK_DELAY);
         };
 
         const handleTextDblClick = function(event) {
@@ -1605,13 +1596,14 @@ class NoteTool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            self._lastClickTime = 0;
             if (!self.locked) {
                 startInlineEdit();
             }
         };
         
         // Use native addEventListener with capture phase - won't be overwritten by d3
-        // Click/dblclick on label = inline edit; leader line uses manager → settings
+        // 1st click = select, dblclick on text = edit; leader line dblclick = settings (manager)
         const noteTextHitNodes = [textBox.node(), textElement.node()];
         textElement.selectAll('tspan').each(function() {
             noteTextHitNodes.push(this);
