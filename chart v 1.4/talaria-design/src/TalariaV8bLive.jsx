@@ -555,6 +555,15 @@ const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
 ]);
 
+/** Hide floating-toolbar line STYLE + THICKNESS when the settings panel already exposes them. */
+function v9HideFloatingBarLineStyleAndWidth(icon) {
+  if (!icon || typeof icon !== "string") return false;
+  if (icon.startsWith("fib")) return true;
+  if (icon === "gannBox" || icon === "gannSquare" || icon === "gannFan") return true;
+  if (icon === "regressionCh" || icon === "measure" || icon === "channel") return true;
+  return false;
+}
+
 function v9RailSubtoolOrFallback(groupId, sel, fallback) {
   const allowed = V9_RAIL_ICONS_BY_GROUP[groupId];
   if (!allowed) return sel || fallback;
@@ -1077,6 +1086,11 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibLineType,
       tlStyle.fibLineWidth,
     );
+    patch.showZones = tlStyle.fibBackground !== false;
+    patch.backgroundOpacity =
+      tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
+        ? +tlStyle.fibBgOpacity
+        : 0.12;
     if (v9IsFibArcsType(legacyTool)) {
       const arcsTrendDash =
         tlStyle.fibArcsTrendType === "bold"
@@ -2909,7 +2923,7 @@ function v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineDasharray = trendDashStr;
 }
 
-/** Fib Circles: `d.levels` ratio rings + global line dash/width; background UI persisted on style (chart does not fill zones yet). */
+/** Fib Circles: ratio rings + annulus background zones (`showZones` / `backgroundOpacity`). */
 function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
   if (!d || !d.style || !v9IsFibCirclesType(d.type)) return;
   const fibDashStr =
@@ -2935,11 +2949,13 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
   st.strokeWidth = strokeW;
   st.levelsLineWidth = levelsW;
   st.levelsLineDasharray = fibDashStr;
-  st.v9FibCirclesBackground = !!tlStyle.fibBackground;
-  st.v9FibCirclesBgOpacity =
+  st.showZones = tlStyle.fibBackground !== false;
+  st.backgroundOpacity =
     tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
       ? +tlStyle.fibBgOpacity
-      : 0.5;
+      : 0.12;
+  st.v9FibCirclesBackground = st.showZones;
+  st.v9FibCirclesBgOpacity = st.backgroundOpacity;
 }
 
 function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
@@ -3982,14 +3998,20 @@ function v9TlStylePatchFromDrawing(d) {
           const fibLineType =
             V9_LEGACY_DASH_STRING_TO_LINE_TYPE[fibDashRaw] ?? (!fibDashRaw ? "solid" : "dashed");
           const bgOp =
-            s.v9FibCirclesBgOpacity != null && !Number.isNaN(parseFloat(s.v9FibCirclesBgOpacity))
-              ? Math.max(0, Math.min(1, parseFloat(s.v9FibCirclesBgOpacity)))
-              : 0.5;
+            s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
+              ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
+              : s.v9FibCirclesBgOpacity != null && !Number.isNaN(parseFloat(s.v9FibCirclesBgOpacity))
+                ? Math.max(0, Math.min(1, parseFloat(s.v9FibCirclesBgOpacity)))
+                : 0.12;
+          const bgOn =
+            s.showZones != null
+              ? s.showZones !== false
+              : s.v9FibCirclesBackground !== false;
           return {
             ...(fl ? { fibLevels: fl } : {}),
             fibLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
             fibLineType,
-            fibBackground: s.v9FibCirclesBackground === true,
+            fibBackground: bgOn,
             fibBgOpacity: bgOp,
           };
         })()
@@ -20798,8 +20820,8 @@ const TalariaV8bLive = () => {
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const arrowSwatch=tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor);const parsed=parseColor(v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?arrowSwatch:tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?(tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor)):tlStyle.bgColor}/></svg>}
             </TlBtn>}
-            {/* btn 3: line style */}
-            {(!tlSubTool.icon.startsWith("fib") || tlSubTool.icon === "fibFan") && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
+            {/* btn 3: line style — hidden when settings panel has STYLE/THICKNESS (fib, gann, channel, …) */}
+            {!v9HideFloatingBarLineStyleAndWidth(tlSubTool.icon) && !["arrowMarker","arrowUp","arrowDn","draw","brush","elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ","xabcd","headShoulders","abcdPattern","triPattern","threeDrives"].includes(tlSubTool.icon) && <TlBtn id="tl-sty2" isAct={tlBarDrop==="style"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="style"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("style");}}>
               {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                 <svg width={20} height={8} viewBox="0 0 20 8">
@@ -20810,27 +20832,13 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 4: line width */}
-            {!["arrowMarker","arrowUp","arrowDn","regressionCh"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
+            {!v9HideFloatingBarLineStyleAndWidth(tlSubTool.icon) && !["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-wid2" isAct={tlBarDrop==="width"} w="auto"
               onClick={e=>{e.stopPropagation();if(tlBarDrop==="width"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("width");}}>
               {(_,isAct,col)=> tlSubTool.icon === "brush"
                 ? <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                     <span style={{fontSize:12,color:col}}>{tlStyle.lineWidth}x</span>
                     <I n="chevDown" s={7} cl={col}/>
                   </div>
-                : tlSubTool.icon.startsWith("fib")
-                ? (() => {
-                    const fibLw = parseInt(String(tlStyle.fibLineWidth), 10) || 2;
-                    const fibPreviewH = Math.max(8, fibLw + 3);
-                    return (
-                <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
-                    <svg width={20} height={fibPreviewH} viewBox={`0 0 20 ${fibPreviewH}`}>
-                      <line x1={0} y1={fibPreviewH / 2} x2={20} y2={fibPreviewH / 2}
-                        stroke={col} strokeWidth={fibLw} strokeLinecap="round"/>
-                    </svg>
-                    <I n="chevDown" s={7} cl={col}/>
-                  </div>
-                    );
-                  })()
                 : <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                     <svg width={20} height={Math.max(8,+tlStyle.lineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+tlStyle.lineWidth+3)}`}>
                       <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+3)/2} x2={20} y2={Math.max(8,+tlStyle.lineWidth+3)/2}

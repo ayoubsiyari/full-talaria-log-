@@ -1003,6 +1003,10 @@ class FibCirclesTool extends BaseDrawing {
         this.requiredPoints = 2;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
+        if (this.style.showZones === undefined) this.style.showZones = true;
+        if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null) {
+            this.style.backgroundOpacity = 0.12;
+        }
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1013,12 +1017,17 @@ class FibCirclesTool extends BaseDrawing {
             { value: 1.618, enabled: false, color: '#e91e63' },
             { value: 2.618, enabled: false, color: '#673ab7' }
         ];
+        this.style.levels = this.levels;
     }
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
+
+        if (Array.isArray(this.style.levels) && this.style.levels.length) {
+            this.levels = this.style.levels;
+        }
 
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
@@ -1037,6 +1046,69 @@ class FibCirclesTool extends BaseDrawing {
         const x2 = getX(this.points[1]);
         const y2 = getY(this.points[1]);
         const baseRadius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        if (!baseRadius || !isFinite(baseRadius)) {
+            if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+            return this.group;
+        }
+
+        const showZones = this.style.v9FibCirclesBackground != null
+            ? this.style.v9FibCirclesBackground !== false
+            : this.style.showZones !== false;
+        const zonesOpacity = Math.max(0, Math.min(1,
+            (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
+                ? parseFloat(this.style.backgroundOpacity)
+                : ((this.style.v9FibCirclesBgOpacity != null && !isNaN(parseFloat(this.style.v9FibCirclesBgOpacity)))
+                    ? parseFloat(this.style.v9FibCirclesBgOpacity)
+                    : 0.12)));
+
+        const hexToRgba = (hex, alpha) => {
+            if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
+            const h = hex.trim();
+            if (h.startsWith('rgba(') || h.startsWith('rgb(')) return h;
+            let raw = h[0] === '#' ? h.slice(1) : h;
+            if (raw.length === 3) raw = raw.split('').map(c => c + c).join('');
+            if (raw.length !== 6) return `rgba(41, 98, 255, ${alpha})`;
+            const r = parseInt(raw.slice(0, 2), 16);
+            const g = parseInt(raw.slice(2, 4), 16);
+            const b = parseInt(raw.slice(4, 6), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        };
+
+        const zonePathRing = (r, prevR) => {
+            if (prevR > 0) {
+                return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} ` +
+                    `M ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 - prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 + prevR} ${y1} Z`;
+            }
+            return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} Z`;
+        };
+
+        const enabledLevelsSorted = (this.levels || [])
+            .map(l => ({
+                value: typeof l === 'object' ? l.value : l,
+                enabled: typeof l === 'object' ? (l.enabled !== false && l.visible !== false) : true,
+                color: typeof l === 'object' ? l.color : this.style.stroke
+            }))
+            .filter(l => l.enabled)
+            .sort((a, b) => a.value - b.value);
+
+        if (showZones && enabledLevelsSorted.length) {
+            let prevR = 0;
+            enabledLevelsSorted.forEach((lvl) => {
+                const r = baseRadius * lvl.value;
+                if (!isFinite(r) || r <= 0) {
+                    prevR = r;
+                    return;
+                }
+                this.group.append('path')
+                    .attr('class', 'fib-circles-zone')
+                    .attr('d', zonePathRing(r, prevR))
+                    .attr('fill', hexToRgba(lvl.color, zonesOpacity))
+                    .attr('fill-rule', prevR > 0 ? 'evenodd' : 'nonzero')
+                    .attr('stroke', 'none')
+                    .style('pointer-events', 'none');
+                prevR = r;
+            });
+        }
 
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
