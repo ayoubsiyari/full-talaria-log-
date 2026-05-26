@@ -14876,8 +14876,10 @@ const TalariaV8bLive = () => {
                 const isRegCh = tlSubTool.icon === "regressionCh";
                 const isPitchfork = tlSubTool.icon === "pitchfork";
                 const isBrushTool = ["draw","brush"].includes(tlSubTool.icon);
-                const noLineStyle = isBrushTool || isElliottTool || isPatternTool;
+                const isFibSpiralTool = tlSubTool.icon === "fibSpiral";
+                const noLineStyle = isBrushTool || isElliottTool || isPatternTool || isFibSpiralTool;
                 const showStyle = !noLineStyle;
+                const showThicknessCol = showLine && !isFibSpiralTool;
                 /* ── RR Tool (Long/Short Position) style tab ── */
                 if (isRRTool) return (<>
                   {/* Zone Colors */}
@@ -15103,15 +15105,15 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns:`1fr auto auto auto ${(showEp||isBrushTool||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns: isFibSpiralTool ? "1fr auto" : `1fr auto auto auto ${(showEp||isBrushTool||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>STYLE</span>
                     </div> : <div/>}
-                    <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
+                    {showThicknessCol ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
-                    </div>
+                    </div> : <div/>}
                     {(showEp||isBrushTool||isPatternTool) && (
                       showEp ? (
                         <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -15148,8 +15150,8 @@ const TalariaV8bLive = () => {
                         })
                       )}
                     </div> : <div/>}
-                    {/* Thickness */}
-                    {tlSubTool.icon === "brush" ? <div style={{ padding:"8px 0", position:"relative" }}>
+                    {/* Thickness — hidden for Fib Spiral (renderer uses stroke color only) */}
+                    {!showThicknessCol ? <div/> : tlSubTool.icon === "brush" ? <div style={{ padding:"8px 0", position:"relative" }}>
                       <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+200>window.innerHeight);setTlStyleDrop(tlStyleDrop==="width"?null:"width");}}
                         onMouseEnter={()=>setHov("tl-btn-width")} onMouseLeave={()=>setHov(null)}
                         style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
