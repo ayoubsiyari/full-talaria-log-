@@ -5824,9 +5824,24 @@ class DrawingToolsManager {
             editableNode = drawing.group.select('.inline-editable-text').node();
         }
 
-        if (editableNode) {
-            const rect = editableNode.getBoundingClientRect();
+        let posNode = editableNode;
+        if (drawing.type === 'note' && drawing.group) {
+            const boxNode = drawing.group.select('rect.note-body-hit').node();
+            if (boxNode && document.contains(boxNode)) {
+                posNode = boxNode;
+                inlineOpts.hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text`;
+                inlineOpts.editorBackground = drawing.style.fill || 'rgba(50, 50, 50, 0.9)';
+                inlineOpts.editorPadding = '6px 8px';
+            }
+        }
+
+        if (posNode) {
+            const rect = posNode.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
+                if (drawing.type === 'note') {
+                    inlineOpts.editorWidth = rect.width;
+                    inlineOpts.editorMinHeight = rect.height;
+                }
                 this.textEditor.show(
                     rect.left + window.scrollX,
                     rect.top + window.scrollY,

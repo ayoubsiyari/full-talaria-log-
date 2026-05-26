@@ -1352,7 +1352,7 @@ class NoteTool extends BaseDrawing {
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
-        const startInlineEdit = function() {
+        const openNoteInlineEditor = function() {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
@@ -1362,73 +1362,86 @@ class NoteTool extends BaseDrawing {
                 : !String(self.text || '').trim();
             const initialText = isPlaceholder ? '' : (self.text || '');
 
-            if (editor && typeof editor.show === 'function') {
-                // Always resolve a live element — selectDrawing re-renders so the
-                // captured textElement may be detached (getBoundingClientRect → 0,0).
-                const liveText = (self.group && typeof self.group.select === 'function')
-                    ? self.group.select('text.inline-editable-text').node()
-                    : null;
-                const liveBox = (self.group && typeof self.group.select === 'function')
-                    ? self.group.select('rect.note-body-hit').node()
-                    : null;
-                let targetNode = (liveText && document.contains(liveText))
-                    ? liveText
-                    : ((liveBox && document.contains(liveBox)) ? liveBox : textElement.node());
-                let bbox = targetNode.getBoundingClientRect();
-                if ((bbox.width <= 0 || bbox.height <= 0) && liveBox && document.contains(liveBox)) {
-                    targetNode = liveBox;
-                    bbox = targetNode.getBoundingClientRect();
-                }
-                const editX = bbox.left + window.scrollX;
-                const editY = bbox.top + window.scrollY;
+            if (!editor || typeof editor.show !== 'function') {
+                return false;
+            }
 
-                if (typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                }
+            const liveBox = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('rect.note-body-hit').node()
+                : null;
+            const liveText = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('text.inline-editable-text').node()
+                : null;
+            const posNode = (liveBox && document.contains(liveBox))
+                ? liveBox
+                : ((liveText && document.contains(liveText)) ? liveText : textBox.node());
+            const bbox = posNode.getBoundingClientRect();
+            if (bbox.width <= 0 && bbox.height <= 0) {
+                return false;
+            }
 
-                editor.show(
-                    editX,
-                    editY,
-                    initialText,
-                    (newText, confirmed) => {
-                        const normalized = (newText || '').replace(/\r\n/g, '\n');
-                        const empty = helpers
-                            ? helpers.isTextToolPlaceholder(normalized)
-                            : !normalized.trim();
-                        if (empty) {
-                            if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
-                                manager.deleteDrawing(self);
-                                return;
-                            }
-                            self.setText('');
-                            if (self.chart) self.chart.render();
+            editor.show(
+                bbox.left + window.scrollX,
+                bbox.top + window.scrollY,
+                initialText,
+                (newText, confirmed) => {
+                    const normalized = (newText || '').replace(/\r\n/g, '\n');
+                    const empty = helpers
+                        ? helpers.isTextToolPlaceholder(normalized)
+                        : !normalized.trim();
+                    if (empty) {
+                        if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
+                            manager.deleteDrawing(self);
                             return;
                         }
-                        self.setText(normalized);
+                        self.setText('');
                         if (self.chart) self.chart.render();
-                    },
-                    placeholderLabel,
-                    {
-                        inline: true,
-                        placeholderMode: !String(initialText).trim(),
-                        fontSize: `${scaledFontSize}px`,
-                        fontFamily: self.style.fontFamily,
-                        fontWeight: self.style.fontWeight || 'normal',
-                        fontStyle: self.style.fontStyle || 'normal',
-                        color: self.style.textColor,
-                        textAlign: 'left',
-                        noWrap: true,
-                        hideSelector: `.drawing[data-id="${self.id}"] text, .drawing[data-id="${self.id}"] rect.note-body-hit`,
-                        onInput: (newText) => {
-                            const next = (newText || '').replace(/\r\n/g, '\n');
-                            self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
-                            if (self._lastContainer && self._lastScales) {
-                                self.render(self._lastContainer, self._lastScales);
-                            }
+                        return;
+                    }
+                    self.setText(normalized);
+                    if (self.chart) self.chart.render();
+                },
+                placeholderLabel,
+                {
+                    inline: true,
+                    placeholderMode: !String(initialText).trim(),
+                    fontSize: `${scaledFontSize}px`,
+                    fontFamily: self.style.fontFamily,
+                    fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
+                    color: self.style.textColor,
+                    textAlign: 'left',
+                    noWrap: true,
+                    hideSelector: `.drawing[data-id="${self.id}"] > text.inline-editable-text`,
+                    editorBackground: self.style.fill || 'rgba(50, 50, 50, 0.9)',
+                    editorPadding: '6px 8px',
+                    editorWidth: bbox.width,
+                    editorMinHeight: bbox.height,
+                    onInput: (newText) => {
+                        const next = (newText || '').replace(/\r\n/g, '\n');
+                        self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
                         }
                     }
-                );
+                }
+            );
+            return true;
+        };
 
+        const startInlineEdit = function() {
+            const manager = self.chart && self.chart.drawingManager;
+            const editor = manager && manager.textEditor;
+
+            if (editor && typeof editor.show === 'function') {
+                if (!self.selected && manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => openNoteInlineEditor());
+                    });
+                    return;
+                }
+                openNoteInlineEditor();
                 return;
             }
 

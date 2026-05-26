@@ -33627,6 +33627,22 @@ class InlineTextEditor {
 
                 .style('box-shadow', 'none');
 
+            if (typeof opts.editorBackground === 'string' && opts.editorBackground) {
+                this.editor
+                    .style('background', opts.editorBackground)
+                    .style('border-radius', '4px')
+                    .style('box-sizing', 'border-box');
+            }
+            if (typeof opts.editorPadding === 'string') {
+                this.editor.style('padding', opts.editorPadding);
+            }
+            if (Number.isFinite(opts.editorWidth) && opts.editorWidth > 0) {
+                this.editor.style('width', `${opts.editorWidth}px`);
+            }
+            if (Number.isFinite(opts.editorMinHeight) && opts.editorMinHeight > 0) {
+                this.editor.style('min-height', `${opts.editorMinHeight}px`);
+            }
+
 
 
             document.body.classList.add('text-editing');
@@ -33848,21 +33864,19 @@ class InlineTextEditor {
 
 
 
+            this._openedAt = Date.now();
             this.clickOutsideHandler = (event) => {
-
-                if (this.editor && !this.editor.node().contains(event.target)) {
-
-                    this.save();
-
+                if (Date.now() - (this._openedAt || 0) < 450) {
+                    return;
                 }
-
+                if (this.editor && !this.editor.node().contains(event.target)) {
+                    this.save();
+                }
             };
 
             setTimeout(() => {
-
                 document.addEventListener('mousedown', this.clickOutsideHandler);
-
-            }, 100);
+            }, 150);
 
 
 
