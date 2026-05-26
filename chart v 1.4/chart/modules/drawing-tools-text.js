@@ -1366,6 +1366,10 @@ class NoteTool extends BaseDrawing {
                 return false;
             }
 
+            if (typeof editor.hide === 'function') {
+                editor.hide();
+            }
+
             const liveBox = (self.group && typeof self.group.select === 'function')
                 ? self.group.select('rect.note-body-hit').node()
                 : null;
@@ -1540,12 +1544,13 @@ class NoteTool extends BaseDrawing {
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
             if (event.button !== 0) return;
-            downPos = { x: event.clientX, y: event.clientY };
             moved = false;
+            downPos = { x: event.clientX, y: event.clientY };
             document.addEventListener('mousemove', handleMouseMove, true);
             document.addEventListener('mouseup', handleMouseUp, true);
         };
@@ -1570,10 +1575,8 @@ class NoteTool extends BaseDrawing {
 
         const handleTextClick = function(event) {
             event.stopPropagation();
-            event.preventDefault();
 
             if (moved) {
-                moved = false;
                 return;
             }
 
@@ -1582,29 +1585,38 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // Timestamp dblclick (survives re-render when native dblclick does not fire)
             const now = Date.now();
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
+            // Double-click (timestamp fallback when native dblclick is lost after re-render)
+            if (timeSinceLastClick < 450 && timeSinceLastClick > 20) {
                 if (!self.locked) {
                     startInlineEdit();
                 }
                 return;
             }
 
-            // Single click → select only (never start edit on one click)
             const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                manager.selectDrawing(self);
-                document.body.classList.add('text-selected');
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
             }
+
+            // Already selected: second single click opens edit (TradingView-style)
+            clickTimer = setTimeout(() => {
+                clickTimer = null;
+                if (!self.locked) {
+                    startInlineEdit();
+                }
+            }, CLICK_DELAY);
         };
 
         const handleTextDblClick = function(event) {
             event.stopPropagation();
-            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -1615,8 +1627,7 @@ class NoteTool extends BaseDrawing {
             }
         };
         
-        // Use native addEventListener with capture phase - won't be overwritten by d3
-        // 1st click = select, dblclick on text = edit; leader line dblclick = settings (manager)
+        // 1st click = select; 2nd click or dblclick on text = edit; leader line dblclick = settings
         const noteTextHitNodes = [textBox.node(), textElement.node()];
         textElement.selectAll('tspan').each(function() {
             noteTextHitNodes.push(this);
