@@ -6878,7 +6878,10 @@ const TalariaV8bLive = () => {
   const [cloudSavePending, setCloudSavePending] = useState(false);
 
   useEffect(() => {
-    const onCloudSave = (e) => setCloudSavePending(!!e?.detail?.pending);
+    const onCloudSave = (e) => {
+      const next = !!e?.detail?.pending;
+      setCloudSavePending((prev) => (prev === next ? prev : next));
+    };
     window.addEventListener("talariaCloudSaveStatus", onCloudSave);
     if (typeof window.talariaRefreshCloudSaveUi === "function") {
       try { window.talariaRefreshCloudSaveUi(); } catch (_) {}
@@ -12009,6 +12012,8 @@ const TalariaV8bLive = () => {
   // Set true just before we update tlStyle from a selected drawing's style
   // so the forward bridge below skips that pass and we don't loop.
   const suppressForwardBridge = useRef(false);
+  /** Canvas → React coord/vis read-back; separate from style bridge so layout effect cannot clear style suppress early. */
+  const suppressCoordBridge = useRef(false);
   const suppressTxtForwardBridge = useRef(false);
   const suppressRrForwardBridge = useRef(false);
   const suppressVwapBridge = useRef(false);
@@ -12088,6 +12093,7 @@ const TalariaV8bLive = () => {
         }
         if (Object.keys(patch).length === 0) return;
         suppressForwardBridge.current = true;
+        suppressCoordBridge.current = true;
         setTlStyle((s) => {
           let changed = false;
           const next = { ...s };
@@ -13529,8 +13535,8 @@ const TalariaV8bLive = () => {
       dm = ch && ch.drawingManager;
     }
     if (!dm) return;
-    if (suppressForwardBridge.current) {
-      suppressForwardBridge.current = false;
+    if (suppressCoordBridge.current) {
+      suppressCoordBridge.current = false;
       return;
     }
     const editSess = editingDrawingRef.current;
@@ -13545,16 +13551,16 @@ const TalariaV8bLive = () => {
         const tb = dm2.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         let pointsMoved = false;
+        let visibilityChanged = false;
         try { pointsMoved = v9ApplyPointsFromTlStyle(d, tlStyle); } catch (_) {}
-        try { v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
-        if (pointsMoved) {
-          try { dm2.renderDrawing?.(d); } catch (_) {}
-          try { dm2.saveDrawings?.(); } catch (_) {}
-        }
+        try { visibilityChanged = v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
+        const geometryChanged = pointsMoved || visibilityChanged;
+        if (!geometryChanged) return;
         if (tb && typeof tb.onUpdate === "function") {
           try { tb.onUpdate(d); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
         } else {
           try { dm2.renderDrawing?.(d); } catch (_) {}
+          try { dm2.saveDrawings?.(); } catch (_) {}
         }
         if (d.selected && typeof d.showAxisHighlights === "function") {
           try { d.showAxisHighlights(); } catch (_) {}
@@ -13572,6 +13578,16 @@ const TalariaV8bLive = () => {
     tlStyle.pt7Price, tlStyle.pt7Bar,
     tlStyle.visMinutes, tlStyle.visHours, tlStyle.visDays, tlStyle.visWeeks, tlStyle.visMonths,
     tool, groupSelected,
+  ]);
+
+  // Coord-only canvas→React sync sets suppressForwardBridge but may not re-run the style bridge.
+  useEffect(() => {
+    if (suppressForwardBridge.current) suppressForwardBridge.current = false;
+  }, [
+    tlStyle.pt1Price, tlStyle.pt1Bar, tlStyle.pt2Price, tlStyle.pt2Bar,
+    tlStyle.pt3Price, tlStyle.pt3Bar, tlStyle.pt4Price, tlStyle.pt4Bar,
+    tlStyle.pt5Price, tlStyle.pt5Bar, tlStyle.pt6Price, tlStyle.pt6Bar,
+    tlStyle.pt7Price, tlStyle.pt7Bar,
   ]);
 
   // V9 txtStyle → selected text/callout/note drawings (annotation rail bar).
