@@ -327,13 +327,8 @@ class TextTool extends BaseDrawing {
             self._lastClickTime = now;
 
             if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                // Double-click → open settings
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
+                if (!self.locked) {
+                    startInlineEdit();
                 }
                 return;
             }
@@ -361,12 +356,8 @@ class TextTool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 

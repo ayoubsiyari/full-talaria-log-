@@ -897,8 +897,7 @@ class DrawingToolsManager {
             if (this.eraserMode) return false;
 
             const rawTargetNode = event?.target || null;
-            const targetSel = rawTargetNode ? d3.select(rawTargetNode) : null;
-            if (targetSel && targetSel.classed('inline-editable-text')) {
+            if (this._isTextAnnotationInteractionTarget(rawTargetNode)) {
                 return false;
             }
 
@@ -961,6 +960,10 @@ class DrawingToolsManager {
 
             const drawing = valueLabelDrawing || drawingsAtPoint[0] || fallbackVolumeProfileDrawing;
             if (!drawing || drawing.locked) return false;
+
+            if (this._isTextDrawingType(drawing.type) && this._isTextAnnotationInteractionTarget(rawTargetNode)) {
+                return false;
+            }
 
             if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
             if (typeof event.stopPropagation === 'function') event.stopPropagation();
@@ -4202,10 +4205,13 @@ class DrawingToolsManager {
                 return;
             }
 
-            // Skip if clicking on inline-editable text (let element's own click handler work)
+            // Skip label/body hits — per-tool handlers own click/dblclick (incl. tspans)
             const targetSel = d3.select(event.target);
-            if (targetSel.classed('inline-editable-text')) {
-                return; // Let the element's own click handler handle it
+            if (self._isTextAnnotationInteractionTarget(event.target)) {
+                if (self._drawingClickTimes) {
+                    self._drawingClickTimes[drawing.id] = 0;
+                }
+                return;
             }
 
             if (handleEmptyImageUploadInteraction(event)) {
@@ -4261,11 +4267,9 @@ class DrawingToolsManager {
             
             // Double-click detection (within 400ms)
             if (timeSinceLastClick < DOUBLE_CLICK_DELAY && timeSinceLastClick > 50) {
-                // Skip if clicking on inline-editable text (let element's dblclick handler work)
-                const targetSel = d3.select(event.target);
-                if (targetSel.classed('inline-editable-text')) {
+                if (self._isTextAnnotationInteractionTarget(event.target)) {
                     self._drawingClickTimes[drawing.id] = 0;
-                    return; // Let the element's own dblclick handler handle it
+                    return;
                 }
 
                 if (handleEmptyImageUploadInteraction(event)) {
@@ -4274,6 +4278,15 @@ class DrawingToolsManager {
                 }
                 
                 // [debug removed]
+
+                // Text tools: never open settings from chrome click timing — use tool handlers / gear
+                if (self._isTextDrawingType(drawing.type)) {
+                    self._drawingClickTimes[drawing.id] = 0;
+                    if (!drawing.locked && !self.currentTool) {
+                        self.selectDrawing(drawing, event.shiftKey);
+                    }
+                    return;
+                }
                 
                 if (!drawing.locked) {
                     self.selectDrawing(drawing);
@@ -4297,10 +4310,8 @@ class DrawingToolsManager {
             if (event.target && event.target.closest && event.target.closest('.rr-plus-btn')) {
                 return;
             }
-            // Skip if clicking on inline-editable text (let element's own handler work)
-            const target = d3.select(event.target);
-            if (target.classed('inline-editable-text')) {
-                return; // Let the element's own dblclick handler handle it
+            if (self._isTextAnnotationInteractionTarget(event.target)) {
+                return;
             }
 
             if (handleEmptyImageUploadInteraction(event)) {
@@ -4317,6 +4328,13 @@ class DrawingToolsManager {
             if (self.eraserMode) return;
             
             // [debug removed]
+
+            if (self._isTextDrawingType(drawing.type)) {
+                if (!drawing.locked && !self.currentTool) {
+                    self.selectDrawing(drawing);
+                }
+                return;
+            }
             
             if (!drawing.locked) {
                 self.selectDrawing(drawing);
@@ -4455,6 +4473,46 @@ class DrawingToolsManager {
      */
     _isAnnotationTextLabelDrawingType(type) {
         return type === 'note' || type === 'price-note' || type === 'callout' || type === 'comment';
+    }
+
+    /** Text & labels tools whose body/label DOM is edited via per-tool click handlers. */
+    _isTextDrawingType(type) {
+        return type === 'text'
+            || type === 'note'
+            || type === 'price-note'
+            || type === 'callout'
+            || type === 'comment'
+            || type === 'signpost-2'
+            || type === 'flag-mark'
+            || type === 'pin'
+            || type === 'notebox'
+            || type === 'anchored-text';
+    }
+
+    /**
+     * True when the event target is the editable label (text, tspan, note box),
+     * not the leader line / border chrome.
+     */
+    _isTextAnnotationInteractionTarget(rawTargetNode) {
+        if (!rawTargetNode) return false;
+        if (rawTargetNode.closest
+            && rawTargetNode.closest('.inline-editable-text, .text-body-hit, .note-body-hit')) {
+            return true;
+        }
+        try {
+            const sel = d3.select(rawTargetNode);
+            if (sel.classed('inline-editable-text') || sel.classed('text-body-hit') || sel.classed('note-body-hit')) {
+                return true;
+            }
+        } catch (_) { /* ignore */ }
+        const tag = (rawTargetNode.tagName || '').toLowerCase();
+        if (tag === 'tspan' && rawTargetNode.closest) {
+            const textParent = rawTargetNode.closest('text');
+            if (textParent && d3.select(textParent).classed('inline-editable-text')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     setupDrawingDrag(drawing) {
