@@ -25,6 +25,29 @@ function resolveTextToolDisplay(text, placeholder = TEXT_TOOL_PLACEHOLDER) {
     return { text: String(text == null ? '' : text), isPlaceholder: false };
 }
 
+/**
+ * Inline editor onSave: keep drawing when user clicks away without typing.
+ * Delete only when confirmed (Enter) with empty/placeholder text.
+ */
+function createInlineTextSaveHandler(drawing) {
+    return (newText, confirmed = false) => {
+        const manager = drawing.chart && drawing.chart.drawingManager;
+        const normalized = (newText || '').replace(/\r\n/g, '\n');
+        const empty = isTextToolPlaceholder(normalized);
+        if (empty) {
+            if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
+                manager.deleteDrawing(drawing);
+                return;
+            }
+            drawing.setText('');
+            if (drawing.chart) drawing.chart.render();
+            return;
+        }
+        drawing.setText(normalized);
+        if (drawing.chart) drawing.chart.render();
+    };
+}
+
 /** Timestamp double-click: select when unselected, edit only when already selected. */
 function handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, minMs, maxMs, onEdit) {
     if (timeSinceLastClick >= maxMs || timeSinceLastClick <= minMs) {
@@ -325,17 +348,7 @@ class TextTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -790,17 +803,7 @@ class NoteBoxTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter note text…',
                 {
                     inline: true,
@@ -1129,17 +1132,7 @@ class AnchoredTextTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -1407,23 +1400,7 @@ class NoteTool extends BaseDrawing {
                 bbox.left + window.scrollX,
                 bbox.top + window.scrollY,
                 initialText,
-                (newText, confirmed) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    const empty = helpers
-                        ? helpers.isTextToolPlaceholder(normalized)
-                        : !normalized.trim();
-                    if (empty) {
-                        if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                        self.setText('');
-                        if (self.chart) self.chart.render();
-                        return;
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 placeholderLabel,
                 {
                     inline: true,
@@ -2110,17 +2087,7 @@ class PinTool extends BaseDrawing {
                     editX,
                     editY,
                     self.text || '',
-                    (newText) => {
-                        const normalized = (newText || '').replace(/\r\n/g, '\n');
-                        if (!normalized.trim()) {
-                            if (manager && typeof manager.deleteDrawing === 'function') {
-                                manager.deleteDrawing(self);
-                                return;
-                            }
-                        }
-                        self.setText(normalized);
-                        if (self.chart) self.chart.render();
-                    },
+                    createInlineTextSaveHandler(self),
                     'Enter text…',
                     {
                         inline: true,
@@ -2655,17 +2622,7 @@ class CalloutTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -2993,17 +2950,7 @@ class CommentTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -3577,17 +3524,7 @@ class Signpost2Tool extends BaseDrawing {
                 x,
                 y,
                 (self.text && self.text !== 'add text') ? self.text : '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -3863,6 +3800,7 @@ if (typeof module !== 'undefined' && module.exports) {
         TEXT_TOOL_PLACEHOLDER_COLOR,
         isTextToolPlaceholder,
         resolveTextToolDisplay,
+        createInlineTextSaveHandler,
         TextTool,
         NoteBoxTool,
         AnchoredTextTool,
@@ -3885,6 +3823,7 @@ if (typeof window !== 'undefined') {
         TEXT_TOOL_PLACEHOLDER,
         TEXT_TOOL_PLACEHOLDER_COLOR,
         isTextToolPlaceholder,
-        resolveTextToolDisplay
+        resolveTextToolDisplay,
+        createInlineTextSaveHandler
     };
 }

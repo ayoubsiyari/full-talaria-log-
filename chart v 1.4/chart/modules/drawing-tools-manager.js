@@ -5778,20 +5778,24 @@ class DrawingToolsManager {
             ? (t) => helpers.isTextToolPlaceholder(t)
             : (t) => !String(t || '').trim();
 
-        const onSave = (text, confirmed = false) => {
-            const normalized = (text || '').replace(/\r\n/g, '\n');
-            if (!normalized.trim() || isPlaceholderText(normalized)) {
-                if (confirmed) {
-                    // User explicitly pressed Enter with empty text — delete the drawing.
-                    this.deleteDrawing(drawing);
+        const onSave = (typeof window !== 'undefined'
+            && window.DrawingTextHelpers
+            && typeof window.DrawingTextHelpers.createInlineTextSaveHandler === 'function')
+            ? window.DrawingTextHelpers.createInlineTextSaveHandler(drawing)
+            : (text, confirmed = false) => {
+                const normalized = (text || '').replace(/\r\n/g, '\n');
+                if (!normalized.trim() || isPlaceholderText(normalized)) {
+                    if (confirmed) {
+                        this.deleteDrawing(drawing);
+                    } else {
+                        drawing.setText('');
+                    }
+                    if (this.chart) this.chart.render();
+                    return;
                 }
-                // Clicked away without typing — keep the drawing as-is.
+                drawing.setText(normalized);
                 if (this.chart) this.chart.render();
-                return;
-            }
-            drawing.setText(normalized);
-            if (this.chart) this.chart.render();
-        };
+            };
 
         const storedText = drawing.text || '';
         const initialText = isPlaceholderText(storedText) ? '' : storedText;
