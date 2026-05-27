@@ -3,11 +3,90 @@
  * Implements: Text, Note Box
  */
 
+const TEXT_TOOL_PLACEHOLDER = 'Type here';
+const TEXT_TOOL_PLACEHOLDER_COLOR = 'rgba(120, 123, 134, 0.75)';
+
+function isTextToolPlaceholder(text) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return true;
+    if (/^add text$/i.test(t)) return true;
+    if (/^type here$/i.test(t)) return true;
+    if (/^enter text/i.test(t)) return true;
+    if (t === 'text') return true;
+    if (t === 'note') return true;
+    if (t === 'anchored text') return true;
+    return false;
+}
+
+function resolveTextToolDisplay(text, placeholder = TEXT_TOOL_PLACEHOLDER) {
+    if (isTextToolPlaceholder(text)) {
+        return { text: placeholder, isPlaceholder: true };
+    }
+    return { text: String(text == null ? '' : text), isPlaceholder: false };
+}
+
+/**
+ * Inline editor onSave: keep drawing when user clicks away without typing.
+ * Delete only when confirmed (Enter) with empty/placeholder text.
+ */
+function openTextAnnotationSettings(drawing, event) {
+    if (!drawing || drawing.locked) return;
+    if (event) {
+        event.stopPropagation();
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+    const manager = drawing.chart && drawing.chart.drawingManager;
+    if (!manager || typeof manager.editDrawing !== 'function') return;
+    if (typeof manager.selectDrawing === 'function') {
+        manager.selectDrawing(drawing);
+    }
+    manager.editDrawing(drawing, event && event.pageX, event && event.pageY);
+}
+
+function createInlineTextSaveHandler(drawing) {
+    return (newText, confirmed = false) => {
+        const manager = drawing.chart && drawing.chart.drawingManager;
+        const normalized = (newText || '').replace(/\r\n/g, '\n');
+        const empty = isTextToolPlaceholder(normalized);
+        if (empty) {
+            if (confirmed && manager && typeof manager.deleteDrawing === 'function') {
+                manager.deleteDrawing(drawing);
+                return;
+            }
+            drawing.setText('');
+            if (drawing.chart) drawing.chart.render();
+            return;
+        }
+        drawing.setText(normalized);
+        if (drawing.chart) drawing.chart.render();
+    };
+}
+
+/** Timestamp double-click: select when unselected, edit only when already selected. */
+function handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, minMs, maxMs, onEdit) {
+    if (timeSinceLastClick >= maxMs || timeSinceLastClick <= minMs) {
+        return false;
+    }
+    if (self.locked) {
+        return true;
+    }
+    const manager = self.chart && self.chart.drawingManager;
+    if (self.selected) {
+        if (typeof onEdit === 'function') {
+            onEdit();
+        }
+    } else if (manager && typeof manager.selectDrawing === 'function') {
+        manager.selectDrawing(self);
+        document.body.classList.add('text-selected');
+    }
+    return true;
+}
+
 // ============================================================================
 // Text Tool
 // ============================================================================
 class TextTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Text') {
+    constructor(points = [], style = {}, text = '') {
         super('text', points, style);
         this.requiredPoints = 1;
         this.text = text;
@@ -116,16 +195,20 @@ class TextTool extends BaseDrawing {
 
         const lineHeight = scaledFontSize * 1.2;
         const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
+        const display = resolveTextToolDisplay(this.text);
+        if (display.isPlaceholder) {
+            textElement.attr('fill', TEXT_TOOL_PLACEHOLDER_COLOR);
+        }
         const lines = this.style.wrapText
             ? TextTool.wrapTextLines(
-                this.text || '',
+                display.text,
                 maxWrapWidth,
                 scaledFontSize,
                 this.style.fontFamily,
                 this.style.fontWeight,
                 this.style.fontStyle
             )
-            : (this.text || '').split('\n');
+            : display.text.split('\n');
         lines.forEach((line, index) => {
             const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
             textElement.append('tspan')
@@ -245,9 +328,11 @@ class TextTool extends BaseDrawing {
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -277,17 +362,7 @@ class TextTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -326,15 +401,7 @@ class TextTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                // Double-click → open settings
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
-                }
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
                 return;
             }
 
@@ -354,30 +421,41 @@ class TextTool extends BaseDrawing {
             }, CLICK_DELAY);
         };
 
-        const handleDblClick = function(event) {
+        const handleTextDblClickEdit = function(event) {
             event.stopPropagation();
             event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
-        textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('click', handleSingleClick, true);
-        textElement.node().addEventListener('dblclick', handleDblClick, true);
+        const handleHitDblClickSettings = function(event) {
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            openTextAnnotationSettings(self, event);
+        };
+
+        const textDblClickNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            textDblClickNodes.push(this);
+        });
+        textDblClickNodes.forEach((node) => {
+            if (!node) return;
+            node.addEventListener('mousedown', handleMouseDown, true);
+            node.addEventListener('click', handleSingleClick, true);
+            node.addEventListener('dblclick', handleTextDblClickEdit, true);
+        });
 
         if (bodyHitArea && bodyHitArea.node()) {
             bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
             bodyHitArea.node().addEventListener('click', handleSingleClick, true);
-            bodyHitArea.node().addEventListener('dblclick', handleDblClick, true);
+            bodyHitArea.node().addEventListener('dblclick', handleHitDblClickSettings, true);
         }
 
         return this.group;
@@ -565,7 +643,7 @@ class TextTool extends BaseDrawing {
 // Note Box Tool (Text with background)
 // ============================================================================
 class NoteBoxTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Note') {
+    constructor(points = [], style = {}, text = '') {
         super('notebox', points, style);
         this.requiredPoints = 1;
         this.text = text;
@@ -595,13 +673,15 @@ class NoteBoxTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
 
+        const noteboxDisplay = resolveTextToolDisplay(this.text);
+
         // Create temporary text element to measure size
         const tempText = container.append('text')
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
-            .text(this.text);
+            .text(noteboxDisplay.text);
         
         const textBBox = tempText.node().getBBox();
         tempText.remove();
@@ -640,7 +720,7 @@ class NoteBoxTool extends BaseDrawing {
         const textElement = this.group.append('text')
             .attr('x', x + this.style.padding)
             .attr('y', y - this.style.padding)
-            .attr('fill', this.style.textColor)
+            .attr('fill', noteboxDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -650,7 +730,7 @@ class NoteBoxTool extends BaseDrawing {
             .style('user-select', 'none');
 
         // Handle text wrapping if needed
-        const words = this.text.split(' ');
+        const words = noteboxDisplay.text.split(/\s+/).filter((w) => w.length > 0);
         let line = '';
         let lineNumber = 0;
         const lineHeight = this.style.fontSize * 1.2;
@@ -748,17 +828,7 @@ class NoteBoxTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter note text…',
                 {
                     inline: true,
@@ -793,26 +863,35 @@ class NoteBoxTool extends BaseDrawing {
         };
 
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            openTextAnnotationSettings(self, event);
+        };
 
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+        const handleTextDblClickEdit = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
+        const borderHitNode = this.group.select('.shape-border-hit').node();
+
         box.node().addEventListener('mousedown', handleMouseDown, true);
         box.node().addEventListener('click', handleInlineEdit, true);
-        box.node().addEventListener('dblclick', handleInlineEdit, true);
+        box.node().addEventListener('dblclick', handleTextDblClickEdit, true);
+        if (borderHitNode) {
+            borderHitNode.addEventListener('mousedown', handleMouseDown, true);
+            borderHitNode.addEventListener('click', handleInlineEdit, true);
+            borderHitNode.addEventListener('dblclick', handleOpenSettings, true);
+        }
 
         return this.group;
     }
@@ -1087,17 +1166,7 @@ class AnchoredTextTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -1133,28 +1202,43 @@ class AnchoredTextTool extends BaseDrawing {
         };
 
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            openTextAnnotationSettings(self, event);
+        };
 
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+        const handleTextDblClickEdit = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
-        [background.node(), textElement.node()].forEach((n) => {
+        const anchoredTextHitNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            anchoredTextHitNodes.push(this);
+        });
+        anchoredTextHitNodes.forEach((n) => {
             n.addEventListener('mousedown', handleMouseDown, true);
             n.addEventListener('click', handleInlineEdit, true);
-            n.addEventListener('dblclick', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
+        if (background && background.node()) {
+            background.node().addEventListener('mousedown', handleMouseDown, true);
+            background.node().addEventListener('click', handleInlineEdit, true);
+            background.node().addEventListener('dblclick', handleOpenSettings, true);
+        }
+        const anchoredBorderHit = this.group.select('.shape-border-hit').node();
+        if (anchoredBorderHit) {
+            anchoredBorderHit.addEventListener('dblclick', handleOpenSettings, true);
+        }
 
         return this.group;
     }
@@ -1259,8 +1343,9 @@ class NoteTool extends BaseDrawing {
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
         };
 
+        const noteDisplay = resolveTextToolDisplay(this.text);
         // Split only on explicit newlines — no auto word-wrap
-        const wrappedLines = (this.text || '').split('\n');
+        const wrappedLines = noteDisplay.text.split('\n');
         const lineHeight = scaledFontSize * 1.3;
         const totalTextHeight = wrappedLines.length * lineHeight;
 
@@ -1311,7 +1396,7 @@ class NoteTool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', this.style.textColor)
+            .attr('fill', noteDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -1328,60 +1413,84 @@ class NoteTool extends BaseDrawing {
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
+        const openNoteInlineEditor = function() {
+            const manager = self.chart && self.chart.drawingManager;
+            const editor = manager && manager.textEditor;
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            const placeholderLabel = helpers ? helpers.TEXT_TOOL_PLACEHOLDER : 'Type here';
+            const isPlaceholder = helpers
+                ? helpers.isTextToolPlaceholder(self.text)
+                : !String(self.text || '').trim();
+            const initialText = isPlaceholder ? '' : (self.text || '');
+
+            if (!editor || typeof editor.show !== 'function') {
+                return false;
+            }
+
+            if (typeof editor.hide === 'function') {
+                editor.hide();
+            }
+
+            const liveBox = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('rect.note-body-hit').node()
+                : null;
+            const liveText = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('text.inline-editable-text').node()
+                : null;
+            const posNode = (liveBox && document.contains(liveBox))
+                ? liveBox
+                : ((liveText && document.contains(liveText)) ? liveText : textBox.node());
+            const bbox = posNode.getBoundingClientRect();
+            if (bbox.width <= 0 && bbox.height <= 0) {
+                return false;
+            }
+
+            editor.show(
+                bbox.left + window.scrollX,
+                bbox.top + window.scrollY,
+                initialText,
+                createInlineTextSaveHandler(self),
+                placeholderLabel,
+                {
+                    inline: true,
+                    placeholderMode: !String(initialText).trim(),
+                    fontSize: `${scaledFontSize}px`,
+                    fontFamily: self.style.fontFamily,
+                    fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
+                    color: self.style.textColor,
+                    textAlign: 'left',
+                    noWrap: true,
+                    hideSelector: `.drawing[data-id="${self.id}"] > text.inline-editable-text`,
+                    editorBackground: self.style.fill || 'rgba(50, 50, 50, 0.9)',
+                    editorPadding: '6px 8px',
+                    editorWidth: bbox.width,
+                    editorMinHeight: bbox.height,
+                    onInput: (newText) => {
+                        const next = (newText || '').replace(/\r\n/g, '\n');
+                        self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
+                        }
+                    }
+                }
+            );
+            return true;
+        };
+
         const startInlineEdit = function() {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
+
             if (editor && typeof editor.show === 'function') {
-                // Always resolve a live element — selectDrawing re-renders so the
-                // captured textElement may be detached (getBoundingClientRect → 0,0).
-                const liveNode = (self.group && typeof self.group.select === 'function')
-                    ? self.group.select('text.inline-editable-text').node()
-                    : null;
-                const targetNode = (liveNode && document.contains(liveNode))
-                    ? liveNode : textElement.node();
-                const bbox = targetNode.getBoundingClientRect();
-                const editX = bbox.left + window.scrollX;
-                const editY = bbox.top + window.scrollY;
-
-                if (typeof manager.selectDrawing === 'function' && !self.locked) {
+                if (!self.selected && manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => openNoteInlineEditor());
+                    });
+                    return;
                 }
-
-                editor.show(
-                    editX,
-                    editY,
-                    self.text || '',
-                    (newText) => {
-                        const normalized = (newText || '').replace(/\r\n/g, '\n');
-                        if (!normalized.trim()) {
-                            if (manager && typeof manager.deleteDrawing === 'function') {
-                                manager.deleteDrawing(self);
-                                return;
-                            }
-                        }
-                        self.setText(normalized);
-                        if (self.chart) self.chart.render();
-                    },
-                    'Add text',
-                    {
-                        inline: true,
-                        fontSize: `${scaledFontSize}px`,
-                        fontFamily: self.style.fontFamily,
-                        fontWeight: self.style.fontWeight || 'normal',
-                        fontStyle: self.style.fontStyle || 'normal',
-                        color: self.style.textColor,
-                        textAlign: 'left',
-                        noWrap: true,
-                        hideSelector: `.drawing[data-id="${self.id}"] text`,
-                        onInput: (newText) => {
-                            self.setText((newText || '').replace(/\r\n/g, '\n'));
-                            if (self._lastContainer && self._lastScales) {
-                                self.render(self._lastContainer, self._lastScales);
-                            }
-                        }
-                    }
-                );
-
+                openNoteInlineEditor();
                 return;
             }
 
@@ -1480,19 +1589,27 @@ class NoteTool extends BaseDrawing {
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
             if (event.button !== 0) return;
-            downPos = { x: event.clientX, y: event.clientY };
             moved = false;
+            downPos = { x: event.clientX, y: event.clientY };
             document.addEventListener('mousemove', handleMouseMove, true);
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const handleSingleClick = function(event) {
+        const handleOpenSettings = function(event) {
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            openTextAnnotationSettings(self, event);
+        };
+
+        const handleTextClick = function(event) {
             event.stopPropagation();
-            event.preventDefault();
 
             if (moved) {
                 moved = false;
@@ -1504,28 +1621,17 @@ class NoteTool extends BaseDrawing {
                 clickTimer = null;
             }
 
-            // Double-click detection via timestamps stored on the instance so it
-            // survives re-renders (selectDrawing replaces DOM nodes, breaking the
-            // native dblclick event which would fire on the common ancestor).
             const now = Date.now();
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (timeSinceLastClick < 400 && timeSinceLastClick > 30) {
-                // Double-click → open settings
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
-                }
+            // Double-click (timestamp fallback when native dblclick is lost after re-render)
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 20, 450, startInlineEdit)) {
                 return;
             }
 
-            // 1st click on unselected → select only
+            const manager = self.chart && self.chart.drawingManager;
             if (!self.selected) {
-                const manager = self.chart && self.chart.drawingManager;
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
                     document.body.classList.add('text-selected');
@@ -1533,55 +1639,43 @@ class NoteTool extends BaseDrawing {
                 return;
             }
 
-            // Already selected, single click → open inline editor after delay
+            // Already selected: second single click opens edit (TradingView-style)
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
         };
 
-        const handleDblClick = function(event) {
+        const handleTextDblClick = function(event) {
             event.stopPropagation();
-            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
-            }
-        };
-
-        const handleOpenSettings = function(event) {
-            event.stopPropagation();
-            event.preventDefault();
-
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+            self._lastClickTime = 0;
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
         
-        // Use native addEventListener with capture phase - won't be overwritten by d3
-        // 1st click = select, 2nd click = edit, dblclick = edit immediately, drag = move
-        textBox.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textBox.node().addEventListener('click', handleSingleClick, true);
-        textElement.node().addEventListener('click', handleSingleClick, true);
-        textBox.node().addEventListener('dblclick', handleDblClick, true);
-        textElement.node().addEventListener('dblclick', handleDblClick, true);
+        // 1st click = select; 2nd click or dblclick on text = edit; leader line dblclick = settings
+        const noteTextHitNodes = [textBox.node(), textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            noteTextHitNodes.push(this);
+        });
+        noteTextHitNodes.forEach((node) => {
+            if (!node) return;
+            node.addEventListener('mousedown', handleMouseDown, true);
+            node.addEventListener('click', handleTextClick, true);
+            node.addEventListener('dblclick', handleTextDblClick, true);
+        });
+
+        if (noteLineHitEl && noteLineHitEl.node()) {
+            const lineNode = noteLineHitEl.node();
+            lineNode.addEventListener('dblclick', handleOpenSettings, true);
+        }
 
         // Create handles at both endpoints
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -1871,7 +1965,8 @@ class PinTool extends BaseDrawing {
         const bulbCenterY = y - pinHeight + pinRadius; // Center of the circular bulb
 
         // Text box above the pin (only if text exists) - hidden by default, shown on hover
-        const displayText = this.text || '';
+        const pinDisplay = resolveTextToolDisplay(this.text);
+        const displayText = pinDisplay.text;
         let textBoxGroup = null;
         
         const boxGap = 8;
@@ -1958,7 +2053,7 @@ class PinTool extends BaseDrawing {
 
             const hasBorder = this.style.borderColor && this.style.borderColor !== 'transparent' && this.style.borderColor !== 'none';
             const boxPathEl = textBoxGroup.append('path')
-                .attr('class', 'inline-editable-text shape-border')
+                .attr('class', 'shape-border note-body-hit')
                 .attr('d', boxPath)
                 .attr('fill', this.style.backgroundColor)
                 .attr('stroke', hasBorder ? this.style.borderColor : 'none')
@@ -2036,17 +2131,7 @@ class PinTool extends BaseDrawing {
                     editX,
                     editY,
                     self.text || '',
-                    (newText) => {
-                        const normalized = (newText || '').replace(/\r\n/g, '\n');
-                        if (!normalized.trim()) {
-                            if (manager && typeof manager.deleteDrawing === 'function') {
-                                manager.deleteDrawing(self);
-                                return;
-                            }
-                        }
-                        self.setText(normalized);
-                        if (self.chart) self.chart.render();
-                    },
+                    createInlineTextSaveHandler(self),
                     'Enter text…',
                     {
                         inline: true,
@@ -2081,28 +2166,40 @@ class PinTool extends BaseDrawing {
             };
 
             const handleOpenSettings = (event) => {
-                event.stopPropagation();
-                event.preventDefault();
-
                 if (clickTimer) {
                     clearTimeout(clickTimer);
                     clickTimer = null;
                 }
+                openTextAnnotationSettings(self, event);
+            };
 
-                const manager = self.chart && self.chart.drawingManager;
-                if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                    if (typeof manager.selectDrawing === 'function') {
-                        manager.selectDrawing(self);
-                    }
-                    manager.editDrawing(self, event.pageX, event.pageY);
+            const handleTextDblClickEdit = (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+                if (!self.locked) {
+                    startInlineEdit();
                 }
             };
 
-            [boxPathEl.node(), boxTextEl.node()].forEach((n) => {
+            const pinTextNodes = [boxTextEl.node()];
+            boxTextEl.selectAll('tspan').each(function() {
+                pinTextNodes.push(this);
+            });
+            pinTextNodes.forEach((n) => {
+                if (!n) return;
                 n.addEventListener('mousedown', handleMouseDown, true);
                 n.addEventListener('click', handleInlineEdit, true);
-                n.addEventListener('dblclick', handleInlineEdit, true);
+                n.addEventListener('dblclick', handleTextDblClickEdit, true);
             });
+            if (boxPathEl && boxPathEl.node()) {
+                boxPathEl.node().addEventListener('mousedown', handleMouseDown, true);
+                boxPathEl.node().addEventListener('click', handleInlineEdit, true);
+                boxPathEl.node().addEventListener('dblclick', handleOpenSettings, true);
+            }
         } else {
             // No text yet — render an invisible anchor so _triggerAutoInlineEdit
             // can find a real DOM element with the correct screen position.
@@ -2355,7 +2452,7 @@ class TableTool extends BaseDrawing {
 // Callout Tool - Clean speech bubble with customizable direction
 // ============================================================================
 class CalloutTool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'Add text') {
+    constructor(points = [], style = {}, text = '') {
         super('callout', points, style);
         this.requiredPoints = 2;
         this.text = text;
@@ -2409,12 +2506,13 @@ class CalloutTool extends BaseDrawing {
         };
 
         // Split only on explicit newlines — no auto word-wrap
+        const calloutDisplay = resolveTextToolDisplay(this.text);
         const calloutWrapLines = (rawText) => {
-            const lines = (rawText || 'Add text').split('\n');
+            const lines = String(rawText || '').split('\n');
             return lines.length ? lines : [''];
         };
 
-        const wrappedLines = calloutWrapLines(this.text);
+        const wrappedLines = calloutWrapLines(calloutDisplay.text);
         const lineHeight = this.style.fontSize * 1.3;
 
         // Measure actual max line width (no cap — box grows with text)
@@ -2507,7 +2605,7 @@ class CalloutTool extends BaseDrawing {
             .attr('x', bubbleX + padding)
             .attr('y', textStartY)
             .attr('text-anchor', 'start')
-            .attr('fill', this.style.textColor)
+            .attr('fill', calloutDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', _cFontFamily)
             .attr('font-weight', _cFontWeight)
@@ -2580,17 +2678,7 @@ class CalloutTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -2634,26 +2722,38 @@ class CalloutTool extends BaseDrawing {
         };
 
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            openTextAnnotationSettings(self, event);
+        };
 
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+        const handleTextDblClickEdit = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
-        textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        const calloutTextNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            calloutTextNodes.push(this);
+        });
+        calloutTextNodes.forEach((n) => {
+            if (!n) return;
+            n.addEventListener('mousedown', handleMouseDown, true);
+            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleTextDblClickEdit, true);
+        });
+        this.group.selectAll('.shape-border-hit').each(function() {
+            this.addEventListener('dblclick', handleOpenSettings, true);
+        });
 
         // Resize handles
         const handleRadius = 4;
@@ -2706,7 +2806,7 @@ class CommentTool extends BaseDrawing {
     constructor(points = [], style = {}, text = '') {
         super('comment', points, style);
         this.requiredPoints = 1;
-        this.text = text || 'text';
+        this.text = text || '';
         this.style.backgroundColor = style.backgroundColor || '#2962FF';
         this.style.borderColor = style.borderColor || 'transparent';
         this.style.textColor = style.textColor || '#FFFFFF';
@@ -2750,8 +2850,9 @@ class CommentTool extends BaseDrawing {
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
+        const commentDisplay = resolveTextToolDisplay(this.text);
         // Split on explicit newlines only
-        const lines = (this.text || 'text').split('\n');
+        const lines = commentDisplay.text.split('\n');
         const lineHeight = _cFontSize * 1.3;
         let maxLineW = minWidth - padding * 2;
         lines.forEach(l => { const lw = measureW(l || ' '); if (lw > maxLineW) maxLineW = lw; });
@@ -2814,7 +2915,7 @@ class CommentTool extends BaseDrawing {
             .attr('x', textX)
             .attr('y', textStartY)
             .attr('text-anchor', textAnchor)
-            .attr('fill', this.style.textColor)
+            .attr('fill', commentDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${_cFontSize}px`)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
@@ -2917,17 +3018,7 @@ class CommentTool extends BaseDrawing {
                 editX,
                 editY,
                 self.text || '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -2970,26 +3061,38 @@ class CommentTool extends BaseDrawing {
         };
 
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            openTextAnnotationSettings(self, event);
+        };
 
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+        const handleTextDblClickEdit = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
-        textElement.node().addEventListener('mousedown', handleMouseDown, true);
-        textElement.node().addEventListener('click', handleInlineEdit, true);
-        textElement.node().addEventListener('dblclick', handleInlineEdit, true);
+        const commentTextNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            commentTextNodes.push(this);
+        });
+        commentTextNodes.forEach((n) => {
+            if (!n) return;
+            n.addEventListener('mousedown', handleMouseDown, true);
+            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleTextDblClickEdit, true);
+        });
+        this.group.selectAll('.shape-border-hit').each(function() {
+            this.addEventListener('dblclick', handleOpenSettings, true);
+        });
 
         return this.group;
     }
@@ -3316,10 +3419,10 @@ class PriceLabel2Tool extends BaseDrawing {
 // Signpost 2 Tool - Vertical line with text label below
 // ============================================================================
 class Signpost2Tool extends BaseDrawing {
-    constructor(points = [], style = {}, text = 'add text') {
+    constructor(points = [], style = {}, text = '') {
         super('signpost-2', points, style);
         this.requiredPoints = 1;
-        this.text = text || 'add text';
+        this.text = text || '';
         this.style.stroke = style.stroke || '#787b86';
         this.style.borderColor = style.borderColor !== undefined ? style.borderColor : (style.stroke || '#787b86');
         this.style.strokeWidth = style.strokeWidth || 2;
@@ -3379,7 +3482,8 @@ class Signpost2Tool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        const displayText = this.text || 'add text';
+        const signDisplay = resolveTextToolDisplay(this.text);
+        const displayText = signDisplay.text;
         const padding = 10;
 
         // Measure text
@@ -3435,16 +3539,17 @@ class Signpost2Tool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', x1)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
-            .attr('fill', this.style.textColor)
+            .attr('fill', signDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
-            .style('pointer-events', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'move')
             .text(displayText);
 
-        // Single click to edit text, double click to open settings
+        // Double-click label text = edit; double-click line/border = settings
         const self = this;
         const CLICK_DELAY = 250;
         let clickTimer = null;
@@ -3499,17 +3604,7 @@ class Signpost2Tool extends BaseDrawing {
                 x,
                 y,
                 (self.text && self.text !== 'add text') ? self.text : '',
-                (newText) => {
-                    const normalized = (newText || '').replace(/\r\n/g, '\n');
-                    if (!normalized.trim()) {
-                        if (manager && typeof manager.deleteDrawing === 'function') {
-                            manager.deleteDrawing(self);
-                            return;
-                        }
-                    }
-                    self.setText(normalized);
-                    if (self.chart) self.chart.render();
-                },
+                createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
                     inline: true,
@@ -3540,27 +3635,38 @@ class Signpost2Tool extends BaseDrawing {
         };
 
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            openTextAnnotationSettings(self, event);
+        };
 
-            const manager = self.chart && self.chart.drawingManager;
-            if (manager && typeof manager.editDrawing === 'function' && !self.locked) {
-                if (typeof manager.selectDrawing === 'function') {
-                    manager.selectDrawing(self);
-                }
-                manager.editDrawing(self, event.pageX, event.pageY);
+        const handleTextDblClickEdit = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+            if (!self.locked) {
+                startInlineEdit();
             }
         };
 
-        // Use native listeners so D3 manager handlers don't override these
-        textBox.node().addEventListener('mousedown', handleMouseDown, true);
-        textBox.node().addEventListener('click', handleInlineEdit, true);
-        textBox.node().addEventListener('dblclick', handleInlineEdit, true);
+        const signpostTextNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            signpostTextNodes.push(this);
+        });
+        signpostTextNodes.forEach((n) => {
+            if (!n) return;
+            n.addEventListener('mousedown', handleMouseDown, true);
+            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('dblclick', handleTextDblClickEdit, true);
+        });
+        this.group.selectAll('.shape-border-hit').each(function() {
+            this.addEventListener('dblclick', handleOpenSettings, true);
+        });
 
         // Small circle at the anchor point
         this.group.append('circle')
@@ -3579,7 +3685,7 @@ class Signpost2Tool extends BaseDrawing {
     }
 
     setText(newText) { 
-        this.text = newText || 'add text'; 
+        this.text = newText || ''; 
         this.meta.updatedAt = Date.now();
     }
     
@@ -3778,6 +3884,12 @@ class FlagMarkTool extends BaseDrawing {
 // ============================================================================
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        TEXT_TOOL_PLACEHOLDER,
+        TEXT_TOOL_PLACEHOLDER_COLOR,
+        isTextToolPlaceholder,
+        resolveTextToolDisplay,
+        createInlineTextSaveHandler,
+        openTextAnnotationSettings,
         TextTool,
         NoteBoxTool,
         AnchoredTextTool,
@@ -3792,5 +3904,16 @@ if (typeof module !== 'undefined' && module.exports) {
         Signpost2Tool,
         SignpostTool,
         FlagMarkTool
+    };
+}
+
+if (typeof window !== 'undefined') {
+    window.DrawingTextHelpers = {
+        TEXT_TOOL_PLACEHOLDER,
+        TEXT_TOOL_PLACEHOLDER_COLOR,
+        isTextToolPlaceholder,
+        resolveTextToolDisplay,
+        createInlineTextSaveHandler,
+        openTextAnnotationSettings
     };
 }

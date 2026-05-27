@@ -270,6 +270,8 @@ function getSettingsTextInputDisplayValue(text) {
 
     if (/^add text$/i.test(t)) return '';
 
+    if (/^type here$/i.test(t)) return '';
+
     if (t === 'text') return '';
 
     return raw;
@@ -33463,6 +33465,23 @@ class InlineTextEditor {
 
         this.hideStyleEl = null;
 
+        this._placeholderMode = false;
+
+    }
+
+    _ensurePlaceholderStyles() {
+        if (typeof document === 'undefined') return;
+        if (document.getElementById('inline-text-editor-placeholder-style')) return;
+        const style = document.createElement('style');
+        style.id = 'inline-text-editor-placeholder-style';
+        style.textContent = `
+            .inline-text-editor-field[data-placeholder]:empty::before {
+                content: attr(data-placeholder);
+                color: rgba(120, 123, 134, 0.85);
+                pointer-events: none;
+            }
+        `;
+        document.head.appendChild(style);
     }
 
 
@@ -33500,6 +33519,13 @@ class InlineTextEditor {
         const textAlign = typeof opts.textAlign === 'string' ? opts.textAlign : 'left';
 
         const maxWidth = Number.isFinite(opts.maxWidth) ? opts.maxWidth : 320;
+
+        const placeholderMode = opts.placeholderMode === true
+            || (!String(initialText || '').trim() && opts.placeholderMode !== false);
+
+        this._placeholderMode = placeholderMode;
+
+        this._ensurePlaceholderStyles();
 
 
 
@@ -33601,6 +33627,22 @@ class InlineTextEditor {
 
                 .style('box-shadow', 'none');
 
+            if (typeof opts.editorBackground === 'string' && opts.editorBackground) {
+                this.editor
+                    .style('background', opts.editorBackground)
+                    .style('border-radius', '4px')
+                    .style('box-sizing', 'border-box');
+            }
+            if (typeof opts.editorPadding === 'string') {
+                this.editor.style('padding', opts.editorPadding);
+            }
+            if (Number.isFinite(opts.editorWidth) && opts.editorWidth > 0) {
+                this.editor.style('width', `${opts.editorWidth}px`);
+            }
+            if (Number.isFinite(opts.editorMinHeight) && opts.editorMinHeight > 0) {
+                this.editor.style('min-height', `${opts.editorMinHeight}px`);
+            }
+
 
 
             document.body.classList.add('text-editing');
@@ -33612,6 +33654,8 @@ class InlineTextEditor {
             const contentEl = this.editor.append('div')
 
                 .attr('contenteditable', 'true')
+
+                .attr('class', 'inline-text-editor-field')
 
                 .attr('spellcheck', 'false')
 
@@ -33653,7 +33697,9 @@ class InlineTextEditor {
 
 
 
-            if (initialText) {
+            if (placeholderMode) {
+                contentEl.attr('data-placeholder', placeholder);
+            } else if (initialText) {
 
                 if (initialText.includes('\n')) {
 
@@ -33791,7 +33837,16 @@ class InlineTextEditor {
 
             node.focus();
 
-            if (initialText) {
+            if (placeholderMode) {
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.setStart(node, 0);
+                range.collapse(true);
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+            } else if (initialText) {
 
                 // Select all existing text when re-editing (TradingView style — type to replace)
 
@@ -33809,21 +33864,19 @@ class InlineTextEditor {
 
 
 
+            this._openedAt = Date.now();
             this.clickOutsideHandler = (event) => {
-
-                if (this.editor && !this.editor.node().contains(event.target)) {
-
-                    this.save();
-
+                if (Date.now() - (this._openedAt || 0) < 450) {
+                    return;
                 }
-
+                if (this.editor && !this.editor.node().contains(event.target)) {
+                    this.save();
+                }
             };
 
             setTimeout(() => {
-
                 document.addEventListener('mousedown', this.clickOutsideHandler);
-
-            }, 100);
+            }, 150);
 
 
 
@@ -33967,7 +34020,11 @@ class InlineTextEditor {
 
         textareaNode.focus();
 
-        textareaNode.select();
+        if (placeholderMode) {
+            textareaNode.setSelectionRange(0, 0);
+        } else if (initialText) {
+            textareaNode.select();
+        }
 
         
 
@@ -34029,7 +34086,11 @@ class InlineTextEditor {
 
             }
 
-            this.onSave(text, confirmed);
+            const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
+            const isPlaceholder = helpers
+                ? helpers.isTextToolPlaceholder(text)
+                : !String(text || '').trim();
+            this.onSave(isPlaceholder ? '' : text, confirmed);
 
         }
 

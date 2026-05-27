@@ -565,6 +565,7 @@ const V9_ICONS_WITHOUT_TEXT_TAB = (() => {
     "crossLine", "polyline", "pathTool", "curve", "doubleCurve",
     "triangle", "arcShape", "ellipse", "circle",
     "channel", "regressionCh", "flatChannel", "disjointCh", "pitchfork",
+    "priceNote",
   ]);
   return s;
 })();
@@ -1884,7 +1885,6 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
   }
   if (t === "price-note") {
     applyCommon();
-    applyTextBlock();
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor || "#787b86") : "none";
     if (txt.lineColor != null) s.stroke = txt.lineColor;
@@ -9666,7 +9666,13 @@ const TalariaV8bLive = () => {
       setTxtName(txtSubTool.label);
       setTxtSettTab(txtSubTool.icon === "emoji" ? "coordinates" : "style");
     }
-  }, [txtSubTool.label, tool, tlBarSelected, tlBarDrawingGroup]);
+  }, [txtSubTool.label, txtSubTool.icon, tool, tlBarSelected, tlBarDrawingGroup]);
+
+  useEffect(() => {
+    if (txtSettOpen && txtSubTool.icon === "priceNote" && txtSettTab === "text") {
+      setTxtSettTab("style");
+    }
+  }, [txtSettOpen, txtSubTool.icon, txtSettTab]);
 
   // Keep color picker anchored to its tl bar button while the bar is being dragged
   useEffect(() => {
@@ -12679,6 +12685,7 @@ const TalariaV8bLive = () => {
         if (group === 'text') {
           closeIndSett();
           setTxtSettPos({ x: px, y: py });
+          if (drawing.type === 'price-note') setTxtSettTab('style');
           setTxtSettOpen(true);
         } else if (drawing.type === 'anchored-vwap') {
           closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
@@ -17957,8 +17964,8 @@ const TalariaV8bLive = () => {
             onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="pin" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.pinLabelColor,borderRadius:1}}/></div>}
           </TxBtn>}
-          {/* text color button — hidden for emoji */}
-          {!["emoji","signpost","flag","image"].includes(txtSubTool.icon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
+          {/* text color button — hidden for emoji, price note (auto price label) */}
+          {!["emoji","signpost","flag","image","priceNote"].includes(txtSubTool.icon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.textColor||'#ffffff');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtTextColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:16,fontWeight:800,color:col,lineHeight:1,fontFamily:F}}>A</span><div style={{width:12,height:2,background:txtStyle.textColor,borderRadius:1}}/></div>}
           </TxBtn>}
@@ -18131,7 +18138,7 @@ const TalariaV8bLive = () => {
         const hasCoords = isNote || isPriceNote || isCallout || isComment || isPin || isPriceLabel || isSignpost || isFlag || isEmoji;
         const txtTabs = isEmoji
           ? [["coordinates","Coordinates"],["visibility","Visibility"]]
-          : [["style","Style"],...((isPriceNote||isPin||isSignpost)?[["text","Text"]]:[]),...(hasCoords?[["coordinates","Coordinates"]]:[]),["visibility","Visibility"]];
+          : [["style","Style"],...((isPin||isSignpost)?[["text","Text"]]:[]),...(hasCoords?[["coordinates","Coordinates"]]:[]),["visibility","Visibility"]];
         const txtTabIdx=txtTabs.findIndex(([id])=>id===txtSettTab);
         return (
         <div data-sdrop="1"
@@ -18412,71 +18419,54 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Wrap Text — basic text tool only */}
-              {!isNote && !isComment && !isPin && !isSignpost && !isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
-                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
-              </div>}
-            </>}
-            {/* ── TEXT TAB (priceNote and pin) ── */}
-            {txtSettTab==="text" && (isPriceNote||isPin||isSignpost) && <>
+              {/* Price Note — label color/size (price value is automatic; no Text tab) */}
               {isPriceNote && <>
-                <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>TEXT</div>
-                <div style={{marginBottom:16}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Text</span>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <TxtSwatch ck="txtTextColor" val={txtStyle.textColor}/>
-                      <div style={{display:"flex",gap:4}}>
-                        {[["txt-bold2",txtStyle.bold,()=>setTxtStyle(s=>({...s,bold:!s.bold})),{fontWeight:800,fontSize:14},"B"],
-                          ["txt-italic2",txtStyle.italic,()=>setTxtStyle(s=>({...s,italic:!s.italic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
-                        ].map(([hk,isAct,toggle,extra,label])=>{
-                          const isH=hov===hk;
-                          return (
-                            <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
-                              style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                      background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
-                                      cursor:"default",transition:"background 0.12s",
-                                      color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
-                              {label}
-                              {isAct&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
-                              {!isAct&&isH&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
-                            </div>
-                          );
-                        })}
+                <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10,marginTop:4}}>PRICE LABEL</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",marginBottom:16}}>
+                  <span style={{fontSize:12,color:c.ts}}>Label</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <TxtSwatch ck="txtTextColor" val={txtStyle.textColor}/>
+                    <div style={{position:"relative"}}>
+                      <div onClick={e=>{e.stopPropagation();setTxtSizeOpen(v=>!v);}}
+                        onMouseEnter={()=>setHov("txtPnSzBtn")} onMouseLeave={()=>setHov(null)}
+                        style={{height:26,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",
+                                background:txtSizeOpen?"rgba(74,106,255,0.08)":hov==="txtPnSzBtn"?c.hv:"transparent",
+                                cursor:"default",transition:"background 0.12s"}}>
+                        <span style={{fontSize:12,color:txtSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
+                        <I n="chevDown" s={9} cl={txtSizeOpen?c.acL:c.ts}/>
                       </div>
+                      {txtSizeOpen && (
+                        <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                          style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:9200,width:52,
+                                  background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
+                                  animation:"tlrDropIn 0.15s ease"}}>
+                          <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                          {txtSizes.map(sz=>{
+                            const isA=txtStyle.fontSize===sz; const isH=hov===`txtpnsz-${sz}`;
+                            return (
+                              <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtSizeOpen(false);}}
+                                onMouseEnter={()=>setHov(`txtpnsz-${sz}`)} onMouseLeave={()=>setHov(null)}
+                                style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
+                                        background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
+                                <span style={{fontSize:12,color:isA?c.acL:isH?c.tx:c.ts,fontWeight:isA?700:500}}>{sz}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-                <div style={{marginTop:8,marginBottom:16}}>
-                  <textarea value={txtStyle.content} onChange={e=>setTxtStyle(s=>({...s,content:e.target.value}))}
-                    onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
-                    placeholder="Enter text…"
-                    style={{width:"100%",height:68,resize:"none",background:"rgba(140,160,255,0.05)",
-                            border:"1px solid rgba(140,160,255,0.2)",outline:"none",color:c.tx,fontSize:13,fontFamily:F,
-                            padding:"6px 8px",boxSizing:"border-box",
-                            fontStyle:txtStyle.italic?"italic":"normal",fontWeight:txtStyle.bold?700:400}}/>
-                </div>
-                <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>ALIGNMENT</div>
-                <div style={{marginBottom:16}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                    <span style={{fontSize:12,color:c.ts}}>Horizontal</span>
                     <div style={{display:"flex",gap:4}}>
-                      {[["left",<svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[0,6,10,6],[0,10,12,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>,"txt-ha2-left"],
-                        ["center",<svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[2,6,12,6],[1,10,13,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>,"txt-ha2-center"],
-                        ["right",<svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[4,6,14,6],[2,10,14,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>,"txt-ha2-right"]
-                      ].map(([v,ico,hk])=>{
-                        const isAct=txtStyle.horizAlign===v; const isH=hov===hk;
+                      {[["txt-pn-bold",txtStyle.bold,()=>setTxtStyle(s=>({...s,bold:!s.bold})),{fontWeight:800,fontSize:14},"B"],
+                        ["txt-pn-italic",txtStyle.italic,()=>setTxtStyle(s=>({...s,italic:!s.italic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                      ].map(([hk,isAct,toggle,extra,label])=>{
+                        const isH=hov===hk;
                         return (
-                          <div key={v} onClick={()=>setTxtStyle(s=>({...s,horizAlign:v}))}
-                            onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
+                          <div key={hk} onClick={toggle} onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                     background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
-                                    cursor:"default",color:isAct?c.acL:isH?c.tx:c.ts,transition:"background 0.12s, color 0.12s"}}>
-                            {ico}
-                            <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:isAct?"70%":"50%",height:isAct?2:1,
-                              background:isAct?`linear-gradient(90deg,transparent,${c.acL},transparent)`:isH?`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`:"transparent",
-                              boxShadow:isAct?`0 0 6px ${c.acG}`:"none",pointerEvents:"none",
-                              transition:"background 0.15s,width 0.15s,height 0.15s,box-shadow 0.15s"}}/>
+                                    cursor:"default",transition:"background 0.12s",
+                                    color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,...extra}}>
+                            {label}
                           </div>
                         );
                       })}
@@ -18484,7 +18474,13 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>}
-              {(isPin||isSignpost) && <>
+              {/* Wrap Text — basic text tool only */}
+              {!isNote && !isComment && !isPin && !isSignpost && !isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
+                {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
+              </div>}
+            </>}
+            {/* ── TEXT TAB (pin, signpost) ── */}
+            {txtSettTab==="text" && (isPin||isSignpost) && <>
                 <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>FORMATTING</div>
                 <div style={{marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
@@ -18553,7 +18549,6 @@ const TalariaV8bLive = () => {
                               fontStyle:txtStyle.italic?"italic":"normal",fontWeight:txtStyle.bold?700:400}}/>
                   </div>
                 </div>
-              </>}
             </>}
             {/* ── COORDINATES TAB (note tool only) ── */}
             {txtSettTab==="coordinates" && (()=>{
