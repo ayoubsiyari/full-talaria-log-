@@ -3652,7 +3652,7 @@ class Signpost2Tool extends BaseDrawing {
             .style('pointer-events', 'none');
 
         this.group.append('line')
-            .attr('class', 'shape-border-hit')
+            .attr('class', 'shape-border-hit signpost-stem-hit')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x1)
@@ -3687,9 +3687,9 @@ class Signpost2Tool extends BaseDrawing {
         const boxX = x1 - boxWidth / 2;
         const boxY = lineEndY + 5;
 
-        // Background rectangle for text
-        this.group.append('rect')
-            .attr('class', 'shape-fill signpost-label-fill')
+        // Label box (pin-style hit target: click to edit, dblclick for settings)
+        const labelBox = this.group.append('rect')
+            .attr('class', 'shape-fill note-body-hit signpost-label-fill')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -3698,32 +3698,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('stroke', hasTextBorder ? textBorderColor : 'none')
             .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        this.group.append('rect')
-            .attr('class', 'signpost-label-hit')
-            .attr('x', boxX)
-            .attr('y', boxY)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'transparent')
-            .attr('stroke', 'none')
-            .attr('rx', cornerRadius)
             .style('pointer-events', 'all')
-            .style('cursor', 'move');
-
-        this.group.append('rect')
-            .attr('class', 'shape-border-hit signpost-label-chrome')
-            .attr('x', boxX)
-            .attr('y', boxY)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 12)
-            .attr('rx', cornerRadius)
-            .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
         // Text
@@ -3831,7 +3806,7 @@ class Signpost2Tool extends BaseDrawing {
             );
         };
 
-        const handleTextClick = (event) => {
+        const handleInlineEdit = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -3843,23 +3818,6 @@ class Signpost2Tool extends BaseDrawing {
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
-            }
-
-            const now = Date.now();
-            const timeSinceLastClick = now - (self._lastClickTime || 0);
-            self._lastClickTime = now;
-
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
-                return;
-            }
-
-            const manager = self.chart && self.chart.drawingManager;
-            if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
-                }
-                return;
             }
 
             clickTimer = setTimeout(() => {
@@ -3870,32 +3828,7 @@ class Signpost2Tool extends BaseDrawing {
             }, CLICK_DELAY);
         };
 
-        const handleBodyClick = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-
-            if (moved) {
-                moved = false;
-                return;
-            }
-
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-
-            const manager = self.chart && self.chart.drawingManager;
-            if (!self.selected) {
-                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
-                    manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
-                }
-            }
-        };
-
         const handleOpenSettings = (event) => {
-            event.stopPropagation();
-            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -3910,7 +3843,6 @@ class Signpost2Tool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
-            self._lastClickTime = 0;
             if (!self.locked) {
                 startInlineEdit();
             }
@@ -3923,17 +3855,17 @@ class Signpost2Tool extends BaseDrawing {
         signpostTextNodes.forEach((n) => {
             if (!n) return;
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleTextClick, true);
+            n.addEventListener('click', handleInlineEdit, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
-        this.group.selectAll('.signpost-label-hit').each(function() {
+        if (labelBox && labelBox.node()) {
+            const boxNode = labelBox.node();
+            boxNode.addEventListener('mousedown', handleMouseDown, true);
+            boxNode.addEventListener('click', handleInlineEdit, true);
+            boxNode.addEventListener('dblclick', handleOpenSettings, true);
+        }
+        this.group.selectAll('.signpost-stem-hit').each(function() {
             this.addEventListener('mousedown', handleMouseDown, true);
-            this.addEventListener('click', handleBodyClick, true);
-            this.addEventListener('dblclick', handleOpenSettings, true);
-        });
-        this.group.selectAll('.shape-border-hit').each(function() {
-            this.addEventListener('mousedown', handleMouseDown, true);
-            this.addEventListener('click', handleBodyClick, true);
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
