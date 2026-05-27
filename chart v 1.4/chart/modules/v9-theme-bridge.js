@@ -99,6 +99,13 @@
     return resolveV9Tz(tzLabel);
   }
 
+  function v9CandleBorderColorsDistinct(settings) {
+    if (!settings) return false;
+    var norm = function (c) { return String(c == null ? '' : c).trim().toLowerCase(); };
+    return norm(settings.bullBorder) !== norm(settings.bullBody)
+      || norm(settings.bearBorder) !== norm(settings.bearBody);
+  }
+
   /**
    * @param {object} settings V9 settings state (same shape as TalariaV8bLive useState)
    * @returns {boolean} true if chart was ready and sync ran; false if window.chart not ready
@@ -147,6 +154,11 @@
     }
     if (settings.unifiedBarColorVal && cs.unifiedBarColor !== settings.unifiedBarColorVal) {
       cs.unifiedBarColor = settings.unifiedBarColorVal;
+      changed = true;
+    }
+    var wantBorders = v9CandleBorderColorsDistinct(settings) || cs.showCandleBorders !== false;
+    if (cs.showCandleBorders !== wantBorders) {
+      cs.showCandleBorders = wantBorders;
       changed = true;
     }
     var p = resolveV9Precision(settings.precision);

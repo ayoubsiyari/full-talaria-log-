@@ -81,6 +81,13 @@ const LEGACY_V9_TIMEZONE_LABELS = {
 };
 
 /** Legacy UI labels or any valid IANA zone id stored from Settings → Time zone */
+function v9CandleBorderColorsDistinct(settings) {
+  if (!settings) return false;
+  const norm = (c) => String(c ?? "").trim().toLowerCase();
+  return norm(settings.bullBorder) !== norm(settings.bullBody)
+    || norm(settings.bearBorder) !== norm(settings.bearBody);
+}
+
 export function resolveV9TimezoneToId(value) {
   if (value == null || value === "") return "UTC";
   const v = String(value).trim();
@@ -166,6 +173,11 @@ export function applyV9ThemeSettingsToChart(settings) {
   }
   if (settings.unifiedBarColorVal && cs.unifiedBarColor !== settings.unifiedBarColorVal) {
     cs.unifiedBarColor = settings.unifiedBarColorVal;
+    changed = true;
+  }
+  const wantBorders = v9CandleBorderColorsDistinct(settings) || cs.showCandleBorders !== false;
+  if (cs.showCandleBorders !== wantBorders) {
+    cs.showCandleBorders = wantBorders;
     changed = true;
   }
   const p = resolveV9Precision(settings.precision);

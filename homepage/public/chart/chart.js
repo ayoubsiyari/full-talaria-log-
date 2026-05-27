@@ -701,7 +701,7 @@ class Chart {
             unifiedBarColorEnabled: false,
             unifiedBarColor: '#089981',
             showCandleBody: true,
-            showCandleBorders: false,
+            showCandleBorders: true,
             showCandleWick: true,
             colorBasedOnPreviousClose: false,
 
@@ -5870,7 +5870,6 @@ class Chart {
         if (cs.unifiedBarColor) {
             cs.unifiedBarColor = normalizeColor(cs.unifiedBarColor, legacyUp, '#089981');
         }
-        cs.showCandleBorders = false;
         if (bg === '#000000' || bg === '#000') {
             cs.backgroundColor = '#131722';
         }
@@ -7068,7 +7067,7 @@ class Chart {
         // Initialize settings if not present (already set in constructor)
         if (typeof this.chartSettings.colorBasedOnPreviousClose === 'undefined') this.chartSettings.colorBasedOnPreviousClose = false;
         if (typeof this.chartSettings.showCandleBody === 'undefined') this.chartSettings.showCandleBody = true;
-        if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = false;
+        if (typeof this.chartSettings.showCandleBorders === 'undefined') this.chartSettings.showCandleBorders = true;
         if (typeof this.chartSettings.showCandleWick === 'undefined') this.chartSettings.showCandleWick = true;
         if (typeof this.chartSettings.unifiedBarColorEnabled === 'undefined') this.chartSettings.unifiedBarColorEnabled = false;
         if (typeof this.chartSettings.unifiedBarColor === 'undefined') this.chartSettings.unifiedBarColor = this.chartSettings.bodyUpColor || '#089981';
@@ -18436,6 +18435,36 @@ class Chart {
         return buckets.length ? buckets : null;
     }
 
+    _normalizeCandleColorKey(color) {
+        return String(color || '').trim().toLowerCase().replace(/\s+/g, '');
+    }
+
+    _candleColorsDiffer(a, b) {
+        const na = this._normalizeCandleColorKey(a);
+        const nb = this._normalizeCandleColorKey(b);
+        return !!(na && nb && na !== nb);
+    }
+
+    /** True when body outline should be stroked (V9 border swatches or hollow mode). */
+    _shouldRenderCandleBorder(bodyColor, borderColor, isHollowUp) {
+        if (isHollowUp) return true;
+        if (this._candleColorsDiffer(bodyColor, borderColor)) return true;
+        return this.chartSettings.showCandleBorders !== false;
+    }
+
+    _strokeCandleBodyBorder(bodyLeft, bodyTop, bodyWidthPx, bodyHeight, borderColor, bodyColor, isHollowUp) {
+        if (!this._shouldRenderCandleBorder(bodyColor, borderColor, isHollowUp)) return;
+        if (bodyWidthPx < 2 || bodyHeight < 1) return;
+        this.ctx.strokeStyle = borderColor;
+        this.ctx.lineWidth = isHollowUp ? 2 : 1;
+        this.ctx.strokeRect(
+            bodyLeft + 0.5,
+            bodyTop + 0.5,
+            Math.max(1, bodyWidthPx - 1),
+            Math.max(1, bodyHeight - 1)
+        );
+    }
+
     /**
      * Draw Candlesticks (regular or hollow)
      */
@@ -18550,26 +18579,14 @@ class Chart {
                             this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                         }
                     }
-                    
-                    // Draw border on top (hollow mode only — TV solid candles have no outline)
-                    if (shouldBeHollow && (this.chartSettings.showCandleBorders !== false || shouldBeHollow)) {
-                        this.ctx.strokeStyle = borderColor;
-                        this.ctx.lineWidth = 2;
-                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
-                    }
+                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, shouldBeHollow);
                 } else {
                     // Down candle - filled with body color (if enabled)
                     if (this.chartSettings.showCandleBody !== false) {
                         this.ctx.fillStyle = bodyColor;
                         this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                     }
-                    
-                    // Optional border (off by default for TradingView-style solid bars)
-                    if (this.chartSettings.showCandleBorders !== false && bodyWidthPx >= 3) {
-                        this.ctx.strokeStyle = borderColor;
-                        this.ctx.lineWidth = 1;
-                        this.ctx.strokeRect(bodyLeft + 0.5, bTop + 0.5, bodyWidthPx - 1, bH - 1);
-                    }
+                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, false);
                 }
             }
             drawn++;
