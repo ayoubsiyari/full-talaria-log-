@@ -1774,6 +1774,7 @@ function v9TxtStylePatchFromDrawing(d) {
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
     out.borderColor = s.borderColor ?? out.borderColor;
     out.borderOn = !!(s.borderColor && s.borderColor !== "none" && s.borderColor !== "transparent");
+    out.wrapText = !!s.wrapText;
   } else if (t === "comment") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
@@ -1835,6 +1836,10 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 280;
+    }
     return;
   }
   if (t === "comment") {
@@ -18505,7 +18510,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>}
-              {/* Wrap Text — basic text tool only */}
+              {/* Wrap Text — text + callout */}
               {!isNote && !isComment && !isPin && !isSignpost && !isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
                 {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
               </div>}

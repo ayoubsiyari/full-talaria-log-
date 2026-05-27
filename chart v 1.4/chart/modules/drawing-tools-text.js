@@ -116,6 +116,24 @@ class TextTool extends BaseDrawing {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         ctx.font = `${fontStyle || 'normal'} ${fontWeight || 'normal'} ${fontSize}px ${fontFamily || 'Roboto, sans-serif'}`;
+        const measure = (str) => {
+            try { return ctx.measureText(str || '').width; } catch (e) { return (str || '').length * fontSize * 0.55; }
+        };
+        const breakToken = (token) => {
+            const chunks = [];
+            let chunk = '';
+            for (const ch of token) {
+                const test = chunk + ch;
+                if (measure(test) > maxWidth && chunk) {
+                    chunks.push(chunk);
+                    chunk = ch;
+                } else {
+                    chunk = test;
+                }
+            }
+            if (chunk) chunks.push(chunk);
+            return chunks.length ? chunks : [''];
+        };
         const out = [];
         const paragraphs = String(rawText || '').split('\n');
         paragraphs.forEach((para) => {
@@ -126,15 +144,16 @@ class TextTool extends BaseDrawing {
             }
             let line = '';
             words.forEach((word) => {
-                const test = line ? `${line} ${word}` : word;
-                let w = 0;
-                try { w = ctx.measureText(test).width; } catch (e) { w = test.length * fontSize * 0.55; }
-                if (w > maxWidth && line) {
-                    out.push(line);
-                    line = word;
-                } else {
-                    line = test;
-                }
+                const tokens = measure(word) > maxWidth ? breakToken(word) : [word];
+                tokens.forEach((token) => {
+                    const test = line ? `${line} ${token}` : token;
+                    if (measure(test) > maxWidth && line) {
+                        out.push(line);
+                        line = token;
+                    } else {
+                        line = test;
+                    }
+                });
             });
             if (line) out.push(line);
         });
@@ -2471,6 +2490,8 @@ class CalloutTool extends BaseDrawing {
         this.style.fontFamily = style.fontFamily || 'Arial, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
+        this.style.wrapText = !!style.wrapText;
+        this.style.maxWidth = style.maxWidth || 280;
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -2512,21 +2533,31 @@ class CalloutTool extends BaseDrawing {
             catch(e) { return (str || '').length * _cFontSize * 0.6; }
         };
 
-        // Split only on explicit newlines — no auto word-wrap
         const calloutDisplay = resolveTextToolDisplay(this.text);
-        const calloutWrapLines = (rawText) => {
+        const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
+        const calloutSplitLines = (rawText) => {
             const lines = String(rawText || '').split('\n');
             return lines.length ? lines : [''];
         };
 
-        const wrappedLines = calloutWrapLines(calloutDisplay.text);
+        const wrappedLines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                calloutDisplay.text,
+                innerMaxW,
+                _cFontSize,
+                _cFontFamily,
+                _cFontWeight,
+                _cFontStyle
+            )
+            : calloutSplitLines(calloutDisplay.text);
         const lineHeight = this.style.fontSize * 1.3;
 
-        // Measure actual max line width (no cap — box grows with text)
         let maxLineW = 40;
         wrappedLines.forEach(l => { const w = measureW(l || ' '); if (w > maxLineW) maxLineW = w; });
 
-        const bubbleWidth = Math.max(maxLineW + padding * 2, minWidth);
+        const bubbleWidth = this.style.wrapText
+            ? Math.max(minWidth, Math.min(maxLineW + padding * 2, maxBubbleWidth))
+            : Math.max(maxLineW + padding * 2, minWidth);
         const bubbleHeight = Math.max(wrappedLines.length * lineHeight + padding * 2, minHeight);
 
         // Bubble positioned at second point (left-aligned, vertically centered)
