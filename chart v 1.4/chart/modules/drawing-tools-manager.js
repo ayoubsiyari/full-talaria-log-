@@ -4422,12 +4422,12 @@ class DrawingToolsManager {
     _isTextAnnotationInteractionTarget(rawTargetNode) {
         if (!rawTargetNode) return false;
         if (rawTargetNode.closest
-            && rawTargetNode.closest('.inline-editable-text, .text-body-hit, .note-body-hit')) {
+            && rawTargetNode.closest('.inline-editable-text, .text-body-hit, .note-body-hit, .signpost-label-hit')) {
             return true;
         }
         try {
             const sel = d3.select(rawTargetNode);
-            if (sel.classed('inline-editable-text') || sel.classed('text-body-hit') || sel.classed('note-body-hit')) {
+            if (sel.classed('inline-editable-text') || sel.classed('text-body-hit') || sel.classed('note-body-hit') || sel.classed('signpost-label-hit')) {
                 return true;
             }
         } catch (_) { /* ignore */ }

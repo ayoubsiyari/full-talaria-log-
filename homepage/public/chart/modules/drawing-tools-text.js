@@ -3626,6 +3626,8 @@ class Signpost2Tool extends BaseDrawing {
 
         this._prepareRenderGroup(container, 'drawing signpost-2', renderOpts);
         this._clearDrawingLabels(scales);
+        this._lastContainer = container;
+        this._lastScales = scales;
 
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
@@ -3686,7 +3688,8 @@ class Signpost2Tool extends BaseDrawing {
         const boxY = lineEndY + 5;
 
         // Background rectangle for text
-        const textBox = this.group.append('rect')
+        this.group.append('rect')
+            .attr('class', 'shape-fill signpost-label-fill')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -3695,12 +3698,23 @@ class Signpost2Tool extends BaseDrawing {
             .attr('stroke', hasTextBorder ? textBorderColor : 'none')
             .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
-            .attr('class', 'shape-fill inline-editable-text')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
         this.group.append('rect')
-            .attr('class', 'shape-border-hit')
+            .attr('class', 'signpost-label-hit')
+            .attr('x', boxX)
+            .attr('y', boxY)
+            .attr('width', boxWidth)
+            .attr('height', boxHeight)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .attr('rx', cornerRadius)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
+        this.group.append('rect')
+            .attr('class', 'shape-border-hit signpost-label-chrome')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -3717,7 +3731,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', x1)
             .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
-            .attr('fill', signDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.fill, signDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -3750,15 +3764,20 @@ class Signpost2Tool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
+            if (event.button !== 0) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -3778,10 +3797,17 @@ class Signpost2Tool extends BaseDrawing {
                 manager.selectDrawing(self);
             }
 
+            const editDisplay = resolveTextToolDisplay(self.text);
+            const editFill = resolveAnnotationTextFill(
+                self.style.textColor,
+                self.style.fill,
+                editDisplay.isPlaceholder,
+            );
+
             editor.show(
                 x,
                 y,
-                (self.text && self.text !== 'add text') ? self.text : '',
+                self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 {
@@ -3790,29 +3816,86 @@ class Signpost2Tool extends BaseDrawing {
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     fontStyle: self.style.fontStyle || 'normal',
-                    color: self.style.textColor,
+                    color: editFill,
                     textAlign: 'center',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    editorBackground: self.style.fill,
+                    editorPadding: '4px 8px',
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        if (self._lastContainer && self._lastScales) {
+                            self.render(self._lastContainer, self._lastScales);
+                        }
+                    }
                 }
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
 
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
         };
 
+        const handleBodyClick = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
+        };
+
         const handleOpenSettings = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -3827,6 +3910,7 @@ class Signpost2Tool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            self._lastClickTime = 0;
             if (!self.locked) {
                 startInlineEdit();
             }
@@ -3839,10 +3923,17 @@ class Signpost2Tool extends BaseDrawing {
         signpostTextNodes.forEach((n) => {
             if (!n) return;
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('click', handleTextClick, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
+        this.group.selectAll('.signpost-label-hit').each(function() {
+            this.addEventListener('mousedown', handleMouseDown, true);
+            this.addEventListener('click', handleBodyClick, true);
+            this.addEventListener('dblclick', handleOpenSettings, true);
+        });
         this.group.selectAll('.shape-border-hit').each(function() {
+            this.addEventListener('mousedown', handleMouseDown, true);
+            this.addEventListener('click', handleBodyClick, true);
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
