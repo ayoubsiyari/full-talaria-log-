@@ -59,6 +59,13 @@ function createInlineTextSaveHandler(drawing) {
         }
         drawing.setText(normalized);
         if (drawing.chart) drawing.chart.render();
+        if (typeof window !== 'undefined') {
+            try {
+                window.dispatchEvent(new CustomEvent('v9TxtDrawingContentChanged', {
+                    detail: { id: drawing.id, text: normalized },
+                }));
+            } catch (_) {}
+        }
     };
 }
 

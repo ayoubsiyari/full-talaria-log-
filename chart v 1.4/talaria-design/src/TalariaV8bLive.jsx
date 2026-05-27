@@ -1817,13 +1817,17 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
   };
   const applyTextBlock = () => {
     if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
-    if (txt.content != null) {
-      d.text = String(txt.content);
-      if (typeof d.setText === "function") {
-        try {
-          d.setText(d.text);
-        } catch (_) {}
-      }
+    if (txt.content == null) return;
+    const next = String(txt.content);
+    const cur = typeof d.text === "string" ? d.text : "";
+    if (next === cur) return;
+    // React txtStyle.content defaults to ""; don't wipe text typed only on the chart.
+    if (next.trim() === "" && cur.trim() !== "") return;
+    d.text = next;
+    if (typeof d.setText === "function") {
+      try {
+        d.setText(d.text);
+      } catch (_) {}
     }
   };
   if (t === "callout") {
@@ -12388,6 +12392,28 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("v9DrawingTemplateApplied", onTemplateApplied);
   }, []);
 
+  useEffect(() => {
+    const onTxtContent = (ev) => {
+      const id = ev?.detail?.id;
+      const text = ev?.detail?.text;
+      if (id == null || typeof text !== "string") return;
+      try {
+        let matched = false;
+        collectV9BridgeTargets().forEach(({ d }) => {
+          if (d && d.id === id) matched = true;
+        });
+        if (!matched) return;
+        suppressTxtForwardBridge.current = true;
+        setTxtStyle((s) => ({ ...s, content: text }));
+        requestAnimationFrame(() => {
+          suppressTxtForwardBridge.current = false;
+        });
+      } catch (_) {}
+    };
+    window.addEventListener("v9TxtDrawingContentChanged", onTxtContent);
+    return () => window.removeEventListener("v9TxtDrawingContentChanged", onTxtContent);
+  }, []);
+
   // Legacy chart.js updates drawing geometry/style on canvas (drag, fib edits, etc.) without touching
   // React `tlStyle`. Re-read the live selection whenever drawings persist so coord/visibility/fib
   // fields stay in sync — otherwise the style bridge would push stale coordinates on the next
@@ -13967,6 +13993,11 @@ const TalariaV8bLive = () => {
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        try {
+          if (dm.textEditor && typeof dm.textEditor.hide === "function") {
+            dm.textEditor.hide();
+          }
+        } catch (_) {}
         const tb = dm.toolbar;
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
