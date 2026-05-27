@@ -1778,8 +1778,7 @@ function v9TxtStylePatchFromDrawing(d) {
   } else if (t === "comment") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    out.borderColor = s.borderColor ?? out.borderColor;
-    out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+    out.borderOn = false;
   }
 
   if (t === "pin") {
@@ -1846,7 +1845,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyCommon();
     applyTextBlock();
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
+    s.borderColor = "transparent";
     return;
   }
   if (t === "text") {
@@ -18444,8 +18443,8 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Border row — hidden for signpost, flag, image, price note */}
-              {!isSignpost && !isFlag && !isImage && !isPriceNote && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {/* Border row — hidden for signpost, flag, image, price note, comment */}
+              {!isSignpost && !isFlag && !isImage && !isPriceNote && !isComment && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 {TlChk(txtStyle.borderOn,"txtBorderChk",null,()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn})))}
                 <span onClick={()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn}))}
                   style={{fontSize:12,color:txtStyle.borderOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Border</span>

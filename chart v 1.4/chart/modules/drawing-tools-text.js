@@ -2927,12 +2927,23 @@ class CommentTool extends BaseDrawing {
             .style('cursor', 'default');
 
         this.group.append('path')
-            .attr('class', 'shape-border-hit')
+            .attr('class', 'shape-border-hit comment-body-hit')
             .attr('d', bubblePath)
             .attr('fill', 'none')
             .attr('stroke', 'transparent')
             .attr('stroke-width', 12)
             .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.insert('rect', ':first-child')
+            .attr('class', 'comment-body-hit')
+            .attr('x', bubbleX)
+            .attr('y', bubbleY)
+            .attr('width', w)
+            .attr('height', h)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
 
         // Calculate text position based on alignment
@@ -2971,7 +2982,8 @@ class CommentTool extends BaseDrawing {
 
         // In-place live updater — avoids full re-render, updates paths + tspans directly
         self._updateCommentBubble = () => {
-            const lNew = (self.text || 'text').split('\n');
+            const liveDisplay = resolveTextToolDisplay(self.text);
+            const lNew = liveDisplay.text.split('\n');
             let mLW = minWidth - padding * 2;
             lNew.forEach(l => { const lw = measureW(l || ' '); if (lw > mLW) mLW = lw; });
             const wN = Math.max(mLW + padding * 2, minWidth);
@@ -2980,6 +2992,11 @@ class CommentTool extends BaseDrawing {
             const bY = centerY - hN / 2;
             const np = `M ${bX+r} ${bY} L ${bX+wN-r} ${bY} Q ${bX+wN} ${bY} ${bX+wN} ${bY+r} L ${bX+wN} ${bY+hN-r} Q ${bX+wN} ${bY+hN} ${bX+wN-r} ${bY+hN} L ${bX+r} ${bY+hN} L ${bX} ${bY+hN} L ${bX} ${bY+r} Q ${bX} ${bY} ${bX+r} ${bY} Z`;
             self.group.selectAll('path').attr('d', np);
+            self.group.selectAll('rect.comment-body-hit')
+                .attr('x', bX)
+                .attr('y', bY)
+                .attr('width', wN)
+                .attr('height', hN);
             let tXN = bX + wN / 2, tAN = 'middle';
             if (self.style.textAlign === 'left')  { tXN = bX + padding;       tAN = 'start'; }
             if (self.style.textAlign === 'right') { tXN = bX + wN - padding;  tAN = 'end'; }
@@ -3029,6 +3046,7 @@ class CommentTool extends BaseDrawing {
         const handleMouseUp = () => {
             cleanupDragListeners();
             downPos = null;
+            moved = false;
         };
 
         const handleMouseDown = (event) => {
@@ -3063,6 +3081,7 @@ class CommentTool extends BaseDrawing {
                     fontSize: `${self.style.fontSize || 14}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
+                    fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
                     noWrap: true,
@@ -3078,7 +3097,7 @@ class CommentTool extends BaseDrawing {
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -3092,10 +3111,52 @@ class CommentTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
+        };
+
+        const handleBodyClick = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
         };
 
         const handleOpenSettings = (event) => {
@@ -3113,6 +3174,7 @@ class CommentTool extends BaseDrawing {
                 clearTimeout(clickTimer);
                 clickTimer = null;
             }
+            self._lastClickTime = 0;
             if (!self.locked) {
                 startInlineEdit();
             }
@@ -3125,10 +3187,12 @@ class CommentTool extends BaseDrawing {
         commentTextNodes.forEach((n) => {
             if (!n) return;
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('click', handleTextClick, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
-        this.group.selectAll('.shape-border-hit').each(function() {
+        this.group.selectAll('.comment-body-hit').each(function() {
+            this.addEventListener('mousedown', handleMouseDown, true);
+            this.addEventListener('click', handleBodyClick, true);
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
@@ -3138,7 +3202,7 @@ class CommentTool extends BaseDrawing {
     setText(newText) { this.text = newText; }
     toJSON() { return { ...super.toJSON(), text: this.text }; }
     static fromJSON(data, chart) {
-        const tool = new CalloutTool(data.points, data.style, data.text);
+        const tool = new CommentTool(data.points, data.style, data.text);
         tool.id = data.id; tool.visible = data.visible; tool.meta = data.meta; tool.chart = chart;
         return tool;
     }

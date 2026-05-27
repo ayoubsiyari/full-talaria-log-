@@ -14091,7 +14091,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                if (drawing.type !== 'signpost-2' && drawing.type !== 'flag-mark' && drawing.type !== 'price-note') {
+                if (drawing.type !== 'signpost-2' && drawing.type !== 'flag-mark' && drawing.type !== 'price-note' && drawing.type !== 'comment') {
 
                 const borderRow = document.createElement('div');
 
