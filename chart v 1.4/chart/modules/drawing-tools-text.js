@@ -25,6 +25,60 @@ function resolveTextToolDisplay(text, placeholder = TEXT_TOOL_PLACEHOLDER) {
     return { text: String(text == null ? '' : text), isPlaceholder: false };
 }
 
+function parseCssColorToRgb(color) {
+    if (!color || color === 'none' || color === 'transparent') return null;
+    const c = String(color).trim();
+    let m = c.match(/^#([0-9a-f]{3,8})$/i);
+    if (m) {
+        let h = m[1];
+        if (h.length === 3) h = h.split('').map((ch) => ch + ch).join('');
+        if (h.length >= 6) {
+            return {
+                r: parseInt(h.slice(0, 2), 16),
+                g: parseInt(h.slice(2, 4), 16),
+                b: parseInt(h.slice(4, 6), 16),
+            };
+        }
+    }
+    m = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3] };
+    return null;
+}
+
+function cssColorLuminance(color) {
+    const rgb = parseCssColorToRgb(color);
+    if (!rgb) return 0;
+    return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+}
+
+function colorsAreTooSimilar(c1, c2) {
+    const a = parseCssColorToRgb(c1);
+    const b = parseCssColorToRgb(c2);
+    if (!a || !b) return false;
+    const dr = a.r - b.r;
+    const dg = a.g - b.g;
+    const db = a.b - b.b;
+    return (dr * dr + dg * dg + db * db) < 3200;
+}
+
+/** SVG / inline-editor fill: honor textColor (incl. placeholder) and stay readable on backgroundColor. */
+function resolveAnnotationTextFill(textColor, backgroundColor, isPlaceholder) {
+    const fg = (textColor && textColor !== 'none') ? textColor : '#ffffff';
+    const bg = (backgroundColor && backgroundColor !== 'none' && backgroundColor !== 'transparent')
+        ? backgroundColor
+        : null;
+    if (bg && colorsAreTooSimilar(fg, bg)) {
+        return cssColorLuminance(bg) > 0.45 ? '#131722' : '#ffffff';
+    }
+    if (isPlaceholder && bg) {
+        return fg;
+    }
+    if (isPlaceholder) {
+        return fg || TEXT_TOOL_PLACEHOLDER_COLOR;
+    }
+    return fg;
+}
+
 /**
  * Inline editor onSave: keep drawing when user clicks away without typing.
  * Delete only when confirmed (Enter) with empty/placeholder text.
@@ -223,7 +277,8 @@ class TextTool extends BaseDrawing {
         const maxWrapWidth = Math.max(40, (this.style.maxWidth || 200) * scaleFactor);
         const display = resolveTextToolDisplay(this.text);
         if (display.isPlaceholder) {
-            textElement.attr('fill', TEXT_TOOL_PLACEHOLDER_COLOR);
+            const phBg = this.style.fill && this.style.fill !== 'none' ? this.style.fill : null;
+            textElement.attr('fill', resolveAnnotationTextFill(this.style.textColor, phBg, true));
         }
         const lines = this.style.wrapText
             ? TextTool.wrapTextLines(
@@ -746,7 +801,7 @@ class NoteBoxTool extends BaseDrawing {
         const textElement = this.group.append('text')
             .attr('x', x + this.style.padding)
             .attr('y', y - this.style.padding)
-            .attr('fill', noteboxDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, noteboxDisplay.isPlaceholder))
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -1422,7 +1477,7 @@ class NoteTool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', noteDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.fill || this.style.backgroundColor, noteDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -2643,7 +2698,7 @@ class CalloutTool extends BaseDrawing {
             .attr('x', bubbleX + padding)
             .attr('y', textStartY)
             .attr('text-anchor', 'start')
-            .attr('fill', calloutDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, calloutDisplay.isPlaceholder))
             .attr('font-size', `${this.style.fontSize}px`)
             .attr('font-family', _cFontFamily)
             .attr('font-weight', _cFontWeight)
@@ -2712,6 +2767,12 @@ class CalloutTool extends BaseDrawing {
                 manager.selectDrawing(self);
             }
 
+            const calloutEditDisplay = resolveTextToolDisplay(self.text);
+            const calloutEditFill = resolveAnnotationTextFill(
+                self.style.textColor,
+                self.style.backgroundColor,
+                calloutEditDisplay.isPlaceholder,
+            );
             editor.show(
                 editX,
                 editY,
@@ -2724,10 +2785,12 @@ class CalloutTool extends BaseDrawing {
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     fontStyle: self.style.fontStyle || 'normal',
-                    color: self.style.textColor,
+                    color: calloutEditFill,
                     textAlign: 'left',
                     noWrap: true,
                     maxWidth: self.style.maxWidth || 280,
+                    editorBackground: self.style.backgroundColor,
+                    editorPadding: '4px 8px',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
@@ -2964,7 +3027,7 @@ class CommentTool extends BaseDrawing {
             .attr('x', textX)
             .attr('y', textStartY)
             .attr('text-anchor', textAnchor)
-            .attr('fill', commentDisplay.isPlaceholder ? TEXT_TOOL_PLACEHOLDER_COLOR : this.style.textColor)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, commentDisplay.isPlaceholder))
             .attr('font-size', `${_cFontSize}px`)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
@@ -3001,7 +3064,12 @@ class CommentTool extends BaseDrawing {
             if (self.style.textAlign === 'left')  { tXN = bX + padding;       tAN = 'start'; }
             if (self.style.textAlign === 'right') { tXN = bX + wN - padding;  tAN = 'end'; }
             const tEl = self.group.select('text.inline-editable-text');
-            tEl.attr('x', tXN).attr('y', bY + padding + _cFontSize).attr('text-anchor', tAN);
+            const liveFill = resolveAnnotationTextFill(
+                self.style.textColor,
+                self.style.backgroundColor,
+                liveDisplay.isPlaceholder,
+            );
+            tEl.attr('x', tXN).attr('y', bY + padding + _cFontSize).attr('text-anchor', tAN).attr('fill', liveFill);
             tEl.selectAll('tspan').remove();
             lNew.forEach((line, i) => {
                 tEl.append('tspan').attr('x', tXN).attr('dy', i === 0 ? 0 : lineHeight).text(line || '\u00A0');
@@ -3070,6 +3138,12 @@ class CommentTool extends BaseDrawing {
                 manager.selectDrawing(self);
             }
 
+            const commentEditDisplay = resolveTextToolDisplay(self.text);
+            const commentEditFill = resolveAnnotationTextFill(
+                self.style.textColor,
+                self.style.backgroundColor,
+                commentEditDisplay.isPlaceholder,
+            );
             editor.show(
                 editX,
                 editY,
@@ -3082,10 +3156,12 @@ class CommentTool extends BaseDrawing {
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     fontStyle: self.style.fontStyle || 'normal',
-                    color: self.style.textColor,
+                    color: commentEditFill,
                     textAlign: 'left',
                     noWrap: true,
                     maxWidth: self.style.maxWidth || 280,
+                    editorBackground: self.style.backgroundColor,
+                    editorPadding: '4px 8px',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
