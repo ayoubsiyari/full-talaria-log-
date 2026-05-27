@@ -18408,8 +18408,8 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Border row — hidden for signpost, flag, image */}
-              {!isSignpost && !isFlag && !isImage && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {/* Border row — hidden for signpost, flag, image, price note */}
+              {!isSignpost && !isFlag && !isImage && !isPriceNote && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 {TlChk(txtStyle.borderOn,"txtBorderChk",null,()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn})))}
                 <span onClick={()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn}))}
                   style={{fontSize:12,color:txtStyle.borderOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Border</span>
