@@ -8,9 +8,29 @@ const PATTERN_TEXT_WEIGHT = '600';
 const PATTERN_LABEL_OFFSET_PX = 14;
 const PATTERN_VALUE_OFFSET_PX = 12;
 
+function patternSyncDefaultLabelColors(style) {
+    if (!style) return;
+    const stroke = style.stroke || style.color;
+    if (!stroke) return;
+    const text = style.textColor;
+    const lbl = style.labelTextColor;
+    const ratio = style.ratioTextColor;
+    const coupled =
+        (!text && !lbl && !ratio) ||
+        ((text === '#ffffff' || text === '#FFFFFF') && !lbl && !ratio);
+    if (coupled) {
+        style.textColor = stroke;
+        style.labelTextColor = stroke;
+        style.ratioTextColor = stroke;
+    } else if (text && !lbl) {
+        style.labelTextColor = text;
+        if (!ratio) style.ratioTextColor = text;
+    }
+}
+
 function patternLabelFill(style) {
     if (!style) return '#ffffff';
-    // V9 Label row writes `textColor`; prefer it over legacy `labelTextColor` (may still match old stroke).
+    patternSyncDefaultLabelColors(style);
     return style.textColor || style.labelTextColor || style.ratioTextColor || style.stroke || '#ffffff';
 }
 
@@ -2098,6 +2118,7 @@ class ElliottImpulseTool extends BaseDrawing {
         this.requiredPoints = 6;
         this.style.stroke = style.stroke || '#2196f3';
         this.style.strokeWidth = style.strokeWidth || 2;
+        patternSyncDefaultLabelColors(this.style);
         this.labels = ['0', '1', '2', '3', '4', '5'];
     }
 
@@ -2159,6 +2180,7 @@ class ElliottCorrectionTool extends BaseDrawing {
         this.requiredPoints = 4;
         this.style.stroke = style.stroke || '#ff5722';
         this.style.strokeWidth = style.strokeWidth || 2;
+        patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'A', 'B', 'C'];
     }
 
@@ -2220,6 +2242,7 @@ class ElliottTriangleTool extends BaseDrawing {
         this.requiredPoints = 6;
         this.style.stroke = style.stroke || '#9c27b0';
         this.style.strokeWidth = style.strokeWidth || 2;
+        patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'A', 'B', 'C', 'D', 'E'];
     }
 
@@ -2281,6 +2304,7 @@ class ElliottDoubleComboTool extends BaseDrawing {
         this.requiredPoints = 4;
         this.style.stroke = style.stroke || '#607d8b';
         this.style.strokeWidth = style.strokeWidth || 2;
+        patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'W', 'X', 'Y'];
     }
 
@@ -2342,6 +2366,7 @@ class ElliottTripleComboTool extends BaseDrawing {
         this.requiredPoints = 6;
         this.style.stroke = style.stroke || '#795548';
         this.style.strokeWidth = style.strokeWidth || 2;
+        patternSyncDefaultLabelColors(this.style);
         this.labels = ['', 'W', 'X', 'Y', 'X', 'Z'];
     }
 

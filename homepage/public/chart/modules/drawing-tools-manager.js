@@ -3921,6 +3921,9 @@ class DrawingToolsManager {
         if (drawing.group) {
             drawing.group.style('display', null);
         }
+
+        // Keep bar indices aligned with chart.data after refresh / replay restore / TF change.
+        this._syncDrawingPointsFromTimestamps(drawing);
         
         // Render with current scales AND chart instance for accurate pixel calculation
         drawing.render(this.drawingsGroup, {
@@ -6766,6 +6769,40 @@ class DrawingToolsManager {
         return `chart_drawings_${fileId}`;
     }
 
+    /** Candle series for timestamp↔index conversion — must match `chart.data` / `dataIndexToPixel`. */
+    _getDrawingConversionData() {
+        if (!this.chart || !Array.isArray(this.chart.data) || this.chart.data.length === 0) {
+            return [];
+        }
+        return this.chart.data;
+    }
+
+    _getTimestampConversionOptions(drawing) {
+        const rs = this.chart && this.chart.replaySystem;
+        if (!rs || !rs.isActive || !drawing || !drawing.type) return null;
+        const noClamp = new Set([
+            'brush', 'highlighter', 'rectangle', 'rotated-rectangle',
+            'triangle', 'ellipse', 'circle', 'arc'
+        ]);
+        if (noClamp.has(drawing.type)) return null;
+        return { replayClampToLastBar: true };
+    }
+
+    /** Re-resolve bar indices from stored timestamps using the live replay slice. */
+    _syncDrawingPointsFromTimestamps(drawing) {
+        if (!drawing || !this.chart) return;
+        if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
+        if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
+            return;
+        }
+        try {
+            const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart);
+            if (Array.isArray(resolved) && resolved.length > 0) {
+                drawing.points = resolved;
+            }
+        } catch (_) { /* ignore */ }
+    }
+
     /**
      * Save drawings to localStorage and API (hybrid approach)
      * @param {string|null} fileIdOverride — when set, persist under this dataset id (pair switch before chart.currentFileId updates).
@@ -7218,21 +7255,7 @@ class DrawingToolsManager {
                 }
             };
             
-            // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                // In replay mode, resample the FULL dataset to current timeframe
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                    // [debug removed]
-                } catch (error) {
-                    console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-                }
-            }
+            const conversionData = this._getDrawingConversionData();
             
             data.forEach((item, index) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -7250,7 +7273,12 @@ class DrawingToolsManager {
                         
                         // [debug removed]
                         // Convert to indices for rendering with correct timeframe
-                        item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
+                        item.points = CoordinateUtils.pointsFromTimestamps(
+                            originalTimestampPoints,
+                            conversionData,
+                            this.chart.currentTimeframe,
+                            this._getTimestampConversionOptions({ type: item.type })
+                        );
                     }
                     
                     const drawing = toolInfo.class.fromJSON(item, this.chart);
@@ -7260,6 +7288,7 @@ class DrawingToolsManager {
                     if (originalTimestampPoints) {
                         drawing.timestampPoints = originalTimestampPoints;
                     }
+                    this._syncDrawingPointsFromTimestamps(drawing);
                     
                     this.drawings.push(drawing);
                     this.renderDrawing(drawing);
@@ -7323,15 +7352,7 @@ class DrawingToolsManager {
                 }
             };
 
-            const replaySystem = this.chart.replaySystem;
-            const isReplayActive = replaySystem && replaySystem.isActive;
-            let conversionData = this.chart.data;
-            if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-                try {
-                    const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                    conversionData = fullResampled;
-                } catch (error) {}
-            }
+            const conversionData = this._getDrawingConversionData();
 
             data.forEach((item) => {
                 this.normalizeLegacyRangeToolPayload(item);
@@ -7345,7 +7366,12 @@ class DrawingToolsManager {
                         timestamp: p.timestamp,
                         price: p.price || p.y
                     }));
-                    item.points = CoordinateUtils.pointsFromTimestamps(originalTimestampPoints, conversionData, this.chart.currentTimeframe);
+                    item.points = CoordinateUtils.pointsFromTimestamps(
+                        originalTimestampPoints,
+                        conversionData,
+                        this.chart.currentTimeframe,
+                        this._getTimestampConversionOptions({ type: item.type })
+                    );
                 }
 
                 const drawing = toolInfo.class.fromJSON(item, this.chart);
@@ -7353,6 +7379,7 @@ class DrawingToolsManager {
                 if (originalTimestampPoints) {
                     drawing.timestampPoints = originalTimestampPoints;
                 }
+                this._syncDrawingPointsFromTimestamps(drawing);
                 this.drawings.push(drawing);
                 this.renderDrawing(drawing);
             });
@@ -7363,7 +7390,8 @@ class DrawingToolsManager {
 
             this._drawingsLoaded = true;
             try {
-                userStorage.setItem(this.getStorageKey(), JSON.stringify(data));
+                const serialized = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+                userStorage.setItem(this.getStorageKey(), JSON.stringify(serialized));
             } catch (_) { /* ignore */ }
         } catch (e) {
             console.warn('⚠️ Failed to load drawings from data', e);
@@ -7411,33 +7439,11 @@ class DrawingToolsManager {
         // [debug removed]
         // [debug removed]
         
-        // CRITICAL: In replay mode, use full raw data then resample to full timeframe data
-        // This ensures drawings with timestamps beyond current replay position are handled correctly
-        const replaySystem = this.chart.replaySystem;
-        const isReplayActive = replaySystem && replaySystem.isActive;
-        let conversionData = this.chart.data;
-        
-        if (isReplayActive && replaySystem.fullRawData && replaySystem.fullRawData.length > 0) {
-            // In replay mode, resample the FULL dataset to current timeframe
-            // This gives us all candles needed for timestamp lookup
-            try {
-                const fullResampled = this.chart.resampleData(replaySystem.fullRawData, this.chart.currentTimeframe);
-                conversionData = fullResampled;
-                // [debug removed]
-            } catch (error) {
-                console.warn('⚠️ Failed to resample full data in replay mode, using current data:', error);
-            }
-        }
-        
         // Instead of destroying and recreating, just update the points
         this.drawings.forEach((drawing, index) => {
             // Use the STORED timestamps (not recalculated ones)
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
-                // Convert timestamps back to indices for the NEW timeframe data
-                const newPoints = CoordinateUtils.pointsFromTimestamps(drawing.timestampPoints, conversionData, this.chart.currentTimeframe);
-                
-                // Update the drawing's points AND chart reference
-                drawing.points = newPoints;
+                this._syncDrawingPointsFromTimestamps(drawing);
                 drawing.chart = this.chart; // Update chart reference
                 
                 // Destroy old SVG elements

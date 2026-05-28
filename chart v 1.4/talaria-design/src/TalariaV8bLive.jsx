@@ -1000,7 +1000,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     labelBackground: !!tlStyle.labelBg,
     showLabelBackground: !!tlStyle.labelBg,
     labelBackgroundColor: tlStyle.labelBgColor,
-    textColor: tlStyle.textColor,
+    textColor:
+      legacyTool && v9IsPatternChartType(legacyTool)
+        ? v9PatternEffectiveLabelColor(tlStyle)
+        : tlStyle.textColor,
     fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
     fontWeight: tlStyle.textBold ? "bold" : "normal",
     fontStyle: tlStyle.textItalic ? "italic" : "normal",
@@ -1243,9 +1246,13 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.strokeWidth = borderOn ? Math.max(1, widthNum) : 0;
     patch.borderWidth = borderOn ? Math.max(1, parseInt(tlStyle.borderWidth, 10) || 1) : 0;
   }
-  if (legacyTool && v9IsPatternChartType(legacyTool) && tlStyle.textColor) {
-    patch.labelTextColor = tlStyle.textColor;
-    patch.ratioTextColor = tlStyle.textColor;
+  if (legacyTool && v9IsPatternChartType(legacyTool)) {
+    const labelCol = v9PatternEffectiveLabelColor(tlStyle);
+    if (labelCol) {
+      patch.textColor = labelCol;
+      patch.labelTextColor = labelCol;
+      patch.ratioTextColor = labelCol;
+    }
   }
   return patch;
 }
@@ -2073,6 +2080,34 @@ function v9IsPatternChartType(type) {
     || type === 'triangle-pattern'
     || type === 'three-drives'
     || type === 'cypher-pattern';
+}
+
+/** Pattern rail icons whose wave labels default to the same color as the line. */
+function v9IsPatternLabelSyncSubToolIcon(icon) {
+  return !!(
+    icon &&
+    V9_RAIL_ICONS_BY_GROUP.pattern.has(icon) &&
+    !["gannBox", "gannSquare", "gannFan"].includes(icon)
+  );
+}
+
+/** True when label color should follow line (fresh tool / not customized). */
+function v9PatternLabelColorCoupled(tlStyle) {
+  if (!tlStyle) return true;
+  const text = tlStyle.textColor;
+  const line = tlStyle.lineColor;
+  if (!text) return true;
+  if (text === "#ffffff" || text === "#FFFFFF") return true;
+  if (line && text === line) return true;
+  return false;
+}
+
+/** Label fill for pattern/Elliott: matches line by default, honors explicit label picks. */
+function v9PatternEffectiveLabelColor(tlStyle) {
+  if (!tlStyle) return "#ffffff";
+  const line = tlStyle.lineColor;
+  if (v9PatternLabelColorCoupled(tlStyle)) return line || tlStyle.textColor || "#ffffff";
+  return tlStyle.textColor;
 }
 
 /** chart.js `drawing.type` or legacy tool id → V9 rail group (must match `drawingTypeToPanelGroup`). */
@@ -3671,6 +3706,9 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
       regLines: mapRows(prev.regLines),
     };
   }
+  if (v9IsPatternLabelSyncSubToolIcon(subToolIcon) && v9PatternLabelColorCoupled(prev)) {
+    return { ...prev, lineColor: colorVal, textColor: colorVal };
+  }
   return { ...prev, lineColor: colorVal };
 }
 
@@ -4189,7 +4227,7 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     v9ApplyGannFanFromTlStyle(d, tlStyle);
   }
   if (v9IsPatternChartType(d.type)) {
-    const labelCol = tlStyle.textColor;
+    const labelCol = v9PatternEffectiveLabelColor(tlStyle);
     if (labelCol) {
       d.style.textColor = labelCol;
       d.style.labelTextColor = labelCol;
@@ -4323,7 +4361,8 @@ function v9TlStylePatchFromDrawing(d) {
     ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
     ...(v9IsPatternChartType(d.type)
       ? (() => {
-          const labelCol = s.textColor || s.labelTextColor || s.ratioTextColor;
+          const labelCol =
+            s.textColor || s.labelTextColor || s.ratioTextColor || s.stroke || s.color;
           return labelCol ? { textColor: labelCol } : {};
         })()
       : (s.textColor ? { textColor: s.textColor }
@@ -4847,6 +4886,12 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
     lineColor: basePatch.lineColor ?? strokeFallback,
     bgColor: bgResolved,
   };
+  if (v9IsPatternChartType(legacy)) {
+    const line = out.lineColor ?? strokeFallback;
+    if (v9PatternLabelColorCoupled({ lineColor: line, textColor: out.textColor })) {
+      out.textColor = line;
+    }
+  }
   if (v9IsClassicFibRetracementType(legacy)) {
     const savedLevels = Array.isArray(saved.levels)
       ? saved.levels

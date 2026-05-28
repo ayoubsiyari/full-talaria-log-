@@ -4515,6 +4515,9 @@ class Chart {
             if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                 this.replaySystem.applyPersistedState(backup.replay);
                 this._pendingReplayState = null;
+                if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
+                    try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
+                }
             }
         }
 
@@ -4701,6 +4704,9 @@ class Chart {
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(state.replay);
                     this._pendingReplayState = null;
+                    if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
+                        try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
+                    }
                 }
             }
 
