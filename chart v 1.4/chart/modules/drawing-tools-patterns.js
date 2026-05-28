@@ -43,6 +43,18 @@ function patternLabelFontSizeAttr(style) {
     return `${patternLabelFontSizePx(style)}px`;
 }
 
+/** Ratio tag background (XABCD etc.) — scales with `style.fontSize`. */
+function patternRatioLabelBoxMetrics(text, style) {
+    const fontSize = patternLabelFontSizePx(style);
+    const str = String(text || '');
+    const padX = Math.max(4, Math.round(fontSize * 0.35));
+    const padY = Math.max(3, Math.round(fontSize * 0.28));
+    const textWidth = str.length * fontSize * 0.58;
+    const boxWidth = Math.ceil(textWidth + padX * 2);
+    const boxHeight = Math.ceil(fontSize + padY * 2);
+    return { fontSize, boxWidth, boxHeight, topOffset: -(boxHeight / 2) };
+}
+
 class BarsPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('bars-pattern', points, style);
@@ -613,8 +625,7 @@ class XABCDPatternTool extends BaseDrawing {
 
         const placeRatioLabel = (ratio, anchorX, anchorY, x1, y1, x2, y2, preferredDistance = PATTERN_VALUE_OFFSET_PX) => {
             if (!ratio) return;
-            const boxWidth = ratio.length * 7 + 8;
-            const boxHeight = 14;
+            const { boxWidth, boxHeight, topOffset } = patternRatioLabelBoxMetrics(ratio, this.style);
             const primaryOffset = getPerpendicularOffset(x1, y1, x2, y2, preferredDistance);
             const secondaryOffset = getPerpendicularOffset(x1, y1, x2, y2, -preferredDistance);
 
@@ -635,7 +646,7 @@ class XABCDPatternTool extends BaseDrawing {
                 { x: anchorX + (secondaryOffset.x * 1.4), y: anchorY + (secondaryOffset.y * 1.4) }
             ];
 
-            const best = pickLeastOverlappingLabelPosition(candidates, boxWidth, boxHeight, -10) || candidates[0];
+            const best = pickLeastOverlappingLabelPosition(candidates, boxWidth, boxHeight, topOffset) || candidates[0];
             this.drawRatioLabel(best.x, best.y, ratio);
         };
 
@@ -727,23 +738,24 @@ class XABCDPatternTool extends BaseDrawing {
     }
 
     drawRatioLabel(x, y, ratio) {
-        const textWidth = ratio.length * 7 + 8;
-        
-        // Background box
+        const { boxWidth, boxHeight } = patternRatioLabelBoxMetrics(ratio, this.style);
+        const left = x - boxWidth / 2;
+        const top = y - boxHeight / 2;
+
         this.group.append('rect')
-            .attr('x', x - textWidth / 2)
-            .attr('y', y - 10)
-            .attr('width', textWidth)
-            .attr('height', 14)
+            .attr('x', left)
+            .attr('y', top)
+            .attr('width', boxWidth)
+            .attr('height', boxHeight)
             .attr('fill', this.style.stroke)
-            .attr('rx', 2)
+            .attr('rx', Math.max(2, Math.round(boxHeight * 0.15))
             .style('pointer-events', 'none');
-        
-        // Ratio text
+
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'middle')
             .attr('fill', patternLabelFill(this.style))
             .attr('font-size', patternLabelFontSizeAttr(this.style))
             .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
