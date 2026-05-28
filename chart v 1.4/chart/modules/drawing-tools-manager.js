@@ -1623,6 +1623,62 @@ class DrawingToolsManager {
         this._liveSyncBroadcasted = false;
     }
 
+    _parseGroupTranslate(transform) {
+        if (!transform) return { x: 0, y: 0 };
+        const m = transform.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
+        if (!m) return { x: 0, y: 0 };
+        return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
+    }
+
+    /**
+     * Apply a pixel translate() on the SVG group back into drawing.points (single render at drag end).
+     * @returns {boolean} true when points were updated
+     */
+    _commitDrawingPixelDragDelta(drawing, startPoints, startTransform) {
+        if (!drawing || !Array.isArray(startPoints) || startPoints.length === 0 || !drawing.group) {
+            return false;
+        }
+        const transform = drawing.group.attr('transform');
+        if (!transform) return false;
+
+        const parsed = this._parseGroupTranslate(transform);
+        const startTx = startTransform ? startTransform.x : 0;
+        const startTy = startTransform ? startTransform.y : 0;
+        const pixelDx = parsed.x - startTx;
+        const pixelDy = parsed.y - startTy;
+
+        drawing.group.attr('transform', null);
+        if (pixelDx === 0 && pixelDy === 0) return false;
+
+        const chart = this.chart;
+        if (!chart || typeof chart.yScale !== 'function') return false;
+
+        const scales = { xScale: chart.xScale, yScale: chart.yScale, chart };
+        const p0 = startPoints[0];
+        if (!p0) return false;
+
+        const origScreenX = chart.dataIndexToPixel ? chart.dataIndexToPixel(p0.x) : scales.xScale(p0.x);
+        const origScreenY = scales.yScale(p0.y);
+        const dataX1 = chart.pixelToDataIndex ? chart.pixelToDataIndex(origScreenX) : scales.xScale.invert(origScreenX);
+        const dataX2 = chart.pixelToDataIndex ? chart.pixelToDataIndex(origScreenX + pixelDx) : scales.xScale.invert(origScreenX + pixelDx);
+        const dataY1 = scales.yScale.invert(origScreenY);
+        const dataY2 = scales.yScale.invert(origScreenY + pixelDy);
+
+        let dx = dataX2 - dataX1;
+        let dy = dataY2 - dataY1;
+        const constrained = this.getConstrainedDragDelta(drawing, dx, dy);
+        dx = constrained.dx;
+        dy = constrained.dy;
+
+        drawing.points = startPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+        if (typeof drawing.afterPointsMoveDelta === 'function') {
+            drawing.afterPointsMoveDelta(dx, dy);
+        }
+        this.clampDrawingPointsToCandleRange(drawing);
+        if (drawing.meta) drawing.meta.updatedAt = Date.now();
+        return true;
+    }
+
     _translatePointsByPixels(points, pixelDx, pixelDy, drawingType = null) {
         if (!Array.isArray(points) || !this.chart || !this.chart.yScale) return null;
         return points.map((pt) => {
@@ -4499,6 +4555,8 @@ class DrawingToolsManager {
         let startDataPoint = null;
         let beforeState = null;
         let multiDragStartPoints = null;
+        let bodyDragStartScreen = null;
+        let bodyDragStartTransform = null;
         /** Cumulative constrained delta from drag start (single drawing whole-move). */
         let rrLastCumulative = { x: 0, y: 0 };
         /** Per-drawing cumulative constrained delta for multi-select whole-move (long/short extra levels). */
@@ -4686,6 +4744,9 @@ class DrawingToolsManager {
                     // Store original points and start position
                     dragStartPoints = drawing.points.map(p => ({...p}));
                     startDataPoint = getDragDataPoint(event);
+                    const [bodySx, bodySy] = self._eventCanvasLocalXY(event.sourceEvent);
+                    bodyDragStartScreen = { x: bodySx, y: bodySy };
+                    bodyDragStartTransform = self._parseGroupTranslate(drawing.group ? drawing.group.attr('transform') : null);
                     
                     // Check if dragging multiple selected drawings
                     if (self.selectedDrawings.length > 1 && self.selectedDrawings.includes(drawing)) {
@@ -4693,7 +4754,8 @@ class DrawingToolsManager {
                         multiDragStartPoints = self.selectedDrawings.map(d => ({
                             drawing: d,
                             points: d.points.map(p => ({...p})),
-                            beforeState: self.history ? self.history.captureState(d) : null
+                            beforeState: self.history ? self.history.captureState(d) : null,
+                            startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
                         multiDragStartPoints.forEach(item => {
                             setAnchoredVWAPMovingState(item.drawing, true);
@@ -4710,67 +4772,24 @@ class DrawingToolsManager {
                     rrLastByDrawingId = Object.create(null);
                 })
                 .on('drag', function(event) {
-                    if (!dragStartPoints || !startDataPoint) return;
+                    if (!dragStartPoints || !bodyDragStartScreen) return;
 
-                    if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
-                        self.chart.updateCrosshair(event.sourceEvent);
-                    }
-                    
-                    // Get current mouse position in data space
-                    const currentDataPoint = getDragDataPoint(event);
-                    
-                    // Calculate offset
-                    const dx = currentDataPoint.x - startDataPoint.x;
-                    const dy = currentDataPoint.y - startDataPoint.y;
-                    
-                    // Check if dragging multiple drawings
+                    const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
+                    const pixelDx = currentScreenX - bodyDragStartScreen.x;
+                    const pixelDy = currentScreenY - bodyDragStartScreen.y;
+
+                    // Smooth drag: CSS transform only — commit to data points once on drag end.
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                        // Move all selected drawings together
                         multiDragStartPoints.forEach(item => {
-                            const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(item.drawing, dx, dy);
-                            const kid = item.drawing && item.drawing.id != null ? item.drawing.id : '_';
-                            const prev = (rrLastByDrawingId && rrLastByDrawingId[kid]) || { x: 0, y: 0 };
-                            const incX = constrainedDx - prev.x;
-                            const incY = constrainedDy - prev.y;
-                            if (!rrLastByDrawingId) rrLastByDrawingId = Object.create(null);
-                            rrLastByDrawingId[kid] = { x: constrainedDx, y: constrainedDy };
-                            item.drawing.points = item.points.map(p => ({
-                                x: p.x + constrainedDx,
-                                y: p.y + constrainedDy
-                            }));
-                            if (typeof item.drawing.afterPointsMoveDelta === 'function' && (incX !== 0 || incY !== 0)) {
-                                item.drawing.afterPointsMoveDelta(incX, incY);
-                            }
-                            self.clampDrawingPointsToCandleRange(item.drawing);
-                            self.renderDrawing(item.drawing);
-                            
-                            // Update axis highlights if drawing is selected
-                            if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
-                                item.drawing.showAxisHighlights();
-                            }
+                            if (!item.drawing || !item.drawing.group) return;
+                            const sx = item.startTransform ? item.startTransform.x : 0;
+                            const sy = item.startTransform ? item.startTransform.y : 0;
+                            item.drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                         });
-                    } else {
-                        // Move single drawing
-                        const { dx: constrainedDx, dy: constrainedDy } = self.getConstrainedDragDelta(drawing, dx, dy);
-                        const incX = constrainedDx - rrLastCumulative.x;
-                        const incY = constrainedDy - rrLastCumulative.y;
-                        rrLastCumulative = { x: constrainedDx, y: constrainedDy };
-                        drawing.points = dragStartPoints.map(p => ({
-                            x: p.x + constrainedDx,
-                            y: p.y + constrainedDy
-                        }));
-                        if (typeof drawing.afterPointsMoveDelta === 'function' && (incX !== 0 || incY !== 0)) {
-                            drawing.afterPointsMoveDelta(incX, incY);
-                        }
-                        self.clampDrawingPointsToCandleRange(drawing);
-                        
-                        // Re-render
-                        self.renderDrawing(drawing);
-                        
-                        // Update axis highlights if drawing is selected
-                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                            drawing.showAxisHighlights();
-                        }
+                    } else if (drawing.group) {
+                        const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
+                        const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
+                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                     }
                 })
                 .on('end', function(event) {
@@ -4780,56 +4799,49 @@ class DrawingToolsManager {
 
                     // Record modification for undo/redo
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                        // Record undo for all moved drawings
                         multiDragStartPoints.forEach(item => {
-                            if (self.history && item.beforeState) {
-                                const moved = item.drawing.points.some((p, i) => 
-                                    p.x !== item.points[i].x || p.y !== item.points[i].y
-                                );
-                                if (moved) {
-                                    self.history.recordModify(item.drawing, item.beforeState);
-                                }
+                            const didMove = self._commitDrawingPixelDragDelta(
+                                item.drawing,
+                                item.points,
+                                item.startTransform
+                            );
+                            if (didMove && self.history && item.beforeState) {
+                                self.history.recordModify(item.drawing, item.beforeState);
                             }
-                            // Recalculate timestamps
-                            if (typeof item.drawing.recalculateTimestamps === 'function') {
-                                item.drawing.recalculateTimestamps();
-                            }
-
-                            setAnchoredVWAPMovingState(item.drawing, false);
-                            if (item.drawing.type === 'anchored-vwap') {
+                            if (didMove) {
+                                self._refreshDrawingTimestampAnchors(item.drawing);
                                 self.renderDrawing(item.drawing);
                                 if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
                                     item.drawing.showAxisHighlights();
                                 }
                             }
+                            setAnchoredVWAPMovingState(item.drawing, false);
                         });
                         multiDragStartPoints = null;
-                    } else {
-                        // Record undo for single drawing
-                        if (self.history && beforeState && dragStartPoints) {
-                            const moved = drawing.points.some((p, i) => 
-                                p.x !== dragStartPoints[i].x || p.y !== dragStartPoints[i].y
-                            );
-                            if (moved) {
-                                self.history.recordModify(drawing, beforeState);
-                            }
+                    } else if (dragStartPoints) {
+                        const didMove = self._commitDrawingPixelDragDelta(
+                            drawing,
+                            dragStartPoints,
+                            bodyDragStartTransform
+                        );
+                        if (didMove && self.history && beforeState) {
+                            self.history.recordModify(drawing, beforeState);
                         }
-
-                        setAnchoredVWAPMovingState(drawing, false);
-                        if (drawing.type === 'anchored-vwap') {
+                        if (didMove) {
+                            self._refreshDrawingTimestampAnchors(drawing);
                             self.renderDrawing(drawing);
                             if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                                 drawing.showAxisHighlights();
                             }
                         }
-
+                        setAnchoredVWAPMovingState(drawing, false);
                         beforeState = null;
                     }
                     
                     dragStartPoints = null;
                     startDataPoint = null;
-                    // Recalculate timestamps from new positions
-                    drawing.recalculateTimestamps();
+                    bodyDragStartScreen = null;
+                    bodyDragStartTransform = null;
                     self.saveDrawings();
                     
                     // Broadcast update to other panels
@@ -4881,54 +4893,55 @@ class DrawingToolsManager {
             }
         }
 
-        const singleDragType = drawings.length === 1 ? drawings[0].type : null;
-        const pointOpts = { suppressKeyMagnet: true };
-        const startPoint = this.getDataPoint(event, singleDragType, pointOpts);
+        const [startScreenX, startScreenY] = this._eventCanvasLocalXY(event);
+        const startScreen = { x: startScreenX, y: startScreenY };
         const startStates = drawings.map(d => ({
             drawing: d,
             points: d.points.map(p => ({ ...p })),
-            beforeState: this.history ? this.history.captureState(d) : null
+            beforeState: this.history ? this.history.captureState(d) : null,
+            startTransform: this._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
         }));
         this._directMoveDrawings = drawings;
+        this._directMovePendingFrame = false;
+        this._directMoveLastEvent = null;
         let moved = false;
+
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+        if (canvas) canvas.style.cursor = 'move';
+        if (this.svg) this.svg.style('cursor', 'move');
+
+        const applyDirectMoveTransform = (ev) => {
+            if (!ev || !this._directMoveMoveHandler) return;
+            const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(ev);
+            const pixelDx = currentScreenX - startScreen.x;
+            const pixelDy = currentScreenY - startScreen.y;
+            if (pixelDx !== 0 || pixelDy !== 0) moved = true;
+            startStates.forEach(item => {
+                if (!item.drawing || !item.drawing.group) return;
+                const sx = item.startTransform ? item.startTransform.x : 0;
+                const sy = item.startTransform ? item.startTransform.y : 0;
+                item.drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+            });
+        };
 
         this._directMoveMoveHandler = (e) => {
             e.preventDefault();
             e.stopPropagation();
-
-            if (this.chart && typeof this.chart.updateCrosshair === 'function') {
-                this.chart.updateCrosshair(e);
-            }
-
-            const p = this.getDataPoint(e, singleDragType, pointOpts);
-            const dx = p.x - startPoint.x;
-            const dy = p.y - startPoint.y;
-
-            if (dx !== 0 || dy !== 0) moved = true;
-
-            startStates.forEach(item => {
-                const { dx: constrainedDx, dy: constrainedDy } = this.getConstrainedDragDelta(item.drawing, dx, dy);
-                item.drawing.points = item.points.map(pt => ({
-                    x: pt.x + constrainedDx,
-                    y: pt.y + constrainedDy
-                }));
-                if (typeof item.drawing.afterPointsMoveDelta === 'function') {
-                    item.drawing.afterPointsMoveDelta(constrainedDx, constrainedDy);
-                }
-                this.clampDrawingPointsToCandleRange(item.drawing);
-
-                this.renderDrawing(item.drawing);
-
-                if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
-                    item.drawing.showAxisHighlights();
-                }
-                this._broadcastLiveEditUpdate(item.drawing);
+            this._directMoveLastEvent = e;
+            if (this._directMovePendingFrame) return;
+            this._directMovePendingFrame = true;
+            requestAnimationFrame(() => {
+                this._directMovePendingFrame = false;
+                applyDirectMoveTransform(this._directMoveLastEvent);
             });
         };
 
         this._directMoveUpHandler = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (this._directMovePendingFrame && this._directMoveLastEvent) {
+                applyDirectMoveTransform(this._directMoveLastEvent);
+            }
             this._stopDirectMoveDrag();
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
@@ -4936,16 +4949,24 @@ class DrawingToolsManager {
             }
 
             startStates.forEach(item => {
-                if (moved && this.history && item.beforeState) {
+                const didMove = this._commitDrawingPixelDragDelta(
+                    item.drawing,
+                    item.points,
+                    item.startTransform
+                );
+                if (didMove && moved && this.history && item.beforeState) {
                     this.history.recordModify(item.drawing, item.beforeState);
                 }
-
-                if (typeof item.drawing.recalculateTimestamps === 'function') {
-                    item.drawing.recalculateTimestamps();
+                if (didMove) {
+                    this._refreshDrawingTimestampAnchors(item.drawing);
+                    this.renderDrawing(item.drawing);
+                    if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
+                        item.drawing.showAxisHighlights();
+                    }
                 }
 
                 const index = this.drawings.indexOf(item.drawing);
-                if (this.chart && this.chart.broadcastDrawingChange && index > -1) {
+                if (didMove && this.chart && this.chart.broadcastDrawingChange && index > -1) {
                     this.chart.broadcastDrawingChange('update', item.drawing, index);
                 }
             });
@@ -7847,6 +7868,14 @@ class DrawingToolsManager {
             this._directMoveUpHandler = null;
         }
         this._directMoveDrawings = null;
+        this._directMovePendingFrame = false;
+        this._directMoveLastEvent = null;
+        const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+        if (canvas) canvas.style.cursor = '';
+        if (this.svg) {
+            const cursorStyle = this.chart?.getCurrentCursorStyle ? this.chart.getCurrentCursorStyle() : 'default';
+            this.svg.style('cursor', cursorStyle);
+        }
     }
 
     /**
