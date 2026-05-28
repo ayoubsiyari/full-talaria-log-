@@ -13992,6 +13992,24 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Line thickness — same-frame chart sync (pattern/Elliott quick bar + settings). */
+  const applyTlLineWidth = useCallback((lineWidth) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, lineWidth })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Fib levels line thickness — first-click chart sync. */
+  const applyTlFibLineWidth = useCallback((fibLineWidth) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, fibLineWidth })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Gann Input-tab Levels STYLE — first-click chart sync (same stale-bridge race as TlChk). */
   const applyTlGannLineType = useCallback((gannLineType) => {
     flushSync(() => setTlStyle((s) => ({ ...s, gannLineType })));
@@ -15563,7 +15581,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="width" && dropShell("width",56,true,
                         ["1","2","3","4"].map(w=>{
                           const isA=tlStyle.lineWidth===w,isH=hov===`tlw-${w}`;
-                          return(<div key={w} onClick={()=>{setTlStyle(s=>({...s,lineWidth:w}));setTlStyleDrop(null);}}
+                          return(<div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
                             onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -15754,7 +15772,7 @@ const TalariaV8bLive = () => {
                         ["8","12","20","32","48","64","80","96"].map(w=>{
                           const isA=tlStyle.lineWidth===w; const isH=hov===`tlw-${w}`;
                           return (
-                            <div key={w} onClick={()=>{setTlStyle(s=>({...s,lineWidth:w}));setTlStyleDrop(null);}}
+                            <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"5px 12px", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -15776,7 +15794,7 @@ const TalariaV8bLive = () => {
                         ["1","2","3","4"].map(w=>{
                           const isA=tlStyle.lineWidth===w; const isH=hov===`tlw-${w}`;
                           return (
-                            <div key={w} onClick={()=>{setTlStyle(s=>({...s,lineWidth:w}));setTlStyleDrop(null);}}
+                            <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -16274,7 +16292,7 @@ const TalariaV8bLive = () => {
                                 ["1","2","3","4"].map(w=>{
                                   const isA=tlStyle.lineWidth===w; const isH=hov===`pfmw-${w}`;
                                   return (
-                                    <div key={w} onClick={()=>{setTlStyle(s=>({...s,lineWidth:w}));setTlStyleDrop(null);}}
+                                    <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
                                       onMouseEnter={()=>setHov(`pfmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                                background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17196,7 +17214,7 @@ const TalariaV8bLive = () => {
                       ["1","2","3","4"].map(w=>{
                         const isA=tlStyle.fibLineWidth===w; const isH=hov===`fiblw-${w}`;
                         return (
-                          <div key={w} onClick={()=>{setTlStyle(s=>({...s,fibLineWidth:w}));setTlStyleDrop(null);}}
+                          <div key={w} onClick={()=>{applyTlFibLineWidth(w);setTlStyleDrop(null);}}
                             onMouseEnter={()=>setHov(`fiblw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -19812,7 +19830,7 @@ const TalariaV8bLive = () => {
               const isFib = tlSubTool.icon.startsWith("fib");
               const curW = isFib ? tlStyle.fibLineWidth : tlStyle.lineWidth;
               return (
-              <div key={w} onClick={()=>{setTlStyle(s=>({...s,[isFib?"fibLineWidth":"lineWidth"]:w}));setTlBarDrop(null);}}
+              <div key={w} onClick={()=>{(isFib ? applyTlFibLineWidth : applyTlLineWidth)(w);setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbwid-${w}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding: tlSubTool.icon==="brush"?"5px 12px":"8px 12px", cursor:"default",
                          background:hov===`tbwid-${w}`||curW===w?c.hv:"transparent", transition:"background 0.1s" }}>

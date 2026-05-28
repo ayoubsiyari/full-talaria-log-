@@ -75,6 +75,7 @@ type SubscriptionPayload = {
     plan_id?: number;
     plan_name?: string;
     status?: string;
+    current_period_end?: string;
   };
 };
 
