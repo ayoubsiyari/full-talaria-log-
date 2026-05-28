@@ -14140,6 +14140,33 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Label font size — same-frame chart sync (pattern/Elliott + XABCD ratio boxes). */
+  const applyTlTextSize = useCallback((textSize) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, textSize })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Label bold — same-frame chart sync. */
+  const applyTlTextBold = useCallback(() => {
+    flushSync(() => setTlStyle((s) => ({ ...s, textBold: !s.textBold })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Label italic — same-frame chart sync. */
+  const applyTlTextItalic = useCallback(() => {
+    flushSync(() => setTlStyle((s) => ({ ...s, textItalic: !s.textItalic })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Fib levels line thickness — first-click chart sync. */
   const applyTlFibLineWidth = useCallback((fibLineWidth) => {
     flushSync(() => setTlStyle((s) => ({ ...s, fibLineWidth })));
@@ -15998,7 +16025,7 @@ const TalariaV8bLive = () => {
                           [10,12,14,16,18,20,22,24].map(sz=>{
                             const isA=tlStyle.textSize===sz; const isH=hov===`labsz-${sz}`;
                             return (
-                              <div key={sz} onClick={()=>{setTlStyle(s=>({...s,textSize:sz}));setTlStyleDrop(null);}}
+                              <div key={sz} onClick={()=>{applyTlTextSize(sz);setTlStyleDrop(null);}}
                                 onMouseEnter={()=>setHov(`labsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"5px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -16010,8 +16037,8 @@ const TalariaV8bLive = () => {
                         )}
                       </div>
                       <div style={{ display:"flex", gap:4, padding:"8px 0", alignSelf:"center" }}>
-                        {[["lab-bold",tlStyle.textBold,()=>setTlStyle(s=>({...s,textBold:!s.textBold})),{fontWeight:800,fontSize:14},"B"],
-                          ["lab-italic",tlStyle.textItalic,()=>setTlStyle(s=>({...s,textItalic:!s.textItalic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                        {[["lab-bold",tlStyle.textBold,applyTlTextBold,{fontWeight:800,fontSize:14},"B"],
+                          ["lab-italic",tlStyle.textItalic,applyTlTextItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                         ].map(([hk,isAct,toggle,extra,label])=>{
                           const isH=hov===hk;
                           return (
@@ -16838,7 +16865,7 @@ const TalariaV8bLive = () => {
                           {[10,12,14,16,18,20,22,24].map(sz=>{
                             const isA=tlStyle.textSize===sz; const isH=hov===`tlsz-${sz}`;
                             return (
-                              <div key={sz} onClick={()=>{setTlStyle(s=>({...s,textSize:sz}));closeFontSizeDrop();}}
+                              <div key={sz} onClick={()=>{applyTlTextSize(sz);closeFontSizeDrop();}}
                                 onMouseEnter={()=>setHov(`tlsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"5px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -16852,8 +16879,8 @@ const TalariaV8bLive = () => {
                     </div>
                     {/* Bold / Italic — sidebar button style */}
                     <div style={{ display:"flex", gap:4 }}>
-                      {[["tl-bold",tlStyle.textBold,()=>setTlStyle(s=>({...s,textBold:!s.textBold})),{fontWeight:800,fontSize:14},"B"],
-                        ["tl-italic",tlStyle.textItalic,()=>setTlStyle(s=>({...s,textItalic:!s.textItalic})),{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
+                      {[["tl-bold",tlStyle.textBold,applyTlTextBold,{fontWeight:800,fontSize:14},"B"],
+                        ["tl-italic",tlStyle.textItalic,applyTlTextItalic,{fontStyle:"italic",fontWeight:600,fontSize:14},"I"]
                       ].map(([hk,isAct,toggle,extra,label])=>{
                         const isH=hov===hk;
                         return (
@@ -19918,7 +19945,7 @@ const TalariaV8bLive = () => {
       {((tlBarDrop&&tlBarDrop!=="template")||(closing.has("tlbardrop")&&tlLastBarDropRef.current!=="template")) && (()=>{
         if(tlBarDrop&&tlBarDrop!=="template") tlLastBarDropRef.current=tlBarDrop;
         const a = tlBarDropAnchor;
-        const dropSizes = { style:[88,154], width:[88,154], more:[192,192], rngFsz:[52,240], rngType:[130,110] };
+        const dropSizes = { style:[88,154], width:[88,154], more:[192,192], rngFsz:[52,240], rngType:[130,110], patFsz:[52,240] };
         const key = tlBarDrop || tlLastBarDropRef.current;
         const [dropW, dropH] = dropSizes[key] || [88, 154];
         // All positions are in CSS/fixed-coordinate space (getBoundingClientRect / Z)
@@ -19982,6 +20009,17 @@ const TalariaV8bLive = () => {
                     </svg>}
               </div>
             )})}
+            {tlBarDrop==="patFsz" && [10,12,14,16,18,20,22,24].map(sz=>{
+              const szKey = String(sz);
+              const isA=String(tlStyle.textSize)===szKey,isH=hov===`tbpatsz-${sz}`;
+              return (<div key={sz} onClick={()=>{applyTlTextSize(sz);setTlBarDrop(null);}}
+                onMouseEnter={()=>setHov(`tbpatsz-${sz}`)} onMouseLeave={()=>setHov(null)}
+                style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0", cursor:"default",
+                         background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
+                {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                <span style={{ fontSize:13, color:isA?c.acL:c.ts, fontWeight:isA?700:500 }}>{sz}</span>
+              </div>);
+            })}
             {tlBarDrop==="rngFsz" && ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
               const isA=tlStyle.labelFontSize===sz,isH=hov===`tbfsz-${sz}`;
               return (<div key={sz} onClick={()=>{setTlStyle(s=>({...s,labelFontSize:sz}));setTlBarDrop(null);}}
@@ -21592,6 +21630,17 @@ const TalariaV8bLive = () => {
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
                 <div style={{width:12,height:2,background:tlStyle.textColor||"#ffffff",borderRadius:1}}/>
               </div>}
+            </TlBtn>}
+            {isPatternTool && <TlBtn id="tl-pat-fsz" isAct={tlBarDrop==="patFsz"} w="auto"
+              onClick={e=>{e.stopPropagation();if(tlBarDrop==="patFsz"){closeTlBarDrop();return;}const r=e.currentTarget.getBoundingClientRect();setColorPicker(null);cpBarAnchorRef.current=null;if(tlSettOpen)closeTlSett();setTlBarDropAnchor({btnTop:r.top,btnBottom:r.bottom,left:r.left,right:r.right,barX:tlBarPos.x,barY:tlBarPos.y});setTlBarDrop("patFsz");}}>
+              {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
+                <span style={{fontSize:12,color:col,fontVariantNumeric:"tabular-nums"}}>{tlStyle.textSize}</span>
+                <I n="chevDown" s={7} cl={col}/>
+              </div>}
+            </TlBtn>}
+            {isPatternTool && <TlBtn id="tl-pat-bold" isAct={!!tlStyle.textBold} w={28}
+              onClick={e=>{e.stopPropagation();setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();applyTlTextBold();}}>
+              {(_,isAct,col)=><span style={{fontSize:14,fontWeight:800,color:col,fontFamily:F,lineHeight:1}}>B</span>}
             </TlBtn>}
             {/* btn 2t: text color — only when settings has a Text tab (not fib/gann/levels-only tools) */}
             {!hideQuickBarTextColor && <TlBtn id="tl-tcol2" isAct={colorPicker==="tlTextColor"}
