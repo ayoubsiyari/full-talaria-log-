@@ -2649,6 +2649,8 @@ function v9ApplyRegressionStyleFromTl(style, tlStyle) {
   if (tlStyle.regLowerBg != null && String(tlStyle.regLowerBg).trim() !== "") {
     style.lowerFill = tlStyle.regLowerBg;
   }
+  style.showUpperFill = tlStyle.regUpperBgOn !== false;
+  style.showLowerFill = tlStyle.regLowerBgOn !== false;
 }
 
 /** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
@@ -4440,6 +4442,8 @@ function v9TlStylePatchFromDrawing(d) {
             source: v9ChartSourceToUiSource(s.source),
             regUpperBg: s.upperFill || s.fill || V9_DEFAULT_TL_SHAPE_FILL,
             regLowerBg: s.lowerFill || s.fill || V9_DEFAULT_TL_SHAPE_FILL,
+            regUpperBgOn: s.showUpperFill !== false,
+            regLowerBgOn: s.showLowerFill !== false,
           };
         })()
       : {}),
@@ -7700,6 +7704,7 @@ const TalariaV8bLive = () => {
       { on: true, label: "Lower Line", color: V9_DEFAULT_TL_LINE_COLOR, type: "dashed", width: "2" },
     ],
     regUpperBg: V9_DEFAULT_TL_SHAPE_FILL, regLowerBg: V9_DEFAULT_TL_SHAPE_FILL,
+    regUpperBgOn: true, regLowerBgOn: true,
     source: "Close", regressionType: "Linear",
     regUpperDev: { on: true, value: "2" },
     regLowerDev: { on: true, value: "2" },
@@ -14239,6 +14244,26 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  const applyRegUpperBgToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, regUpperBgOn: !s.regUpperBgOn };
+        v9PushRegressionStyleToSelectedDrawings(next);
+        return next;
+      });
+    });
+  }, []);
+
+  const applyRegLowerBgToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, regLowerBgOn: !s.regLowerBgOn };
+        v9PushRegressionStyleToSelectedDrawings(next);
+        return next;
+      });
+    });
+  }, []);
+
   const applyFlatChPricesToggle = useCallback(() => {
     flushSync(() => {
       setTlStyle((s) => {
@@ -16401,13 +16426,21 @@ const TalariaV8bLive = () => {
                             )}
                           </div>
                           {isRegCh && srcIdx === 1 && <>
-                            <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Upper Background</span>
-                            <div style={{ padding:"8px 0" }}>{colorSwatch("regUpperBg", tlStyle.regUpperBg)}</div>
+                            <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                              {TlChk(tlStyle.regUpperBgOn !== false, "tlchk-regUpperBg", "Upper Background", applyRegUpperBgToggle)}
+                            </div>
+                            <div style={{ padding:"8px 0", opacity:tlStyle.regUpperBgOn !== false ? 1 : 0.38, pointerEvents:tlStyle.regUpperBgOn !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                              {colorSwatch("regUpperBg", tlStyle.regUpperBg)}
+                            </div>
                             <div/><div/>
                           </>}
                           {isRegCh && srcIdx === 2 && <>
-                            <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Lower Background</span>
-                            <div style={{ padding:"8px 0" }}>{colorSwatch("regLowerBg", tlStyle.regLowerBg)}</div>
+                            <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                              {TlChk(tlStyle.regLowerBgOn !== false, "tlchk-regLowerBg", "Lower Background", applyRegLowerBgToggle)}
+                            </div>
+                            <div style={{ padding:"8px 0", opacity:tlStyle.regLowerBgOn !== false ? 1 : 0.38, pointerEvents:tlStyle.regLowerBgOn !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                              {colorSwatch("regLowerBg", tlStyle.regLowerBg)}
+                            </div>
                             <div/><div/>
                           </>}
                         </React.Fragment>;
