@@ -9613,11 +9613,17 @@ const TalariaV8bLive = () => {
   const tlSubToolRef = useRef(tlSubTool.label);
   const txtSubToolFromRail = groupSelected.text || { icon: "text", label: "Text" };
   const txtSubTool =
-    tlBarSelected && tlBarDrawingGroup === "text" && chartPrimarySelectedDrawingType
-      ? {
-          icon: legacyChartTextTypeToV9Icon(chartPrimarySelectedDrawingType),
-          label: chartPrimarySelectedDrawingType,
-        }
+    tlBarSelected && tlBarDrawingGroup === "text"
+      ? (() => {
+          const dt =
+            chartPrimarySelectedDrawingType ||
+            (typeof window !== "undefined" ? getPrimarySelectedDrawingForActiveChart(null)?.type : null) ||
+            null;
+          return {
+            icon: dt ? legacyChartTextTypeToV9Icon(dt) : (txtSubToolFromRail.icon || "text"),
+            label: dt || txtSubToolFromRail.label,
+          };
+        })()
       : txtSubToolFromRail;
   const txtSubToolRef = useRef(txtSubTool.label);
   const isFibTool = tlSubTool.icon.startsWith("fib");
@@ -17869,12 +17875,15 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
+        const txtQuickIcon = txtSubTool.icon;
+        const txtQuickHasTextField = txtQuickIcon === "pin" || txtQuickIcon === "signpost";
         return (
         <div data-sdrop="1" onClick={e=>e.stopPropagation()} onMouseLeave={hideTip}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
                   boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
-                  display:"flex",flexDirection:"row",alignItems:"stretch",
+                  display:"flex",flexDirection:"row",alignItems:"stretch",maxWidth:"min(96vw, 720px)",
+                  overflowX:"auto",overflowY:"visible",
                   userSelect:"none",animation:"tlrPopIn 0.15s ease",fontFamily:F}}>
           <div style={{width:2,alignSelf:"stretch",background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,flexShrink:0,marginLeft:3}}/>
           <div onPointerDown={e=>{
@@ -17967,8 +17976,36 @@ const TalariaV8bLive = () => {
               </div>
             )}
           </div>
+          {/* Label text — pin / signpost (settings Text tab content on the quick bar) */}
+          {txtQuickHasTextField && (
+            <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 4px 0 2px",minWidth:0}}>
+              <input
+                value={txtStyle.content}
+                onChange={(e) => setTxtStyle((s) => ({ ...s, content: e.target.value }))}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="Text…"
+                style={{
+                  width: 132,
+                  maxWidth: "28vw",
+                  height: 24,
+                  background: "rgba(140,160,255,0.06)",
+                  border: "1px solid rgba(140,160,255,0.22)",
+                  outline: "none",
+                  color: c.tx,
+                  fontSize: 12,
+                  fontFamily: F,
+                  padding: "0 8px",
+                  boxSizing: "border-box",
+                  fontStyle: txtStyle.italic ? "italic" : "normal",
+                  fontWeight: txtStyle.bold ? 700 : 400,
+                }}
+              />
+            </div>
+          )}
           {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
-          {(txtSubTool.icon === "note" || txtSubTool.icon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
+          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
             {(_,isAct,col)=>(() => {
               const dimLn = "rgba(120,123,134,0.38)";
@@ -17986,30 +18023,30 @@ const TalariaV8bLive = () => {
             })()}
           </TxBtn>}
           {/* tool color button — note: leader/box stroke; priceNote: leader line only */}
-          {txtSubTool.icon === "note" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
+          {txtQuickIcon === "note" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn ? txtStyle.borderColor : "rgba(120,123,134,0.38)",borderRadius:1,opacity:txtStyle.borderOn ? 1 : 0.85}}/></div>}
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtQuickIcon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn ? txtStyle.borderColor : "rgba(120,123,134,0.38)",borderRadius:1,opacity:txtStyle.borderOn ? 1 : 0.85}}/></div>}
           </TxBtn>}
-          {txtSubTool.icon === "priceNote" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtLineColor"}
+          {txtQuickIcon === "priceNote" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtLineColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtSubTool.icon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.lineColor||"rgba(120,123,134,0.38)",borderRadius:1}}/></div>}
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtQuickIcon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.lineColor||"rgba(120,123,134,0.38)",borderRadius:1}}/></div>}
           </TxBtn>}
           {/* tool color button — pin marker / signpost line+label */}
-          {txtSubTool.icon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
+          {txtQuickIcon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="pin" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.pinLabelColor,borderRadius:1}}/></div>}
           </TxBtn>}
-          {txtSubTool.icon === "signpost" && <TxBtn id="txt-signpostcol" isAct={colorPicker==="txtBgColor"}
+          {txtQuickIcon === "signpost" && <TxBtn id="txt-signpostcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#787b86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="signpost" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.bgColor,borderRadius:1}}/></div>}
           </TxBtn>}
           {/* text color button — hidden for emoji, price note (auto price label) */}
-          {!["emoji","flag","image","priceNote"].includes(txtSubTool.icon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
+          {!["emoji","flag","image","priceNote"].includes(txtQuickIcon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.textColor||'#ffffff');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtTextColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><span style={{fontSize:16,fontWeight:800,color:col,lineHeight:1,fontFamily:F}}>A</span><div style={{width:12,height:2,background:txtStyle.textColor,borderRadius:1}}/></div>}
           </TxBtn>}
           {/* background color button — all tools except note/priceNote (those render it earlier), emoji, pin, image */}
-          {!["note","priceNote","emoji","pin","image","signpost"].includes(txtSubTool.icon) && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
+          {!["note","priceNote","emoji","pin","image","signpost"].includes(txtQuickIcon) && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
             {(_,isAct,col)=>(() => {
               const dimLn = "rgba(120,123,134,0.38)";
@@ -18027,7 +18064,7 @@ const TalariaV8bLive = () => {
             })()}
           </TxBtn>}
           {/* font size dropdown — hidden for flag, emoji, note, priceNote */}
-          {!["flag","emoji","note","priceNote","image"].includes(txtSubTool.icon) && <div style={{position:"relative",flexShrink:0}}>
+          {!["flag","emoji","note","priceNote","image"].includes(txtQuickIcon) && <div style={{position:"relative",flexShrink:0}}>
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
               onPointerDown={(e)=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
               onMouseDown={(e)=>e.stopPropagation()}
@@ -18078,7 +18115,7 @@ const TalariaV8bLive = () => {
           }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TxBtn>
-          {!["note","priceNote","callout","comment","priceLabel","signpost","flag","image"].includes(txtSubTool.icon) && <TxBtn id="txt-anchor" isAct={txtStyle.anchored} onClick={()=>{setTxtBarDrop(null);setTxtStyle(s=>({...s,anchored:!s.anchored}));}}>
+          {!["note","priceNote","callout","comment","priceLabel","signpost","flag","image"].includes(txtQuickIcon) && <TxBtn id="txt-anchor" isAct={txtStyle.anchored} onClick={()=>{setTxtBarDrop(null);setTxtStyle(s=>({...s,anchored:!s.anchored}));}}>
             {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="5.5" r="2.5"/>
               <line x1="12" y1="8" x2="12" y2="20"/>
