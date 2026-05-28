@@ -75,6 +75,8 @@ class DrawingToolsManager {
         this._directResizeUpHandler = null;
         this._directMoveMoveHandler = null;
         this._directMoveUpHandler = null;
+        /** Drawings being moved via canvas geometric drag (not isDragging SVG path). */
+        this._directMoveDrawings = null;
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
@@ -1075,7 +1077,11 @@ class DrawingToolsManager {
 
                 // Make drag-start use the same geometric hover hit zone, even when the
                 // cursor is not exactly on an SVG stroke target.
-                if (event.button !== 0 || this.currentTool || this.isRectSelecting || event.shiftKey || event.altKey) {
+                if (event.button !== 0 || this.isRectSelecting || event.shiftKey || event.altKey) {
+                    return;
+                }
+                // While actively placing a stroke, canvas is for placement only.
+                if (this.drawingState && this.drawingState.isDrawing) {
                     return;
                 }
 
@@ -1102,7 +1108,11 @@ class DrawingToolsManager {
                         return;
                     }
                 }
-                if (!drawingsAtPoint || drawingsAtPoint.length === 0) return;
+                if (!drawingsAtPoint || drawingsAtPoint.length === 0) {
+                    // Armed draw tool on empty chart — let SVG placement layer handle the click.
+                    if (this.currentTool) return;
+                    return;
+                }
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
                     this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
                 );
@@ -4879,6 +4889,7 @@ class DrawingToolsManager {
             points: d.points.map(p => ({ ...p })),
             beforeState: this.history ? this.history.captureState(d) : null
         }));
+        this._directMoveDrawings = drawings;
         let moved = false;
 
         this._directMoveMoveHandler = (e) => {
@@ -4938,6 +4949,10 @@ class DrawingToolsManager {
                     this.chart.broadcastDrawingChange('update', item.drawing, index);
                 }
             });
+
+            if (moved) {
+                this.saveDrawings();
+            }
         };
 
         document.addEventListener('mousemove', this._directMoveMoveHandler, true);
@@ -6809,6 +6824,9 @@ class DrawingToolsManager {
     /** True while the user is dragging/resizing — do not snap points back to stale timestamps. */
     _isDrawingLiveEditing(drawing) {
         if (!drawing) return false;
+        if (this._directMoveMoveHandler && Array.isArray(this._directMoveDrawings) && this._directMoveDrawings.includes(drawing)) {
+            return true;
+        }
         if (this.isDragging) {
             if (this.draggingDrawing === drawing) return true;
             if (this.draggingMultiple && Array.isArray(this.selectedDrawings) && this.selectedDrawings.includes(drawing)) {
@@ -7828,6 +7846,7 @@ class DrawingToolsManager {
             document.removeEventListener('mouseup', this._directMoveUpHandler, true);
             this._directMoveUpHandler = null;
         }
+        this._directMoveDrawings = null;
     }
 
     /**
