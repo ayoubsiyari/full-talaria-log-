@@ -8,6 +8,7 @@ export type GateVariant =
   | "subscription"
   | "subscription_ended"
   | "payment_required"
+  | "access_period_ended"
   | "admin_restricted";
 
 type Props = {
@@ -34,8 +35,9 @@ export default function SubscriptionGateOverlay({
 }: Props) {
   const isAdminRestricted = variant === "admin_restricted";
   const isPlanEnded = variant === "subscription_ended";
+  const isAccessEnded = variant === "access_period_ended";
   const isPaymentIssue = variant === "payment_required";
-  const skipCountdown = isAdminRestricted || isPlanEnded || isPaymentIssue;
+  const skipCountdown = isAdminRestricted || isPlanEnded || isAccessEnded || isPaymentIssue;
   const [seconds, setSeconds] = React.useState(8);
   const redirectedRef = React.useRef(false);
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,6 +100,10 @@ export default function SubscriptionGateOverlay({
       ? isArabic
         ? "انتهى اشتراكك"
         : "Your subscription has ended"
+      : isAccessEnded
+        ? isArabic
+          ? "انتهت فترة الوصول"
+          : "Your access period has ended"
       : isPaymentIssue
         ? isArabic
           ? "مطلوب تحديث الدفع"
@@ -114,6 +120,10 @@ export default function SubscriptionGateOverlay({
       ? isArabic
         ? "انتهت فترة اشتراكك. يمكنك تجديد نفس الخطة من صفحة الأسعار للعودة إلى Journal والـ Backtest وأدوات Pro."
         : "Your billing period has ended. Renew your plan on the pricing page to restore journal, backtest, and pro tools."
+      : isAccessEnded
+        ? isArabic
+          ? "انتهت فترة الوصول الممنوحة لحسابك. اشترك من صفحة الأسعار للعودة إلى المنصة."
+          : "Your granted access period has ended. Subscribe on the pricing page to return to the platform."
       : isPaymentIssue
         ? isArabic
           ? "لم نتمكن من تحصيل آخر دفعة. حدّث طريقة الدفع أو جدّد اشتراكك من صفحة الأسعار."

@@ -67,6 +67,7 @@ export type DashboardGateVariant =
   | "subscription"
   | "subscription_ended"
   | "payment_required"
+  | "access_period_ended"
   | "admin_restricted";
 
 export type DashboardUser = {
@@ -77,6 +78,7 @@ export type DashboardUser = {
   has_active_subscription?: boolean;
   access_denial_reason?: string;
   billing_issue?: boolean;
+  access_expired_at?: string;
   lapsed_subscription?: {
     plan_id?: number;
     plan_name?: string;
@@ -210,6 +212,7 @@ export function resolveDashboardGateVariant(user: DashboardUser | null): Dashboa
   if (userHasPartialDashboardAccess(user)) return "admin_restricted";
   const reason = user.access_denial_reason;
   if (reason === "subscription_ended") return "subscription_ended";
+  if (reason === "access_period_ended") return "access_period_ended";
   if (reason === "payment_required" || user.billing_issue) return "payment_required";
   return "subscription";
 }
@@ -230,6 +233,11 @@ export function lockedModuleNavTitle(
     return isArabic
       ? "انتهى اشتراكك — تجديد من صفحة الأسعار"
       : "Your subscription ended — renew on pricing";
+  }
+  if (user.access_denial_reason === "access_period_ended") {
+    return isArabic
+      ? "انتهت فترة الوصول — تجديد من صفحة الأسعار"
+      : "Your access period ended — renew on pricing";
   }
   if (user.access_denial_reason === "payment_required" || user.billing_issue) {
     return isArabic

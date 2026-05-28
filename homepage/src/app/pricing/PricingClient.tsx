@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { JOURNAL_SUBSCRIPTIONS_API } from "@/lib/subscriptionApi";
+import { accessDenialMessage, accessDenialTitle } from "@/lib/accessMessages";
 
 const F = "'Exo 2', sans-serif";
 const C = {
@@ -62,6 +63,8 @@ type SubscriptionPayload = {
   has_subscription?: boolean;
   has_journal_access?: boolean;
   billing_issue?: boolean;
+  access_denial_reason?: string;
+  access_expired_at?: string;
   plan?: { id?: number; name?: string };
   subscription?: {
     status?: string;
@@ -79,6 +82,7 @@ export default function PricingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const browseMode = searchParams.get("browse") === "1";
+  const urlReason = searchParams.get("reason");
 
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -155,7 +159,8 @@ export default function PricingClient() {
         (data.has_subscription && ["active", "trialing"].includes(data.subscription?.status || "")) ||
         data.has_journal_access === true;
       if (!entitled && !allowPricingBrowse) {
-        window.location.href = "/pricing/?browse=1";
+        const reason = data.access_denial_reason || "subscription";
+        window.location.href = `/pricing/?browse=1&reason=${encodeURIComponent(reason)}`;
         return true;
       }
     } catch {
@@ -306,11 +311,20 @@ export default function PricingClient() {
     accessNavReady &&
     (userIsAdmin || hasActivePaidPlan || currentSubscription?.has_journal_access === true);
   const lapsedInfo = currentSubscription?.lapsed_subscription;
+  const denialReason =
+    currentSubscription?.access_denial_reason || urlReason || null;
+  const accessNotice = denialReason
+    ? accessDenialMessage(denialReason, {
+        planName: lapsedInfo?.plan_name,
+        expiredAt:
+          currentSubscription?.access_expired_at || lapsedInfo?.current_period_end,
+      })
+    : null;
   const showResumeBanner =
     isLoggedIn &&
-    currentSubscription &&
+    accessNavReady &&
     !hasActivePaidPlan &&
-    !!(lapsedInfo?.plan_name || lapsedInfo?.status || currentSubscription?.billing_issue);
+    !!accessNotice;
 
   const faqs = [
     {
@@ -401,24 +415,10 @@ export default function PricingClient() {
         </div>
       </nav>
 
-      {showResumeBanner && (
+      {showResumeBanner && accessNotice && (
         <div className="relative z-10 mx-auto mt-6 max-w-[1280px] rounded-xl border border-amber-500/35 bg-amber-500/[0.07] px-5 py-3.5 text-left sm:px-8 lg:px-10">
-          <p className="text-[13px] leading-relaxed text-amber-100/95">
-            <span className="font-semibold text-white">Your plan</span>
-            {lapsedInfo?.plan_name ? (
-              <>
-                : <span className="font-medium text-white">{lapsedInfo.plan_name}</span>
-              </>
-            ) : (
-              <span className="text-white/80"> (previous subscription)</span>
-            )}
-            {currentSubscription?.billing_issue && (
-              <span className="mt-1.5 block text-[12px] text-amber-200/75">
-                Payment required to restore access. Complete checkout below or update your card from profile
-                billing.
-              </span>
-            )}
-          </p>
+          <p className="text-[14px] font-semibold text-white">{accessDenialTitle(denialReason)}</p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-amber-100/95">{accessNotice}</p>
         </div>
       )}
 

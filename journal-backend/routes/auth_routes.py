@@ -211,7 +211,10 @@ def login_user():
 
     # Check if user is active
     if not user.is_active:
-        return jsonify({"error": "Your account is disabled. Please contact support."}), 403
+        return jsonify({
+            "error": "account_disabled",
+            "message": "Your account has been deactivated by an administrator. Please contact support if you need help.",
+        }), 403
 
     pw_matches = verify_password_compat(user.password, password)
 

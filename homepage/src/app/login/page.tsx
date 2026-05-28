@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "../LanguageProvider";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { accessDenialMessage } from "@/lib/accessMessages";
 
 function LoginPageContent({
   isArabic,
@@ -26,6 +27,8 @@ function LoginPageContent({
 
   const next = searchParams.get("next") || "";
   const nextPath = next.startsWith("/") && !next.startsWith("//") ? next : undefined;
+  const reason = searchParams.get("reason");
+  const accessNotice = reason ? accessDenialMessage(reason) : null;
 
   const [sessionChecked, setSessionChecked] = useState(false);
 
@@ -38,7 +41,15 @@ function LoginPageContent({
           if (alive) setSessionChecked(true);
           return;
         }
-        const data = (await res.json().catch(() => null)) as { user?: { role?: string; has_journal_access?: boolean } } | null;
+        const data = (await res.json().catch(() => null)) as {
+          user?: {
+            role?: string;
+            has_journal_access?: boolean;
+            access_denial_reason?: string;
+            access_expired_at?: string;
+            lapsed_subscription?: { plan_name?: string; current_period_end?: string };
+          };
+        } | null;
         const user = data?.user;
         if (!user) {
           if (alive) setSessionChecked(true);
@@ -63,7 +74,7 @@ function LoginPageContent({
     );
   }
 
-  return <AuthUI initialMode={initialMode} nextPath={nextPath} signInContent={signInContent} signUpContent={signUpContent} />;
+  return <AuthUI initialMode={initialMode} nextPath={nextPath} accessNotice={accessNotice} signInContent={signInContent} signUpContent={signUpContent} />;
 }
 
 export default function LoginPage() {

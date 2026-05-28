@@ -1218,11 +1218,7 @@ def _get_user_from_request(request: Request):
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
             return None
-        # Enforce access expiry — auto-logout expired users (admins exempt)
-        if user.role != "admin" and user.access_expires_at and user.access_expires_at < datetime.utcnow():
-            db.query(UserSession).filter(UserSession.user_id == user.id).delete()
-            db.commit()
-            return None
+        # Keep session when access_expires_at passes — entitlement gates explain why access is denied.
         sess.last_active_at = datetime.utcnow()
         db.commit()
         return user
@@ -1247,8 +1243,6 @@ def _get_user_from_websocket(ws: WebSocket):
             return None
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
-            return None
-        if user.role != "admin" and user.access_expires_at and user.access_expires_at < datetime.utcnow():
             return None
         return user
     except Exception:
@@ -9585,6 +9579,14 @@ def _subscription_access_context(db, user: User) -> dict:
             "access_denial_reason": "subscription_inactive",
             "lapsed_subscription": lapsed,
         }
+    expires = getattr(user, "access_expires_at", None)
+    if expires and expires < datetime.utcnow() and (getattr(user, "role", "") or "") != "admin":
+        return {
+            "billing_issue": False,
+            "access_denial_reason": "access_period_ended",
+            "access_expired_at": expires.isoformat(),
+            "lapsed_subscription": lapsed,
+        }
     return {
         "billing_issue": False,
         "access_denial_reason": "no_plan",
@@ -9769,10 +9771,18 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == email).first()
-        if not user or not user.is_active:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
+        if not user.is_active:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "account_disabled",
+                    "message": "Your account has been deactivated by an administrator. Please contact support if you need help.",
+                },
+            )
         if not _verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
 
         session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)

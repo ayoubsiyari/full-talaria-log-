@@ -1440,6 +1440,15 @@ def _access_denial_context(user, uid):
             'access_denial_reason': 'subscription_inactive',
             'lapsed_subscription': _lapsed_subscription_summary(latest),
         }
+    expires = getattr(user, 'access_expires_at', None)
+    if expires and expires < datetime.utcnow() and (getattr(user, 'role', '') or '') != 'admin':
+        return {
+            'billing_issue': False,
+            'has_stripe_customer': has_stripe,
+            'access_denial_reason': 'access_period_ended',
+            'access_expired_at': expires.isoformat(),
+            'lapsed_subscription': _lapsed_subscription_summary(latest) if latest else None,
+        }
     return {
         'billing_issue': False,
         'has_stripe_customer': has_stripe,

@@ -13,6 +13,11 @@ import {
   isPathAdminOnlyWip,
   userIsDashboardAdmin,
 } from "@/lib/dashboardAccess";
+import {
+  accessDenialMessage,
+  parseAuthApiError,
+  pricingUrlForAccessDenial,
+} from "@/lib/accessMessages";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -58,7 +63,13 @@ function isJournalPublicNextPath(path: string): boolean {
  * authenticated (e.g. visits /login/) so we send them to the dashboard instead.
  */
 export function getPostAuthRedirectUrl(opts: {
-  user: { role?: string; has_journal_access?: boolean };
+  user: {
+    role?: string;
+    has_journal_access?: boolean;
+    access_denial_reason?: string;
+    lapsed_subscription?: { plan_name?: string | null; current_period_end?: string | null };
+    access_expired_at?: string | null;
+  };
   nextPath?: string | null;
 }): string {
   const raw = opts.nextPath;
@@ -76,7 +87,7 @@ export function getPostAuthRedirectUrl(opts: {
     if (safeNext && isJournalPublicNextPath(safeNext)) {
       return safeNext;
     }
-    return "/pricing/";
+    return pricingUrlForAccessDenial(opts.user.access_denial_reason);
   }
   if (safeNext) {
     return safeNext;
@@ -89,6 +100,9 @@ type AuthSuccessBody = {
   user?: {
     role?: string;
     has_journal_access?: boolean;
+    access_denial_reason?: string;
+    access_expired_at?: string | null;
+    lapsed_subscription?: { plan_name?: string | null; current_period_end?: string | null };
     [key: string]: unknown;
   };
 } | null;
@@ -141,6 +155,17 @@ export async function completeAuthLogin(
     user: {
       role: chartUser?.role,
       has_journal_access: !!(hasAccess || chartUser?.has_journal_access),
+      access_denial_reason:
+        typeof chartUser?.access_denial_reason === "string"
+          ? chartUser.access_denial_reason
+          : undefined,
+      access_expired_at:
+        typeof chartUser?.access_expired_at === "string"
+          ? chartUser.access_expired_at
+          : undefined,
+      lapsed_subscription: chartUser?.lapsed_subscription as
+        | { plan_name?: string | null; current_period_end?: string | null }
+        | undefined,
     },
     nextPath: safeNext,
   });
@@ -313,7 +338,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 );
 PasswordInput.displayName = "PasswordInput";
 
-function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }: { prefillEmail?: string; bannerMessage?: string | null; nextPath?: string; onForgotPassword: () => void }) {
+function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onForgotPassword }: { prefillEmail?: string; bannerMessage?: string | null; accessNotice?: string | null; nextPath?: string; onForgotPassword: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -342,7 +367,7 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
 
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        setError((body && (body.error || body.detail)) ? String(body.error || body.detail) : "Login failed");
+        setError(parseAuthApiError(body, "Login failed"));
         return;
       }
 
@@ -365,8 +390,13 @@ function SignInForm({ prefillEmail, bannerMessage, nextPath, onForgotPassword }:
             <AuthButton type="button" variant="link" className="p-0 h-auto text-xs" onClick={onForgotPassword}>Forgot password?</AuthButton>
           </div>
         </div>
+        {accessNotice && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            {accessNotice}
+          </div>
+        )}
         {bannerMessage && <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{bannerMessage}</div>}
-        {error && <div className="text-sm text-red-500">{error}</div>}
+        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
         <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>{loading ? "Signing In..." : "Sign In"}</AuthButton>
       </div>
     </form>
@@ -738,7 +768,7 @@ function SignUpForm({ onSignedUp, onNeedsVerification, nextPath }: { onSignedUp:
   );
 }
 
-function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification, verificationEmail, onBackFromVerification, prefillEmail, bannerMessage, nextPath, forgotPasswordMode, resetPasswordEmail, onForgotPassword, onBackFromForgot, onResetCodeSent, onPasswordReset }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; verificationEmail: string | null; onBackFromVerification: () => void; prefillEmail?: string; bannerMessage?: string | null; nextPath?: string; forgotPasswordMode: boolean; resetPasswordEmail: string | null; onForgotPassword: () => void; onBackFromForgot: () => void; onResetCodeSent: (email: string) => void; onPasswordReset: () => void }) {
+function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification, verificationEmail, onBackFromVerification, prefillEmail, bannerMessage, accessNotice, nextPath, forgotPasswordMode, resetPasswordEmail, onForgotPassword, onBackFromForgot, onResetCodeSent, onPasswordReset }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; verificationEmail: string | null; onBackFromVerification: () => void; prefillEmail?: string; bannerMessage?: string | null; accessNotice?: string | null; nextPath?: string; forgotPasswordMode: boolean; resetPasswordEmail: string | null; onForgotPassword: () => void; onBackFromForgot: () => void; onResetCodeSent: (email: string) => void; onPasswordReset: () => void }) {
     const showExtraOptions = !verificationEmail && !forgotPasswordMode && !resetPasswordEmail;
     const [googleError, setGoogleError] = React.useState<string | null>(null);
     const [googleLoading, setGoogleLoading] = React.useState(false);
@@ -796,7 +826,7 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
                 nextPath={nextPath} 
               />
             ) : isSignIn ? (
-              <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} nextPath={nextPath} onForgotPassword={onForgotPassword} />
+              <SignInForm prefillEmail={prefillEmail} bannerMessage={bannerMessage} accessNotice={accessNotice} nextPath={nextPath} onForgotPassword={onForgotPassword} />
             ) : (
               <SignUpForm onSignedUp={onSignedUp} onNeedsVerification={onNeedsVerification} nextPath={nextPath} />
             )}
@@ -839,6 +869,7 @@ interface AuthUIProps {
     signUpContent?: AuthContentProps;
     initialMode?: "signin" | "signup";
     nextPath?: string;
+    accessNotice?: string | null;
 }
 
 const defaultSignInContent = {
@@ -863,7 +894,7 @@ const defaultSignUpContent = {
     }
 };
 
-export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "signin", nextPath }: AuthUIProps) {
+export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "signin", nextPath, accessNotice = null }: AuthUIProps) {
   const [isSignIn, setIsSignIn] = useState(initialMode !== "signup");
   const [prefillEmail, setPrefillEmail] = useState<string>("");
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
@@ -897,6 +928,7 @@ export function AuthUI({ signInContent = {}, signUpContent = {}, initialMode = "
           onToggle={toggleForm}
           prefillEmail={prefillEmail}
           bannerMessage={bannerMessage}
+          accessNotice={accessNotice}
           nextPath={nextPath}
           verificationEmail={verificationEmail}
           onBackFromVerification={() => setVerificationEmail(null)}
