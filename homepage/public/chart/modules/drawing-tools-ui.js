@@ -14052,7 +14052,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 const hasBg = bgColor && bgColor !== 'none' && bgColor !== 'transparent';
 
-                if (drawing.type === 'flag-mark') {
+                if (drawing.type === 'flag-mark' || drawing.type === 'signpost-2') {
                     bgRow.innerHTML = `
                         <span class="tv-checkbox-label">Color</span>
                         <div class="tv-prop-controls" style="margin-left: auto;">

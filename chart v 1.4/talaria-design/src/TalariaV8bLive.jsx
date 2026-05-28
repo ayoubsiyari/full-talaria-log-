@@ -1915,7 +1915,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
   }
   if (t === "signpost" || t === "signpost-2") {
     applyCommon();
-    if (txt.bgOn && txt.bgColor != null) {
+    if (txt.bgColor != null) {
       s.fill = txt.bgColor;
       s.stroke = txt.bgColor;
       s.color = txt.bgColor;
@@ -1925,7 +1925,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     return;
   }
   if (t === "flag-mark") {
-    if (txt.bgOn && txt.bgColor != null) { s.fill = txt.bgColor; s.stroke = txt.bgColor; }
+    if (txt.bgColor != null) { s.fill = txt.bgColor; s.stroke = txt.bgColor; }
     return;
   }
   applyCommon();
@@ -18444,11 +18444,20 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Background row — hidden for image */}
-              {!isImage && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {/* Color row — flag / signpost (always on; no checkbox) */}
+              {(isFlag || isSignpost) && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+                <span style={{fontSize:12,color:c.ts}}>Color</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor}/>
+                  <div style={{width:42,height:26,visibility:"hidden"}}/>
+                  <div style={{width:60,height:28,visibility:"hidden"}}/>
+                </div>
+              </div>}
+              {/* Background row — tools with optional fill */}
+              {!isImage && !isFlag && !isSignpost && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 {TlChk(txtStyle.bgOn,"txtBgChk",null,()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn})))}
                 <span onClick={()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn}))}
-                  style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>{isSignpost || isFlag ? "Color" : "Background"}</span>
+                  style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Background</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor} disabled={!txtStyle.bgOn}/>
                   <div style={{width:42,height:26,visibility:"hidden"}}/>
