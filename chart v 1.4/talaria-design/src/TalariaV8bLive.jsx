@@ -172,6 +172,16 @@ const V9_ARROW_MARK_DOWN_COLOR = "#F23645";
 function v9IsArrowMarkChartType(type) {
   return !!type && V9_ARROW_MARK_CHART_TYPES.has(type);
 }
+/** Channel / shape tools that use `tlStyle.showBg` → `style.showBackground` + `style.fill`. */
+function v9UsesTlShowBgChartType(type) {
+  return (
+    !!type &&
+    (V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(type) ||
+      type === "parallel-channel" ||
+      type === "flat-top-bottom" ||
+      type === "disjoint-channel")
+  );
+}
 function v9IsArrowMarkUiActive(subToolIcon, chartDrawingType) {
   if (subToolIcon === "arrowUp" || subToolIcon === "arrowDn") return true;
   return v9IsArrowMarkChartType(chartDrawingType);
@@ -13786,7 +13796,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type) && !v9IsArrowMarkChartType(d.type)) return;
+        if (!v9UsesTlShowBgChartType(d.type) && !v9IsArrowMarkChartType(d.type)) return;
         if (v9IsArrowMarkChartType(d.type)) {
           patch.fill = bgOn ? (tl.bgColor || d.style.fill || "#F23645") : "none";
         }
@@ -16404,8 +16414,12 @@ const TalariaV8bLive = () => {
                       })}
                       {/* ── Background row (inside channel grid) ── */}
                       {hasBg && <>
-                        <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Background</span>
-                        <div style={{ padding:"8px 0" }}>{colorSwatch("tlBgColor", tlStyle.bgColor)}</div>
+                        <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                          {TlChk(tlStyle.showBg, "tlchk-chBg", "Background", toggleTlShowBg)}
+                        </div>
+                        <div style={{ padding:"8px 0", opacity:tlStyle.showBg ? 1 : 0.38, pointerEvents:tlStyle.showBg ? "auto" : "none", transition:"opacity 0.15s" }}>
+                          {colorSwatch("tlBgColor", tlStyle.bgColor)}
+                        </div>
                         <div/><div/>
                       </>}
                     </div>;

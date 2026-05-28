@@ -212,7 +212,8 @@ class ParallelChannelTool extends BaseDrawing {
             };
 
             // Draw fill first (background)
-            if (this.style.fill && this.style.fill !== 'none') {
+            const channelBgOn = this.style.showBackground !== false;
+            if (channelBgOn && this.style.fill && this.style.fill !== 'none') {
                 const base = getLineEndpoints(x1, y1, x2, y2);
                 const parallel = getLineEndpoints(x1 + offsetX, y1 + offsetY, x2 + offsetX, y2 + offsetY);
                 this.group.append('polygon')
