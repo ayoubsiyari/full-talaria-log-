@@ -1740,122 +1740,6 @@ function v9ApplyImageDataUrlToDrawingStyle(style, dataUrl, { resetSize = false }
   }
 }
 
-function v9CompressImageDataUrl(dataUrl, maxDim = 2000, quality = 0.85) {
-  return new Promise((resolve) => {
-    if (!dataUrl || typeof document === "undefined") {
-      resolve(dataUrl || "");
-      return;
-    }
-    const img = new Image();
-    img.onload = () => {
-      try {
-        let w = img.width;
-        let h = img.height;
-        if (w > maxDim || h > maxDim) {
-          const ratio = Math.min(maxDim / w, maxDim / h);
-          w = Math.floor(w * ratio);
-          h = Math.floor(h * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          resolve(dataUrl);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality) || dataUrl);
-      } catch (_) {
-        resolve(dataUrl);
-      }
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
-
-function v9DataUrlToBlob(dataUrl) {
-  const parts = String(dataUrl).split(",");
-  if (parts.length < 2) return null;
-  const mime = (parts[0].match(/data:([^;]+)/) || [])[1] || "image/png";
-  const bin = atob(parts[1]);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
-function v9DownloadImageDataUrl(dataUrl, filename = "talaria-chart-image") {
-  if (!dataUrl || typeof document === "undefined") return;
-  try {
-    const ext = dataUrl.startsWith("data:image/png")
-      ? "png"
-      : dataUrl.startsWith("data:image/webp")
-        ? "webp"
-        : "jpg";
-    const a = document.createElement("a");
-    a.rel = "noopener";
-    a.download = `${filename}.${ext}`;
-    let blobUrl = null;
-    if (dataUrl.startsWith("data:")) {
-      const blob = v9DataUrlToBlob(dataUrl);
-      if (blob) {
-        blobUrl = URL.createObjectURL(blob);
-        a.href = blobUrl;
-      } else {
-        a.href = dataUrl;
-      }
-    } else {
-      a.href = dataUrl;
-    }
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    if (blobUrl) {
-      setTimeout(() => {
-        try {
-          URL.revokeObjectURL(blobUrl);
-        } catch (_) {}
-      }, 2000);
-    }
-  } catch (err) {
-    console.warn("[V9 image] download failed:", err);
-    v9NotifyDrawingAction("Download failed");
-  }
-}
-
-async function v9LoadImageFileToTxtStyle(setTxtStyle, file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async (ev) => {
-    const raw = ev?.target?.result;
-    if (!raw || typeof raw !== "string") return;
-    const compressed = await v9CompressImageDataUrl(raw);
-    setTxtStyle((s) => ({
-      ...s,
-      imageDataUrl: compressed,
-      imageTransparency: s.imageTransparency ?? 100,
-    }));
-  };
-  reader.onerror = () => v9NotifyDrawingAction("Could not read image file");
-  reader.readAsDataURL(file);
-}
-
-function v9PickImageFileForTxtStyle(setTxtStyle) {
-  if (typeof document === "undefined") return;
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.style.display = "none";
-  input.onchange = (e) => {
-    const f = e.target?.files?.[0];
-    v9LoadImageFileToTxtStyle(setTxtStyle, f);
-    input.remove();
-  };
-  document.body.appendChild(input);
-  input.click();
-}
-
 /** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
 function v9TxtStylePatchFromDrawing(d) {
   if (!d || !d.style) return null;
@@ -18169,24 +18053,6 @@ const TalariaV8bLive = () => {
               </div>
             )}
           </div>
-          {txtQuickIcon === "image" && <>
-            <TxBtn id="txt-img-up" isAct={false}
-              onClick={e=>{e.stopPropagation();setTxtBarDrop(null);v9PickImageFileForTxtStyle(setTxtStyle);}}>
-              {(_,__,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <I n="image" s={16} cl={col}/>
-                <span style={{fontSize:8,fontWeight:700,color:col,lineHeight:1}}>{txtStyle.imageDataUrl ? "chg" : "add"}</span>
-              </div>}
-            </TxBtn>
-            {!!(txtStyle.imageDataUrl && String(txtStyle.imageDataUrl).length) && <TxBtn id="txt-img-dl" isAct={false}
-              onClick={e=>{e.stopPropagation();setTxtBarDrop(null);v9DownloadImageDataUrl(txtStyle.imageDataUrl);}}>
-              {(_,__,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>
-                </svg>
-                <span style={{fontSize:8,fontWeight:700,color:col,lineHeight:1}}>dl</span>
-              </div>}
-            </TxBtn>}
-          </>}
           {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
           {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
@@ -18493,8 +18359,6 @@ const TalariaV8bLive = () => {
               {isImage && (()=>{
                 const pct = txtStyle.imageTransparency ?? 100;
                 const hkH = "img-transp-h";
-                const hasImage = !!(txtStyle.imageDataUrl && String(txtStyle.imageDataUrl).length);
-                const pickImageFile = () => v9PickImageFileForTxtStyle(setTxtStyle);
                 const mkDrag = e => {
                   e.stopPropagation();
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -18504,40 +18368,22 @@ const TalariaV8bLive = () => {
                   const onUp = () => {setHov(null);window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
                   onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
                 };
-                const imgBtn = (id, label, onAct, accent) => {
-                  const isH = hov === id;
-                  return (
-                    <div key={id}
-                      {...modalPointerActivate(onAct)}
-                      onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)}
-                      style={{padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"default",borderRadius:4,
-                              color:accent ? c.acL : isH ? c.tx : c.ts,
-                              background:accent ? c.acD : isH ? c.hv : "rgba(140,160,255,0.06)",
-                              border:`1px solid ${accent ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.15)"}`,
-                              transition:"background 0.12s,color 0.12s"}}>
-                      {label}
-                    </div>
-                  );
-                };
                 return <>
                   <div style={{fontSize:10,fontWeight:800,color:c.tm,letterSpacing:"0.08em",marginBottom:10}}>IMAGE</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-                    {imgBtn("img-upload", hasImage ? "Change image" : "Upload image", pickImageFile, !hasImage)}
-                    {hasImage && imgBtn("img-dl", "Download", () => v9DownloadImageDataUrl(txtStyle.imageDataUrl), false)}
-                    {hasImage && imgBtn("img-rm", "Remove", () => setTxtStyle(s => ({ ...s, imageDataUrl: "" })), false)}
-                  </div>
-                  <div {...modalPointerActivate(pickImageFile)}
-                    style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
-                               width:"70%",aspectRatio:"1",boxSizing:"border-box",margin:"0 auto 16px",
-                               background:"rgba(140,160,255,0.05)",border:"1px dashed rgba(140,160,255,0.25)",
-                               cursor:"default"}}>
-                    {hasImage
-                      ? <img src={txtStyle.imageDataUrl} alt="" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",pointerEvents:"none"}}/>
-                      : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Click to upload</span></>}
-                  </div>
-                  {/* opacity — 100% = fully visible (maps to chart style.opacity) */}
+                  <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,
+                                 width:"70%",aspectRatio:"1",boxSizing:"border-box",margin:"0 auto 16px",
+                                 background:"rgba(140,160,255,0.05)",border:"1px dashed rgba(140,160,255,0.25)",
+                                 cursor:"default"}}>
+                    {txtStyle.imageDataUrl
+                      ? <img src={txtStyle.imageDataUrl} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
+                      : <><I n="image" s={28} cl={c.ts}/><span style={{fontSize:12,color:c.ts}}>Upload Image</span></>}
+                    <input type="file" accept="image/*" style={{display:"none"}}
+                      onClick={e=>e.stopPropagation()}
+                      onChange={e=>{const f=e.target.files?.[0];if(f){const r=new FileReader();r.onload=ev=>setTxtStyle(s=>({...s,imageDataUrl:ev.target.result}));r.readAsDataURL(f);}}}/>
+                  </label>
+                  {/* transparency — label left, slider right-aligned and narrow */}
                   <div style={{marginBottom:16}}>
-                    <span style={{fontSize:12,color:c.ts,display:"block",marginBottom:6}}>Opacity</span>
+                    <span style={{fontSize:12,color:c.ts,display:"block",marginBottom:6}}>Transparency</span>
                     <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}>
                       <div onClick={e=>e.stopPropagation()}
                         style={{width:130,position:"relative",height:28,display:"flex",alignItems:"center",cursor:"default",flexShrink:0}}>
