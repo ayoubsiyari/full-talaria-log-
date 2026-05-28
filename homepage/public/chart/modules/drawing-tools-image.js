@@ -577,6 +577,7 @@ class ImageTool extends BaseDrawing {
                         this.style.widthInDataUnits = null;
                         this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
+                        this._notifyV9ImageChanged();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
                             try {
@@ -602,6 +603,7 @@ class ImageTool extends BaseDrawing {
                         this.style.widthInDataUnits = null;
                         this.style.heightInDataUnits = null;
                         this.meta.updatedAt = Date.now();
+                        this._notifyV9ImageChanged();
 
                         if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
                             try {
@@ -633,6 +635,21 @@ class ImageTool extends BaseDrawing {
         };
         
         input.click();
+    }
+
+    _notifyV9ImageChanged() {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('v9ImageDrawingChanged', {
+                detail: {
+                    id: this.id,
+                    imageUrl: this.style.imageUrl || '',
+                    opacity: this.style.opacity,
+                },
+            }));
+        } catch (_) {}
     }
 
     static fromJSON(data, chart) {
