@@ -74,7 +74,7 @@ export function getPostAuthRedirectUrl(opts: {
 }): string {
   const raw = opts.nextPath;
   const safeNext = raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : null;
-  const isAdmin = userIsDashboardAdmin(opts.user);
+  const isAdmin = userIsDashboardAdmin({ role: opts.user.role });
   if (isAdmin) {
     if (safeNext) return safeNext;
     return "/dashboard/backtest/";
