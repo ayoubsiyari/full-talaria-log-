@@ -1171,7 +1171,7 @@ class DrawingToolsManager {
                     }
                     if (!openedFromDoubleClick) {
                         const best = drawingsAtPoint[0];
-                        if (best && !best.locked) {
+                        if (best) {
                             this.selectDrawing(best, false);
                         }
                         event.preventDefault();
@@ -1290,13 +1290,18 @@ class DrawingToolsManager {
                 }
 
                 if (selectedAtPoint.length > 0) {
-                    this._startDirectMoveDrag(selectedAtPoint, event);
+                    const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+                    if (toMove.length > 0) {
+                        this._startDirectMoveDrag(toMove, event);
+                    }
                 } else {
                     const best = drawingsAtPoint[0];
-                    if (!best || best.locked) return;
+                    if (!best) return;
 
                     this.selectDrawing(best, false);
-                    this._startDirectMoveDrag(best, event);
+                    if (!best.locked) {
+                        this._startDirectMoveDrag(best, event);
+                    }
                 }
 
                 suppressNextCanvasClick = true;
@@ -1912,7 +1917,9 @@ class DrawingToolsManager {
                     event.preventDefault();
                     event.stopPropagation();
                     const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
-                    this._startDirectMoveDrag(toMove.length ? toMove : selectedAtPoint, event);
+                    if (toMove.length > 0) {
+                        this._startDirectMoveDrag(toMove, event);
+                    }
                     return;
                 }
             }
@@ -4222,8 +4229,8 @@ class DrawingToolsManager {
             
             self._drawingClickTimes[drawing.id] = now;
             
-            // Single click - select (with Shift for multi-select)
-            if (!self.currentTool && !drawing.locked) {
+            // Single click - select (with Shift for multi-select); locked = select only, no drag/resize
+            if (!self.currentTool) {
                 self.selectDrawing(drawing, event.shiftKey);
             }
         };
@@ -5980,19 +5987,39 @@ class DrawingToolsManager {
         try {
             const toolInfo = this.toolRegistry[this.clipboardDrawing.type];
             if (!toolInfo) return;
-            
-            const newDrawing = toolInfo.class.fromJSON(this.clipboardDrawing);
+
+            const clip = JSON.parse(JSON.stringify(this.clipboardDrawing));
+            if (clip.coordinateSystem === 'timestamp' && Array.isArray(clip.points) &&
+                this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
+                typeof CoordinateUtils !== 'undefined' &&
+                typeof CoordinateUtils.pointsFromTimestamps === 'function') {
+                const tsPts = clip.points.map(p => ({
+                    timestamp: p.timestamp,
+                    price: p.price !== undefined ? p.price : p.y
+                }));
+                clip.points = CoordinateUtils.pointsFromTimestamps(
+                    tsPts,
+                    this.chart.data,
+                    this.chart.currentTimeframe
+                );
+                clip.coordinateSystem = 'index';
+            }
+
+            const newDrawing = toolInfo.class.fromJSON(clip, this.chart);
             newDrawing.id = generateUUID();
-            
+            newDrawing.timestampPoints = null;
+            newDrawing.coordinateSystem = 'index';
+
             // Calculate small offset based on visible chart range
             const priceRange = this.chart.yScale.domain();
-            const priceOffset = (priceRange[1] - priceRange[0]) * 0.02;
-            
+            const domainSpan = priceRange[1] - priceRange[0];
+            const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.02 : 0;
+
             newDrawing.points = newDrawing.points.map(p => ({
-                x: p.x + 1,
-                y: p.y - priceOffset
+                x: Number.isFinite(p.x) ? p.x + 1 : p.x,
+                y: Number.isFinite(p.y) ? p.y - priceOffset : p.y
             }));
-            
+
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing);
             // [debug removed]
@@ -6337,6 +6364,64 @@ class DrawingToolsManager {
     }
 
     /**
+     * Resolve live bar-index points for clone/paste. toJSON() stores timestamps ({timestamp, price})
+     * which must not be passed straight into fromJSON for in-memory duplication.
+     */
+    _resolveDrawingIndexPoints(drawing) {
+        if (!drawing) return [];
+        const pts = drawing.points;
+        if (Array.isArray(pts) && pts.length > 0 &&
+            pts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
+            return pts.map(p => ({ x: p.x, y: p.y }));
+        }
+        const tsPts = drawing.timestampPoints;
+        if (Array.isArray(tsPts) && tsPts.length > 0 &&
+            this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
+            typeof CoordinateUtils !== 'undefined' &&
+            typeof CoordinateUtils.pointsFromTimestamps === 'function') {
+            try {
+                const normalized = tsPts.map(p => ({
+                    timestamp: p.timestamp,
+                    price: p.price !== undefined ? p.price : p.y
+                }));
+                const converted = CoordinateUtils.pointsFromTimestamps(
+                    normalized,
+                    this.chart.data,
+                    this.chart.currentTimeframe
+                );
+                if (Array.isArray(converted) && converted.length > 0 &&
+                    converted.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
+                    return converted.map(p => ({ x: p.x, y: p.y }));
+                }
+            } catch (_) { /* fall through */ }
+        }
+        return [];
+    }
+
+    _buildDrawingClonePayload(drawing) {
+        const points = this._resolveDrawingIndexPoints(drawing);
+        const payload = {
+            type: drawing.type,
+            points: JSON.parse(JSON.stringify(points)),
+            coordinateSystem: 'index',
+            style: JSON.parse(JSON.stringify(drawing.style || {})),
+            visible: drawing.visible !== false,
+            meta: {
+                ...(drawing.meta && typeof drawing.meta === 'object' ? drawing.meta : {}),
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            },
+            text: typeof drawing.text === 'string' ? drawing.text : ''
+        };
+        if (drawing.visibility) {
+            payload.visibility = JSON.parse(JSON.stringify(drawing.visibility));
+        }
+        if (drawing.baseScale != null) payload.baseScale = drawing.baseScale;
+        if (drawing.levels) payload.levels = JSON.parse(JSON.stringify(drawing.levels));
+        return payload;
+    }
+
+    /**
      * Duplicate a drawing (Clone) - exact same position
      */
     duplicateDrawing(drawing) {
@@ -6346,28 +6431,28 @@ class DrawingToolsManager {
                 console.error('Unknown drawing type:', drawing.type);
                 return;
             }
-            
-            // Get JSON data from drawing
-            const jsonData = drawing.toJSON ? drawing.toJSON() : {
-                type: drawing.type,
-                points: JSON.parse(JSON.stringify(drawing.points)),
-                style: JSON.parse(JSON.stringify(drawing.style || {}))
-            };
-            
-            const newDrawing = toolInfo.class.fromJSON(jsonData);
+
+            const jsonData = this._buildDrawingClonePayload(drawing);
+            if (!Array.isArray(jsonData.points) || jsonData.points.length === 0) {
+                console.error('Failed to clone drawing: no valid points');
+                return;
+            }
+
+            const newDrawing = toolInfo.class.fromJSON(jsonData, this.chart);
             newDrawing.id = generateUUID();
-            
+            newDrawing.timestampPoints = null;
+            newDrawing.coordinateSystem = 'index';
+
             // Offset clone slightly so it appears near the original
             const priceRange = this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
             const domainSpan = (priceRange[1] - priceRange[0]);
             const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.015 : 0;
             const candleOffset = 3;
             newDrawing.points = newDrawing.points.map(p => ({
-                ...p,
                 x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
-                y: Number.isFinite(p.y) && priceOffset !== 0 ? p.y - priceOffset : p.y
+                y: Number.isFinite(p.y) ? p.y - priceOffset : p.y
             }));
-            
+
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing); // Select the new clone
             // [debug removed]

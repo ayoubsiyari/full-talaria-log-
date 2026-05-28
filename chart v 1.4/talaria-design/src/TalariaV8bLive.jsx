@@ -4117,9 +4117,15 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     "elliott-double-combo",
     "elliott-triple-combo",
   ];
-  if (patTypes.includes(d.type) && tlStyle.textColor) {
-    d.style.labelTextColor = tlStyle.textColor;
-    d.style.ratioTextColor = tlStyle.textColor;
+  if (patTypes.includes(d.type)) {
+    if (tlStyle.textColor) {
+      d.style.labelTextColor = tlStyle.textColor;
+      d.style.ratioTextColor = tlStyle.textColor;
+    }
+    const fs = parseInt(String(tlStyle.textSize), 10);
+    if (Number.isFinite(fs) && fs > 0) d.style.fontSize = fs;
+    d.style.fontWeight = tlStyle.textBold ? 'bold' : 'normal';
+    d.style.fontStyle = tlStyle.textItalic ? 'italic' : 'normal';
   }
   if (dm && typeof dm.renderDrawing === "function") {
     try {
@@ -18212,7 +18218,16 @@ const TalariaV8bLive = () => {
               enumerateV9DrawingManagersFromWindow().forEach((dm) => {
                 const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
                 if (!sel || !sel.length) return;
-                sel.forEach((d) => { if (d && drawingTypeToPanelGroupRef.current(d.type) === "text") d.locked = next; });
+                sel.forEach((d) => {
+                  if (!d || drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+                  d.locked = next;
+                  try {
+                    if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+                  } catch (_) {}
+                });
+                try {
+                  if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+                } catch (_) {}
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
             } catch (_) {}
@@ -21414,7 +21429,7 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}
             {/* btn 2b-pat-fcol: label color — only when settings exposes a Text tab (pattern uses Style tab Label row instead) */}
-            {isPatternTool && !hideQuickBarTextColor && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
+            {isPatternTool && <TlBtn id="tl-pat-fcol" isAct={colorPicker==="tlTextColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlTextColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.textColor||"#ffffff");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlTextColor");}}}>
               {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                 <span style={{fontSize:16,fontWeight:700,color:col,lineHeight:1,fontFamily:F}}>A</span>
@@ -21472,7 +21487,16 @@ const TalariaV8bLive = () => {
               enumerateV9DrawingManagersFromWindow().forEach((dm) => {
                 const sel = dm && (dm.selectedDrawings && dm.selectedDrawings.length ? dm.selectedDrawings : (dm.selectedDrawing ? [dm.selectedDrawing] : []));
                 if (!sel || !sel.length) return;
-                sel.forEach((d) => { if (d) d.locked = next; });
+                sel.forEach((d) => {
+                  if (!d) return;
+                  d.locked = next;
+                  try {
+                    if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+                  } catch (_) {}
+                });
+                try {
+                  if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+                } catch (_) {}
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
             } catch(_){}

@@ -8,6 +8,20 @@ const PATTERN_TEXT_WEIGHT = '600';
 const PATTERN_LABEL_OFFSET_PX = 14;
 const PATTERN_VALUE_OFFSET_PX = 12;
 
+function patternLabelFill(style) {
+    if (!style) return '#ffffff';
+    return style.labelTextColor || style.ratioTextColor || style.textColor || style.stroke || '#ffffff';
+}
+
+function patternLabelFontSizePx(style) {
+    const n = Number(style && style.fontSize);
+    return Number.isFinite(n) && n > 0 ? n : PATTERN_TEXT_SIZE_PX;
+}
+
+function patternLabelFontSizeAttr(style) {
+    return `${patternLabelFontSizePx(style)}px`;
+}
+
 class BarsPatternTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('bars-pattern', points, style);
@@ -677,9 +691,10 @@ class XABCDPatternTool extends BaseDrawing {
                     .attr('y', labelY)
                     .attr('text-anchor', 'middle')
                     .attr('dominant-baseline', 'middle')
-                    .attr('fill', this.style.stroke)
-                    .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
-                    .attr('font-weight', PATTERN_TEXT_WEIGHT)
+                    .attr('fill', patternLabelFill(this.style))
+                    .attr('font-size', patternLabelFontSizeAttr(this.style))
+                    .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+                    .attr('font-style', this.style.fontStyle || 'normal')
                     .style('pointer-events', 'none')
                     .text(this.labels[i]);
             }
@@ -708,9 +723,10 @@ class XABCDPatternTool extends BaseDrawing {
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
-            .attr('fill', '#ffffff')
-            .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
-            .attr('font-weight', PATTERN_TEXT_WEIGHT)
+            .attr('fill', patternLabelFill(this.style))
+            .attr('font-size', patternLabelFontSizeAttr(this.style))
+            .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'none')
             .text(ratio);
     }
@@ -773,9 +789,10 @@ class CypherPatternTool extends BaseDrawing {
                 .attr('x', getX(p))
                 .attr('y', getY(p) - PATTERN_LABEL_OFFSET_PX)
                 .attr('text-anchor', 'middle')
-                .attr('fill', this.style.stroke)
-                .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
-                .attr('font-weight', PATTERN_TEXT_WEIGHT)
+                .attr('fill', patternLabelFill(this.style))
+                .attr('font-size', patternLabelFontSizeAttr(this.style))
+                .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+                .attr('font-style', this.style.fontStyle || 'normal')
                 .style('pointer-events', 'none')
                 .text(this.labels[i]);
         });
@@ -1301,9 +1318,10 @@ class HeadShouldersTool extends BaseDrawing {
             .attr('x', x)
             .attr('y', labelY)
             .attr('text-anchor', 'middle')
-            .attr('fill', this.style.stroke)
-            .attr('font-size', `${PATTERN_TEXT_SIZE_PX}px`)
-            .attr('font-weight', PATTERN_TEXT_WEIGHT)
+            .attr('fill', patternLabelFill(this.style))
+            .attr('font-size', patternLabelFontSizeAttr(this.style))
+            .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'none')
             .text(tagText);
     }
@@ -1399,7 +1417,7 @@ class ABCDPatternTool extends BaseDrawing {
                     minWidth: 52,
                     fill: this.style.ratioFill,
                     textColor: this.style.ratioTextColor,
-                    fontSize: PATTERN_TEXT_SIZE_PX
+                    fontSize: patternLabelFontSizePx(this.style)
                 });
             }
         }
@@ -1429,7 +1447,7 @@ class ABCDPatternTool extends BaseDrawing {
                     minWidth: 52,
                     fill: this.style.ratioFill,
                     textColor: this.style.ratioTextColor,
-                    fontSize: PATTERN_TEXT_SIZE_PX
+                    fontSize: patternLabelFontSizePx(this.style)
                 });
             }
         }
@@ -1455,11 +1473,12 @@ class ABCDPatternTool extends BaseDrawing {
                 minWidth: 20,
                 fill: this.style.labelFill,
                 textColor: this.style.labelTextColor,
-                fontSize: PATTERN_TEXT_SIZE_PX,
+                fontSize: patternLabelFontSizePx(this.style),
                 paddingX: 6,
                 paddingY: 2.5,
                 cornerRadius: 2,
-                fontWeight: PATTERN_TEXT_WEIGHT
+                fontWeight: this.style.fontWeight || PATTERN_TEXT_WEIGHT,
+                fontStyle: this.style.fontStyle || 'normal'
             });
         });
 
@@ -1501,15 +1520,16 @@ class ABCDPatternTool extends BaseDrawing {
         const tagText = String(text || '');
         if (!tagText) return;
 
-        const fontSize = Number(options.fontSize) || PATTERN_TEXT_SIZE_PX;
+        const fontSize = Number(options.fontSize) || patternLabelFontSizePx(this.style);
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.stroke)
+            .attr('fill', options.textColor || patternLabelFill(this.style))
             .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', options.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-weight', options.fontWeight || this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-style', options.fontStyle || this.style.fontStyle || 'normal')
             .style('pointer-events', 'none')
             .text(tagText);
     }
@@ -1780,15 +1800,15 @@ class TrianglePatternTool extends BaseDrawing {
     _drawPointTag(x, y, text) {
         if (!text) return;
 
-        const fontSize = PATTERN_TEXT_SIZE_PX;
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.stroke)
-            .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', PATTERN_TEXT_WEIGHT)
+            .attr('fill', patternLabelFill(this.style))
+            .attr('font-size', patternLabelFontSizeAttr(this.style))
+            .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'none')
             .text(text);
     }
@@ -1952,15 +1972,15 @@ class ThreeDrivesTool extends BaseDrawing {
         const value = String(text || '');
         if (!value) return;
 
-        const fontSize = PATTERN_TEXT_SIZE_PX;
         this.group.append('text')
             .attr('x', x)
             .attr('y', y)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('fill', this.style.stroke)
-            .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', PATTERN_TEXT_WEIGHT)
+            .attr('fill', patternLabelFill(this.style))
+            .attr('font-size', patternLabelFontSizeAttr(this.style))
+            .attr('font-weight', this.style.fontWeight || PATTERN_TEXT_WEIGHT)
+            .attr('font-style', this.style.fontStyle || 'normal')
             .style('pointer-events', 'none')
             .text(value);
     }
@@ -2043,7 +2063,7 @@ function getWaveLabelOffset(points, index, getX, getY, distance = PATTERN_LABEL_
     };
 }
 
-function appendWaveLabel(group, points, index, label, getX, getY, style, fontSize = `${PATTERN_TEXT_SIZE_PX}px`) {
+function appendWaveLabel(group, points, index, label, getX, getY, style) {
     if (!label) return;
 
     const point = points[index];
@@ -2060,9 +2080,10 @@ function appendWaveLabel(group, points, index, label, getX, getY, style, fontSiz
         .attr('y', baseY + offset.dy)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .attr('fill', style.stroke)
-        .attr('font-size', fontSize)
-        .attr('font-weight', PATTERN_TEXT_WEIGHT)
+        .attr('fill', patternLabelFill(style))
+        .attr('font-size', patternLabelFontSizeAttr(style))
+        .attr('font-weight', style.fontWeight || PATTERN_TEXT_WEIGHT)
+        .attr('font-style', style.fontStyle || 'normal')
         .style('pointer-events', 'none')
         .text(label);
 }
@@ -2227,7 +2248,7 @@ class ElliottTriangleTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style);
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -2288,7 +2309,7 @@ class ElliottDoubleComboTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style);
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -2349,7 +2370,7 @@ class ElliottTripleComboTool extends BaseDrawing {
         }
 
         this.points.forEach((p, i) => {
-            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style, '12px');
+            appendWaveLabel(this.group, this.points, i, this.labels[i], getX, getY, this.style);
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);

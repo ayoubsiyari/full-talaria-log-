@@ -285,6 +285,30 @@ class EmojiStickerTool extends BaseDrawing {
         this._dragStartPos = null;
     }
 
+    isPointInside(x, y, scales) {
+        if (!this.points || this.points.length < 1 || !scales || !scales.yScale) {
+            return false;
+        }
+
+        const point = this.points[0];
+        const cx = scales.chart && typeof scales.chart.dataIndexToPixel === 'function'
+            ? scales.chart.dataIndexToPixel(point.x)
+            : scales.xScale(point.x);
+        const cy = scales.yScale(point.y);
+
+        let fontSize = this.style.fontSize || 48;
+        if (this.style.sizeInDataUnits) {
+            const y1Pixel = scales.yScale(point.y);
+            const y2Pixel = scales.yScale(point.y - this.style.sizeInDataUnits);
+            fontSize = Math.max(8, Math.min(500, Math.abs(y2Pixel - y1Pixel)));
+        } else if (this._currentFontSize) {
+            fontSize = this._currentFontSize;
+        }
+
+        const half = fontSize * 0.6;
+        return x >= cx - half && x <= cx + half && y >= cy - half && y <= cy + half;
+    }
+
     static fromJSON(data, chart) {
         const tool = new EmojiStickerTool(data.points, data.style || {});
         tool.id = data.id;
