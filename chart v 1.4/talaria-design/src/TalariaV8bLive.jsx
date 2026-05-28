@@ -785,6 +785,35 @@ function v9LegacyDashStringFromLineType(lineType) {
   return V9_DASH_TO_LEGACY[lineType] ?? "";
 }
 
+/** Read dash from chart style without turning `null` into the string `"null"`. */
+function v9StyleDashRaw(s, ...keys) {
+  if (!s || typeof s !== "object") return "";
+  for (const k of keys) {
+    const v = s[k];
+    if (v == null || v === "" || v === "none") continue;
+    const raw = String(v).replace(/\s+/g, "");
+    if (raw === "0") return "";
+    return raw;
+  }
+  return "";
+}
+
+function v9LineTypeFromDashRaw(dashRaw) {
+  if (!dashRaw) return "solid";
+  return V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? "dashed";
+}
+
+/** Color-picker updates must not re-apply stale `tlStyle.lineType` / width from the previous tool. */
+function v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool) {
+  if (!tlStyle) return {};
+  if (legacyTool === "pitchfork") {
+    const col = tlStyle.pfMedianColor || tlStyle.lineColor;
+    return col ? { medianColor: col } : {};
+  }
+  const col = tlStyle.lineColor;
+  return col ? { stroke: col, color: col } : {};
+}
+
 /** Immediate dash on visible strokes (settings panel does this for width; V9 bar must too). */
 function v9ApplyDashToDrawingDom(d, dashStr) {
   if (!d || !d.style) return;
@@ -2303,6 +2332,7 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
   if (!tlStyle) return;
   const editingRefDrawing = opts.editingRefDrawing ?? null;
   const resolveLegacyTool = opts.resolveLegacyTool;
+  const colorOnly = !!opts.colorOnly;
   const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
   const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
   const chartsToRender = new Set();
@@ -2313,7 +2343,9 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
       const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
       if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
       if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
-      const stylePatch = v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
+      const stylePatch = colorOnly
+        ? v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, effectiveTool || d.type)
+        : v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
       const tb = dm.toolbar;
       try {
         if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
@@ -4352,13 +4384,13 @@ function v9TlStylePatchFromDrawing(d) {
     ? String(parseInt(widthRaw, 10) || (isClassicFib || isTrendFibTime ? 1 : 2))
     : undefined;
   const dashRaw = isClassicFib
-    ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+    ? v9StyleDashRaw(s, "trendLineDasharray", "dashArray", "strokeDasharray")
     : isFibFan || isFibCircles || isFibArcs || isFibWedge
-      ? String(s.levelsLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
+      ? v9StyleDashRaw(s, "levelsLineDasharray", "dashArray", "strokeDasharray")
       : isTrendFibTime
-        ? String(s.trendLineDasharray ?? s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "")
-        : String(s.dashArray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
-  const lineType = V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
+        ? v9StyleDashRaw(s, "trendLineDasharray", "dashArray", "strokeDasharray")
+        : v9StyleDashRaw(s, "dashArray", "strokeDasharray");
+  const lineType = v9LineTypeFromDashRaw(dashRaw);
   return {
     ...(stroke ? { lineColor: stroke } : {}),
     ...(widthStr ? { lineWidth: widthStr } : {}),
@@ -11437,13 +11469,17 @@ const TalariaV8bLive = () => {
     cpBarAnchorRef.current = null;
     setColorPicker("gotoNewColor");
   };
-  const cpFlushTlOpts = () => ({
+  const cpFlushTlOpts = (extra = {}) => ({
     editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
     resolveLegacyTool: () => editingDrawingRef.current?.drawing?.type ?? null,
+    ...extra,
   });
-  const cpApplyTlStyle = (updater) => {
-    flushSync(() => setTlStyle(updater));
-    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts());
+  const cpApplyTlStyle = (updater, flushOpts = {}) => {
+    flushSync(() => {
+      if (flushOpts.colorOnly) suppressForwardBridge.current = true;
+      setTlStyle(updater);
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
   };
   const cpApplyTxtStyle = (updater) => {
     flushSync(() => setTxtStyle(updater));
@@ -11458,23 +11494,23 @@ const TalariaV8bLive = () => {
     setCpHex(toHex2(rgb.r)+toHex2(rgb.g)+toHex2(rgb.b));
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
-    else if(targetKey === "tlLineColor") cpApplyTlStyle(s=>v9ApplyTlLineColorToStyle(s, colorVal, tlSubTool.icon));
+    else if(targetKey === "tlLineColor") cpApplyTlStyle(s=>v9ApplyTlLineColorToStyle(s, colorVal, tlSubTool.icon), { colorOnly: true });
     else if(targetKey === "tlBgColor") cpApplyTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType));
-    else if(targetKey === "tlMidLineColor") cpApplyTlStyle(s=>({...s, midLineColor: colorVal}));
+    else if(targetKey === "tlMidLineColor") cpApplyTlStyle(s=>({...s, midLineColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlTextColor") cpApplyTlStyle(s=>({...s, textColor: colorVal}));
     else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal}));
     else if(targetKey === "tlLabelBgColor") cpApplyTlStyle(s=>({...s, labelBgColor: colorVal}));
     else if(targetKey === "tlBorderColor") cpApplyTlStyle(s=>({...s, borderColor: colorVal}));
-    else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
+    else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "regUpperBg") cpApplyTlStyle(s=>({...s, regUpperBg: colorVal}));
     else if(targetKey === "regLowerBg") cpApplyTlStyle(s=>({...s, regLowerBg: colorVal}));
-    else if(targetKey === "pfMedianColor") cpApplyTlStyle(s=>({...s, pfMedianColor: colorVal}));
+    else if(targetKey === "pfMedianColor") cpApplyTlStyle(s=>({...s, pfMedianColor: colorVal}), { colorOnly: true });
     else if(targetKey === "pfBgColor") cpApplyTlStyle(s=>({...s, pfBgColor: colorVal}));
-    else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
-    else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
-    else if(targetKey === "fibTrendColor") cpApplyTlStyle(s=>({...s, lineColor: colorVal}));
+    else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
+    else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
+    else if(targetKey === "fibTrendColor") cpApplyTlStyle(s=>({...s, lineColor: colorVal}), { colorOnly: true });
     else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey === "fibGridColor") cpApplyTlStyle(s=>({...s, fibGridColor: colorVal}));
@@ -12946,7 +12982,7 @@ const TalariaV8bLive = () => {
           ...prev,
           lineColor: sPartial.stroke || sPartial.color || prev.lineColor,
           lineWidth: String(sPartial.strokeWidth ?? prev.lineWidth),
-          lineType: LEGACY_DASH_TO_V9[String(sPartial.dashArray ?? sPartial.strokeDasharray ?? '').replace(/\s+/g, '')] || prev.lineType,
+          lineType: v9LineTypeFromDashRaw(v9StyleDashRaw(sPartial, "dashArray", "strokeDasharray")),
           bgColor: sPartial.fill || sPartial.backgroundColor || prev.bgColor,
           showBg: typeof sPartial.showBackground === 'boolean'
             ? sPartial.showBackground
@@ -13318,7 +13354,11 @@ const TalariaV8bLive = () => {
                     ),
                   );
                 } else {
-                  br.setTlStyle((s) => ({ ...s, ...patch }));
+                  flushSync(() =>
+                    br.setTlStyle((s) =>
+                      v9EnsureTlStyleArrays({ ...s, ...patch }, s, drawing.type),
+                    ),
+                  );
                 }
               }
             }
@@ -13938,6 +13978,24 @@ const TalariaV8bLive = () => {
     flushV9ShapeBorderToChart(tlStyleLiveRef.current);
   };
 
+  const V9_EXTEND_LEFT_RIGHT_TYPES = new Set([
+    "trendline",
+    "curve",
+    "double-curve",
+    "arc",
+    "polyline",
+    "path",
+    "extended-line",
+    "cross-line",
+    "arrow",
+    "parallel-channel",
+    "flat-top-bottom",
+    "disjoint-channel",
+    "rectangle",
+    "rotated-rectangle",
+    "regression-trend",
+  ]);
+
   // Extend left/right — immediate repaint (TradingView toggles without waiting for OK).
   const flushV9ExtendToChart = (tl) => {
     try {
@@ -13950,15 +14008,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        const extendable = new Set([
-          "rectangle",
-          "rotated-rectangle",
-          "parallel-channel",
-          "flat-top-bottom",
-          "disjoint-channel",
-          "regression-trend",
-        ]);
-        if (!extendable.has(d.type)) return;
+        if (!V9_EXTEND_LEFT_RIGHT_TYPES.has(d.type)) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -15796,7 +15846,7 @@ const TalariaV8bLive = () => {
                     })}/>
                 );
                 const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
-                const hasBg = ["polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
+                const hasBg = ["polyline","pathTool","curve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
                 const isRegCh = tlSubTool.icon === "regressionCh";
@@ -16952,9 +17002,12 @@ const TalariaV8bLive = () => {
                     {pairs.map(([k,lbl]) => <div key={k} style={{ width:66 }}>{TlChk(tlStyle[k],`tlchk-${k}`,lbl,()=>{
                       if (k === "extendLeft" || k === "extendRight") {
                         flushSync(() => {
-                          setTlStyle((s) => ({ ...s, [k]: !s[k] }));
+                          setTlStyle((s) => {
+                            const next = { ...s, [k]: !s[k] };
+                            flushV9ExtendToChart(next);
+                            return next;
+                          });
                         });
-                        flushV9ExtendToChart(tlStyleLiveRef.current);
                       } else {
                         setTlStyle((s) => ({ ...s, [k]: !s[k] }));
                       }
@@ -21838,7 +21891,7 @@ const TalariaV8bLive = () => {
               </div>}
             </TlBtn>}
             {/* btn 2b: bg color — for non-rect, non-pattern applicable tools */}
-            {["polyline","pathTool","curve","doubleCurve","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
+            {["polyline","pathTool","curve","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const arrowSwatch=tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor);const parsed=parseColor(v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?arrowSwatch:tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={v9IsArrowMarkUiActive(tlSubTool.icon,chartPrimarySelectedDrawingType)?(tlStyle.bgColor||tlStyle.lineColor||(tlSubTool.icon==="arrowDn"?V9_ARROW_MARK_DOWN_COLOR:tlSubTool.icon==="arrowUp"?V9_ARROW_MARK_UP_COLOR:tlStyle.bgColor)):tlStyle.bgColor}/></svg>}
             </TlBtn>}

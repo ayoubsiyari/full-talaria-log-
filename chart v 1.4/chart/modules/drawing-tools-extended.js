@@ -1963,15 +1963,9 @@ class DoubleCurveTool extends BaseDrawing {
             y: scales.yScale(this.points[3].y)
         };
         
-        // Build screen points array for rendering
-        const screenPoints = [screenP1, screenP2, screenCP1, screenCP2];
-
-        let pathData;
-        
-        if (screenPoints.length >= 2) {
-            // Generate smooth curve using control points (like TradingView)
-            pathData = this.generateSCurveWaveIndependent(screenPoints[0], screenPoints[1], screenPoints[2], screenPoints[3]);
-        }
+        // Spline order: start → control₁ → control₂ → end (not start → end → controls)
+        const splinePts = [screenP1, screenCP1, screenCP2, screenP2];
+        let pathData = this.buildDoubleCurvePath(splinePts);
 
         // Invisible hit path for easier clicking (match HorizontalLineTool pattern)
         this.group.append('path')
@@ -2055,18 +2049,44 @@ class DoubleCurveTool extends BaseDrawing {
         return (dist1 + dist2) / 2;
     }
     
+    /** Catmull–Rom path through start → CP1 → CP2 → end, with optional extend left/right. */
+    buildDoubleCurvePath(splinePts) {
+        if (!splinePts || splinePts.length < 2) return '';
+        let pts = splinePts.map((p) => ({ x: p.x, y: p.y }));
+        const extendLen = 10000;
+        if (this.style.extendLeft && pts.length >= 2) {
+            const dx = pts[1].x - pts[0].x;
+            const dy = pts[1].y - pts[0].y;
+            const len = Math.hypot(dx, dy);
+            if (len > 0) {
+                pts.unshift({
+                    x: pts[0].x - (dx / len) * extendLen,
+                    y: pts[0].y - (dy / len) * extendLen,
+                });
+            }
+        }
+        if (this.style.extendRight && pts.length >= 2) {
+            const n = pts.length - 1;
+            const dx = pts[n].x - pts[n - 1].x;
+            const dy = pts[n].y - pts[n - 1].y;
+            const len = Math.hypot(dx, dy);
+            if (len > 0) {
+                pts.push({
+                    x: pts[n].x + (dx / len) * extendLen,
+                    y: pts[n].y + (dy / len) * extendLen,
+                });
+            }
+        }
+        const lineGenerator = d3.line()
+            .x((d) => d.x)
+            .y((d) => d.y)
+            .curve(d3.curveCatmullRom.alpha(0.5));
+        return lineGenerator(pts) || '';
+    }
+
     // Generate smooth curve using control points (like TradingView)
     generateSCurveWaveIndependent(p1, p2, cp1, cp2) {
-        // Use D3's curve generator with the control points
-        // This creates a smooth curve that passes through/near the control points
-        const points = [p1, cp1, cp2, p2];
-        
-        const lineGenerator = d3.line()
-            .x(d => d.x)
-            .y(d => d.y)
-            .curve(d3.curveCatmullRom.alpha(0.5));
-        
-        return lineGenerator(points);
+        return this.buildDoubleCurvePath([p1, cp1, cp2, p2]);
     }
     
     // Keep old method for backward compatibility
