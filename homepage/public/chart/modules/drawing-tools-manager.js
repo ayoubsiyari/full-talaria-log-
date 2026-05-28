@@ -3021,6 +3021,38 @@ class DrawingToolsManager {
                 this.clearTool();
             }
         }
+
+        const mod = event.ctrlKey || event.metaKey;
+        if (mod && this._isDrawingShortcutTarget(event)) {
+            const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+            if (key === 'c' && !event.shiftKey && !event.altKey) {
+                const drawing = this._getPrimarySelectedDrawingForClipboard();
+                if (drawing && !drawing.locked) {
+                    event.preventDefault();
+                    this.copyDrawing(drawing);
+                    try {
+                        if (this.chart && typeof this.chart.showNotification === 'function') {
+                            this.chart.showNotification('Drawing copied ✓');
+                        }
+                    } catch (_) { /* ignore */ }
+                }
+                return;
+            }
+            if (key === 'v' && !event.shiftKey && !event.altKey) {
+                if (this.clipboardDrawing) {
+                    event.preventDefault();
+                    const pasted = this.pasteDrawing();
+                    if (pasted) {
+                        try {
+                            if (this.chart && typeof this.chart.showNotification === 'function') {
+                                this.chart.showNotification('Drawing pasted ✓');
+                            }
+                        } catch (_) { /* ignore */ }
+                    }
+                }
+                return;
+            }
+        }
         
         // Ctrl+Z - Undo (future feature)
         // Ctrl+Y - Redo (future feature)
@@ -5962,17 +5994,55 @@ class DrawingToolsManager {
      */
     copyDrawing(drawing) {
         try {
-            // Use toJSON which is the standard method
-            const data = drawing.toJSON ? drawing.toJSON() : {
-                type: drawing.type,
-                points: drawing.points,
-                style: drawing.style
-            };
-            this.clipboardDrawing = JSON.parse(JSON.stringify(data));
-            // [debug removed]
+            if (!drawing) return;
+            this.clipboardDrawing = this._buildDrawingClonePayload(drawing);
         } catch (err) {
             console.error('Failed to copy drawing:', err);
         }
+    }
+
+    _normalizeClipboardPayload(clip) {
+        if (!clip || typeof clip !== 'object') return null;
+        const out = JSON.parse(JSON.stringify(clip));
+        if (out.coordinateSystem === 'timestamp' && Array.isArray(out.points) &&
+            this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
+            typeof CoordinateUtils !== 'undefined' &&
+            typeof CoordinateUtils.pointsFromTimestamps === 'function') {
+            const tsPts = out.points.map(p => ({
+                timestamp: p.timestamp,
+                price: p.price !== undefined ? p.price : p.y
+            }));
+            out.points = CoordinateUtils.pointsFromTimestamps(
+                tsPts,
+                this.chart.data,
+                this.chart.currentTimeframe
+            );
+            out.coordinateSystem = 'index';
+        }
+        if (!Array.isArray(out.points) || out.points.length === 0 ||
+            !out.points.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
+            return null;
+        }
+        return out;
+    }
+
+    _getPrimarySelectedDrawingForClipboard() {
+        if (this.selectedDrawing) return this.selectedDrawing;
+        if (Array.isArray(this.selectedDrawings) && this.selectedDrawings.length > 0) {
+            return this.selectedDrawings[this.selectedDrawings.length - 1];
+        }
+        return null;
+    }
+
+    _isDrawingShortcutTarget(event) {
+        const t = event && event.target;
+        if (!t || typeof t.closest !== 'function') return true;
+        const tag = (t.tagName || '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
+        if (t.isContentEditable) return false;
+        if (t.closest('[contenteditable="true"]')) return false;
+        if (t.closest('[data-sdrop] input, [data-sdrop] textarea, [data-sdrop] select')) return false;
+        return true;
     }
     
     /**
@@ -5981,29 +6051,18 @@ class DrawingToolsManager {
     pasteDrawing() {
         if (!this.clipboardDrawing) {
             // [debug removed]
-            return;
+            return false;
         }
         
         try {
-            const toolInfo = this.toolRegistry[this.clipboardDrawing.type];
-            if (!toolInfo) return;
-
-            const clip = JSON.parse(JSON.stringify(this.clipboardDrawing));
-            if (clip.coordinateSystem === 'timestamp' && Array.isArray(clip.points) &&
-                this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
-                typeof CoordinateUtils !== 'undefined' &&
-                typeof CoordinateUtils.pointsFromTimestamps === 'function') {
-                const tsPts = clip.points.map(p => ({
-                    timestamp: p.timestamp,
-                    price: p.price !== undefined ? p.price : p.y
-                }));
-                clip.points = CoordinateUtils.pointsFromTimestamps(
-                    tsPts,
-                    this.chart.data,
-                    this.chart.currentTimeframe
-                );
-                clip.coordinateSystem = 'index';
+            const clip = this._normalizeClipboardPayload(this.clipboardDrawing);
+            if (!clip) {
+                console.error('Failed to paste drawing: invalid clipboard points');
+                return false;
             }
+
+            const toolInfo = this.toolRegistry[clip.type];
+            if (!toolInfo) return false;
 
             const newDrawing = toolInfo.class.fromJSON(clip, this.chart);
             newDrawing.id = generateUUID();
@@ -6011,7 +6070,7 @@ class DrawingToolsManager {
             newDrawing.coordinateSystem = 'index';
 
             // Calculate small offset based on visible chart range
-            const priceRange = this.chart.yScale.domain();
+            const priceRange = this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
             const domainSpan = priceRange[1] - priceRange[0];
             const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.02 : 0;
 
@@ -6022,9 +6081,11 @@ class DrawingToolsManager {
 
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing);
+            return true;
             // [debug removed]
         } catch (err) {
             console.error('Failed to paste drawing:', err);
+            return false;
         }
     }
     

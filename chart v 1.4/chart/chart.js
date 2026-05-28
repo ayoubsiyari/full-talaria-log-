@@ -23230,8 +23230,9 @@ class Chart {
                     const anchorPoint = (typeof this.drawingManager.getDataPointAtClient === 'function')
                         ? this.drawingManager.getDataPointAtClient(clientX, clientY)
                         : null;
-                    this.drawingManager.pasteDrawing(anchorPoint);
-                    this.showNotification('Drawing pasted ✓');
+                    void anchorPoint;
+                    const pasted = this.drawingManager.pasteDrawing();
+                    this.showNotification(pasted ? 'Drawing pasted ✓' : 'Could not paste chart element');
                     this.hideContextMenu();
                     return;
                 }
