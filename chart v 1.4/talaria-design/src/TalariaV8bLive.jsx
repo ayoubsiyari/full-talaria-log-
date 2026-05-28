@@ -967,9 +967,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (legacyTool && v9IsTextLegacyDrawingType(legacyTool)) return {};
   if (legacyTool) tlStyle = v9TlStyleWithEnsuredLevels(tlStyle, legacyTool);
   const isRegCh = legacyTool === "regression-trend";
+  const isPf = legacyTool === "pitchfork";
   const dashArr = V9_DASH_TO_LEGACY[tlStyle.lineType] ?? "";
   const midDashArr = tlStyle.midLineType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.midLineType] ?? "");
-  const widthNum = parseInt(tlStyle.lineWidth, 10) || 2;
+  const widthNum = isPf
+    ? parseInt(tlStyle.pfLevelsWidth ?? tlStyle.lineWidth, 10) || 2
+    : parseInt(tlStyle.lineWidth, 10) || 2;
   const midWidthNum = parseInt(tlStyle.midLineWidth, 10) || 1;
   const shapeBgOn = tlStyle.showBg !== false;
   const regMidOn =
@@ -977,11 +980,15 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       ? tlStyle.regLines[0].on !== false
       : !!tlStyle.midLine;
   const patch = {
-    stroke: tlStyle.lineColor,
-    color: tlStyle.lineColor,
-    strokeWidth: widthNum,
-    dashArray: dashArr,
-    strokeDasharray: dashArr,
+    ...(isPf
+      ? { strokeWidth: widthNum }
+      : {
+          stroke: tlStyle.lineColor,
+          color: tlStyle.lineColor,
+          strokeWidth: widthNum,
+          dashArray: dashArr,
+          strokeDasharray: dashArr,
+        }),
     fill: shapeBgOn ? tlStyle.bgColor : "none",
     backgroundColor: tlStyle.bgColor,
     showBackground: shapeBgOn,
@@ -2354,6 +2361,7 @@ function v9CpPickerKeyFlushesTlStyle(key) {
     "tlLineColor", "tlBgColor", "tlMidLineColor", "tlTextColor", "tlLabelColor",
     "tlLabelBgColor", "tlBorderColor", "fibTrendColor", "fibGridColor",
     "regUpperBg", "regLowerBg",
+    "pfMedianColor", "pfBgColor",
   ]);
   if (direct.has(key)) return true;
   return /^(chLine|regLine|pfLevel|fibLevel|fibTzLevel|fibFanTimeLevel|gannPrice|gannTime|gannGrid|gannFanLv|gannArc)-\d+$/.test(key);
@@ -2651,6 +2659,30 @@ function v9ApplyRegressionStyleFromTl(style, tlStyle) {
   }
   style.showUpperFill = tlStyle.regUpperBgOn !== false;
   style.showLowerFill = tlStyle.regLowerBgOn !== false;
+}
+
+/** Pitchfork median / levels / background (`drawing-tools-fib-gann.js` PitchforkTool). */
+function v9ApplyPitchforkFromTl(style, tlStyle) {
+  if (!style || !tlStyle) return;
+  const medianW = parseInt(tlStyle.pfMedianWidth, 10) || 2;
+  const levelsW = parseInt(tlStyle.pfLevelsWidth ?? tlStyle.lineWidth, 10) || 2;
+  const medianDash =
+    tlStyle.pfMedianType === "bold" ? "" : (V9_DASH_TO_LEGACY[tlStyle.pfMedianType] ?? "");
+  style.medianColor =
+    tlStyle.pfMedianColor != null && String(tlStyle.pfMedianColor).trim() !== ""
+      ? tlStyle.pfMedianColor
+      : style.medianColor || "#e91e63";
+  style.lineEnabled = tlStyle.pfMiddleLine !== false;
+  style.medianStrokeWidth = tlStyle.pfMedianType === "bold" ? Math.max(medianW, 3) : medianW;
+  style.medianStrokeDasharray = medianDash;
+  style.strokeWidth = levelsW;
+  style.backgroundEnabled = tlStyle.pfBackground !== false;
+  style.backgroundOpacity =
+    tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity) ? +tlStyle.pfBgOpacity : 0.2;
+  if (tlStyle.pfBgColor != null && String(tlStyle.pfBgColor).trim() !== "") {
+    style.backgroundColor = tlStyle.pfBgColor;
+  }
+  style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
 }
 
 /** Pitchfork: chart `d.levels` + style ↔ V9 `pfLevels` / `pitchforkStyle` / median color / background. */
@@ -3714,7 +3746,6 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
   if (subToolIcon === "pitchfork") {
     return {
       ...prev,
-      lineColor: colorVal,
       pfLevels: mapRows(prev.pfLevels),
     };
   }
@@ -4232,11 +4263,7 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     if (Array.isArray(tlStyle.pfLevels)) {
       d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
     }
-    d.style.pitchforkStyle = v9UiPitchforkStyleToChart(tlStyle.pitchforkStyle);
-    d.style.medianColor = tlStyle.lineColor;
-    d.style.backgroundEnabled = tlStyle.pfBackground !== false;
-    d.style.backgroundOpacity =
-      tlStyle.pfBgOpacity != null && !Number.isNaN(+tlStyle.pfBgOpacity) ? +tlStyle.pfBgOpacity : 0.2;
+    v9ApplyPitchforkFromTl(d.style, tlStyle);
   }
   if (d.type === "gann-box") {
     v9ApplyGannBoxFromTlStyle(d, tlStyle);
@@ -4450,14 +4477,26 @@ function v9TlStylePatchFromDrawing(d) {
     ...(d.type === "pitchfork"
       ? (() => {
           const pf = v9PitchforkLevelsToPf(d.levels);
+          const medianDash = String(s.medianStrokeDasharray ?? s.strokeDasharray ?? "").replace(/\s+/g, "");
+          const medianType =
+            V9_LEGACY_DASH_STRING_TO_LINE_TYPE[medianDash] ?? (medianDash ? "dashed" : "solid");
           return {
             ...(pf ? { pfLevels: pf } : {}),
             pitchforkStyle: v9ChartPitchforkStyleToUi(s.pitchforkStyle),
+            pfMiddleLine: s.lineEnabled !== false,
+            pfMedianColor: s.medianColor || s.stroke || s.color || V9_DEFAULT_TL_LINE_COLOR,
+            pfMedianType: medianType,
+            pfMedianWidth: String(parseInt(s.medianStrokeWidth ?? s.strokeWidth, 10) || 2),
+            pfLevelsWidth: String(parseInt(s.strokeWidth, 10) || 2),
             pfBackground: s.backgroundEnabled !== false,
             pfBgOpacity:
               s.backgroundOpacity != null && !Number.isNaN(Number(s.backgroundOpacity))
                 ? Number(s.backgroundOpacity)
                 : 0.2,
+            pfBgColor:
+              s.backgroundColor ||
+              s.innerFill ||
+              (pf && pf[0] ? pf[0].color : V9_DEFAULT_TL_SHAPE_FILL),
           };
         })()
       : {}),
@@ -7768,7 +7807,15 @@ const TalariaV8bLive = () => {
       { on: true, value: "0.75", color: "#FF9800" },
       { on: true, value: "1", color: "#787B86" },
     ],
-    pitchforkStyle: "Original", pfBgOpacity: 0.5,
+    pitchforkStyle: "Original",
+    pfMiddleLine: true,
+    pfMedianColor: V9_DEFAULT_TL_LINE_COLOR,
+    pfMedianType: "dashed",
+    pfMedianWidth: "2",
+    pfLevelsWidth: "2",
+    pfBackground: true,
+    pfBgColor: "#2962FF",
+    pfBgOpacity: 0.5,
     pfLevels: [
       { on: false, value: "0.25", color: "#FF4081" },
       { on: true, value: "0.5", color: "#2962FF" },
@@ -11422,6 +11469,8 @@ const TalariaV8bLive = () => {
     else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey === "regUpperBg") cpApplyTlStyle(s=>({...s, regUpperBg: colorVal}));
     else if(targetKey === "regLowerBg") cpApplyTlStyle(s=>({...s, regLowerBg: colorVal}));
+    else if(targetKey === "pfMedianColor") cpApplyTlStyle(s=>({...s, pfMedianColor: colorVal}));
+    else if(targetKey === "pfBgColor") cpApplyTlStyle(s=>({...s, pfBgColor: colorVal}));
     else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
     else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
     else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l))); }
@@ -12979,7 +13028,13 @@ const TalariaV8bLive = () => {
             if (drawing.type === "pitchfork") {
               if (p.pfLevels) out.pfLevels = p.pfLevels;
               if (p.pitchforkStyle) out.pitchforkStyle = p.pitchforkStyle;
+              if (p.pfMiddleLine !== undefined) out.pfMiddleLine = p.pfMiddleLine;
+              if (p.pfMedianColor) out.pfMedianColor = p.pfMedianColor;
+              if (p.pfMedianType) out.pfMedianType = p.pfMedianType;
+              if (p.pfMedianWidth) out.pfMedianWidth = p.pfMedianWidth;
+              if (p.pfLevelsWidth) out.pfLevelsWidth = p.pfLevelsWidth;
               if (p.pfBackground !== undefined) out.pfBackground = p.pfBackground;
+              if (p.pfBgColor) out.pfBgColor = p.pfBgColor;
               if (p.pfBgOpacity !== undefined) out.pfBgOpacity = p.pfBgOpacity;
             }
             v9SpreadFibTlPatchForHook(p, drawingForStyle.type, out);
@@ -14107,7 +14162,13 @@ const TalariaV8bLive = () => {
     tlStyle.regPearsonR,
     tlStyle.pfLevels,
     tlStyle.pitchforkStyle,
+    tlStyle.pfMiddleLine,
+    tlStyle.pfMedianColor,
+    tlStyle.pfMedianType,
+    tlStyle.pfMedianWidth,
+    tlStyle.pfLevelsWidth,
     tlStyle.pfBackground,
+    tlStyle.pfBgColor,
     tlStyle.pfBgOpacity,
     tlStyle.fibLevels,
     tlStyle.fibTrendLine,
@@ -14261,6 +14322,42 @@ const TalariaV8bLive = () => {
         v9PushRegressionStyleToSelectedDrawings(next);
         return next;
       });
+    });
+  }, []);
+
+  const applyPfMiddleLineToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => ({ ...s, pfMiddleLine: !(s.pfMiddleLine !== false) }));
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  const applyPfMedianType = useCallback((pfMedianType) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, pfMedianType })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  const applyPfMedianWidth = useCallback((pfMedianWidth) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, pfMedianWidth })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  const applyPfBackgroundToggle = useCallback(() => {
+    flushSync(() => {
+      setTlStyle((s) => ({ ...s, pfBackground: !(s.pfBackground !== false) }));
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
     });
   }, []);
 
@@ -16468,9 +16565,11 @@ const TalariaV8bLive = () => {
                         <div style={{ display:"flex", justifyContent:"center", padding:"0 0 4px" }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
                         {/* Middle Line row */}
                         <div style={{ padding:"8px 0", alignSelf:"center" }}>
-                          {TlChk(true, "tlchk-pfMiddle", "Middle Line", ()=>{})}
+                          {TlChk(tlStyle.pfMiddleLine !== false, "tlchk-pfMiddle", "Middle Line", applyPfMiddleLineToggle)}
                         </div>
-                        <div style={{ padding:"8px 0" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
+                        <div style={{ padding:"8px 0", opacity:tlStyle.pfMiddleLine !== false ? 1 : 0.38, pointerEvents:tlStyle.pfMiddleLine !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                          {colorSwatch("pfMedianColor", tlStyle.pfMedianColor || tlStyle.lineColor)}
+                        </div>
                         <div style={{ padding:"8px 0", position:"relative" }}>
                           {(()=>{
                             const dk = "pfMidType";
@@ -16482,16 +16581,16 @@ const TalariaV8bLive = () => {
                                          transition:"background 0.12s" }}>
                                 <svg width={22} height={10} viewBox="0 0 22 10">
                                   <line x1={0} y1={5} x2={22} y2={5} stroke={tlStyleDrop===dk?c.acL:c.ts}
-                                    strokeWidth={tlStyle.lineType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.lineType)}/>
+                                    strokeWidth={tlStyle.pfMedianType==="bold"?2.5:1.5} strokeLinecap="round" strokeDasharray={da(tlStyle.pfMedianType)}/>
                                 </svg>
                                 <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
                                 {tlStyleDrop===dk&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                               </div>
                               {tlStyleDrop===dk && dropShell(dk, 56, false,
                                 [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                                  const isA=tlStyle.lineType===v; const isH=hov===`pfmt-${v}`;
+                                  const isA=tlStyle.pfMedianType===v; const isH=hov===`pfmt-${v}`;
                                   return (
-                                    <div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
+                                    <div key={v} onClick={()=>{applyPfMedianType(v);setTlStyleDrop(null);}}
                                       onMouseEnter={()=>setHov(`pfmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                                background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -16515,18 +16614,18 @@ const TalariaV8bLive = () => {
                                 style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
                                          background:tlStyleDrop===dk?"rgba(74,106,255,0.08)":hov===`tl-btn-${dk}`?c.hv:"transparent",
                                          transition:"background 0.12s" }}>
-                                <svg width={22} height={Math.max(8,+tlStyle.lineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.lineWidth+4)}`}>
-                                  <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.lineWidth+4)/2}
-                                    stroke={tlStyleDrop===dk?c.acL:c.ts} strokeWidth={+tlStyle.lineWidth} strokeLinecap="round"/>
+                                <svg width={22} height={Math.max(8,+tlStyle.pfMedianWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.pfMedianWidth+4)}`}>
+                                  <line x1={0} y1={Math.max(8,+tlStyle.pfMedianWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.pfMedianWidth+4)/2}
+                                    stroke={tlStyleDrop===dk?c.acL:c.ts} strokeWidth={+tlStyle.pfMedianWidth} strokeLinecap="round"/>
                                 </svg>
                                 <I n="chevDown" s={7} cl={tlStyleDrop===dk?c.acL:c.ts}/>
                                 {tlStyleDrop===dk&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                               </div>
                               {tlStyleDrop===dk && dropShell(dk, 56, false,
                                 ["1","2","3","4"].map(w=>{
-                                  const isA=tlStyle.lineWidth===w; const isH=hov===`pfmw-${w}`;
+                                  const isA=tlStyle.pfMedianWidth===w; const isH=hov===`pfmw-${w}`;
                                   return (
-                                    <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
+                                    <div key={w} onClick={()=>{applyPfMedianWidth(w);setTlStyleDrop(null);}}
                                       onMouseEnter={()=>setHov(`pfmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                       style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                                background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -16543,25 +16642,37 @@ const TalariaV8bLive = () => {
                         </div>
                         {/* Background row inside grid */}
                       </div>
-                      {/* Background checkbox + opacity slider */}
+                      {/* Background checkbox + color + opacity slider */}
                       <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(tlStyle.pfBackground ?? true,"tlchk-pfBackground","Background",()=>setTlStyle(s=>({...s,pfBackground:!(s.pfBackground??true)})))}</div>
-                        {(()=>{const pct=(tlStyle.pfBgOpacity??0.5)*100;const on=tlStyle.pfBackground??true;return(
-                        <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:on?1:0.38, pointerEvents:on?"auto":"none", transition:"opacity 0.15s" }}>
+                        <div style={{ width:130 }}>{TlChk(tlStyle.pfBackground !== false,"tlchk-pfBackground","Background",applyPfBackgroundToggle)}</div>
+                        <div style={{ marginLeft:20, opacity:tlStyle.pfBackground !== false ? 1 : 0.38, pointerEvents:tlStyle.pfBackground !== false ? "auto" : "none", transition:"opacity 0.15s" }}>
+                          {colorSwatch("pfBgColor", tlStyle.pfBgColor || "#2962FF")}
+                        </div>
+                        {(()=>{const pct=(tlStyle.pfBgOpacity??0.5)*100;const on=tlStyle.pfBackground !== false;return(
+                        <div style={{ marginLeft:20, display:"flex", alignItems:"center", opacity:on?1:0.38, pointerEvents:on?"auto":"none", transition:"opacity 0.15s" }}>
                           <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                             <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
                               <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                             </div>
                             <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="pf-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="pf-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
                             <input type="range" min="0" max="1" step="0.01" value={tlStyle.pfBgOpacity??0.5}
-                              onChange={e=>setTlStyle(s=>({...s,pfBgOpacity:+e.target.value}))}
+                              onChange={e=>{const v=+e.target.value;flushSync(()=>setTlStyle(s=>({...s,pfBgOpacity:v})));v9FlushTlStyleToChartTargets({...tlStyleLiveRef.current,pfBgOpacity:v},{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});}}
                               onPointerDown={()=>setHov("pf-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
                               onClick={e=>e.stopPropagation()}
                               style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
                           </div>
                         </div>);})()}
                       </div>
-                      <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"12px 0 6px" }}>LEVEL COLORS</div>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 0 6px" }}>
+                        <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>LEVEL COLORS</div>
+                        <div onClick={e=>{e.stopPropagation();flushSync(()=>setTlStyle(s=>({...s,pfLevels:v9DefaultPfLevelsTl()})));v9FlushTlStyleToChartTargets(tlStyleLiveRef.current,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});}}
+                          onMouseEnter={()=>setHov("pfReset")} onMouseLeave={()=>setHov(null)}
+                          style={{ height:24, padding:"0 10px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
+                                   border:`1px solid rgba(140,160,255,0.15)`, background:hov==="pfReset"?c.hv2:"transparent",
+                                   transition:"background 0.1s" }}>
+                          <span style={{ fontSize:10, color:c.ts }}>Reset</span>
+                        </div>
+                      </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:16, rowGap:10 }}>
                         {(tlStyle.pfLevels || []).map((lv, idx) => (
                           <div key={idx} style={{ display:"flex", alignItems:"center", gap:8, opacity:lv.on ? 1 : 0.55 }}>
@@ -21689,6 +21800,10 @@ const TalariaV8bLive = () => {
             {["rect","ellipse","circle","channel","flatChannel","disjointCh"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
+            </TlBtn>}
+            {tlSubTool.icon === "pitchfork" && <TlBtn id="tl-pf-bgcol" isAct={colorPicker==="pfBgColor"}
+              onClick={e=>{e.stopPropagation();if(colorPicker==="pfBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.pfBgColor||"#2962FF");const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pfBgColor");}}}>
+              {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.pfBgColor||"#2962FF"} opacity={tlStyle.pfBackground!==false?1:0.35}/></svg>}
             </TlBtn>}
             {/* btn 2b-pat: bg color for pattern tools — before font color */}
             {(isPatternTool && !isElliottTool) && ["xabcd","headShoulders","triPattern"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
@@ -28885,7 +29000,7 @@ const TalariaV8bLive = () => {
           onClose={closeCP}
           onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
           dragging={cpDragging}
-          hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
+          hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker==="pfMedianColor"||colorPicker==="pfBgColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
       , document.body)}

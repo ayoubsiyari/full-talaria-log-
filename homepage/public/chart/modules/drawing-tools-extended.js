@@ -1202,21 +1202,18 @@ class ArcTool extends BaseDrawing {
     
     // Generate control point when drawing is complete (2 points placed)
     finalizeDrawing() {
-        if (this.points.length === 2 && !this._controlPointGenerated) {
-            const p1 = this.points[0];
-            const p2 = this.points[1];
-            
-            // Use midpoint - curve offset will be applied in screen space during render
-            const controlPoint = {
-                x: (p1.x + p2.x) / 2,
-                y: (p1.y + p2.y) / 2
-            };
-            
-            // Rearrange: [start, control, end]
-            this.points = [p1, controlPoint, p2];
-            this._controlPointGenerated = true;
-            this._needsScreenOffset = true;
-        }
+        if (this.points.length !== 2) return;
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+
+        const controlPoint = {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2
+        };
+
+        this.points = [p1, controlPoint, p2];
+        this._controlPointGenerated = true;
+        this._needsScreenOffset = true;
     }
     
     ensureTextDefaults() {
@@ -1504,21 +1501,18 @@ class CurveTool extends BaseDrawing {
     // Generate control point when drawing is complete (2 points placed)
     // Note: Offset is calculated in render() using screen coordinates
     finalizeDrawing() {
-        if (this.points.length === 2 && !this._controlPointGenerated) {
-            const p1 = this.points[0];
-            const p2 = this.points[1];
-            
-            // Just use midpoint - curve offset will be applied in screen space during render
-            const controlPoint = {
-                x: (p1.x + p2.x) / 2,
-                y: (p1.y + p2.y) / 2
-            };
-            
-            // Rearrange: [start, control, end]
-            this.points = [p1, controlPoint, p2];
-            this._controlPointGenerated = true;
-            this._needsScreenOffset = true; // Flag to apply offset in screen space
-        }
+        if (this.points.length !== 2) return;
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+
+        const controlPoint = {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2
+        };
+
+        this.points = [p1, controlPoint, p2];
+        this._controlPointGenerated = true;
+        this._needsScreenOffset = true;
     }
     
     ensureTextDefaults() {
@@ -1580,8 +1574,7 @@ class CurveTool extends BaseDrawing {
 
         if (this.points.length < 2) return;
         
-        // Auto-generate control point if we have exactly 2 points and drawing is complete
-        if (this.points.length === 2 && !this._controlPointGenerated) {
+        if (this.points.length === 2) {
             this.finalizeDrawing();
         }
 

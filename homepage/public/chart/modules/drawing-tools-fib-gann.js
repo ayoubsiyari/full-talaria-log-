@@ -2195,6 +2195,7 @@ class PitchforkTool extends BaseDrawing {
         // Draw fills between consecutive level lines using each level's color
         const bgEnabled = this.style.backgroundEnabled !== false;
         const bgOpacity = this.style.backgroundOpacity ?? 0.2;
+        const bgTint = this.style.backgroundColor;
         
         if (bgEnabled) {
             for (let i = 0; i < levelLines.length - 1; i++) {
@@ -2210,7 +2211,7 @@ class PitchforkTool extends BaseDrawing {
                 } else {
                     outerLine = Math.abs(line1.value) > Math.abs(line2.value) ? line1 : line2;
                 }
-                const baseColor = outerLine.color || '#ffffff';
+                const baseColor = (bgTint && String(bgTint).trim() !== '') ? bgTint : (outerLine.color || '#ffffff');
                 
                 // Convert color to rgba with user-defined opacity
                 let fillColor;
@@ -2245,6 +2246,11 @@ class PitchforkTool extends BaseDrawing {
         }
 
         const middleLineEnabled = this.style.lineEnabled !== false;
+        const medianStrokeWidth = this.style.medianStrokeWidth ?? this.style.strokeWidth;
+        const medianStrokeDasharray =
+            this.style.medianStrokeDasharray != null
+                ? this.style.medianStrokeDasharray
+                : (this.style.strokeDasharray || '');
 
         if (middleLineEnabled) {
             // Draw construction lines based on style
@@ -2254,16 +2260,16 @@ class PitchforkTool extends BaseDrawing {
                     .attr('x1', ax).attr('y1', ay)
                     .attr('x2', bx).attr('y2', by)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
                 
                 this.group.append('line')
                     .attr('x1', bx).attr('y1', by)
                     .attr('x2', cx).attr('y2', cy)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
             } else if (this.style.pitchforkStyle === 'modified-schiff' || this.style.pitchforkStyle === 'inside') {
                 // For Modified Schiff and Inside: Draw A to B and B to C
@@ -2271,16 +2277,16 @@ class PitchforkTool extends BaseDrawing {
                     .attr('x1', ax).attr('y1', ay)
                     .attr('x2', bx).attr('y2', by)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
                 
                 this.group.append('line')
                     .attr('x1', bx).attr('y1', by)
                     .attr('x2', cx).attr('y2', cy)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
             } else {
                 // Original (default): A to midBC, midBC to B, midBC to C
@@ -2288,24 +2294,24 @@ class PitchforkTool extends BaseDrawing {
                     .attr('x1', ax).attr('y1', ay)
                     .attr('x2', midX).attr('y2', midY)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
                 
                 this.group.append('line')
                     .attr('x1', midX).attr('y1', midY)
                     .attr('x2', bx).attr('y2', by)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
                 
                 this.group.append('line')
                     .attr('x1', midX).attr('y1', midY)
                     .attr('x2', cx).attr('y2', cy)
                     .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', this.style.strokeWidth)
-                    .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                    .attr('stroke-width', medianStrokeWidth)
+                    .attr('stroke-dasharray', medianStrokeDasharray)
                     .style('cursor', 'move');
             }
             
@@ -2319,8 +2325,8 @@ class PitchforkTool extends BaseDrawing {
                 .attr('x1', medianStartX).attr('y1', medianStartY)
                 .attr('x2', medianEnd.x).attr('y2', medianEnd.y)
                 .attr('stroke', this.style.medianColor)
-                .attr('stroke-width', this.style.strokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || '')
+                .attr('stroke-width', medianStrokeWidth)
+                .attr('stroke-dasharray', medianStrokeDasharray)
                 .style('cursor', 'move');
         }
 

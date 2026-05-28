@@ -3477,6 +3477,11 @@ class DrawingToolsManager {
         } else {
             this._ensureDrawingId(drawing);
         }
+
+        // Arc / curve need a generated control point before timestamps or re-render.
+        if (typeof drawing.finalizeDrawing === 'function') {
+            drawing.finalizeDrawing();
+        }
         
         // Apply saved style for this tool type
         this.applySavedStyle(drawing);
@@ -6838,6 +6843,14 @@ class DrawingToolsManager {
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart);
             if (Array.isArray(resolved) && resolved.length > 0) {
                 drawing.points = resolved;
+                if (
+                    typeof drawing.finalizeDrawing === 'function' &&
+                    (drawing.type === 'arc' || drawing.type === 'curve') &&
+                    drawing.points.length === 2
+                ) {
+                    drawing._controlPointGenerated = false;
+                    drawing.finalizeDrawing();
+                }
             }
         } catch (_) { /* ignore */ }
     }
