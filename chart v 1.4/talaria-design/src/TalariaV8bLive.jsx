@@ -14176,6 +14176,18 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Rectangle/shape text vertical align — same-frame chart sync. */
+  const applyTlVertAlign = useCallback((vertAlign) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, vertAlign })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts());
+  }, []);
+
+  /** Rectangle/shape text horizontal align — same-frame chart sync. */
+  const applyTlHorizAlign = useCallback((horizAlign) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, horizAlign })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts());
+  }, []);
+
   /** Fib levels line thickness — first-click chart sync. */
   const applyTlFibLineWidth = useCallback((fibLineWidth) => {
     flushSync(() => setTlStyle((s) => ({ ...s, fibLineWidth })));
@@ -16938,7 +16950,11 @@ const TalariaV8bLive = () => {
                       {opts.map(([v,ico,hk])=>{
                         const isAct=tlStyle[key]===v; const isH=hov===hk;
                         return (
-                          <div key={v} onClick={()=>setTlStyle(s=>({...s,[key]:v}))}
+                          <div key={v} onClick={()=>{
+                              if (key === "vertAlign") applyTlVertAlign(v);
+                              else if (key === "horizAlign") applyTlHorizAlign(v);
+                              else setTlStyle(s=>({...s,[key]:v}));
+                            }}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                             style={{ width:28, height:28, display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isAct?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",

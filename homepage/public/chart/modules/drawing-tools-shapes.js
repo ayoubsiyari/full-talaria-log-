@@ -434,7 +434,7 @@ class RectangleTool extends BaseDrawing {
                 .raise();
         }
 
-        // Text after middle line; centered labels sit in the upper half when midline is on.
+        // Text after middle line so labels paint above the midline stroke.
         this.renderTextLabel({ x, y, width, height }, scaleFactor);
 
         return this.group;
@@ -594,10 +594,11 @@ class RectangleTool extends BaseDrawing {
         const align = (this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
         const anchor = RECTANGLE_TEXT_ANCHOR_MAP[align] || 'middle';
 
-        // Use textVAlign (from UI) or textPosition as fallback
+        // Use textVAlign (from UI) or textPosition as fallback (V9 uses vertAlign → middle/center).
         let position = (this.style.textVAlign || this.style.textPosition || 'middle').toLowerCase();
         if (position === 'start') position = 'top';
         if (position === 'end') position = 'bottom';
+        if (position === 'center') position = 'middle';
 
         const baseFontSize = Number(this.style.fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
         const fontSize = Math.max(6, baseFontSize * scaleFactor);
@@ -621,6 +622,7 @@ class RectangleTool extends BaseDrawing {
         }
 
         let topY;
+        let useMiddleBaseline = false;
         const textMargin = 5;
         switch (position) {
             case 'top':
@@ -632,13 +634,9 @@ class RectangleTool extends BaseDrawing {
                 topY = y + height + textMargin;
                 break;
             default:
-                // Middle — when a midline is shown, keep text in the upper half so it does not sit on the line.
-                if (shapeMiddleLineEnabled(this.style)) {
-                    const upperHalf = height / 2;
-                    topY = y + Math.max(0, (upperHalf - blockHeight) / 2);
-                } else {
-                    topY = y + (height - blockHeight) / 2;
-                }
+                // Middle — anchor on horizontal midline (y + height/2).
+                useMiddleBaseline = true;
+                topY = y + height / 2;
         }
 
         const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
@@ -659,16 +657,19 @@ class RectangleTool extends BaseDrawing {
 
         lines.forEach((line, index) => {
             const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+            const lineY = useMiddleBaseline
+                ? textTop + (index - (lines.length - 1) / 2) * lineHeight
+                : textTop + index * lineHeight;
             labelGroup.append('text')
                 .attr('x', textX)
-                .attr('y', textTop + index * lineHeight)
+                .attr('y', lineY)
                 .attr('fill', textColor)
                 .attr('font-size', `${fontSize}px`)
                 .attr('font-family', fontFamily)
                 .attr('font-weight', fontWeight)
                 .attr('font-style', fontStyle)
                 .attr('text-anchor', anchor)
-                .attr('dominant-baseline', 'hanging')
+                .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
                 .attr('xml:space', 'preserve')
                 .text(sanitized);
         });

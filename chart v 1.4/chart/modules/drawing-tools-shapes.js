@@ -594,10 +594,11 @@ class RectangleTool extends BaseDrawing {
         const align = (this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
         const anchor = RECTANGLE_TEXT_ANCHOR_MAP[align] || 'middle';
 
-        // Use textVAlign (from UI) or textPosition as fallback
+        // Use textVAlign (from UI) or textPosition as fallback (V9 uses vertAlign → middle/center).
         let position = (this.style.textVAlign || this.style.textPosition || 'middle').toLowerCase();
         if (position === 'start') position = 'top';
         if (position === 'end') position = 'bottom';
+        if (position === 'center') position = 'middle';
 
         const baseFontSize = Number(this.style.fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
         const fontSize = Math.max(6, baseFontSize * scaleFactor);
