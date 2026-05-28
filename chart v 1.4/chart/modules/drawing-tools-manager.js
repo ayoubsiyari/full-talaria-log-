@@ -5549,6 +5549,7 @@ class DrawingToolsManager {
                 if (drawing.group) {
                     drawing.group.attr('transform', null);
                 }
+                this._refreshDrawingTimestampAnchors(drawing);
                 this.renderDrawing(drawing);
             });
         } else if (this.draggingDrawing && this.dragStartOriginalPos) {
@@ -5588,6 +5589,7 @@ class DrawingToolsManager {
             if (this.draggingDrawing && this.draggingDrawing.group) {
                 this.draggingDrawing.group.attr('transform', null);
             }
+            this._refreshDrawingTimestampAnchors(this.draggingDrawing);
             this.renderDrawing(this.draggingDrawing);
         }
         
@@ -6791,6 +6793,7 @@ class DrawingToolsManager {
     /** Re-resolve bar indices from stored timestamps using the live replay slice. */
     _syncDrawingPointsFromTimestamps(drawing) {
         if (!drawing || !this.chart) return;
+        if (this._isDrawingLiveEditing(drawing)) return;
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
@@ -6801,6 +6804,29 @@ class DrawingToolsManager {
                 drawing.points = resolved;
             }
         } catch (_) { /* ignore */ }
+    }
+
+    /** True while the user is dragging/resizing — do not snap points back to stale timestamps. */
+    _isDrawingLiveEditing(drawing) {
+        if (!drawing) return false;
+        if (this.isDragging) {
+            if (this.draggingDrawing === drawing) return true;
+            if (this.draggingMultiple && Array.isArray(this.selectedDrawings) && this.selectedDrawings.includes(drawing)) {
+                return true;
+            }
+        }
+        if (this.isResizing && this.resizingDrawing === drawing) return true;
+        if (this.isCustomHandleDrag && this.customHandleDrawing === drawing) return true;
+        if (this.isCustomHandleDragging && this.customHandleDraggingDrawing === drawing) return true;
+        if (this.drawingState && this.drawingState.isDrawing && this.drawingState.currentDrawing === drawing) {
+            return true;
+        }
+        return false;
+    }
+
+    _refreshDrawingTimestampAnchors(drawing) {
+        if (!drawing || typeof drawing.recalculateTimestamps !== 'function') return;
+        try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
     }
 
     /**
