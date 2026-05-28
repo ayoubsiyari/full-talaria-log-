@@ -17876,7 +17876,6 @@ const TalariaV8bLive = () => {
           );
         };
         const txtQuickIcon = txtSubTool.icon;
-        const txtQuickHasTextField = txtQuickIcon === "pin" || txtQuickIcon === "signpost";
         return (
         <div data-sdrop="1" onClick={e=>e.stopPropagation()} onMouseLeave={hideTip}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
@@ -17976,34 +17975,6 @@ const TalariaV8bLive = () => {
               </div>
             )}
           </div>
-          {/* Label text — pin / signpost (settings Text tab content on the quick bar) */}
-          {txtQuickHasTextField && (
-            <div style={{display:"flex",alignItems:"center",flexShrink:0,padding:"0 4px 0 2px",minWidth:0}}>
-              <input
-                value={txtStyle.content}
-                onChange={(e) => setTxtStyle((s) => ({ ...s, content: e.target.value }))}
-                onPointerDown={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="Text…"
-                style={{
-                  width: 132,
-                  maxWidth: "28vw",
-                  height: 24,
-                  background: "rgba(140,160,255,0.06)",
-                  border: "1px solid rgba(140,160,255,0.22)",
-                  outline: "none",
-                  color: c.tx,
-                  fontSize: 12,
-                  fontFamily: F,
-                  padding: "0 8px",
-                  boxSizing: "border-box",
-                  fontStyle: txtStyle.italic ? "italic" : "normal",
-                  fontWeight: txtStyle.bold ? 700 : 400,
-                }}
-              />
-            </div>
-          )}
           {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
           {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>

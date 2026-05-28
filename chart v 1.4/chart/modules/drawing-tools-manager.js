@@ -4010,11 +4010,11 @@ class DrawingToolsManager {
             .style('pointer-events', 'stroke');
         
         // Hit areas also use stroke
-        drawing.group.selectAll('.shape-border-hit:not(.text-body-hit)')
+        drawing.group.selectAll('.shape-border-hit:not(.text-body-hit):not(.flag-body-hit)')
             .style('pointer-events', 'stroke');
 
-        // Text/pin body hit areas should stay fully interactive (middle + border drag zone)
-        drawing.group.selectAll('.text-body-hit, .pin-body-hit')
+        // Text/pin/flag body hit areas should stay fully interactive (middle + border drag zone)
+        drawing.group.selectAll('.text-body-hit, .pin-body-hit, .flag-body-hit, .note-body-hit')
             .style('pointer-events', 'all');
 
         // Arrow tools: allow fill hit areas to be interactive
@@ -4097,7 +4097,7 @@ class DrawingToolsManager {
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
-                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, line:not(.shape-border-hit), .fib-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit';
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -7454,12 +7454,23 @@ class DrawingToolsManager {
      */
     _isPointInFibLikeDrawingBody(drawing, mouseX, mouseY) {
         if (!drawing?.group || !this._isFibLikeDrawingType(drawing.type)) return false;
+        return this._isPointInDrawingGroupBBox(drawing, mouseX, mouseY, 8);
+    }
+
+    /** Pin / signpost / flag: filled body is non-stroke — use group bbox for click + dblclick hit tests. */
+    _isPointInCompactLabelDrawingBody(drawing, mouseX, mouseY) {
+        if (!drawing?.group) return false;
+        const t = drawing.type;
+        if (t !== 'flag-mark' && t !== 'signpost-2' && t !== 'pin') return false;
+        return this._isPointInDrawingGroupBBox(drawing, mouseX, mouseY, 6);
+    }
+
+    _isPointInDrawingGroupBBox(drawing, mouseX, mouseY, pad = 8) {
         try {
             const node = drawing.group.node && drawing.group.node();
             if (!node || typeof node.getBBox !== 'function') return false;
             const bbox = node.getBBox();
             if (!bbox || bbox.width <= 0 || bbox.height <= 0) return false;
-            const pad = 8;
             return mouseX >= bbox.x - pad
                 && mouseX <= bbox.x + bbox.width + pad
                 && mouseY >= bbox.y - pad
@@ -8291,6 +8302,12 @@ class DrawingToolsManager {
                 continue;
             }
             
+            // Flag / signpost / pin: select and dblclick from filled body, not only thin strokes.
+            if (!hitsById.has(drawing.id) && this._isPointInCompactLabelDrawingBody(drawing, mouseX, mouseY)) {
+                hitsById.set(drawing.id, { drawing, distance: 0, z });
+                continue;
+            }
+
             // Special handling for tools that use isPointInside() (images, emojis, etc.)
             if (drawing.type === 'emoji' || drawing.type === 'image') {
                 // [debug removed]

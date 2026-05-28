@@ -4026,6 +4026,17 @@ class FlagMarkTool extends BaseDrawing {
             .attr('stroke-linecap', 'round')
             .style('pointer-events', 'none');
 
+        this.group.append('line')
+            .attr('class', 'shape-border-hit flag-stem-hit')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x1)
+            .attr('y2', lineEndY)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', Math.max(12, scaledStrokeWidth * 4))
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
         // Flag shape with notch on the right side
         // Starting from top of pole, going right, then notch, then back to pole
         const flagTop = lineEndY;
@@ -4044,6 +4055,7 @@ class FlagMarkTool extends BaseDrawing {
         `;
 
         this.group.append('path')
+            .attr('class', 'flag-visual')
             .attr('d', flagPath)
             .attr('fill', this.style.fill)
             .attr('stroke', 'none')
@@ -4051,14 +4063,27 @@ class FlagMarkTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        this.group.append('path')
-            .attr('class', 'shape-border-hit')
+        const flagBodyHit = this.group.append('path')
+            .attr('class', 'shape-fill flag-body-hit shape-border-hit')
             .attr('d', flagPath)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(12, scaledStrokeWidth * 4))
-            .style('pointer-events', 'stroke')
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
+
+        const self = this;
+        const handleOpenSettings = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            openTextAnnotationSettings(self, event);
+        };
+
+        if (flagBodyHit && flagBodyHit.node()) {
+            flagBodyHit.node().addEventListener('dblclick', handleOpenSettings, true);
+        }
+        this.group.selectAll('.flag-stem-hit').each(function() {
+            this.addEventListener('dblclick', handleOpenSettings, true);
+        });
 
         // Create handles
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
