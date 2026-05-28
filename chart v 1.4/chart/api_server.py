@@ -1218,7 +1218,11 @@ def _get_user_from_request(request: Request):
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
             return None
-        # Keep session when access_expires_at passes — entitlement gates explain why access is denied.
+        # Revoke session when entitlement ended (admins exempt) — forces re-login with clear denial.
+        if (user.role or "") != "admin" and not _user_entitles_journal_db(db, user):
+            db.query(UserSession).filter(UserSession.user_id == user.id).delete()
+            db.commit()
+            return None
         sess.last_active_at = datetime.utcnow()
         db.commit()
         return user
@@ -1243,6 +1247,8 @@ def _get_user_from_websocket(ws: WebSocket):
             return None
         user = db.query(User).filter(User.id == sess.user_id).first()
         if not user or not user.is_active:
+            return None
+        if (user.role or "") != "admin" and not _user_entitles_journal_db(db, user):
             return None
         return user
     except Exception:
@@ -8658,12 +8664,14 @@ class LoginIn(BaseModel):
     email: str
     password: str
     affiliate_code: str | None = None
+    next_path: str | None = None
 
 
 class GoogleAuthIn(BaseModel):
     """Google Identity Services ID token (JWT credential)."""
     credential: str
     affiliate_code: str | None = None
+    next_path: str | None = None
 
 
 class BootcampRegistrationIn(BaseModel):
@@ -9534,6 +9542,52 @@ def _set_user_module_grants(user: User, grants) -> None:
     )
 
 
+def _is_pricing_renewal_path(path: str | None) -> bool:
+    """Allow sign-in without active entitlement only when returning to pricing to renew."""
+    if not path or not path.startswith("/") or path.startswith("//"):
+        return False
+    pathname = path.split("?")[0].split("#")[0].rstrip("/") or "/"
+    return pathname == "/pricing" or pathname.startswith("/pricing/")
+
+
+def _login_access_denied_message(user: User, ctx: dict) -> str:
+    reason = ctx.get("access_denial_reason") or "subscription"
+    lapsed = ctx.get("lapsed_subscription") or {}
+    plan = (lapsed.get("plan_name") or "").strip()
+    expired_at = ctx.get("access_expired_at")
+    if not expired_at and getattr(user, "access_expires_at", None):
+        exp = user.access_expires_at
+        expired_at = exp.isoformat() if exp else None
+    period_end = lapsed.get("current_period_end")
+    date_hint = period_end or expired_at
+    date_str = ""
+    if date_hint:
+        try:
+            dt = datetime.fromisoformat(str(date_hint).replace("Z", "+00:00")).replace(tzinfo=None)
+            date_str = dt.strftime("%b %d, %Y")
+        except Exception:
+            date_str = ""
+    if reason == "account_disabled":
+        return "Your account has been deactivated by an administrator. Please contact support if you need help."
+    if reason == "subscription_ended":
+        if plan and date_str:
+            return f"Your {plan} subscription ended on {date_str}. Renew on the pricing page or contact support."
+        if plan:
+            return f"Your {plan} subscription has ended. Renew on the pricing page or contact support."
+        return "Your subscription has ended. Renew on the pricing page or contact support."
+    if reason == "payment_required":
+        return "We could not collect your last payment. Update billing on the pricing page or contact support."
+    if reason == "access_period_ended":
+        if date_str:
+            return f"Your access period ended on {date_str}. Renew on the pricing page or contact support."
+        return "Your access period has ended. Renew on the pricing page or contact support."
+    if reason == "subscription_inactive":
+        return "Your subscription is no longer active. Renew on the pricing page or contact support."
+    if reason == "no_plan":
+        return "You do not have an active plan. Subscribe on the pricing page to access the dashboard."
+    return "Your access has expired. Renew on the pricing page or contact support."
+
+
 def _subscription_access_context(db, user: User) -> dict:
     """Why billing access may be denied — for dashboard/pricing UI after plan ends."""
     if not db or not user:
@@ -9784,6 +9838,19 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
         if not _verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+        is_admin = (user.role or "") == "admin"
+        entitled = is_admin or _user_entitles_journal_db(db, user)
+        if not entitled and not _is_pricing_renewal_path(payload.next_path):
+            ctx = _subscription_access_context(db, user)
+            reason = ctx.get("access_denial_reason") or "subscription"
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": reason,
+                    "message": _login_access_denied_message(user, ctx),
+                },
+            )
+
         session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)
 
@@ -9830,7 +9897,26 @@ async def auth_google(payload: GoogleAuthIn, request: Request, response: Respons
             db.refresh(user)
             is_new = True
         elif not user.is_active:
-            raise HTTPException(status_code=403, detail="Your account is disabled. Please contact support.")
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "account_disabled",
+                    "message": "Your account has been deactivated by an administrator. Please contact support if you need help.",
+                },
+            )
+        elif not is_new:
+            is_admin = (user.role or "") == "admin"
+            entitled = is_admin or _user_entitles_journal_db(db, user)
+            if not entitled and not _is_pricing_renewal_path(getattr(payload, "next_path", None)):
+                ctx = _subscription_access_context(db, user)
+                reason = ctx.get("access_denial_reason") or "subscription"
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": reason,
+                        "message": _login_access_denied_message(user, ctx),
+                    },
+                )
 
         session_id = _enforce_session_limit_and_create(db, user, request)
         db.refresh(user)

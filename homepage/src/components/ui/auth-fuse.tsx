@@ -116,8 +116,8 @@ export async function completeAuthLogin(
     localStorage.setItem("token", body.journal_token);
   }
 
-  let hasAccess = !!body?.user?.has_journal_access;
   const chartUser = body?.user;
+  const chartHasAccess = !!chartUser?.has_journal_access;
 
   if (opts.email && opts.password) {
     try {
@@ -136,7 +136,6 @@ export async function completeAuthLogin(
         }
         if (journalData?.user) {
           localStorage.setItem("talaria_current_user", JSON.stringify(journalData.user));
-          hasAccess = !!journalData.user.has_journal_access;
         }
       }
     } catch {
@@ -144,7 +143,6 @@ export async function completeAuthLogin(
     }
   } else if (chartUser) {
     localStorage.setItem("talaria_current_user", JSON.stringify(chartUser));
-    hasAccess = !!chartUser.has_journal_access;
   }
 
   const safeNext =
@@ -154,7 +152,7 @@ export async function completeAuthLogin(
   const url = getPostAuthRedirectUrl({
     user: {
       role: chartUser?.role,
-      has_journal_access: !!(hasAccess || chartUser?.has_journal_access),
+      has_journal_access: chartHasAccess,
       access_denial_reason:
         typeof chartUser?.access_denial_reason === "string"
           ? chartUser.access_denial_reason
@@ -362,7 +360,7 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, next_path: nextPath || undefined }),
       });
 
       const body = await res.json().catch(() => null);
@@ -782,15 +780,11 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ credential }),
+            body: JSON.stringify({ credential, next_path: nextPath || undefined }),
           });
           const body = await res.json().catch(() => null);
           if (!res.ok) {
-            const msg =
-              body && (body.detail || body.error)
-                ? String(body.detail || body.error)
-                : "Google sign-in failed";
-            setGoogleError(msg);
+            setGoogleError(parseAuthApiError(body, "Google sign-in failed"));
             return;
           }
           await completeAuthLogin(body, { nextPath });
