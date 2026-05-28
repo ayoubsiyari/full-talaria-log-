@@ -1254,6 +1254,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       patch.ratioTextColor = labelCol;
     }
   }
+  // Per-level zone fills use `showZones` + `backgroundOpacity`, not shape `fill`.
+  if (legacyTool && v9IsClassicFibRetracementType(legacyTool)) {
+    patch.fill = "none";
+    patch.showBackground = false;
+    patch.backgroundColor = "transparent";
+  }
   return patch;
 }
 

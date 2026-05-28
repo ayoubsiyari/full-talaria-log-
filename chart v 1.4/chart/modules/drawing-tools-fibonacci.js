@@ -123,6 +123,26 @@ class FibonacciRetracementTool extends BaseDrawing {
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
 
+        if (zonesEnabled) {
+            const zoneBands = BaseDrawing.buildFibHorizontalZoneBands(
+                this.levels,
+                getPriceAtLevel,
+                scales.yScale
+            );
+            zoneBands.forEach((band) => {
+                this.group.insert('rect', ':first-child')
+                    .attr('data-fib-zone', band.zoneKey)
+                    .attr('x', fibX1)
+                    .attr('y', Math.min(band.y1, band.y2))
+                    .attr('width', fibWidth)
+                    .attr('height', Math.abs(band.y2 - band.y1))
+                    .attr('fill', band.color)
+                    .attr('opacity', zoneOpacity)
+                    .attr('rx', 2)
+                    .style('pointer-events', 'none');
+            });
+        }
+
         // Draw each Fibonacci level
         for (let i = 0; i < this.levels.length; i++) {
             const level = this.levels[i];
@@ -131,22 +151,6 @@ class FibonacciRetracementTool extends BaseDrawing {
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
             if (!Number.isFinite(yAtLevel) || !Number.isFinite(priceAtLevel)) continue;
-
-            const nextLevel = this.levels[i + 1];
-            if (zonesEnabled && nextLevel && nextLevel.visible) {
-                const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
-                if (!Number.isFinite(nextY)) continue;
-                this.group.insert('rect', ':first-child')
-                    .attr('data-fib-zone', level.value)
-                    .attr('x', fibX1)
-                    .attr('y', Math.min(yAtLevel, nextY))
-                    .attr('width', fibWidth)
-                    .attr('height', Math.abs(nextY - yAtLevel))
-                    .attr('fill', level.color)
-                    .attr('opacity', zoneOpacity)
-                    .attr('rx', 2)
-                    .style('pointer-events', 'none');
-            }
 
             const levelDash = (globalLevelsDash !== null) ? globalLevelsDash : ((level.lineType != null) ? `${level.lineType}` : (level.value === 0 || level.value === 1 ? '' : '4,3'));
             const baseLevelWidth = (globalLevelsWidth !== null) ? globalLevelsWidth : ((level.lineWidth != null && !isNaN(parseInt(level.lineWidth))) ? parseInt(level.lineWidth) : baseLevelStrokeWidth);
@@ -380,6 +384,26 @@ class FibonacciExtensionTool extends BaseDrawing {
         const globalLevelsDash = (this.style.levelsLineDasharray != null) ? `${this.style.levelsLineDasharray}` : null;
         const globalLevelsWidth = (this.style.levelsLineWidth != null && !isNaN(parseInt(this.style.levelsLineWidth))) ? parseInt(this.style.levelsLineWidth) : null;
 
+        if (zonesEnabled) {
+            const zoneBands = BaseDrawing.buildFibHorizontalZoneBands(
+                this.levels,
+                getPriceAtLevel,
+                scales.yScale
+            );
+            zoneBands.forEach((band) => {
+                this.group.insert('rect', ':first-child')
+                    .attr('data-fib-zone', band.zoneKey)
+                    .attr('x', fibX1)
+                    .attr('y', Math.min(band.y1, band.y2))
+                    .attr('width', fibWidth)
+                    .attr('height', Math.abs(band.y2 - band.y1))
+                    .attr('fill', band.color)
+                    .attr('opacity', zoneOpacity)
+                    .attr('rx', 2)
+                    .style('pointer-events', 'none');
+            });
+        }
+
         for (let i = 0; i < this.levels.length; i++) {
             const level = this.levels[i];
             if (!level || !level.visible) continue;
@@ -387,22 +411,6 @@ class FibonacciExtensionTool extends BaseDrawing {
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
             if (!Number.isFinite(yAtLevel) || !Number.isFinite(priceAtLevel)) continue;
-
-            const nextLevel = this.levels[i + 1];
-            if (zonesEnabled && nextLevel && nextLevel.visible) {
-                const nextY = scales.yScale(getPriceAtLevel(nextLevel.value));
-                if (!Number.isFinite(nextY)) continue;
-                this.group.insert('rect', ':first-child')
-                    .attr('data-fib-zone', level.value)
-                    .attr('x', fibX1)
-                    .attr('y', Math.min(yAtLevel, nextY))
-                    .attr('width', fibWidth)
-                    .attr('height', Math.abs(nextY - yAtLevel))
-                    .attr('fill', level.color)
-                    .attr('opacity', zoneOpacity)
-                    .attr('rx', 2)
-                    .style('pointer-events', 'none');
-            }
 
             const levelDash = (globalLevelsDash !== null) ? globalLevelsDash : ((level.lineType != null) ? `${level.lineType}` : (level.value === 0 || level.value === 1 ? '' : '4,3'));
             const baseLevelWidth = (globalLevelsWidth !== null) ? globalLevelsWidth : ((level.lineWidth != null && !isNaN(parseInt(level.lineWidth))) ? parseInt(level.lineWidth) : baseLevelStrokeWidth);

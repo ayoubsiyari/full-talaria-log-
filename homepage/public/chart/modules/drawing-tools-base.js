@@ -334,7 +334,44 @@ class BaseDrawing {
             levels.push({ value: level.value, y: yAtLevel, nextY });
         });
 
-        return { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels };
+        const zoneBands = BaseDrawing.buildFibHorizontalZoneBands(
+            tool.levels,
+            getPriceAtLevel,
+            scales.yScale
+        );
+
+        return { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels, zoneBands };
+    }
+
+    /**
+     * Horizontal fib zone fills: pair adjacent levels by on-screen Y (not array order).
+     * Avoids a single band spanning 0→1 when levels are listed 0, 1, 0.236, …
+     */
+    static buildFibHorizontalZoneBands(levels, getPriceAtLevel, yScale) {
+        if (!levels || !levels.length || typeof getPriceAtLevel !== 'function' || !yScale) return [];
+        const rows = [];
+        levels.forEach((level) => {
+            if (!level || level.visible === false) return;
+            const price = getPriceAtLevel(level.value);
+            const y = yScale(price);
+            if (!Number.isFinite(y) || !Number.isFinite(price)) return;
+            rows.push({
+                zoneKey: level.value,
+                y,
+                color: level.color || '#787b86',
+            });
+        });
+        rows.sort((a, b) => a.y - b.y);
+        const bands = [];
+        for (let i = 0; i < rows.length - 1; i++) {
+            bands.push({
+                zoneKey: rows[i].zoneKey,
+                y1: rows[i].y,
+                y2: rows[i + 1].y,
+                color: rows[i].color,
+            });
+        }
+        return bands;
     }
 
     static patchTwoPointHorizontalFib(tool, scales) {
@@ -344,27 +381,29 @@ class BaseDrawing {
         const layout = BaseDrawing.computeTwoPointHorizontalFibLayout(tool, scales);
         if (!layout) return false;
 
-        const { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels } = layout;
+        const { x1, y1, x2, y2, fibX1, fibX2, fibWidth, levels, zoneBands } = layout;
         const group = tool.group;
         const trend = group.select('.fib-trend-line');
         if (!trend.empty()) {
             trend.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
         }
 
-        levels.forEach(({ value, y, nextY }) => {
+        (zoneBands || []).forEach((band) => {
+            const key = `${band.zoneKey}`;
+            group.selectAll(`rect[data-fib-zone="${key}"]`)
+                .attr('x', fibX1)
+                .attr('y', Math.min(band.y1, band.y2))
+                .attr('width', fibWidth)
+                .attr('height', Math.abs(band.y2 - band.y1));
+        });
+
+        levels.forEach(({ value, y }) => {
             const key = `${value}`;
             group.selectAll(`line[data-level="${key}"]`)
                 .attr('x1', fibX1)
                 .attr('y1', y)
                 .attr('x2', fibX2)
                 .attr('y2', y);
-            if (nextY != null && Number.isFinite(nextY)) {
-                group.selectAll(`rect[data-fib-zone="${key}"]`)
-                    .attr('x', fibX1)
-                    .attr('y', Math.min(y, nextY))
-                    .attr('width', fibWidth)
-                    .attr('height', Math.abs(nextY - y));
-            }
             group.selectAll(`text[data-fib-label="${key}"]`)
                 .attr('x', fibX2 + 5)
                 .attr('y', y + 4);
