@@ -166,7 +166,7 @@ const V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS = new Set([
 const V9_TL_LINE_COLOR_OPACITY_CHART_TYPES = new Set([
   "rectangle", "rotated-rectangle", "ellipse", "circle", "triangle", "arc",
 ]);
-const V9_ARROW_MARK_CHART_TYPES = new Set(["arrow-mark-up", "arrow-mark-down"]);
+const V9_ARROW_MARK_CHART_TYPES = new Set(["arrow-marker", "arrow-mark-up", "arrow-mark-down"]);
 const V9_ARROW_MARK_UP_COLOR = "#089981";
 const V9_ARROW_MARK_DOWN_COLOR = "#F23645";
 function v9IsArrowMarkChartType(type) {
@@ -183,7 +183,7 @@ function v9UsesTlShowBgChartType(type) {
   );
 }
 function v9IsArrowMarkUiActive(subToolIcon, chartDrawingType) {
-  if (subToolIcon === "arrowUp" || subToolIcon === "arrowDn") return true;
+  if (subToolIcon === "arrowUp" || subToolIcon === "arrowDn" || subToolIcon === "arrowMarker") return true;
   return v9IsArrowMarkChartType(chartDrawingType);
 }
 function v9ArrowMarkDefaultColorForLegacy(legacy) {
@@ -4832,6 +4832,18 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
     return {
       lineWidth: V9_DEFAULT_HIGHLIGHTER_LINE_WIDTH,
       lineColor: cpBuildColor(base.r, base.g, base.b, V9_DEFAULT_HIGHLIGHTER_ALPHA),
+    };
+  }
+  if (legacy === "arrow-marker") {
+    const c = "#2962FF";
+    return {
+      lineColor: c,
+      bgColor: c,
+      borderColor: c,
+      showBg: true,
+      showBorder: false,
+      lineWidth: "1",
+      borderWidth: "1",
     };
   }
   if (legacy === "arrow-mark-up") {
@@ -13898,7 +13910,13 @@ const TalariaV8bLive = () => {
         if (!d || !d.style) return;
         if (!v9UsesTlShowBgChartType(d.type) && !v9IsArrowMarkChartType(d.type)) return;
         if (v9IsArrowMarkChartType(d.type)) {
-          patch.fill = bgOn ? (tl.bgColor || d.style.fill || "#F23645") : "none";
+          const fallback =
+            d.type === "arrow-mark-up"
+              ? V9_ARROW_MARK_UP_COLOR
+              : d.type === "arrow-mark-down"
+                ? V9_ARROW_MARK_DOWN_COLOR
+                : (d.style.fill && d.style.fill !== "none" ? d.style.fill : "#2962FF");
+          patch.fill = bgOn ? (tl.bgColor || fallback) : "none";
         }
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
@@ -13925,9 +13943,12 @@ const TalariaV8bLive = () => {
 
   const toggleTlShowBg = () => {
     flushSync(() => {
-      setTlStyle((s) => ({ ...s, showBg: !s.showBg }));
+      setTlStyle((s) => {
+        const next = { ...s, showBg: !s.showBg };
+        flushV9ShapeBackgroundToChart(next);
+        return next;
+      });
     });
-    flushV9ShapeBackgroundToChart(tlStyleLiveRef.current);
   };
 
   const flushV9ShapeBorderToChart = (tl) => {
@@ -13973,9 +13994,12 @@ const TalariaV8bLive = () => {
 
   const toggleTlShowBorder = () => {
     flushSync(() => {
-      setTlStyle((s) => ({ ...s, showBorder: !s.showBorder }));
+      setTlStyle((s) => {
+        const next = { ...s, showBorder: !s.showBorder };
+        flushV9ShapeBorderToChart(next);
+        return next;
+      });
     });
-    flushV9ShapeBorderToChart(tlStyleLiveRef.current);
   };
 
   const V9_EXTEND_LEFT_RIGHT_TYPES = new Set([
@@ -16943,10 +16967,10 @@ const TalariaV8bLive = () => {
                     </>;
                   })()}
                   {/* ── Arrow mark: Border + Background (no line grid) ── */}
-                  {hasBg && !showLine && !isChannel && !isPitchfork && ["arrowUp","arrowDn"].includes(tlSubTool.icon) && <>
+                  {hasBg && !showLine && !isChannel && !isPitchfork && ["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
                       <div style={{ padding:"8px 0" }}>
-                        {TlChk(tlStyle.showBorder, "tlchk-arrowBorder", "Border", toggleTlShowBorder)}
+                        {TlChk(tlStyle.showBorder, "tlchk-arrowBorder", tlSubTool.icon === "arrowMarker" ? "Outline" : "Border", toggleTlShowBorder)}
                       </div>
                       <div style={{ padding:"8px 0", marginRight:120, opacity:tlStyle.showBorder ? 1 : 0.38, pointerEvents:tlStyle.showBorder ? "auto" : "none", transition:"opacity 0.15s" }}>
                         {colorSwatch("tlBorderColor", tlStyle.borderColor || tlStyle.lineColor)}
@@ -16961,7 +16985,7 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>
                   </>}
-                  {hasBg && !showLine && !isChannel && !isPitchfork && !["arrowUp","arrowDn"].includes(tlSubTool.icon) && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
+                  {hasBg && !showLine && !isChannel && !isPitchfork && !["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <div style={{ display:"grid", gridTemplateColumns:"1fr auto", alignItems:"center" }}>
                     <div style={{ padding:"8px 0" }}>
                       {TlChk(tlStyle.showBg, "tlchk-shapeBg2", "Background", toggleTlShowBg)}
                     </div>

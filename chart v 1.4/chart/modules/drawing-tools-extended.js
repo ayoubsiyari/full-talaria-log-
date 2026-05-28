@@ -237,16 +237,42 @@ class ArrowMarkerTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
+        const fillPaint = arrowMarkBackgroundFill(this.style, this.style.fill);
+        const borderOn = arrowMarkBorderVisible(this.style);
+        const outlineStroke = arrowMarkOutlineStroke(this.style);
+        const outlineWidth = borderOn
+            ? Math.max(1, Number(this.style.strokeWidth) || Number(this.style.borderWidth) || 1)
+            : 0;
+
         // Fill (non-interactive)
         this.group.append('path')
             .attr('class', 'shape-fill')
             .attr('d', arrowPath)
-            .attr('fill', this.style.fill)
+            .attr('fill', fillPaint)
             .attr('stroke', 'none')
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        // No border — fill-only arrow; arrow-fill-hit handles all interaction
+        if (borderOn) {
+            this.group.append('path')
+                .attr('class', 'shape-border-hit')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, outlineWidth * 5))
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            this.group.append('path')
+                .attr('class', 'shape-border')
+                .attr('d', arrowPath)
+                .attr('fill', 'none')
+                .attr('stroke', outlineStroke)
+                .attr('stroke-width', outlineWidth)
+                .attr('data-original-width', outlineWidth)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         // Render text near tail (p1) — offset perpendicular to arrow so it never overlaps the body
         if (this.text && this.text.trim()) {
