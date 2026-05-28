@@ -6866,7 +6866,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            if (drawing.type === 'flat-top-bottom') {
+            if (drawing.type === 'flat-top-bottom' || drawing.type === 'disjoint-channel') {
 
                 const handlePricesRow = document.createElement('div');
 

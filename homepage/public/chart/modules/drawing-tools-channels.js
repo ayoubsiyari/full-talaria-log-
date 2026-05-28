@@ -1634,6 +1634,7 @@ class DisjointChannelTool extends BaseDrawing {
         this.style.strokeDasharray = style.strokeDasharray || '0';
         this.style.extendLeft = style.extendLeft || false;
         this.style.extendRight = style.extendRight || false;
+        if (this.style.showHandlePrices === undefined) this.style.showHandlePrices = true;
         this.ensureTextDefaults();
     }
 
@@ -1895,7 +1896,10 @@ class DisjointChannelTool extends BaseDrawing {
                 ...this.points,
                 p4
             ];
+        } else {
+            this.virtualPoints = null;
         }
+        this.renderHandlePriceLabels(scales);
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 
@@ -2039,6 +2043,9 @@ class DisjointChannelTool extends BaseDrawing {
         return tool;
     }
 }
+
+// Same quad-corner price labels as Flat Top/Bottom (TL/TR/BR/BL virtual points).
+DisjointChannelTool.prototype.renderHandlePriceLabels = FlatTopBottomTool.prototype.renderHandlePriceLabels;
 
 // ============================================================================
 // Export for use in other modules

@@ -894,7 +894,8 @@ function v9PushFlatTopBottomInputToSelectedDrawings(tlStyle) {
     enumerateV9DrawingManagersFromWindow().forEach((dm) => {
       const push = (raw) => {
         const d = resolveLiveDrawingInDm(dm, raw);
-        if (!d || d.type !== "flat-top-bottom" || !d.style) return;
+        if (!d || !d.style) return;
+        if (d.type !== "flat-top-bottom" && d.type !== "disjoint-channel") return;
         if (d.id != null) {
           if (seen.has(d.id)) return;
           seen.add(d.id);
@@ -982,7 +983,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     endStyle: tlStyle.ep2,
     extendLeft: !!tlStyle.extendLeft,
     extendRight: !!tlStyle.extendRight,
-    ...(legacyTool === "flat-top-bottom"
+    ...(legacyTool === "flat-top-bottom" || legacyTool === "disjoint-channel"
       ? { showHandlePrices: tlStyle.flatChPrices !== false }
       : {}),
     showPriceLabel: !!tlStyle.priceLabels,
@@ -4196,7 +4197,7 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   if (d.type === "parallel-channel") {
     d.levels = v9ChLinesToParallelLevels(v9SyncParallelChannelMidLineToChLines(tlStyle));
   }
-  if (d.type === "flat-top-bottom") {
+  if (d.type === "flat-top-bottom" || d.type === "disjoint-channel") {
     d.style.showHandlePrices = tlStyle.flatChPrices !== false;
   }
   if (d.type === "regression-trend") {
@@ -4345,7 +4346,9 @@ function v9TlStylePatchFromDrawing(d) {
       || (typeof s.extendLeft === 'string' && /^(true|1|yes)$/i.test(String(s.extendLeft).trim()))),
     extendRight: !!(s.extendRight === true || s.extendRight === 1
       || (typeof s.extendRight === 'string' && /^(true|1|yes)$/i.test(String(s.extendRight).trim()))),
-    ...(d.type === "flat-top-bottom" ? { flatChPrices: s.showHandlePrices !== false } : {}),
+    ...(d.type === "flat-top-bottom" || d.type === "disjoint-channel"
+      ? { flatChPrices: s.showHandlePrices !== false }
+      : {}),
     ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
     ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
     ...(s.labelColor ? { labelColor: s.labelColor } : {}),
