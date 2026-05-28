@@ -10,7 +10,8 @@ const PATTERN_VALUE_OFFSET_PX = 12;
 
 function patternLabelFill(style) {
     if (!style) return '#ffffff';
-    return style.labelTextColor || style.ratioTextColor || style.textColor || style.stroke || '#ffffff';
+    // V9 Label row writes `textColor`; prefer it over legacy `labelTextColor` (may still match old stroke).
+    return style.textColor || style.labelTextColor || style.ratioTextColor || style.stroke || '#ffffff';
 }
 
 function patternLabelFontSizePx(style) {

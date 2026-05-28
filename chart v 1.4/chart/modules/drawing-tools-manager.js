@@ -7109,6 +7109,14 @@ class DrawingToolsManager {
             return; // _drawingsLoaded stays false — listener will retry
         }
 
+        // Session GET /state may hydrate via loadDrawingsFromData before this runs — do not wipe them.
+        if (this._drawingsLoaded) {
+            if (this.chart && typeof this.chart._applyPendingSessionDrawingsAfterManagerLoad === 'function') {
+                this.chart._applyPendingSessionDrawingsAfterManagerLoad();
+            }
+            return;
+        }
+
         let saved = null;
         
         // 1. Try loading from URL parameters first (for sharing across tabs/browsers)
@@ -7352,6 +7360,11 @@ class DrawingToolsManager {
             if (this.objectTreeManager) {
                 this.objectTreeManager.refresh();
             }
+
+            this._drawingsLoaded = true;
+            try {
+                userStorage.setItem(this.getStorageKey(), JSON.stringify(data));
+            } catch (_) { /* ignore */ }
         } catch (e) {
             console.warn('⚠️ Failed to load drawings from data', e);
         }

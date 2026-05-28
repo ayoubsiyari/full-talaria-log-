@@ -1243,6 +1243,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.strokeWidth = borderOn ? Math.max(1, widthNum) : 0;
     patch.borderWidth = borderOn ? Math.max(1, parseInt(tlStyle.borderWidth, 10) || 1) : 0;
   }
+  if (legacyTool && v9IsPatternChartType(legacyTool) && tlStyle.textColor) {
+    patch.labelTextColor = tlStyle.textColor;
+    patch.ratioTextColor = tlStyle.textColor;
+  }
   return patch;
 }
 
@@ -2059,6 +2063,18 @@ function legacyChartTextTypeToV9Icon(type) {
   return map[type] || "text";
 }
 
+/** Elliott + harmonic pattern chart types (label color is independent of line stroke). */
+function v9IsPatternChartType(type) {
+  if (!type || typeof type !== 'string') return false;
+  return type.startsWith('elliott-')
+    || type === 'xabcd-pattern'
+    || type === 'head-shoulders'
+    || type === 'abcd-pattern'
+    || type === 'triangle-pattern'
+    || type === 'three-drives'
+    || type === 'cypher-pattern';
+}
+
 /** chart.js `drawing.type` or legacy tool id → V9 rail group (must match `drawingTypeToPanelGroup`). */
 function v9DrawingTypeToPanelGroup(type) {
   if (!type) return null;
@@ -2069,10 +2085,7 @@ function v9DrawingTypeToPanelGroup(type) {
   if (['anchored-vwap', 'fixed-range-volume-profile', 'volume-profile', 'anchored-volume-profile'].includes(type)) return 'brush';
   if (type.startsWith('fibonacci-') || type.startsWith('fib-') || type.startsWith('trend-fib-')) return 'fib';
   if (type === 'gann-box' || type === 'gann-square' || type === 'gann-square-fixed' || type === 'gann-fan') return 'fib';
-  if (type.startsWith('elliott-')
-      || type === 'xabcd-pattern' || type === 'head-shoulders'
-      || type === 'abcd-pattern' || type === 'triangle-pattern'
-      || type === 'three-drives' || type === 'cypher-pattern') return 'pattern';
+  if (v9IsPatternChartType(type)) return 'pattern';
   if (['rectangle', 'rotated-rectangle', 'triangle', 'arc', 'ellipse', 'circle',
     'arrow', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down'].includes(type)) return 'rect';
   if (['parallel-channel', 'regression-trend', 'flat-top-bottom',
@@ -4175,23 +4188,12 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
   } else if (d.type === "gann-fan") {
     v9ApplyGannFanFromTlStyle(d, tlStyle);
   }
-  const patTypes = [
-    "xabcd-pattern",
-    "cypher-pattern",
-    "head-shoulders",
-    "abcd-pattern",
-    "triangle-pattern",
-    "three-drives",
-    "elliott-impulse",
-    "elliott-correction",
-    "elliott-triangle",
-    "elliott-double-combo",
-    "elliott-triple-combo",
-  ];
-  if (patTypes.includes(d.type)) {
-    if (tlStyle.textColor) {
-      d.style.labelTextColor = tlStyle.textColor;
-      d.style.ratioTextColor = tlStyle.textColor;
+  if (v9IsPatternChartType(d.type)) {
+    const labelCol = tlStyle.textColor;
+    if (labelCol) {
+      d.style.textColor = labelCol;
+      d.style.labelTextColor = labelCol;
+      d.style.ratioTextColor = labelCol;
     }
     const fs = parseInt(String(tlStyle.textSize), 10);
     if (Number.isFinite(fs) && fs > 0) d.style.fontSize = fs;
@@ -4319,10 +4321,15 @@ function v9TlStylePatchFromDrawing(d) {
         })()
       : {}),
     ...(typeof d.text === 'string' ? { textContent: d.text } : {}),
-    ...(s.textColor ? { textColor: s.textColor }
-       : s.labelTextColor ? { textColor: s.labelTextColor }
-       : s.ratioTextColor ? { textColor: s.ratioTextColor }
-       : {}),
+    ...(v9IsPatternChartType(d.type)
+      ? (() => {
+          const labelCol = s.textColor || s.labelTextColor || s.ratioTextColor;
+          return labelCol ? { textColor: labelCol } : {};
+        })()
+      : (s.textColor ? { textColor: s.textColor }
+         : s.labelTextColor ? { textColor: s.labelTextColor }
+         : s.ratioTextColor ? { textColor: s.ratioTextColor }
+         : {})),
     ...(s.fontSize != null ? { textSize: String(s.fontSize) } : {}),
     ...(s.fontWeight != null && s.fontWeight !== '' ? { textBold: bold } : {}),
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),

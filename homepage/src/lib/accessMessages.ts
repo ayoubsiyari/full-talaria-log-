@@ -13,6 +13,8 @@ export function parseAuthApiError(
   body: unknown,
   fallback = "Something went wrong. Please try again.",
 ): string {
+  const denial = parseAuthAccessDenial(body);
+  if (denial) return denial.message;
   if (!body || typeof body !== "object") return fallback;
   const record = body as Record<string, unknown>;
   const detail = record.detail ?? record.error ?? record.message;
@@ -23,6 +25,38 @@ export function parseAuthApiError(
   if (typeof detail === "string" && detail.trim()) return detail;
   if (typeof record.message === "string" && record.message.trim()) return record.message;
   return fallback;
+}
+
+const RENEWABLE_DENIAL_CODES = new Set([
+  "subscription",
+  "subscription_ended",
+  "payment_required",
+  "access_period_ended",
+  "subscription_inactive",
+  "no_plan",
+]);
+
+export type ParsedAccessDenial = {
+  code: string;
+  message: string;
+  canRenew: boolean;
+};
+
+/** Structured 403 from chart login when subscription/access ended. */
+export function parseAuthAccessDenial(body: unknown): ParsedAccessDenial | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  const detail = record.detail;
+  if (!detail || typeof detail !== "object") return null;
+  const d = detail as Record<string, unknown>;
+  const code = typeof d.code === "string" ? d.code : "";
+  const message = typeof d.message === "string" ? d.message.trim() : "";
+  if (!code || !message) return null;
+  return {
+    code,
+    message,
+    canRenew: RENEWABLE_DENIAL_CODES.has(code),
+  };
 }
 
 function formatShortDate(iso?: string | null): string | null {

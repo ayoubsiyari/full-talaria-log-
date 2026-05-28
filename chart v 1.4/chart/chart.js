@@ -3274,6 +3274,7 @@ class Chart {
                     this.drawingManager.drawings.forEach(d => d.destroy());
                     this.drawingManager.drawings = [];
                 }
+                this.drawingManager._drawingsLoaded = false;
                 if (typeof this.drawingManager.loadDrawings === 'function') {
                     this.drawingManager.loadDrawings();
                 }
@@ -4359,8 +4360,8 @@ class Chart {
      */
     _writeTradingSessionLocalBackup() {
         const sessionId = this.getActiveTradingSessionId();
+        if (!sessionId) return;
         const om = this._getOrderManagerForSessionPersistence();
-        if (!sessionId || !om) return;
         try {
             const safeClone = (arr) => {
                 try {
@@ -4370,36 +4371,40 @@ class Chart {
                 }
             };
             const payload = {
-                journal: safeClone(om.tradeJournal),
-                pending_orders: safeClone(om.pendingOrders),
-                open_positions: safeClone(om.openPositions),
-                account_runtime: {
-                    balance: om.balance,
-                    equity: om.equity,
-                    initialBalance: om.initialBalance,
-                    session_current_time:
-                        om.orderService && om.orderService.multiInstrumentSession
-                            ? om.orderService.multiInstrumentSession.current_time
-                            : undefined,
-                },
-                order_counters: {
-                    orderIdCounter: om.orderIdCounter,
-                    tradeGroupIdCounter: om.tradeGroupIdCounter,
-                },
                 savedAt: Date.now(),
             };
-            if (typeof om.buildPerInstrumentStats === 'function') {
-                try {
-                    payload.per_instrument_stats = om.buildPerInstrumentStats();
-                } catch (e) {
-                    /* ignore */
+            if (om) {
+                Object.assign(payload, {
+                    journal: safeClone(om.tradeJournal),
+                    pending_orders: safeClone(om.pendingOrders),
+                    open_positions: safeClone(om.openPositions),
+                    account_runtime: {
+                        balance: om.balance,
+                        equity: om.equity,
+                        initialBalance: om.initialBalance,
+                        session_current_time:
+                            om.orderService && om.orderService.multiInstrumentSession
+                                ? om.orderService.multiInstrumentSession.current_time
+                                : undefined,
+                    },
+                    order_counters: {
+                        orderIdCounter: om.orderIdCounter,
+                        tradeGroupIdCounter: om.tradeGroupIdCounter,
+                    },
+                });
+                if (typeof om.buildPerInstrumentStats === 'function') {
+                    try {
+                        payload.per_instrument_stats = om.buildPerInstrumentStats();
+                    } catch (e) {
+                        /* ignore */
+                    }
                 }
-            }
-            if (typeof om.groupJournalByTicker === 'function') {
-                try {
-                    payload.journal_by_ticker = om.groupJournalByTicker();
-                } catch (e) {
-                    /* ignore */
+                if (typeof om.groupJournalByTicker === 'function') {
+                    try {
+                        payload.journal_by_ticker = om.groupJournalByTicker();
+                    } catch (e) {
+                        /* ignore */
+                    }
                 }
             }
             const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);

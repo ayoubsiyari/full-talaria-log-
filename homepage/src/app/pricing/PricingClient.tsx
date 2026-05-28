@@ -318,7 +318,8 @@ export default function PricingClient() {
     ? accessDenialMessage(denialReason, {
         planName: lapsedInfo?.plan_name,
         expiredAt:
-          currentSubscription?.access_expired_at || lapsedInfo?.current_period_end,
+          currentSubscription?.access_expired_at ||
+          (lapsedInfo as SubscriptionPayload["lapsed_subscription"] | undefined)?.current_period_end,
       })
     : null;
   const showResumeBanner =

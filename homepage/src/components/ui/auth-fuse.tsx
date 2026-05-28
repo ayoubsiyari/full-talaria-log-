@@ -14,10 +14,13 @@ import {
   userIsDashboardAdmin,
 } from "@/lib/dashboardAccess";
 import {
-  accessDenialMessage,
+  accessDenialTitle,
+  parseAuthAccessDenial,
   parseAuthApiError,
   pricingUrlForAccessDenial,
+  type ParsedAccessDenial,
 } from "@/lib/accessMessages";
+import Link from "next/link";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -338,11 +341,31 @@ PasswordInput.displayName = "PasswordInput";
 
 function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onForgotPassword }: { prefillEmail?: string; bannerMessage?: string | null; accessNotice?: string | null; nextPath?: string; onForgotPassword: () => void }) {
   const [error, setError] = useState<string | null>(null);
+  const [accessDenial, setAccessDenial] = useState<ParsedAccessDenial | null>(null);
   const [loading, setLoading] = useState(false);
+  const [renewLoading, setRenewLoading] = useState(false);
+
+  const pricingRenewPath = "/pricing/?browse=1";
+
+  async function submitLogin(email: string, password: string, loginNextPath?: string) {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        email,
+        password,
+        next_path: loginNextPath || nextPath || undefined,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    return { res, body };
+  }
 
   const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setAccessDenial(null);
     setLoading(true);
 
     try {
@@ -356,16 +379,14 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
         return;
       }
 
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password, next_path: nextPath || undefined }),
-      });
-
-      const body = await res.json().catch(() => null);
+      const { res, body } = await submitLogin(email, password);
       if (!res.ok) {
-        setError(parseAuthApiError(body, "Login failed"));
+        const denial = parseAuthAccessDenial(body);
+        if (denial) {
+          setAccessDenial(denial);
+        } else {
+          setError(parseAuthApiError(body, "Login failed"));
+        }
         return;
       }
 
@@ -374,8 +395,40 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
       setLoading(false);
     }
   };
+
+  const handleRenewSignIn = async () => {
+    const form = document.getElementById("sign-in-form") as HTMLFormElement | null;
+    if (!form) return;
+    const data = new FormData(form);
+    const email = String(data.get("email") || "").trim();
+    const password = String(data.get("password") || "");
+    if (!isValidEmail(email) || !password) {
+      setError("Please enter your email and password first");
+      setAccessDenial(null);
+      return;
+    }
+    setRenewLoading(true);
+    setError(null);
+    try {
+      const { res, body } = await submitLogin(email, password, pricingRenewPath);
+      if (!res.ok) {
+        const denial = parseAuthAccessDenial(body);
+        if (denial) setAccessDenial(denial);
+        else setError(parseAuthApiError(body, "Login failed"));
+        return;
+      }
+      await completeAuthLogin(body, {
+        email,
+        password,
+        nextPath: pricingRenewPath,
+      });
+    } finally {
+      setRenewLoading(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSignIn} autoComplete="on" className="flex flex-col gap-8">
+    <form id="sign-in-form" onSubmit={handleSignIn} autoComplete="on" className="flex flex-col gap-8">
       <div className="flex flex-col items-center gap-2 text-center">
         <h1 className="text-2xl font-bold">Sign in to your account</h1>
         <p className="text-balance text-sm text-muted-foreground">Enter your email below to sign in</p>
@@ -394,8 +447,36 @@ function SignInForm({ prefillEmail, bannerMessage, accessNotice, nextPath, onFor
           </div>
         )}
         {bannerMessage && <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{bannerMessage}</div>}
-        {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-        <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading}>{loading ? "Signing In..." : "Sign In"}</AuthButton>
+        {accessDenial && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+            <p className="font-semibold text-amber-950">{accessDenialTitle(accessDenial.code)}</p>
+            <p className="mt-1.5 leading-relaxed">{accessDenial.message}</p>
+            {accessDenial.canRenew && (
+              <div className="mt-3 flex flex-col gap-2">
+                <AuthButton
+                  type="button"
+                  className="w-full"
+                  disabled={renewLoading || loading}
+                  onClick={handleRenewSignIn}
+                >
+                  {renewLoading ? "Opening pricing…" : "Sign in & renew →"}
+                </AuthButton>
+                <Link
+                  href={pricingUrlForAccessDenial(accessDenial.code)}
+                  className="text-center text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                >
+                  View plans without signing in
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+        {error && !accessDenial && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        )}
+        <AuthButton type="submit" variant="outline" className="mt-2" disabled={loading || renewLoading}>
+          {loading ? "Signing In..." : "Sign In"}
+        </AuthButton>
       </div>
     </form>
   );
@@ -769,25 +850,35 @@ function SignUpForm({ onSignedUp, onNeedsVerification, nextPath }: { onSignedUp:
 function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification, verificationEmail, onBackFromVerification, prefillEmail, bannerMessage, accessNotice, nextPath, forgotPasswordMode, resetPasswordEmail, onForgotPassword, onBackFromForgot, onResetCodeSent, onPasswordReset }: { isSignIn: boolean; onToggle: () => void; onSignedUp: (email: string) => void; onNeedsVerification: (email: string) => void; verificationEmail: string | null; onBackFromVerification: () => void; prefillEmail?: string; bannerMessage?: string | null; accessNotice?: string | null; nextPath?: string; forgotPasswordMode: boolean; resetPasswordEmail: string | null; onForgotPassword: () => void; onBackFromForgot: () => void; onResetCodeSent: (email: string) => void; onPasswordReset: () => void }) {
     const showExtraOptions = !verificationEmail && !forgotPasswordMode && !resetPasswordEmail;
     const [googleError, setGoogleError] = React.useState<string | null>(null);
+    const [googleAccessDenial, setGoogleAccessDenial] = React.useState<ParsedAccessDenial | null>(null);
     const [googleLoading, setGoogleLoading] = React.useState(false);
+    const lastGoogleCredential = React.useRef<string | null>(null);
+    const pricingRenewPath = "/pricing/?browse=1";
 
     const handleGoogleCredential = React.useCallback(
-      async (credential: string) => {
+      async (credential: string, loginNextPath?: string) => {
+        lastGoogleCredential.current = credential;
         setGoogleError(null);
+        setGoogleAccessDenial(null);
         setGoogleLoading(true);
         try {
           const res = await fetch("/api/auth/google", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ credential, next_path: nextPath || undefined }),
+            body: JSON.stringify({
+              credential,
+              next_path: loginNextPath || nextPath || undefined,
+            }),
           });
           const body = await res.json().catch(() => null);
           if (!res.ok) {
-            setGoogleError(parseAuthApiError(body, "Google sign-in failed"));
+            const denial = parseAuthAccessDenial(body);
+            if (denial) setGoogleAccessDenial(denial);
+            else setGoogleError(parseAuthApiError(body, "Google sign-in failed"));
             return;
           }
-          await completeAuthLogin(body, { nextPath });
+          await completeAuthLogin(body, { nextPath: loginNextPath || nextPath });
         } finally {
           setGoogleLoading(false);
         }
@@ -832,9 +923,39 @@ function AuthFormContainer({ isSignIn, onToggle, onSignedUp, onNeedsVerification
                 <GoogleAuthButton
                   mode={isSignIn ? "signin" : "signup"}
                   disabled={googleLoading}
-                  onCredential={handleGoogleCredential}
+                  onCredential={(credential) => handleGoogleCredential(credential)}
                 />
-                {googleError && <div className="text-sm text-red-500 text-center">{googleError}</div>}
+                {googleAccessDenial && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+                    <p className="font-semibold">{accessDenialTitle(googleAccessDenial.code)}</p>
+                    <p className="mt-1.5 leading-relaxed">{googleAccessDenial.message}</p>
+                    {googleAccessDenial.canRenew && (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {lastGoogleCredential.current && (
+                          <AuthButton
+                            type="button"
+                            className="w-full"
+                            disabled={googleLoading}
+                            onClick={() => {
+                              void handleGoogleCredential(lastGoogleCredential.current!, pricingRenewPath);
+                            }}
+                          >
+                            {googleLoading ? "Opening pricing…" : "Continue with Google to renew →"}
+                          </AuthButton>
+                        )}
+                        <Link
+                          href={pricingUrlForAccessDenial(googleAccessDenial.code)}
+                          className="block text-center text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+                        >
+                          View plans without signing in
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {googleError && !googleAccessDenial && (
+                  <div className="text-sm text-red-500 text-center">{googleError}</div>
+                )}
                 <div className="text-center text-sm">
                     {isSignIn ? "Don't have an account?" : "Already have an account?"}{" "}
                     <AuthButton variant="link" className="pl-1 text-foreground" onClick={onToggle}>
