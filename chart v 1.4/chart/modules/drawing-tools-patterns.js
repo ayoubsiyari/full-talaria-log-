@@ -748,7 +748,7 @@ class XABCDPatternTool extends BaseDrawing {
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', this.style.stroke)
-            .attr('rx', Math.max(2, Math.round(boxHeight * 0.15))
+            .attr('rx', Math.max(2, Math.round(boxHeight * 0.15)))
             .style('pointer-events', 'none');
 
         this.group.append('text')
