@@ -1740,6 +1740,46 @@ function v9ApplyImageDataUrlToDrawingStyle(style, dataUrl, { resetSize = false }
   }
 }
 
+/** Chart emoji tool uses `style.glyph`. V9 panel/menu uses `txtStyle.selectedEmoji`. */
+function v9SyncEmojiGlyphToManagers(glyph, { armTool = false } = {}) {
+  if (typeof window === "undefined" || !glyph) return;
+  const options = { glyph: String(glyph), category: "emoji" };
+  const applyDm = (dm) => {
+    if (!dm) return;
+    if (armTool && typeof dm.handleEmojiSelection === "function") {
+      dm.handleEmojiSelection(options);
+      return;
+    }
+    const resolved =
+      typeof EmojiStickerTool !== "undefined" &&
+      typeof EmojiStickerTool.resolveOptions === "function"
+        ? EmojiStickerTool.resolveOptions(options)
+        : options;
+    dm.currentEmojiOptions = resolved;
+    dm.pendingEmojiOptions = resolved;
+    if (armTool && dm.currentTool !== "emoji") {
+      try {
+        dm.setTool("emoji");
+      } catch (_) {}
+    }
+  };
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach(applyDm);
+  } catch (_) {}
+}
+
+function v9HasSelectedEmojiDrawing() {
+  try {
+    let found = false;
+    collectV9BridgeTargets().forEach(({ d }) => {
+      if (d && d.type === "emoji" && d.selected) found = true;
+    });
+    return found;
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Merge fragment for `txtStyle` state from a legacy text/callout drawing (toolbar hydrate). */
 function v9TxtStylePatchFromDrawing(d) {
   if (!d || !d.style) return null;
@@ -1825,6 +1865,8 @@ function v9TxtStylePatchFromDrawing(d) {
   } else if (t === "image") {
     out.imageDataUrl = s.imageUrl || "";
     out.imageTransparency = v9ImageOpacityPercentFromStyle(s);
+  } else if (t === "emoji") {
+    out.selectedEmoji = s.glyph || "😀";
   }
 
   if (s.textAlign) out.horizAlign = s.textAlign;
@@ -1968,6 +2010,16 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
       if (nextUrl !== curUrl) {
         v9ApplyImageDataUrlToDrawingStyle(s, nextUrl, { resetSize: !!nextUrl });
         d._keepEmpty = !nextUrl;
+        if (d.meta) d.meta.updatedAt = Date.now();
+      }
+    }
+    return;
+  }
+  if (t === "emoji") {
+    if (txt.selectedEmoji != null) {
+      const next = String(txt.selectedEmoji);
+      if (next && s.glyph !== next) {
+        s.glyph = next;
         if (d.meta) d.meta.updatedAt = Date.now();
       }
     }
@@ -7596,6 +7648,7 @@ const TalariaV8bLive = () => {
     pt1Price: "0.00000", pt1Bar: "0", pt2Price: "0.00000", pt2Bar: "0",
     pinLabelColor: "#4A6AFF",
     imageDataUrl: "", imageTransparency: 100,
+    selectedEmoji: "😀",
     visMinutes: { checked: true, min: 1, max: 60 }, visHours: { checked: true, min: 1, max: 24 },
     visDays: { checked: true, min: 1, max: 366 }, visWeeks: { checked: true, min: 1, max: 260 },
     visMonths: { checked: true, min: 1, max: 120 },
@@ -14128,6 +14181,7 @@ const TalariaV8bLive = () => {
     txtStyle.pinLabelColor,
     txtStyle.imageDataUrl,
     txtStyle.imageTransparency,
+    txtStyle.selectedEmoji,
     tool,
     groupSelected,
   ]);
@@ -14164,6 +14218,7 @@ const TalariaV8bLive = () => {
     txtStyle.content,
     txtStyle.imageDataUrl,
     txtStyle.imageTransparency,
+    txtStyle.selectedEmoji,
   ]);
 
   useLayoutEffect(() => {
@@ -21643,6 +21698,7 @@ const TalariaV8bLive = () => {
                       const r = e.currentTarget.getBoundingClientRect();
                       setEmojiPanelPos({ x: (r.right + 8) / Z, y: r.top / Z });
                       setEmojiPanelOpen(true);
+                      v9SyncEmojiGlyphToManagers(txtStyle.selectedEmoji || "😀", { armTool: true });
                     }
                   }}
                   style={{
@@ -22050,12 +22106,13 @@ const TalariaV8bLive = () => {
       {emojiPanelOpen && (()=>{
         const cats = EMOJI_CATS;
         const activeCat = cats.find(c2=>c2.id===emojiCat) || cats[0];
-        const filteredEmojis = emojiSearch.trim()
-          ? cats.flatMap(c2=>c2.emojis).filter(e2=>{
-              // basic emoji search by codepoint description isn't possible without a DB
-              // so just show all when searching (user filters visually)
-              return true;
-            })
+        const searchQ = emojiSearch.trim().toLowerCase();
+        const filteredEmojis = searchQ
+          ? (() => {
+              const byCat = cats.filter((c2) => c2.label.toLowerCase().includes(searchQ));
+              const list = byCat.length ? byCat.flatMap((c2) => c2.emojis) : cats.flatMap((c2) => c2.emojis);
+              return [...new Set(list)];
+            })()
           : activeCat.emojis;
         const W=210, H=252, TASKBAR=48;
         const px=Math.max(8, Math.min(emojiPanelPos.x, window.innerWidth-W-8));
@@ -22127,12 +22184,17 @@ const TalariaV8bLive = () => {
               <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1}}>
                 {filteredEmojis.map((em,idx)=>{
                   const hk=`em-${idx}`;
+                  const isSel = txtStyle.selectedEmoji === em;
                   return (
-                    <div key={hk} onClick={()=>{ setTxtStyle(s=>({...s,selectedEmoji:em})); setEmojiPanelOpen(false); }}
+                    <div key={hk} onClick={()=>{
+                      setTxtStyle(s=>({...s,selectedEmoji:em}));
+                      v9SyncEmojiGlyphToManagers(em, { armTool: !v9HasSelectedEmojiDrawing() });
+                      setEmojiPanelOpen(false);
+                    }}
                       onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                       style={{height:28,display:"flex",alignItems:"center",justifyContent:"center",
                               fontSize:16,cursor:"default",borderRadius:2,
-                              background:hov===hk?"rgba(255,255,255,0.08)":"transparent",
+                              background:isSel?"rgba(74,106,255,0.12)":hov===hk?"rgba(255,255,255,0.08)":"transparent",
                               transition:"background 0.08s"}}>
                       {em}
                     </div>
