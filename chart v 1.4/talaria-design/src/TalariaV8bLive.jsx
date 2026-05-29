@@ -8188,6 +8188,7 @@ const TalariaV8bLive = () => {
   const [txtBarSizeOpen, setTxtBarSizeOpen] = useState(false);
   const [txtBarSizeAnchor, setTxtBarSizeAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
   const [txtBarDrop, setTxtBarDrop] = useState(null);
+  const [txtBarDropAnchor, setTxtBarDropAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
   const [txtTemplates, setTxtTemplates] = useState([]);
   const [txtSaveAsMode, setTxtSaveAsMode] = useState(false);
   const [txtNewTplName, setTxtNewTplName] = useState("");
@@ -19079,40 +19080,20 @@ const TalariaV8bLive = () => {
           <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
-          {/* three dots — more options */}
+          {/* three dots — more options (menu portaled below) */}
           <div style={{position:"relative",flexShrink:0}}>
             <TxBtn id="txt-more" isAct={txtBarDrop==="more"}
-              onClick={e=>{e.stopPropagation();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(txtBarDrop==="more"?null:"more");}}>
+              onClick={(e) => {
+                e.stopPropagation();
+                setColorPicker(null);
+                setTxtBarSizeOpen(false);
+                if (txtBarDrop === "more") { setTxtBarDrop(null); return; }
+                const r = e.currentTarget.getBoundingClientRect();
+                setTxtBarDropAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
+                setTxtBarDrop("more");
+              }}>
               {(_,isAct,col)=><svg width={14} height={4} viewBox="0 0 14 4"><circle cx="2" cy="2" r="2" fill={col}/><circle cx="7" cy="2" r="2" fill={col}/><circle cx="12" cy="2" r="2" fill={col}/></svg>}
             </TxBtn>
-            {txtBarDrop==="more" && (
-              <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:9200,width:160,
-                        background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-                        animation:"tlrDropIn 0.15s ease"}}>
-                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                <div style={{padding:"4px 0"}}>
-                  {[
-                    {lbl:"Bring Forward", icon:(col)=><svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="2" y="8" width="14" height="14" rx="1.5" stroke={col} strokeWidth="2"/><rect x="8" y="2" width="14" height="14" rx="1.5" fill={col}/></svg>},
-                    {lbl:"Bring Back",    icon:(col)=><svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="8" y="2" width="14" height="14" rx="1.5" stroke={col} strokeWidth="2"/><rect x="2" y="8" width="14" height="14" rx="1.5" fill={col}/></svg>},
-                    {lbl:"Object Tree",   icon:(col)=><I n="tree" s={13} cl={col}/>},
-                    null,
-                    {lbl:"Clone",         icon:(col)=><svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="13" height="14" rx="1.5" stroke={col} strokeWidth="2"/><rect x="9" y="2" width="13" height="14" rx="1.5" stroke={col} strokeWidth="2"/></svg>},
-                    {lbl:"Copy",          icon:(col)=><svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="5" y="5" width="14" height="16" rx="1.5" stroke={col} strokeWidth="2"/><path d="M9 5V3.5C9 2.67 9.67 2 10.5 2h3C14.33 2 15 2.67 15 3.5V5" stroke={col} strokeWidth="2" strokeLinecap="round"/><line x1="9" y1="10" x2="15" y2="10" stroke={col} strokeWidth="1.6" strokeLinecap="round"/><line x1="9" y1="13.5" x2="13" y2="13.5" stroke={col} strokeWidth="1.6" strokeLinecap="round"/></svg>},
-                  ].map((item,i)=>item===null ? (
-                    <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
-                  ) : (
-                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setTxtBarDrop(null); }}
-                      onMouseEnter={()=>setHov(`txtmore-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
-                      style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
-                               background:hov===`txtmore-${item.lbl}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                      {item.icon(hov===`txtmore-${item.lbl}`?c.tx:c.ts)}
-                      <span style={{fontSize:12,color:hov===`txtmore-${item.lbl}`?c.tx:c.ts,fontWeight:500}}>{item.lbl}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
         );
@@ -20619,6 +20600,60 @@ const TalariaV8bLive = () => {
                 </div>
               );
             })}
+          </div>
+        );
+      })(), document.body)}
+
+      {/* Text mini-bar ⋯ more menu (portaled) */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "more" && typeof document !== "undefined" && createPortal((() => {
+        const a = txtBarDropAnchor;
+        const dropW = 160;
+        const dropH = 220;
+        const dy = tlBarPos.y - a.barY;
+        const dx = tlBarPos.x - a.barX;
+        const btnBottom = a.btnBottom / Z;
+        const btnTop = a.btnTop / Z;
+        const aLeft = a.left / Z;
+        const aRight = a.right / Z;
+        const vh = window.innerHeight / Z;
+        const vw = window.innerWidth / Z;
+        const mg = 8;
+        const rawTop = btnBottom + 4 + dy;
+        const flippedTop = btnTop - 4 - dropH + dy;
+        const top = rawTop + dropH > vh - mg ? Math.max(mg, flippedTop) : rawTop;
+        let left = aRight + dx - dropW;
+        if (left < mg) left = Math.max(mg, aLeft + dx);
+        if (left + dropW > vw - mg) left = Math.max(mg, vw - dropW - mg);
+        const moreItems = [
+          { lbl: "Bring Forward", icon: (col) => <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="2" y="8" width="14" height="14" rx="1.5" stroke={col} strokeWidth="2" /><rect x="8" y="2" width="14" height="14" rx="1.5" fill={col} /></svg> },
+          { lbl: "Bring Back", icon: (col) => <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="8" y="2" width="14" height="14" rx="1.5" stroke={col} strokeWidth="2" /><rect x="2" y="8" width="14" height="14" rx="1.5" fill={col} /></svg> },
+          { lbl: "Object Tree", icon: (col) => <I n="tree" s={13} cl={col} /> },
+          null,
+          { lbl: "Clone", icon: (col) => <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="13" height="14" rx="1.5" stroke={col} strokeWidth="2" /><rect x="9" y="2" width="13" height="14" rx="1.5" stroke={col} strokeWidth="2" /></svg> },
+          { lbl: "Copy", icon: (col) => <svg width={13} height={13} viewBox="0 0 24 24" fill="none"><rect x="5" y="5" width="14" height="16" rx="1.5" stroke={col} strokeWidth="2" /><path d="M9 5V3.5C9 2.67 9.67 2 10.5 2h3C14.33 2 15 2.67 15 3.5V5" stroke={col} strokeWidth="2" strokeLinecap="round" /><line x1="9" y1="10" x2="15" y2="10" stroke={col} strokeWidth="1.6" strokeLinecap="round" /><line x1="9" y1="13.5" x2="13" y2="13.5" stroke={col} strokeWidth="1.6" strokeLinecap="round" /></svg> },
+        ];
+        return (
+          <div data-sdrop="1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+            style={{ position: "fixed", top, left, zIndex: 10060, width: dropW,
+                     background: c.sf, border: "1px solid rgba(140,160,255,0.22)",
+                     boxShadow: "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.12)",
+                     fontFamily: F, animation: "tlrDropIn 0.15s ease" }}>
+            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+            <div style={{ padding: "4px 0" }}>
+              {moreItems.map((item, i) => item === null ? (
+                <div key={i} style={{ height: 1, margin: "3px 0", background: c.brH }} />
+              ) : (
+                <div key={item.lbl}
+                  onClick={() => { v9RunDrawingMoreMenuAction(item.lbl); setTxtBarDrop(null); }}
+                  onMouseEnter={() => setHov(`txtmore-${item.lbl}`)}
+                  onMouseLeave={() => setHov(null)}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", cursor: "default",
+                           background: hov === `txtmore-${item.lbl}` ? c.hv2 : "transparent", transition: "background 0.1s" }}>
+                  {item.icon(hov === `txtmore-${item.lbl}` ? c.tx : c.ts)}
+                  <span style={{ fontSize: 12, color: hov === `txtmore-${item.lbl}` ? c.tx : c.ts, fontWeight: 500 }}>{item.lbl}</span>
+                </div>
+              ))}
+            </div>
           </div>
         );
       })(), document.body)}
