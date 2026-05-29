@@ -18864,10 +18864,18 @@ const TalariaV8bLive = () => {
           }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
             <I n="grip" s={16} cl={c.tm}/>
           </div>
-          {/* template button */}
+          {/* template button (menu portaled below) */}
           <div style={{position:"relative",flexShrink:0}}>
             <TxBtn id="txt-tmpl" isAct={txtBarDrop==="template"}
-              onClick={e=>{e.stopPropagation();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(txtBarDrop==="template"?null:"template");}}>
+              onClick={(e) => {
+                e.stopPropagation();
+                setColorPicker(null);
+                setTxtBarSizeOpen(false);
+                if (txtBarDrop === "template") { setTxtBarDrop(null); return; }
+                const r = e.currentTarget.getBoundingClientRect();
+                setTxtBarDropAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
+                setTxtBarDrop("template");
+              }}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 16 16" fill="none">
                 <rect x="1" y="1" width="6" height="6" rx="1" fill={col}/>
                 <rect x="9" y="1" width="6" height="6" rx="1" fill={col}/>
@@ -18876,69 +18884,6 @@ const TalariaV8bLive = () => {
                 <line x1="9" y1="12" x2="15" y2="12" stroke={col} strokeWidth="1.7" strokeLinecap="round"/>
               </svg>}
             </TxBtn>
-            {txtBarDrop==="template" && (
-              <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:9200,width:180,
-                        background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-                        animation:"tlrDropIn 0.15s ease"}}>
-                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                <div style={{padding:"4px 0"}}>
-                  {[["Save as",()=>{setTxtSaveAsMode(true);setTxtNewTplName("");}],
-                    ["Apply default", ()=>{
-                      const d = getPrimarySelectedDrawingForActiveChart(editingDrawingRef.current?.drawing);
-                      if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
-                      if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
-                      setTxtBarDrop(null);
-                    }]
-                  ].map(([lbl,action])=>{
-                    const isH=hov===`txtTpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
-                    return (
-                      <div key={lbl} {...modalPointerActivate(() => action())}
-                        onMouseEnter={()=>setHov(`txtTpl-${lbl}`)} onMouseLeave={()=>setHov(null)}
-                        style={{display:"flex",alignItems:"center",padding:"6px 12px",cursor:"default",position:"relative",
-                                background:isAct?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <span style={{fontSize:13,color:isAct?c.acL:isH?c.tx:c.ts,fontWeight:isAct?700:500}}>{lbl}</span>
-                      </div>
-                    );
-                  })}
-                  <div style={{height:1,margin:"4px 0",background:c.brH}}/>
-                  {txtSaveAsMode && (
-                    <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
-                      <input autoFocus value={txtNewTplName} onChange={e=>setTxtNewTplName(e.target.value)}
-                        onKeyDown={e=>{
-                          if(e.key==="Enter"&&txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");}
-                          if(e.key==="Escape"){setTxtSaveAsMode(false);setTxtNewTplName("");}
-                          e.stopPropagation();
-                        }}
-                        placeholder="Template name…"
-                        style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box"}}/>
-                      <div {...modalPointerActivate(() => { if(txtNewTplName.trim()){setTxtTemplates(ts=>[...ts,{name:txtNewTplName.trim(),style:{...txtStyle}}]);setTxtSaveAsMode(false);setTxtNewTplName("");} })}
-                        onMouseEnter={()=>setHov("txt-tpl-ok")} onMouseLeave={()=>setHov(null)}
-                        style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
-                                background:hov==="txt-tpl-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
-                        <I n="check" s={11} cl={txtNewTplName.trim()?c.acL:c.tm}/>
-                      </div>
-                    </div>
-                  )}
-                  {txtTemplates.length===0 && !txtSaveAsMode
-                    ? <div style={{padding:"6px 12px"}}><span style={{fontSize:11,color:c.tm,fontStyle:"italic"}}>No saved templates</span></div>
-                    : txtTemplates.map((tpl,idx)=>(
-                      <div key={idx} onMouseEnter={()=>setHov(`txtTpl-${idx}`)} onMouseLeave={()=>setHov(null)}
-                        style={{display:"flex",alignItems:"center",padding:"4px 8px 4px 12px",cursor:"default",position:"relative",
-                                background:hov===`txtTpl-${idx}`?c.hv2:"transparent",transition:"background 0.1s"}}>
-                        <span {...modalPointerActivate(() => { setTxtStyle(tpl.style); setTxtBarDrop(null); })}
-                          style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12,color:hov===`txtTpl-${idx}`?c.tx:c.ts,fontWeight:500}}>{tpl.name}</span>
-                        <div {...modalPointerActivate(() => setTxtTemplates(ts=>ts.filter((_,i)=>i!==idx)))}
-                          onMouseEnter={()=>setHov(`txtTpl-del-${idx}`)} onMouseLeave={()=>setHov(`txtTpl-${idx}`)}>
-                          <I n="x" s={11} cl={hov===`txtTpl-del-${idx}`?c.rd:c.tm}/>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
-            )}
           </div>
           {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
           {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
@@ -20600,6 +20545,105 @@ const TalariaV8bLive = () => {
                 </div>
               );
             })}
+          </div>
+        );
+      })(), document.body)}
+
+      {/* Text mini-bar template menu (portaled) */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "template" && typeof document !== "undefined" && createPortal((() => {
+        const a = txtBarDropAnchor;
+        const dropW = 180;
+        const tplRows = txtTemplates.length || 1;
+        const dropH = 76 + (txtSaveAsMode ? 36 : 0) + tplRows * 28 + 12;
+        const dy = tlBarPos.y - a.barY;
+        const dx = tlBarPos.x - a.barX;
+        const btnBottom = a.btnBottom / Z;
+        const btnTop = a.btnTop / Z;
+        const aLeft = a.left / Z;
+        const aRight = a.right / Z;
+        const vh = window.innerHeight / Z;
+        const vw = window.innerWidth / Z;
+        const mg = 8;
+        const rawTop = btnBottom + 4 + dy;
+        const flippedTop = btnTop - 4 - dropH + dy;
+        const top = rawTop + dropH > vh - mg ? Math.max(mg, flippedTop) : rawTop;
+        let left = aLeft + dx;
+        if (left + dropW > vw - mg) left = Math.max(mg, aRight + dx - dropW);
+        left = Math.max(mg, left);
+        const saveTxtTemplate = () => {
+          if (!txtNewTplName.trim()) return;
+          setTxtTemplates((ts) => [...ts, { name: txtNewTplName.trim(), style: { ...txtStyle } }]);
+          setTxtSaveAsMode(false);
+          setTxtNewTplName("");
+        };
+        return (
+          <div data-sdrop="1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+            style={{ position: "fixed", top, left, zIndex: 10060, width: dropW,
+                     background: c.sf, border: "1px solid rgba(140,160,255,0.22)",
+                     boxShadow: "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.12)",
+                     fontFamily: F, animation: "tlrDropIn 0.15s ease" }}>
+            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+            <div style={{ padding: "4px 0" }}>
+              {[["Save as", () => { setTxtSaveAsMode(true); setTxtNewTplName(""); }],
+                ["Apply default", () => {
+                  const d = getPrimarySelectedDrawingForActiveChart(editingDrawingRef.current?.drawing);
+                  if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                  if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
+                  setTxtBarDrop(null);
+                }],
+              ].map(([lbl, action]) => {
+                const isH = hov === `txtTpl-${lbl}`;
+                const isAct = lbl === "Save as" && txtSaveAsMode;
+                return (
+                  <div key={lbl}
+                    onClick={() => action()}
+                    onMouseEnter={() => setHov(`txtTpl-${lbl}`)}
+                    onMouseLeave={() => setHov(null)}
+                    style={{ display: "flex", alignItems: "center", padding: "6px 12px", cursor: "default", position: "relative",
+                             background: isAct ? c.acD : isH ? c.hv2 : "transparent", transition: "background 0.1s" }}>
+                    {isAct && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2,
+                      background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
+                    <span style={{ fontSize: 13, color: isAct ? c.acL : isH ? c.tx : c.ts, fontWeight: isAct ? 700 : 500 }}>{lbl}</span>
+                  </div>
+                );
+              })}
+              <div style={{ height: 1, margin: "4px 0", background: c.brH }} />
+              {txtSaveAsMode && (
+                <div style={{ padding: "4px 8px 4px 12px", display: "flex", alignItems: "center", gap: 4, boxSizing: "border-box", width: "100%" }}
+                  onMouseDown={(e) => e.stopPropagation()}>
+                  <input autoFocus type="text" value={txtNewTplName} onChange={(e) => setTxtNewTplName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && txtNewTplName.trim()) saveTxtTemplate();
+                      if (e.key === "Escape") { setTxtSaveAsMode(false); setTxtNewTplName(""); }
+                      e.stopPropagation();
+                    }}
+                    placeholder="Template name…"
+                    style={{ flex: 1, minWidth: 0, background: c.hv, border: "1px solid rgba(140,160,255,0.22)", outline: "none", color: c.tx, fontSize: 11, fontFamily: F, padding: "3px 6px", boxSizing: "border-box" }} />
+                  <div onClick={() => saveTxtTemplate()}
+                    onMouseEnter={() => setHov("txt-tpl-ok")} onMouseLeave={() => setHov(null)}
+                    style={{ padding: "2px 4px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", flexShrink: 0,
+                             background: hov === "txt-tpl-ok" ? c.hv : "transparent", transition: "background 0.12s" }}>
+                    <I n="check" s={11} cl={txtNewTplName.trim() ? c.acL : c.tm} />
+                  </div>
+                </div>
+              )}
+              {txtTemplates.length === 0 && !txtSaveAsMode
+                ? <div style={{ padding: "6px 12px" }}><span style={{ fontSize: 11, color: c.tm, fontStyle: "italic" }}>No saved templates</span></div>
+                : txtTemplates.map((tpl, idx) => (
+                  <div key={idx} onMouseEnter={() => setHov(`txtTpl-${idx}`)} onMouseLeave={() => setHov(null)}
+                    style={{ display: "flex", alignItems: "center", padding: "4px 8px 4px 12px", cursor: "default", position: "relative",
+                             background: hov === `txtTpl-${idx}` ? c.hv2 : "transparent", transition: "background 0.1s" }}>
+                    <span onClick={() => { setTxtStyle(tpl.style); setTxtBarDrop(null); }}
+                      style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12,
+                               color: hov === `txtTpl-${idx}` ? c.tx : c.ts, fontWeight: 500, cursor: "default" }}>{tpl.name}</span>
+                    <div onClick={() => setTxtTemplates((ts) => ts.filter((_, i) => i !== idx))}
+                      onMouseEnter={() => setHov(`txtTpl-del-${idx}`)} onMouseLeave={() => setHov(`txtTpl-${idx}`)}
+                      style={{ cursor: "default", display: "flex", alignItems: "center" }}>
+                      <I n="x" s={11} cl={hov === `txtTpl-del-${idx}` ? c.rd : c.tm} />
+                    </div>
+                  </div>
+                ))}
+            </div>
           </div>
         );
       })(), document.body)}
