@@ -14299,6 +14299,20 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Fib Time Zone Input tab rows — immediate per-level style/thickness/on chart sync. */
+  const applyFibTzLevelsPatch = useCallback((rowMapper) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = v9PatchFibTzLevelsInStyle(s, rowMapper);
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
   /** Label font size — same-frame chart sync (pattern/Elliott + XABCD ratio boxes). */
   const applyTlTextSize = useCallback((textSize) => {
     flushSync(() => setTlStyle((s) => ({ ...s, textSize })));
@@ -17248,17 +17262,17 @@ const TalariaV8bLive = () => {
                     return <React.Fragment key={idx}>
                       {/* Level: checkbox + value input */}
                       <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 0" }}>
-                        <div style={{ width:18, flexShrink:0 }}>{TlChk(lv.on, `tlchk-fibTz-${idx}`, "", ()=>setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l))))}</div>
+                        <div style={{ width:18, flexShrink:0 }}>{TlChk(lv.on, `tlchk-fibTz-${idx}`, "", ()=>applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l)))}</div>
                         <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                           <input value={lv.value}
-                            onChange={e=>{const val=e.target.value;if(/^[0-9]*$/.test(val))setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,value:val}:l)));}}
+                            onChange={e=>{const val=e.target.value;if(/^[0-9]*$/.test(val))applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
                             onClick={e=>e.stopPropagation()}
                             className="tlr-nospinner"
                             style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l))))}
+                              <button type="button" key={i} {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>rows.map((l,j)=>j===idx?{...l,value:String(Math.max(1,+l.value+delta))}:l)))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -17289,7 +17303,7 @@ const TalariaV8bLive = () => {
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                             const isA=lv.type===v; const isH=hov===`fibTzt-${idx}-${v}`;
                             return (
-                              <div key={v} onClick={()=>{setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,type:v}:l)));setTlStyleDrop(null);}}
+                              <div key={v} onClick={()=>{applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,type:v}:l));setTlStyleDrop(null);}}
                                 onMouseEnter={()=>setHov(`fibTzt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17319,7 +17333,7 @@ const TalariaV8bLive = () => {
                           ["1","2","3","4"].map(w=>{
                             const isA=lv.width===w; const isH=hov===`fibTzw-${idx}-${w}`;
                             return (
-                              <div key={w} onClick={()=>{setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,width:w}:l)));setTlStyleDrop(null);}}
+                              <div key={w} onClick={()=>{applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,width:w}:l));setTlStyleDrop(null);}}
                                 onMouseEnter={()=>setHov(`fibTzw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17336,14 +17350,14 @@ const TalariaV8bLive = () => {
                   })}
                 </div>
                 <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
-                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]));}}
+                  <div onClick={e=>{e.stopPropagation();applyFibTzLevelsPatch((rows)=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]);}}
                     onMouseEnter={()=>setHov("fibTzAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzAdd"?c.hv2:"transparent",
                              transition:"background 0.1s" }}>
                     <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                   </div>
-                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibTzLevels: v9FibTzDefaultLevelsTl()}));}}
+                  <div onClick={e=>{e.stopPropagation();flushSync(()=>{setTlStyle((s)=>{const next={...s,fibTzLevels:v9FibTzDefaultLevelsTl()};v9FlushTlStyleToChartTargets(next,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});return next;});});}}
                     onMouseEnter={()=>setHov("fibTzReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzReset"?c.hv2:"transparent",

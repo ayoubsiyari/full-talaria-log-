@@ -781,6 +781,7 @@ class SupportThread(Base):
     csat_rating = Column(Integer, nullable=True)
     csat_comment = Column(Text, nullable=True)
     csat_at = Column(DateTime, nullable=True)
+    admin_yes_no = Column(String(8), nullable=True)  # admin verdict: 'yes' | 'no'
 
 
 class SupportMessage(Base):
@@ -994,6 +995,7 @@ try:
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_rating INTEGER",
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_comment TEXT",
             "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS csat_at TIMESTAMP",
+            "ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS admin_yes_no VARCHAR(8)",
         ):
             _conn.execute(text(_stmt))
         _conn.commit()
@@ -10596,6 +10598,17 @@ def _support_validate_priority(pr: str) -> str:
     return p
 
 
+def _support_validate_admin_yes_no(val: str | None) -> str | None:
+    if val is None:
+        return None
+    v = str(val).strip().lower()
+    if v in ("", "null", "none", "clear"):
+        return None
+    if v in ("yes", "no"):
+        return v
+    raise HTTPException(status_code=400, detail="admin_yes_no must be yes, no, or empty to clear")
+
+
 def _support_apply_status_timestamps(t: SupportThread, new_status: str, now: datetime) -> None:
     t.status = new_status
     t.updated_at = now
@@ -10653,6 +10666,7 @@ class SupportAdminPatchThreadIn(BaseModel):
     category: str | None = None
     tags: list[str] | None = None
     related_thread_id: int | None = None
+    admin_yes_no: str | None = None
 
 
 class SupportCannedReplyIn(BaseModel):
@@ -10978,6 +10992,7 @@ def _support_thread_dict(
         "last_message_preview": last_preview,
     }
     if viewer and getattr(viewer, "role", None) == "admin":
+        d["admin_yes_no"] = getattr(t, "admin_yes_no", None)
         d["requester_read_upto"] = req_upto
         d["staff_read_upto"] = stf_upto
     return d
@@ -11678,6 +11693,14 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             .count()
         )
         resolve_pct = round(bug_error_resolved / bug_error_total * 100) if bug_error_total else 0
+        yes_n = base_q().filter(SupportThread.admin_yes_no == "yes").count()
+        no_n = base_q().filter(SupportThread.admin_yes_no == "no").count()
+        unset_n = base_q().filter(
+            or_(SupportThread.admin_yes_no.is_(None), SupportThread.admin_yes_no == "")
+        ).count()
+        rated_n = yes_n + no_n
+        yes_no_yes_pct = round(yes_n / rated_n * 100) if rated_n else 0
+        yes_no_no_pct = round(no_n / rated_n * 100) if rated_n else 0
         by_category: dict[str, int] = {}
         by_category_pct: dict[str, int] = {}
         for cat in SUPPORT_CATEGORIES:
@@ -11706,6 +11729,12 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             "bug_error_total": bug_error_total,
             "bug_error_resolved": bug_error_resolved,
             "resolve_pct": resolve_pct,
+            "admin_yes_no_yes": yes_n,
+            "admin_yes_no_no": no_n,
+            "admin_yes_no_unset": unset_n,
+            "admin_yes_no_rated": rated_n,
+            "admin_yes_no_yes_pct": yes_no_yes_pct,
+            "admin_yes_no_no_pct": yes_no_no_pct,
             "by_category": by_category,
             "by_category_pct": by_category_pct,
             "sla_business_hours": SUPPORT_SLA_BUSINESS_HOURS,
@@ -11948,6 +11977,11 @@ async def admin_support_patch_thread(
                 t.related_thread_id = rel
             t.updated_at = now
             changes["related_thread_id"] = {"from": old_rel, "to": t.related_thread_id}
+        if payload.admin_yes_no is not None:
+            old_v = getattr(t, "admin_yes_no", None)
+            t.admin_yes_no = _support_validate_admin_yes_no(payload.admin_yes_no)
+            t.updated_at = now
+            changes["admin_yes_no"] = {"from": old_v, "to": t.admin_yes_no}
         db.commit()
         db.refresh(t)
         if changes:
