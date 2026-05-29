@@ -1168,6 +1168,20 @@ class ArrowTool extends BaseDrawing {
             .style('shape-rendering', 'geometricPrecision')
             .style('pointer-events', 'none')
             .style('cursor', 'move');
+
+        /** Shaft to arrowhead base; extend-right continues past the tip anchor (origX2/origY2). */
+        const drawShaftToHead = (fromX, fromY) => {
+            appendVisibleShaft(fromX, fromY, shaftEndX, shaftEndY);
+        };
+        const drawExtensionPastHead = () => {
+            if (!this.style.extendRight) return;
+            const extDx = x2 - origX2;
+            const extDy = y2 - origY2;
+            if (Math.abs(extDx) < 0.5 && Math.abs(extDy) < 0.5) return;
+            appendVisibleShaft(origX2, origY2, x2, y2);
+        };
+        const shaftStartX = this.style.extendLeft ? x1 : origX1;
+        const shaftStartY = this.style.extendLeft ? y1 : origY1;
         
         // Extend line if needed
         if (this.style.extendLeft || this.style.extendRight) {
@@ -1299,7 +1313,7 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            appendVisibleShaft(x1, y1, split1X, split1Y);
+            appendVisibleShaft(shaftStartX, shaftStartY, split1X, split1Y);
 
             this.group.append('line')
                 .attr('x1', split2X)
@@ -1313,6 +1327,7 @@ class ArrowTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             appendVisibleShaft(split2X, split2Y, shaftEndX, shaftEndY);
+            drawExtensionPastHead();
         } else {
             this.group.append('line')
                 .attr('x1', x1)
@@ -1325,7 +1340,8 @@ class ArrowTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            appendVisibleShaft(x1, y1, shaftEndX, shaftEndY);
+            drawShaftToHead(shaftStartX, shaftStartY);
+            drawExtensionPastHead();
         }
 
         // Solid arrowhead at tip (same approach as TrendlineTool endStyle === 'arrow')
