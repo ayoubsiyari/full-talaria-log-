@@ -403,8 +403,17 @@ class DrawingToolsManager {
                 } catch (e) {
                 }
             });
+
+            const axisTarget = this.resizingDrawing || this.customHandleDrawing || this.draggingDrawing;
+            if (axisTarget && typeof axisTarget.showAxisHighlights === 'function') {
+                axisTarget.showAxisHighlights({ live: true });
+            }
+
+            // Drawings SVG is updated above; skip full chart repaint during resize (main lag source).
             if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
-                this.chart.scheduleRender();
+                if (!this.isResizing) {
+                    this.chart.scheduleRender();
+                }
             }
         });
     }
@@ -4118,15 +4127,33 @@ class DrawingToolsManager {
             drawing.group.style('display', null);
         }
 
-        // Keep bar indices aligned with chart.data after refresh / replay restore / TF change.
-        this._syncDrawingPointsFromTimestamps(drawing);
-        
+        // During live resize/move points are already in bar-index space; skip heavy TF sync.
+        if (!liveRender) {
+            this._syncDrawingPointsFromTimestamps(drawing);
+        }
+
         const scales = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
             chart: this.chart,
             labelsGroup: this.labelsGroup
         };
+
+        if (liveRender && drawing.group && !drawing.group.empty()
+            && typeof drawing.patchPanZoomGeometry === 'function'
+            && drawing.patchPanZoomGeometry(scales)) {
+            if (drawingRenderOpts && drawingRenderOpts.skipHandles) {
+                if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox) {
+                    drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
+                } else if (typeof drawing._syncBoxHandlePositions === 'function') {
+                    drawing._syncBoxHandlePositions(drawing.group, scales);
+                } else if (typeof drawing.updateHandlePositions === 'function') {
+                    drawing.updateHandlePositions(scales);
+                }
+            }
+            if (this.chart) this.chart._isRendering = wasRendering;
+            return;
+        }
 
         // Render with current scales AND chart instance for accurate pixel calculation
         if (drawingRenderOpts) {
@@ -4145,9 +4172,9 @@ class DrawingToolsManager {
             }
         }
         
-        // Always show axis highlights (labels visible regardless of selection state)
-        if (typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: liveRender });
+        // Axis highlights during live resize are batched once per RAF in scheduleRenderDrawing.
+        if (!liveRender && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
         }
         
         // Setup interaction handlers
@@ -4737,7 +4764,9 @@ class DrawingToolsManager {
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
         const useTextLiveBodyDrag = this._isTextDrawingType(drawing.type);
-        
+
+        dragElements.on('.drag', null);
+
         dragElements.call(
             d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
@@ -5305,7 +5334,8 @@ class DrawingToolsManager {
         };
 
         const handles = drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group');
-        
+        handles.on('.drag', null);
+
         handles.call(
             d3.drag()
                 .filter(allowResizeHandleDragWhenToolActive)
@@ -5368,12 +5398,7 @@ class DrawingToolsManager {
                             y: p.y + constrainedDy
                         }));
                         self.clampDrawingPointsToCandleRange(drawing);
-                        self._skipHandleSetup = true;
-                        self.renderDrawing(drawing);
-                        self._skipHandleSetup = false;
-                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                            drawing.showAxisHighlights({ live: true });
-                        }
+                        self.scheduleRenderDrawing(drawing);
                         self._broadcastLiveEditUpdate(drawing);
                         return;
                     }
@@ -5436,7 +5461,9 @@ class DrawingToolsManager {
                 })
         );
 
-        drawing.group.selectAll('.custom-handle').call(
+        const customHandles = drawing.group.selectAll('.custom-handle');
+        customHandles.on('.drag', null);
+        customHandles.call(
             d3.drag()
                 .filter(allowResizeHandleDragWhenToolActive)
                 .on('start', function(event) {
@@ -5538,8 +5565,10 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
 
-        if (isVolumeProfileResize) {
-            this.renderDrawing(drawing);
+        this.renderDrawing(drawing);
+
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
         }
 
         // Recalculate timestamps from new positions

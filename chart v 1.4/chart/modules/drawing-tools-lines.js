@@ -439,6 +439,36 @@ class TrendlineTool extends BaseDrawing {
 
         return this.group;
     }
+
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        if (this.style.extendLeft || this.style.extendRight) return false;
+        const hasText = this.text && String(this.text).trim();
+        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        if (hasText && textVAlign === 'middle') return false;
+        if ((this.style.startStyle || 'normal') === 'arrow' || (this.style.endStyle || 'normal') === 'arrow') return false;
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const y1 = scales.yScale(p1.y);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        const y2 = scales.yScale(p2.y);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
+
+        this.group.selectAll('line').each(function () {
+            const el = d3.select(this);
+            if (el.attr('x1') == null) return;
+            el.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
+        });
+
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
+        return true;
+    }
     
     renderInfoBox(x1, y1, x2, y2, scales) {
         const infoSettings = this.style.infoSettings || {};

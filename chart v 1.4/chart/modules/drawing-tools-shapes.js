@@ -513,6 +513,49 @@ class RectangleTool extends BaseDrawing {
         });
     }
 
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        let x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        let x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
+
+        const x = Math.min(x1, x2);
+        const y = Math.min(scales.yScale(p1.y), scales.yScale(p2.y));
+        const width = Math.abs(x2 - x1);
+        const height = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y));
+        if (![x, y, width, height].every(Number.isFinite)) return false;
+
+        const fill = this.group.select('rect.shape-fill');
+        if (!fill.empty()) {
+            fill.attr('x', x).attr('y', y).attr('width', width).attr('height', height);
+        }
+
+        const edgeMap = {
+            top: { x1: x, y1: y, x2: x + width, y2: y },
+            bottom: { x1: x, y1: y + height, x2: x + width, y2: y + height },
+            left: { x1: x, y1: y, x2: x, y2: y + height },
+            right: { x1: x + width, y1: y, x2: x + width, y2: y + height }
+        };
+        Object.keys(edgeMap).forEach((name) => {
+            const e = edgeMap[name];
+            this.group.selectAll(`line[data-edge="${name}"]`)
+                .attr('x1', e.x1).attr('y1', e.y1).attr('x2', e.x2).attr('y2', e.y2);
+        });
+
+        const midLine = this.group.select('line.middle-line');
+        if (!midLine.empty()) {
+            midLine.attr('x1', x).attr('y1', y + height / 2).attr('x2', x + width).attr('y2', y + height / 2);
+        }
+
+        this._syncBoxHandlePositions(this.group, scales, { useExtendedHorizontal: false });
+        return true;
+    }
+
     /**
      * Create 8-point resize handles for box shapes (4 corners + 4 sides)
      * @param {{ useExtendedHorizontal?: boolean }} [opts]
