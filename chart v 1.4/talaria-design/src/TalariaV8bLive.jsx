@@ -1470,7 +1470,7 @@ function v9IsTextLegacyDrawingType(type) {
 function v9BuildTxtStyleLegacyPatch(txt, legacyTool) {
   if (!txt || !legacyTool) return {};
   const d = { type: legacyTool, style: {}, text: "" };
-  v9ApplyTxtStyleToDrawing(d, txt);
+  v9ApplyTxtStyleToDrawing(d, v9TxtStyleForPlacement(txt));
   return { ...d.style };
 }
 
@@ -1482,10 +1482,11 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
     return;
   }
   if (v9IsTextLegacyDrawingType(legacyTool) && txtStyleArg) {
+    const placementTxt = v9TxtStyleForPlacement(txtStyleArg);
     window.__v9ArmedDrawStyle = {
       tool: legacyTool,
-      patch: v9BuildTxtStyleLegacyPatch(txtStyleArg, legacyTool),
-      txtStyle: txtStyleArg,
+      patch: v9BuildTxtStyleLegacyPatch(placementTxt, legacyTool),
+      txtStyle: placementTxt,
       updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
     };
     return;
@@ -1992,6 +1993,30 @@ function v9HasSelectedEmojiDrawing() {
     return found;
   } catch (_) {
     return false;
+  }
+}
+
+/** New text placements must not reuse panel/inline editor text from a prior object. */
+function v9TxtStyleForPlacement(txt) {
+  if (!txt || typeof txt !== "object") return txt;
+  return { ...txt, content: "" };
+}
+
+/** Clear cached text input when a text object is removed or a fresh tool is armed. */
+function v9ClearTxtPlacementInput(setTxtStyle, suppressRef, armedLegacyTool) {
+  if (typeof setTxtStyle !== "function") return;
+  if (suppressRef) suppressRef.current = true;
+  setTxtStyle((s) => {
+    const next = s.content ? { ...s, content: "" } : s;
+    if (armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)) {
+      v9PushArmedDrawStyle(armedLegacyTool, null, v9TxtStyleForPlacement(next));
+    }
+    return next;
+  });
+  if (suppressRef) {
+    requestAnimationFrame(() => {
+      suppressRef.current = false;
+    });
   }
 }
 
@@ -4490,7 +4515,7 @@ if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
     if (armed.tool && drawing.type !== armed.tool) return;
     if (armed.txtStyle && v9IsTextLegacyDrawingType(drawing.type)) {
       if (!drawing.style) drawing.style = {};
-      v9ApplyTxtStyleToDrawing(drawing, armed.txtStyle);
+      v9ApplyTxtStyleToDrawing(drawing, v9TxtStyleForPlacement(armed.txtStyle));
       const manager = dm || null;
       try {
         const tb = manager && manager.toolbar;
@@ -6169,6 +6194,21 @@ const ColorPickerPopup = memo(function ColorPickerPopup({
     setDrag({ mode, rect });
   };
 
+  const finishDone = (e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (drag) {
+      const d = draftRef.current || {
+        h: hProp, s: sProp, v: vProp, a: aProp, hex: hexProp,
+      };
+      setDrag(null);
+      onCommit({ h: d.h, s: d.s, v: d.v, a: d.a });
+    }
+    onClose(e);
+  };
+
   return (
     <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
@@ -6235,9 +6275,9 @@ const ColorPickerPopup = memo(function ColorPickerPopup({
       <div style={{padding:"5px 10px",borderTop:`1px solid ${c.br}`,display:"flex",justifyContent:"flex-end"}}>
         <button
           type="button"
-          onPointerDown={(e)=>{ e.stopPropagation(); onClose(e); }}
+          onPointerDown={finishDone}
           onMouseDown={(e)=>e.stopPropagation()}
-          onClick={(e)=>{ e.stopPropagation(); onClose(e); }}
+          onClick={(e)=>{ e.stopPropagation(); e.preventDefault(); }}
           style={{
             fontSize:10,color:c.acL,cursor:"default",fontWeight:800,fontFamily:F,padding:"2px 6px",letterSpacing:"0.05em",
             background:"transparent",border:"none",margin:0,lineHeight:1.2
@@ -9429,8 +9469,7 @@ const TalariaV8bLive = () => {
     try {
       v9StyleBridgeFlushRef.current?.();
     } catch (_) {}
-    setCpDragging(null);
-    setCpDragRect(null);
+    cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => {
@@ -9586,8 +9625,7 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlSettTplDrop"); return n; }); }, 130);
   };
   const closeCP = () => {
-    setCpDragging(null);
-    setCpDragRect(null);
+    cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
     setClosing(s => new Set([...s, "cp"]));
     setColorPicker(null);
@@ -14391,7 +14429,13 @@ const TalariaV8bLive = () => {
 
     v9LastHydratedLegacyRef.current = legacy;
     if (v9IsTextLegacyDrawingType(legacy)) {
-      v9PushArmedDrawStyle(legacy, null, txtStyle);
+      flushSync(() => {
+        setTxtStyle((s) => {
+          const next = { ...s, content: "" };
+          v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(next));
+          return next;
+        });
+      });
       return;
     }
     const freshDefaults = v9FreshTlStyleDefaults();
@@ -14615,6 +14659,32 @@ const TalariaV8bLive = () => {
       resolveLegacyTool,
     });
   }, []);
+
+  const resolveArmedTextLegacyTool = useCallback(() => {
+    const sub = groupSelected.text;
+    if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
+      return V9_ICON_TO_LEGACY[sub.icon];
+    }
+    return V9_GROUP_DEFAULT.text || "text";
+  }, [groupSelected.text]);
+
+  /** Text quick-bar / panel font size — sync selected drawing + armed placement style. */
+  const applyTxtFontSize = useCallback((sz) => {
+    const n = Number(sz);
+    if (!Number.isFinite(n) || n <= 0) return;
+    flushSync(() => setTxtStyle((s) => ({ ...s, fontSize: n })));
+    const live = { ...txtStyleLiveRef.current, fontSize: n };
+    txtStyleLiveRef.current = live;
+    v9FlushTxtStyleToChartTargets(live, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+    });
+    if (tool === "text" && !editingDrawingRef.current) {
+      const legacy = resolveArmedTextLegacyTool();
+      if (legacy && v9IsTextLegacyDrawingType(legacy)) {
+        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live));
+      }
+    }
+  }, [tool, resolveArmedTextLegacyTool]);
 
   /** Label bold — same-frame chart sync. */
   const applyTlTextBold = useCallback(() => {
@@ -14923,7 +14993,7 @@ const TalariaV8bLive = () => {
       return V9_GROUP_DEFAULT.text || "text";
     })();
     if (!legacy || !v9IsTextLegacyDrawingType(legacy)) return;
-    v9PushArmedDrawStyle(legacy, null, txtStyle);
+    v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(txtStyle));
   }, [
     tool,
     groupSelected.text,
@@ -18947,9 +19017,9 @@ const TalariaV8bLive = () => {
                         animation:"tlrDropIn 0.15s ease"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 {txtSizes.map(sz=>{
-                  const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz-bar-${sz}`;
+                  const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz-bar-${sz}`;
                   return (
-                    <div key={sz} {...modalPointerActivate(() => { setTxtStyle(s=>({...s,fontSize:sz})); setTxtBarSizeOpen(false); })}
+                    <div key={sz} {...modalPointerActivate(() => { applyTxtFontSize(sz); setTxtBarSizeOpen(false); })}
                       onMouseEnter={()=>setHov(`txtsz-bar-${sz}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -18996,16 +19066,25 @@ const TalariaV8bLive = () => {
           </TxBtn>}
           <TxBtn id="txt-del" isDel onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
+            let deletedText = false;
             try {
               enumerateV9DrawingManagersFromWindow().forEach((dm) => {
                 const sel = dm.selectedDrawings && dm.selectedDrawings.length
                   ? dm.selectedDrawings.filter((d) => d && drawingTypeToPanelGroupRef.current(d.type) === "text")
                   : (dm.selectedDrawing && drawingTypeToPanelGroupRef.current(dm.selectedDrawing.type) === "text" ? [dm.selectedDrawing] : []);
                 if (!sel.length) return;
+                deletedText = true;
                 sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch (_) {} });
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
             } catch (err) { console.warn("[V9 txt delete] failed:", err); }
+            if (deletedText) {
+              v9ClearTxtPlacementInput(
+                setTxtStyle,
+                suppressTxtForwardBridge,
+                tool === "text" ? resolveArmedTextLegacyTool() : null,
+              );
+            }
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
@@ -19258,9 +19337,9 @@ const TalariaV8bLive = () => {
                                   animation:"tlrDropIn 0.15s ease"}}>
                           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                           {txtSizes.map(sz=>{
-                            const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz-${sz}`;
+                            const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz-${sz}`;
                             return (
-                              <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtSizeOpen(false);}}
+                              <div key={sz} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);}}
                                 onMouseEnter={()=>setHov(`txtsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                         background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -19397,9 +19476,9 @@ const TalariaV8bLive = () => {
                                   animation:"tlrDropIn 0.15s ease"}}>
                           <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                           {txtSizes.map(sz=>{
-                            const isA=txtStyle.fontSize===sz; const isH=hov===`txtpnsz-${sz}`;
+                            const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtpnsz-${sz}`;
                             return (
-                              <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtSizeOpen(false);}}
+                              <div key={sz} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);}}
                                 onMouseEnter={()=>setHov(`txtpnsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                         background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -19460,9 +19539,9 @@ const TalariaV8bLive = () => {
                                     animation:"tlrDropIn 0.15s ease"}}>
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                             {txtSizes.map(sz=>{
-                              const isA=txtStyle.fontSize===sz; const isH=hov===`txtsz3-${sz}`;
+                              const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz3-${sz}`;
                               return (
-                                <div key={sz} onClick={()=>{setTxtStyle(s=>({...s,fontSize:sz}));setTxtSizeOpen(false);}}
+                                <div key={sz} onClick={()=>{applyTxtFontSize(sz);setTxtSizeOpen(false);}}
                                   onMouseEnter={()=>setHov(`txtsz3-${sz}`)} onMouseLeave={()=>setHov(null)}
                                   style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                           background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
