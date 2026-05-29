@@ -15476,14 +15476,41 @@ class Chart {
         return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
     }
 
-    /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
+    /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
     _canPanTransformDrawings() {
-        return this._isChartViewPanning() && this._panSnapOffsetX != null;
+        return false;
     }
 
-    /** Pan transform: 1:1 with chart drag (fast). Baseline geometry set in prepareDrawingsForChartPan. */
+    /** @deprecated See _canPanTransformDrawings */
     _shouldUsePanDrawingsTransform() {
-        return this._canPanTransformDrawings();
+        return false;
+    }
+
+    /** V9 #chart-container uses overflow:hidden — relax while panning so nothing clips mid-drag. */
+    _setChartPanDomOverflow(relax) {
+        const nodes = [];
+        const container = document.getElementById('chart-container');
+        const wrapper = document.getElementById('chartWrapper')
+            || (this.canvas && this.canvas.parentElement);
+        if (container) nodes.push(container);
+        if (wrapper && wrapper !== container) nodes.push(wrapper);
+        if (!nodes.length) return;
+        if (relax) {
+            if (!this._panDomOverflowSaved) this._panDomOverflowSaved = new Map();
+            nodes.forEach((el) => {
+                if (!this._panDomOverflowSaved.has(el)) {
+                    this._panDomOverflowSaved.set(el, el.style.overflow || '');
+                }
+                el.style.overflow = 'visible';
+            });
+            return;
+        }
+        if (!this._panDomOverflowSaved) return;
+        nodes.forEach((el) => {
+            const prev = this._panDomOverflowSaved.get(el);
+            if (prev !== undefined) el.style.overflow = prev;
+        });
+        this._panDomOverflowSaved = null;
     }
 
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
@@ -15536,6 +15563,7 @@ class Chart {
         if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
             dm.setDrawingsClipDuringChartPan(true);
         }
+        this._setChartPanDomOverflow(true);
     }
 
     _clearPanTimeTickCache() {
@@ -15640,6 +15668,7 @@ class Chart {
             dm.setDrawingsClipDuringChartPan(false);
         }
         if (clearSnap) {
+            this._setChartPanDomOverflow(false);
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
             this._panSnapYDomain = null;
@@ -16129,12 +16158,10 @@ class Chart {
             if (typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators();
             }
-            if (this._shouldUsePanDrawingsTransform()) {
-                this._applyPanDrawingsLayerTransform();
-            } else if (this._panSnapOffsetX != null) {
-                this._applyPanDrawingsLayerTransform();
-            }
-            // Never clear/rebuild SVG during active pan — CSS translate keeps shapes glued.
+            // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
+            // CSS translate was clipped by #chart-container { overflow: hidden } in V9.
+            this._clearPanDrawingsLayerTransform(false);
+            this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -21575,12 +21602,8 @@ class Chart {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
             if (this._isChartViewPanning()) {
-                if (this._shouldUsePanDrawingsTransform() || this._panSnapOffsetX != null) {
-                    if (this._panSnapOffsetX != null) {
-                        this._applyPanDrawingsLayerTransform();
-                    }
-                    return;
-                }
+                this.drawingManager.redrawAll({ panFast: true });
+                return;
             }
             if (wheelActive) {
                 this.drawingManager.redrawAll({ panFast: true });

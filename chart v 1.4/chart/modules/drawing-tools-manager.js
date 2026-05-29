@@ -6682,14 +6682,6 @@ class DrawingToolsManager {
             return;
         }
 
-        const chart = this.chart;
-        const panTransformActive = !options.forceFull && chart
-            && typeof chart._shouldUsePanDrawingsTransform === 'function'
-            && chart._shouldUsePanDrawingsTransform();
-        if (options.panFast && panTransformActive) {
-            return;
-        }
-        
         // Update clip path dimensions in case chart was resized
         this.updateClipPath();
         
@@ -6709,13 +6701,15 @@ class DrawingToolsManager {
         // on unselected drawings (pan/zoom hot path). Selected drawings and tools that
         // always expose point handles must keep full setup so gear/dblclick/resize still
         // work after a redraw (SVG groups are recreated here).
+        const panFast = !!options.panFast;
         this.drawings.forEach(drawing => {
-            const needsFullInteraction =
+            const needsFullInteraction = !panFast && (
                 !!drawing.selected ||
                 (this.selectedDrawings && this.selectedDrawings.includes(drawing)) ||
                 drawing.type === 'polyline' ||
                 drawing.type === 'path' ||
-                drawing.type === 'double-curve';
+                drawing.type === 'double-curve'
+            );
             const skipInteraction = this._isPlacementModeActive() || !needsFullInteraction;
             this.renderDrawing(drawing, { skipInteraction });
         });
