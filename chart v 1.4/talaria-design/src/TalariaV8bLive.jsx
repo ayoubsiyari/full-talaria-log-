@@ -3199,6 +3199,16 @@ function v9FibSpeedFanDefaultPriceLevelsTl() {
   ];
 }
 
+function v9FibSpeedFanDefaultTimeLevelsTl() {
+  return [
+    { on: true, value: "0", color: "#787B86" },
+    { on: true, value: "0.25", color: "#F44336" },
+    { on: true, value: "0.5", color: "#FF9800" },
+    { on: true, value: "0.75", color: "#FFEB3B" },
+    { on: true, value: "1", color: "#4CAF50" },
+  ];
+}
+
 function v9ResolveFibSpeedFanPriceRowsForDrawing(d, tlStyle) {
   if (Array.isArray(tlStyle?.fibLevels) && tlStyle.fibLevels.length) {
     return tlStyle.fibLevels;
@@ -3422,13 +3432,7 @@ function v9EnsureFibLevelsTlForLegacy(out, legacyType, fall) {
       out.fibLevels = v9FibSpeedFanDefaultPriceLevelsTl();
     }
     if (!Array.isArray(out.fibFanTimeLevels) || !out.fibFanTimeLevels.length) {
-      out.fibFanTimeLevels = [
-        { on: true, value: "0", color: "#787B86" },
-        { on: true, value: "0.25", color: "#F44336" },
-        { on: true, value: "0.5", color: "#FF9800" },
-        { on: true, value: "0.75", color: "#FFEB3B" },
-        { on: true, value: "1", color: "#4CAF50" },
-      ];
+      out.fibFanTimeLevels = v9FibSpeedFanDefaultTimeLevelsTl();
     }
     return;
   }
@@ -3916,6 +3920,18 @@ function v9PatchFibLevelsInStyle(s, subToolIcon, fn) {
 function v9PatchFibTzLevelsInStyle(s, fn) {
   const rows = v9FibTzLevelsRowsForUi(s);
   return { ...s, fibTzLevels: fn(rows) };
+}
+
+function v9FibFanTimeLevelsRowsForUi(tlStyle) {
+  if (Array.isArray(tlStyle?.fibFanTimeLevels) && tlStyle.fibFanTimeLevels.length) {
+    return tlStyle.fibFanTimeLevels;
+  }
+  return v9FibSpeedFanDefaultTimeLevelsTl();
+}
+
+function v9PatchFibFanTimeLevelsInStyle(s, fn) {
+  const rows = v9FibFanTimeLevelsRowsForUi(s);
+  return { ...s, fibFanTimeLevels: fn(rows) };
 }
 
 /** Map all rows in a V9 level list to one color (quick bar master color). */
@@ -14752,6 +14768,22 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Fib Speed Fan Input tab (price + time rows) — same immediate flush as Fib Time Zone. */
+  const applyFibFanLevelsPatch = useCallback((stateKey, rowMapper) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = stateKey === "fibFanTimeLevels"
+          ? v9PatchFibFanTimeLevelsInStyle(s, rowMapper)
+          : v9PatchFibLevelsInStyle(s, "fibFan", rowMapper);
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
   /** Label font size — same-frame chart sync (pattern/Elliott + XABCD ratio boxes). */
   const applyTlTextSize = useCallback((textSize) => {
     flushSync(() => setTlStyle((s) => ({ ...s, textSize })));
@@ -17850,27 +17882,36 @@ const TalariaV8bLive = () => {
                 </div>
               </>;
               if (fi === "fibFan") {
+                const fanRowsForUi = (stateKey) => (
+                  stateKey === "fibFanTimeLevels"
+                    ? v9FibFanTimeLevelsRowsForUi(tlStyle)
+                    : v9FibLevelsRowsForUi(tlStyle, "fibFan")
+                );
                 const mkLevelsSection = (title, stateKey, swatchPrefix, hkPrefix, addHk, resetHk, defaultLevels) => <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>{title}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", columnGap:12, rowGap:8, padding:"0 0 8px" }}>
-                    {(Array.isArray(tlStyle[stateKey]) ? tlStyle[stateKey] : defaultLevels).map((lv, idx) => {
+                    {fanRowsForUi(stateKey).map((lv, idx) => {
                       const op = lv.on ? 1 : 0.55;
                       return (
                         <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
                           <div style={{ width:18, flexShrink:0 }}>
-                            {TlChk(lv.on, `tlchk-${hkPrefix}-${idx}`, "", ()=>setTlStyle(s=>({...s, [stateKey]: (s[stateKey] || defaultLevels).map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                            {TlChk(lv.on, `tlchk-${hkPrefix}-${idx}`, "", () => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, i) => (i === idx ? { ...l, on: !l.on } : l))))}
                           </div>
                           <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                             <input value={lv.value}
-                              onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,i)=>i===idx?{...l,value:val}:l)}));}}
+                              onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyFibFanLevelsPatch(stateKey,(rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
                               onClick={e=>e.stopPropagation()}
+                              onMouseDown={e=>e.stopPropagation()}
                               className="tlr-nospinner"
                               style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                        color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                             <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                               {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [stateKey]: s[stateKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
-                                  onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
+                                <button type="button" key={i} {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, (rows) => rows.map((l, j) => (j === idx ? {
+                                  ...l,
+                                  value: (Math.max(0, +(+(+l.value + delta * 0.001).toFixed(3)))).toFixed(3).replace(/\.?0+$/, "") || "0",
+                                } : l))))}
+                                  onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={()=>e.currentTarget.style.color=c.ts}
                                   style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                            display:"flex", alignItems:"center", justifyContent:"center",
                                            fontSize:7, lineHeight:1, fontFamily:F, padding:0,
@@ -17881,7 +17922,7 @@ const TalariaV8bLive = () => {
                             </div>
                           </div>
                           <div style={{ opacity:op, transition:"opacity 0.15s" }}>{fibColorSwatch(`${swatchPrefix}-${idx}`, lv.color)}</div>
-                          {idx >= 2 && <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]: s[stateKey].filter((_,i)=>i!==idx)}));}}
+                          {idx >= 2 && <div {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, (rows) => rows.filter((_, i) => i !== idx)))}
                             onMouseEnter={()=>setHov(`${hkPrefix}Del-${idx}`)} onMouseLeave={()=>setHov(null)}
                             style={{ cursor:"default", padding:"0 2px" }}>
                             <I n="x" s={9} cl={hov===`${hkPrefix}Del-${idx}`?c.rd:c.tm}/>
@@ -17891,13 +17932,16 @@ const TalariaV8bLive = () => {
                     })}
                   </div>
                   <div style={{ display:"flex", gap:8, padding:"0 0 8px" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]:[...s[stateKey],{on:true,value:(s[stateKey].length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]}));}}
+                    <div {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, (rows) => [
+                      ...rows,
+                      { on: true, value: (rows.length * 0.1).toFixed(3).replace(/\.?0+$/, ""), color: "#787B86" },
+                    ]))}
                       onMouseEnter={()=>setHov(addHk)} onMouseLeave={()=>setHov(null)}
                       style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                                border:`1px solid rgba(140,160,255,0.15)`, background:hov===addHk?c.hv2:"transparent", transition:"background 0.1s" }}>
                       <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                     </div>
-                    <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [stateKey]:defaultLevels}));}}
+                    <div {...modalPointerActivate(() => applyFibFanLevelsPatch(stateKey, () => defaultLevels.map((r) => ({ ...r }))))}
                       onMouseEnter={()=>setHov(resetHk)} onMouseLeave={()=>setHov(null)}
                       style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                                border:`1px solid rgba(140,160,255,0.15)`, background:hov===resetHk?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -17905,11 +17949,9 @@ const TalariaV8bLive = () => {
                     </div>
                   </div>
                 </>;
-                const defaultPriceLevels = [{on:true,value:"0",color:"#787B86"},{on:true,value:"0.236",color:"#F44336"},{on:true,value:"0.382",color:"#FF9800"},{on:true,value:"0.5",color:"#FFEB3B"},{on:true,value:"0.618",color:"#4CAF50"},{on:true,value:"0.786",color:"#2196F3"},{on:true,value:"1",color:"#787B86"}];
-                const defaultTimeLevels = [{on:true,value:"0",color:"#787B86"},{on:true,value:"0.25",color:"#F44336"},{on:true,value:"0.5",color:"#FF9800"},{on:true,value:"0.75",color:"#FFEB3B"},{on:true,value:"1",color:"#4CAF50"}];
                 return <>
-                  {mkLevelsSection("PRICE LEVELS","fibLevels","fibLevel","fib","fibFanPAdd","fibFanPReset",defaultPriceLevels)}
-                  {mkLevelsSection("TIME LEVELS","fibFanTimeLevels","fibFanTimeLevel","fibFanTime","fibFanTAdd","fibFanTReset",defaultTimeLevels)}
+                  {mkLevelsSection("PRICE LEVELS", "fibLevels", "fibLevel", "fib", "fibFanPAdd", "fibFanPReset", v9FibSpeedFanDefaultPriceLevelsTl())}
+                  {mkLevelsSection("TIME LEVELS", "fibFanTimeLevels", "fibFanTimeLevel", "fibFanTime", "fibFanTAdd", "fibFanTReset", v9FibSpeedFanDefaultTimeLevelsTl())}
                 </>;
               }
               return <>
