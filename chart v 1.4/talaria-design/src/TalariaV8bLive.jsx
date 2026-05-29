@@ -814,6 +814,157 @@ function v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool) {
   return col ? { stroke: col, color: col } : {};
 }
 
+/** Minimal style patch for color-picker drag (avoids full legacy bridge per pointermove). */
+function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
+  if (!tlStyle || !pickerKey) {
+    return v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool);
+  }
+  if (pickerKey === "tlLineColor" || pickerKey === "fibTrendColor") {
+    const col = tlStyle.lineColor;
+    return col ? { stroke: col, color: col } : {};
+  }
+  if (pickerKey === "tlMidLineColor" && tlStyle.midLineColor) {
+    return { midLineColor: tlStyle.midLineColor };
+  }
+  if (pickerKey === "tlBgColor" && tlStyle.bgColor != null) {
+    const col = tlStyle.bgColor;
+    const on = tlStyle.showBg !== false;
+    return on
+      ? { fill: col, backgroundColor: col }
+      : { fill: "none", backgroundColor: "transparent" };
+  }
+  if (pickerKey === "tlTextColor" && tlStyle.textColor) {
+    return { textColor: tlStyle.textColor, fill: tlStyle.textColor };
+  }
+  if (pickerKey === "tlLabelColor" && tlStyle.labelColor) {
+    return { labelColor: tlStyle.labelColor };
+  }
+  if (pickerKey === "tlLabelBgColor" && tlStyle.labelBgColor) {
+    return { labelBackgroundColor: tlStyle.labelBgColor };
+  }
+  if (pickerKey === "tlBorderColor" && tlStyle.borderColor) {
+    return { stroke: tlStyle.borderColor, borderColor: tlStyle.borderColor };
+  }
+  if (pickerKey === "pfMedianColor" && tlStyle.pfMedianColor) {
+    return { medianColor: tlStyle.pfMedianColor };
+  }
+  if (pickerKey === "pfBgColor" && tlStyle.pfBgColor) {
+    return { fill: tlStyle.pfBgColor, backgroundColor: tlStyle.pfBgColor };
+  }
+  if (pickerKey === "fibGridColor" && tlStyle.fibGridColor) {
+    return { gridColor: tlStyle.fibGridColor };
+  }
+  if (pickerKey === "regUpperBg" && tlStyle.regUpperBg) {
+    return { upperFill: tlStyle.regUpperBg };
+  }
+  if (pickerKey === "regLowerBg" && tlStyle.regLowerBg) {
+    return { lowerFill: tlStyle.regLowerBg };
+  }
+  return v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool);
+}
+
+/** Coalesce color-picker chart repaints to one per animation frame. */
+let __v9CpFlushRaf = 0;
+let __v9CpFlushFn = null;
+
+function v9ScheduleCpChartFlush(fn) {
+  __v9CpFlushFn = fn;
+  if (__v9CpFlushRaf) return;
+  __v9CpFlushRaf = requestAnimationFrame(() => {
+    __v9CpFlushRaf = 0;
+    const run = __v9CpFlushFn;
+    __v9CpFlushFn = null;
+    if (run) run();
+  });
+}
+
+function v9FlushCpChartNow() {
+  if (__v9CpFlushRaf) {
+    cancelAnimationFrame(__v9CpFlushRaf);
+    __v9CpFlushRaf = 0;
+  }
+  const run = __v9CpFlushFn;
+  __v9CpFlushFn = null;
+  if (run) run();
+}
+
+/** Level / fib / channel color keys — sync `d.levels` without full `v9ApplyTlStyleExtrasToDrawing`. */
+function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
+  if (!d || !tlStyle || !pickerKey) return false;
+  const w = parseInt(tlStyle.lineWidth, 10) || 2;
+  if (pickerKey.startsWith("fibLevel-") && v9IsClassicFibRetracementType(d.type)) {
+    v9ApplyClassicFibFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (pickerKey.startsWith("fibTzLevel-") && v9IsFibTimeZoneType(d.type)) {
+    v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (
+    (pickerKey.startsWith("fibFanTimeLevel-") || pickerKey === "fibTrendColor" || pickerKey === "fibGridColor") &&
+    v9IsTrendFibTimeType(d.type)
+  ) {
+    v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (pickerKey.startsWith("chLine-") && d.type === "parallel-channel") {
+    d.levels = v9ChLinesToParallelLevels(v9SyncParallelChannelMidLineToChLines(tlStyle));
+    return true;
+  }
+  if (d.type === "regression-trend") {
+    if (pickerKey.startsWith("regLine-") || pickerKey === "regUpperBg" || pickerKey === "regLowerBg") {
+      v9ApplyRegressionStyleFromTl(d.style, tlStyle);
+      return true;
+    }
+  }
+  if (d.type === "pitchfork") {
+    if (pickerKey.startsWith("pfLevel-") || pickerKey === "pfMedianColor" || pickerKey === "pfBgColor") {
+      if (Array.isArray(tlStyle.pfLevels)) {
+        d.levels = v9PfToPitchforkLevels(tlStyle.pfLevels);
+      }
+      v9ApplyPitchforkFromTl(d.style, tlStyle);
+      return true;
+    }
+  }
+  if (d.type === "gann-box" && (pickerKey.startsWith("gannGrid-") || pickerKey.startsWith("gannPrice-") || pickerKey.startsWith("gannTime-"))) {
+    v9ApplyGannBoxFromTlStyle(d, tlStyle);
+    return true;
+  }
+  if (d.type === "gann-square-fixed" && pickerKey.startsWith("gannGrid-")) {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+    return true;
+  }
+  if (d.type === "gann-fan" && pickerKey.startsWith("gannFanLv-")) {
+    v9ApplyGannFanFromTlStyle(d, tlStyle);
+    return true;
+  }
+  if (v9IsFibSpeedFanType(d.type) && pickerKey.startsWith("fibFanTimeLevel-")) {
+    v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (v9IsFibChannelType(d.type) && pickerKey.startsWith("fibLevel-")) {
+    v9ApplyFibChannelFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (v9IsFibCirclesType(d.type)) {
+    v9ApplyFibCirclesFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (v9IsFibArcsType(d.type)) {
+    v9ApplyFibArcsFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (v9IsFibWedgeType(d.type)) {
+    v9ApplyFibWedgeFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (pickerKey.startsWith("gannArc-") && d.type === "gann-square-fixed") {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+    return true;
+  }
+  return false;
+}
+
 /** Immediate dash on visible strokes (settings panel does this for width; V9 bar must too). */
 function v9ApplyDashToDrawingDom(d, dashStr) {
   if (!d || !d.style) return;
@@ -2344,14 +2495,22 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
       if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
       if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
       const stylePatch = colorOnly
-        ? v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, effectiveTool || d.type)
+        ? v9BuildColorOnlyPatchFromPickerKey(
+            opts.pickerKey,
+            tlStyle,
+            effectiveTool || d.type,
+          )
         : v9BuildLegacyStylePatchFromTlStyle(tlStyle, effectiveTool);
       const tb = dm.toolbar;
       try {
         if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
       } catch (_) {}
       Object.assign(d.style, stylePatch);
-      v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm);
+      if (colorOnly) {
+        v9ApplyPickerColorOnlyExtras(d, tlStyle, opts.pickerKey);
+      } else {
+        v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm);
+      }
       try {
         if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
         else if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
@@ -11486,15 +11645,56 @@ const TalariaV8bLive = () => {
     resolveLegacyTool: () => editingDrawingRef.current?.drawing?.type ?? null,
     ...extra,
   });
+  const cpPickerKeyRef = useRef(colorPicker);
+  cpPickerKeyRef.current = colorPicker;
+  const cpFlushTlOptsRef = useRef(cpFlushTlOpts);
+  cpFlushTlOptsRef.current = cpFlushTlOpts;
+  const cpDragUiRafRef = useRef(0);
+  const cpDragUiPendingRef = useRef(null);
   const cpApplyTlStyle = (updater, flushOpts = {}) => {
+    const dragging = !!cpDraggingRef.current;
+    const pickerKey = cpPickerKeyRef.current;
+    const useFastPath = dragging || !!flushOpts.colorOnly;
+    const next =
+      typeof updater === "function" ? updater(tlStyleLiveRef.current) : updater;
+    tlStyleLiveRef.current = next;
+    if (useFastPath) {
+      suppressForwardBridge.current = true;
+      setTlStyle(next);
+      const runFlush = () => {
+        v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+          ...cpFlushTlOpts({ colorOnly: true, pickerKey }),
+          ...flushOpts,
+          colorOnly: true,
+          pickerKey,
+        });
+      };
+      if (dragging) v9ScheduleCpChartFlush(runFlush);
+      else runFlush();
+      return;
+    }
     flushSync(() => {
       if (flushOpts.colorOnly) suppressForwardBridge.current = true;
-      setTlStyle(updater);
+      setTlStyle(next);
     });
+    tlStyleLiveRef.current = next;
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
   };
   const cpApplyTxtStyle = (updater) => {
-    flushSync(() => setTxtStyle(updater));
+    const dragging = !!cpDraggingRef.current;
+    const next =
+      typeof updater === "function" ? updater(txtStyleLiveRef.current) : updater;
+    txtStyleLiveRef.current = next;
+    if (dragging) {
+      setTxtStyle(next);
+      v9ScheduleCpChartFlush(() => {
+        v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+        });
+      });
+      return;
+    }
+    flushSync(() => setTxtStyle(next));
     v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
     });
@@ -11507,29 +11707,29 @@ const TalariaV8bLive = () => {
     const colorVal = cpBuildColor(rgb.r, rgb.g, rgb.b, na);
     if(targetKey === "gotoNewColor") setGotoNewColor(colorVal);
     else if(targetKey === "tlLineColor") cpApplyTlStyle(s=>v9ApplyTlLineColorToStyle(s, colorVal, tlSubTool.icon), { colorOnly: true });
-    else if(targetKey === "tlBgColor") cpApplyTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType));
+    else if(targetKey === "tlBgColor") cpApplyTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType), { colorOnly: true });
     else if(targetKey === "tlMidLineColor") cpApplyTlStyle(s=>({...s, midLineColor: colorVal}), { colorOnly: true });
-    else if(targetKey === "tlTextColor") cpApplyTlStyle(s=>({...s, textColor: colorVal}));
-    else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal}));
-    else if(targetKey === "tlLabelBgColor") cpApplyTlStyle(s=>({...s, labelBgColor: colorVal}));
-    else if(targetKey === "tlBorderColor") cpApplyTlStyle(s=>({...s, borderColor: colorVal}));
+    else if(targetKey === "tlTextColor") cpApplyTlStyle(s=>({...s, textColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "tlLabelBgColor") cpApplyTlStyle(s=>({...s, labelBgColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "tlBorderColor") cpApplyTlStyle(s=>({...s, borderColor: colorVal}), { colorOnly: true });
     else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("regLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, regLines: s.regLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
-    else if(targetKey === "regUpperBg") cpApplyTlStyle(s=>({...s, regUpperBg: colorVal}));
-    else if(targetKey === "regLowerBg") cpApplyTlStyle(s=>({...s, regLowerBg: colorVal}));
+    else if(targetKey === "regUpperBg") cpApplyTlStyle(s=>({...s, regUpperBg: colorVal}), { colorOnly: true });
+    else if(targetKey === "regLowerBg") cpApplyTlStyle(s=>({...s, regLowerBg: colorVal}), { colorOnly: true });
     else if(targetKey === "pfMedianColor") cpApplyTlStyle(s=>({...s, pfMedianColor: colorVal}), { colorOnly: true });
-    else if(targetKey === "pfBgColor") cpApplyTlStyle(s=>({...s, pfBgColor: colorVal}));
+    else if(targetKey === "pfBgColor") cpApplyTlStyle(s=>({...s, pfBgColor: colorVal}), { colorOnly: true });
     else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
     else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
     else if(targetKey === "fibTrendColor") cpApplyTlStyle(s=>({...s, lineColor: colorVal}), { colorOnly: true });
-    else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey === "fibGridColor") cpApplyTlStyle(s=>({...s, fibGridColor: colorVal}));
-    else if(targetKey?.startsWith("fibFanTimeLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, fibFanTimeLevels: s.fibFanTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannGrid-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannGridLevels: s.gannGridLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannFanLv-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannFanLevels: s.gannFanLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
-    else if(targetKey?.startsWith("gannArc-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannArcLevels: s.gannArcLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)})); }
+    else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey === "fibGridColor") cpApplyTlStyle(s=>({...s, fibGridColor: colorVal}), { colorOnly: true });
+    else if(targetKey?.startsWith("fibFanTimeLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, fibFanTimeLevels: s.fibFanTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("gannGrid-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannGridLevels: s.gannGridLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("gannFanLv-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannFanLevels: s.gannFanLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
+    else if(targetKey?.startsWith("gannArc-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannArcLevels: s.gannArcLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "txtTextColor") cpApplyTxtStyle(s=>({...s, textColor: colorVal}));
     else if(targetKey === "txtBgColor") cpApplyTxtStyle(s=>({...s, bgColor: colorVal}));
     else if(targetKey === "txtBorderColor") cpApplyTxtStyle(s=>({...s, borderColor: colorVal}));
@@ -11581,6 +11781,16 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     if (!cpDragging || !cpDragRect) return;
     const cap = { capture: true };
+    const scheduleDragFrame = (fn) => {
+      cpDragUiPendingRef.current = fn;
+      if (cpDragUiRafRef.current) return;
+      cpDragUiRafRef.current = requestAnimationFrame(() => {
+        cpDragUiRafRef.current = 0;
+        const run = cpDragUiPendingRef.current;
+        cpDragUiPendingRef.current = null;
+        if (run) run();
+      });
+    };
     const onMove = (e) => {
       const d = cpPickerDragRef.current;
       const r = d.cpDragRect;
@@ -11588,20 +11798,43 @@ const TalariaV8bLive = () => {
       if (d.cpDragging === "sv") {
         const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
         const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-        setCpS(ns);
-        setCpV(nv);
-        cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
+        scheduleDragFrame(() => {
+          setCpS(ns);
+          setCpV(nv);
+          cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
+        });
       } else if (d.cpDragging === "hue") {
         const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
-        setCpH(nh);
-        cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
+        scheduleDragFrame(() => {
+          setCpH(nh);
+          cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
+        });
       } else if (d.cpDragging === "alpha") {
         const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        setCpA(na);
-        cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
+        scheduleDragFrame(() => {
+          setCpA(na);
+          cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
+        });
       }
     };
     const onEnd = () => {
+      if (cpDragUiRafRef.current) {
+        cancelAnimationFrame(cpDragUiRafRef.current);
+        cpDragUiRafRef.current = 0;
+        const run = cpDragUiPendingRef.current;
+        cpDragUiPendingRef.current = null;
+        if (run) run();
+      }
+      v9FlushCpChartNow();
+      const key = cpPickerKeyRef.current;
+      const editDraw = editingDrawingRef.current?.drawing ?? null;
+      if (key && v9CpPickerKeyFlushesTlStyle(key)) {
+        v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOptsRef.current());
+      } else if (key && v9CpPickerKeyFlushesTxtStyle(key)) {
+        v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
+          editingRefDrawing: editDraw,
+        });
+      }
       setCpDragging(null);
       setCpDragRect(null);
     };
