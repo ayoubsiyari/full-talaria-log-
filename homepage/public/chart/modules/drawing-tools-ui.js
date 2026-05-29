@@ -290,6 +290,81 @@ function applyImageToolUploadDisplayDefaults(drawing) {
     drawing.style.heightInDataUnits = null;
 }
 
+/** Read numeric input without treating 0 as empty (parseFloat(x)||0 breaks decrement to zero). */
+function readTvNumberInputValue(input) {
+    if (!input) return 0;
+    const n = parseFloat(input.value);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function getTvNumberInputStepDecimals(step) {
+    const s = String(step);
+    if (s.includes('e-')) {
+        const exp = parseInt(s.split('e-')[1], 10);
+        return Number.isFinite(exp) ? exp : 0;
+    }
+    const dot = s.indexOf('.');
+    return dot === -1 ? 0 : (s.length - dot - 1);
+}
+
+function formatTvNumberInputValue(value, decimals) {
+    if (!Number.isFinite(value)) return '0';
+    if (decimals <= 0) return String(Math.round(value));
+    const fixed = value.toFixed(decimals);
+    const trimmed = fixed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+    return trimmed === '' || trimmed === '-0' ? '0' : trimmed;
+}
+
+function stepTvNumberInputValue(input, direction) {
+    if (!input || !direction) return readTvNumberInputValue(input);
+    const step = parseFloat(input.step);
+    const safeStep = Number.isFinite(step) && step > 0 ? step : 0.001;
+    const decimals = getTvNumberInputStepDecimals(safeStep);
+    const factor = Math.pow(10, decimals);
+    const cur = readTvNumberInputValue(input);
+    let next = Math.round((cur + direction * safeStep) * factor) / factor;
+    if (direction < 0 && cur > 0 && next < 0) next = 0;
+    if (direction > 0 && cur < 0 && next > 0) next = 0;
+    input.value = formatTvNumberInputValue(next, decimals);
+    return next;
+}
+
+function isTvLevelValueSpinnerInput(input) {
+    const prop = input && input.dataset ? input.dataset.prop : '';
+    return typeof prop === 'string' && /LevelValue_\d+$/.test(prop);
+}
+
+function attachTvNumberSpinnerButton(btn, input, direction, onAfterStep) {
+    if (!btn || !input || !direction) return;
+    let holdTimeout = null;
+    let holdInterval = null;
+    const stopHold = () => {
+        clearTimeout(holdTimeout);
+        clearInterval(holdInterval);
+        holdTimeout = null;
+        holdInterval = null;
+    };
+    const runStep = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        stepTvNumberInputValue(input, direction);
+        if (typeof onAfterStep === 'function') onAfterStep();
+    };
+    btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        runStep(e);
+        stopHold();
+        holdTimeout = setTimeout(() => {
+            holdInterval = setInterval(() => runStep(), 60);
+        }, 400);
+    });
+    btn.addEventListener('mouseup', stopHold);
+    btn.addEventListener('mouseleave', stopHold);
+}
+
 
 
 class DrawingSettingsPanel {
@@ -3373,6 +3448,8 @@ class DrawingSettingsPanel {
 
     position: relative;
 
+    z-index: 0;
+
     display: flex;
 
     align-items: stretch;
@@ -3459,6 +3536,8 @@ class DrawingSettingsPanel {
 
     width: 18px;
 
+    z-index: 2;
+
     display: flex;
 
     flex-direction: column;
@@ -3493,9 +3572,9 @@ class DrawingSettingsPanel {
 
 .custom-spinner-btn {
 
-    flex: 1 1 0;
+    flex: 1 1 50%;
 
-    min-height: 0;
+    min-height: 12px;
 
     display: flex;
 
@@ -8307,37 +8386,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            const onSpinnerClick = (btn) => {
+            attachTvNumberSpinnerButton(upBtn, input, 1, updateLevelFromInput);
 
-                const step = parseFloat(input.step) || 0.1;
-
-                let value = parseFloat(input.value) || 0;
-
-                const decimals = getStepDecimals(step);
-
-                const factor = Math.pow(10, decimals);
-
-                if (btn.dataset.action === 'up') {
-
-                    value = Math.round((value + step) * factor) / factor;
-
-                } else {
-
-                    value = Math.round((value - step) * factor) / factor;
-
-                }
-
-                input.value = value;
-
-                input.dispatchEvent(new Event('change'));
-
-            };
-
-
-
-            upBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(upBtn); });
-
-            downBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(downBtn); });
+            attachTvNumberSpinnerButton(downBtn, input, -1, updateLevelFromInput);
 
 
 
@@ -9036,37 +9087,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-            const onSpinnerClick = (btn) => {
+            attachTvNumberSpinnerButton(upBtn, input, 1, updateLevelFromInput);
 
-                const step = parseFloat(input.step) || 0.1;
-
-                let value = parseFloat(input.value) || 0;
-
-                const decimals = getStepDecimals(step);
-
-                const factor = Math.pow(10, decimals);
-
-                if (btn.dataset.action === 'up') {
-
-                    value = Math.round((value + step) * factor) / factor;
-
-                } else {
-
-                    value = Math.round((value - step) * factor) / factor;
-
-                }
-
-                input.value = value;
-
-                input.dispatchEvent(new Event('change'));
-
-            };
-
-
-
-            upBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(upBtn); });
-
-            downBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(downBtn); });
+            attachTvNumberSpinnerButton(downBtn, input, -1, updateLevelFromInput);
 
 
 
@@ -11098,9 +11121,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
             const updateLevelFromInput = () => {
 
-                const parsed = parseFloat(input.value);
+                const parsed = readTvNumberInputValue(input);
 
-                if (!isNaN(parsed)) {
+                if (Number.isFinite(parsed)) {
 
                     if (!isTimeZone && drawing.style.levelsLabelMode === 'percent') {
 
@@ -11156,28 +11179,8 @@ body.light-mode .template-save-dialog .dialog-title {
 
             downBtn.innerHTML = '<svg viewBox="0 0 10 10"><polyline points="2,3 5,7 8,3"></polyline></svg>';
 
-            const _spinnerStep = () => parseFloat(input.step) || 0.001;
-            const _attachSpinner = (btn, direction) => {
-                let _tid = null, _iid = null;
-                const _step = () => {
-                    const s = _spinnerStep();
-                    const dec = (s.toString().split('.')[1] || '').length;
-                    const f = Math.pow(10, dec);
-                    const cur = parseFloat(input.value || '0');
-                    input.value = String(Math.round((cur + direction * s) * f) / f);
-                    updateLevelFromInput();
-                };
-                const _stop = () => { clearTimeout(_tid); clearInterval(_iid); _tid = null; _iid = null; };
-                btn.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    _step();
-                    _tid = setTimeout(() => { _iid = setInterval(_step, 60); }, 400);
-                });
-                btn.addEventListener('mouseup', _stop);
-                btn.addEventListener('mouseleave', _stop);
-            };
-            _attachSpinner(upBtn, 1);
-            _attachSpinner(downBtn, -1);
+            attachTvNumberSpinnerButton(upBtn, input, 1, updateLevelFromInput);
+            attachTvNumberSpinnerButton(downBtn, input, -1, updateLevelFromInput);
 
             spinner.appendChild(upBtn);
 
@@ -11880,37 +11883,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                const onSpinnerClick = (btn) => {
+                attachTvNumberSpinnerButton(upBtn, input, 1, updateLevelFromInput);
 
-                    const step = parseFloat(input.step) || 0.1;
-
-                    let value = parseFloat(input.value) || 0;
-
-                    const decimals = getStepDecimals(step);
-
-                    const factor = Math.pow(10, decimals);
-
-                    if (btn.dataset.action === 'up') {
-
-                        value = Math.round((value + step) * factor) / factor;
-
-                    } else {
-
-                        value = Math.round((value - step) * factor) / factor;
-
-                    }
-
-                    input.value = value;
-
-                    input.dispatchEvent(new Event('change'));
-
-                };
-
-
-
-                upBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(upBtn); });
-
-                downBtn.addEventListener('click', (e) => { e.stopPropagation(); onSpinnerClick(downBtn); });
+                attachTvNumberSpinnerButton(downBtn, input, -1, updateLevelFromInput);
 
 
 
@@ -20145,55 +20120,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 if (!input) return;
 
-                
+                if (isTvLevelValueSpinnerInput(input)) return;
 
-                const step = parseFloat(input.step) || 0.1;
+                const direction = btn.dataset.action === 'up' ? 1 : -1;
 
-                let value = parseFloat(input.value) || 0;
-
-
-
-                const getStepDecimals = (n) => {
-
-                    const s = String(n);
-
-                    if (s.includes('e-')) {
-
-                        const parts = s.split('e-');
-
-                        const exp = parseInt(parts[1], 10);
-
-                        return isNaN(exp) ? 0 : exp;
-
-                    }
-
-                    const dot = s.indexOf('.');
-
-                    return dot === -1 ? 0 : (s.length - dot - 1);
-
-                };
-
-
-
-                const decimals = getStepDecimals(step);
-
-                const factor = Math.pow(10, decimals);
-
-                
-
-                if (btn.dataset.action === 'up') {
-
-                    value = Math.round((value + step) * factor) / factor;
-
-                } else {
-
-                    value = Math.round((value - step) * factor) / factor;
-
-                }
-
-                
-
-                input.value = value;
+                stepTvNumberInputValue(input, direction);
 
                 input.dispatchEvent(new Event('change'));
 
