@@ -399,11 +399,85 @@ class DrawingToolsManager {
                         }
                         return;
                     }
-                    this.renderDrawing(stillTracked);
+                    this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
                 } catch (e) {
                 }
             });
+
+            if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
+                this.chart.scheduleRender();
+            }
         });
+    }
+
+    _isLiveDrawingInteraction() {
+        return !!(this.isDragging || this.isResizing || this.isCustomHandleDrag
+            || this._textBodyLiveDragActive || this._textInlineEditDrawing);
+    }
+
+    beginTextInlineEdit(drawing) {
+        if (!drawing) return;
+        if (this._textInlineEditDrawing === drawing) return;
+        if (this._textInlineEditDrawing) {
+            this.endTextInlineEdit(this._textInlineEditDrawing);
+        }
+        this._textInlineEditDrawing = drawing;
+        drawing._inlineTextEditing = true;
+        this._beginDrawingLiveInteraction();
+    }
+
+    endTextInlineEdit(drawing) {
+        if (drawing) drawing._inlineTextEditing = false;
+        if (!this._textInlineEditDrawing) return;
+        if (drawing && this._textInlineEditDrawing !== drawing) return;
+        this._textInlineEditDrawing = null;
+        this._endDrawingLiveInteraction();
+        if (drawing) this.renderDrawing(drawing);
+    }
+
+    /** Hot-path render options during move/resize (matches scheduleRenderDrawing / movement). */
+    _liveRenderDrawingOpts(drawing) {
+        const live = this._isLiveDrawingInteraction()
+            || !!(drawing && drawing._inlineTextEditing);
+        if (!live) return {};
+        return {
+            skipInteraction: true,
+            liveRender: true,
+            drawingRenderOpts: {
+                reuseGroup: !!(drawing && drawing.group && !drawing.group.empty()),
+                skipHandles: true
+            }
+        };
+    }
+
+    _beginDrawingLiveInteraction() {
+        this._drawingLiveInteractionDepth = (this._drawingLiveInteractionDepth || 0) + 1;
+        if (this._drawingLiveInteractionDepth > 1) return;
+        if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
+            this.chart._setChartPanDomOverflow(true);
+        }
+        this.setDrawingsClipDuringChartPan(true);
+    }
+
+    _endDrawingLiveInteraction() {
+        if (!this._drawingLiveInteractionDepth) return;
+        this._drawingLiveInteractionDepth -= 1;
+        if (this._drawingLiveInteractionDepth > 0) return;
+        if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
+            this.chart._setChartPanDomOverflow(false);
+        }
+        this.setDrawingsClipDuringChartPan(false);
+    }
+
+    /** Move drawing by pixel delta with full re-render (avoids transform + overflow:hidden clip). */
+    _applyLiveDrawingMovePixels(drawing, startPoints, pixelDx, pixelDy) {
+        if (!drawing || !Array.isArray(startPoints) || !this.chart) return;
+        const previewPoints = this._translatePointsByPixels(startPoints, pixelDx, pixelDy, drawing.type);
+        if (!previewPoints) return;
+        drawing.points = previewPoints.map((p) => ({ ...p }));
+        if (drawing.group) drawing.group.attr('transform', null);
+        drawing.meta.updatedAt = Date.now();
+        this.scheduleRenderDrawing(drawing);
     }
 
     _parseTimeframe(timeframe) {
@@ -2700,30 +2774,20 @@ class DrawingToolsManager {
             const pixelDy = currentScreenY - this.dragStartScreen.y;
             
             if (this.draggingMultiple && this.multiDragStartPositions) {
-                // Move all selected drawings with pixel-based transform
-                this.multiDragStartPositions.forEach(({ drawing, startTransform }) => {
-                    if (drawing.group) {
-                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
-                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                    }
-                    const startEntry = this.multiDragStartPositions.find((m) => m.drawing === drawing);
-                    if (startEntry && Array.isArray(startEntry.points)) {
-                        const previewPoints = this._translatePointsByPixels(startEntry.points, pixelDx, pixelDy, drawing.type);
-                        this._broadcastLiveEditUpdate(drawing, previewPoints);
+                this.multiDragStartPositions.forEach(({ drawing, points }) => {
+                    if (Array.isArray(points)) {
+                        this._applyLiveDrawingMovePixels(drawing, points, pixelDx, pixelDy);
+                        this._broadcastLiveEditUpdate(drawing, drawing.points);
                     }
                 });
-            } else {
-                // Move single drawing with pixel-based transform
-                if (this.draggingDrawing.group && this.dragStartOriginalPos) {
-                    const newX = this.dragStartOriginalPos.x + pixelDx;
-                    const newY = this.dragStartOriginalPos.y + pixelDy;
-                    this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
-                }
-                if (Array.isArray(this.singleDragStartPoints)) {
-                    const previewPoints = this._translatePointsByPixels(this.singleDragStartPoints, pixelDx, pixelDy, this.draggingDrawing.type);
-                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
-                }
+            } else if (Array.isArray(this.singleDragStartPoints)) {
+                this._applyLiveDrawingMovePixels(
+                    this.draggingDrawing,
+                    this.singleDragStartPoints,
+                    pixelDx,
+                    pixelDy
+                );
+                this._broadcastLiveEditUpdate(this.draggingDrawing, this.draggingDrawing.points);
             }
             return;
         }
@@ -3275,8 +3339,9 @@ class DrawingToolsManager {
                 || isInteractingWithExistingVolumeProfile
                 || allowRangeVerticalOverflow;
 
-            // For VP right-boundary resize, allow dragging past the container edge.
-            screenX = isResizingVolumeProfileRightBoundary
+            const allowHorizontalOverflow = allowsExtrabar
+                || isResizingVolumeProfileRightBoundary;
+            screenX = allowHorizontalOverflow
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
             screenY = allowVerticalOverflow
@@ -3993,7 +4058,12 @@ class DrawingToolsManager {
      */
     renderDrawing(drawing, opts = {}) {
         if (!drawing) return;
-        const skipInteraction = !!opts.skipInteraction;
+        const liveRender = !!opts.liveRender || this._isLiveDrawingInteraction();
+        const skipInteraction = !!opts.skipInteraction || liveRender;
+        const drawingRenderOpts = opts.drawingRenderOpts || (liveRender ? {
+            reuseGroup: !!(drawing && drawing.group && !drawing.group.empty()),
+            skipHandles: true
+        } : null);
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (stack overflow when scheduleRender is synchronous).
@@ -4050,20 +4120,34 @@ class DrawingToolsManager {
             drawing.group.style('display', null);
         }
 
-        // Keep bar indices aligned with chart.data after refresh / replay restore / TF change.
         this._syncDrawingPointsFromTimestamps(drawing);
-        
-        // Render with current scales AND chart instance for accurate pixel calculation
-        drawing.render(this.drawingsGroup, {
+
+        const scales = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
-            chart: this.chart,  // Pass chart for dataIndexToPixel method
-            labelsGroup: this.labelsGroup  // Unclipped group for text labels
-        });
+            chart: this.chart,
+            labelsGroup: this.labelsGroup
+        };
+
+        // Render with current scales AND chart instance for accurate pixel calculation
+        if (drawingRenderOpts) {
+            drawing.render(this.drawingsGroup, scales, drawingRenderOpts);
+        } else {
+            drawing.render(this.drawingsGroup, scales);
+        }
+
+        if (liveRender && drawingRenderOpts && drawingRenderOpts.skipHandles) {
+            if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox) {
+                drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
+            } else if (typeof drawing._syncBoxHandlePositions === 'function') {
+                drawing._syncBoxHandlePositions(drawing.group, scales);
+            } else if (typeof drawing.updateHandlePositions === 'function') {
+                drawing.updateHandlePositions(scales);
+            }
+        }
         
-        // Always show axis highlights (labels visible regardless of selection state)
         if (typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
+            drawing.showAxisHighlights({ live: liveRender });
         }
         
         // Setup interaction handlers
@@ -4073,11 +4157,9 @@ class DrawingToolsManager {
         // selected (renderDrawing from selectDrawing) or first placed (addDrawing).
         if (!skipInteraction) {
             this.setupDrawingInteraction(drawing);
-        } else {
-            // Minimal pointer-events pass: set group to none so SVG root can
-            // receive events for geometric hit testing. Per-stroke pointer-events
-            // are still needed for mouse-cursor changes on hover, so we do a
-            // lightweight version that avoids the expensive per-element scan.
+        } else if (!liveRender) {
+            // Never run during live resize/move: it sets pointer-events:none on the
+            // group and breaks handle dragging after the first animation frame.
             this._applyMinimalPointerEvents(drawing);
         }
         if (this._isPlacementModeActive()) {
@@ -4085,7 +4167,9 @@ class DrawingToolsManager {
         }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
-        this.raiseDrawingLayersAboveOrderPreviews();
+        if (!liveRender) {
+            this.raiseDrawingLayersAboveOrderPreviews();
+        }
         
         // Restore re-entry guard
         if (this.chart) this.chart._isRendering = wasRendering;
@@ -4650,7 +4734,10 @@ class DrawingToolsManager {
                 : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
-        
+        const useTextLiveBodyDrag = this._isTextDrawingType(drawing.type);
+
+        dragElements.on('.drag', null);
+
         dragElements.call(
             d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
@@ -4832,6 +4919,10 @@ class DrawingToolsManager {
                     }
                     rrLastCumulative = { x: 0, y: 0 };
                     rrLastByDrawingId = Object.create(null);
+                    if (useTextLiveBodyDrag) {
+                        self._textBodyLiveDragActive = true;
+                        self._beginDrawingLiveInteraction();
+                    }
                 })
                 .on('drag', function(event) {
                     if (!dragStartPoints || !bodyDragStartScreen) return;
@@ -4839,6 +4930,20 @@ class DrawingToolsManager {
                     const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
                     const pixelDx = currentScreenX - bodyDragStartScreen.x;
                     const pixelDy = currentScreenY - bodyDragStartScreen.y;
+
+                    if (self._textBodyLiveDragActive && useTextLiveBodyDrag) {
+                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
+                            multiDragStartPoints.forEach((item) => {
+                                if (!item.drawing || !Array.isArray(item.points)) return;
+                                self._applyLiveDrawingMovePixels(item.drawing, item.points, pixelDx, pixelDy);
+                                self._broadcastLiveEditUpdate(item.drawing, item.drawing.points);
+                            });
+                        } else {
+                            self._applyLiveDrawingMovePixels(drawing, dragStartPoints, pixelDx, pixelDy);
+                            self._broadcastLiveEditUpdate(drawing, drawing.points);
+                        }
+                        return;
+                    }
 
                     // Smooth drag: CSS transform only — commit to data points once on drag end.
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
@@ -4857,6 +4962,55 @@ class DrawingToolsManager {
                 .on('end', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
+                    }
+
+                    if (self._textBodyLiveDragActive && useTextLiveBodyDrag) {
+                        self._textBodyLiveDragActive = false;
+                        self._endDrawingLiveInteraction();
+
+                        const finalizeTextBodyDrag = (itemDrawing, startPoints, before) => {
+                            if (!itemDrawing) return;
+                            if (itemDrawing.group) itemDrawing.group.attr('transform', null);
+                            const didMove = Array.isArray(startPoints) && Array.isArray(itemDrawing.points)
+                                && itemDrawing.points.some((p, i) => {
+                                    const s = startPoints[i];
+                                    return !s || p.x !== s.x || p.y !== s.y;
+                                });
+                            if (didMove && self.history && before) {
+                                self.history.recordModify(itemDrawing, before);
+                            }
+                            if (didMove) {
+                                self._refreshDrawingTimestampAnchors(itemDrawing);
+                                if (typeof itemDrawing.recalculateTimestamps === 'function') {
+                                    itemDrawing.recalculateTimestamps();
+                                }
+                                self.renderDrawing(itemDrawing);
+                                if (itemDrawing.selected && typeof itemDrawing.showAxisHighlights === 'function') {
+                                    itemDrawing.showAxisHighlights();
+                                }
+                            }
+                        };
+
+                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
+                            multiDragStartPoints.forEach((item) => {
+                                finalizeTextBodyDrag(item.drawing, item.points, item.beforeState);
+                            });
+                            multiDragStartPoints = null;
+                        } else if (dragStartPoints) {
+                            finalizeTextBodyDrag(drawing, dragStartPoints, beforeState);
+                            beforeState = null;
+                        }
+
+                        dragStartPoints = null;
+                        startDataPoint = null;
+                        bodyDragStartScreen = null;
+                        bodyDragStartTransform = null;
+                        self.saveDrawings();
+                        const index = self.drawings.indexOf(drawing);
+                        if (self.chart.broadcastDrawingChange && index > -1) {
+                            self.chart.broadcastDrawingChange('update', drawing, index);
+                        }
+                        return;
                     }
 
                     // Record modification for undo/redo
@@ -5143,12 +5297,7 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    self._skipHandleSetup = true;
-                    this.renderDrawing(drawing);
-                    self._skipHandleSetup = false;
-                    if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                        drawing.showAxisHighlights();
-                    }
+                    self.scheduleRenderDrawing(drawing);
                     return true;
                 }
             }
@@ -5156,7 +5305,8 @@ class DrawingToolsManager {
         };
 
         const handles = drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group');
-        
+        handles.on('.drag', null);
+
         handles.call(
             d3.drag()
                 .filter(allowResizeHandleDragWhenToolActive)
@@ -5167,6 +5317,7 @@ class DrawingToolsManager {
                         if (!drawing.selected) {
                             self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                         }
+                        self._beginDrawingLiveInteraction();
                         self._freehandHandleWholeMove = {
                             drawing,
                             startPoints: drawing.points.map(p => ({ ...p })),
@@ -5218,12 +5369,7 @@ class DrawingToolsManager {
                             y: p.y + constrainedDy
                         }));
                         self.clampDrawingPointsToCandleRange(drawing);
-                        self._skipHandleSetup = true;
-                        self.renderDrawing(drawing);
-                        self._skipHandleSetup = false;
-                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                            drawing.showAxisHighlights();
-                        }
+                        self.scheduleRenderDrawing(drawing);
                         self._broadcastLiveEditUpdate(drawing);
                         return;
                     }
@@ -5269,6 +5415,7 @@ class DrawingToolsManager {
                             self.chart.broadcastDrawingChange('update', drawing, di);
                         }
                         self._freehandHandleWholeMove = null;
+                        self._endDrawingLiveInteraction();
                         const cvs = (self.chart && self.chart.canvas) || document.getElementById('chartCanvas');
                         if (cvs) cvs.style.cursor = '';
                         self.svg.style('cursor', '');
@@ -5285,7 +5432,9 @@ class DrawingToolsManager {
                 })
         );
 
-        drawing.group.selectAll('.custom-handle').call(
+        const customHandles = drawing.group.selectAll('.custom-handle');
+        customHandles.on('.drag', null);
+        customHandles.call(
             d3.drag()
                 .filter(allowResizeHandleDragWhenToolActive)
                 .on('start', function(event) {
@@ -5307,6 +5456,7 @@ class DrawingToolsManager {
      * Start handle drag
      */
     startHandleDrag(drawing, pointIndex, event) {
+        this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
         this.resizingPointIndex = pointIndex;
@@ -5354,16 +5504,9 @@ class DrawingToolsManager {
         
         // Update point
         drawing.points[index] = point;
-        
-        // Re-render without recreating handles during active drag
-        this._skipHandleSetup = true;
-        this.renderDrawing(drawing);
-        this._skipHandleSetup = false;
-        
-        // Update axis highlights if drawing is selected
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
+        drawing.meta.updatedAt = Date.now();
+
+        this.scheduleRenderDrawing(drawing);
         this._broadcastLiveEditUpdate(drawing);
     }
 
@@ -5387,14 +5530,13 @@ class DrawingToolsManager {
         this.resizingPointIndex = null;
         this.resizingHandleRole = null;
         this.resizeBeforeState = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
 
-        if (isVolumeProfileResize) {
-            this.renderDrawing(drawing);
-        }
+        this.renderDrawing(drawing);
 
         // Recalculate timestamps from new positions
         drawing.recalculateTimestamps();
@@ -5410,6 +5552,7 @@ class DrawingToolsManager {
     }
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
+        this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
         this.customHandleRole = handleRole;
@@ -5468,11 +5611,6 @@ class DrawingToolsManager {
         window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
             detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
         }));
-        
-        // Update axis highlights if drawing is selected
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
     }
 
     endCustomHandleDrag(event) {
@@ -5485,7 +5623,7 @@ class DrawingToolsManager {
             drawing.endHandleDrag(handleRole, context);
         }
 
-        // Do a full re-render to finalize the resize
+        drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
 
         // Record modification for undo/redo
@@ -5494,12 +5632,11 @@ class DrawingToolsManager {
         }
 
         this.isCustomHandleDrag = false;
-        // Recalculate timestamps from new positions
-        drawing.recalculateTimestamps();
         this.customHandleDrawing = null;
         this.customHandleRole = null;
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
@@ -5548,6 +5685,8 @@ class DrawingToolsManager {
      */
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
+        this._useLiveGeometryDrag = true;
+        this._beginDrawingLiveInteraction();
         this.isDragging = true;
         this.draggingDrawing = drawing;
         this.dragStartPoint = this.getDataPoint(event);
@@ -5606,6 +5745,36 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
+        if (this._useLiveGeometryDrag) {
+            const finalize = (drawing) => {
+                if (!drawing) return;
+                if (drawing.group) drawing.group.attr('transform', null);
+                drawing.meta.updatedAt = Date.now();
+                this._refreshDrawingTimestampAnchors(drawing);
+                this.renderDrawing(drawing);
+            };
+            if (this.draggingMultiple && this.multiDragStartPositions) {
+                this.multiDragStartPositions.forEach(({ drawing }) => finalize(drawing));
+            } else {
+                finalize(this.draggingDrawing);
+            }
+            this._useLiveGeometryDrag = false;
+            this._endDrawingLiveInteraction();
+            this.isDragging = false;
+            this.draggingDrawing = null;
+            this.dragStartPoint = null;
+            this.dragStartScreen = null;
+            this.dragStartOriginalPos = null;
+            this.draggingMultiple = false;
+            this.multiDragStartPositions = null;
+            this.singleDragStartPoints = null;
+            const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+            if (canvas) canvas.style.cursor = '';
+            this.svg.style('cursor', '');
+            this.saveDrawings();
+            return;
+        }
+
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -5699,6 +5868,7 @@ class DrawingToolsManager {
         this.draggingMultiple = false;
         this.multiDragStartPositions = null;
         this.singleDragStartPoints = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
@@ -5942,6 +6112,12 @@ class DrawingToolsManager {
         const storedText = drawing.text || '';
         const initialText = isPlaceholderText(storedText) ? '' : storedText;
 
+        this.beginTextInlineEdit(drawing);
+
+        const scheduleLive = helpers && typeof helpers.scheduleTextAnnotationLiveRender === 'function'
+            ? helpers.scheduleTextAnnotationLiveRender
+            : (d) => this.scheduleRenderDrawing(d);
+
         const inlineOpts = {
             inline: true,
             placeholderMode: !String(initialText).trim(),
@@ -5957,9 +6133,8 @@ class DrawingToolsManager {
                 drawing.setText(isPlaceholderText(next) ? '' : next);
                 if (typeof drawing._updateCommentBubble === 'function') {
                     drawing._updateCommentBubble();
-                } else if (drawing._lastContainer && drawing._lastScales) {
-                    drawing.render(drawing._lastContainer, drawing._lastScales);
                 }
+                scheduleLive(drawing);
             }
         };
 
@@ -6936,6 +7111,19 @@ class DrawingToolsManager {
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
+        }
+        if (typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)
+            && Array.isArray(drawing.points)
+            && Array.isArray(this.chart.data)
+            && this.chart.data.length > 0) {
+            const lastIdx = this.chart.data.length - 1;
+            const hasExtrabarPoint = drawing.points.some((p) =>
+                p && Number.isFinite(p.x) && (p.x > lastIdx + 0.001 || p.x < -0.001)
+            );
+            if (hasExtrabarPoint) {
+                return;
+            }
         }
         try {
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart);

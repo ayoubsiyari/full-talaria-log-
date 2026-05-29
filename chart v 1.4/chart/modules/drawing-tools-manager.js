@@ -3339,11 +3339,7 @@ class DrawingToolsManager {
                 || isInteractingWithExistingVolumeProfile
                 || allowRangeVerticalOverflow;
 
-            // Channel tools need distinct baseline bar indices — keep X on plot edge when placing.
-            const channelNoExtrabarX = activeToolType === 'parallel-channel'
-                || activeToolType === 'disjoint-channel'
-                || activeToolType === 'flat-top-bottom';
-            const allowHorizontalOverflow = (allowsExtrabar && !channelNoExtrabarX)
+            const allowHorizontalOverflow = allowsExtrabar
                 || isResizingVolumeProfileRightBoundary;
             screenX = allowHorizontalOverflow
                 ? Math.max(minX, screenX)

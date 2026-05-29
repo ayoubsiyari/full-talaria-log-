@@ -48,6 +48,13 @@ const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
     'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
     // Lines & paths
     'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
+    // Channels — future padding (baseline uses distinct X; render uses perpendicular offset)
+    'parallel-channel', 'flat-top-bottom', 'disjoint-channel',
+    // Measurement, fib/gann
+    'regression-trend', 'ruler',
+    'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan',
+    'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'pitchfork', 'pitchfan',
+    'trend-fib-extension', 'gann-box', 'gann-fan', 'gann-square', 'gann-square-fixed',
 ]);
 
 /** Shape tools: labels off by default; user may enable via style tab. */
@@ -1240,9 +1247,16 @@ class BaseDrawing {
         if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
             this.hasAxisHighlightZones = true;
-            // Trigger re-render to show the zones (skip during live resize/drag — chart redraws on release)
-            if (!opts.live && this.chart.scheduleRender) {
-                this.chart.scheduleRender();
+            if (this.chart.scheduleRender) {
+                if (opts.live) {
+                    requestAnimationFrame(() => {
+                        if (this.chart && this.chart.scheduleRender) {
+                            this.chart.scheduleRender();
+                        }
+                    });
+                } else if (!this.chart._isRendering) {
+                    this.chart.scheduleRender();
+                }
             }
         }
     }

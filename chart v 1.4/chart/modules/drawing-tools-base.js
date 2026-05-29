@@ -48,7 +48,9 @@ const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
     'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
     // Lines & paths
     'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
-    // Measurement, fib/gann (not parallel/disjoint channels — need distinct baseline X)
+    // Channels — future padding (baseline uses distinct X; render uses perpendicular offset)
+    'parallel-channel', 'flat-top-bottom', 'disjoint-channel',
+    // Measurement, fib/gann
     'regression-trend', 'ruler',
     'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan',
     'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'pitchfork', 'pitchfan',
