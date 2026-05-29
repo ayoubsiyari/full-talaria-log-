@@ -3212,25 +3212,29 @@ class DrawingToolsManager {
         const allowRangeVerticalOverflow = isInteractingWithExistingDatePriceRange
             && rangeInteractionMode !== 'time';
 
-        // Clamp to chart inner area so no drawing point can go outside the chart
+        const allowsExtrabar = typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(activeToolType);
+
+        // Clamp to plot area (price pane). Shapes/lines/text may use full height & future bar padding.
         if (this.chart) {
             const m = this.chart.margin;
             const minX = m.l;
             const maxX = this.chart.w - m.r;
+            const minY = typeof m.t === 'number' ? m.t : 0;
             const maxY = this.chart.h - m.b;
+            const allowVerticalOverflow = allowsExtrabar
+                || isInteractingWithExistingVolumeProfile
+                || allowRangeVerticalOverflow;
 
             // For VP right-boundary resize, allow dragging past the container edge.
             screenX = isResizingVolumeProfileRightBoundary
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
-            screenY = (isInteractingWithExistingVolumeProfile || allowRangeVerticalOverflow)
+            screenY = allowVerticalOverflow
                 ? screenY
-                : Math.max(0, Math.min(maxY, screenY));
+                : Math.max(minY, Math.min(maxY, screenY));
         }
-        
-        const allowsExtrabar = typeof CoordinateUtils !== 'undefined'
-            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
-            && CoordinateUtils.allowsExtrabarBarIndex(activeToolType);
         // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
         const isFreehandContinuous = this.currentTool === 'path'
             || this.currentTool === 'brush'

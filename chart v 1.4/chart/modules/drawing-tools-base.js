@@ -39,11 +39,15 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
 /** Never show axis price/time labels (no toggle). */
 const AXIS_LABEL_DISABLED_TYPES = new Set(['brush', 'highlighter']);
 
-/** Text / labels / markers: bar index may exceed last candle (future padding) — never replay-clamp X. */
+/** Bar index may exceed last candle (future padding) — fractional X, no replay-clamp. */
 const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
     'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
     'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin',
     'table', 'emoji', 'image', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
+    // Shapes — place/drag in empty space right of last bar (TradingView-style)
+    'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
+    // Lines & paths
+    'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
 ]);
 
 /** Shape tools: labels off by default; user may enable via style tab. */
