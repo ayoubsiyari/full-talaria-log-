@@ -3339,8 +3339,9 @@ class DrawingToolsManager {
                 || isInteractingWithExistingVolumeProfile
                 || allowRangeVerticalOverflow;
 
-            // For VP right-boundary resize, allow dragging past the container edge.
-            screenX = isResizingVolumeProfileRightBoundary
+            // Shapes/lines in future padding: do not clamp X to plot right edge while resizing/moving.
+            const allowHorizontalOverflow = allowsExtrabar || isResizingVolumeProfileRightBoundary;
+            screenX = allowHorizontalOverflow
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
             screenY = allowVerticalOverflow
@@ -5622,7 +5623,7 @@ class DrawingToolsManager {
             drawing.endHandleDrag(handleRole, context);
         }
 
-        // Do a full re-render to finalize the resize
+        drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
 
         // Record modification for undo/redo
@@ -5631,8 +5632,6 @@ class DrawingToolsManager {
         }
 
         this.isCustomHandleDrag = false;
-        // Recalculate timestamps from new positions
-        drawing.recalculateTimestamps();
         this.customHandleDrawing = null;
         this.customHandleRole = null;
         this.customHandleStart = null;
@@ -7112,6 +7111,19 @@ class DrawingToolsManager {
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
+        }
+        if (typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)
+            && Array.isArray(drawing.points)
+            && Array.isArray(this.chart.data)
+            && this.chart.data.length > 0) {
+            const lastIdx = this.chart.data.length - 1;
+            const hasExtrabarPoint = drawing.points.some((p) =>
+                p && Number.isFinite(p.x) && (p.x > lastIdx + 0.001 || p.x < -0.001)
+            );
+            if (hasExtrabarPoint) {
+                return;
+            }
         }
         try {
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart);

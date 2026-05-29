@@ -48,6 +48,11 @@ const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
     'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
     // Lines & paths
     'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
+    // Channels, measurement, fib/gann families (resize/move in future padding)
+    'parallel-channel', 'disjoint-channel', 'regression-trend', 'ruler',
+    'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan',
+    'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'pitchfork', 'pitchfan',
+    'trend-fib-extension', 'gann-box', 'gann-fan', 'gann-square', 'gann-square-fixed',
 ]);
 
 /** Shape tools: labels off by default; user may enable via style tab. */
