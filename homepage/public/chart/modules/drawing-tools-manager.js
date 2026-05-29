@@ -3228,10 +3228,14 @@ class DrawingToolsManager {
                 : Math.max(0, Math.min(maxY, screenY));
         }
         
+        const allowsExtrabar = typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(activeToolType);
         // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
-        const isContinuousTool = this.currentTool === 'path' || 
-                                  this.currentTool === 'brush' || 
-                                  this.currentTool === 'highlighter';
+        const isFreehandContinuous = this.currentTool === 'path'
+            || this.currentTool === 'brush'
+            || this.currentTool === 'highlighter';
+        const isContinuousTool = isFreehandContinuous || allowsExtrabar;
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -3248,7 +3252,7 @@ class DrawingToolsManager {
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
         const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
         const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
-        if (!isContinuousTool && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        if (!isFreehandContinuous && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
@@ -3261,7 +3265,8 @@ class DrawingToolsManager {
 
         // Keep panel/original behavior consistent for non-freehand tools:
         // anchor X to candle indices so points cannot land between candles.
-        if (!isContinuousTool) {
+        // Text / signpost / pin may sit in future padding beyond the last candle.
+        if (!isFreehandContinuous && !allowsExtrabar) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -6828,6 +6833,11 @@ class DrawingToolsManager {
             'triangle', 'ellipse', 'circle', 'arc'
         ]);
         if (noClamp.has(drawing.type)) return null;
+        if (typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)) {
+            return null;
+        }
         return { replayClampToLastBar: true };
     }
 

@@ -39,6 +39,13 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
 /** Never show axis price/time labels (no toggle). */
 const AXIS_LABEL_DISABLED_TYPES = new Set(['brush', 'highlighter']);
 
+/** Text / labels / markers: bar index may exceed last candle (future padding) — never replay-clamp X. */
+const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
+    'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+    'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin',
+    'table', 'emoji', 'image', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
+]);
+
 /** Shape tools: labels off by default; user may enable via style tab. */
 const AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES = new Set([
     'rectangle',
@@ -1728,6 +1735,11 @@ class CoordinateUtils {
         });
     }
 
+    /** True when X may sit in future/past padding beyond loaded candles (text tools, markers). */
+    static allowsExtrabarBarIndex(type) {
+        return !!type && EXTRAPOLATE_BAR_INDEX_TYPES.has(type);
+    }
+
     /**
      * Resolve live drawing points from persisted timestamp anchors + current chart.data.
      * chart.data is the same series dataIndexToPixel/xScale use (required for TF switches).
@@ -1740,7 +1752,8 @@ class CoordinateUtils {
             && drawing.type !== 'brush' && drawing.type !== 'highlighter'
             && drawing.type !== 'rectangle' && drawing.type !== 'rotated-rectangle'
             && drawing.type !== 'triangle' && drawing.type !== 'ellipse'
-            && drawing.type !== 'circle' && drawing.type !== 'arc')
+            && drawing.type !== 'circle' && drawing.type !== 'arc'
+            && !CoordinateUtils.allowsExtrabarBarIndex(drawing.type))
             ? { replayClampToLastBar: true }
             : null;
         if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
