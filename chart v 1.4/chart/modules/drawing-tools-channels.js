@@ -2,6 +2,21 @@
 // Channel Drawing Tools
 // ============================================================================
 
+/** Perpendicular offset (pixels) from baseline (x1,y1)-(x2,y2) to parallel line through (x3,y3). */
+function parallelChannelPixelOffset(x1, y1, x2, y2, x3, y3) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (!Number.isFinite(len) || len < 1e-6) {
+        const oy = (Number.isFinite(y3) && Number.isFinite(y1)) ? y3 - y1 : 0;
+        return { offsetX: 0, offsetY: oy };
+    }
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const perpDist = (x3 - x1) * perpX + (y3 - y1) * perpY;
+    return { offsetX: perpX * perpDist, offsetY: perpY * perpDist };
+}
+
 // ============================================================================
 // Parallel Channel Tool
 // ============================================================================
@@ -65,63 +80,100 @@ class ParallelChannelTool extends BaseDrawing {
             const perpX = -baseY / baseLen;
             const perpY = baseX / baseLen;
 
-            // Use vertical-only (price-space) offset so channel sides are always vertical
-            const channelHeight = p2.y - p0.y;
-            const offsetX = 0;
-            const offsetY = channelHeight;
+            const scales = context.scales || {};
+            const px0 = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p0.x) : (scales.xScale ? scales.xScale(p0.x) : 0);
+            const py0 = scales.yScale ? scales.yScale(p0.y) : 0;
+            const px1 = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p1.x) : (scales.xScale ? scales.xScale(p1.x) : 0);
+            const py1 = scales.yScale ? scales.yScale(p1.y) : 0;
+            const px2 = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p2.x) : (scales.xScale ? scales.xScale(p2.x) : px0);
+            const py2 = scales.yScale ? scales.yScale(p2.y) : py0;
+            const { offsetX, offsetY } = parallelChannelPixelOffset(px0, py0, px1, py1, px2, py2);
+            const toDataX = (px) => (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
+                ? scales.chart.pixelToDataIndex(px)
+                : (scales.xScale && typeof scales.xScale.invert === 'function' ? scales.xScale.invert(px) : px);
+            const toDataY = (py) => (scales.yScale && typeof scales.yScale.invert === 'function')
+                ? scales.yScale.invert(py)
+                : py;
+            const dataPointToPixel = () => {
+                const dpx = scales.chart && scales.chart.dataIndexToPixel
+                    ? scales.chart.dataIndexToPixel(dataPoint.x)
+                    : (scales.xScale ? scales.xScale(dataPoint.x) : 0);
+                const dpy = scales.yScale ? scales.yScale(dataPoint.y) : 0;
+                return { x: dpx, y: dpy };
+            };
 
             const moveP0PreserveOffset = (newP0) => {
-                const dy = newP0.y - p0.y;
+                const perpDist = (p2.x - p0.x) * perpX + (p2.y - p0.y) * perpY;
                 this.points[0] = { x: newP0.x, y: newP0.y };
-                this.points[2] = { x: newP0.x, y: p2.y + dy };
+                this.points[2] = {
+                    x: newP0.x + perpX * perpDist,
+                    y: newP0.y + perpY * perpDist
+                };
                 this.meta.updatedAt = Date.now();
                 return true;
             };
 
             const moveP1PreserveOffset = (newP1) => {
+                const perpDist = (p2.x - p0.x) * perpX + (p2.y - p0.y) * perpY;
                 this.points[1] = { x: newP1.x, y: newP1.y };
+                const newBaseX = newP1.x - p0.x;
+                const newBaseY = newP1.y - p0.y;
+                const newBaseLen = Math.sqrt(newBaseX * newBaseX + newBaseY * newBaseY);
+                if (newBaseLen > 0) {
+                    const nPerpX = -newBaseY / newBaseLen;
+                    const nPerpY = newBaseX / newBaseLen;
+                    this.points[2] = {
+                        x: p0.x + nPerpX * perpDist,
+                        y: p0.y + nPerpY * perpDist
+                    };
+                }
                 this.meta.updatedAt = Date.now();
                 return true;
             };
+
+            const cornerDragToBaselinePoint = (subtractOffset) => {
+                const dp = dataPointToPixel();
+                const bx = subtractOffset ? dp.x - offsetX : dp.x;
+                const by = subtractOffset ? dp.y - offsetY : dp.y;
+                return { x: toDataX(bx), y: toDataY(by) };
+            };
             
             if (handleRole === 'top-mid') {
-                // Move top line vertically; preserve channel height
+                const midX = (p0.x + p1.x) / 2;
                 const midY = (p0.y + p1.y) / 2;
+                const deltaX = dataPoint.x - midX;
                 const deltaY = dataPoint.y - midY;
-                this.points[0] = { x: p0.x, y: p0.y + deltaY };
-                this.points[1] = { x: p1.x, y: p1.y + deltaY };
-                this.points[2] = { x: p0.x, y: p2.y + deltaY };
+                this.points[0] = { x: p0.x + deltaX, y: p0.y + deltaY };
+                this.points[1] = { x: p1.x + deltaX, y: p1.y + deltaY };
+                this.points[2] = { x: p2.x + deltaX, y: p2.y + deltaY };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
             
             if (handleRole === 'bottom-mid') {
-                // Adjust channel height vertically
-                const topMidY = (p0.y + p1.y) / 2;
-                const newHeight = dataPoint.y - topMidY;
-                this.points[2] = { x: p0.x, y: p0.y + newHeight };
+                const perpDist = (dataPoint.x - p0.x) * perpX + (dataPoint.y - p0.y) * perpY;
+                this.points[2] = { x: p0.x + perpX * perpDist, y: p0.y + perpY * perpDist };
                 this.meta.updatedAt = Date.now();
                 return true;
             }
             
             if (handleRole === 'bottom-right') {
-                // Bottom right corner - rotate/resize (move p1) while preserving channel offset
-                return moveP1PreserveOffset({ x: dataPoint.x - offsetX, y: dataPoint.y - offsetY });
+                return moveP1PreserveOffset(cornerDragToBaselinePoint(true));
             }
 
             if (handleRole === 'bottom-left') {
-                // Bottom left corner - rotate/resize (move p0) while preserving channel offset
-                return moveP0PreserveOffset({ x: dataPoint.x - offsetX, y: dataPoint.y - offsetY });
+                return moveP0PreserveOffset(cornerDragToBaselinePoint(true));
             }
 
             if (handleRole === 'top-left') {
-                // Top left corner - rotate/resize (move p0) while preserving channel offset
-                return moveP0PreserveOffset({ x: dataPoint.x, y: dataPoint.y });
+                return moveP0PreserveOffset(cornerDragToBaselinePoint(false));
             }
 
             if (handleRole === 'top-right') {
-                // Top right corner - rotate/resize (move p1)
-                return moveP1PreserveOffset({ x: dataPoint.x, y: dataPoint.y });
+                return moveP1PreserveOffset(cornerDragToBaselinePoint(false));
             }
             
             return false;
@@ -143,9 +195,24 @@ class ParallelChannelTool extends BaseDrawing {
             return true;
         }
         
-        // Point 2 (parallel line handle) - vertical movement only (price-space offset)
+        // Point 2 — perpendicular offset from baseline (same as placement)
         if (index === 2 && this.points.length >= 3) {
-            this.points[2] = { x: this.points[0].x, y: dataPoint.y };
+            const p0 = this.points[0];
+            const p1 = this.points[1];
+            const baseX = p1.x - p0.x;
+            const baseY = p1.y - p0.y;
+            const baseLen = Math.sqrt(baseX * baseX + baseY * baseY);
+            if (baseLen > 0) {
+                const perpX = -baseY / baseLen;
+                const perpY = baseX / baseLen;
+                const perpDist = (dataPoint.x - p0.x) * perpX + (dataPoint.y - p0.y) * perpY;
+                this.points[2] = {
+                    x: p0.x + perpX * perpDist,
+                    y: p0.y + perpY * perpDist
+                };
+            } else {
+                this.points[2] = { x: p0.x, y: dataPoint.y };
+            }
             this.meta.updatedAt = Date.now();
             return true;
         }
@@ -186,11 +253,8 @@ class ParallelChannelTool extends BaseDrawing {
 
             const dx = x2 - x1;
             const dy = y2 - y1;
-            // Vertical-only offset: measure Y distance from baseline at P3's x, use 0 for X
             const slope = dx !== 0 ? dy / dx : 0;
-            const yBaselineAtP3 = y1 + slope * (x3 - x1);
-            const offsetX = 0;
-            const offsetY = y3 - yBaselineAtP3;
+            const { offsetX, offsetY } = parallelChannelPixelOffset(x1, y1, x2, y2, x3, y3);
 
             // Get chart boundaries from scale range
             const xRange = scales.xScale.range();
@@ -443,12 +507,7 @@ class ParallelChannelTool extends BaseDrawing {
             ? scales.chart.dataIndexToPixel(p3.x)
             : scales.xScale(p3.x);
         const y3 = scales.yScale(p3.y);
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const slope = dx !== 0 ? dy / dx : 0;
-        const yBaselineAtP3 = y1 + slope * (x3 - x1);
-        const offsetX = 0;
-        const offsetY = y3 - yBaselineAtP3;
+        const { offsetX, offsetY } = parallelChannelPixelOffset(x1, y1, x2, y2, x3, y3);
         return [
             { cx: x1, cy: y1, index: 'top-left', type: 'corner' },
             { cx: (x1 + x2) / 2, cy: (y1 + y2) / 2, index: 'top-mid', type: 'middle' },

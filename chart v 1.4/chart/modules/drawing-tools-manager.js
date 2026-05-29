@@ -3339,8 +3339,12 @@ class DrawingToolsManager {
                 || isInteractingWithExistingVolumeProfile
                 || allowRangeVerticalOverflow;
 
-            // Shapes/lines in future padding: do not clamp X to plot right edge while resizing/moving.
-            const allowHorizontalOverflow = allowsExtrabar || isResizingVolumeProfileRightBoundary;
+            // Channel tools need distinct baseline bar indices — keep X on plot edge when placing.
+            const channelNoExtrabarX = activeToolType === 'parallel-channel'
+                || activeToolType === 'disjoint-channel'
+                || activeToolType === 'flat-top-bottom';
+            const allowHorizontalOverflow = (allowsExtrabar && !channelNoExtrabarX)
+                || isResizingVolumeProfileRightBoundary;
             screenX = allowHorizontalOverflow
                 ? Math.max(minX, screenX)
                 : Math.max(minX, Math.min(maxX, screenX));
