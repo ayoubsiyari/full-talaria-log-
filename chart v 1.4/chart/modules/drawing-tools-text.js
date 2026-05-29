@@ -97,9 +97,74 @@ function openTextAnnotationSettings(drawing, event) {
     manager.editDrawing(drawing, event && event.pageX, event && event.pageY);
 }
 
+/** Keep resize handles aligned during live text redraws (no handle DOM teardown). */
+function syncTextHandlePositions(group, bbox) {
+    if (!group || group.empty() || !bbox) return false;
+    const existing = group.selectAll('.resize-handle-group');
+    if (existing.empty()) return false;
+    const minX = bbox.x;
+    const maxX = bbox.x + bbox.width;
+    const minY = bbox.y;
+    const maxY = bbox.y + bbox.height;
+    const midX = (minX + maxX) / 2;
+    const midY = (minY + maxY) / 2;
+    const roles = [
+        { x: minX, y: minY, role: 'corner-tl' },
+        { x: maxX, y: minY, role: 'corner-tr' },
+        { x: maxX, y: maxY, role: 'corner-br' },
+        { x: minX, y: maxY, role: 'corner-bl' },
+        { x: midX, y: minY, role: 'side-top' },
+        { x: maxX, y: midY, role: 'side-right' },
+        { x: midX, y: maxY, role: 'side-bottom' },
+        { x: minX, y: midY, role: 'side-left' }
+    ];
+    roles.forEach((pos) => {
+        const hg = group.select(`.resize-handle-group[data-handle-role="${pos.role}"]`);
+        if (hg.empty()) return;
+        hg.selectAll('circle').attr('cx', pos.x).attr('cy', pos.y);
+    });
+    return true;
+}
+
+function scheduleTextAnnotationLiveRender(drawing) {
+    if (!drawing) return;
+    const manager = drawing.chart && drawing.chart.drawingManager;
+    if (manager && typeof manager.scheduleRenderDrawing === 'function') {
+        manager.scheduleRenderDrawing(drawing);
+        return;
+    }
+    if (drawing._lastContainer && drawing._lastScales) {
+        const liveOpts = {
+            reuseGroup: !!(drawing.group && !drawing.group.empty()),
+            skipHandles: true
+        };
+        drawing.render(drawing._lastContainer, drawing._lastScales, liveOpts);
+        if (drawing.bbox) syncTextHandlePositions(drawing.group, drawing.bbox);
+    }
+}
+
+function beginTextAnnotationInlineEdit(drawing) {
+    const manager = drawing && drawing.chart && drawing.chart.drawingManager;
+    if (manager && typeof manager.beginTextInlineEdit === 'function') {
+        manager.beginTextInlineEdit(drawing);
+    } else if (drawing) {
+        drawing._inlineTextEditing = true;
+    }
+}
+
+function endTextAnnotationInlineEdit(drawing) {
+    const manager = drawing && drawing.chart && drawing.chart.drawingManager;
+    if (manager && typeof manager.endTextInlineEdit === 'function') {
+        manager.endTextInlineEdit(drawing);
+    } else if (drawing) {
+        drawing._inlineTextEditing = false;
+    }
+}
+
 function createInlineTextSaveHandler(drawing) {
     return (newText, confirmed = false) => {
         const manager = drawing.chart && drawing.chart.drawingManager;
+        endTextAnnotationInlineEdit(drawing);
         const normalized = (newText || '').replace(/\r\n/g, '\n');
         const empty = isTextToolPlaceholder(normalized);
         if (empty) {
@@ -108,11 +173,19 @@ function createInlineTextSaveHandler(drawing) {
                 return;
             }
             drawing.setText('');
-            if (drawing.chart) drawing.chart.render();
+            if (manager && typeof manager.renderDrawing === 'function') {
+                manager.renderDrawing(drawing);
+            } else if (drawing.chart) {
+                drawing.chart.render();
+            }
             return;
         }
         drawing.setText(normalized);
-        if (drawing.chart) drawing.chart.render();
+        if (manager && typeof manager.renderDrawing === 'function') {
+            manager.renderDrawing(drawing);
+        } else if (drawing.chart) {
+            drawing.chart.render();
+        }
         if (typeof window !== 'undefined') {
             try {
                 window.dispatchEvent(new CustomEvent('v9TxtDrawingContentChanged', {
@@ -403,6 +476,9 @@ class TextTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 cleanupDragListeners();
+                if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                    downPos = null;
+                }
             }
         };
 
@@ -424,6 +500,8 @@ class TextTool extends BaseDrawing {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
+
+            beginTextAnnotationInlineEdit(self);
 
             // Resolve live element — selectDrawing re-renders so captured node may be detached
             const liveNode = (self.group && typeof self.group.select === 'function')
@@ -455,9 +533,7 @@ class TextTool extends BaseDrawing {
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
+                        scheduleTextAnnotationLiveRender(self);
                     }
                 }
             );
@@ -539,7 +615,19 @@ class TextTool extends BaseDrawing {
             bodyHitArea.node().addEventListener('dblclick', handleHitDblClickSettings, true);
         }
 
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.createTextHandles(this.group, this.bbox);
+        } else if (this.bbox) {
+            this._syncTextHandlePositions(this.group, this.bbox);
+        }
+
         return this.group;
+    }
+
+    _syncTextHandlePositions(group, bbox) {
+        if (!syncTextHandlePositions(group, bbox)) {
+            this.createTextHandles(group, bbox);
+        }
     }
 
     /**
@@ -848,8 +936,11 @@ class NoteBoxTool extends BaseDrawing {
         // Store bbox for handle creation
         this.bbox = { x: x, y: y - boxHeight, width: boxWidth, height: boxHeight };
 
-        // Create resize handles like rectangles (4 corners + 4 sides)
-        this.createTextHandles(this.group, this.bbox);
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.createTextHandles(this.group, this.bbox);
+        } else if (this.bbox) {
+            this._syncTextHandlePositions(this.group, this.bbox);
+        }
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -897,6 +988,8 @@ class NoteBoxTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
+            beginTextAnnotationInlineEdit(self);
+
             const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -918,7 +1011,11 @@ class NoteBoxTool extends BaseDrawing {
                     fontWeight: self.style.fontWeight || 'normal',
                     color: self.style.textColor,
                     textAlign: 'left',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        scheduleTextAnnotationLiveRender(self);
+                    }
                 }
             );
         };
@@ -975,6 +1072,12 @@ class NoteBoxTool extends BaseDrawing {
         }
 
         return this.group;
+    }
+
+    _syncTextHandlePositions(group, bbox) {
+        if (!syncTextHandlePositions(group, bbox)) {
+            this.createTextHandles(group, bbox);
+        }
     }
 
     /**
@@ -1235,6 +1338,8 @@ class AnchoredTextTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
+            beginTextAnnotationInlineEdit(self);
+
             const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -1257,7 +1362,11 @@ class AnchoredTextTool extends BaseDrawing {
                     fontStyle: self.style.fontStyle || 'normal',
                     color: self.style.textColor,
                     textAlign: 'center',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`
+                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    onInput: (newText) => {
+                        self.setText((newText || '').replace(/\r\n/g, '\n'));
+                        scheduleTextAnnotationLiveRender(self);
+                    }
                 }
             );
         };
@@ -1526,6 +1635,8 @@ class NoteTool extends BaseDrawing {
                 return false;
             }
 
+            beginTextAnnotationInlineEdit(self);
+
             editor.show(
                 bbox.left + window.scrollX,
                 bbox.top + window.scrollY,
@@ -1550,9 +1661,7 @@ class NoteTool extends BaseDrawing {
                     onInput: (newText) => {
                         const next = (newText || '').replace(/\r\n/g, '\n');
                         self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
+                        scheduleTextAnnotationLiveRender(self);
                     }
                 }
             );
@@ -2200,6 +2309,8 @@ class PinTool extends BaseDrawing {
                 const editor = manager && manager.textEditor;
                 if (!editor || typeof editor.show !== 'function') return;
 
+                beginTextAnnotationInlineEdit(self);
+
                 const rect = boxTextEl.node().getBoundingClientRect();
                 const editX = rect.left + window.scrollX;
                 const editY = rect.top + window.scrollY;
@@ -2759,6 +2870,8 @@ class CalloutTool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
+            beginTextAnnotationInlineEdit(self);
+
             const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -2794,9 +2907,7 @@ class CalloutTool extends BaseDrawing {
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
+                        scheduleTextAnnotationLiveRender(self);
                     }
                 }
             );
@@ -3129,6 +3240,8 @@ class CommentTool extends BaseDrawing {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
+
+            beginTextAnnotationInlineEdit(self);
 
             const rect = textElement.node().getBoundingClientRect();
             const editX = rect.left + window.scrollX;
@@ -3764,6 +3877,8 @@ class Signpost2Tool extends BaseDrawing {
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
+            beginTextAnnotationInlineEdit(self);
+
             const bbox = textElement.node().getBoundingClientRect();
             const x = bbox.left + window.scrollX;
             const y = bbox.top + window.scrollY;
@@ -3798,9 +3913,7 @@ class Signpost2Tool extends BaseDrawing {
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        if (self._lastContainer && self._lastScales) {
-                            self.render(self._lastContainer, self._lastScales);
-                        }
+                        scheduleTextAnnotationLiveRender(self);
                     }
                 }
             );
@@ -4140,6 +4253,10 @@ if (typeof window !== 'undefined') {
         isTextToolPlaceholder,
         resolveTextToolDisplay,
         createInlineTextSaveHandler,
-        openTextAnnotationSettings
+        openTextAnnotationSettings,
+        syncTextHandlePositions,
+        scheduleTextAnnotationLiveRender,
+        beginTextAnnotationInlineEdit,
+        endTextAnnotationInlineEdit
     };
 }
