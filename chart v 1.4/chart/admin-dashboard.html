@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="x-admin-build" content="tickets-layout-20260524j">
+<meta name="x-admin-build" content="tickets-layout-20260524k">
 <title>Talaria — Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -278,7 +278,7 @@ body {
 }
 .support-stats-shell.is-collapsed #supportTicketStats { display: none; }
 .support-stats-shell:not(.is-collapsed) #supportTicketStats {
-  max-height: 24vh;
+  max-height: 36vh;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-top: 0;
@@ -4909,8 +4909,8 @@ async function loadSupportTicketStats() {
       ? 'Queue overview · ' + requesterScope
       : 'Queue overview';
     const metricsHdr = requesterScope
-      ? 'Bug &amp; error metrics · ' + requesterScope
-      : 'Bug &amp; error metrics';
+      ? 'Ticket metrics · ' + requesterScope
+      : 'Ticket metrics';
     const resolveMeta = requesterScope
       ? bugErrorResolved + ' of ' + bugErrorTotal + ' closed for this user'
       : bugErrorResolved + ' of ' + bugErrorTotal + ' closed';
@@ -4921,55 +4921,47 @@ async function loadSupportTicketStats() {
     const ratedCount = s.admin_yes_no_rated || (yesCount + noCount);
     const yesPct = s.admin_yes_no_yes_pct != null ? s.admin_yes_no_yes_pct : 0;
     const noPct = s.admin_yes_no_no_pct != null ? s.admin_yes_no_no_pct : 0;
-    const verdictHdr = requesterScope
-      ? 'Admin verdict · ' + requesterScope
-      : 'Admin verdict';
     const verdictMeta = ratedCount
       ? (yesCount + ' yes · ' + noCount + ' no · ' + unsetCount + ' unset')
       : 'Mark tickets Yes or No to track percentages';
 
     const quickSummary = $('supportStatsQuickSummary');
     if (quickSummary) {
+      const parts = ['<span style="color:var(--text-secondary)">Resolve ' + resolvePct + '%</span>'];
       if (ratedCount) {
-        quickSummary.innerHTML =
-          '<span class="verdict-yes">Yes ' + yesPct + '%</span>' +
-          '<span class="verdict-no">No ' + noPct + '%</span>' +
-          '<span style="color:var(--text-muted);font-weight:500">(' + ratedCount + ' rated)</span>';
-      } else {
-        quickSummary.innerHTML = '<span style="color:var(--text-muted);font-weight:500">No verdicts yet</span>';
+        parts.push('<span class="verdict-yes">Yes ' + yesPct + '%</span>');
+        parts.push('<span class="verdict-no">No ' + noPct + '%</span>');
       }
+      quickSummary.innerHTML = parts.join('');
     }
 
-    const verdictCards = [
-      '<div class="support-stats-focus-card verdict-yes">',
-      '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">Yes</div><div class="focus-meta">' + yesCount + ' ticket' + (yesCount === 1 ? '' : 's') + '</div></div>',
-      '    <div class="focus-value">' + yesPct + '%</div>',
-      '  </div>',
-      supportStatsBar('resolve', yesPct),
-      '</div>',
-      '<div class="support-stats-focus-card verdict-no">',
-      '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">No</div><div class="focus-meta">' + noCount + ' ticket' + (noCount === 1 ? '' : 's') + '</div></div>',
-      '    <div class="focus-value">' + noPct + '%</div>',
-      '  </div>',
-      supportStatsBar('bug', noPct),
-      '</div>',
-      '<div class="support-stats-focus-card">',
-      '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">Unset</div><div class="focus-meta">' + verdictMeta + '</div></div>',
-      '    <div class="focus-value">' + unsetCount + '</div>',
-      '  </div>',
-      '</div>'
-    ].join('');
-
-    const focusCards = [
+    const topMetricsCards = [
       '<div class="support-stats-focus-card resolve">',
       '  <div class="support-stats-focus-top">',
       '    <div><div class="focus-title">Bug / Error resolve</div><div class="focus-meta">' + resolveMeta + '</div></div>',
       '    <div class="focus-value">' + resolvePct + '%</div>',
       '  </div>',
       supportStatsBar('resolve', resolvePct),
+      '</div>',
+      '<div class="support-stats-focus-card verdict-yes">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">Admin Yes</div><div class="focus-meta">' + yesCount + ' ticket' + (yesCount === 1 ? '' : 's') + '</div></div>',
+      '    <div class="focus-value">' + yesPct + '%</div>',
+      '  </div>',
+      supportStatsBar('resolve', yesPct),
+      '</div>',
+      '<div class="support-stats-focus-card verdict-no">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">Admin No</div><div class="focus-meta">' + noCount + ' ticket' + (noCount === 1 ? '' : 's') + '</div></div>',
+      '    <div class="focus-value">' + noPct + '%</div>',
+      '  </div>',
+      supportStatsBar('bug', noPct),
+      '</div>',
+      '<div class="support-stats-focus-card">',
+      '  <div class="support-stats-focus-top">',
+      '    <div><div class="focus-title">Verdict unset</div><div class="focus-meta">' + verdictMeta + '</div></div>',
+      '    <div class="focus-value">' + unsetCount + '</div>',
+      '  </div>',
       '</div>',
       '<div class="support-stats-focus-card bug">',
       '  <div class="support-stats-focus-top">',
@@ -5016,16 +5008,12 @@ async function loadSupportTicketStats() {
     el.innerHTML =
       '<div class="support-stats-panel">' +
         '<div class="support-stats-section focus">' +
-          '<div class="support-stats-section-hdr">' + verdictHdr + '</div>' +
-          '<div class="support-stats-focus-grid">' + verdictCards + '</div>' +
+          '<div class="support-stats-section-hdr">' + metricsHdr + '</div>' +
+          '<div class="support-stats-focus-grid">' + topMetricsCards + '</div>' +
         '</div>' +
         '<div class="support-stats-section">' +
           '<div class="support-stats-section-hdr">' + queueHdr + '</div>' +
           '<div class="support-stats-kpi-row">' + queueRow + '</div>' +
-        '</div>' +
-        '<div class="support-stats-section focus">' +
-          '<div class="support-stats-section-hdr">' + metricsHdr + '</div>' +
-          '<div class="support-stats-focus-grid">' + focusCards + '</div>' +
         '</div>' +
         '<div class="support-stats-section">' +
           '<div class="support-stats-section-hdr">Active by category</div>' +
