@@ -15476,14 +15476,41 @@ class Chart {
         return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
     }
 
-    /** Use CSS translate for drawings during pan instead of rebuilding every SVG shape per frame. */
+    /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
     _canPanTransformDrawings() {
-        return this._isChartViewPanning() && this._panSnapOffsetX != null;
+        return false;
     }
 
-    /** Pan transform: 1:1 with chart drag (fast). Baseline geometry set in prepareDrawingsForChartPan. */
+    /** @deprecated See _canPanTransformDrawings */
     _shouldUsePanDrawingsTransform() {
-        return this._canPanTransformDrawings();
+        return false;
+    }
+
+    /** V9 #chart-container uses overflow:hidden — relax while panning so nothing clips mid-drag. */
+    _setChartPanDomOverflow(relax) {
+        const nodes = [];
+        const container = document.getElementById('chart-container');
+        const wrapper = document.getElementById('chartWrapper')
+            || (this.canvas && this.canvas.parentElement);
+        if (container) nodes.push(container);
+        if (wrapper && wrapper !== container) nodes.push(wrapper);
+        if (!nodes.length) return;
+        if (relax) {
+            if (!this._panDomOverflowSaved) this._panDomOverflowSaved = new Map();
+            nodes.forEach((el) => {
+                if (!this._panDomOverflowSaved.has(el)) {
+                    this._panDomOverflowSaved.set(el, el.style.overflow || '');
+                }
+                el.style.overflow = 'visible';
+            });
+            return;
+        }
+        if (!this._panDomOverflowSaved) return;
+        nodes.forEach((el) => {
+            const prev = this._panDomOverflowSaved.get(el);
+            if (prev !== undefined) el.style.overflow = prev;
+        });
+        this._panDomOverflowSaved = null;
     }
 
     /** Finger-down chart drag — use 1:1 movement (no rubber-band damping). */
@@ -15533,6 +15560,10 @@ class Chart {
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
+        if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(true);
+        }
+        this._setChartPanDomOverflow(true);
     }
 
     _clearPanTimeTickCache() {
@@ -15633,7 +15664,11 @@ class Chart {
         if (dm && typeof dm._clearDrawingGroupPanTransforms === 'function') {
             dm._clearDrawingGroupPanTransforms();
         }
+        if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(false);
+        }
         if (clearSnap) {
+            this._setChartPanDomOverflow(false);
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
             this._panSnapYDomain = null;
@@ -15707,6 +15742,9 @@ class Chart {
             dm.tempGroup.attr('transform', transform);
         }
         this._applyAxisHighlightPanTransform(dx, ty);
+        if (typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(true);
+        }
         if (typeof dm.patchDrawingsDuringChartPan === 'function') {
             dm.patchDrawingsDuringChartPan(dx, ty);
         }
@@ -16094,24 +16132,36 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes (lite, 60fps loop).
+        // Fast path while dragging chart: candles + overlays stay visible (60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
             // Vertical under candles; horizontal redrawn after axes so LOD candles do not hide price levels.
             this.drawGrid({ panFast: true, skipHorizontal: true });
+            this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+                try {
+                    this.compareOverlay.drawOverlays();
+                } catch (e) {
+                    console.error('Error drawing overlays:', e);
+                }
+            }
             this.drawAxes();
             // Margin may widen after axis labels — refresh scales (Y domain stays pan-frozen).
             this.calculateScales();
             this.drawGrid({ panFast: true, skipVertical: true });
             this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
-            if (this._shouldUsePanDrawingsTransform()) {
-                this._applyPanDrawingsLayerTransform();
-            } else {
-                this._clearPanDrawingsLayerTransform();
-                this.redrawDrawings();
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
             }
+            // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
+            // CSS translate was clipped by #chart-container { overflow: hidden } in V9.
+            this._clearPanDrawingsLayerTransform(false);
+            this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -21551,7 +21601,11 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
-            if (this._isChartViewPanning() || wheelActive) {
+            if (this._isChartViewPanning()) {
+                this.drawingManager.redrawAll({ panFast: true });
+                return;
+            }
+            if (wheelActive) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();
