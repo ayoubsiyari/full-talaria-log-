@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId } from "./v9ThemeSync.js";
 import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
@@ -6077,47 +6077,156 @@ function patchOrderManagerJournalScreenshot(sessionTradeId, phasePreOrPost, imag
   }
 }
 
-// ── Color Picker Popup ───────────────────────────────────────────────────────
-const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
+// ── Color Picker Popup (isolated drag — parent does not re-render per pointermove) ──
+const ColorPickerPopup = memo(function ColorPickerPopup({
+  pos, h: hProp, s: sProp, v: vProp, a: aProp, hexStr: hexProp,
+  c, F, onCommit, onHexCommit, onClose, onDragActiveChange, animation, hideAlpha,
+}) {
+  const [drag, setDrag] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const draftRef = useRef(null);
+
+  const pick = draft || {
+    h: hProp, s: sProp, v: vProp, a: aProp, hex: hexProp,
+  };
+  const { h, s, v, a, hex: hexStr } = pick;
   const rgb = hsvToRgb(h, s, v);
   const solidColor = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
   const hueColor = `hsl(${h},100%,50%)`;
   const outColor = cpBuildColor(rgb.r, rgb.g, rgb.b, a);
+
+  const setDraftLive = useCallback((updater) => {
+    setDraft((prev) => {
+      const base = prev || {
+        h: hProp, s: sProp, v: vProp, a: aProp, hex: hexProp,
+      };
+      const next = typeof updater === "function" ? updater(base) : updater;
+      draftRef.current = next;
+      return next;
+    });
+  }, [hProp, sProp, vProp, aProp, hexProp]);
+
+  useEffect(() => {
+    if (!drag) setDraft(null);
+  }, [hProp, sProp, vProp, aProp, hexProp, drag]);
+
+  useEffect(() => {
+    onDragActiveChange?.(!!drag);
+  }, [drag, onDragActiveChange]);
+
+  useEffect(() => {
+    if (!drag) return;
+    const cap = { capture: true };
+    const { mode, rect } = drag;
+    const onMove = (e) => {
+      if (mode === "sv") {
+        const ns = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const nv = 1 - Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+        setDraftLive((base) => {
+          const rgb2 = hsvToRgb(base.h, ns, nv);
+          return {
+            ...base,
+            s: ns,
+            v: nv,
+            hex: toHex2(rgb2.r) + toHex2(rgb2.g) + toHex2(rgb2.b),
+          };
+        });
+      } else if (mode === "hue") {
+        const nh = Math.max(0, Math.min(360, ((e.clientX - rect.left) / rect.width) * 360));
+        setDraftLive((base) => {
+          const rgb2 = hsvToRgb(nh, base.s, base.v);
+          return {
+            ...base,
+            h: nh,
+            hex: toHex2(rgb2.r) + toHex2(rgb2.g) + toHex2(rgb2.b),
+          };
+        });
+      } else if (mode === "alpha") {
+        const na = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        setDraftLive((base) => ({ ...base, a: na }));
+      }
+    };
+    const onEnd = () => {
+      const d = draftRef.current || {
+        h: hProp, s: sProp, v: vProp, a: aProp, hex: hexProp,
+      };
+      setDrag(null);
+      onCommit({ h: d.h, s: d.s, v: d.v, a: d.a });
+    };
+    window.addEventListener("pointermove", onMove, cap);
+    window.addEventListener("pointerup", onEnd, cap);
+    window.addEventListener("pointercancel", onEnd, cap);
+    return () => {
+      window.removeEventListener("pointermove", onMove, cap);
+      window.removeEventListener("pointerup", onEnd, cap);
+      window.removeEventListener("pointercancel", onEnd, cap);
+    };
+  }, [drag, hProp, sProp, vProp, aProp, hexProp, onCommit, setDraftLive]);
+
+  const beginDrag = (mode, rect, seed) => {
+    draftRef.current = seed;
+    setDraft(seed);
+    setDrag({ mode, rect });
+  };
+
   return (
     <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
-        {/* SV square */}
         <div
-          onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); const ns=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)), nv=1-Math.max(0,Math.min(1,(e.clientY-r.top)/r.height)); onSVChange(ns,nv); onDragStart('sv',r); }}
-          style={{width:"100%",height:130,position:"relative",marginBottom:9,cursor:"crosshair",userSelect:"none",
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const r = e.currentTarget.getBoundingClientRect();
+            const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+            const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+            const rgb2 = hsvToRgb(h, ns, nv);
+            beginDrag("sv", r, {
+              h, s: ns, v: nv, a,
+              hex: toHex2(rgb2.r) + toHex2(rgb2.g) + toHex2(rgb2.b),
+            });
+          }}
+          style={{width:"100%",height:130,position:"relative",marginBottom:9,cursor:"crosshair",userSelect:"none",touchAction:"none",
             background:`linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 100%), linear-gradient(to right, #fff 0%, ${hueColor} 100%)`}}>
           <div style={{position:"absolute",left:`calc(${s*100}% - 5px)`,top:`calc(${(1-v)*100}% - 5px)`,width:10,height:10,borderRadius:"50%",border:"2px solid #fff",background:solidColor,boxShadow:"0 0 4px rgba(0,0,0,0.9), 0 0 0 1px rgba(0,0,0,0.4)",pointerEvents:"none"}}/>
         </div>
-        {/* Hue slider */}
         <div style={{marginBottom:7}}>
           <div style={{fontSize:9,color:c.tm,marginBottom:3,letterSpacing:"0.07em",fontWeight:700}}>HUE</div>
           <div
-            onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); onHChange(Math.max(0,Math.min(360,((e.clientX-r.left)/r.width)*360))); onDragStart('hue',r); }}
-            style={{position:"relative",height:11,background:"linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none"}}>
+            onPointerDown={(e) => {
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
+              const rgb2 = hsvToRgb(nh, s, v);
+              beginDrag("hue", r, {
+                h: nh, s, v, a,
+                hex: toHex2(rgb2.r) + toHex2(rgb2.g) + toHex2(rgb2.b),
+              });
+            }}
+            style={{position:"relative",height:11,background:"linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none",touchAction:"none"}}>
             <div style={{position:"absolute",top:-1,bottom:-1,left:`calc(${(h/360)*100}% - 5px)`,width:10,background:hueColor,border:"2px solid #fff",boxShadow:"0 0 4px rgba(0,0,0,0.8)",pointerEvents:"none"}}/>
           </div>
         </div>
-        {/* Alpha slider */}
         {!hideAlpha && <div style={{marginBottom:9}}>
           <div style={{fontSize:9,color:c.tm,marginBottom:3,letterSpacing:"0.07em",fontWeight:700}}>OPACITY</div>
           <div
-            onMouseDown={(e)=>{ const r=e.currentTarget.getBoundingClientRect(); onAChange(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))); onDragStart('alpha',r); }}
-            style={{position:"relative",height:11,background:`linear-gradient(to right, rgba(${rgb.r},${rgb.g},${rgb.b},0), ${solidColor}), repeating-conic-gradient(rgba(140,160,255,0.08) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px`,border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none"}}>
+            onPointerDown={(e) => {
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+              beginDrag("alpha", r, { h, s, v, a: na, hex: hexStr });
+            }}
+            style={{position:"relative",height:11,background:`linear-gradient(to right, rgba(${rgb.r},${rgb.g},${rgb.b},0), ${solidColor}), repeating-conic-gradient(rgba(140,160,255,0.08) 0% 25%, transparent 0% 50%) 0 0 / 8px 8px`,border:`1px solid ${c.brH}`,cursor:"ew-resize",userSelect:"none",touchAction:"none"}}>
             <div style={{position:"absolute",top:-1,bottom:-1,left:`calc(${a*100}% - 5px)`,width:10,background:solidColor,border:"2px solid #fff",boxShadow:"0 0 4px rgba(0,0,0,0.8)",pointerEvents:"none"}}/>
           </div>
         </div>}
-        {/* Preview + hex + alpha% */}
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           <div style={{width:22,height:22,background:outColor,border:`1px solid ${c.brH}`,flexShrink:0}}/>
           <div style={{flex:1,display:"flex",alignItems:"center",background:c.well,border:`1px solid ${c.br}`,padding:"3px 6px"}}>
             <span style={{fontSize:10,color:c.tm,marginRight:2,fontFamily:F}}>#</span>
-            <input value={hexStr} onChange={e=>onHexChange(e.target.value.replace(/[^0-9a-fA-F]/g,'').slice(0,6))}
+            <input value={hexStr} onChange={e=>{
+              const hex = e.target.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
+              if (hex.length === 6) onHexCommit(hex);
+            }}
               style={{background:"transparent",border:"none",color:c.tx,fontSize:11,fontFamily:F,width:"100%",outline:"none",fontVariantNumeric:"tabular-nums"}}/>
           </div>
           {!hideAlpha && <span style={{fontSize:11,color:c.ts,minWidth:30,textAlign:"right",fontFamily:F,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{Math.round(a*100)}%</span>}
@@ -6137,7 +6246,7 @@ const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange
       </div>
     </div>
   );
-};
+});
 
 const Toggle = ({ on, onClick, color, hk, c, swHov, setSwHov }) => {
   const tC = color || c.acL;
@@ -8783,13 +8892,10 @@ const TalariaV8bLive = () => {
   const [cpV, setCpV] = useState(1);
   const [cpA, setCpA] = useState(1);
   const [cpHex, setCpHex] = useState('ffffff');
-  const [cpDragging, setCpDragging] = useState(null);
-  const [cpDragRect, setCpDragRect] = useState(null);
   /** Mirror state for document listeners registered once ([] effect) — assign each render (no useEffect lag). */
   const colorPickerRef = useRef(null);
-  const cpDraggingRef = useRef(null);
+  const cpPickerDraggingRef = useRef(false);
   colorPickerRef.current = colorPicker;
-  cpDraggingRef.current = cpDragging;
   const DEFAULT_CHART_SETTINGS = {
     theme: "Talaria Dark", chartType: "candlestick", precision: "Default", timezone: "UTC",
     textColor: "#FFFFFF", background: "#000000", gridColor: "rgba(42, 46, 57, 0.6)", crosshairColor: "rgba(120, 123, 134, 0.4)",
@@ -9790,11 +9896,9 @@ const TalariaV8bLive = () => {
     const dismissColorPickerIfOutside = (el) => {
       if (!el) return;
       const insideCp = typeof el.closest === "function" && el.closest(".tlr-cp");
-      if (colorPickerRef.current && !insideCp && !cpDraggingRef.current) {
+      if (colorPickerRef.current && !insideCp && !cpPickerDraggingRef.current) {
         cpBarAnchorRef.current = null;
         setColorPicker(null);
-        setCpDragging(null);
-        setCpDragRect(null);
       }
     };
     // TxBtn/TlBtn open the picker on pointerdown with stopPropagation — so bubble never reaches
@@ -11649,10 +11753,8 @@ const TalariaV8bLive = () => {
   cpPickerKeyRef.current = colorPicker;
   const cpFlushTlOptsRef = useRef(cpFlushTlOpts);
   cpFlushTlOptsRef.current = cpFlushTlOpts;
-  const cpDragUiRafRef = useRef(0);
-  const cpDragUiPendingRef = useRef(null);
   const cpApplyTlStyle = (updater, flushOpts = {}) => {
-    const dragging = !!cpDraggingRef.current;
+    const dragging = !!cpPickerDraggingRef.current;
     const pickerKey = cpPickerKeyRef.current;
     const useFastPath = dragging || !!flushOpts.colorOnly;
     const next =
@@ -11681,7 +11783,7 @@ const TalariaV8bLive = () => {
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
   };
   const cpApplyTxtStyle = (updater) => {
-    const dragging = !!cpDraggingRef.current;
+    const dragging = !!cpPickerDraggingRef.current;
     const next =
       typeof updater === "function" ? updater(txtStyleLiveRef.current) : updater;
     txtStyleLiveRef.current = next;
@@ -11775,78 +11877,37 @@ const TalariaV8bLive = () => {
     else updateSetting(targetKey, colorVal);
   };
   cpApplyRef.current = cpApply;
-  cpPickerDragRef.current = { cpH, cpS, cpV, cpA, cpDragging, cpDragRect, colorPicker };
-
-  // Drag SV / hue / alpha via window listeners so no fullscreen portal sits above the picker and blocks DONE.
-  useEffect(() => {
-    if (!cpDragging || !cpDragRect) return;
-    const cap = { capture: true };
-    const scheduleDragFrame = (fn) => {
-      cpDragUiPendingRef.current = fn;
-      if (cpDragUiRafRef.current) return;
-      cpDragUiRafRef.current = requestAnimationFrame(() => {
-        cpDragUiRafRef.current = 0;
-        const run = cpDragUiPendingRef.current;
-        cpDragUiPendingRef.current = null;
-        if (run) run();
+  const handleCpDragActive = useCallback((active) => {
+    cpPickerDraggingRef.current = !!active;
+  }, []);
+  const handleCpCommit = useCallback(({ h, s, v, a }) => {
+    setCpH(h);
+    setCpS(s);
+    setCpV(v);
+    setCpA(a);
+    const rgb = hsvToRgb(h, s, v);
+    setCpHex(toHex2(rgb.r) + toHex2(rgb.g) + toHex2(rgb.b));
+    v9FlushCpChartNow();
+    cpApplyRef.current(h, s, v, a, cpPickerKeyRef.current);
+    const key = cpPickerKeyRef.current;
+    const editDraw = editingDrawingRef.current?.drawing ?? null;
+    if (key && v9CpPickerKeyFlushesTlStyle(key)) {
+      v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOptsRef.current());
+    } else if (key && v9CpPickerKeyFlushesTxtStyle(key)) {
+      v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
+        editingRefDrawing: editDraw,
       });
-    };
-    const onMove = (e) => {
-      const d = cpPickerDragRef.current;
-      const r = d.cpDragRect;
-      if (!r || !d.cpDragging) return;
-      if (d.cpDragging === "sv") {
-        const ns = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        const nv = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
-        scheduleDragFrame(() => {
-          setCpS(ns);
-          setCpV(nv);
-          cpApplyRef.current(d.cpH, ns, nv, d.cpA, d.colorPicker);
-        });
-      } else if (d.cpDragging === "hue") {
-        const nh = Math.max(0, Math.min(360, ((e.clientX - r.left) / r.width) * 360));
-        scheduleDragFrame(() => {
-          setCpH(nh);
-          cpApplyRef.current(nh, d.cpS, d.cpV, d.cpA, d.colorPicker);
-        });
-      } else if (d.cpDragging === "alpha") {
-        const na = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-        scheduleDragFrame(() => {
-          setCpA(na);
-          cpApplyRef.current(d.cpH, d.cpS, d.cpV, na, d.colorPicker);
-        });
-      }
-    };
-    const onEnd = () => {
-      if (cpDragUiRafRef.current) {
-        cancelAnimationFrame(cpDragUiRafRef.current);
-        cpDragUiRafRef.current = 0;
-        const run = cpDragUiPendingRef.current;
-        cpDragUiPendingRef.current = null;
-        if (run) run();
-      }
-      v9FlushCpChartNow();
-      const key = cpPickerKeyRef.current;
-      const editDraw = editingDrawingRef.current?.drawing ?? null;
-      if (key && v9CpPickerKeyFlushesTlStyle(key)) {
-        v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOptsRef.current());
-      } else if (key && v9CpPickerKeyFlushesTxtStyle(key)) {
-        v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
-          editingRefDrawing: editDraw,
-        });
-      }
-      setCpDragging(null);
-      setCpDragRect(null);
-    };
-    window.addEventListener("pointermove", onMove, cap);
-    window.addEventListener("pointerup", onEnd, cap);
-    window.addEventListener("pointercancel", onEnd, cap);
-    return () => {
-      window.removeEventListener("pointermove", onMove, cap);
-      window.removeEventListener("pointerup", onEnd, cap);
-      window.removeEventListener("pointercancel", onEnd, cap);
-    };
-  }, [cpDragging, cpDragRect]);
+    }
+  }, []);
+  const handleCpHexCommit = useCallback((hex) => {
+    setCpHex(hex);
+    const p = parseColor("#" + hex);
+    const hsv = rgbToHsv(p.r, p.g, p.b);
+    setCpH(hsv.h);
+    setCpS(hsv.s);
+    setCpV(hsv.v);
+    cpApplyRef.current(hsv.h, hsv.s, hsv.v, cpA, cpPickerKeyRef.current);
+  }, [cpA]);
 
   const indicatorData = INDICATOR_CATALOG;
 
@@ -29317,13 +29378,10 @@ const TalariaV8bLive = () => {
       {(colorPicker || closing.has("cp")) && typeof document !== "undefined" && createPortal(
         <ColorPickerPopup
           pos={cpPos} h={cpH} s={cpS} v={cpV} a={cpA} hexStr={cpHex} c={c} F={F}
-          onSVChange={(ns,nv)=>{ setCpS(ns); setCpV(nv); cpApply(cpH,ns,nv,cpA); }}
-          onHChange={(nh)=>{ setCpH(nh); cpApply(nh,cpS,cpV,cpA); }}
-          onAChange={(na)=>{ setCpA(na); cpApply(cpH,cpS,cpV,na); }}
-          onHexChange={(hex)=>{ setCpHex(hex); if(hex.length===6){const p=parseColor('#'+hex);const hsv=rgbToHsv(p.r,p.g,p.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);cpApply(hsv.h,hsv.s,hsv.v,cpA,colorPicker);}}}
+          onCommit={handleCpCommit}
+          onHexCommit={handleCpHexCommit}
           onClose={closeCP}
-          onDragStart={(type,rect)=>{ setCpDragging(type); setCpDragRect(rect); }}
-          dragging={cpDragging}
+          onDragActiveChange={handleCpDragActive}
           hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker==="pfMedianColor"||colorPicker==="pfBgColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||colorPicker?.startsWith("ind-")}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
