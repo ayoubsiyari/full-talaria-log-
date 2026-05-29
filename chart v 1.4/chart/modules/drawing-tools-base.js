@@ -953,6 +953,20 @@ class BaseDrawing {
         this.axisHighlightGroup = svg.append('g')
             .attr('class', 'axis-highlight-group')
             .attr('data-drawing-id', this.id);
+
+        // Keep price/time endpoint labels inside the chart tile (not over V9 side panels).
+        const hlClipId = `axis-highlight-clip-${this.id}`;
+        let hlDefs = svg.select('defs');
+        if (hlDefs.empty()) hlDefs = svg.append('defs');
+        hlDefs.select(`#${hlClipId}`).remove();
+        hlDefs.append('clipPath')
+            .attr('id', hlClipId)
+            .append('rect')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', Math.max(1, chartWidth))
+            .attr('height', Math.max(1, chartHeight));
+        this.axisHighlightGroup.attr('clip-path', `url(#${hlClipId})`);
         
         // Use the shape's color for time highlights (like TradingView)
         const timeHighlightColor = this.style?.color || this.style?.lineColor || this.style?.stroke || '#2962ff';

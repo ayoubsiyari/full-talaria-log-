@@ -535,6 +535,26 @@ class DrawingToolsManager {
         return parsed.value >= minV && parsed.value <= maxV;
     }
 
+    /** Whether the drawing should render on the chart at the current timeframe (excludes global hide). */
+    isDrawingVisibleOnChart(drawing) {
+        if (!drawing) return false;
+        if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
+            return false;
+        }
+        return this._isVisibleForCurrentTimeframe(drawing);
+    }
+
+    _detachDrawingDom(drawing) {
+        if (!drawing) return;
+        if (drawing.group) {
+            try { drawing.group.remove(); } catch (_) {}
+            drawing.group = null;
+        }
+        if (typeof drawing.hideAxisHighlights === 'function') {
+            try { drawing.hideAxisHighlights(); } catch (_) {}
+        }
+    }
+
     _isPositionDrawing(drawing) {
         if (!drawing) return false;
         const rawType = drawing.type || drawing.toolType || drawing.meta?.toolType || '';
@@ -4147,15 +4167,9 @@ class DrawingToolsManager {
         
         // [debug removed]
         
-        // Handle visibility
+        // Handle visibility (detach DOM so Objects Tree does not treat stale groups as "gone")
         if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) {
-            // Hide the drawing
-            if (drawing.group) {
-                drawing.group.style('display', 'none');
-            }
-            if (typeof drawing.hideAxisHighlights === 'function') {
-                drawing.hideAxisHighlights();
-            }
+            this._detachDrawingDom(drawing);
             if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
@@ -4163,12 +4177,7 @@ class DrawingToolsManager {
         // Check timeframe visibility (legacy per-tf and new _ranges)
         const tfVisible = this._isVisibleForCurrentTimeframe(drawing);
         if (!tfVisible) {
-            if (drawing.group) {
-                drawing.group.style('display', 'none');
-            }
-            if (typeof drawing.hideAxisHighlights === 'function') {
-                drawing.hideAxisHighlights();
-            }
+            this._detachDrawingDom(drawing);
             if (this.chart) this.chart._isRendering = wasRendering;
             return;
         }
@@ -6096,24 +6105,27 @@ class DrawingToolsManager {
         const drawingSelected = this.selectedDrawings.length > 0;
         // Hovering an unselected drawing shows resize handles — same stacking as legacy vs axis zones (z 10).
         const hoverResizeHandles = !!(this._hoveredDrawing && !this._hoveredDrawing.selected);
+        // Stay below V9 right chrome (Objects Tree / order rail @ z-index 30). z-index 11 used to paint over side panels.
+        const activeZ = '8';
+        const idleZ = !!(this.chart && this.chart.isPanel) ? '6' : '2';
         if (this.svg) {
             if (toolActive) {
-                this.svg.style('z-index', '11');
+                this.svg.style('z-index', activeZ);
                 // Use 'all' so the entire SVG area captures events (including transparent regions)
                 this.svg.style('pointer-events', 'all');
             } else if (drawingSelected) {
-                this.svg.style('z-index', '11');
+                this.svg.style('z-index', activeZ);
                 // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
                 this.svg.style('pointer-events', 'all');
             } else if (hoverResizeHandles) {
-                this.svg.style('z-index', '11');
+                this.svg.style('z-index', activeZ);
                 // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.
                 this.svg.style('pointer-events', 'none');
             } else {
                 // Never clear z-index to '' on panels: panel canvas uses z-index 1; SVG default (auto)
-                // stacks below it, so drawings vanish until a tool sets z-index 11 again.
+                // stacks below it, so drawings vanish until a tool sets z-index again.
                 const panel = !!(this.chart && this.chart.isPanel);
-                this.svg.style('z-index', panel ? '10' : '2');
+                this.svg.style('z-index', panel ? '6' : idleZ);
                 this.svg.style('pointer-events', 'none');
             }
         }
@@ -6972,6 +6984,9 @@ class DrawingToolsManager {
         const wasRendering = this.chart._isRendering;
         this.chart._isRendering = true;
         
+        // Drop stale group refs before clearing SVG (hidden-by-TF drawings skip renderDrawing).
+        this.drawings.forEach((d) => { if (d) d.group = null; });
+
         // Clear existing SVG elements
         this.drawingsGroup.selectAll('*').remove();
         if (this.labelsGroup) {

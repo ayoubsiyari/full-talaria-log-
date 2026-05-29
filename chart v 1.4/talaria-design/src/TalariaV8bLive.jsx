@@ -10412,6 +10412,26 @@ const TalariaV8bLive = () => {
     }
   }, [rightPanel, orderPanelOpen]);
 
+  // Shrink chart canvas when the right rail opens so strokes/labels are not laid out under it.
+  useEffect(() => {
+    const bump = () => {
+      try {
+        window.dispatchEvent(new Event("resize"));
+        if (window.chart && window.chart.resize) {
+          window.chart._lastResizeDpr = 0;
+          window.chart.resize();
+          window.chart.render && window.chart.render();
+        }
+      } catch (_) {}
+    };
+    const t = requestAnimationFrame(bump);
+    const t2 = setTimeout(bump, 220);
+    return () => {
+      cancelAnimationFrame(t);
+      clearTimeout(t2);
+    };
+  }, [rightPanel, orderPanelOpen]);
+
   const openProfileBillingPortal = useCallback(async () => {
     try {
       const returnUrl = `${window.location.origin}${window.location.pathname || "/"}`;
@@ -12495,21 +12515,20 @@ const TalariaV8bLive = () => {
         }
         const valid = dm.drawings.filter((d) => {
           if (!d || !d.type) return false;
-          try {
-            const g = d.group;
-            const node = g && (typeof g.node === 'function' ? g.node() : g);
-            if (!node || (node.isConnected === false)) return false;
-          } catch (_) { return false; }
+          if (d.type === 'image' || d.type === 'image-v2') return true;
           if (!Array.isArray(d.points) || d.points.length === 0) return false;
-          const hasValidPoint = d.points.some(p => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
-          if (!hasValidPoint) return false;
-          return true;
+          return d.points.some((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)));
         });
+        const tfOnChart = (d) => (
+          typeof dm.isDrawingVisibleOnChart === 'function'
+            ? dm.isDrawingVisibleOnChart(d)
+            : (d.visible !== false && (typeof dm._isVisibleForCurrentTimeframe !== 'function' || dm._isVisibleForCurrentTimeframe(d)))
+        );
         const sig = valid.map((d) => {
           const name = (typeof dm.getDrawingDisplayTitle === 'function')
             ? dm.getDrawingDisplayTitle(d)
             : (d.type || 'Drawing');
-          return `${d.id}|${d.type}|${name}|${d.visible !== false ? 1 : 0}|${d.locked ? 1 : 0}`;
+          return `${d.id}|${d.type}|${name}|${d.visible !== false ? 1 : 0}|${tfOnChart(d) ? 1 : 0}|${d.locked ? 1 : 0}`;
         }).join('\n');
         if (sig === layersItemsSigRef.current) return;
         layersItemsSigRef.current = sig;
@@ -12524,6 +12543,7 @@ const TalariaV8bLive = () => {
             icon,
             name,
             _visible: d.visible !== false,
+            _tfVisibleOnChart: tfOnChart(d),
             _locked: !!d.locked,
             _drawing: d,
           };
@@ -12559,6 +12579,7 @@ const TalariaV8bLive = () => {
     // File / symbol / timeframe switch reloads dm.drawings from storage —
     // catch that or the tree keeps showing the previous chart's drawings.
     window.addEventListener('chartDataLoaded', rebuild);
+    window.addEventListener('timeframeChanged', rebuild);
     // Multi-panel: the active panel (and therefore window.chart.drawingManager)
     // changes — rebuild against the newly active drawingManager.
     window.addEventListener('panelSelected', rebuild);
@@ -12572,6 +12593,7 @@ const TalariaV8bLive = () => {
       window.removeEventListener('drawingsChanged', rebuild);
       window.removeEventListener('drawingStyleChanged', rebuild);
       window.removeEventListener('chartDataLoaded', rebuild);
+      window.removeEventListener('timeframeChanged', rebuild);
       window.removeEventListener('panelSelected', rebuild);
       window.removeEventListener('returnedToSinglePanel', rebuild);
       if (window.__rebuildObjectsTree === rebuild) delete window.__rebuildObjectsTree;
@@ -14956,7 +14978,10 @@ const TalariaV8bLive = () => {
         try { visibilityChanged = v9ApplyVisibilityFromTlStyle(d, tlStyle); } catch (_) {}
         const geometryChanged = pointsMoved || visibilityChanged;
         if (!geometryChanged) return;
-        if (tb && typeof tb.onUpdate === "function") {
+        if (visibilityChanged) {
+          try { dm2.redrawAll?.(); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
+          try { window.dispatchEvent(new CustomEvent("drawingsChanged")); } catch (_) {}
+        } else if (tb && typeof tb.onUpdate === "function") {
           try { tb.onUpdate(d); } catch (_) { try { dm2.renderDrawing?.(d); } catch (_) {} }
         } else {
           try { dm2.renderDrawing?.(d); } catch (_) {}
@@ -16322,7 +16347,7 @@ const TalariaV8bLive = () => {
                       hover: swHov === key,
                     })}/>
                 );
-                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork"].includes(tlSubTool.icon);
+                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw"].includes(tlSubTool.icon);
                 const hasBg = ["polyline","pathTool","curve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
@@ -16558,7 +16583,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns: isFibSpiralTool ? "1fr auto" : `1fr auto auto auto ${(showEp||isBrushTool||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:(isBrushTool&&!showEp)?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns: isFibSpiralTool ? "1fr auto" : `1fr auto auto auto ${(showEp||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:tlSubTool.icon==="draw"?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
@@ -16567,7 +16592,7 @@ const TalariaV8bLive = () => {
                     {showThicknessCol ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                       <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span>
                     </div> : <div/>}
-                    {(showEp||isBrushTool||isPatternTool) && (
+                    {(showEp||isPatternTool) && (
                       showEp ? (
                         <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
                           <span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>ENDPOINTS</span>
@@ -16661,7 +16686,7 @@ const TalariaV8bLive = () => {
                     </div>}
                     {/* Endpoints / 5th-col filler for pattern tools */}
                     {isPatternTool && <div/>}
-                    {(showEp||isBrushTool) && (showEp ? <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
+                    {showEp && <div style={{ display:"flex", gap:3, alignItems:"center", justifyContent:"center", padding:"8px 0" }}>
                         {[["ep1",false],["ep2",true]].map(([k,rightAlign])=>{
                           const dk=`ep-${k}`; const val=tlStyle[k]||"normal"; const isOpen=tlStyleDrop===dk;
                           const epPrev = (open) => val==="arrow"
@@ -16698,7 +16723,7 @@ const TalariaV8bLive = () => {
                             </div>
                           );
                         })}
-                    </div> : <div/>)}
+                    </div>}
                     {/* ── LABEL row (pattern + Elliott tools) ── */}
                     {isPatternTool && <>
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0", alignSelf:"center" }}>Label</span>
@@ -25525,10 +25550,10 @@ const TalariaV8bLive = () => {
               background:`linear-gradient(180deg,transparent,`+c.hvLn+`,transparent)`, pointerEvents:"none", zIndex:2 }}/>}
           </div>
         </div>
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0 }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", minHeight: 0, minWidth: 0, overflow: "hidden", zIndex: 1 }}>
           {/* Match legacy chart/index.html #chart-container: absolutely filled slot — not flex:1 on
               this node (Safari can disagree canvas vs overlay rects when the chart area is flex-sized). */}
-          <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0 }}>
+          <div style={{ flex: 1, position: "relative", background: c.bg, minHeight: 0, minWidth: 0, overflow: "hidden" }}>
             <div ref={chartCanvasRef} id="chart-container"
               onContextMenu={(e) => e.preventDefault()}
               onMouseDown={(e) => {
@@ -26782,7 +26807,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, position: "relative", zIndex: 30, overflow: "hidden", transition: "width 0.2s ease" }}>
         {rightPanel ? (()=>{
           // Phase 7.2.3: lyLines + syncItems are now lifted to module
           // scope (LAYOUT_LY_LINES / LAYOUT_SYNC_ITEMS) so the topbar
@@ -27222,13 +27247,14 @@ const TalariaV8bLive = () => {
                 ):visItems.map(item=>{
                   const isH = swHov===`lyr-${item.id}`;
                   const isJumpH = swHov===`lyrJ-${item.id}`;
+                  const isSetH = swHov===`lyrS-${item.id}`;
                   const isVisH = swHov===`lyrV-${item.id}`;
                   const isDelH = swHov===`lyrD-${item.id}`;
                   const isDelDn = swHov===`lyrD-${item.id}_dn`;
-                  const anyHov = isH||isJumpH||isVisH||isDelH||isDelDn;
-                  // _visible reflects the actual chart.js drawing.visible flag
-                  // (rebuilt on every drawingsChanged event).
-                  const isVis = item._visible !== false;
+                  const anyHov = isH||isJumpH||isSetH||isVisH||isDelH||isDelDn;
+                  const isGloballyVisible = item._visible !== false;
+                  const isTfVisibleOnChart = item._tfVisibleOnChart !== false;
+                  const showOnChart = isGloballyVisible && isTfVisibleOnChart;
                   // Helper: get the chart.js drawingManager + the live drawing
                   // (item._drawing reference can become stale after undo/redo;
                   // fall back to id lookup).
@@ -27238,17 +27264,21 @@ const TalariaV8bLive = () => {
                     if (item._drawing && dm.drawings.includes(item._drawing)) return item._drawing;
                     return dm.drawings.find(x => x && x.id === item.id) || null;
                   };
-                  const _logAct = (kind) => {
-                    const dm = findDm();
-                    const d = findDrawing(dm);
-                    console.log('[V9 ObjectsTree]', kind, {
-                      itemId: item.id,
-                      itemName: item.name,
-                      hasDm: !!dm,
-                      hasDrawing: !!d,
-                      dmDrawingsCount: dm && dm.drawings ? dm.drawings.length : 'N/A',
-                      hasObjectTreeManager: !!(dm && dm.objectTreeManager),
-                    });
+                  const openLayerSettings = (preferVisibilityTab = false) => {
+                    const dm = findDm(); const d = findDrawing(dm);
+                    if (!dm || !d) return;
+                    if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
+                    const px = Math.round(window.innerWidth * 0.38);
+                    const py = Math.round(window.innerHeight * 0.32);
+                    if (typeof dm.editDrawing === 'function') dm.editDrawing(d, px, py);
+                    if (preferVisibilityTab) {
+                      const tfHidden = typeof dm.isDrawingVisibleOnChart === 'function'
+                        ? !dm.isDrawingVisibleOnChart(d)
+                        : (typeof dm._isVisibleForCurrentTimeframe === 'function' && !dm._isVisibleForCurrentTimeframe(d));
+                      if (tfHidden && isGloballyVisible) {
+                        setTimeout(() => { try { setTlSettTab('visibility'); } catch (_) {} }, 0);
+                      }
+                    }
                   };
                   return (
                     <div key={item.id}
@@ -27258,6 +27288,10 @@ const TalariaV8bLive = () => {
                         if (!dm || !d) return;
                         if (typeof dm.selectDrawing === 'function') dm.selectDrawing(d);
                       }}
+                      onDoubleClick={(e)=>{
+                        e.stopPropagation();
+                        openLayerSettings(true);
+                      }}
                       onMouseEnter={()=>setSwHov(`lyr-${item.id}`)}
                       onMouseLeave={()=>setSwHov(null)}
                       style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",
@@ -27266,12 +27300,16 @@ const TalariaV8bLive = () => {
                         transition:"background 0.04s"}}>
                       {anyHov && <div style={{position:"absolute",left:0,top:"12%",bottom:"12%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
                       {/* drawing type icon */}
-                      <I n={item.icon} s={15} cl={isVis?c.ts:"rgba(140,160,255,0.3)"}/>
+                      <I n={item.icon} s={15} cl={showOnChart?c.ts:"rgba(140,160,255,0.38)"}/>
                       {/* name */}
-                      <span style={{flex:1,fontSize:13,fontWeight:500,color:isVis?c.ts:"rgba(140,160,255,0.3)",
+                      <span style={{flex:1,fontSize:13,fontWeight:500,color:showOnChart?c.ts:"rgba(140,160,255,0.38)",
                         overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
                         userSelect:"none",cursor:"default",
-                        transition:"color 0.04s"}}>{item.name}</span>
+                        transition:"color 0.04s"}} title={
+                          !isGloballyVisible ? 'Hidden on chart (eye)' :
+                          !isTfVisibleOnChart ? 'Hidden on this timeframe — double-click for Visibility' :
+                          item.name
+                        }>{item.name}</span>
                       {/* action buttons — appear on row hover */}
                       {/* jump to: center chart viewport on the drawing + select it */}
                       <div data-layeraction="1"
@@ -27279,7 +27317,6 @@ const TalariaV8bLive = () => {
                           // Legacy parity (object-tree.js:316-319): jumpBtn click →
                           // stopPropagation + jumpToDrawing(d).
                           e.stopPropagation();
-                          _logAct('jump');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           if (dm.objectTreeManager && typeof dm.objectTreeManager.jumpToDrawing === 'function') {
@@ -27296,14 +27333,29 @@ const TalariaV8bLive = () => {
                           pointerEvents:"auto",transition:"opacity 0.04s"}}>
                         <I n="locate" s={15} cl={isJumpH?c.acL:c.ts}/>
                       </div>
-                      {/* visibility: flips drawing.visible and re-renders */}
+                      {/* settings: opens V9 drawing panel (Visibility tab when TF-hidden) */}
                       <div data-layeraction="1"
+                        title={!isTfVisibleOnChart && isGloballyVisible ? 'Settings (Visibility)' : 'Settings'}
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          openLayerSettings(true);
+                        }}
+                        onMouseEnter={()=>setSwHov(`lyrS-${item.id}`)}
+                        onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
+                        onMouseDown={(e)=>e.stopPropagation()}
+                        style={{width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",
+                          cursor:"default",flexShrink:0,opacity:isSetH?1:anyHov?0.55:0,
+                          pointerEvents:"auto",transition:"opacity 0.04s"}}>
+                        <I n="settings" s={14} cl={isSetH?c.acL:c.ts}/>
+                      </div>
+                      {/* eye: global show/hide (drawing.visible), not per-timeframe ranges */}
+                      <div data-layeraction="1"
+                        title={isGloballyVisible ? 'Hide on all timeframes' : 'Show on all timeframes'}
                         onClick={(e)=>{
                           // Legacy parity (object-tree.js:339-342, 526-538):
                           // visibility click → toggle drawing.visible, renderDrawing,
                           // saveDrawings (which fires drawingsChanged → V9 rebuilds).
                           e.stopPropagation();
-                          _logAct('toggleVisibility');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           if (dm.objectTreeManager && typeof dm.objectTreeManager.toggleDrawingVisibility === 'function') {
@@ -27318,10 +27370,10 @@ const TalariaV8bLive = () => {
                         onMouseLeave={()=>setSwHov(`lyr-${item.id}`)}
                         onMouseDown={(e)=>e.stopPropagation()}
                         style={{width:22,height:22,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
-                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isVis?1:anyHov?0.55:0,
+                          cursor:"default",flexShrink:0,opacity:isVisH?1:!isGloballyVisible?1:anyHov?0.55:0,
                           pointerEvents:"auto",transition:"opacity 0.04s"}}>
-                        <I n="eye" s={14} cl={isVisH?c.acL:isVis?c.ts:"#F5A020"}/>
-                        {!isVis && (
+                        <I n="eye" s={14} cl={isVisH?c.acL:isGloballyVisible?c.ts:"#F5A020"}/>
+                        {!isGloballyVisible && (
                           <svg width={16} height={16} viewBox="0 0 16 16" style={{position:"absolute",top:0,left:0,pointerEvents:"none"}}>
                             <line x1={2} y1={2} x2={14} y2={14} stroke={isVisH?c.acL:"#F5A020"} strokeWidth={0.85} strokeLinecap="round"/>
                           </svg>
@@ -27335,7 +27387,6 @@ const TalariaV8bLive = () => {
                           // dm.deleteDrawing calls saveDrawings → dispatches
                           // drawingsChanged → V9 rebuilds the tree automatically.
                           e.stopPropagation();
-                          _logAct('delete');
                           const dm = findDm(); const d = findDrawing(dm);
                           if (!dm || !d) return;
                           if (typeof dm.deleteDrawing === 'function') dm.deleteDrawing(d);
