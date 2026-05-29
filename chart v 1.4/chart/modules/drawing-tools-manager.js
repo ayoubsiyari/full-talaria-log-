@@ -4351,8 +4351,13 @@ class DrawingToolsManager {
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
-                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
         const interactiveElements = drawing.group.selectAll(selector);
+
+        if (this._isFibLikeDrawingType(drawing.type)) {
+            drawing.group.style('pointer-events', 'none');
+            interactiveElements.style('pointer-events', 'stroke');
+        }
 
         const isEmptyImageUploadTarget = (eventTarget) => {
             if (drawing.type !== 'image') return false;
@@ -4424,6 +4429,25 @@ class DrawingToolsManager {
                 if (!clickedOnStroke) {
                     // [debug removed]
                     return; // Don't select - click was on fill area
+                }
+            }
+
+            if (self._isFibLikeDrawingType(drawing.type)) {
+                const onFibStroke = targetSel.classed('fib-level-hit')
+                    || targetSel.classed('gann-level-hit')
+                    || targetSel.classed('fib-trend-line')
+                    || targetSel.classed('fib-tz-anchor')
+                    || targetSel.classed('fib-arcs-trend')
+                    || targetSel.classed('fib-arcs-trend-hit')
+                    || targetSel.classed('fib-wedge-trend')
+                    || targetSel.classed('fib-wedge-trend-hit')
+                    || targetSel.classed('fib-fan-anchor');
+                const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
+                const clickedOnFibLine = onFibStroke
+                    || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
+                    || drawingsAtPoint.some(d => d && d.id === drawing.id);
+                if (!clickedOnFibLine) {
+                    return;
                 }
             }
             
@@ -4781,14 +4805,34 @@ class DrawingToolsManager {
                         return false;
                     }
 
-                    // Fib/Gann: thick invisible hit strokes are for selection only — move from visible lines.
-                    if (targetSelection.classed('fib-level-hit')) {
-                        return false;
-                    }
-                    
                     // TradingView-style: only allow drag from edges (lines/strokes), not filled areas
                     // Exception: position-zone elements, emoji/text elements can be dragged
                     const tagName = event.target.tagName.toLowerCase();
+                    if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle) {
+                        const srcEvent = event.sourceEvent || event;
+                        if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                            const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
+                            if (!self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                                return false;
+                            }
+                        }
+                    }
+
+                    if (targetSelection.classed('gann-box-hitbox')
+                        || targetSelection.classed('gann-fan-hitbox')
+                        || targetSelection.classed('gann-square-fixed-hitbox')) {
+                        return false;
+                    }
+
+                    const isFibLevelHit = targetSelection.classed('fib-level-hit');
+                    const isGannLevelHit = targetSelection.classed('gann-level-hit');
+                    const isFibTrendHit = targetSelection.classed('fib-trend-line')
+                        || targetSelection.classed('fib-tz-anchor')
+                        || targetSelection.classed('fib-arcs-trend')
+                        || targetSelection.classed('fib-arcs-trend-hit')
+                        || targetSelection.classed('fib-wedge-trend')
+                        || targetSelection.classed('fib-wedge-trend-hit')
+                        || targetSelection.classed('fib-fan-anchor');
                     const isLineElement = tagName === 'line' || tagName === 'path' || tagName === 'polyline';
                     const isTextElement = tagName === 'text' || tagName === 'tspan';  // Allow dragging text and tspan
                     const isShapeBorder = targetSelection.classed('shape-border');
@@ -4874,7 +4918,9 @@ class DrawingToolsManager {
                     // Allow drag from: position zones, range tool hit areas, lines/paths,
                     // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
-                    const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox || isLineElement || isShapeBorder || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
+                    const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox
+                        || isFibLevelHit || isGannLevelHit || isFibTrendHit || isLineElement || isShapeBorder
+                        || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
                 })
@@ -7960,17 +8006,70 @@ class DrawingToolsManager {
             type.startsWith('fib-') ||
             type.startsWith('trend-fib-') ||
             type === 'pitchfork' ||
-            type === 'pitchfan'
+            type === 'pitchfan' ||
+            type === 'gann-box' ||
+            type === 'gann-fan' ||
+            type === 'gann-square' ||
+            type === 'gann-square-fixed'
         );
     }
 
     /**
-     * Fib / Gann / Elliott-style tools: allow dblclick in the filled zone between levels,
-     * not only on thin strokes (zone rects use pointer-events: none).
+     * Fib / pitchfan tools: hit-test level lines and trend anchors only (not zone fill / bbox).
      */
-    _isPointInFibLikeDrawingBody(drawing, mouseX, mouseY) {
+    _isPointOnFibLikeStroke(drawing, mouseX, mouseY) {
         if (!drawing?.group || !this._isFibLikeDrawingType(drawing.type)) return false;
-        return this._isPointInDrawingGroupBBox(drawing, mouseX, mouseY, 8);
+
+        const svgPoint = this.svg?.node?.()?.createSVGPoint?.();
+        if (svgPoint) {
+            svgPoint.x = mouseX;
+            svgPoint.y = mouseY;
+        }
+        const lineHitTolerance = 14;
+        const strokeSelectors = [
+            'line.fib-level-hit',
+            'line.gann-level-hit',
+            'line.fib-trend-line',
+            'line.fib-tz-anchor',
+            'line.fib-arcs-trend',
+            'line.fib-arcs-trend-hit',
+            'line.fib-wedge-trend',
+            'line.fib-wedge-trend-hit',
+            'line.fib-fan-anchor'
+        ].join(', ');
+
+        for (const element of drawing.group.selectAll(strokeSelectors).nodes()) {
+            const elementSel = d3.select(element);
+            if (elementSel.style('opacity') === '0') continue;
+
+            if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                return true;
+            }
+
+            const x1 = parseFloat(element.getAttribute('x1'));
+            const y1 = parseFloat(element.getAttribute('y1'));
+            const x2 = parseFloat(element.getAttribute('x2'));
+            const y2 = parseFloat(element.getAttribute('y2'));
+            if ([x1, y1, x2, y2].some((v) => !Number.isFinite(v))) continue;
+
+            const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
+            const effectiveTolerance = Math.max(lineHitTolerance, (strokeWidth / 2) + 0.5);
+            if (distance <= effectiveTolerance) return true;
+        }
+
+        const pathSelectors = 'path.fib-level-hit, path.fib-arcs-trend, path.fib-spiral-path';
+        for (const element of drawing.group.selectAll(pathSelectors).nodes()) {
+            const elementSel = d3.select(element);
+            if (elementSel.style('opacity') === '0') continue;
+            const stroke = elementSel.attr('stroke') || elementSel.style('stroke');
+            if (!stroke || stroke === 'none' || stroke === 'transparent') continue;
+            if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Pin / signpost / flag: filled body is non-stroke — use group bbox for click + dblclick hit tests. */
@@ -8038,7 +8137,19 @@ class DrawingToolsManager {
         const elements = drawing.group.selectAll('line, path, polyline').nodes();
         for (const element of elements) {
             const elementSel = d3.select(element);
-            if (elementSel.classed('fib-level-hit')) continue;
+            if (elementSel.classed('fib-level-hit') || elementSel.classed('gann-level-hit')) {
+                const x1 = parseFloat(element.getAttribute('x1'));
+                const y1 = parseFloat(element.getAttribute('y1'));
+                const x2 = parseFloat(element.getAttribute('x2'));
+                const y2 = parseFloat(element.getAttribute('y2'));
+                if ([x1, y1, x2, y2].every(Number.isFinite)) {
+                    const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                    const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 16;
+                    const effectiveTolerance = Math.max(lineHitTolerance, (strokeWidth / 2) + 0.5);
+                    if (distance <= effectiveTolerance) return true;
+                }
+                continue;
+            }
             if (elementSel.style('opacity') === '0') continue;
 
             const isHitLine = elementSel.classed('shape-border-hit');
@@ -8608,8 +8719,11 @@ class DrawingToolsManager {
 
             const isFibLikeType = this._isFibLikeDrawingType(drawing.type);
 
-            if (isFibLikeType && !hitsById.has(drawing.id) && this._isPointInFibLikeDrawingBody(drawing, mouseX, mouseY)) {
+            if (isFibLikeType && !hitsById.has(drawing.id) && this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                 hitsById.set(drawing.id, { drawing, distance: 0, z });
+                continue;
+            }
+            if (isFibLikeType && !hitsById.has(drawing.id)) {
                 continue;
             }
 
@@ -8862,6 +8976,12 @@ class DrawingToolsManager {
                     const opacity = elementSel.style('opacity');
                     if (opacity === '0') continue;
 
+                    if (elementSel.classed('gann-box-hitbox')
+                        || elementSel.classed('gann-fan-hitbox')
+                        || elementSel.classed('gann-square-fixed-hitbox')) {
+                        continue;
+                    }
+
                     if (drawing.type === 'date-price-range') {
                         if (elementSel.classed('range-fill-hit') || elementSel.classed('range-info-box')) {
                             continue;
@@ -9001,13 +9121,7 @@ class DrawingToolsManager {
             'path'
         ]);
 
-        const isFibLikeDrawingType = (type) => !!type && (
-            type.startsWith('fibonacci-') ||
-            type.startsWith('fib-') ||
-            type.startsWith('trend-fib-') ||
-            type === 'pitchfork' ||
-            type === 'pitchfan'
-        );
+        const isFibLikeDrawingType = (type) => this._isFibLikeDrawingType(type);
 
         const isPatternLikeDrawingType = (type) => !!type && (
             type.includes('pattern') ||
@@ -9058,7 +9172,7 @@ class DrawingToolsManager {
             if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
 
             const drawingType = drawing.type || '';
-            const isFibLikeDrawing = drawingType.startsWith('fibonacci-') || drawingType.startsWith('fib-') || drawingType.startsWith('trend-fib-') || drawingType === 'pitchfork' || drawingType === 'pitchfan';
+            const isFibLikeDrawing = this._isFibLikeDrawingType(drawingType);
             const isPatternLikeDrawing = drawingType.includes('pattern') || drawingType.startsWith('elliott-') || drawingType === 'head-shoulders' || drawingType === 'three-drives' || drawingType === 'cyclic-lines' || drawingType === 'time-cycles' || drawingType === 'sine-line';
             const lineHitTolerance = (isFibLikeDrawing || isPatternLikeDrawing) ? 14 : hitTolerance;
             
@@ -9072,13 +9186,8 @@ class DrawingToolsManager {
                 // Check ALL line elements within this drawing (important for Fib, channels, etc.)
                 let lineIndex = 0;
                 for (const element of lineElements) {
-                    const isFibHit = d3.select(element).classed('fib-level-hit');
-                    if (isFibHit) {
-                        lineIndex++;
-                        continue;
-                    }
-
                     const elementSel = d3.select(element);
+                    const isFibHit = elementSel.classed('fib-level-hit') || elementSel.classed('gann-level-hit');
                     const opacity = elementSel.style('opacity');
                     if (opacity === '0') {
                         lineIndex++;
@@ -9109,7 +9218,10 @@ class DrawingToolsManager {
                     if (isWithinXRange) {
                         const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
                         const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 2;
-                        const effectiveTolerance = Math.max(lineHitTolerance, strokeWidth * 2);
+                        const effectiveTolerance = Math.max(
+                            lineHitTolerance,
+                            isFibHit ? (strokeWidth / 2) + 0.5 : strokeWidth * 2
+                        );
                         
                         if (distance <= effectiveTolerance) {
                             linesAtPoint.push({
