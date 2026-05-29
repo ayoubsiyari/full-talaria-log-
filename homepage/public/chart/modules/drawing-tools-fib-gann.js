@@ -2871,8 +2871,8 @@ class GannSquareFixedTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         if (showZones && zoneLevels.length >= 2) {
             for (let i = 0; i < zoneLevels.length - 1; i++) {
@@ -3469,8 +3469,8 @@ class GannFanTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         // Zones (between consecutive rays)
         if (showZones && rays.length >= 2) {

@@ -3345,6 +3345,242 @@ class DrawingSettingsPanel {
 
 
 
+/* Unified number field + custom stepper (Fib/Gann/Regression Inputs) */
+
+.tv-number-input::-webkit-inner-spin-button,
+
+.tv-number-input::-webkit-outer-spin-button {
+
+    -webkit-appearance: none;
+
+    margin: 0;
+
+}
+
+
+
+.tv-number-input {
+
+    -moz-appearance: textfield;
+
+    appearance: textfield;
+
+}
+
+
+
+.number-input-wrapper {
+
+    position: relative;
+
+    display: flex;
+
+    align-items: stretch;
+
+    width: 80px;
+
+    max-width: 100%;
+
+    min-height: 28px;
+
+    background: var(--sp-input-bg, rgba(255, 255, 255, 0.08));
+
+    border: 1px solid var(--sp-input-border, #363a45);
+
+    border-radius: 6px;
+
+    overflow: hidden;
+
+    box-sizing: border-box;
+
+}
+
+
+
+.number-input-wrapper:hover {
+
+    border-color: var(--sp-btn-border, rgba(90, 90, 100, 0.9));
+
+}
+
+
+
+.number-input-wrapper:focus-within {
+
+    border-color: var(--sp-accent, #2962ff);
+
+}
+
+
+
+.number-input-wrapper .tv-number-input {
+
+    border: none !important;
+
+    background: transparent !important;
+
+    border-radius: 0 !important;
+
+    box-shadow: none !important;
+
+    outline: none;
+
+    flex: 1 1 auto;
+
+    min-width: 0;
+
+    width: 100%;
+
+    height: 100%;
+
+    padding: 4px 22px 4px 6px;
+
+    font-size: 12px;
+
+    text-align: center;
+
+    color: var(--sp-text, #d1d4dc);
+
+    caret-color: var(--sp-text-muted, #787b86);
+
+}
+
+
+
+.custom-spinner {
+
+    position: absolute;
+
+    top: 1px;
+
+    right: 1px;
+
+    bottom: 1px;
+
+    width: 18px;
+
+    display: flex;
+
+    flex-direction: column;
+
+    align-items: stretch;
+
+    justify-content: stretch;
+
+    flex: 0 0 auto;
+
+    box-sizing: border-box;
+
+    background: transparent;
+
+    border: none;
+
+    border-left: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.12));
+
+    border-radius: 0 5px 5px 0;
+
+    padding: 0;
+
+    gap: 0;
+
+    cursor: default;
+
+    pointer-events: auto;
+
+}
+
+
+
+.custom-spinner-btn {
+
+    flex: 1 1 0;
+
+    min-height: 0;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    width: 100%;
+
+    margin: 0;
+
+    padding: 0;
+
+    color: var(--sp-text-muted, #787b86);
+
+    cursor: pointer;
+
+    user-select: none;
+
+    transition: color 0.15s ease, background 0.15s ease;
+
+}
+
+
+
+.custom-spinner-btn + .custom-spinner-btn {
+
+    border-top: 1px solid var(--sp-input-border, rgba(255, 255, 255, 0.1));
+
+}
+
+
+
+.custom-spinner-btn:hover {
+
+    color: var(--sp-text-active, #ffffff);
+
+    background: rgba(255, 255, 255, 0.06);
+
+}
+
+
+
+.custom-spinner-btn:active {
+
+    background: rgba(255, 255, 255, 0.1);
+
+}
+
+
+
+.custom-spinner-btn svg {
+
+    width: 8px;
+
+    height: 8px;
+
+    stroke: currentColor;
+
+    stroke-width: 2;
+
+    fill: none;
+
+    pointer-events: none;
+
+}
+
+
+
+.tv-prop-row.fib-level-row {
+
+    min-height: 32px;
+
+}
+
+
+
+.tv-prop-row.fib-level-row .number-input-wrapper {
+
+    width: 80px;
+
+}
+
+
+
 /* ============ LIGHT MODE STYLES ============ */
 
 body.light-mode .tv-settings-modal {
@@ -4236,6 +4472,66 @@ body.light-mode .tv-input:hover {
     background: #f5f5f5;
 
     border-color: rgba(0, 0, 0, 0.15);
+
+}
+
+
+
+body.light-mode .number-input-wrapper {
+
+    background: #ffffff;
+
+    border-color: rgba(0, 0, 0, 0.12);
+
+}
+
+
+
+body.light-mode .number-input-wrapper:focus-within {
+
+    border-color: var(--sp-accent, #2962ff);
+
+}
+
+
+
+body.light-mode .number-input-wrapper .tv-number-input {
+
+    color: #000000;
+
+}
+
+
+
+body.light-mode .custom-spinner {
+
+    border-left-color: rgba(0, 0, 0, 0.12);
+
+}
+
+
+
+body.light-mode .custom-spinner-btn + .custom-spinner-btn {
+
+    border-top-color: rgba(0, 0, 0, 0.1);
+
+}
+
+
+
+body.light-mode .custom-spinner-btn {
+
+    color: #666666;
+
+}
+
+
+
+body.light-mode .custom-spinner-btn:hover {
+
+    color: #000000;
+
+    background: rgba(0, 0, 0, 0.06);
 
 }
 
@@ -7959,7 +8255,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.step = '0.001';
 
-            input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+            input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
 
 
@@ -8688,7 +8984,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             input.step = '0.001';
 
-            input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+            input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
 
 
@@ -10796,7 +11092,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.step = isTimeZone ? '1' : (_isPct ? '0.1' : '0.001');
             input.value = _isPct ? String(parseFloat((level.value * 100).toFixed(4))) : String(level.value);
 
-            input.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
 
 
 
@@ -11532,7 +11828,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 input.step = '0.001';
 
-                input.style.cssText = 'color: var(--sp-text,#d1d4dc); background: var(--sp-input-bg,rgba(255,255,255,0.08)); border: 1px solid var(--sp-input-border,#363a45); border-radius: 6px; font-size: 12px; text-align: center; width: 100%; min-width: 0;';
+                input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; min-width: 0; flex: 1;';
 
 
 
@@ -16730,7 +17026,7 @@ body.light-mode .template-save-dialog .dialog-title {
             input.min = '0.001';
             input.max = '1000';
             input.step = '0.1';
-            input.style.cssText = 'color: var(--sp-text,#d1d4dc); font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
+            input.style.cssText = 'font-size: 12px; text-align: center; width: 100%; flex: 1; min-width: 0;';
             
             const updateValue = () => {
                 const parsed = parseFloat(input.value);

@@ -171,8 +171,8 @@ class GannBoxTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+            .style('pointer-events', 'none')
+            .style('cursor', 'default');
 
         // Price levels (horizontal grid + left/right labels)
         sortedPrice.forEach(level => {
