@@ -2507,6 +2507,20 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
   return targets;
 }
 
+/** Repaint or clear axis price/time labels after style/visibility changes. */
+function v9SyncDrawingAxisHighlights(d) {
+  if (!d || typeof d.hideAxisHighlights !== "function" || typeof d.showAxisHighlights !== "function") {
+    return;
+  }
+  try {
+    if (typeof d.hasVisibleDrawingGeometry === "function" && !d.hasVisibleDrawingGeometry()) {
+      d.hideAxisHighlights();
+    } else if (d.selected) {
+      d.showAxisHighlights();
+    }
+  } catch (_) {}
+}
+
 /**
  * Apply full `tlStyle` → selected/edited drawings immediately (all TlChk toggles, first click).
  * Does not re-run the layout bridge (avoids stale-state revert on checkbox toggles).
@@ -2551,11 +2565,7 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
           dm.renderDrawing?.(d);
         } catch (_) {}
       }
-      if (d.selected && typeof d.showAxisHighlights === "function") {
-        try {
-          d.showAxisHighlights();
-        } catch (_) {}
-      }
+      v9SyncDrawingAxisHighlights(d);
       if (dm.chart) chartsToRender.add(dm.chart);
     });
     chartsToRender.forEach((c) => {
@@ -2623,11 +2633,7 @@ function v9FlushTxtStyleToChartTargets(txtStyle, opts = {}) {
           dm.renderDrawing?.(d);
         } catch (_) {}
       }
-      if (d.selected && typeof d.showAxisHighlights === "function") {
-        try {
-          d.showAxisHighlights();
-        } catch (_) {}
-      }
+      v9SyncDrawingAxisHighlights(d);
       if (dm.chart) chartsToRender.add(dm.chart);
     });
     chartsToRender.forEach((c) => {
@@ -14234,11 +14240,7 @@ const TalariaV8bLive = () => {
             dm.renderDrawing?.(d);
           } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try {
-            d.showAxisHighlights();
-          } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -14282,9 +14284,7 @@ const TalariaV8bLive = () => {
         } catch (_) {
           try { dm.renderDrawing?.(d); } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -14333,9 +14333,7 @@ const TalariaV8bLive = () => {
         } catch (_) {
           try { dm.renderDrawing?.(d); } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -14401,9 +14399,7 @@ const TalariaV8bLive = () => {
             else if (typeof dm.redrawAll === "function") dm.redrawAll();
           } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => {
@@ -14529,9 +14525,7 @@ const TalariaV8bLive = () => {
           } else {
             try { dmRun.renderDrawing?.(d); } catch (_) {}
           }
-          if (d.selected && typeof d.showAxisHighlights === "function") {
-            try { d.showAxisHighlights(); } catch (_) {}
-          }
+          v9SyncDrawingAxisHighlights(d);
           if (dmRun.chart) chartsToRender.add(dmRun.chart);
         });
         chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -14903,9 +14897,7 @@ const TalariaV8bLive = () => {
           try { dm2.renderDrawing?.(d); } catch (_) {}
           try { dm2.saveDrawings?.(); } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm2.chart) chartsToRender.add(dm2.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -14972,11 +14964,7 @@ const TalariaV8bLive = () => {
             dm.renderDrawing?.(d);
           } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try {
-            d.showAxisHighlights();
-          } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());
@@ -15067,9 +15055,7 @@ const TalariaV8bLive = () => {
         } else {
           try { dm.renderDrawing?.(d); } catch (_) {}
         }
-        if (d.selected && typeof d.showAxisHighlights === "function") {
-          try { d.showAxisHighlights(); } catch (_) {}
-        }
+        v9SyncDrawingAxisHighlights(d);
         if (dm.chart) chartsToRender.add(dm.chart);
       });
       chartsToRender.forEach((c) => c.scheduleRender && c.scheduleRender());

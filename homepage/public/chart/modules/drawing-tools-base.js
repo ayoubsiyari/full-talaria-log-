@@ -48,6 +48,15 @@ const CANDLE_INDEX_CLAMPED_TYPES = new Set([
     'fixed-range-volume-profile',
 ]);
 
+/** Box shapes — axis labels only when border, fill, or middle line is visible. */
+const SHAPE_BOX_GEOMETRY_TYPES = new Set([
+    'rectangle',
+    'rotated-rectangle',
+    'ellipse',
+    'circle',
+    'triangle'
+]);
+
 /** Shape tools: labels off by default; user may enable via style tab. */
 const AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES = new Set([
     'rectangle',
@@ -642,6 +651,9 @@ class BaseDrawing {
 
     isAxisLabelEnabled(labelType) {
         if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return false;
+        if (typeof this.hasVisibleDrawingGeometry === 'function' && !this.hasVisibleDrawingGeometry()) {
+            return false;
+        }
 
         const prop = labelType === 'time' ? 'showTimeLabel' : 'showPriceLabel';
         const explicitValue = this.style ? this.style[prop] : undefined;
@@ -650,6 +662,38 @@ class BaseDrawing {
         if (explicitValue === false) return false;
 
         return this.isAxisLabelDefaultEnabled();
+    }
+
+    /** True when the drawing still renders visible geometry (border, fill, or middle line for box shapes). */
+    hasVisibleDrawingGeometry() {
+        if (this.visible === false || this.hidden === true) return false;
+        if (!Array.isArray(this.points) || this.points.length === 0) return false;
+
+        if (!SHAPE_BOX_GEOMETRY_TYPES.has(this.type)) {
+            return true;
+        }
+
+        const s = this.style || {};
+        const borderOn = s.borderEnabled !== false;
+        const stroke = s.stroke ?? s.borderColor;
+        const borderVisible = borderOn
+            && stroke
+            && stroke !== 'none'
+            && stroke !== 'transparent';
+
+        const bgOn = s.showBackground !== false;
+        const fill = s.fill ?? s.backgroundColor;
+        const fillVisible = bgOn
+            && fill
+            && fill !== 'none'
+            && fill !== 'transparent';
+
+        const sm = s.showMiddleLine;
+        const middleVisible = sm === true
+            || sm === 1
+            || (typeof sm === 'string' && /^(true|1|yes)$/i.test(String(sm).trim()));
+
+        return borderVisible || fillVisible || middleVisible;
     }
 
     /**
@@ -813,6 +857,10 @@ class BaseDrawing {
     showAxisHighlights(opts = {}) {
         if (!this.chart || !this.points || this.points.length === 0) return;
         if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return;
+        if (!this.hasVisibleDrawingGeometry()) {
+            this.hideAxisHighlights();
+            return;
+        }
 
         const mgr = this.chart.drawingManager;
         if (!opts.live && mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {

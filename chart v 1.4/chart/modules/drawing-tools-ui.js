@@ -23566,6 +23566,22 @@ body.light-mode .template-save-dialog .dialog-title {
 
             }
 
+            const shapeBoxTypes = ['rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle'];
+            if (this.pendingChanges.showBorder !== undefined && shapeBoxTypes.includes(drawing.type)) {
+                drawing.style.borderEnabled = this.pendingChanges.showBorder;
+                if (!this.pendingChanges.showBorder) {
+                    if (drawing.style.stroke && drawing.style.stroke !== 'none' && drawing.style.stroke !== 'transparent') {
+                        drawing.style._savedStroke = drawing.style.stroke;
+                    }
+                    drawing.style.stroke = 'none';
+                } else {
+                    drawing.style.stroke = drawing.style._savedStroke
+                        || this.pendingChanges.borderColor
+                        || drawing.style.stroke
+                        || '#787b86';
+                }
+            }
+
         }
 
 
