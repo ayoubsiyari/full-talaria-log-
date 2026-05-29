@@ -1240,9 +1240,16 @@ class BaseDrawing {
         if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
             this.hasAxisHighlightZones = true;
-            // Trigger re-render to show the zones (skip during live resize/drag — chart redraws on release)
-            if (!opts.live && this.chart.scheduleRender) {
-                this.chart.scheduleRender();
+            if (this.chart.scheduleRender) {
+                if (opts.live) {
+                    requestAnimationFrame(() => {
+                        if (this.chart && this.chart.scheduleRender) {
+                            this.chart.scheduleRender();
+                        }
+                    });
+                } else if (!this.chart._isRendering) {
+                    this.chart.scheduleRender();
+                }
             }
         }
     }

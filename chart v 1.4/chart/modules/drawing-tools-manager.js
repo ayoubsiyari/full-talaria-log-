@@ -403,7 +403,44 @@ class DrawingToolsManager {
                 } catch (e) {
                 }
             });
+            if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
+                this.chart.scheduleRender();
+            }
         });
+    }
+
+    _isLiveDrawingInteraction() {
+        return !!(this.isDragging || this.isResizing || this.isCustomHandleDrag);
+    }
+
+    _beginDrawingLiveInteraction() {
+        this._drawingLiveInteractionDepth = (this._drawingLiveInteractionDepth || 0) + 1;
+        if (this._drawingLiveInteractionDepth > 1) return;
+        if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
+            this.chart._setChartPanDomOverflow(true);
+        }
+        this.setDrawingsClipDuringChartPan(true);
+    }
+
+    _endDrawingLiveInteraction() {
+        if (!this._drawingLiveInteractionDepth) return;
+        this._drawingLiveInteractionDepth -= 1;
+        if (this._drawingLiveInteractionDepth > 0) return;
+        if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
+            this.chart._setChartPanDomOverflow(false);
+        }
+        this.setDrawingsClipDuringChartPan(false);
+    }
+
+    /** Move drawing by pixel delta with full re-render (avoids transform + overflow:hidden clip). */
+    _applyLiveDrawingMovePixels(drawing, startPoints, pixelDx, pixelDy) {
+        if (!drawing || !Array.isArray(startPoints) || !this.chart) return;
+        const previewPoints = this._translatePointsByPixels(startPoints, pixelDx, pixelDy, drawing.type);
+        if (!previewPoints) return;
+        drawing.points = previewPoints.map((p) => ({ ...p }));
+        if (drawing.group) drawing.group.attr('transform', null);
+        drawing.meta.updatedAt = Date.now();
+        this.scheduleRenderDrawing(drawing);
     }
 
     _parseTimeframe(timeframe) {
@@ -2700,30 +2737,20 @@ class DrawingToolsManager {
             const pixelDy = currentScreenY - this.dragStartScreen.y;
             
             if (this.draggingMultiple && this.multiDragStartPositions) {
-                // Move all selected drawings with pixel-based transform
-                this.multiDragStartPositions.forEach(({ drawing, startTransform }) => {
-                    if (drawing.group) {
-                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
-                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                    }
-                    const startEntry = this.multiDragStartPositions.find((m) => m.drawing === drawing);
-                    if (startEntry && Array.isArray(startEntry.points)) {
-                        const previewPoints = this._translatePointsByPixels(startEntry.points, pixelDx, pixelDy, drawing.type);
-                        this._broadcastLiveEditUpdate(drawing, previewPoints);
+                this.multiDragStartPositions.forEach(({ drawing, points }) => {
+                    if (Array.isArray(points)) {
+                        this._applyLiveDrawingMovePixels(drawing, points, pixelDx, pixelDy);
+                        this._broadcastLiveEditUpdate(drawing, drawing.points);
                     }
                 });
-            } else {
-                // Move single drawing with pixel-based transform
-                if (this.draggingDrawing.group && this.dragStartOriginalPos) {
-                    const newX = this.dragStartOriginalPos.x + pixelDx;
-                    const newY = this.dragStartOriginalPos.y + pixelDy;
-                    this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
-                }
-                if (Array.isArray(this.singleDragStartPoints)) {
-                    const previewPoints = this._translatePointsByPixels(this.singleDragStartPoints, pixelDx, pixelDy, this.draggingDrawing.type);
-                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
-                }
+            } else if (Array.isArray(this.singleDragStartPoints)) {
+                this._applyLiveDrawingMovePixels(
+                    this.draggingDrawing,
+                    this.singleDragStartPoints,
+                    pixelDx,
+                    pixelDy
+                );
+                this._broadcastLiveEditUpdate(this.draggingDrawing, this.draggingDrawing.points);
             }
             return;
         }
@@ -4063,7 +4090,7 @@ class DrawingToolsManager {
         
         // Always show axis highlights (labels visible regardless of selection state)
         if (typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
+            drawing.showAxisHighlights({ live: this._isLiveDrawingInteraction() });
         }
         
         // Setup interaction handlers
@@ -5147,7 +5174,7 @@ class DrawingToolsManager {
                     this.renderDrawing(drawing);
                     self._skipHandleSetup = false;
                     if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                        drawing.showAxisHighlights();
+                        drawing.showAxisHighlights({ live: true });
                     }
                     return true;
                 }
@@ -5167,6 +5194,7 @@ class DrawingToolsManager {
                         if (!drawing.selected) {
                             self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                         }
+                        self._beginDrawingLiveInteraction();
                         self._freehandHandleWholeMove = {
                             drawing,
                             startPoints: drawing.points.map(p => ({ ...p })),
@@ -5222,7 +5250,7 @@ class DrawingToolsManager {
                         self.renderDrawing(drawing);
                         self._skipHandleSetup = false;
                         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                            drawing.showAxisHighlights();
+                            drawing.showAxisHighlights({ live: true });
                         }
                         self._broadcastLiveEditUpdate(drawing);
                         return;
@@ -5269,6 +5297,7 @@ class DrawingToolsManager {
                             self.chart.broadcastDrawingChange('update', drawing, di);
                         }
                         self._freehandHandleWholeMove = null;
+                        self._endDrawingLiveInteraction();
                         const cvs = (self.chart && self.chart.canvas) || document.getElementById('chartCanvas');
                         if (cvs) cvs.style.cursor = '';
                         self.svg.style('cursor', '');
@@ -5307,6 +5336,7 @@ class DrawingToolsManager {
      * Start handle drag
      */
     startHandleDrag(drawing, pointIndex, event) {
+        this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
         this.resizingPointIndex = pointIndex;
@@ -5360,9 +5390,8 @@ class DrawingToolsManager {
         this.renderDrawing(drawing);
         this._skipHandleSetup = false;
         
-        // Update axis highlights if drawing is selected
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
+            drawing.showAxisHighlights({ live: true });
         }
         this._broadcastLiveEditUpdate(drawing);
     }
@@ -5387,6 +5416,7 @@ class DrawingToolsManager {
         this.resizingPointIndex = null;
         this.resizingHandleRole = null;
         this.resizeBeforeState = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
@@ -5410,6 +5440,7 @@ class DrawingToolsManager {
     }
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
+        this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
         this.customHandleRole = handleRole;
@@ -5469,9 +5500,8 @@ class DrawingToolsManager {
             detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
         }));
         
-        // Update axis highlights if drawing is selected
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
+            drawing.showAxisHighlights({ live: true });
         }
     }
 
@@ -5500,6 +5530,7 @@ class DrawingToolsManager {
         this.customHandleRole = null;
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
@@ -5548,6 +5579,8 @@ class DrawingToolsManager {
      */
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
+        this._useLiveGeometryDrag = true;
+        this._beginDrawingLiveInteraction();
         this.isDragging = true;
         this.draggingDrawing = drawing;
         this.dragStartPoint = this.getDataPoint(event);
@@ -5606,6 +5639,36 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
+        if (this._useLiveGeometryDrag) {
+            const finalize = (drawing) => {
+                if (!drawing) return;
+                if (drawing.group) drawing.group.attr('transform', null);
+                drawing.meta.updatedAt = Date.now();
+                this._refreshDrawingTimestampAnchors(drawing);
+                this.renderDrawing(drawing);
+            };
+            if (this.draggingMultiple && this.multiDragStartPositions) {
+                this.multiDragStartPositions.forEach(({ drawing }) => finalize(drawing));
+            } else {
+                finalize(this.draggingDrawing);
+            }
+            this._useLiveGeometryDrag = false;
+            this._endDrawingLiveInteraction();
+            this.isDragging = false;
+            this.draggingDrawing = null;
+            this.dragStartPoint = null;
+            this.dragStartScreen = null;
+            this.dragStartOriginalPos = null;
+            this.draggingMultiple = false;
+            this.multiDragStartPositions = null;
+            this.singleDragStartPoints = null;
+            const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
+            if (canvas) canvas.style.cursor = '';
+            this.svg.style('cursor', '');
+            this.saveDrawings();
+            return;
+        }
+
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -5699,6 +5762,7 @@ class DrawingToolsManager {
         this.draggingMultiple = false;
         this.multiDragStartPositions = null;
         this.singleDragStartPoints = null;
+        this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
