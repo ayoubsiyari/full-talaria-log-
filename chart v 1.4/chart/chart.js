@@ -15533,6 +15533,9 @@ class Chart {
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
+        if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(true);
+        }
     }
 
     _clearPanTimeTickCache() {
@@ -15633,6 +15636,9 @@ class Chart {
         if (dm && typeof dm._clearDrawingGroupPanTransforms === 'function') {
             dm._clearDrawingGroupPanTransforms();
         }
+        if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(false);
+        }
         if (clearSnap) {
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
@@ -15707,6 +15713,9 @@ class Chart {
             dm.tempGroup.attr('transform', transform);
         }
         this._applyAxisHighlightPanTransform(dx, ty);
+        if (typeof dm.setDrawingsClipDuringChartPan === 'function') {
+            dm.setDrawingsClipDuringChartPan(true);
+        }
         if (typeof dm.patchDrawingsDuringChartPan === 'function') {
             dm.patchDrawingsDuringChartPan(dx, ty);
         }

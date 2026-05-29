@@ -876,16 +876,64 @@ class DrawingToolsManager {
     /**
      * Update clip path dimensions based on chart margins
      */
-    updateClipPath() {
+    updateClipPath(panPadding = null) {
         const m = this.chart.margin;
         const w = this.chart.w || this.chart.canvas?.width || 800;
         const h = this.chart.h || this.chart.canvas?.height || 600;
-        
+        let clipX = m.l;
+        let clipY = m.t;
+        let clipW = w - m.l - m.r;
+        let clipH = h - m.t - m.b;
+        if (panPadding) {
+            const padL = Math.max(0, Number(panPadding.left) || 0);
+            const padR = Math.max(0, Number(panPadding.right) || 0);
+            const padT = Math.max(0, Number(panPadding.top) || 0);
+            const padB = Math.max(0, Number(panPadding.bottom) || 0);
+            clipX -= padL;
+            clipY -= padT;
+            clipW += padL + padR;
+            clipH += padT + padB;
+        }
         this.svg.select('.chart-clip-rect')
-            .attr('x', m.l)
-            .attr('y', m.t)
-            .attr('width', w - m.l - m.r)
-            .attr('height', h - m.t - m.b);
+            .attr('x', clipX)
+            .attr('y', clipY)
+            .attr('width', Math.max(1, clipW))
+            .attr('height', Math.max(1, clipH));
+    }
+
+    _clipUrl() {
+        return this._clipId ? `url(#${this._clipId})` : null;
+    }
+
+    /**
+     * While chart pan uses CSS translate on drawing layers, a fixed clip-path cuts extended
+     * lines/rectangles (handles stay, strokes vanish). Drop clip until pan ends.
+     */
+    setDrawingsClipDuringChartPan(active) {
+        if (!this.svg || this.svg.empty()) return;
+        const clipUrl = this._clipUrl();
+        if (active) {
+            if (this._panClipRelaxed) return;
+            this._panClipRelaxed = true;
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('clip-path', null);
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.attr('clip-path', null);
+            }
+            return;
+        }
+        if (!this._panClipRelaxed) return;
+        this._panClipRelaxed = false;
+        this.updateClipPath();
+        if (clipUrl) {
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('clip-path', clipUrl);
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.attr('clip-path', clipUrl);
+            }
+        }
     }
 
     /**
@@ -6696,6 +6744,7 @@ class DrawingToolsManager {
     /** Full geometry sync after pan ends (transform cleared by chart.js). */
     finalizeDrawingsAfterChartPan() {
         this._clearDrawingGroupPanTransforms();
+        this.setDrawingsClipDuringChartPan(false);
     }
 
     /** Optional per-frame patch while chart applies group translate (no-op default). */
