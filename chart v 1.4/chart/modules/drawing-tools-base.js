@@ -1759,21 +1759,30 @@ class CoordinateUtils {
     }
 
     /**
+     * Replay mode clamps future timestamps to the last visible bar unless the tool allows extrabar indices.
+     * Single source of truth for load + render timestamp resolution (avoids snap-back to last candle).
+     */
+    static buildTimestampResolveOptions(drawing, chart) {
+        if (!drawing || !drawing.type || !chart || !chart.replaySystem || !chart.replaySystem.isActive) {
+            return null;
+        }
+        if (CoordinateUtils.allowsExtrabarBarIndex(drawing.type)) {
+            return null;
+        }
+        return { replayClampToLastBar: true };
+    }
+
+    /**
      * Resolve live drawing points from persisted timestamp anchors + current chart.data.
      * chart.data is the same series dataIndexToPixel/xScale use (required for TF switches).
      */
-    static resolveDrawingPoints(drawing, chart) {
+    static resolveDrawingPoints(drawing, chart, tsOptsOverride = undefined) {
         if (!drawing || !chart || !Array.isArray(chart.data) || chart.data.length === 0) {
             return drawing?.points || [];
         }
-        const tsOpts = (chart.replaySystem && chart.replaySystem.isActive
-            && drawing.type !== 'brush' && drawing.type !== 'highlighter'
-            && drawing.type !== 'rectangle' && drawing.type !== 'rotated-rectangle'
-            && drawing.type !== 'triangle' && drawing.type !== 'ellipse'
-            && drawing.type !== 'circle' && drawing.type !== 'arc'
-            && !CoordinateUtils.allowsExtrabarBarIndex(drawing.type))
-            ? { replayClampToLastBar: true }
-            : null;
+        const tsOpts = tsOptsOverride !== undefined
+            ? tsOptsOverride
+            : CoordinateUtils.buildTimestampResolveOptions(drawing, chart);
         if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
             return this.pointsFromTimestamps(
                 drawing.timestampPoints,
