@@ -8186,6 +8186,7 @@ const TalariaV8bLive = () => {
   const [txtNameEditing, setTxtNameEditing] = useState(false);
   const [txtSizeOpen, setTxtSizeOpen] = useState(false);
   const [txtBarSizeOpen, setTxtBarSizeOpen] = useState(false);
+  const [txtBarSizeAnchor, setTxtBarSizeAnchor] = useState({ btnTop: 0, btnBottom: 0, left: 0, right: 0, barX: 0, barY: 0 });
   const [txtBarDrop, setTxtBarDrop] = useState(null);
   const [txtTemplates, setTxtTemplates] = useState([]);
   const [txtSaveAsMode, setTxtSaveAsMode] = useState(false);
@@ -14678,13 +14679,15 @@ const TalariaV8bLive = () => {
     v9FlushTxtStyleToChartTargets(live, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
     });
-    if (tool === "text" && !editingDrawingRef.current) {
+    const textUiActive =
+      tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
+    if (textUiActive && !editingDrawingRef.current) {
       const legacy = resolveArmedTextLegacyTool();
       if (legacy && v9IsTextLegacyDrawingType(legacy)) {
         v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live));
       }
     }
-  }, [tool, resolveArmedTextLegacyTool]);
+  }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
   /** Label bold — same-frame chart sync. */
   const applyTlTextBold = useCallback(() => {
@@ -18998,9 +19001,16 @@ const TalariaV8bLive = () => {
           {/* font size dropdown — hidden for flag, emoji, note, priceNote */}
           {!["flag","emoji","note","priceNote","image"].includes(txtQuickIcon) && <div style={{position:"relative",flexShrink:0}}>
             <div onMouseEnter={()=>setHov("txt-bar-sz")} onMouseLeave={()=>setHov(null)}
-              onPointerDown={(e)=>{e.stopPropagation();setTxtBarSizeOpen(v=>!v);setTxtSizeOpen(false);}}
+              onPointerDown={(e)=>e.stopPropagation()}
               onMouseDown={(e)=>e.stopPropagation()}
-              onClick={(e)=>e.stopPropagation()}
+              onClick={(e)=>{
+                e.stopPropagation();
+                if (txtBarSizeOpen) { setTxtBarSizeOpen(false); return; }
+                const r = e.currentTarget.getBoundingClientRect();
+                setTxtBarSizeAnchor({ btnTop: r.top, btnBottom: r.bottom, left: r.left, right: r.right, barX: tlBarPos.x, barY: tlBarPos.y });
+                setTxtBarSizeOpen(true);
+                setTxtSizeOpen(false);
+              }}
               style={{height:32,padding:"0 7px",display:"flex",alignItems:"center",gap:3,position:"relative",cursor:"default",
                       background:txtBarSizeOpen?"rgba(74,106,255,0.08)":hov==="txt-bar-sz"?c.hv:"transparent",transition:"background 0.12s"}}>
               <span style={{fontSize:12,color:txtBarSizeOpen?c.acL:c.ts,minWidth:16,textAlign:"center"}}>{txtStyle.fontSize}</span>
@@ -19008,29 +19018,6 @@ const TalariaV8bLive = () => {
               {txtBarSizeOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
               {!txtBarSizeOpen&&hov==="txt-bar-sz"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
             </div>
-            {txtBarSizeOpen && (() => {
-              const txtSizes=[10,12,14,16,18,20,22,24];
-              return (
-              <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:9200,width:52,
-                        background:c.sf,border:"1px solid rgba(140,160,255,0.22)",boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
-                        animation:"tlrDropIn 0.15s ease"}}>
-                <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                {txtSizes.map(sz=>{
-                  const isA=Number(txtStyle.fontSize)===sz; const isH=hov===`txtsz-bar-${sz}`;
-                  return (
-                    <div key={sz} {...modalPointerActivate(() => { applyTxtFontSize(sz); setTxtBarSizeOpen(false); })}
-                      onMouseEnter={()=>setHov(`txtsz-bar-${sz}`)} onMouseLeave={()=>setHov(null)}
-                      style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                              background:isA?c.acD:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
-                      {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                      <span style={{fontSize:12,color:isA?c.acL:isH?c.tx:c.ts,fontWeight:isA?700:500}}>{sz}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              );
-            })()}
           </div>}
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
           <TxBtn id="txt-lock" isAct={txtLocked} onClick={()=>{
@@ -20585,6 +20572,54 @@ const TalariaV8bLive = () => {
             <B primary hk="ind-apply" fireOnPointerDown onClick={applyInd}>Apply Changes</B>
           </div>
         </div>
+        );
+      })(), document.body)}
+
+      {/* Text mini-bar font size (portaled — bar uses overflowX:auto which clips inline dropdowns) */}
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarSizeOpen && typeof document !== "undefined" && createPortal((() => {
+        const txtSizes = [10, 12, 14, 16, 18, 20, 22, 24];
+        const a = txtBarSizeAnchor;
+        const dropW = 52;
+        const dropH = txtSizes.length * 26 + 6;
+        const dy = tlBarPos.y - a.barY;
+        const dx = tlBarPos.x - a.barX;
+        const btnBottom = a.btnBottom / Z;
+        const btnTop = a.btnTop / Z;
+        const aLeft = a.left / Z;
+        const aRight = a.right / Z;
+        const vh = window.innerHeight / Z;
+        const vw = window.innerWidth / Z;
+        const mg = 8;
+        const rawTop = btnBottom + 4 + dy;
+        const flippedTop = btnTop - 4 - dropH + dy;
+        const top = rawTop + dropH > vh - mg ? Math.max(mg, flippedTop) : rawTop;
+        let left = aLeft + dx;
+        if (left + dropW > vw - mg) left = Math.max(mg, aRight + dx - dropW);
+        left = Math.max(mg, left);
+        return (
+          <div data-sdrop="1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}
+            style={{ position: "fixed", top, left, zIndex: 10060, width: dropW,
+                     background: c.sf, border: "1px solid rgba(140,160,255,0.22)",
+                     boxShadow: "0 4px 16px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.12)",
+                     fontFamily: F, animation: "tlrDropIn 0.15s ease" }}>
+            <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+            {txtSizes.map((sz) => {
+              const isA = Number(txtStyle.fontSize) === sz;
+              const isH = hov === `txtsz-bar-${sz}`;
+              return (
+                <div key={sz}
+                  onClick={() => { applyTxtFontSize(sz); setTxtBarSizeOpen(false); }}
+                  onMouseEnter={() => setHov(`txtsz-bar-${sz}`)}
+                  onMouseLeave={() => setHov(null)}
+                  style={{ padding: "5px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", position: "relative",
+                           background: isA ? c.acD : isH ? c.hv2 : "transparent", transition: "background 0.1s" }}>
+                  {isA && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2,
+                    background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
+                  <span style={{ fontSize: 12, color: isA ? c.acL : isH ? c.tx : c.ts, fontWeight: isA ? 700 : 500 }}>{sz}</span>
+                </div>
+              );
+            })}
+          </div>
         );
       })(), document.body)}
 
