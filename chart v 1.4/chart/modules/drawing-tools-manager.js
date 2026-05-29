@@ -404,16 +404,8 @@ class DrawingToolsManager {
                 }
             });
 
-            const axisTarget = this.resizingDrawing || this.customHandleDrawing || this.draggingDrawing;
-            if (axisTarget && typeof axisTarget.showAxisHighlights === 'function') {
-                axisTarget.showAxisHighlights({ live: true });
-            }
-
-            // Drawings SVG is updated above; skip full chart repaint during resize (main lag source).
             if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
-                if (!this.isResizing) {
-                    this.chart.scheduleRender();
-                }
+                this.chart.scheduleRender();
             }
         });
     }
@@ -4127,10 +4119,7 @@ class DrawingToolsManager {
             drawing.group.style('display', null);
         }
 
-        // During live resize/move points are already in bar-index space; skip heavy TF sync.
-        if (!liveRender) {
-            this._syncDrawingPointsFromTimestamps(drawing);
-        }
+        this._syncDrawingPointsFromTimestamps(drawing);
 
         const scales = {
             xScale: this.chart.xScale,
@@ -4138,22 +4127,6 @@ class DrawingToolsManager {
             chart: this.chart,
             labelsGroup: this.labelsGroup
         };
-
-        if (liveRender && drawing.group && !drawing.group.empty()
-            && typeof drawing.patchPanZoomGeometry === 'function'
-            && drawing.patchPanZoomGeometry(scales)) {
-            if (drawingRenderOpts && drawingRenderOpts.skipHandles) {
-                if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox) {
-                    drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
-                } else if (typeof drawing._syncBoxHandlePositions === 'function') {
-                    drawing._syncBoxHandlePositions(drawing.group, scales);
-                } else if (typeof drawing.updateHandlePositions === 'function') {
-                    drawing.updateHandlePositions(scales);
-                }
-            }
-            if (this.chart) this.chart._isRendering = wasRendering;
-            return;
-        }
 
         // Render with current scales AND chart instance for accurate pixel calculation
         if (drawingRenderOpts) {
@@ -4172,9 +4145,8 @@ class DrawingToolsManager {
             }
         }
         
-        // Axis highlights during live resize are batched once per RAF in scheduleRenderDrawing.
-        if (!liveRender && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
+        if (typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights({ live: liveRender });
         }
         
         // Setup interaction handlers
@@ -4184,11 +4156,9 @@ class DrawingToolsManager {
         // selected (renderDrawing from selectDrawing) or first placed (addDrawing).
         if (!skipInteraction) {
             this.setupDrawingInteraction(drawing);
-        } else {
-            // Minimal pointer-events pass: set group to none so SVG root can
-            // receive events for geometric hit testing. Per-stroke pointer-events
-            // are still needed for mouse-cursor changes on hover, so we do a
-            // lightweight version that avoids the expensive per-element scan.
+        } else if (!liveRender) {
+            // Never run during live resize/move: it sets pointer-events:none on the
+            // group and breaks handle dragging after the first animation frame.
             this._applyMinimalPointerEvents(drawing);
         }
         if (this._isPlacementModeActive()) {
@@ -5566,10 +5536,6 @@ class DrawingToolsManager {
         this.svg.style('cursor', '');
 
         this.renderDrawing(drawing);
-
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
 
         // Recalculate timestamps from new positions
         drawing.recalculateTimestamps();
