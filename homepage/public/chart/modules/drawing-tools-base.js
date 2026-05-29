@@ -952,7 +952,9 @@ class BaseDrawing {
         // Create highlight group for SVG labels only (zones are drawn on canvas)
         this.axisHighlightGroup = svg.append('g')
             .attr('class', 'axis-highlight-group')
-            .attr('data-drawing-id', this.id);
+            .attr('data-drawing-id', this.id)
+            .style('pointer-events', 'all')
+            .style('cursor', 'pointer');
 
         // Keep price/time endpoint labels inside the chart tile (not over V9 side panels).
         const hlClipId = `axis-highlight-clip-${this.id}`;
@@ -1337,7 +1339,9 @@ class BaseDrawing {
                             .attr('fill', timeHighlightColor)
                             .attr('stroke', 'rgba(0,0,0,0.35)')
                             .attr('stroke-width', 1)
-                            .attr('rx', 3);
+                            .attr('rx', 3)
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer');
                         
                         // Time text
                         this.axisHighlightGroup.append('text')
@@ -1348,7 +1352,9 @@ class BaseDrawing {
                             .attr('font-size', '11px')
                             .attr('font-weight', '600')
                             .attr('text-anchor', 'middle')
-                            .text(timeText);
+                            .text(timeText)
+                            .style('pointer-events', 'all')
+                            .style('cursor', 'pointer');
                     }
                 }
             }

@@ -1082,6 +1082,17 @@ class DrawingToolsManager {
                 }
             }
 
+            const domResolvedDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
+            if (domResolvedDrawing && !domResolvedDrawing.locked) {
+                if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+
+                this.selectDrawing(domResolvedDrawing);
+                this.editDrawing(domResolvedDrawing, event.pageX, event.pageY);
+                return true;
+            }
+
             const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
             if (!svgNode) return false;
 
@@ -2000,6 +2011,21 @@ class DrawingToolsManager {
         if (!this.currentTool) {
             // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+
+            if (event.detail >= 2) {
+                const domDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
+                if (domDrawing && !domDrawing.locked) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    this.selectDrawing(domDrawing, false);
+                    this.editDrawing(domDrawing, event.pageX, event.pageY);
+                    this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                    return;
+                }
+            }
             
             // Check for stacked lines (more than 3 lines at this point)
             const stackedLinesInfo = this.findStackedLines(mouseX, mouseY, 3);
@@ -2269,6 +2295,17 @@ class DrawingToolsManager {
                     if (plusDrawing) {
                         drawing = plusDrawing;
                         drawingGroup = plusDrawingGroup;
+                    }
+                }
+            }
+
+            if (!drawing) {
+                const domDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
+                if (domDrawing) {
+                    drawing = domDrawing;
+                    if (rawTargetNode && rawTargetNode.closest) {
+                        const g = rawTargetNode.closest('.drawing');
+                        if (g) drawingGroup = g;
                     }
                 }
             }
@@ -3344,6 +3381,90 @@ class DrawingToolsManager {
     /** Layout-space XY from viewport client coords (matches `_eventCanvasLocalXY`; use for hit-testing when only x/y are available). */
     _clientXYToLayoutXY(clientX, clientY) {
         return this._eventCanvasLocalXY({ clientX, clientY });
+    }
+
+    /**
+     * Resolve a drawing from a DOM click target (.drawing or axis highlight pill).
+     * @param {Element|null} rawTargetNode
+     * @returns {Object|null}
+     */
+    _resolveDrawingFromDomTarget(rawTargetNode) {
+        if (!rawTargetNode || !rawTargetNode.closest) return null;
+
+        const drawingGroup = rawTargetNode.closest('.drawing');
+        if (drawingGroup) {
+            const drawingId = d3.select(drawingGroup).attr('data-id');
+            if (drawingId) {
+                const drawing = this.drawings.find((d) => d && d.id === drawingId);
+                if (drawing) return drawing;
+            }
+        }
+
+        const axisNode = rawTargetNode.closest(
+            '.axis-highlight-group, .axis-highlight-time, .axis-highlight-time-text, ' +
+            '.axis-highlight-time-start, .axis-highlight-time-start-text, ' +
+            '.axis-highlight-time-end, .axis-highlight-time-end-text, ' +
+            '.axis-highlight-price, .axis-highlight-price-text'
+        );
+        if (!axisNode) return null;
+
+        const axisGroup = axisNode.closest('.axis-highlight-group') || axisNode;
+        const axisDrawingId = axisGroup.getAttribute && axisGroup.getAttribute('data-drawing-id');
+        if (!axisDrawingId) return null;
+        return this.drawings.find((d) => d && d.id === axisDrawingId) || null;
+    }
+
+    /**
+     * Point-based stroke distance for simple line tools (works without live SVG nodes).
+     * @returns {{ distance: number, tolerance: number }|null}
+     */
+    _distanceToLineDrawingStroke(drawing, mouseX, mouseY) {
+        if (!drawing || !this.chart) return null;
+        const type = drawing.type;
+        const points = drawing.points;
+        if (!Array.isArray(points) || points.length === 0) return null;
+
+        const xScale = this.chart.xScale;
+        const yScale = this.chart.yScale;
+        if (!xScale || !yScale) return null;
+
+        const toPx = (p) => {
+            if (!p) return [NaN, NaN];
+            const px = this.chart.dataIndexToPixel
+                ? this.chart.dataIndexToPixel(p.x)
+                : xScale(p.x);
+            const py = yScale(p.y);
+            return [px, py];
+        };
+
+        const strokeW = Number(drawing.style && drawing.style.strokeWidth) || 2;
+        const baseTol = Math.max(12, Math.max(16, strokeW * 5));
+
+        if (type === 'vertical' && points.length >= 1) {
+            const [px] = toPx(points[0]);
+            if (!Number.isFinite(px)) return null;
+            return { distance: Math.abs(mouseX - px), tolerance: baseTol };
+        }
+        if (type === 'horizontal' && points.length >= 1) {
+            const [, py] = toPx(points[0]);
+            if (!Number.isFinite(py)) return null;
+            return { distance: Math.abs(mouseY - py), tolerance: baseTol };
+        }
+        if (type === 'cross-line' && points.length >= 1) {
+            const [px, py] = toPx(points[0]);
+            if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+            return { distance: Math.min(Math.abs(mouseX - px), Math.abs(mouseY - py)), tolerance: baseTol };
+        }
+        if ((type === 'trendline' || type === 'ray' || type === 'horizontal-ray' || type === 'extended-line')
+            && points.length >= 2) {
+            const [x1, y1] = toPx(points[0]);
+            const [x2, y2] = toPx(points[1]);
+            if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+            const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+            const tolerance = Math.max(10, (strokeW / 2) + 0.5);
+            return { distance, tolerance };
+        }
+        return null;
     }
 
     /**
@@ -8675,7 +8796,18 @@ class DrawingToolsManager {
         let z = 0;
         for (const drawing of this.drawings) {
             z++;
-            if (!drawing.group || drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
+            if (drawing.visible === false || drawing.hidden === true || this._isHiddenByGlobalVisibility(drawing)) continue;
+            if (!this._isVisibleForCurrentTimeframe(drawing)) continue;
+
+            const pointStrokeHit = this._distanceToLineDrawingStroke(drawing, mouseX, mouseY);
+            if (pointStrokeHit && !hitsById.has(drawing.id)) {
+                if (pointStrokeHit.distance <= pointStrokeHit.tolerance) {
+                    hitsById.set(drawing.id, { drawing, distance: pointStrokeHit.distance, z });
+                    continue;
+                }
+            }
+
+            if (!drawing.group) continue;
 
             // Anchored VWAP: allow hit-testing from anchor and curve (for click/dblclick selection).
             if (drawing.type === 'anchored-vwap' && !hitsById.has(drawing.id)) {
@@ -9075,7 +9207,9 @@ class DrawingToolsManager {
                     const isHitArea = elementSel.classed('shape-border-hit');
 
                     const pointerEvents = elementSel.style('pointer-events') || elementSel.attr('pointer-events') || '';
-                    const isTransparentStrokeHitArea = (stroke === 'transparent' || stroke === 'none' || !stroke) && pointerEvents === 'stroke';
+                    const strokeWidthAttr = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 0;
+                    const isTransparentStrokeHitArea = (stroke === 'transparent' || stroke === 'none' || !stroke)
+                        && (pointerEvents === 'stroke' || pointerEvents === 'all' || strokeWidthAttr >= 8);
 
                     if (!stroke || stroke === 'none' || stroke === 'transparent') {
                         if (!isHitArea && !isTransparentStrokeHitArea) continue;
