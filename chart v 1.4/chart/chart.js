@@ -16094,24 +16094,38 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + axes (lite, 60fps loop).
+        // Fast path while dragging chart: candles + overlays stay visible (60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
             // Vertical under candles; horizontal redrawn after axes so LOD candles do not hide price levels.
             this.drawGrid({ panFast: true, skipHorizontal: true });
+            this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+                try {
+                    this.compareOverlay.drawOverlays();
+                } catch (e) {
+                    console.error('Error drawing overlays:', e);
+                }
+            }
             this.drawAxes();
             // Margin may widen after axis labels — refresh scales (Y domain stays pan-frozen).
             this.calculateScales();
             this.drawGrid({ panFast: true, skipVertical: true });
             this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
+            }
             if (this._shouldUsePanDrawingsTransform()) {
                 this._applyPanDrawingsLayerTransform();
-            } else {
-                this._clearPanDrawingsLayerTransform();
-                this.redrawDrawings();
+            } else if (this._panSnapOffsetX != null) {
+                this._applyPanDrawingsLayerTransform();
             }
+            // Never clear/rebuild SVG during active pan — CSS translate keeps shapes glued.
             this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -21551,7 +21565,15 @@ class Chart {
         if (this.drawingManager && this.xScale && this.yScale) {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
-            if (this._isChartViewPanning() || wheelActive) {
+            if (this._isChartViewPanning()) {
+                if (this._shouldUsePanDrawingsTransform() || this._panSnapOffsetX != null) {
+                    if (this._panSnapOffsetX != null) {
+                        this._applyPanDrawingsLayerTransform();
+                    }
+                    return;
+                }
+            }
+            if (wheelActive) {
                 this.drawingManager.redrawAll({ panFast: true });
             } else {
                 this.drawingManager.redrawAll();

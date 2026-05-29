@@ -6623,11 +6623,22 @@ class DrawingToolsManager {
 
     /**
      * Redraw all drawings (called on zoom/pan)
+     * @param {Object} [options]
+     * @param {boolean} [options.panFast] - skip rebuild while chart pan uses CSS translate
+     * @param {boolean} [options.forceFull] - always rebuild (after pan ends)
      */
-    redrawAll() {
+    redrawAll(options = {}) {
         // Check if scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Scales not ready for drawing');
+            return;
+        }
+
+        const chart = this.chart;
+        const panTransformActive = !options.forceFull && chart
+            && typeof chart._shouldUsePanDrawingsTransform === 'function'
+            && chart._shouldUsePanDrawingsTransform();
+        if (options.panFast && panTransformActive) {
             return;
         }
         
@@ -6668,6 +6679,36 @@ class DrawingToolsManager {
         this.chart._isRendering = wasRendering;
         
         this.raiseDrawingLayersAboveOrderPreviews();
+    }
+
+    /** Ensure SVG exists before pan translate (finger-down). */
+    prepareDrawingsForChartPan() {
+        if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
+        this.updateClipPath();
+        const hasDom = this.drawingsGroup
+            && !this.drawingsGroup.empty()
+            && !this.drawingsGroup.selectAll('.drawing').empty();
+        if (!hasDom && this.drawings.length > 0) {
+            this.redrawAll({ forceFull: true });
+        }
+    }
+
+    /** Full geometry sync after pan ends (transform cleared by chart.js). */
+    finalizeDrawingsAfterChartPan() {
+        this._clearDrawingGroupPanTransforms();
+    }
+
+    /** Optional per-frame patch while chart applies group translate (no-op default). */
+    patchDrawingsDuringChartPan(_dx, _ty) {}
+
+    _ensureDrawingsPanLayer() {
+        if (!this.drawingsGroup || this.drawingsGroup.empty()) return;
+        this.drawingsPanLayer = this.drawingsGroup;
+    }
+
+    _clearDrawingGroupPanTransforms() {
+        if (!this.drawingsGroup || this.drawingsGroup.empty()) return;
+        this.drawingsGroup.selectAll('.drawing').attr('transform', null);
     }
 
     /**
