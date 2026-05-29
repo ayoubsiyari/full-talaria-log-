@@ -745,6 +745,13 @@ function v9ChartVertToUi(chartVert) {
   return v === "middle" ? "center" : v;
 }
 
+/** Quick-bar lock icons must follow the selected drawing (undefined locked => unlocked). */
+function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked) {
+  const locked = !!(drawing && drawing.locked);
+  if (typeof setTlLocked === "function") setTlLocked(locked);
+  if (typeof setTxtLocked === "function") setTxtLocked(locked);
+}
+
 const V9_DASH_TO_LEGACY = { solid: "", dashed: "10,6", dotted: "2,2", dashdot: "8,4,2,4" };
 
 /** V9 cursor rail icon → chart.js `setCursorType` argument. */
