@@ -39,22 +39,13 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
 /** Never show axis price/time labels (no toggle). */
 const AXIS_LABEL_DISABLED_TYPES = new Set(['brush', 'highlighter']);
 
-/** Bar index may exceed last candle (future padding) — fractional X, no replay-clamp. */
-const EXTRAPOLATE_BAR_INDEX_TYPES = new Set([
-    'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
-    'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin',
-    'table', 'emoji', 'image', 'arrow-marker', 'arrow-mark-up', 'arrow-mark-down',
-    // Shapes — place/drag in empty space right of last bar (TradingView-style)
-    'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
-    // Lines & paths
-    'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
-    // Channels — future padding (baseline uses distinct X; render uses perpendicular offset)
-    'parallel-channel', 'flat-top-bottom', 'disjoint-channel',
-    // Measurement, fib/gann
-    'regression-trend', 'ruler',
-    'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan',
-    'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'pitchfork', 'pitchfan',
-    'trend-fib-extension', 'gann-box', 'gann-fan', 'gann-square', 'gann-square-fixed',
+/**
+ * Only these tools must stay on loaded candle indices (range anchored to data).
+ * All other drawing types may use future/past bar padding and skip replay clamp-to-last-bar.
+ */
+const CANDLE_INDEX_CLAMPED_TYPES = new Set([
+    'volume-profile',
+    'fixed-range-volume-profile',
 ]);
 
 /** Shape tools: labels off by default; user may enable via style tab. */
@@ -1755,7 +1746,7 @@ class CoordinateUtils {
 
     /** True when X may sit in future/past padding beyond loaded candles (text tools, markers). */
     static allowsExtrabarBarIndex(type) {
-        return !!type && EXTRAPOLATE_BAR_INDEX_TYPES.has(type);
+        return !!type && !CANDLE_INDEX_CLAMPED_TYPES.has(type);
     }
 
     /**

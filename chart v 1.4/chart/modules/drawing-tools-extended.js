@@ -1288,16 +1288,18 @@ class ArcTool extends BaseDrawing {
         this._dragStartMousePoint = null;
     }
 
+    _applyScreenSpaceBend(scales) {
+        applyQuadraticScreenBend(this, scales);
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
-        const isPreview = renderOpts.isPreview;
         if (this.group) {
             this.group.remove();
         }
 
         if (this.points.length < 2) return;
-        
-        // Auto-generate control point if we have exactly 2 points and drawing is complete
+
         if (this.points.length === 2 && !this._controlPointGenerated) {
             this.finalizeDrawing();
         }
@@ -1305,18 +1307,19 @@ class ArcTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing arc', renderOpts);
         this._clearDrawingLabels(scales);
 
+        this._applyScreenSpaceBend(scales);
+
         const p1 = this.points[0];
-        const p2 = this.points.length >= 3 ? this.points[2] : this.points[1]; // End point
+        const p2 = this.points.length >= 3 ? this.points[2] : this.points[1];
         const controlPoint = this.points.length >= 3 ? this.points[1] : null;
-        
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y1 = scales.yScale(p1.y);
         const y2 = scales.yScale(p2.y);
 
-        // If no control point yet, show a straight line preview
         if (!controlPoint) {
             this.group.append('line')
                 .attr('x1', x1)
@@ -1330,42 +1333,10 @@ class ArcTool extends BaseDrawing {
             return this.group;
         }
 
-        // Full arc with control point
-        let ctrlX = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(controlPoint.x) : scales.xScale(controlPoint.x);
-        let ctrlY = scales.yScale(controlPoint.y);
-        
-        // Apply initial screen offset if needed (like curve)
-        if (this._needsScreenOffset) {
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            
-            if (length > 0) {
-                const perpX = -dy / length;
-                const perpY = dx / length;
-                const offsetDistance = Math.min(50, length * 0.3);
-                
-                // Calculate control point to achieve desired curve midpoint offset
-                const targetMidX = midX + perpX * offsetDistance;
-                const targetMidY = midY + perpY * offsetDistance;
-                ctrlX = 2 * targetMidX - 0.5 * (x1 + x2);
-                ctrlY = 2 * targetMidY - 0.5 * (y1 + y2);
-                
-                // Convert back to data coordinates and store
-                if (scales.chart && scales.chart.pixelToDataIndex) {
-                    controlPoint.x = scales.chart.pixelToDataIndex(ctrlX);
-                } else {
-                    controlPoint.x = scales.xScale.invert(ctrlX);
-                }
-                controlPoint.y = scales.yScale.invert(ctrlY);
-            }
-            this._needsScreenOffset = false;
-        }
+        const ctrlX = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(controlPoint.x) : scales.xScale(controlPoint.x);
+        const ctrlY = scales.yScale(controlPoint.y);
 
-        // Draw the arc using quadratic curve
         const pathData = `M ${x1} ${y1} Q ${ctrlX} ${ctrlY} ${x2} ${y2}`;
 
         // Invisible wide hit path for easier clicking (same as CurveTool)
@@ -1510,6 +1481,63 @@ class ArcTool extends BaseDrawing {
     }
 }
 
+/** Shared quadratic bend for Curve + Arc (screen px; index/price axes differ). */
+function applyQuadraticScreenBend(tool, scales) {
+    if (!tool || !scales) return;
+    if (tool.points.length === 2 && typeof tool.finalizeDrawing === 'function' && !tool._controlPointGenerated) {
+        tool.finalizeDrawing();
+    }
+    if (tool.points.length < 3) return;
+
+    const pointToScreen = (p) => ({
+        x: scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x),
+        y: scales.yScale(p.y)
+    });
+    const screenToPoint = (sp) => {
+        const x = scales.chart && scales.chart.pixelToDataIndex
+            ? scales.chart.pixelToDataIndex(sp.x)
+            : scales.xScale.invert(sp.x);
+        return { x, y: scales.yScale.invert(sp.y) };
+    };
+
+    const p0 = pointToScreen(tool.points[0]);
+    const p1 = pointToScreen(tool.points[1]);
+    const p2 = pointToScreen(tool.points[2]);
+
+    const dx = p2.x - p0.x;
+    const dy = p2.y - p0.y;
+    const chordLen = Math.hypot(dx, dy);
+    if (chordLen < 1) {
+        tool._needsScreenOffset = false;
+        return;
+    }
+
+    const cross = Math.abs((p1.x - p0.x) * dy - (p1.y - p0.y) * dx);
+    const colinear = cross < chordLen * 1.5;
+    if (!tool._needsScreenOffset && !colinear) {
+        return;
+    }
+
+    const offsetAmount = Math.max(8, chordLen * (tool.type === 'arc' ? 0.3 : 0.15));
+    const maxArcOffset = tool.type === 'arc' ? 50 : Infinity;
+    const offset = tool.type === 'arc' ? Math.min(maxArcOffset, offsetAmount) : offsetAmount;
+
+    const midX = (p0.x + p2.x) / 2;
+    const midY = (p0.y + p2.y) / 2;
+    const perpX = (-dy / chordLen) * offset;
+    const perpY = (dx / chordLen) * offset;
+    const targetMidX = midX + perpX;
+    const targetMidY = midY + perpY;
+    const ctrlX = 2 * targetMidX - 0.5 * (p0.x + p2.x);
+    const ctrlY = 2 * targetMidY - 0.5 * (p0.y + p2.y);
+
+    tool.points[1] = screenToPoint({ x: ctrlX, y: ctrlY });
+    tool._needsScreenOffset = false;
+    tool._controlPointGenerated = true;
+}
+
 // ============================================================================
 // Curve Tool (Bezier curve with control points)
 // ============================================================================
@@ -1541,7 +1569,6 @@ class CurveTool extends BaseDrawing {
         this._needsScreenOffset = true;
     }
 
-    /** Map data point to layout/screen pixels for bend math. */
     _pointToScreen(p, scales) {
         return {
             x: scales.chart && scales.chart.dataIndexToPixel
@@ -1551,54 +1578,8 @@ class CurveTool extends BaseDrawing {
         };
     }
 
-    _screenToPoint(sp, scales) {
-        const x = scales.chart && scales.chart.pixelToDataIndex
-            ? scales.chart.pixelToDataIndex(sp.x)
-            : scales.xScale.invert(sp.x);
-        return { x, y: scales.yScale.invert(sp.y) };
-    }
-
-    /**
-     * Quadratic control on the chord is a straight line — apply perpendicular bend in screen px.
-     * Re-runs when control is still colinear (e.g. after timestamp re-sync).
-     */
     _applyScreenSpaceBend(scales) {
-        if (this.points.length === 2 && !this._controlPointGenerated) {
-            this.finalizeDrawing();
-        }
-        if (!scales || this.points.length < 3) return;
-
-        const p0 = this._pointToScreen(this.points[0], scales);
-        const p1 = this._pointToScreen(this.points[1], scales);
-        const p2 = this._pointToScreen(this.points[2], scales);
-
-        const dx = p2.x - p0.x;
-        const dy = p2.y - p0.y;
-        const chordLen = Math.hypot(dx, dy);
-        if (chordLen < 1) {
-            this._needsScreenOffset = false;
-            return;
-        }
-
-        const cross = Math.abs((p1.x - p0.x) * dy - (p1.y - p0.y) * dx);
-        const colinear = cross < chordLen * 1.5;
-        if (!this._needsScreenOffset && !colinear) {
-            return;
-        }
-
-        const offsetAmount = Math.max(8, chordLen * 0.15);
-        const midX = (p0.x + p2.x) / 2;
-        const midY = (p0.y + p2.y) / 2;
-        const perpX = (-dy / chordLen) * offsetAmount;
-        const perpY = (dx / chordLen) * offsetAmount;
-        const targetMidX = midX + perpX;
-        const targetMidY = midY + perpY;
-        const ctrlX = 2 * targetMidX - 0.5 * (p0.x + p2.x);
-        const ctrlY = 2 * targetMidY - 0.5 * (p0.y + p2.y);
-
-        this.points[1] = this._screenToPoint({ x: ctrlX, y: ctrlY }, scales);
-        this._needsScreenOffset = false;
-        this._controlPointGenerated = true;
+        applyQuadraticScreenBend(this, scales);
     }
     
     ensureTextDefaults() {

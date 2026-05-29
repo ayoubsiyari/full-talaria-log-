@@ -47,6 +47,8 @@ class DrawingToolsManager {
         this.dragFirstTwoStartScreen = null;
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
+        /** Last preview bend for curve/arc (preview render mutates temp instance; finalize must reuse it). */
+        this._lastCurvePlacementPoints = null;
 
         /** Remote sync (session PATCH + cloud API) lags localStorage; drives toolbar save indicator */
         this._drawingsPendingTargets = { session: false, api: false };
@@ -1611,6 +1613,7 @@ class DrawingToolsManager {
             this.cancelRectangularSelection();
         }
         this._clearLiveSyncPreview();
+        this._clearCurvePlacementCache();
         this.currentTool = null;
         this.drawingState.reset();
         this.svg.style('cursor', 'default');
@@ -1743,6 +1746,33 @@ class DrawingToolsManager {
         }
         this._liveSyncDrawingId = null;
         this._liveSyncBroadcasted = false;
+    }
+
+    _isCurveLikePlacementTool(type) {
+        return type === 'curve' || type === 'arc';
+    }
+
+    _captureCurvePlacementFromPreview(tempDrawing) {
+        if (!tempDrawing || !Array.isArray(tempDrawing.points) || tempDrawing.points.length < 3) {
+            return;
+        }
+        this._lastCurvePlacementPoints = tempDrawing.points.map((p) => ({ x: p.x, y: p.y }));
+    }
+
+    /** Merge final click endpoints with control point from the last live preview render. */
+    _mergeCurvePlacementEndpoints(endpoints) {
+        if (!Array.isArray(endpoints) || endpoints.length < 2) return endpoints;
+        const bent = this._lastCurvePlacementPoints;
+        if (!Array.isArray(bent) || bent.length < 3) return endpoints.map((p) => ({ ...p }));
+        return [
+            { ...endpoints[0] },
+            { ...bent[1] },
+            { ...endpoints[endpoints.length - 1] }
+        ];
+    }
+
+    _clearCurvePlacementCache() {
+        this._lastCurvePlacementPoints = null;
     }
 
     _parseGroupTranslate(transform) {
@@ -2533,7 +2563,9 @@ class DrawingToolsManager {
         }
         
         if (isComplete) {
-            // [debug removed]
+            if (this._isCurveLikePlacementTool(this.currentTool)) {
+                this.updateTempDrawing(this.drawingState.tempPoints);
+            }
             this.finalizeDrawing();
         } else {
             // [debug removed]
@@ -3015,6 +3047,9 @@ class DrawingToolsManager {
                 this.dragFirstTwoStartScreen = null;
                 // If the tool is a simple 2-point tool, finalize immediately on mouseup
                 if (toolInfo.points === 2) {
+                    if (this._isCurveLikePlacementTool(this.currentTool)) {
+                        this.updateTempDrawing(this.drawingState.tempPoints);
+                    }
                     this.finalizeDrawing();
                     return;
                 }
@@ -3348,11 +3383,10 @@ class DrawingToolsManager {
                 ? screenY
                 : Math.max(minY, Math.min(maxY, screenY));
         }
-        // Preserve legacy behavior: continuous coordinates are only for actively drawn freehand tools
-        const isFreehandContinuous = this.currentTool === 'path'
-            || this.currentTool === 'brush'
-            || this.currentTool === 'highlighter';
-        const isContinuousTool = isFreehandContinuous || allowsExtrabar;
+        const isFreehandStroke = activeToolType === 'path'
+            || activeToolType === 'brush'
+            || activeToolType === 'highlighter';
+        const isContinuousTool = isFreehandStroke || allowsExtrabar;
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -3369,7 +3403,7 @@ class DrawingToolsManager {
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
         const dataLen = this.chart && this.chart.data ? this.chart.data.length : 0;
         const isOverCandleData = dataLen > 0 && point.x >= 0 && point.x <= dataLen - 1;
-        if (!isFreehandContinuous && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
+        if (!isFreehandStroke && isOverCandleData && effectiveMagnetMode && effectiveMagnetMode !== 'off') {
             point = CoordinateUtils.snapToOHLC(
                 point,
                 this.chart.data,
@@ -3383,7 +3417,7 @@ class DrawingToolsManager {
         // Keep panel/original behavior consistent for non-freehand tools:
         // anchor X to candle indices so points cannot land between candles.
         // Text / signpost / pin may sit in future padding beyond the last candle.
-        if (!isFreehandContinuous && !allowsExtrabar) {
+        if (!isFreehandStroke && !allowsExtrabar) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -3565,6 +3599,9 @@ class DrawingToolsManager {
                     chart: this.chart  // Pass chart for dataIndexToPixel
                 }, isPreview);
             }
+            if (this._isCurveLikePlacementTool(this.currentTool)) {
+                this._captureCurvePlacementFromPreview(tempDrawing);
+            }
             this._syncLivePreviewDrawing(tempDrawing);
             
             // Disable pointer-events on preview so clicks pass through to SVG for adding more points
@@ -3586,8 +3623,12 @@ class DrawingToolsManager {
         }
 
         // [debug removed]
-        // Create the actual drawing
-        const args = [this.drawingState.tempPoints];
+        let placementPoints = this.drawingState.tempPoints.map((p) => ({ ...p }));
+        if (this._isCurveLikePlacementTool(this.currentTool)) {
+            placementPoints = this._mergeCurvePlacementEndpoints(placementPoints);
+        }
+
+        const args = [placementPoints];
         if (this.currentTool === 'emoji') {
             const options = this.currentEmojiOptions || this.pendingEmojiOptions || {};
             args.push(options);
@@ -3600,11 +3641,25 @@ class DrawingToolsManager {
             this._ensureDrawingId(drawing);
         }
 
-        // Arc / curve need a generated control point before timestamps or re-render.
-        if (typeof drawing.finalizeDrawing === 'function') {
+        drawing.chart = this.chart;
+
+        if (placementPoints.length >= 3 && this._isCurveLikePlacementTool(this.currentTool)) {
+            drawing._controlPointGenerated = true;
+            drawing._needsScreenOffset = false;
+        } else if (typeof drawing.finalizeDrawing === 'function') {
             drawing.finalizeDrawing();
         }
-        
+
+        if (typeof drawing._applyScreenSpaceBend === 'function' && this.chart?.xScale && this.chart?.yScale) {
+            drawing._applyScreenSpaceBend({
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale,
+                chart: this.chart
+            });
+        }
+
+        this._clearCurvePlacementCache();
+
         // Apply saved style for this tool type
         this.applySavedStyle(drawing);
 
@@ -4734,14 +4789,7 @@ class DrawingToolsManager {
 
         const getDragDataPoint = (dragEvent) => {
             const src = (dragEvent && dragEvent.sourceEvent) ? dragEvent.sourceEvent : dragEvent;
-            const ptr = self._eventCanvasLocalXY(src);
-            const screenX = ptr[0];
-            const screenY = ptr[1];
-            const point = CoordinateUtils.screenToData(screenX, screenY, {
-                xScale: self.chart.xScale,
-                yScale: self.chart.yScale
-            }, self.chart, false);
-            return self.clampPointToCandleRange(point, drawing.type);
+            return self.getDataPoint(src, drawing.type, { suppressKeyMagnet: true });
         };
 
         const setAnchoredVWAPMovingState = (targetDrawing, isMoving) => {
