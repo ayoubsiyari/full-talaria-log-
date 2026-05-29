@@ -26,6 +26,19 @@
  */
 
 class DrawingToolsManager {
+    /** Used when cached drawing-tools-base.js lacks newer EXTRAPOLATE entries. */
+    static EXTRABAR_TOOL_TYPES_FALLBACK = new Set([
+        'parallel-channel', 'flat-top-bottom', 'disjoint-channel', 'regression-trend',
+        'rectangle', 'rotated-rectangle', 'ellipse', 'circle', 'triangle', 'arc', 'curve', 'double-curve',
+        'trendline', 'ray', 'horizontal-ray', 'extended-line', 'arrow', 'vertical', 'polyline', 'path',
+        'fibonacci-retracement', 'fibonacci-extension', 'fib-channel', 'fib-timezone', 'fib-speed-fan',
+        'trend-fib-time', 'fib-circles', 'fib-spiral', 'fib-arcs', 'fib-wedge', 'pitchfork', 'pitchfan',
+        'trend-fib-extension', 'gann-box', 'gann-fan', 'gann-square', 'gann-square-fixed',
+        'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+        'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin', 'table', 'emoji', 'image',
+        'long-position', 'short-position', 'date-price-range', 'ruler'
+    ]);
+
     constructor(chartInstance) {
         this.chart = chartInstance;
         this.svg = chartInstance.svg;
@@ -3324,22 +3337,22 @@ class DrawingToolsManager {
         const allowRangeVerticalOverflow = isInteractingWithExistingDatePriceRange
             && rangeInteractionMode !== 'time';
 
-        const allowsExtrabar = typeof CoordinateUtils !== 'undefined'
-            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
-            && CoordinateUtils.allowsExtrabarBarIndex(activeToolType);
+        const allowsExtrabar = this._allowsExtrabarBarIndex(activeToolType);
+        const placingInFuturePadding = this._isPlacingNonCandleBoundTool(activeToolType);
+        const allowFractionalBarIndex = allowsExtrabar || placingInFuturePadding;
 
-        // Clamp to plot area (price pane). Shapes/lines/text may use full height & future bar padding.
+        // Clamp to plot area (price pane). Shapes/lines/channels may use future bar padding.
         if (this.chart) {
             const m = this.chart.margin;
             const minX = m.l;
             const maxX = this.chart.w - m.r;
             const minY = typeof m.t === 'number' ? m.t : 0;
             const maxY = this.chart.h - m.b;
-            const allowVerticalOverflow = allowsExtrabar
+            const allowVerticalOverflow = allowFractionalBarIndex
                 || isInteractingWithExistingVolumeProfile
                 || allowRangeVerticalOverflow;
 
-            const allowHorizontalOverflow = allowsExtrabar
+            const allowHorizontalOverflow = allowFractionalBarIndex
                 || isResizingVolumeProfileRightBoundary;
             screenX = allowHorizontalOverflow
                 ? Math.max(minX, screenX)
@@ -3352,7 +3365,7 @@ class DrawingToolsManager {
         const isFreehandContinuous = this.currentTool === 'path'
             || this.currentTool === 'brush'
             || this.currentTool === 'highlighter';
-        const isContinuousTool = isFreehandContinuous || allowsExtrabar;
+        const isContinuousTool = isFreehandContinuous || allowFractionalBarIndex;
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -3383,7 +3396,7 @@ class DrawingToolsManager {
         // Keep panel/original behavior consistent for non-freehand tools:
         // anchor X to candle indices so points cannot land between candles.
         // Text / signpost / pin may sit in future padding beyond the last candle.
-        if (!isFreehandContinuous && !allowsExtrabar) {
+        if (!isFreehandContinuous && !allowFractionalBarIndex) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -3398,6 +3411,22 @@ class DrawingToolsManager {
 
     isCandleBoundTool(toolType) {
         return toolType === 'volume-profile' || toolType === 'fixed-range-volume-profile';
+    }
+
+    /** True when tool may use fractional bar indices beyond the last candle (future padding). */
+    _allowsExtrabarBarIndex(toolType) {
+        if (!toolType) return false;
+        if (typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(toolType)) {
+            return true;
+        }
+        return DrawingToolsManager.EXTRABAR_TOOL_TYPES_FALLBACK.has(toolType);
+    }
+
+    _isPlacingNonCandleBoundTool(toolType) {
+        const type = toolType || this.currentTool;
+        return !!(this.drawingState && this.drawingState.isDrawing && type && !this.isCandleBoundTool(type));
     }
 
     clampPointToCandleRange(point, toolType = this.currentTool) {
@@ -7096,9 +7125,7 @@ class DrawingToolsManager {
             'triangle', 'ellipse', 'circle', 'arc'
         ]);
         if (noClamp.has(drawing.type)) return null;
-        if (typeof CoordinateUtils !== 'undefined'
-            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
-            && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)) {
+        if (this._allowsExtrabarBarIndex(drawing.type)) {
             return null;
         }
         return { replayClampToLastBar: true };
@@ -7112,12 +7139,16 @@ class DrawingToolsManager {
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
         }
-        if (typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
-            && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)
-            && Array.isArray(drawing.points)
-            && Array.isArray(this.chart.data)
-            && this.chart.data.length > 0) {
-            const lastIdx = this.chart.data.length - 1;
+        const dataLen = Array.isArray(this.chart.data) ? this.chart.data.length : 0;
+        const lastIdx = dataLen > 0 ? dataLen - 1 : 0;
+        let prevMaxX = null;
+        if (this._allowsExtrabarBarIndex(drawing.type) && Array.isArray(drawing.points) && dataLen > 0) {
+            const xs = drawing.points
+                .map((p) => (p && Number.isFinite(p.x) ? p.x : null))
+                .filter((x) => x !== null);
+            if (xs.length > 0) {
+                prevMaxX = Math.max(...xs);
+            }
             const hasExtrabarPoint = drawing.points.some((p) =>
                 p && Number.isFinite(p.x) && (p.x > lastIdx + 0.001 || p.x < -0.001)
             );
@@ -7128,6 +7159,14 @@ class DrawingToolsManager {
         try {
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart);
             if (Array.isArray(resolved) && resolved.length > 0) {
+                if (prevMaxX !== null && prevMaxX > lastIdx + 0.001) {
+                    const newMaxX = Math.max(
+                        ...resolved.map((p) => (p && Number.isFinite(p.x) ? p.x : lastIdx))
+                    );
+                    if (newMaxX <= lastIdx + 0.001) {
+                        return;
+                    }
+                }
                 drawing.points = resolved;
                 if (
                     typeof drawing.finalizeDrawing === 'function' &&
