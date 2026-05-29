@@ -1524,8 +1524,8 @@ class CurveTool extends BaseDrawing {
         this.controlPointOffset = null; // Store the control point offset from midpoint
     }
     
-    // Generate control point when drawing is complete (2 points placed)
-    // Note: Offset is calculated in render() using screen coordinates
+    // Generate control point when drawing is complete (2 points placed).
+    // Middle point starts on the chord; render() bends it in screen space (index/price axes differ).
     finalizeDrawing() {
         if (this.points.length !== 2) return;
         const p1 = this.points[0];
@@ -1539,6 +1539,66 @@ class CurveTool extends BaseDrawing {
         this.points = [p1, controlPoint, p2];
         this._controlPointGenerated = true;
         this._needsScreenOffset = true;
+    }
+
+    /** Map data point to layout/screen pixels for bend math. */
+    _pointToScreen(p, scales) {
+        return {
+            x: scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x),
+            y: scales.yScale(p.y)
+        };
+    }
+
+    _screenToPoint(sp, scales) {
+        const x = scales.chart && scales.chart.pixelToDataIndex
+            ? scales.chart.pixelToDataIndex(sp.x)
+            : scales.xScale.invert(sp.x);
+        return { x, y: scales.yScale.invert(sp.y) };
+    }
+
+    /**
+     * Quadratic control on the chord is a straight line — apply perpendicular bend in screen px.
+     * Re-runs when control is still colinear (e.g. after timestamp re-sync).
+     */
+    _applyScreenSpaceBend(scales) {
+        if (this.points.length === 2 && !this._controlPointGenerated) {
+            this.finalizeDrawing();
+        }
+        if (!scales || this.points.length < 3) return;
+
+        const p0 = this._pointToScreen(this.points[0], scales);
+        const p1 = this._pointToScreen(this.points[1], scales);
+        const p2 = this._pointToScreen(this.points[2], scales);
+
+        const dx = p2.x - p0.x;
+        const dy = p2.y - p0.y;
+        const chordLen = Math.hypot(dx, dy);
+        if (chordLen < 1) {
+            this._needsScreenOffset = false;
+            return;
+        }
+
+        const cross = Math.abs((p1.x - p0.x) * dy - (p1.y - p0.y) * dx);
+        const colinear = cross < chordLen * 1.5;
+        if (!this._needsScreenOffset && !colinear) {
+            return;
+        }
+
+        const offsetAmount = Math.max(8, chordLen * 0.15);
+        const midX = (p0.x + p2.x) / 2;
+        const midY = (p0.y + p2.y) / 2;
+        const perpX = (-dy / chordLen) * offsetAmount;
+        const perpY = (dx / chordLen) * offsetAmount;
+        const targetMidX = midX + perpX;
+        const targetMidY = midY + perpY;
+        const ctrlX = 2 * targetMidX - 0.5 * (p0.x + p2.x);
+        const ctrlY = 2 * targetMidY - 0.5 * (p0.y + p2.y);
+
+        this.points[1] = this._screenToPoint({ x: ctrlX, y: ctrlY }, scales);
+        this._needsScreenOffset = false;
+        this._controlPointGenerated = true;
     }
     
     ensureTextDefaults() {
@@ -1599,47 +1659,17 @@ class CurveTool extends BaseDrawing {
         }
 
         if (this.points.length < 2) return;
-        
-        if (this.points.length === 2) {
+
+        if (this.points.length === 2 && !this._controlPointGenerated) {
             this.finalizeDrawing();
         }
 
         this._prepareRenderGroup(container, 'drawing curve', renderOpts);
         this._clearDrawingLabels(scales);
 
-        // Map points AFTER finalizeDrawing so we have all 3 points
-        const screenPoints = this.points.map(p => ({
-            x: scales.chart && scales.chart.dataIndexToPixel ? 
-                scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x),
-            y: scales.yScale(p.y)
-        }));
+        this._applyScreenSpaceBend(scales);
 
-        // Apply initial curve offset in screen space (only once when first created)
-        if (this._needsScreenOffset && screenPoints.length >= 3) {
-            const p0 = screenPoints[0];
-            const p2 = screenPoints[2];
-            const dx = p2.x - p0.x;
-            const dy = p2.y - p0.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            
-            if (length > 1) {
-                // 15% perpendicular offset in screen pixels
-                const offsetAmount = length * 0.15;
-                const perpX = -dy / length * offsetAmount;
-                const perpY = dx / length * offsetAmount;
-                
-                // Offset the middle control point in screen space
-                screenPoints[1].x += perpX;
-                screenPoints[1].y += perpY;
-                
-                // Convert back to data coordinates and store
-                const newControlX = scales.chart && scales.chart.pixelToDataIndex ? 
-                    scales.chart.pixelToDataIndex(screenPoints[1].x) : scales.xScale.invert(screenPoints[1].x);
-                const newControlY = scales.yScale.invert(screenPoints[1].y);
-                this.points[1] = { x: newControlX, y: newControlY };
-            }
-            this._needsScreenOffset = false;
-        }
+        const screenPoints = this.points.map(p => this._pointToScreen(p, scales));
 
         // Store original points for text positioning
         const origScreenPoints = [...screenPoints];

@@ -7168,7 +7168,10 @@ class DrawingToolsManager {
                     drawing.points.length === 2
                 ) {
                     drawing._controlPointGenerated = false;
+                    drawing._needsScreenOffset = true;
                     drawing.finalizeDrawing();
+                } else if (drawing.type === 'curve' && drawing.points.length >= 3) {
+                    drawing._controlPointGenerated = true;
                 }
             }
         } catch (_) { /* ignore */ }
