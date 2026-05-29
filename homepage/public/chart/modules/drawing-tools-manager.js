@@ -3573,9 +3573,11 @@ class DrawingToolsManager {
             if (useFibDefaultPreview) {
                 styleOverrides = { opacity: 0.85 };
             } else {
+                const armedStyle = this.getArmedToolStyle(this.currentTool) || {};
                 const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
                 styleOverrides = {
                     ...savedStyle,
+                    ...armedStyle,
                     opacity: 0.85
                 };
                 if (this.currentTool === 'short-position') {
@@ -4159,7 +4161,8 @@ class DrawingToolsManager {
         }
         
         // Check timeframe visibility (legacy per-tf and new _ranges)
-        if (!this._isVisibleForCurrentTimeframe(drawing)) {
+        const tfVisible = this._isVisibleForCurrentTimeframe(drawing);
+        if (!tfVisible) {
             if (drawing.group) {
                 drawing.group.style('display', 'none');
             }
@@ -4170,9 +4173,14 @@ class DrawingToolsManager {
             return;
         }
         
-        // Show the drawing
+        // Show the drawing (full geometry rebuild after visibility hide — avoids stacked paths)
+        let renderOpts = drawingRenderOpts;
         if (drawing.group) {
+            const wasHidden = drawing.group.style('display') === 'none';
             drawing.group.style('display', null);
+            if (wasHidden && renderOpts && renderOpts.reuseGroup) {
+                renderOpts = { ...renderOpts, reuseGroup: false };
+            }
         }
 
         this._syncDrawingPointsFromTimestamps(drawing);
@@ -4185,8 +4193,8 @@ class DrawingToolsManager {
         };
 
         // Render with current scales AND chart instance for accurate pixel calculation
-        if (drawingRenderOpts) {
-            drawing.render(this.drawingsGroup, scales, drawingRenderOpts);
+        if (renderOpts) {
+            drawing.render(this.drawingsGroup, scales, renderOpts);
         } else {
             drawing.render(this.drawingsGroup, scales);
         }
@@ -10211,6 +10219,14 @@ class DrawingToolsManager {
      * Apply saved style to a drawing
      */
     applySavedStyle(drawing) {
+        const armedStyle = this.getArmedToolStyle(drawing.type);
+        if (armedStyle && typeof armedStyle === 'object') {
+            Object.keys(armedStyle).forEach((key) => {
+                if (key !== 'id' && key !== 'points') {
+                    drawing.style[key] = armedStyle[key];
+                }
+            });
+        }
         const savedStyle = this.getSavedToolStyle(drawing.type);
         if (savedStyle) {
             // Merge saved style into drawing style (don't overwrite everything)

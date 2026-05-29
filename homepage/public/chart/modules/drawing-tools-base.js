@@ -36,8 +36,8 @@ const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'disjoint-channel'
 ]);
 
-/** Never show axis price/time labels (no toggle). */
-const AXIS_LABEL_DISABLED_TYPES = new Set(['brush', 'highlighter']);
+/** Freehand strokes: axis labels only at path endpoints (not every point). */
+const FREEHAND_AXIS_LABEL_TYPES = new Set(['brush', 'highlighter']);
 
 /**
  * Only these tools must stay on loaded candle indices (range anchored to data).
@@ -276,6 +276,61 @@ class BaseDrawing {
             .attr('data-id', this.id)
             .style('opacity', opacity);
         return false;
+    }
+
+    /**
+     * Freehand path + optional arrow endpoints (ep1/ep2 → startStyle/endStyle).
+     */
+    _appendStrokePathWithEndpoints(group, container, pathData, hitWidth) {
+        const stroke = this.style.stroke || this.style.color || '#787b86';
+        const strokeWidth = this.style.strokeWidth != null ? this.style.strokeWidth : 2;
+        const startStyle = this.style.startStyle || 'normal';
+        const endStyle = this.style.endStyle || 'normal';
+        const pathOpacity = this.style.opacity != null ? this.style.opacity : 1;
+
+        if (startStyle === 'arrow' || endStyle === 'arrow') {
+            const svgRoot = container && container.node && container.node().ownerSVGElement
+                ? d3.select(container.node().ownerSVGElement)
+                : null;
+            if (svgRoot && typeof SVGHelpers !== 'undefined') {
+                if (startStyle === 'arrow') {
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-start-${this.id}`, stroke);
+                }
+                if (endStyle === 'arrow') {
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-end-${this.id}`, stroke);
+                }
+            }
+        }
+
+        group.append('path')
+            .attr('d', pathData)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', Math.max(16, hitWidth || strokeWidth * 5))
+            .attr('fill', 'none')
+            .attr('opacity', 1)
+            .attr('stroke-linecap', 'round')
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        const path = group.append('path')
+            .attr('d', pathData)
+            .attr('stroke', stroke)
+            .attr('stroke-width', strokeWidth)
+            .attr('stroke-dasharray', null)
+            .attr('fill', 'none')
+            .attr('opacity', pathOpacity)
+            .attr('stroke-linecap', 'round')
+            .attr('stroke-linejoin', 'round')
+            .style('pointer-events', 'none')
+            .style('cursor', 'move');
+
+        if (startStyle === 'arrow') {
+            path.attr('marker-start', `url(#arrow-start-${this.id})`);
+        }
+        if (endStyle === 'arrow') {
+            path.attr('marker-end', `url(#arrow-end-${this.id})`);
+        }
+        return path;
     }
 
     /**
@@ -644,13 +699,12 @@ class BaseDrawing {
     }
 
     isAxisLabelDefaultEnabled() {
-        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return false;
         if (AXIS_LABEL_DEFAULT_OFF_SHAPE_TYPES.has(this.type)) return false;
+        if (FREEHAND_AXIS_LABEL_TYPES.has(this.type)) return false;
         return AXIS_LABEL_DEFAULT_LINE_TYPES.has(this.type);
     }
 
     isAxisLabelEnabled(labelType) {
-        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return false;
         if (typeof this.hasVisibleDrawingGeometry === 'function' && !this.hasVisibleDrawingGeometry()) {
             return false;
         }
@@ -858,7 +912,6 @@ class BaseDrawing {
      */
     showAxisHighlights(opts = {}) {
         if (!this.chart || !this.points || this.points.length === 0) return;
-        if (AXIS_LABEL_DISABLED_TYPES.has(this.type)) return;
         if (!this.hasVisibleDrawingGeometry()) {
             this.hideAxisHighlights();
             return;
@@ -1154,6 +1207,10 @@ class BaseDrawing {
         }
         
         let pointsToLabel = this.points;
+
+        if (FREEHAND_AXIS_LABEL_TYPES.has(this.type) && this.points.length >= 2) {
+            pointsToLabel = [this.points[0], this.points[this.points.length - 1]];
+        }
 
         if ((this.type === 'long-position' || this.type === 'short-position') && this.meta) {
             const x0 = Number.isFinite(this.points[0]?.x) ? this.points[0].x : 0;

@@ -517,6 +517,8 @@ function v9IsPersistentFreehandArmed(dm) {
   return t === "brush" || t === "highlighter";
 }
 
+const V9_FREEHAND_ICON_TO_LEGACY = { draw: "brush", brush: "highlighter" };
+
 function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
   if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return false;
   return nextToolId !== currentTool;
@@ -828,7 +830,13 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
   }
   if (pickerKey === "tlLineColor" || pickerKey === "fibTrendColor") {
     const col = tlStyle.lineColor;
-    return col ? { stroke: col, color: col } : {};
+    if (!col) return {};
+    if (legacyTool === "brush" || legacyTool === "highlighter") {
+      const p = parseColor(col);
+      const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
+      return { stroke: strokeRgba, color: strokeRgba, opacity: 1 };
+    }
+    return { stroke: col, color: col };
   }
   if (pickerKey === "tlMidLineColor" && tlStyle.midLineColor) {
     return { midLineColor: tlStyle.midLineColor };
@@ -1488,6 +1496,26 @@ function v9BuildTxtStyleLegacyPatch(txt, legacyTool) {
 }
 
 /** Keeps drawing-tools-manager preview/finalize in sync with the armed V9 toolbar. */
+/** Repaint in-progress brush/highlighter stroke when armed color/width changes mid-drag. */
+function v9RefreshInProgressFreehandPreview() {
+  try {
+    enumerateV9DrawingManagersActiveFirst().forEach((dm) => {
+      if (
+        dm.isDrawingPath &&
+        dm.drawingState &&
+        dm.drawingState.isDrawing &&
+        (dm.currentTool === "brush" || dm.currentTool === "highlighter") &&
+        typeof dm.updateTempDrawing === "function"
+      ) {
+        dm.updateTempDrawing();
+        if (dm.chart && typeof dm.chart.scheduleRender === "function") {
+          dm.chart.scheduleRender();
+        }
+      }
+    });
+  } catch (_) {}
+}
+
 function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
   if (typeof window === "undefined") return;
   if (!legacyTool) {
@@ -1514,6 +1542,9 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
     tlStyle,
     updatedAt: typeof performance !== "undefined" ? performance.now() : Date.now(),
   };
+  if (legacyTool === "brush" || legacyTool === "highlighter") {
+    v9RefreshInProgressFreehandPreview();
+  }
 }
 
 /** Returns the number of decimal places used by the chart's price axis. */
@@ -2378,7 +2409,7 @@ function v9DrawingTypeToPanelGroup(type) {
 }
 
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
-const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel']);
+const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel', 'brush2']);
 
 /** Legacy tool id for the style forward bridge (armed rail or drawing under edit). */
 function v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editingSession) {
@@ -5343,7 +5374,8 @@ function v9ApplyDrawingTemplate(drawing, templateId) {
 
 function v9BuildDefaultTlStyleForDrawingType(type) {
   if (!type) return null;
-  return v9EnsureTlStyleArrays({ ...v9FreshTlStyleDefaults() }, null, type);
+  const toolDefaults = v9DefaultArmedStyleForLegacyTool(type);
+  return v9EnsureTlStyleArrays({ ...v9FreshTlStyleDefaults(), ...toolDefaults }, null, type);
 }
 
 function v9ApplyDefaultDrawingTemplate(drawing) {
@@ -11810,9 +11842,14 @@ const TalariaV8bLive = () => {
     cpBarAnchorRef.current = null;
     setColorPicker("gotoNewColor");
   };
+  const tlSubToolIconRef = useRef(tlSubTool.icon);
+  tlSubToolIconRef.current = tlSubTool.icon;
   const cpFlushTlOpts = (extra = {}) => ({
     editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-    resolveLegacyTool: () => editingDrawingRef.current?.drawing?.type ?? null,
+    resolveLegacyTool: () =>
+      editingDrawingRef.current?.drawing?.type
+      ?? V9_FREEHAND_ICON_TO_LEGACY[tlSubToolIconRef.current]
+      ?? null,
     ...extra,
   });
   const cpPickerKeyRef = useRef(colorPicker);
@@ -11826,6 +11863,13 @@ const TalariaV8bLive = () => {
     const next =
       typeof updater === "function" ? updater(tlStyleLiveRef.current) : updater;
     tlStyleLiveRef.current = next;
+    const syncFreehandArmedAndPreview = () => {
+      const legacy =
+        (flushOpts.resolveLegacyTool || cpFlushTlOpts().resolveLegacyTool)?.() ?? null;
+      if (v9IsFreehandLegacyTool(legacy)) {
+        v9PushArmedDrawStyle(legacy, tlStyleLiveRef.current, null);
+      }
+    };
     if (useFastPath) {
       suppressForwardBridge.current = true;
       setTlStyle(next);
@@ -11836,9 +11880,13 @@ const TalariaV8bLive = () => {
           colorOnly: true,
           pickerKey,
         });
+        syncFreehandArmedAndPreview();
       };
-      if (dragging) v9ScheduleCpChartFlush(runFlush);
-      else runFlush();
+      if (dragging) {
+        v9ScheduleCpChartFlush(runFlush);
+      } else {
+        runFlush();
+      }
       return;
     }
     flushSync(() => {
@@ -11847,6 +11895,7 @@ const TalariaV8bLive = () => {
     });
     tlStyleLiveRef.current = next;
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
+    syncFreehandArmedAndPreview();
   };
   const cpApplyTxtStyle = (updater) => {
     const dragging = !!cpPickerDraggingRef.current;
@@ -13082,13 +13131,9 @@ const TalariaV8bLive = () => {
           flushSync(() => setTlStyle(full));
           if (builtinDefault && dm) {
             try {
-              const stylePatch = v9BuildLegacyStylePatchFromTlStyle(full, d.type);
-              const tb = dm.toolbar;
-              try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-              Object.assign(d.style, stylePatch);
-              v9ApplyTlStyleExtrasToDrawing(d, full, dm);
-              if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
-              else dm.renderDrawing?.(d);
+              v9SyncDrawingAxisHighlights(d);
+              if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+              else if (dm.chart && typeof dm.chart.scheduleRender === "function") dm.chart.scheduleRender();
             } catch (_) {
               try { dm.renderDrawing?.(d); } catch (_) {}
             }
@@ -16277,7 +16322,7 @@ const TalariaV8bLive = () => {
                       hover: swHov === key,
                     })}/>
                 );
-                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
+                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork"].includes(tlSubTool.icon);
                 const hasBg = ["polyline","pathTool","curve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);

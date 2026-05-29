@@ -4064,18 +4064,7 @@ class BrushTool extends BaseDrawing {
 
         const pathData = lineGenerator(this.points);
 
-        // Draw the brush stroke
-        this.group.append('path')
-            .attr('d', pathData)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', this.style.strokeWidth)
-            .attr('stroke-dasharray', null)
-            .attr('fill', 'none')
-            .attr('opacity', this.style.opacity)
-            .attr('stroke-linecap', 'round')
-            .attr('stroke-linejoin', 'round')
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        this._appendStrokePathWithEndpoints(this.group, container, pathData, this.style.strokeWidth);
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
