@@ -429,7 +429,11 @@ class RectangleTool extends BaseDrawing {
         appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
 
         // Handles on original corners only (TradingView); fill/border use extended width above.
-        this.createBoxHandles(this.group, scales, { useExtendedHorizontal: false });
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.createBoxHandles(this.group, scales, { useExtendedHorizontal: false });
+        } else {
+            this._syncBoxHandlePositions(this.group, scales, { useExtendedHorizontal: false });
+        }
 
         // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
         const middleLineOn = shapeMiddleLineEnabled(this.style);
@@ -458,6 +462,57 @@ class RectangleTool extends BaseDrawing {
         return this.group;
     }
 
+    _computeBoxHandlePositions(scales, opts = {}) {
+        const useExtendedHorizontal = opts.useExtendedHorizontal !== false;
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        if (!p1 || !p2) return [];
+
+        let x1 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        let x2 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        if (useExtendedHorizontal) {
+            ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
+        }
+        const y1 = scales.yScale(p1.y);
+        const y2 = scales.yScale(p2.y);
+
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        const midX = (minX + maxX) / 2;
+        const midY = (minY + maxY) / 2;
+
+        return [
+            { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },
+            { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },
+            { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },
+            { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' },
+            { x: midX, y: minY, cursor: 'ns-resize', role: 'side-top' },
+            { x: maxX, y: midY, cursor: 'ew-resize', role: 'side-right' },
+            { x: midX, y: maxY, cursor: 'ns-resize', role: 'side-bottom' },
+            { x: minX, y: midY, cursor: 'ew-resize', role: 'side-left' }
+        ];
+    }
+
+    _syncBoxHandlePositions(group, scales, opts = {}) {
+        if (!group || group.empty()) return;
+        const handlePositions = this._computeBoxHandlePositions(scales, opts);
+        if (!handlePositions.length) return;
+        const existing = group.selectAll('.resize-handle-group');
+        if (existing.empty()) {
+            this.createBoxHandles(group, scales, opts);
+            return;
+        }
+        handlePositions.forEach((pos) => {
+            const hg = group.select(`.resize-handle-group[data-handle-role="${pos.role}"]`);
+            if (hg.empty()) return;
+            hg.selectAll('circle').attr('cx', pos.x).attr('cy', pos.y);
+        });
+    }
+
     /**
      * Create 8-point resize handles for box shapes (4 corners + 4 sides)
      * @param {{ useExtendedHorizontal?: boolean }} [opts]
@@ -466,50 +521,28 @@ class RectangleTool extends BaseDrawing {
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
-        const useExtendedHorizontal = opts.useExtendedHorizontal !== false;
-        
-        // Remove existing handles
+
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-hit').remove();
         group.selectAll('.resize-handle-group').remove();
-        
+
+        const handlePositions = this._computeBoxHandlePositions(scales, opts);
+        if (!handlePositions.length) return;
+
         const p1 = this.points[0];
         const p2 = this.points[1];
-        
-        // Get screen coordinates
-        let x1 = scales.chart && scales.chart.dataIndexToPixel ? 
+        let x1 = scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        let x2 = scales.chart && scales.chart.dataIndexToPixel ? 
+        let x2 = scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        if (useExtendedHorizontal) {
+        if (opts.useExtendedHorizontal !== false) {
             ({ x1, x2 } = applyRectangleHorizontalExtend(x1, x2, scales, this.style));
         }
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-        
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-        const midX = (minX + maxX) / 2;
-        const midY = (minY + maxY) / 2;
-        const widthPx = maxX - minX;
-        const heightPx = maxY - minY;
+        const widthPx = Math.abs(x2 - x1);
+        const heightPx = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y));
         const handleRadius = (widthPx < 8 || heightPx < 8) ? 4 : 3;
         const hitRadius = Math.max(10, handleRadius + 7);
-        
-        // Define 8 handle positions: 4 corners + 4 sides
-        const handlePositions = [
-            { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },  // Top-left
-            { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },  // Top-right
-            { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },  // Bottom-right
-            { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' },  // Bottom-left
-            { x: midX, y: minY, cursor: 'ns-resize', role: 'side-top' },     // Top-center
-            { x: maxX, y: midY, cursor: 'ew-resize', role: 'side-right' },   // Right-center
-            { x: midX, y: maxY, cursor: 'ns-resize', role: 'side-bottom' },  // Bottom-center
-            { x: minX, y: midY, cursor: 'ew-resize', role: 'side-left' }     // Left-center
-        ];
-        
+
         this.handles = [];
         
         handlePositions.forEach((pos, index) => {
@@ -774,8 +807,11 @@ class EllipseTool extends BaseDrawing {
 
         appendShapeBorderPolylineLines(this.group, pts, this.style, scaledStrokeWidth, { hitWidth });
 
-        // Create 8-point resize handles (4 corners + 4 sides) like TradingView
-        this.createBoxHandles(this.group, scales);
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.createBoxHandles(this.group, scales);
+        } else {
+            this._syncEllipseHandlePositions(this.group, scales);
+        }
 
         const esm = this.style.showMiddleLine;
         const ellipseMiddleOn =
@@ -803,6 +839,47 @@ class EllipseTool extends BaseDrawing {
         return this.group;
     }
 
+    _computeEllipseHandlePositions(scales) {
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        if (!p1 || !p2) return [];
+
+        const x1 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel ?
+            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        const y1 = scales.yScale(p1.y);
+        const y2 = scales.yScale(p2.y);
+
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
+        const rx = Math.abs(x2 - x1) / 2;
+        const ry = Math.abs(y2 - y1) / 2;
+
+        return [
+            { x: cx, y: cy - ry, cursor: 'ns-resize', role: 'side-top' },
+            { x: cx + rx, y: cy, cursor: 'ew-resize', role: 'side-right' },
+            { x: cx, y: cy + ry, cursor: 'ns-resize', role: 'side-bottom' },
+            { x: cx - rx, y: cy, cursor: 'ew-resize', role: 'side-left' }
+        ];
+    }
+
+    _syncEllipseHandlePositions(group, scales) {
+        if (!group || group.empty()) return;
+        const handlePositions = this._computeEllipseHandlePositions(scales);
+        if (!handlePositions.length) return;
+        const existing = group.selectAll('.resize-handle-group');
+        if (existing.empty()) {
+            this.createBoxHandles(group, scales);
+            return;
+        }
+        handlePositions.forEach((pos) => {
+            const hg = group.select(`.resize-handle-group[data-handle-role="${pos.role}"]`);
+            if (hg.empty()) return;
+            hg.selectAll('circle').attr('cx', pos.x).attr('cy', pos.y);
+        });
+    }
+
     /**
      * Create 8-point resize handles for ellipse positioned on the ellipse border
      */
@@ -811,37 +888,12 @@ class EllipseTool extends BaseDrawing {
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
-        
-        // Remove existing handles
+
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
-        
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        
-        // Get screen coordinates
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-        
-        // Calculate ellipse center and radii
-        const cx = (x1 + x2) / 2;
-        const cy = (y1 + y2) / 2;
-        const rx = Math.abs(x2 - x1) / 2;
-        const ry = Math.abs(y2 - y1) / 2;
-        
-        // Define 4 handle positions ON the ellipse border (cardinal points only)
-        // Using parametric equation: x = cx + rx*cos(θ), y = cy + ry*sin(θ)
-        const handlePositions = [
-            { x: cx, y: cy - ry, cursor: 'ns-resize', role: 'side-top' },           // Top (θ=270°)
-            { x: cx + rx, y: cy, cursor: 'ew-resize', role: 'side-right' },         // Right (θ=0°)
-            { x: cx, y: cy + ry, cursor: 'ns-resize', role: 'side-bottom' },        // Bottom (θ=90°)
-            { x: cx - rx, y: cy, cursor: 'ew-resize', role: 'side-left' }           // Left (θ=180°)
-        ];
-        
+
+        const handlePositions = this._computeEllipseHandlePositions(scales);
+
         this.handles = [];
         
         handlePositions.forEach((pos, index) => {

@@ -399,7 +399,7 @@ class DrawingToolsManager {
                         }
                         return;
                     }
-                    this.renderDrawing(stillTracked);
+                    this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
                 } catch (e) {
                 }
             });
@@ -411,6 +411,19 @@ class DrawingToolsManager {
 
     _isLiveDrawingInteraction() {
         return !!(this.isDragging || this.isResizing || this.isCustomHandleDrag);
+    }
+
+    /** Hot-path render options during move/resize (matches scheduleRenderDrawing / movement). */
+    _liveRenderDrawingOpts(drawing) {
+        if (!this._isLiveDrawingInteraction()) return {};
+        return {
+            skipInteraction: true,
+            liveRender: true,
+            drawingRenderOpts: {
+                reuseGroup: !!(drawing && drawing.group && !drawing.group.empty()),
+                skipHandles: true
+            }
+        };
     }
 
     _beginDrawingLiveInteraction() {
@@ -4020,7 +4033,12 @@ class DrawingToolsManager {
      */
     renderDrawing(drawing, opts = {}) {
         if (!drawing) return;
-        const skipInteraction = !!opts.skipInteraction;
+        const liveRender = !!opts.liveRender || this._isLiveDrawingInteraction();
+        const skipInteraction = !!opts.skipInteraction || liveRender;
+        const drawingRenderOpts = opts.drawingRenderOpts || (liveRender ? {
+            reuseGroup: !!(drawing && drawing.group && !drawing.group.empty()),
+            skipHandles: true
+        } : null);
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (stack overflow when scheduleRender is synchronous).
@@ -4080,17 +4098,31 @@ class DrawingToolsManager {
         // Keep bar indices aligned with chart.data after refresh / replay restore / TF change.
         this._syncDrawingPointsFromTimestamps(drawing);
         
-        // Render with current scales AND chart instance for accurate pixel calculation
-        drawing.render(this.drawingsGroup, {
+        const scales = {
             xScale: this.chart.xScale,
             yScale: this.chart.yScale,
-            chart: this.chart,  // Pass chart for dataIndexToPixel method
-            labelsGroup: this.labelsGroup  // Unclipped group for text labels
-        });
+            chart: this.chart,
+            labelsGroup: this.labelsGroup
+        };
+
+        // Render with current scales AND chart instance for accurate pixel calculation
+        if (drawingRenderOpts) {
+            drawing.render(this.drawingsGroup, scales, drawingRenderOpts);
+        } else {
+            drawing.render(this.drawingsGroup, scales);
+        }
+
+        if (liveRender && drawingRenderOpts && drawingRenderOpts.skipHandles) {
+            if (typeof drawing._syncBoxHandlePositions === 'function') {
+                drawing._syncBoxHandlePositions(drawing.group, scales);
+            } else if (typeof drawing.updateHandlePositions === 'function') {
+                drawing.updateHandlePositions(scales);
+            }
+        }
         
         // Always show axis highlights (labels visible regardless of selection state)
         if (typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: this._isLiveDrawingInteraction() });
+            drawing.showAxisHighlights({ live: liveRender });
         }
         
         // Setup interaction handlers
@@ -4112,7 +4144,9 @@ class DrawingToolsManager {
         }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
-        this.raiseDrawingLayersAboveOrderPreviews();
+        if (!liveRender) {
+            this.raiseDrawingLayersAboveOrderPreviews();
+        }
         
         // Restore re-entry guard
         if (this.chart) this.chart._isRendering = wasRendering;
@@ -5170,12 +5204,7 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    self._skipHandleSetup = true;
-                    this.renderDrawing(drawing);
-                    self._skipHandleSetup = false;
-                    if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                        drawing.showAxisHighlights({ live: true });
-                    }
+                    self.scheduleRenderDrawing(drawing);
                     return true;
                 }
             }
@@ -5384,15 +5413,9 @@ class DrawingToolsManager {
         
         // Update point
         drawing.points[index] = point;
-        
-        // Re-render without recreating handles during active drag
-        this._skipHandleSetup = true;
-        this.renderDrawing(drawing);
-        this._skipHandleSetup = false;
-        
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: true });
-        }
+        drawing.meta.updatedAt = Date.now();
+
+        this.scheduleRenderDrawing(drawing);
         this._broadcastLiveEditUpdate(drawing);
     }
 
@@ -5499,10 +5522,6 @@ class DrawingToolsManager {
         window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
             detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
         }));
-        
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: true });
-        }
     }
 
     endCustomHandleDrag(event) {
