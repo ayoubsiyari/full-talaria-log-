@@ -4526,6 +4526,7 @@ if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
     const armed = window.__v9ArmedDrawStyle;
     if (!armed || !drawing) return;
     if (armed.tool && drawing.type !== armed.tool) return;
+    drawing.locked = false;
     if (armed.txtStyle && v9IsTextLegacyDrawingType(drawing.type)) {
       if (!drawing.style) drawing.style = {};
       v9ApplyTxtStyleToDrawing(drawing, v9TxtStyleForPlacement(armed.txtStyle));
@@ -13097,7 +13098,7 @@ const TalariaV8bLive = () => {
             suppressTxtForwardBridge.current = true;
             flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
           }
-          if (typeof d.locked === "boolean") setTxtLocked(!!d.locked);
+          v9SyncQuickBarLockFromDrawing(d, null, setTxtLocked);
         }
         requestAnimationFrame(() => {
           suppressForwardBridge.current = false;
@@ -13597,6 +13598,7 @@ const TalariaV8bLive = () => {
     setBtnPressed,
     setTlStyle,
     setTlLocked,
+    setTxtLocked,
     LEGACY_TYPE_TO_V9_ICON,
     suppressForwardBridge,
     suppressTxtForwardBridge,
@@ -13721,7 +13723,7 @@ const TalariaV8bLive = () => {
                 }
               }
             }
-            if (typeof drawing.locked === 'boolean') br.setTlLocked(!!drawing.locked);
+            v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked);
           }
           if (drawing && drawing.type && !editRef?.current) {
             const gTxt = br.drawingTypeToPanelGroupRef.current(drawing.type);
@@ -13735,7 +13737,6 @@ const TalariaV8bLive = () => {
                 br.suppressTxtForwardBridge.current = true;
                 br.setTxtStyle((s) => ({ ...s, ...tp }));
               }
-              if (typeof drawing.locked === "boolean") br.setTxtLocked(!!drawing.locked);
             }
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
               const rs = drawing.style || {};
@@ -13859,6 +13860,7 @@ const TalariaV8bLive = () => {
           const br = v9ToolbarBridgeActRef.current;
           br.setTlBarSelected(false);
           br.setTlBarSelectedType(null);
+          v9SyncQuickBarLockFromDrawing(null, br.setTlLocked, br.setTxtLocked);
         } catch (_) {}
         return origHide ? origHide() : undefined;
       };
@@ -13906,6 +13908,7 @@ const TalariaV8bLive = () => {
     const onClear = () => {
       setTlBarSelected(false);
       setTlBarSelectedType(null);
+      v9SyncQuickBarLockFromDrawing(null, setTlLocked, setTxtLocked);
       v9SelectionToolbarSyncRef.current = false;
     };
     window.addEventListener("talaria:v9-cleared-selection", onClear);
@@ -13956,7 +13959,6 @@ const TalariaV8bLive = () => {
             br.suppressTxtForwardBridge.current = true;
             flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
           }
-          if (typeof live.locked === "boolean") br.setTxtLocked(!!live.locked);
         }
         if (g && !br.editingDrawingRef?.current) {
           let icon = br.LEGACY_TYPE_TO_V9_ICON[t];
@@ -14016,6 +14018,9 @@ const TalariaV8bLive = () => {
                 br.setTlStyle((s) => ({ ...s, ...patch }));
               }
             }
+          }
+          if (!br.editingDrawingRef?.current) {
+            v9SyncQuickBarLockFromDrawing(live, br.setTlLocked, br.setTxtLocked);
           }
         }
         // Hydrate volume tool panels from selected drawing
