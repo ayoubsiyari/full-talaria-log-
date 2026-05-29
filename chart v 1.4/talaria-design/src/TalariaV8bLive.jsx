@@ -1433,6 +1433,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
+    const borderOn = tlStyle.showBorder !== false;
+    const outline = tlStyle.borderColor || tlStyle.lineColor || "#787b86";
+    patch.borderEnabled = borderOn;
+    patch.borderColor = outline;
+    patch.stroke = borderOn ? outline : "none";
+    patch.strokeWidth = borderOn ? widthNum : 0;
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
@@ -13526,20 +13532,34 @@ const TalariaV8bLive = () => {
       }
     };
 
+    const onDrawingDeleted = (drawing) => {
+      try {
+        const editing = editingDrawingRef.current;
+        if (!editing?.drawing || !drawing) return;
+        if (editing.drawing !== drawing && editing.drawing.id !== drawing.id) return;
+        try { v9StyleBridgeFlushRef.current?.(); } catch (_) {}
+        dismissShapeSettingsForNewSelection();
+      } catch (_) {}
+    };
+
     if (typeof window !== 'undefined') {
       window.__v9OpenDrawingSettings = hook;
+      window.__v9OnDrawingDeleted = onDrawingDeleted;
       try {
         if (window.parent && window.parent !== window) {
           window.parent.__v9OpenDrawingSettings = hook;
+          window.parent.__v9OnDrawingDeleted = onDrawingDeleted;
         }
       } catch (_) {}
     }
     return () => {
       if (typeof window !== 'undefined') {
         if (window.__v9OpenDrawingSettings === hook) window.__v9OpenDrawingSettings = null;
+        if (window.__v9OnDrawingDeleted === onDrawingDeleted) window.__v9OnDrawingDeleted = null;
         try {
-          if (window.parent && window.parent !== window && window.parent.__v9OpenDrawingSettings === hook) {
-            window.parent.__v9OpenDrawingSettings = null;
+          if (window.parent && window.parent !== window) {
+            if (window.parent.__v9OpenDrawingSettings === hook) window.parent.__v9OpenDrawingSettings = null;
+            if (window.parent.__v9OnDrawingDeleted === onDrawingDeleted) window.parent.__v9OnDrawingDeleted = null;
           }
         } catch (_) {}
       }
@@ -14320,7 +14340,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
-        if (!v9IsArrowMarkChartType(d.type)) return;
+        if (!v9IsArrowMarkChartType(d.type) && !V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type)) return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacy, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -16509,9 +16529,15 @@ const TalariaV8bLive = () => {
                         </div>
                       ) : <div/>
                     )}
-                    {/* ── Line row ── */}
-                    <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","rect","arcShape","ellipse","circle"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
-                    <div style={{ padding:"8px 0" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
+                    {/* ── Line / Borders row ── */}
+                    {["rect","ellipse","circle"].includes(tlSubTool.icon) ? (
+                      <div style={{ padding:"8px 0", alignSelf:"center" }}>
+                        {TlChk(tlStyle.showBorder !== false, "tlchk-shapeBorder", "Borders", toggleTlShowBorder)}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","arcShape"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
+                    )}
+                    <div style={{ padding:"8px 0", opacity: (["rect","ellipse","circle"].includes(tlSubTool.icon) && tlStyle.showBorder === false) ? 0.38 : 1, pointerEvents: (["rect","ellipse","circle"].includes(tlSubTool.icon) && tlStyle.showBorder === false) ? "none" : "auto", transition:"opacity 0.15s" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
                     {/* Style */}
                     {showStyle ? <div style={{ padding:"8px 0", position:"relative" }}>
                       {mkBtn("type", tlStyleDrop==="type", (open) =>
@@ -22490,6 +22516,7 @@ const TalariaV8bLive = () => {
                drawing(s) so the canvas matches what the legacy toolbar does. */}
           <TlBtn id="tl-del" isAct={false} onClick={()=>{
             setColorPicker(null);cpBarAnchorRef.current=null;if(tlBarDrop)closeTlBarDrop();
+            if (tlSettOpen || closing.has("tlsett")) dismissShapeSettingsForNewSelection();
             try {
               enumerateV9DrawingManagersFromWindow().forEach((dm) => {
                 const hasSel = (dm.selectedDrawings && dm.selectedDrawings.length) || dm.selectedDrawing;

@@ -676,10 +676,12 @@ class BaseDrawing {
         const s = this.style || {};
         const borderOn = s.borderEnabled !== false;
         const stroke = s.stroke ?? s.borderColor;
+        const strokeW = Number(s.strokeWidth);
         const borderVisible = borderOn
             && stroke
             && stroke !== 'none'
-            && stroke !== 'transparent';
+            && stroke !== 'transparent'
+            && !(Number.isFinite(strokeW) && strokeW <= 0);
 
         const bgOn = s.showBackground !== false;
         const fill = s.fill ?? s.backgroundColor;

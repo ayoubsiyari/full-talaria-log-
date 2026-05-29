@@ -6726,6 +6726,12 @@ class DrawingToolsManager {
             }
 
             drawing.destroy();
+
+            if (typeof window !== 'undefined' && typeof window.__v9OnDrawingDeleted === 'function') {
+                try {
+                    window.__v9OnDrawingDeleted(drawing);
+                } catch (_) {}
+            }
             
             // Hide the drawing toolbar if it was showing this drawing
             if (this.toolbar && this.toolbar.currentDrawing === drawing) {
