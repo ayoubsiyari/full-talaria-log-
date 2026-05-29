@@ -4500,6 +4500,12 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     d.style.fontWeight = tlStyle.textBold ? 'bold' : 'normal';
     d.style.fontStyle = tlStyle.textItalic ? 'italic' : 'normal';
   }
+  if (d.type === "arrow") {
+    const tv = v9UiVertToChartVert(tlStyle.vertAlign);
+    d.style.textVAlign = tv;
+    d.style.textPosition = tv;
+    if (tv === "middle") d.style.textOffsetY = 0;
+  }
   if (dm && typeof dm.renderDrawing === "function") {
     try {
       dm.renderDrawing(d);
@@ -14711,7 +14717,9 @@ const TalariaV8bLive = () => {
   /** Rectangle/shape text vertical align — same-frame chart sync. */
   const applyTlVertAlign = useCallback((vertAlign) => {
     flushSync(() => setTlStyle((s) => ({ ...s, vertAlign })));
-    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts());
+    const live = { ...tlStyleLiveRef.current, vertAlign };
+    tlStyleLiveRef.current = live;
+    v9FlushTlStyleToChartTargets(live, cpFlushTlOpts());
   }, []);
 
   /** Rectangle/shape text horizontal align — same-frame chart sync. */
@@ -17539,7 +17547,13 @@ const TalariaV8bLive = () => {
               </div>
               <div style={{ fontSize:10, fontWeight:800, color:c.tm, letterSpacing:"0.08em", marginBottom:10 }}>CONTENT</div>
               <div style={{ padding:"0 0 16px" }}>
-                <textarea value={tlStyle.textContent} onChange={e=>setTlStyle(s=>({...s,textContent:e.target.value}))}
+                <textarea value={tlStyle.textContent} onChange={e=>{
+                    const textContent = e.target.value;
+                    flushSync(() => setTlStyle((s) => ({ ...s, textContent })));
+                    const live = { ...tlStyleLiveRef.current, textContent };
+                    tlStyleLiveRef.current = live;
+                    v9FlushTlStyleToChartTargets(live, cpFlushTlOpts());
+                  }}
                   placeholder="Enter text..."
                   style={{ width:"100%", height:68, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                            color:c.tx, fontSize:13, fontFamily:F, padding:"6px 8px", resize:"none",

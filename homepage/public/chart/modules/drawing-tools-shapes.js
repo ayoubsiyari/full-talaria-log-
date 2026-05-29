@@ -20,6 +20,24 @@ const RECTANGLE_TEXT_ANCHOR_MAP = (typeof TEXT_ALIGN_TO_ANCHOR !== 'undefined')
     ? TEXT_ALIGN_TO_ANCHOR
     : { left: 'start', center: 'middle', right: 'end', start: 'start', end: 'end' };
 
+/** Line/arrow tools: V9 uses vertAlign "center"; chart uses textVAlign/textPosition "middle". */
+function normalizeLineTextVAlign(style) {
+    if (!style) return 'top';
+    let v = String(style.textVAlign || style.textPosition || 'top').toLowerCase();
+    if (v === 'center') v = 'middle';
+    if (v === 'start') v = 'top';
+    if (v === 'end') v = 'bottom';
+    style.textVAlign = v;
+    style.textPosition = v;
+    return v;
+}
+
+function lineTextOffsetY(style, textVAlign) {
+    if (textVAlign === 'middle') return 0;
+    if (Number.isFinite(style.textOffsetY)) return style.textOffsetY;
+    return style.textOffsetY === undefined ? -8 : 0;
+}
+
 function isRectangleExtendOn(style, key) {
     const v = style && style[key];
     return v === true || v === 1
@@ -1236,7 +1254,7 @@ class ArrowTool extends BaseDrawing {
         }
 
         const hasText = this.text && this.text.trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
+        const textVAlign = normalizeLineTextVAlign(this.style);
         const shouldSplitLine = hasText && textVAlign === 'middle';
         this._splitInfo = null;
 
@@ -1529,6 +1547,9 @@ class ArrowTool extends BaseDrawing {
             return;
         }
 
+        const textVAlign = normalizeLineTextVAlign(this.style);
+        const offY = lineTextOffsetY(this.style, textVAlign);
+
         if (this._splitInfo) {
             let angle = this._splitInfo.angle;
             if (angle > 90 || angle < -90) {
@@ -1536,7 +1557,7 @@ class ArrowTool extends BaseDrawing {
             }
             appendTextLabel(this.group, label, {
                 x: this._splitInfo.textX + (this.style.textOffsetX || 0),
-                y: this._splitInfo.textY + (this.style.textOffsetY || 0),
+                y: this._splitInfo.textY + offY,
                 anchor: 'middle',
                 fill: this.style.textColor || this.style.stroke,
                 fontSize: this.style.fontSize || 14,
@@ -1565,7 +1586,6 @@ class ArrowTool extends BaseDrawing {
         }
 
         const verticalOffset = 15;
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
         const textHAlign = this.style.textHAlign || this.style.textAlign || 'center';
 
         const sh_mP1IsLeft = origX1 <= origX2;
@@ -1593,7 +1613,7 @@ class ArrowTool extends BaseDrawing {
 
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
-            y: baseY + (this.style.textOffsetY || 0),
+            y: baseY + offY,
             anchor: 'middle',
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
