@@ -17,6 +17,43 @@ function parallelChannelPixelOffset(x1, y1, x2, y2, x3, y3) {
     return { offsetX: perpX * perpDist, offsetY: perpY * perpDist };
 }
 
+/** Plot L/R in dataIndexToPixel space — stable across zoom/pan (not xScale.domain range). */
+function channelPlotHorizontalBounds(scales) {
+    if (typeof BaseDrawing !== 'undefined' && typeof BaseDrawing.getChartHorizontalPixelBounds === 'function') {
+        return BaseDrawing.getChartHorizontalPixelBounds(scales);
+    }
+    const chart = scales && scales.chart;
+    const m = (chart && chart.margin) ? chart.margin : { l: 0, r: 60 };
+    const left = typeof m.l === 'number' ? m.l : 0;
+    let plotW = chart && chart.w;
+    if (Number.isFinite(plotW)) {
+        return { left, right: plotW - (typeof m.r === 'number' ? m.r : 0) };
+    }
+    const r = scales && scales.xScale && scales.xScale.range ? scales.xScale.range() : [left, left + 1];
+    return { left: r[0], right: r[1] };
+}
+
+/** Extend line endpoints to plot edges using the same pixel space as dataIndexToPixel. */
+function extendLineSegmentToPlotEdges(sX, sY, eX, eY, bounds, extendLeft, extendRight) {
+    let outSX = sX;
+    let outSY = sY;
+    let outEX = eX;
+    let outEY = eY;
+    const dx = eX - sX;
+    if (Math.abs(dx) < 1e-9) return { sX: outSX, sY: outSY, eX: outEX, eY: outEY };
+    const slope = (eY - sY) / dx;
+    const yAt = (x) => sY + slope * (x - sX);
+    if (extendLeft) {
+        outSX = bounds.left;
+        outSY = yAt(bounds.left);
+    }
+    if (extendRight) {
+        outEX = bounds.right;
+        outEY = yAt(bounds.right);
+    }
+    return { sX: outSX, sY: outSY, eX: outEX, eY: outEY };
+}
+
 // ============================================================================
 // Parallel Channel Tool
 // ============================================================================
@@ -253,26 +290,22 @@ class ParallelChannelTool extends BaseDrawing {
 
             const dx = x2 - x1;
             const dy = y2 - y1;
-            const slope = dx !== 0 ? dy / dx : 0;
             const { offsetX, offsetY } = parallelChannelPixelOffset(x1, y1, x2, y2, x3, y3);
 
-            // Get chart boundaries from scale range
-            const xRange = scales.xScale.range();
+            const plotBounds = channelPlotHorizontalBounds(scales);
 
             // Helper to calculate line endpoints with extension
             const getLineEndpoints = (baseStartX, baseStartY, baseEndX, baseEndY) => {
-                let sX = baseStartX, sY = baseStartY, eX = baseEndX, eY = baseEndY;
-                if (dx !== 0) {
-                    if (this.style.extendLeft) {
-                        sX = xRange[0];
-                        sY = baseStartY + slope * (xRange[0] - baseStartX);
-                    }
-                    if (this.style.extendRight) {
-                        eX = xRange[1];
-                        eY = baseStartY + slope * (xRange[1] - baseStartX);
-                    }
-                }
-                return { sX, sY, eX, eY };
+                const ep = extendLineSegmentToPlotEdges(
+                    baseStartX,
+                    baseStartY,
+                    baseEndX,
+                    baseEndY,
+                    plotBounds,
+                    !!this.style.extendLeft,
+                    !!this.style.extendRight
+                );
+                return { sX: ep.sX, sY: ep.sY, eX: ep.eX, eY: ep.eY };
             };
 
             // Draw fill first (background)
@@ -798,86 +831,51 @@ class RegressionTrendTool extends BaseDrawing {
             visibleEndIdx = Math.min(chartData.length - 1, Math.ceil(xDomain[1]));
         }
         
-        // Get pixel boundaries of the visible chart area
-        const xRange = scales.xScale.range();
-        const leftBoundary = xRange[0];
-        const rightBoundary = xRange[1];
-        
-        // Calculate pixel coordinates for regression line
-        const x1 = chart.dataIndexToPixel ? chart.dataIndexToPixel(startIdx) : scales.xScale(startIdx);
-        const x2 = chart.dataIndexToPixel ? chart.dataIndexToPixel(endIdx) : scales.xScale(endIdx);
-        const y1 = scales.yScale(a);
-        const y2 = scales.yScale(a + b * (sourceData.length - 1));
+        // Get pixel boundaries of the plot area (dataIndexToPixel space)
+        const plotBounds = channelPlotHorizontalBounds(scales);
 
-        let startX = x1, startY = y1, endX = x2, endY = y2;
+        const idxToPx = (idx) => (chart.dataIndexToPixel
+            ? chart.dataIndexToPixel(idx)
+            : scales.xScale(idx));
+        const pxToIdx = (px) => (chart.pixelToDataIndex
+            ? chart.pixelToDataIndex(px)
+            : (scales.xScale.invert ? scales.xScale.invert(px) : startIdx));
 
-        // Extend line if needed to chart boundaries
-        if (this.style.extendLeft || this.style.extendRight) {
-            const dx = x2 - x1;
-            if (dx !== 0) {
-                const slope = (y2 - y1) / dx;
-                
-                if (this.style.extendLeft) {
-                    // Extend to left boundary of chart
-                    startX = leftBoundary;
-                    // Calculate y at the left boundary using the slope
-                    const deltaX = startX - x1;
-                    startY = y1 + slope * deltaX;
-                }
-                
-                if (this.style.extendRight) {
-                    // Extend to right boundary of chart
-                    endX = rightBoundary;
-                    // Calculate y at the right boundary using the slope
-                    const deltaX = endX - x1;
-                    endY = y1 + slope * deltaX;
-                }
-            }
-        }
-        
-        // Don't clamp to boundaries - let it stop at actual candle positions
+        const regPriceAt = (barIdx) => a + b * (barIdx - startIdx);
 
-        // Calculate fill polygon coordinates using the same extended range
-        let upperStartY, upperEndY;
-        let lowerStartY, lowerEndY;
-        let midStartY = startY, midEndY = endY;
-        
-        // Calculate deviation channel positions at start and end points
-        // Calculate the deviation offset in price space, then convert to pixels
+        let startX = idxToPx(startIdx);
+        let endX = idxToPx(endIdx);
+        let startY = scales.yScale(regPriceAt(startIdx));
+        let endY = scales.yScale(regPriceAt(endIdx));
+
         const deviationOffsetUpper = this.style.upperDeviation * stdDev;
         const deviationOffsetLower = this.style.lowerDeviation * stdDev;
-        
+
+        let upperStartY = scales.yScale(regPriceAt(startIdx) + deviationOffsetUpper);
+        let upperEndY = scales.yScale(regPriceAt(endIdx) + deviationOffsetUpper);
+        let lowerStartY = scales.yScale(regPriceAt(startIdx) + deviationOffsetLower);
+        let lowerEndY = scales.yScale(regPriceAt(endIdx) + deviationOffsetLower);
+        let midStartY = startY;
+        let midEndY = endY;
+
         if (this.style.extendLeft) {
-            // For extended left, calculate regression value at the extended position
-            // Convert startX back to data index to get the regression value
-            const extendedDataX = scales.xScale.invert ? scales.xScale.invert(startX) : 
-                                  (startX - scales.xScale.range()[0]) / (scales.xScale.range()[1] - scales.xScale.range()[0]) * 
-                                  (scales.xScale.domain()[1] - scales.xScale.domain()[0]) + scales.xScale.domain()[0];
-            const regressionValueAtLeft = a + b * (extendedDataX - startIdx);
-            upperStartY = scales.yScale(regressionValueAtLeft + deviationOffsetUpper);
-            lowerStartY = scales.yScale(regressionValueAtLeft + deviationOffsetLower);
-            midStartY = scales.yScale(regressionValueAtLeft);
-        } else {
-            // Use the actual start position values
-            upperStartY = scales.yScale(a + deviationOffsetUpper);
-            lowerStartY = scales.yScale(a + deviationOffsetLower);
-            midStartY = y1;
+            const leftIdx = pxToIdx(plotBounds.left);
+            const leftPrice = regPriceAt(leftIdx);
+            startX = plotBounds.left;
+            startY = scales.yScale(leftPrice);
+            midStartY = startY;
+            upperStartY = scales.yScale(leftPrice + deviationOffsetUpper);
+            lowerStartY = scales.yScale(leftPrice + deviationOffsetLower);
         }
-        
+
         if (this.style.extendRight) {
-            // For extended right, calculate regression value at the extended position
-            const extendedDataX = scales.xScale.invert ? scales.xScale.invert(endX) : 
-                                  (endX - scales.xScale.range()[0]) / (scales.xScale.range()[1] - scales.xScale.range()[0]) * 
-                                  (scales.xScale.domain()[1] - scales.xScale.domain()[0]) + scales.xScale.domain()[0];
-            const regressionValueAtRight = a + b * (extendedDataX - startIdx);
-            upperEndY = scales.yScale(regressionValueAtRight + deviationOffsetUpper);
-            lowerEndY = scales.yScale(regressionValueAtRight + deviationOffsetLower);
-            midEndY = scales.yScale(regressionValueAtRight);
-        } else {
-            // Use the actual end position values
-            upperEndY = scales.yScale(a + b * (sourceData.length - 1) + deviationOffsetUpper);
-            lowerEndY = scales.yScale(a + b * (sourceData.length - 1) + deviationOffsetLower);
-            midEndY = y2;
+            const rightIdx = pxToIdx(plotBounds.right);
+            const rightPrice = regPriceAt(rightIdx);
+            endX = plotBounds.right;
+            endY = scales.yScale(rightPrice);
+            midEndY = endY;
+            upperEndY = scales.yScale(rightPrice + deviationOffsetUpper);
+            lowerEndY = scales.yScale(rightPrice + deviationOffsetLower);
         }
 
         const showMidLine = this.style.showMiddleLine !== false;
@@ -996,8 +994,8 @@ class RegressionTrendTool extends BaseDrawing {
             const deviationOffsetLower = this.style.lowerDeviation * stdDev;
             const lowerStartRegressionY = scales.yScale(a + deviationOffsetLower);
             const lowerEndRegressionY = lowerEndY !== undefined ? lowerEndY : lowerStartRegressionY;
-            const angle = Math.atan2(lowerEndRegressionY - lowerStartRegressionY, endX - x1) * (180 / Math.PI);
-            this.renderPearsonsR(scales, r2, x1, lowerStartRegressionY, angle);
+            const angle = Math.atan2(lowerEndRegressionY - lowerStartRegressionY, endX - startX) * (180 / Math.PI);
+            this.renderPearsonsR(scales, r2, startX, lowerStartRegressionY, angle);
         }
         
         // Create handles if selected
@@ -1318,17 +1316,12 @@ class FlatTopBottomTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p3.x) : scales.xScale(p3.x);
         const y3 = scales.yScale(p3.y);
 
-        // Calculate chart bounds for extension using xScale.range()
-        const xRange = scales.xScale.range();
-        const chartBounds = {
-            left: xRange[0],
-            right: xRange[1]
-        };
+        // Calculate chart bounds for extension (dataIndexToPixel space)
+        const plotBounds = channelPlotHorizontalBounds(scales);
 
         // Calculate slope of angled line (p1 to p2)
         const dx = x2 - x1;
         const dy = y2 - y1;
-        const slope = dx !== 0 ? dy / dx : 0;
 
         // Angled line coordinates
         let angledX1 = x1, angledY1 = y1, angledX2 = x2, angledY2 = y2;
@@ -1339,22 +1332,22 @@ class FlatTopBottomTool extends BaseDrawing {
         // Fill polygon points
         let fillX1 = x1, fillX2 = x2;
 
-        if (this.style.extendLeft) {
-            // Extend angled line to left edge
-            angledX1 = chartBounds.left;
-            angledY1 = y1 - slope * (x1 - chartBounds.left);
-            // Extend horizontal line to left edge
-            horizX1 = chartBounds.left;
-            fillX1 = chartBounds.left;
-        }
-        
-        if (this.style.extendRight) {
-            // Extend angled line to right edge
-            angledX2 = chartBounds.right;
-            angledY2 = y2 + slope * (chartBounds.right - x2);
-            // Extend horizontal line to right edge
-            horizX2 = chartBounds.right;
-            fillX2 = chartBounds.right;
+        if (this.style.extendLeft || this.style.extendRight) {
+            const angled = extendLineSegmentToPlotEdges(
+                x1, y1, x2, y2, plotBounds, !!this.style.extendLeft, !!this.style.extendRight
+            );
+            angledX1 = angled.sX;
+            angledY1 = angled.sY;
+            angledX2 = angled.eX;
+            angledY2 = angled.eY;
+            if (this.style.extendLeft) {
+                horizX1 = plotBounds.left;
+                fillX1 = plotBounds.left;
+            }
+            if (this.style.extendRight) {
+                horizX2 = plotBounds.right;
+                fillX2 = plotBounds.right;
+            }
         }
 
         // Line 1: Angled line (extended if needed) with invisible hit area
@@ -1842,46 +1835,23 @@ class DisjointChannelTool extends BaseDrawing {
         let startX2 = x3, startY2 = y3, endX2 = x4, endY2 = y4;
 
         if (this.style.extendLeft || this.style.extendRight) {
-            // Calculate chart bounds using xScale.range() for reliability
-            const xRange = scales.xScale.range();
-            const chartBounds = {
-                left: xRange[0],
-                right: xRange[1]
-            };
+            const plotBounds = channelPlotHorizontalBounds(scales);
 
-            // First line extension
-            const dx1 = x2 - x1;
-            const dy1 = y2 - y1;
-            if (dx1 !== 0) {
-                const slope1 = dy1 / dx1;
-                
-                if (this.style.extendLeft) {
-                    startX1 = chartBounds.left;
-                    startY1 = y1 + slope1 * (chartBounds.left - x1);
-                }
-                
-                if (this.style.extendRight) {
-                    endX1 = chartBounds.right;
-                    endY1 = y1 + slope1 * (chartBounds.right - x1);
-                }
-            }
+            const line1 = extendLineSegmentToPlotEdges(
+                x1, y1, x2, y2, plotBounds, !!this.style.extendLeft, !!this.style.extendRight
+            );
+            startX1 = line1.sX;
+            startY1 = line1.sY;
+            endX1 = line1.eX;
+            endY1 = line1.eY;
 
-            // Second line extension (use actual x4, y4 points)
-            const dx2 = x4 - x3;
-            const dy2 = y4 - y3;
-            if (dx2 !== 0) {
-                const slope2 = dy2 / dx2;
-                
-                if (this.style.extendLeft) {
-                    startX2 = chartBounds.left;
-                    startY2 = y3 + slope2 * (chartBounds.left - x3);
-                }
-                
-                if (this.style.extendRight) {
-                    endX2 = chartBounds.right;
-                    endY2 = y3 + slope2 * (chartBounds.right - x3);
-                }
-            }
+            const line2 = extendLineSegmentToPlotEdges(
+                x3, y3, x4, y4, plotBounds, !!this.style.extendLeft, !!this.style.extendRight
+            );
+            startX2 = line2.sX;
+            startY2 = line2.sY;
+            endX2 = line2.eX;
+            endY2 = line2.eY;
         }
 
         // First line with invisible hit area

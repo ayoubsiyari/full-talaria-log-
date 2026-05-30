@@ -8547,9 +8547,34 @@ const TalariaV8bLive = () => {
   const supportNewFileRef = useRef(null);
   const [supportReplyFile, setSupportReplyFile] = useState(null);
   const [supportNewFile, setSupportNewFile] = useState(null);
+  const [supportStatusFilter, setSupportStatusFilter] = useState(() => {
+    try {
+      const v = sessionStorage.getItem("v9-support-status-filter");
+      if (v === "all" || v === "open" || v === "closed") return v;
+    } catch {}
+    return "all";
+  });
   const supportThreadsRef = useRef(supportThreads);
   supportThreadsRef.current = supportThreads;
   const supportPingTimerRef = useRef(null);
+  const supportListScrollRef = useRef(null);
+  const supportListScrollTopRef = useRef(0);
+
+  const supportThreadIsOpen = (status) => status === "open" || status === "pending";
+  const supportSetStatusFilter = (filter) => {
+    setSupportStatusFilter(filter);
+    try { sessionStorage.setItem("v9-support-status-filter", filter); } catch {}
+  };
+  const supportSelectThread = (thread) => {
+    if (supportListScrollRef.current) supportListScrollTopRef.current = supportListScrollRef.current.scrollTop;
+    setSupportSelThread(thread);
+    setSupportError(null);
+  };
+  const supportBackToList = () => {
+    setSupportSelThread(null);
+    setSupportMessages([]);
+    setSupportError(null);
+  };
 
   const supportApi = async (url, opts = {}) => {
     const headers = { ...(opts.headers || {}) };
@@ -8727,6 +8752,15 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     supportMsgEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [supportMessages]);
+
+  // restore thread-list scroll when returning from a ticket
+  useEffect(() => {
+    if (supportSelThread || supportNewThread || supportLoading) return;
+    const el = supportListScrollRef.current;
+    if (!el) return;
+    const top = supportListScrollTopRef.current;
+    requestAnimationFrame(() => { el.scrollTop = top; });
+  }, [supportSelThread, supportNewThread, supportLoading]);
 
   // load unread count on mount
   useEffect(() => { supportLoadNotifications(); }, []);
@@ -25465,6 +25499,29 @@ const TalariaV8bLive = () => {
             const top = Math.round(btnR.bottom + 6);
             const catLabel = { bug: "Bug", error: "Error", other: "Other" };
             const fmtTime = (iso) => { if (!iso) return ""; try { const d = new Date(iso); return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+            const supportOpenCount = supportThreads.filter(t => supportThreadIsOpen(t.status)).length;
+            const supportClosedCount = supportThreads.length - supportOpenCount;
+            const filteredSupportThreads = supportThreads.filter(t => {
+              if (supportStatusFilter === "open") return supportThreadIsOpen(t.status);
+              if (supportStatusFilter === "closed") return !supportThreadIsOpen(t.status);
+              return true;
+            });
+            const supportFilterChip = (id, label, count) => {
+              const active = supportStatusFilter === id;
+              return (
+                <div key={id} onClick={() => supportSetStatusFilter(id)}
+                  onMouseEnter={() => setHov(`sup-filter-${id}`)} onMouseLeave={() => setHov(null)}
+                  style={{ cursor:"default", padding:"3px 8px", borderRadius:4, fontSize:10, fontWeight:700, flexShrink:0,
+                    color: active ? (id === "open" ? "#4caf50" : id === "closed" ? "#e53935" : c.acL) : c.ts,
+                    background: active
+                      ? (id === "open" ? "rgba(76,175,80,0.14)" : id === "closed" ? "rgba(229,57,53,0.14)" : c.acD)
+                      : (hov === `sup-filter-${id}` ? c.hv : "rgba(255,255,255,0.04)"),
+                    border:`1px solid ${active ? (id === "open" ? "rgba(76,175,80,0.35)" : id === "closed" ? "rgba(229,57,53,0.35)" : "rgba(74,106,255,0.35)") : c.br}`,
+                    transition:"background 0.1s" }}>
+                  {label}{count != null ? ` (${count})` : ""}
+                </div>
+              );
+            };
             return (
               <div ref={supportPopRef} data-v9-chrome="1" onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
                 style={{ position:"fixed", top, right, width:POP_W, height:POP_H, maxHeight:"min(75vh,560px)", background:c.sf, border:`1px solid rgba(140,160,255,0.32)`, borderRadius:6, boxShadow:"0 10px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4)", zIndex:9999, display:"flex", flexDirection:"column", fontFamily:F, overflow:"hidden", animation:"tlrWinIn 0.18s ease" }}>
@@ -25472,7 +25529,7 @@ const TalariaV8bLive = () => {
                 <div style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                   {supportSelThread && !supportNewThread ? (
                     <>
-                      <div onClick={()=>{setSupportSelThread(null);setSupportMessages([]);setSupportError(null);}} style={{ cursor:"default", display:"flex", alignItems:"center", padding:"2px 4px", borderRadius:3, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
+                      <div onClick={supportBackToList} style={{ cursor:"default", display:"flex", alignItems:"center", padding:"2px 4px", borderRadius:3, background:hov==="sup-back"?c.hv:"transparent" }} onMouseEnter={()=>setHov("sup-back")} onMouseLeave={()=>setHov(null)}>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={c.ts} strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
                       </div>
                       <span style={{ fontSize:13, fontWeight:700, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{supportSelThread.subject}</span>
@@ -25583,16 +25640,26 @@ const TalariaV8bLive = () => {
                   </>
                 ) : (
                   /* ── Thread List ── */
-                  <div style={{ flex:1, overflowY:"auto" }}>
+                  <>
+                    {supportThreads.length > 0 && (
+                      <div style={{ padding:"8px 14px", borderBottom:`1px solid ${c.br}`, display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                        {supportFilterChip("all", "All", supportThreads.length)}
+                        {supportFilterChip("open", "Open", supportOpenCount)}
+                        {supportFilterChip("closed", "Closed", supportClosedCount)}
+                      </div>
+                    )}
+                    <div ref={supportListScrollRef} style={{ flex:1, overflowY:"auto" }}>
                     {supportThreads.length === 0 ? (
                       <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No support threads yet.<br/>Click <b>+ New</b> to start one.</div>
-                    ) : supportThreads.map(t => (
-                      <div key={t.id} onClick={()=>{setSupportSelThread(t);setSupportError(null);}}
+                    ) : filteredSupportThreads.length === 0 ? (
+                      <div style={{ padding:30, textAlign:"center", color:c.ts, fontSize:12 }}>No {supportStatusFilter === "open" ? "open" : "closed"} tickets.</div>
+                    ) : filteredSupportThreads.map(t => (
+                      <div key={t.id} onClick={() => supportSelectThread(t)}
                         onMouseEnter={()=>setHov(`sup-t-${t.id}`)} onMouseLeave={()=>setHov(null)}
                         style={{ padding:"10px 14px", borderBottom:`1px solid ${c.br}`, cursor:"default", background:hov===`sup-t-${t.id}`?c.hv:"transparent", transition:"background 0.1s" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <span style={{ fontSize:12, fontWeight:600, color:c.tx, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.subject}</span>
-                          <span style={{ fontSize:9, fontWeight:700, color:t.status==="open"?"#4caf50":"#e53935", background:t.status==="open"?"rgba(76,175,80,0.12)":"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3, flexShrink:0 }}>{t.status==="open"?"Open":"Closed"}</span>
+                          <span style={{ fontSize:9, fontWeight:700, color:supportThreadIsOpen(t.status)?"#4caf50":"#e53935", background:supportThreadIsOpen(t.status)?"rgba(76,175,80,0.12)":"rgba(229,57,53,0.12)", padding:"1px 6px", borderRadius:3, flexShrink:0 }}>{supportThreadIsOpen(t.status)?"Open":"Closed"}</span>
                         </div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
                           <span style={{ fontSize:10, color:c.tm, background:"rgba(140,160,255,0.1)", padding:"0 5px", borderRadius:2, textTransform:"capitalize" }}>{catLabel[t.category]||t.category}</span>
@@ -25601,7 +25668,8 @@ const TalariaV8bLive = () => {
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             );
