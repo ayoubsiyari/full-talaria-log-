@@ -606,6 +606,8 @@ class Chart {
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
+        /** Coalesce price/time axis zoom paints to one render per animation frame. */
+        this._axisZoomRenderRaf = null;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -10873,7 +10875,8 @@ class Chart {
         if (this._suppressPanelScrollSync) return;
         if (window.panelManager._isSyncing) return;
         if (window.panelManager._syncingDateRange) return;
-        if (!force && this.drag && this.drag.active && this.drag.type === 'pan') {
+        if (!force && this.drag && this.drag.active
+            && (this.drag.type === 'pan' || this.drag.type === 'timeAxis')) {
             const now = performance.now();
             if (now - this._lastScrollSyncAt < 16) {
                 if (this._scrollSyncRaf == null) {
@@ -15459,14 +15462,50 @@ class Chart {
 
     /**
      * Schedule a render using requestAnimationFrame for throttling (see animate()).
-     * Immediate render only when overlays must stay glued: time-axis zoom drag, replay playback,
-     * inertia, and wheel bursts. Chart pan is coalesced to one paint per frame to avoid jank.
+     * Immediate render only when overlays must stay glued: replay playback, inertia, and wheel bursts.
+     * Chart pan and axis zoom are coalesced to one paint per frame to avoid jank.
      */
     _isChartViewPanning() {
         return !!(
             (this.drag && this.drag.active && this.drag.type === 'pan') ||
             (this.inertia && this.inertia.active)
         );
+    }
+
+    /** True while dragging the price or time axis to zoom (not chart-body pan). */
+    _isAxisZoomDragging() {
+        if (!this.drag || !this.drag.active) return false;
+        const t = this.drag.type;
+        return t === 'priceAxis' || t === 'timeAxis' || t === 'separatePanelAxis';
+    }
+
+    /** One chart paint per frame while axis zoom math runs on every mousemove. */
+    _scheduleAxisZoomRender() {
+        if (this._axisZoomRenderRaf != null) return;
+        this._axisZoomRenderRaf = requestAnimationFrame(() => {
+            this._axisZoomRenderRaf = null;
+            if (!this._isAxisZoomDragging()) return;
+            this.renderPending = false;
+            this.render();
+        });
+    }
+
+    _cancelAxisZoomRender() {
+        if (this._axisZoomRenderRaf != null) {
+            cancelAnimationFrame(this._axisZoomRenderRaf);
+            this._axisZoomRenderRaf = null;
+        }
+    }
+
+    _finishAxisZoomInteraction() {
+        this._cancelAxisZoomRender();
+        if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
+            this.drawingManager.redrawAll({ forceFull: true });
+        }
+        this._axisZoomFinalizePass = true;
+        this.renderPending = false;
+        this.render();
+        this._axisZoomFinalizePass = false;
     }
 
     /** Lower draw budget while the chart view is moving (pan / inertia). */
@@ -15843,11 +15882,11 @@ class Chart {
     }
 
     scheduleRender() {
+        if (this._isAxisZoomDragging()) {
+            this._scheduleAxisZoomRender();
+            return;
+        }
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
-        const timeAxisZoomDrag =
-            this.drag &&
-            this.drag.active &&
-            this.drag.type === 'timeAxis';
         const inertialPan = this.inertia && this.inertia.active;
         const wheelBurst =
             typeof this._wheelBurstUntil === 'number' &&
@@ -15857,7 +15896,7 @@ class Chart {
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || timeAxisZoomDrag || inertialPan || wheelBurst || panSyncBurst) {
+        if (replayPlaying || inertialPan || wheelBurst || panSyncBurst) {
             this.renderPending = false;
             this.render();
             return;
@@ -15876,7 +15915,7 @@ class Chart {
             const ev = this._pendingCrosshairMoveEvent;
             this._pendingCrosshairMoveEvent = null;
             if (!ev) return;
-            if (this.drag && this.drag.active && this.drag.type === 'pan') return;
+            if (this.drag && this.drag.active && (this.drag.type === 'pan' || this._isAxisZoomDragging())) return;
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(ev);
             if (typeof this.updateTooltip === 'function') this.updateTooltip(ev);
         });
@@ -16047,6 +16086,7 @@ class Chart {
         this.ctx.clearRect(0, 0, this.w, this.h);
         
         const chartViewPanning = this._isChartViewPanning();
+        const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -16163,6 +16203,45 @@ class Chart {
             this._clearPanDrawingsLayerTransform(false);
             this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(true, { lite: true });
+            if (this.boxZoom && this.boxZoom.active) {
+                this.drawBoxZoom();
+            }
+            if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
+                this.drawCtrlMarqueeSelect();
+            }
+            return;
+        }
+
+        // Fast path while dragging price/time axis: same zoom math, lighter paint (LOD candles + panFast drawings).
+        if (axisZoomDragging) {
+            const panOpts = { panFast: true };
+            if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+                this.compareOverlay.updateLeftMargin();
+            }
+            this.drawGrid({ panFast: true, skipHorizontal: true });
+            this.drawVolume(visible, panOpts);
+            this.drawCandles(visible, panOpts);
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+                try {
+                    this.compareOverlay.drawOverlays();
+                } catch (e) {
+                    console.error('Error drawing overlays:', e);
+                }
+            }
+            this.drawAxes();
+            this.calculateScales();
+            this.drawGrid({ panFast: true, skipVertical: true });
+            this.drawCandles(visible, panOpts);
+            this.drawPriceLine(visible);
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
+            }
+            this.redrawDrawings();
+            this._syncOrderOverlaysDuringPan(true, { lite: true });
+            this.drawCurrentPriceLabel(visible);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -20109,14 +20188,13 @@ class Chart {
                     this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
                     
                     this.constrainOffset();
-                    this.scheduleRender();
-                    this.dispatchScrollSync();
+                    this._scheduleAxisZoomRender();
                 }
                 // ─── Price Axis Drag Zoom ───
                 else if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
                     typeof this.separatePanelAxisDragStep === 'function') {
                     this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
-                    this.scheduleRender();
+                    this._scheduleAxisZoomRender();
                 }
                 else if (this.drag.type === 'priceAxis' && this.yScale) {
                     const sensitivity = 0.002;
@@ -20135,7 +20213,7 @@ class Chart {
                     this.priceOffset -= rangeChange * (0.5 - cursorRatio);
                     this.priceZoom = newZoom;
                     
-                    this.scheduleRender();
+                    this._scheduleAxisZoomRender();
                 }
                 // ─── STEP 8: Box Zoom drag ───
                 else if (this.drag.type === 'boxZoom') {
@@ -20228,8 +20306,8 @@ class Chart {
                 }
             }
             
-            // Crosshair + tooltip: heavy DOM work — coalesce to one update per frame (skip during chart pan).
-            if (!(this.drag.active && this.drag.type === 'pan')) {
+            // Crosshair + tooltip: heavy DOM work — coalesce to one update per frame (skip during pan/axis zoom).
+            if (!(this.drag.active && (this.drag.type === 'pan' || this._isAxisZoomDragging()))) {
                 this._scheduleCrosshairTooltipFromEvent(e);
             }
         });
@@ -20422,6 +20500,16 @@ class Chart {
                     this.finishSeparatePanelResize();
                 }
                 this.scheduleRender();
+            }
+            else if (
+                wasDragging
+                && (dragType === 'priceAxis' || dragType === 'timeAxis' || dragType === 'separatePanelAxis')
+            ) {
+                this._finishAxisZoomInteraction();
+                if (dragType === 'timeAxis') {
+                    this.dispatchScrollSync(true);
+                }
+                this.scheduleChartViewSave();
             }
             
             // Reset states
@@ -21602,6 +21690,10 @@ class Chart {
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
             if (this._isChartViewPanning()) {
+                this.drawingManager.redrawAll({ panFast: true });
+                return;
+            }
+            if (this._isAxisZoomDragging() && !this._axisZoomFinalizePass) {
                 this.drawingManager.redrawAll({ panFast: true });
                 return;
             }
