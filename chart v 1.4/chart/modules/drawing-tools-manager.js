@@ -4437,7 +4437,11 @@ class DrawingToolsManager {
         }
         
         if (typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: liveRender });
+            if (drawing.selected) {
+                drawing.showAxisHighlights({ live: liveRender });
+            } else if (typeof drawing.hideAxisHighlights === 'function') {
+                drawing.hideAxisHighlights();
+            }
         }
         
         // Setup interaction handlers

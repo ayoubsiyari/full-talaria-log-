@@ -921,8 +921,8 @@ class BaseDrawing {
             this.group.selectAll('.custom-handle').style('opacity', 0);
             this.group.selectAll('.custom-handle').style('pointer-events', 'none');
         }
-        // Refresh axis highlights (keep labels visible after deselect)
-        this.showAxisHighlights();
+        // Hide axis price/time labels when the drawing is not selected.
+        this.hideAxisHighlights();
     }
     
     /**
@@ -930,6 +930,10 @@ class BaseDrawing {
      * TradingView style: cyan background for time, colored backgrounds for prices
      */
     showAxisHighlights(opts = {}) {
+        if (!this.selected && opts.force !== true) {
+            this.hideAxisHighlights();
+            return;
+        }
         if (!this.chart || !this.points || this.points.length === 0) return;
         if (!this.hasVisibleDrawingGeometry()) {
             this.hideAxisHighlights();
