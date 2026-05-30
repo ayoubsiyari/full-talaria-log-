@@ -12837,6 +12837,24 @@ const TalariaV8bLive = () => {
     onClick: (e) => e.stopPropagation(),
   });
 
+  /** Style/thickness dropdown trigger — toggle on pointerdown so panel backdrop click does not cancel the same press. */
+  const tlStyleDropTrigger = (dropKey, beforeToggle) => ({
+    "data-tl-style-drop": "1",
+    ...modalPointerActivate((e) => {
+      if (beforeToggle) beforeToggle(e);
+      setTlStyleDrop((prev) => (prev === dropKey ? null : dropKey));
+    }),
+  });
+
+  /** Style/thickness dropdown menu item — apply on pointerdown for reliable single-click pick. */
+  const tlStyleDropPick = (pickFn) => ({
+    "data-tl-style-drop": "1",
+    ...modalPointerActivate(() => {
+      pickFn();
+      setTlStyleDrop(null);
+    }),
+  });
+
   const Sel = ({ children, w }) => (
     <select style={{ background: c.well, border: `1px solid ${c.br}`, color: c.tx, padding: "3px 6px", fontSize: 11, fontFamily: F, outline: "none", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.2)", width: w }}>{children}</select>
   );
@@ -16845,7 +16863,11 @@ const TalariaV8bLive = () => {
         <div data-sdrop="1"
           onPointerDown={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setTlStyleDrop(null); }}
+          onClick={e => {
+            e.stopPropagation();
+            if (typeof e.target?.closest === "function" && e.target.closest("[data-tl-style-drop]")) return;
+            setTlStyleDrop(null);
+          }}
           style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
@@ -18431,7 +18453,9 @@ const TalariaV8bLive = () => {
               const fi = tlSubTool.icon;
               const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
               const dropShellFib = (key, w, rightAlign, children) => (
-                <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{ position:"absolute", top:"calc(100% + 4px)", zIndex:10,
+                <div data-tl-style-drop="1"
+                  onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                  style={{ position:"absolute", top:"calc(100% + 4px)", zIndex:10,
                   width:w, ...(rightAlign?{right:0}:{left:0}),
                   background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
                   <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
@@ -18492,7 +18516,10 @@ const TalariaV8bLive = () => {
                       <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>{fibColorSwatch(`fibTzLevel-${idx}`, lv.color)}</div>
                       {/* Style dropdown */}
                       <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s", position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
+                        <div {...tlStyleDropTrigger(typeDk, (e) => {
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setTlStyleDropUp(r.bottom + 110 > window.innerHeight);
+                        })}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18507,7 +18534,7 @@ const TalariaV8bLive = () => {
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                             const isA=lv.type===v; const isH=hov===`fibTzt-${idx}-${v}`;
                             return (
-                              <div key={v} onClick={()=>{applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,type:v}:l));setTlStyleDrop(null);}}
+                              <div key={v} {...tlStyleDropPick(() => applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,type:v}:l)))}
                                 onMouseEnter={()=>setHov(`fibTzt-${idx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18522,7 +18549,10 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* Thickness dropdown */}
                       <div style={{ padding:"5px 0", opacity:op, pointerEvents:pe, transition:"opacity 0.15s", position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
+                        <div {...tlStyleDropTrigger(widDk, (e) => {
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setTlStyleDropUp(r.bottom + 110 > window.innerHeight);
+                        })}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18537,7 +18567,7 @@ const TalariaV8bLive = () => {
                           ["1","2","3","4"].map(w=>{
                             const isA=lv.width===w; const isH=hov===`fibTzw-${idx}-${w}`;
                             return (
-                              <div key={w} onClick={()=>{applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,width:w}:l));setTlStyleDrop(null);}}
+                              <div key={w} {...tlStyleDropPick(() => applyFibTzLevelsPatch((rows)=>rows.map((l,i)=>i===idx?{...l,width:w}:l)))}
                                 onMouseEnter={()=>setHov(`fibTzw-${idx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18554,14 +18584,14 @@ const TalariaV8bLive = () => {
                   })}
                 </div>
                 <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
-                  <div onClick={e=>{e.stopPropagation();applyFibTzLevelsPatch((rows)=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]);}}
+                  <div {...modalPointerActivate(() => applyFibTzLevelsPatch((rows)=>[...rows,{on:true,value:String(rows.length),color:"#787B86",type:"solid",width:"1"}]))}
                     onMouseEnter={()=>setHov("fibTzAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzAdd"?c.hv2:"transparent",
                              transition:"background 0.1s" }}>
                     <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                   </div>
-                  <div onClick={e=>{e.stopPropagation();flushSync(()=>{setTlStyle((s)=>{const next={...s,fibTzLevels:v9FibTzDefaultLevelsTl()};v9FlushTlStyleToChartTargets(next,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});return next;});});}}
+                  <div {...modalPointerActivate(() => flushSync(()=>{setTlStyle((s)=>{const next={...s,fibTzLevels:v9FibTzDefaultLevelsTl()};v9FlushTlStyleToChartTargets(next,{editingRefDrawing:editingDrawingRef.current?.drawing??null,resolveLegacyTool});return next;});}))}
                     onMouseEnter={()=>setHov("fibTzReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibTzReset"?c.hv2:"transparent",
@@ -18663,7 +18693,7 @@ const TalariaV8bLive = () => {
                       {fibColorSwatch("fibTrendColor", tlStyle.lineColor)}
                       {/* Style */}
                       <div style={{ position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
+                        <div {...tlStyleDropTrigger(typeDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18678,7 +18708,7 @@ const TalariaV8bLive = () => {
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                             const isA=tlStyle.fibTimeTrendType===v; const isH=hov===`fibTTt-${v}`;
                             return (
-                              <div key={v} onClick={()=>{setTlStyle(s=>({...s,fibTimeTrendType:v}));setTlStyleDrop(null);}}
+                              <div key={v} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibTimeTrendType:v})))}
                                 onMouseEnter={()=>setHov(`fibTTt-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18693,7 +18723,7 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* Thickness */}
                       <div style={{ position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
+                        <div {...tlStyleDropTrigger(widDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18708,7 +18738,7 @@ const TalariaV8bLive = () => {
                           ["1","2","3","4"].map(w=>{
                             const isA=tlStyle.fibTimeTrendWidth===w; const isH=hov===`fibTTw-${w}`;
                             return (
-                              <div key={w} onClick={()=>{setTlStyle(s=>({...s,fibTimeTrendWidth:w}));setTlStyleDrop(null);}}
+                              <div key={w} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibTimeTrendWidth:w})))}
                                 onMouseEnter={()=>setHov(`fibTTw-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18744,7 +18774,7 @@ const TalariaV8bLive = () => {
                       {fibColorSwatch("fibTrendColor", tlStyle.lineColor)}
                       {/* Style */}
                       <div style={{ position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===typeDk?null:typeDk);}}
+                        <div {...tlStyleDropTrigger(typeDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${typeDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===typeDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${typeDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18759,7 +18789,10 @@ const TalariaV8bLive = () => {
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                             const isA=typeVal===v; const isH=hov===`${hkPfx}-${v}`;
                             return (
-                              <div key={v} onClick={()=>{isArcs?setTlStyle(s=>({...s,fibArcsTrendType:v})):setTlStyle(s=>({...s,fibWedgeTrendType:v}));setTlStyleDrop(null);}}
+                              <div key={v} {...tlStyleDropPick(() => {
+                                if (isArcs) setTlStyle(s=>({...s,fibArcsTrendType:v}));
+                                else setTlStyle(s=>({...s,fibWedgeTrendType:v}));
+                              })}
                                 onMouseEnter={()=>setHov(`${hkPfx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18774,7 +18807,7 @@ const TalariaV8bLive = () => {
                       </div>
                       {/* Thickness */}
                       <div style={{ position:"relative" }}>
-                        <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===widDk?null:widDk);}}
+                        <div {...tlStyleDropTrigger(widDk)}
                           onMouseEnter={()=>setHov(`tl-btn-${widDk}`)} onMouseLeave={()=>setHov(null)}
                           style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:3, cursor:"default", position:"relative",
                                    background:tlStyleDrop===widDk?"rgba(74,106,255,0.08)":hov===`tl-btn-${widDk}`?c.hv:"transparent", transition:"background 0.12s" }}>
@@ -18789,7 +18822,10 @@ const TalariaV8bLive = () => {
                           ["1","2","3","4"].map(w=>{
                             const isA=widVal===w; const isH=hov===`${hkWPfx}-${w}`;
                             return (
-                              <div key={w} onClick={()=>{isArcs?setTlStyle(s=>({...s,fibArcsTrendWidth:w})):setTlStyle(s=>({...s,fibWedgeTrendWidth:w}));setTlStyleDrop(null);}}
+                              <div key={w} {...tlStyleDropPick(() => {
+                                if (isArcs) setTlStyle(s=>({...s,fibArcsTrendWidth:w}));
+                                else setTlStyle(s=>({...s,fibWedgeTrendWidth:w}));
+                              })}
                                 onMouseEnter={()=>setHov(`${hkWPfx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18815,7 +18851,7 @@ const TalariaV8bLive = () => {
                   <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Levels</span>
                   {/* Style button */}
                   <div style={{ position:"relative" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="fibLnType"?null:"fibLnType");}}
+                    <div {...tlStyleDropTrigger("fibLnType")}
                       onMouseEnter={()=>setHov("tl-btn-fibLnType")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                                background:tlStyleDrop==="fibLnType"?"rgba(74,106,255,0.08)":hov==="tl-btn-fibLnType"?c.hv:"transparent",
@@ -18831,7 +18867,7 @@ const TalariaV8bLive = () => {
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                         const isA=tlStyle.fibLineType===v; const isH=hov===`fiblt-${v}`;
                         return (
-                          <div key={v} onClick={()=>{setTlStyle(s=>({...s,fibLineType:v}));setTlStyleDrop(null);}}
+                          <div key={v} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibLineType:v})))}
                             onMouseEnter={()=>setHov(`fiblt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18846,7 +18882,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Thickness button */}
                   <div style={{ position:"relative" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="fibLnWidth"?null:"fibLnWidth");}}
+                    <div {...tlStyleDropTrigger("fibLnWidth")}
                       onMouseEnter={()=>setHov("tl-btn-fibLnWidth")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                                background:tlStyleDrop==="fibLnWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-fibLnWidth"?c.hv:"transparent",
@@ -18868,7 +18904,7 @@ const TalariaV8bLive = () => {
                       ["1","2","3","4"].map(w=>{
                         const isA=tlStyle.fibLineWidth===w; const isH=hov===`fiblw-${w}`;
                         return (
-                          <div key={w} onClick={()=>{applyTlFibLineWidth(w);setTlStyleDrop(null);}}
+                          <div key={w} {...tlStyleDropPick(() => applyTlFibLineWidth(w))}
                             onMouseEnter={()=>setHov(`fiblw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18895,6 +18931,8 @@ const TalariaV8bLive = () => {
                         <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                           <input value={lv.value}
                             onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.map((l,i)=>i===idx?{...l,value:val}:l)));}}
+                            onPointerDown={e=>e.stopPropagation()}
+                            onMouseDown={e=>e.stopPropagation()}
                             onClick={e=>e.stopPropagation()}
                             className="tlr-nospinner"
                             style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
@@ -18913,7 +18951,7 @@ const TalariaV8bLive = () => {
                           </div>
                         </div>
                         <div style={{ opacity:op, transition:"opacity 0.15s" }}>{fibColorSwatch(`fibLevel-${idx}`, lv.color)}</div>
-                        {idx >= 2 && <div onClick={e=>{e.stopPropagation();setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.filter((_,i)=>i!==idx)));}}
+                        {idx >= 2 && <div {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.filter((_,i)=>i!==idx))))}
                           onMouseEnter={()=>setHov(`fibDel-${idx}`)} onMouseLeave={()=>setHov(null)}
                           style={{ cursor:"default", padding:"0 2px" }}>
                           <I n="x" s={9} cl={hov===`fibDel-${idx}`?c.rd:c.tm}/>
@@ -18924,14 +18962,14 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* Add Level + Reset */}
                 <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
-                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>[...rows,{on:true,value:(rows.length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]));}}
+                  <div {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>[...rows,{on:true,value:(rows.length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}])))}
                     onMouseEnter={()=>setHov("fibAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibAdd"?c.hv2:"transparent",
                              transition:"background 0.1s" }}>
                     <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                   </div>
-                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")}));}}
+                  <div {...modalPointerActivate(() => setTlStyle(s=>({...s, fibLevels: fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")})))}
                     onMouseEnter={()=>setHov("fibReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibReset"?c.hv2:"transparent",
@@ -18945,7 +18983,9 @@ const TalariaV8bLive = () => {
             {tlSettTab==="input" && isGannTool && (()=>{
               const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
               const dropShellGann = (key, w, children) => (
-                <div onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} style={{ position:"absolute", top:"calc(100% + 4px)", zIndex:10,
+                <div data-tl-style-drop="1"
+                  onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                  style={{ position:"absolute", top:"calc(100% + 4px)", zIndex:10,
                   width:w, left:0,
                   background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, boxShadow:"0 4px 16px rgba(0,0,0,0.5)" }}>
                   <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
@@ -19008,7 +19048,7 @@ const TalariaV8bLive = () => {
                   <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}><span style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>THICKNESS</span></div>
                   <span style={{ fontSize:12, color:c.ts, padding:"4px 0" }}>Levels</span>
                   <div style={{ position:"relative" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="gannLnType"?null:"gannLnType");}}
+                    <div {...tlStyleDropTrigger("gannLnType")}
                       onMouseEnter={()=>setHov("tl-btn-gannLnType")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                                background:tlStyleDrop==="gannLnType"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannLnType"?c.hv:"transparent",
@@ -19024,7 +19064,7 @@ const TalariaV8bLive = () => {
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                         const isA=tlStyle.gannLineType===v; const isH=hov===`gannlt-${v}`;
                         return (
-                          <div key={v} onClick={()=>{applyTlGannLineType(v);setTlStyleDrop(null);}}
+                          <div key={v} {...tlStyleDropPick(() => applyTlGannLineType(v))}
                             onMouseEnter={()=>setHov(`gannlt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -19038,7 +19078,7 @@ const TalariaV8bLive = () => {
                     )}
                   </div>
                   <div style={{ position:"relative" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="gannLnWidth"?null:"gannLnWidth");}}
+                    <div {...tlStyleDropTrigger("gannLnWidth")}
                       onMouseEnter={()=>setHov("tl-btn-gannLnWidth")} onMouseLeave={()=>setHov(null)}
                       style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                                background:tlStyleDrop==="gannLnWidth"?"rgba(74,106,255,0.08)":hov==="tl-btn-gannLnWidth"?c.hv:"transparent",
@@ -19054,7 +19094,7 @@ const TalariaV8bLive = () => {
                       ["1","2","3","4"].map(w=>{
                         const isA=tlStyle.gannLineWidth===w; const isH=hov===`gannlw-${w}`;
                         return (
-                          <div key={w} onClick={()=>{applyTlGannLineWidth(w);setTlStyleDrop(null);}}
+                          <div key={w} {...tlStyleDropPick(() => applyTlGannLineWidth(w))}
                             onMouseEnter={()=>setHov(`gannlw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>

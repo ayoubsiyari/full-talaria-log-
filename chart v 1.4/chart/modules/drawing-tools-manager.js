@@ -1829,6 +1829,25 @@ class DrawingToolsManager {
         return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
     }
 
+    /** Sync drag translate on main group + unclipped labels layer (price-note pill). */
+    _applyDrawingDragTransform(drawing, transform) {
+        if (!drawing) return;
+        const t = transform || null;
+        if (drawing.group) {
+            drawing.group.attr('transform', t);
+        }
+        if (this.labelsGroup && !this.labelsGroup.empty() && drawing.id) {
+            const layer = this.labelsGroup.select(`[data-id="${drawing.id}"]`);
+            if (!layer.empty()) {
+                layer.attr('transform', t);
+            }
+        }
+    }
+
+    _clearDrawingDragTransform(drawing) {
+        this._applyDrawingDragTransform(drawing, null);
+    }
+
     /**
      * Apply a pixel translate() on the SVG group back into drawing.points (single render at drag end).
      * @returns {boolean} true when points were updated
@@ -1847,6 +1866,7 @@ class DrawingToolsManager {
         const pixelDy = parsed.y - startTy;
 
         drawing.group.attr('transform', null);
+        this._clearDrawingDragTransform(drawing);
         if (pixelDx === 0 && pixelDy === 0) return false;
 
         const chart = this.chart;
@@ -2909,7 +2929,7 @@ class DrawingToolsManager {
                     if (drawing.group) {
                         const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
                         const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                        this._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                     }
                     if (Array.isArray(points)) {
                         const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
@@ -2919,7 +2939,7 @@ class DrawingToolsManager {
             } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
                 const newX = this.dragStartOriginalPos.x + pixelDx;
                 const newY = this.dragStartOriginalPos.y + pixelDy;
-                this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
+                this._applyDrawingDragTransform(this.draggingDrawing, `translate(${newX}, ${newY})`);
                 if (Array.isArray(this.singleDragStartPoints)) {
                     const previewPoints = this._translatePointsByPixels(
                         this.singleDragStartPoints,
@@ -5058,8 +5078,7 @@ class DrawingToolsManager {
 
         dragElements.on('.drag', null);
 
-        dragElements.call(
-            d3.drag()
+        const bodyDrag = d3.drag()
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
                     const src = event.sourceEvent || event;
@@ -5288,7 +5307,7 @@ class DrawingToolsManager {
                             if (!item.drawing || !item.drawing.group) return;
                             const sx = item.startTransform ? item.startTransform.x : 0;
                             const sy = item.startTransform ? item.startTransform.y : 0;
-                            item.drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                            self._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                             const previewPoints = self._translatePointsByPixels(
                                 item.points,
                                 pixelDx,
@@ -5302,7 +5321,7 @@ class DrawingToolsManager {
                     } else if (drawing.group) {
                         const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
                         const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
-                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                        self._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                         const previewPoints = self._translatePointsByPixels(
                             dragStartPoints,
                             pixelDx,
@@ -5377,8 +5396,14 @@ class DrawingToolsManager {
                     }
                     
                     // [debug removed]
-                })
-        );
+                });
+
+        dragElements.call(bodyDrag);
+        if (drawing.type === 'price-note' && self.labelsGroup && !self.labelsGroup.empty()) {
+            const labelHits = self.labelsGroup.selectAll(`[data-id="${drawing.id}"] .shape-border-hit`);
+            labelHits.on('.drag', null);
+            labelHits.call(bodyDrag);
+        }
 
         this._setupGannLevelDrag(drawing);
     }
@@ -5610,7 +5635,7 @@ class DrawingToolsManager {
 
         drawings.forEach((d) => {
             if (d?.group?.attr('transform')) {
-                d.group.attr('transform', null);
+                this._clearDrawingDragTransform(d);
                 this.renderDrawing(d);
             }
         });
@@ -5664,7 +5689,7 @@ class DrawingToolsManager {
                 if (!item.drawing || !item.drawing.group) return;
                 const sx = item.startTransform ? item.startTransform.x : 0;
                 const sy = item.startTransform ? item.startTransform.y : 0;
-                item.drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                this._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
             });
         };
 
@@ -6317,9 +6342,7 @@ class DrawingToolsManager {
                         drawing.meta.updatedAt = Date.now();
                     }
                 }
-                if (drawing.group) {
-                    drawing.group.attr('transform', null);
-                }
+                this._clearDrawingDragTransform(drawing);
                 this._refreshDrawingTimestampAnchors(drawing);
                 this.renderDrawing(drawing);
             });
@@ -6357,9 +6380,7 @@ class DrawingToolsManager {
                     this.draggingDrawing.meta.updatedAt = Date.now();
                 }
             }
-            if (this.draggingDrawing && this.draggingDrawing.group) {
-                this.draggingDrawing.group.attr('transform', null);
-            }
+            this._clearDrawingDragTransform(this.draggingDrawing);
             this._refreshDrawingTimestampAnchors(this.draggingDrawing);
             this.renderDrawing(this.draggingDrawing);
         }

@@ -2017,7 +2017,13 @@ class PriceNoteTool extends BaseDrawing {
             : 0;
         const clampMinY = Math.max(0, minY - chartMarginTop);
         const edgePad = 0;
-        labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(maxX - boxWidth / 2 - edgePad, labelX));
+        const chart = scales.chart;
+        const marginR = (chart && chart.margin && typeof chart.margin.r === 'number') ? chart.margin.r : 0;
+        const canvasW = (chart && chart.w) ? chart.w : (maxX + marginR);
+        const axisInset = 4;
+        // Allow the price pill to sit in the price-axis column (not clamped to plot right edge).
+        const labelMaxX = canvasW - axisInset - boxWidth / 2;
+        labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(labelMaxX, labelX));
         labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
 
         // Shorten line so it stops at the near edge of the label box
@@ -2031,7 +2037,14 @@ class PriceNoteTool extends BaseDrawing {
         lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
         lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
 
-        const labelGroup = this.group.append('g')
+        const labelsGroup = scales && scales.labelsGroup;
+        const labelHost = (labelsGroup && !labelsGroup.empty()) ? labelsGroup : this.group;
+        const labelRoot = labelHost.append('g')
+            .attr('data-id', this.id)
+            .attr('class', 'price-note-label-layer')
+            .style('pointer-events', 'none');
+
+        const labelGroup = labelRoot.append('g')
             .attr('class', 'price-note-label')
             .attr('transform', `translate(${labelX},${labelY})`);
 
@@ -2055,7 +2068,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('cursor', 'default');
 
         labelGroup.append('rect')
-            .attr('class', 'shape-border-hit')
+            .attr('class', 'shape-border-hit text-body-hit')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
