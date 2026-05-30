@@ -14902,6 +14902,38 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Middle-line dash style — immediate repaint (rect / ellipse / circle / parallel channel). */
+  const applyTlMidLineType = useCallback((midLineType) => {
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      if (icon === "channel") {
+        const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLineType });
+        return { ...s, midLineType, chLines };
+      }
+      return { ...s, midLineType };
+    }));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Middle-line thickness — same-frame chart sync. */
+  const applyTlMidLineWidth = useCallback((midLineWidth) => {
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      if (icon === "channel") {
+        const chLines = v9SyncParallelChannelMidLineToChLines({ ...s, midLineWidth });
+        return { ...s, midLineWidth, chLines };
+      }
+      return { ...s, midLineWidth };
+    }));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Fib Time Zone Input tab rows — immediate per-level style/thickness/on chart sync. */
   const applyFibTzLevelsPatch = useCallback((rowMapper) => {
     flushSync(() => {
@@ -16984,7 +17016,7 @@ const TalariaV8bLive = () => {
                             [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                               const isA=tlStyle.midLineType===v; const isH=hov===`tlmt-${v}`;
                               return (
-                                <div key={v} onClick={()=>{setTlStyle(s=>({...s,midLineType:v}));setTlStyleDrop(null);}}
+                                <div key={v} onClick={()=>{applyTlMidLineType(v);setTlStyleDrop(null);}}
                                   onMouseEnter={()=>setHov(`tlmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                   style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                            background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17010,7 +17042,7 @@ const TalariaV8bLive = () => {
                             ["1","2","3","4"].map(w=>{
                               const isA=tlStyle.midLineWidth===w; const isH=hov===`tlmw-${w}`;
                               return (
-                                <div key={w} onClick={()=>{setTlStyle(s=>({...s,midLineWidth:w}));setTlStyleDrop(null);}}
+                                <div key={w} onClick={()=>{applyTlMidLineWidth(w);setTlStyleDrop(null);}}
                                   onMouseEnter={()=>setHov(`tlmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                   style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                            background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17083,7 +17115,7 @@ const TalariaV8bLive = () => {
                               [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                                 const isA=tlStyle.midLineType===v; const isH=hov===`tlmt-${v}`;
                                 return (
-                                  <div key={v} onClick={()=>{setTlStyle(s=>({...s,midLineType:v}));setTlStyleDrop(null);}}
+                                  <div key={v} onClick={()=>{applyTlMidLineType(v);setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`tlmt-${v}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -17113,7 +17145,7 @@ const TalariaV8bLive = () => {
                               ["1","2","3","4"].map(w=>{
                                 const isA=tlStyle.midLineWidth===w; const isH=hov===`tlmw-${w}`;
                                 return (
-                                  <div key={w} onClick={()=>{setTlStyle(s=>({...s,midLineWidth:w}));setTlStyleDrop(null);}}
+                                  <div key={w} onClick={()=>{applyTlMidLineWidth(w);setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`tlmw-${w}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                              background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
