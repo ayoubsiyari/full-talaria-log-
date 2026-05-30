@@ -3390,7 +3390,7 @@ class GannFanTool extends BaseDrawing {
 
         // Back-compat: migrate style.angles (label like 1×8) into style.fanLevels.
         if (!this.style) this.style = {};
-        if (!Array.isArray(this.style.fanLevels) || this.style.fanLevels.length === 0) {
+        if (!Array.isArray(this.style.fanLevels)) {
             if (Array.isArray(this.style.angles) && this.style.angles.length > 0) {
                 this.style.fanLevels = this.style.angles.map(a => {
                     const label = a && a.label ? `${a.label}` : '';
@@ -3413,6 +3413,19 @@ class GannFanTool extends BaseDrawing {
                 this.style.fanLevels = defaultFanLevels.map(l => ({ ...l }));
             }
         }
+    }
+
+    static labelForValue(value) {
+        const v = parseFloat(value);
+        if (!Number.isFinite(v)) return '';
+        const map = {
+            0.125: '1/8', 0.25: '1/4', 0.333: '1/3', 0.5: '1/2',
+            1: '1/1', 2: '2/1', 3: '3/1', 4: '4/1', 8: '8/1',
+        };
+        for (const [k, lbl] of Object.entries(map)) {
+            if (Math.abs(v - parseFloat(k)) < 0.02) return lbl;
+        }
+        return '';
     }
 
     onPointHandleDrag(index, context = {}) {
@@ -3579,11 +3592,14 @@ class GannFanTool extends BaseDrawing {
         const levelsAll = fanLevelsSource
             .map(l => {
                 const v = l && l.value != null ? parseFloat(l.value) : NaN;
+                const lbl = (l && l.label != null && `${l.label}` !== '')
+                    ? `${l.label}`
+                    : GannFanTool.labelForValue(v);
                 return {
                     value: isFinite(v) ? v : NaN,
                     enabled: l && l.enabled !== false,
                     color: (l && l.color) ? l.color : (this.style.stroke || '#4caf50'),
-                    label: (l && l.label != null) ? `${l.label}` : ''
+                    label: lbl
                 };
             })
             .filter(l => l.enabled && isFinite(l.value));
@@ -3648,8 +3664,7 @@ class GannFanTool extends BaseDrawing {
                 .attr('stroke-width', w)
                 .attr('stroke-dasharray', dash && dash !== 'none' ? dash : 'none')
                 .attr('opacity', 0.9)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('pointer-events', 'none');
 
             const labelX = Math.max(xMin, Math.min(xMax, x1 + labelDx));
             const labelY = y1 + (ray.slope * (labelX - x1));

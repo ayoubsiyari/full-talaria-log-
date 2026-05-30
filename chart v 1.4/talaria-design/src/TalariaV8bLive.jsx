@@ -1459,6 +1459,12 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         patch.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
       }
     }
+    if (legacyTool === "gann-fan" && Array.isArray(tlStyle.gannFanLevels)) {
+      patch.fanLevels = v9GannFanTlLevelsToChartLevels(
+        tlStyle.gannFanLevels,
+        tlStyle.lineColor || "#4caf50",
+      );
+    }
   }
   if (legacyTool === "brush" || legacyTool === "highlighter") {
     const p = parseColor(tlStyle.lineColor || "#787b86");
@@ -4606,19 +4612,11 @@ function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
   }
 }
 
-function v9ApplyGannFanFromTlStyle(d, tlStyle) {
-  if (!d || d.type !== "gann-fan" || !d.style) return;
-  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
-  const tl = tlStyle.gannFanLevels;
-  if (!Array.isArray(tl)) return;
-  if (!tl.length) {
-    d.style.fanLevels = [];
-    return;
-  }
-  d.style.fanLevels = tl.map((l, i) => {
+function v9GannFanTlLevelsToChartLevels(tlArr, strokeFallback = "#4caf50", prevLevels = []) {
+  if (!Array.isArray(tlArr)) return [];
+  return tlArr.map((l, i) => {
     const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
-    const p = prev[i];
+    const p = prevLevels[i];
     const label =
       (p && p.label != null && `${p.label}` !== "")
         ? `${p.label}`
@@ -4626,10 +4624,23 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
     return {
       value,
       enabled: l && l.on !== false,
-      color: (l && l.color) ? l.color : (d.style.stroke || "#4caf50"),
+      color: (l && l.color) ? l.color : strokeFallback,
       ...(label ? { label } : {}),
     };
   });
+}
+
+function v9ApplyGannFanFromTlStyle(d, tlStyle) {
+  if (!d || d.type !== "gann-fan" || !d.style) return;
+  v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
+  const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
+  const tl = tlStyle.gannFanLevels;
+  if (!Array.isArray(tl)) return;
+  d.style.fanLevels = v9GannFanTlLevelsToChartLevels(
+    tl,
+    d.style.stroke || "#4caf50",
+    prev,
+  );
 }
 
 /** Re-apply level geometry after built-in stroke reset (Apply default). */

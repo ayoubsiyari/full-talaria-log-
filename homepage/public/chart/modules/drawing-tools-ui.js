@@ -8606,7 +8606,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const ensureFanLevels = () => {
 
-            if (Array.isArray(drawing.style.fanLevels) && drawing.style.fanLevels.length > 0) return drawing.style.fanLevels;
+            if (Array.isArray(drawing.style.fanLevels)) return drawing.style.fanLevels;
 
             if (Array.isArray(drawing.style.angles) && drawing.style.angles.length > 0) {
 

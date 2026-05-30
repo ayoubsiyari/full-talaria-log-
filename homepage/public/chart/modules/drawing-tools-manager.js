@@ -3875,6 +3875,7 @@ class DrawingToolsManager {
 
         // Apply saved style for this tool type
         this.applySavedStyle(drawing);
+        this._applyArmedStyleExtras(drawing);
 
         // For image tools, don't save if no image is uploaded
         if (this.currentTool === 'image' && 
@@ -5578,7 +5579,15 @@ class DrawingToolsManager {
                 if (!Array.isArray(levels) || !levels[dragMeta.idx]) return;
                 const rounded = Math.round(nextVal * 1000) / 1000;
                 if (Math.abs(parseFloat(levels[dragMeta.idx].value) - rounded) < 1e-6) return;
-                levels[dragMeta.idx] = { ...levels[dragMeta.idx], value: rounded };
+                const nextRow = { ...levels[dragMeta.idx], value: rounded };
+                if (drawing.type === 'gann-fan' && dragMeta.arrayKey === 'fanLevels') {
+                    const FanCls = typeof GannFanTool !== 'undefined' ? GannFanTool : null;
+                    if (FanCls && typeof FanCls.labelForValue === 'function') {
+                        const lbl = FanCls.labelForValue(rounded);
+                        if (lbl) nextRow.label = lbl;
+                    }
+                }
+                levels[dragMeta.idx] = nextRow;
                 moved = true;
                 self.renderDrawing(drawing, { skipInteraction: true });
                 if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
