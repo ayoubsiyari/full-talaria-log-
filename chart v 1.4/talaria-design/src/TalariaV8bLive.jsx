@@ -740,6 +740,25 @@ function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked) {
 
 const V9_DASH_TO_LEGACY = { solid: "", dashed: "10,6", dotted: "2,2", dashdot: "8,4,2,4" };
 
+function v9IsFilledShapeBorderChartType(type) {
+  return !!type && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(type);
+}
+function v9IsFilledShapeBorderSubIcon(icon) {
+  return !!icon && V9_TL_LINE_COLOR_OPACITY_SHAPE_ICONS.has(icon);
+}
+/** Map V9 border style + width → chart.js border dash/width (filled shapes). */
+function v9BorderDashAndWidthFromTlStyle(tlStyle) {
+  const type = tlStyle?.borderType || tlStyle?.lineType || "solid";
+  const baseW = parseInt(tlStyle?.borderWidth, 10) || parseInt(tlStyle?.lineWidth, 10) || 1;
+  if (type === "bold") {
+    return { dash: "", width: Math.max(2, baseW === 1 ? 2 : baseW) };
+  }
+  return { dash: V9_DASH_TO_LEGACY[type] ?? "", width: Math.max(1, baseW) };
+}
+function v9BorderColorFromTlStyle(tlStyle) {
+  return tlStyle?.borderColor || tlStyle?.lineColor || "#787b86";
+}
+
 /** V9 cursor rail icon → chart.js `setCursorType` argument. */
 const V9_ICON_TO_CHART_CURSOR = {
   crosshair: "cross",
@@ -826,6 +845,9 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
       const p = parseColor(col);
       const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
       return { stroke: strokeRgba, color: strokeRgba, opacity: 1 };
+    }
+    if (v9IsFilledShapeBorderChartType(legacyTool)) {
+      return { borderColor: col, stroke: col, color: col };
     }
     return { stroke: col, color: col };
   }
@@ -1443,14 +1465,19 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.opacity = 1;
   }
   if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
+    const borderOn = tlStyle.showBorder !== false;
+    const outline = v9BorderColorFromTlStyle(tlStyle);
+    const { dash: borderDash, width: borderW } = v9BorderDashAndWidthFromTlStyle(tlStyle);
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
-    const borderOn = tlStyle.showBorder !== false;
-    const outline = tlStyle.borderColor || tlStyle.lineColor || "#787b86";
     patch.borderEnabled = borderOn;
     patch.borderColor = outline;
+    patch.borderDasharray = borderDash;
+    patch.borderWidth = borderOn ? borderW : 0;
     patch.stroke = borderOn ? outline : "none";
-    patch.strokeWidth = borderOn ? widthNum : 0;
+    patch.strokeWidth = borderOn ? borderW : 0;
+    patch.strokeDasharray = borderDash;
+    patch.dashArray = borderDash;
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
@@ -4050,6 +4077,9 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
   if (v9IsPatternLabelSyncSubToolIcon(subToolIcon) && v9PatternLabelColorCoupled(prev)) {
     return { ...prev, lineColor: colorVal, textColor: colorVal };
   }
+  if (v9IsFilledShapeBorderSubIcon(subToolIcon)) {
+    return { ...prev, lineColor: colorVal, borderColor: colorVal };
+  }
   return { ...prev, lineColor: colorVal };
 }
 
@@ -4655,12 +4685,28 @@ function v9TlStylePatchFromDrawing(d) {
       ? v9StyleDashRaw(s, "levelsLineDasharray", "dashArray", "strokeDasharray")
       : isTrendFibTime
         ? v9StyleDashRaw(s, "trendLineDasharray", "dashArray", "strokeDasharray")
-        : v9StyleDashRaw(s, "dashArray", "strokeDasharray");
+        : v9IsFilledShapeBorderChartType(d.type)
+          ? v9StyleDashRaw(s, "borderDasharray", "dashArray", "strokeDasharray")
+          : v9StyleDashRaw(s, "dashArray", "strokeDasharray");
   const lineType = v9LineTypeFromDashRaw(dashRaw);
+  const isShapeBorder = v9IsFilledShapeBorderChartType(d.type);
+  const shapeStroke = isShapeBorder ? (s.borderColor || s.stroke || s.color || s.lineColor) : stroke;
+  const shapeWidthRaw = isShapeBorder
+    ? (s.borderWidth ?? s.strokeWidth ?? s.lineWidth)
+    : widthRaw;
+  const shapeWidthStr = shapeWidthRaw != null
+    ? String(parseInt(shapeWidthRaw, 10) || 1)
+    : undefined;
+  const shapeLineType = isShapeBorder
+    ? (parseInt(shapeWidthStr, 10) >= 2 && !dashRaw ? "bold" : lineType)
+    : lineType;
   return {
-    ...(stroke ? { lineColor: stroke } : {}),
-    ...(widthStr ? { lineWidth: widthStr } : {}),
-    lineType,
+    ...(shapeStroke ? { lineColor: shapeStroke } : (stroke ? { lineColor: stroke } : {})),
+    ...(isShapeBorder
+      ? (shapeWidthStr ? { lineWidth: shapeWidthStr, borderWidth: shapeWidthStr } : {})
+      : (widthStr ? { lineWidth: widthStr } : {})),
+    lineType: isShapeBorder ? shapeLineType : lineType,
+    ...(isShapeBorder ? { borderType: shapeLineType } : {}),
     ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
     showBg:
       typeof s.showBackground === "boolean"
@@ -4674,9 +4720,11 @@ function v9TlStylePatchFromDrawing(d) {
           : s.borderEnabled !== false,
     ...(v9IsArrowMarkChartType(d.type)
       ? { borderColor: s.borderColor || (s.stroke && s.stroke !== "none" ? s.stroke : undefined) }
-      : s.borderColor
-        ? { borderColor: s.borderColor }
-        : {}),
+      : isShapeBorder && shapeStroke
+        ? { borderColor: shapeStroke }
+        : s.borderColor
+          ? { borderColor: s.borderColor }
+          : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
     extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
@@ -14493,13 +14541,16 @@ const TalariaV8bLive = () => {
       const editSess = editingDrawingRef.current;
       const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
       const borderOn = tl.showBorder !== false;
-      const outline = tl.borderColor || tl.lineColor || "#787b86";
-      const widthNum = Math.max(1, parseInt(tl.borderWidth, 10) || parseInt(tl.lineWidth, 10) || 1);
+      const outline = v9BorderColorFromTlStyle(tl);
+      const { dash: borderDash, width: widthNum } = v9BorderDashAndWidthFromTlStyle(tl);
       const patch = {
         borderEnabled: borderOn,
         borderColor: outline,
+        borderDasharray: borderDash,
         stroke: borderOn ? outline : "none",
         strokeWidth: borderOn ? widthNum : 0,
+        strokeDasharray: borderDash,
+        dashArray: borderDash,
         borderWidth: borderOn ? widthNum : 0,
       };
       const chartsToRender = new Set();
@@ -14824,7 +14875,12 @@ const TalariaV8bLive = () => {
 
   /** Line-style picks must repaint the selected drawing immediately (Arrow + other rect-group tools). */
   const applyTlLineType = useCallback((lineType) => {
-    flushSync(() => setTlStyle((s) => ({ ...s, lineType })));
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      return v9IsFilledShapeBorderSubIcon(icon)
+        ? { ...s, lineType, borderType: lineType }
+        : { ...s, lineType };
+    }));
     v9PushLineTypeToSelectedDrawings(lineType);
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
@@ -14834,7 +14890,12 @@ const TalariaV8bLive = () => {
 
   /** Line thickness — same-frame chart sync (pattern/Elliott quick bar + settings). */
   const applyTlLineWidth = useCallback((lineWidth) => {
-    flushSync(() => setTlStyle((s) => ({ ...s, lineWidth })));
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      return v9IsFilledShapeBorderSubIcon(icon)
+        ? { ...s, lineWidth, borderWidth: lineWidth }
+        : { ...s, lineWidth };
+    }));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
@@ -16477,6 +16538,18 @@ const TalariaV8bLive = () => {
                 const noLineStyle = isBrushTool || isElliottTool || isPatternTool || isFibSpiralTool;
                 const showStyle = !noLineStyle;
                 const showThicknessCol = showLine && !isFibSpiralTool;
+                const isShapeBorderUi = v9IsFilledShapeBorderSubIcon(tlSubTool.icon);
+                const edgeColorKey = isShapeBorderUi ? "tlBorderColor" : "tlLineColor";
+                const edgeColorVal = isShapeBorderUi
+                  ? (tlStyle.borderColor || tlStyle.lineColor)
+                  : tlStyle.lineColor;
+                const edgeTypeVal = isShapeBorderUi
+                  ? (tlStyle.borderType || tlStyle.lineType || "solid")
+                  : tlStyle.lineType;
+                const edgeWidthVal = isShapeBorderUi
+                  ? (tlStyle.borderWidth || tlStyle.lineWidth || "1")
+                  : tlStyle.lineWidth;
+                const edgeStyleDisabled = isShapeBorderUi && tlStyle.showBorder === false;
                 /* ── RR Tool (Long/Short Position) style tab ── */
                 if (isRRTool) return (<>
                   {/* Zone Colors */}
@@ -16726,19 +16799,19 @@ const TalariaV8bLive = () => {
                     ) : (
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 0" }}>{["triangle","arcShape"].includes(tlSubTool.icon)?"Borders":"Line"}</span>
                     )}
-                    <div style={{ padding:"8px 0", opacity: (["rect","ellipse","circle"].includes(tlSubTool.icon) && tlStyle.showBorder === false) ? 0.38 : 1, pointerEvents: (["rect","ellipse","circle"].includes(tlSubTool.icon) && tlStyle.showBorder === false) ? "none" : "auto", transition:"opacity 0.15s" }}>{colorSwatch("tlLineColor", tlStyle.lineColor)}</div>
+                    <div style={{ padding:"8px 0", opacity: edgeStyleDisabled ? 0.38 : 1, pointerEvents: edgeStyleDisabled ? "none" : "auto", transition:"opacity 0.15s" }}>{colorSwatch(edgeColorKey, edgeColorVal)}</div>
                     {/* Style */}
-                    {showStyle ? <div style={{ padding:"8px 0", position:"relative" }}>
+                    {showStyle ? <div style={{ padding:"8px 0", position:"relative", opacity: edgeStyleDisabled ? 0.38 : 1, pointerEvents: edgeStyleDisabled ? "none" : "auto", transition:"opacity 0.15s" }}>
                       {mkBtn("type", tlStyleDrop==="type", (open) =>
                         <svg width={22} height={10} viewBox="0 0 22 10">
                           <line x1={0} y1={5} x2={22} y2={5} stroke={open?c.acL:c.ts}
-                            strokeWidth={tlStyle.lineType==="bold"?2.5:1.5} strokeLinecap="round"
-                            strokeDasharray={da(tlStyle.lineType)}/>
+                            strokeWidth={edgeTypeVal==="bold"?2.5:1.5} strokeLinecap="round"
+                            strokeDasharray={da(edgeTypeVal)}/>
                         </svg>
                       , 56)}
                       {tlStyleDrop==="type" && dropShell("type", 56, false,
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                          const isA=tlStyle.lineType===v; const isH=hov===`tlt-${v}`;
+                          const isA=edgeTypeVal===v; const isH=hov===`tlt-${v}`;
                           return (
                             <div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
@@ -16779,16 +16852,16 @@ const TalariaV8bLive = () => {
                         })
                       )}
                     </div>
-                    : <div style={{ padding:"8px 0", position:"relative" }}>
+                    : <div style={{ padding:"8px 0", position:"relative", opacity: edgeStyleDisabled ? 0.38 : 1, pointerEvents: edgeStyleDisabled ? "none" : "auto", transition:"opacity 0.15s" }}>
                       {mkBtn("width", tlStyleDrop==="width", (open) =>
-                        <svg width={22} height={Math.max(8,+tlStyle.lineWidth+4)} viewBox={`0 0 22 ${Math.max(8,+tlStyle.lineWidth+4)}`}>
-                          <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+4)/2} x2={22} y2={Math.max(8,+tlStyle.lineWidth+4)/2}
-                            stroke={open?c.acL:c.ts} strokeWidth={+tlStyle.lineWidth} strokeLinecap="round"/>
+                        <svg width={22} height={Math.max(8,+edgeWidthVal+4)} viewBox={`0 0 22 ${Math.max(8,+edgeWidthVal+4)}`}>
+                          <line x1={0} y1={Math.max(8,+edgeWidthVal+4)/2} x2={22} y2={Math.max(8,+edgeWidthVal+4)/2}
+                            stroke={open?c.acL:c.ts} strokeWidth={+edgeWidthVal} strokeLinecap="round"/>
                         </svg>
                       , 56)}
                       {tlStyleDrop==="width" && dropShell("width", 56, false,
                         ["1","2","3","4"].map(w=>{
-                          const isA=tlStyle.lineWidth===w; const isH=hov===`tlw-${w}`;
+                          const isA=edgeWidthVal===w; const isH=hov===`tlw-${w}`;
                           return (
                             <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
