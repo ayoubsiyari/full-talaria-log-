@@ -18840,7 +18840,7 @@ const TalariaV8bLive = () => {
                   const hkPfx = isArcs ? "fibATt" : "fibWTt";
                   const hkWPfx = isArcs ? "fibATw" : "fibWTw";
                   return <div style={{ display:"flex", alignItems:"center", padding:"8px 0 14px" }}>
-                    <div style={{ width:130 }}>{TlChk(on,`tlchk-${isArcs?"fibArcsTrend":"fibWedgeTrend"}`,"Trend Line",toggleOn)}</div>
+                    <div style={{ width:130 }}>{TlChk(on,`tlchk-${isArcs?"fibArcsTrend":"fibWedgeTrend"}`,"Trend Line",toggleOn,{ immediate:true })}</div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                       {fibColorSwatch("fibTrendColor", tlStyle.lineColor)}
                       {/* Style */}

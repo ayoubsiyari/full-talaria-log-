@@ -1920,10 +1920,8 @@ class PriceNoteTool extends BaseDrawing {
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
-        const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
-        // Get zoom scale factor
         const scaleFactor = this.getZoomScaleFactor(scales);
         const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
         const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
@@ -1931,168 +1929,97 @@ class PriceNoteTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing price-note', renderOpts);
         this._clearDrawingLabels(scales);
 
-        const p1 = this.points[0]; // Start point (where line starts)
-        const p2 = this.points[1]; // End point (where price label goes)
+        const p1 = this.points[0];
+        const p2 = this.points[1];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
         const x2 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        // Draw the line (endpoint will be shortened to box edge after label position is known)
-        const lineEl = this.group.append('line')
+        const noteLineHitEl = this.group.append('line')
+            .attr('class', 'note-line-hit shape-border-hit')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 20)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        const noteLineEl = this.group.append('line')
+            .attr('class', 'note-line')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x2)
             .attr('y2', y2)
             .attr('stroke', this.style.stroke)
             .attr('stroke-width', scaledStrokeWidth)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'none')
             .style('cursor', 'move');
 
-        // Invisible hit area
-        const lineHitEl = this.group.append('line')
-            .attr('class', 'shape-border-hit')
-            .attr('x1', x1)
-            .attr('y1', y1)
-            .attr('x2', x2)
-            .attr('y2', y2)
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 15)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        // Format price from START point (p1) - the point we drag from
-        const formatPrice = (price) => {
-            if (price >= 1000) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (price >= 1) return price.toFixed(4);
-            return price.toFixed(5);
-        };
-
-        const priceText = formatPrice(p1.y);
-        const padding = 8;
-
-        // Measure text
-        const tempText = container.append('text')
-            .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .text(priceText);
-        let textBbox;
-        try {
-            textBbox = tempText.node().getBBox();
-        } catch(e) {
-            textBbox = { width: 60, height: scaledFontSize * 1.2 };
-        }
-        tempText.remove();
-
-        const boxWidth = textBbox.width + padding * 2;
-        const boxHeight = textBbox.height + padding;
-
-        // Rotate the label to match the line direction (and keep it readable)
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        let angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-        if (angleDeg > 90) angleDeg -= 180;
-        if (angleDeg < -90) angleDeg += 180;
-
-        const markerRadius = 6 * scaleFactor;
-        const endpointClearance = this.selected ? markerRadius : 0;
-
-        const len = Math.hypot(dx, dy);
-        const ux = len > 0 ? (dx / len) : 0;
-        const uy = len > 0 ? (dy / len) : 1;
-        const labelDistance = endpointClearance + boxHeight / 2;
-        let labelX = x2 + ux * labelDistance;
-        let labelY = y2 + uy * labelDistance;
-
-        const xRange = scales.xScale.range();
-        const yRange = scales.yScale.range();
-        const minX = Math.min(xRange[0], xRange[1]);
-        const maxX = Math.max(xRange[0], xRange[1]);
-        const minY = Math.min(yRange[0], yRange[1]);
-        const maxY = Math.max(yRange[0], yRange[1]);
-        const chartMarginTop = (scales.chart && scales.chart.margin && typeof scales.chart.margin.t === 'number')
-            ? scales.chart.margin.t
-            : 0;
-        const clampMinY = Math.max(0, minY - chartMarginTop);
-        const edgePad = 0;
         const chart = scales.chart;
-        const marginL = (chart && chart.margin && typeof chart.margin.l === 'number') ? chart.margin.l : 0;
-        const marginR = (chart && chart.margin && typeof chart.margin.r === 'number') ? chart.margin.r : 0;
-        const canvasW = (chart && chart.w) ? chart.w : (maxX + marginR);
-        const axisInset = 4;
-        const axisLeft = !!(chart && chart.priceAxisLeft);
-        // TradingView-style: anchor the price pill in the price-axis column so the line
-        // runs through the plot edge; Y follows the line through p1→p2.
-        const axisColumnCenterX = axisLeft
-            ? Math.max(boxWidth / 2 + axisInset, marginL / 2)
-            : Math.min(canvasW - boxWidth / 2 - axisInset, canvasW - marginR / 2);
-        labelX = axisColumnCenterX;
-        if (Math.abs(x2 - x1) > 1e-6) {
-            labelY = y1 + (labelX - x1) * (y2 - y1) / (x2 - x1);
-        } else {
-            labelY = y2;
+        let decimals = 5;
+        if (chart && typeof chart.getPriceDecimals === 'function') {
+            const dom = chart.yScale && chart.yScale.domain ? chart.yScale.domain() : null;
+            const range = Array.isArray(dom) && dom.length === 2 ? Math.abs(dom[1] - dom[0]) : 0;
+            const d = chart.getPriceDecimals(range);
+            if (Number.isFinite(d) && d >= 0) decimals = d;
         }
-        const labelMinX = axisLeft
-            ? (boxWidth / 2 + axisInset)
-            : (minX + boxWidth / 2 + edgePad);
-        const labelMaxX = axisLeft
-            ? (marginL - axisInset - boxWidth / 2)
-            : (canvasW - axisInset - boxWidth / 2);
-        labelX = Math.max(labelMinX, Math.min(labelMaxX, labelX));
-        labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
+        const priceText = Number.isFinite(p1.y) ? p1.y.toFixed(decimals) : '';
 
-        // Shorten line so it stops at the near edge of the label box
-        const backUx = len > 0 ? -(dx / len) : 0;
-        const backUy = len > 0 ? -(dy / len) : -1;
-        const tEdgeX = Math.abs(backUx) > 1e-9 ? (boxWidth / 2) / Math.abs(backUx) : Infinity;
-        const tEdgeY = Math.abs(backUy) > 1e-9 ? (boxHeight / 2) / Math.abs(backUy) : Infinity;
-        const tEdge = Math.min(tEdgeX, tEdgeY);
-        const lineEndX = labelX + backUx * tEdge;
-        const lineEndY = labelY + backUy * tEdge;
-        lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
-        lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
+        const padding = 6;
+        const _nCanvas = document.createElement('canvas');
+        const _nCtx = _nCanvas.getContext('2d');
+        _nCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        let textWidth = 60;
+        try {
+            textWidth = _nCtx.measureText(priceText || '').width || ((priceText || '').length * scaledFontSize * 0.6);
+        } catch (_) {
+            textWidth = (priceText || '').length * scaledFontSize * 0.6;
+        }
 
-        const labelGroup = this.group.append('g')
-            .attr('class', 'price-note-label')
-            .attr('transform', `translate(${labelX},${labelY})`);
+        const lineHeight = scaledFontSize * 1.3;
+        const boxWidth = Math.max(textWidth + padding * 2, 60);
+        const boxHeight = lineHeight + padding * 2;
 
-        const boxX = -boxWidth / 2;
-        const boxY = -boxHeight / 2;
+        const _dx = x2 - x1;
+        const _dy = y2 - y1;
+        const _len = Math.hypot(_dx, _dy);
+        const _ux = _len > 0 ? _dx / _len : 1;
+        const _uy = _len > 0 ? _dy / _len : 0;
+        const _tEdgeX = Math.abs(_ux) > 1e-9 ? (boxWidth / 2) / Math.abs(_ux) : Infinity;
+        const _tEdgeY = Math.abs(_uy) > 1e-9 ? (boxHeight / 2) / Math.abs(_uy) : Infinity;
+        const _tEdge = Math.min(_tEdgeX, _tEdgeY);
+        const _labelCX = x2 + _ux * _tEdge;
+        const _labelCY = y2 + _uy * _tEdge;
+        const boxX = _labelCX - boxWidth / 2;
+        const boxY = _labelCY - boxHeight / 2;
+
+        noteLineEl.attr('x2', x2).attr('y2', y2);
+        noteLineHitEl.attr('x2', x2).attr('y2', y2);
 
         const brd = this.style.borderColor;
         const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
+        const boxStroke = hasLabelBorder ? brd : (this.style.stroke || 'none');
 
-        labelGroup.append('rect')
+        this.group.append('rect')
+            .attr('class', 'note-body-hit text-body-hit')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', this.style.fill)
-            .attr('stroke', hasLabelBorder ? brd : 'none')
+            .attr('rx', 4)
+            .attr('stroke', boxStroke)
             .attr('stroke-width', hasLabelBorder ? 1 : 0)
-            .attr('rx', 4)
-            .attr('class', 'shape-fill')
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
-
-        labelGroup.append('rect')
-            .attr('class', 'shape-border-hit text-body-hit')
-            .attr('x', boxX)
-            .attr('y', boxY)
-            .attr('width', boxWidth)
-            .attr('height', boxHeight)
-            .attr('fill', 'none')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 12)
-            .attr('rx', 4)
-            .style('pointer-events', 'stroke')
+            .style('pointer-events', 'all')
             .style('cursor', 'move');
 
-        labelGroup.append('text')
-            .attr('x', 0)
-            .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
+        this.group.append('text')
+            .attr('class', 'price-note-text')
+            .attr('x', boxX + boxWidth / 2)
+            .attr('y', boxY + padding + scaledFontSize)
             .attr('fill', this.style.textColor)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
@@ -2102,11 +2029,7 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .text(priceText);
 
-        // Create handles at both endpoints, then move p2 handle to label box center
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
-        this.group.selectAll('[data-point-index="1"]')
-            .attr('cx', lineEndX)
-            .attr('cy', lineEndY);
 
         return this.group;
     }

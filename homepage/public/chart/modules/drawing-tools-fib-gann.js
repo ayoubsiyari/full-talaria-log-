@@ -1847,38 +1847,29 @@ class FibWedgeTool extends BaseDrawing {
         const boundaryWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
 
         const appendWedgeRay = (xA, yA, xB, yB) => {
-            if (this.style.trendLineEnabled !== false) {
-                const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
-                const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
-                const tHit = Math.max(10, tW * 6);
-                const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
-                const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
-                this.group.append('line')
-                    .attr('class', 'fib-wedge-trend-hit')
-                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
-                    .attr('stroke', 'rgba(255,255,255,0.001)')
-                    .attr('stroke-width', tHit)
-                    .attr('stroke-dasharray', '')
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-                this.group.append('line')
-                    .attr('class', 'fib-wedge-trend fib-trend-line')
-                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
-                    .attr('stroke', tCol)
-                    .attr('stroke-width', tW)
-                    .attr('stroke-dasharray', tDash)
-                    .attr('opacity', 0.85)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-            } else {
-                this.group.append('line')
-                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
-                    .attr('stroke', this.style.stroke)
-                    .attr('stroke-width', boundaryWidth)
-                    .attr('opacity', 0.9)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-            }
+            if (this.style.trendLineEnabled === false) return;
+            const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
+            const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
+            const tHit = Math.max(10, tW * 6);
+            const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
+            const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
+            this.group.append('line')
+                .attr('class', 'fib-wedge-trend-hit')
+                .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', tHit)
+                .attr('stroke-dasharray', '')
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            this.group.append('line')
+                .attr('class', 'fib-wedge-trend fib-trend-line')
+                .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
+                .attr('stroke', tCol)
+                .attr('stroke-width', tW)
+                .attr('stroke-dasharray', tDash)
+                .attr('opacity', 0.85)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
         };
 
         appendWedgeRay(x1, y1, x2, y2);
@@ -2025,15 +2016,22 @@ class FibWedgeTool extends BaseDrawing {
                 .text(level.toString());
         });
 
-        // Outer boundary arc
-        this.group.append('path')
-            .attr('d', `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y}`)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', boundaryWidth)
-            .attr('fill', 'none')
-            .attr('opacity', 0.9)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // Outer boundary arc — only when at least one level is on (skip if level 1 arc already drawn).
+        const levelOneEnabled = this.levels.some((levelObj) => {
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            return enabled && Math.abs(+level - 1) < 1e-6;
+        });
+        if (enabledLevelsSorted.length > 0 && !levelOneEnabled) {
+            this.group.append('path')
+                .attr('d', `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y}`)
+                .attr('stroke', this.style.stroke)
+                .attr('stroke-width', boundaryWidth)
+                .attr('fill', 'none')
+                .attr('opacity', 0.9)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         if (this.points.length >= 3) {
             this.virtualPoints = [

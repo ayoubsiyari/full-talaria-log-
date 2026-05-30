@@ -997,15 +997,6 @@ class DrawingToolsManager {
         let clipY = m.t;
         let clipW = w - m.l - m.r;
         let clipH = h - m.t - m.b;
-        // Price-note pills render inside the clipped drawings layer; extend clip into the
-        // price-axis column so the label stays visible (without a separate labelsGroup split).
-        const axisLeft = !!this.chart.priceAxisLeft;
-        if (axisLeft) {
-            clipX = 0;
-            clipW = w - m.r;
-        } else {
-            clipW = w - m.l;
-        }
         if (panPadding) {
             const padL = Math.max(0, Number(panPadding.left) || 0);
             const padR = Math.max(0, Number(panPadding.right) || 0);
@@ -1838,7 +1829,7 @@ class DrawingToolsManager {
         return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
     }
 
-    /** Sync drag translate on main group + unclipped labels layer (price-note pill). */
+    /** Sync drag translate on main group (+ optional unclipped labels layer). */
     _applyDrawingDragTransform(drawing, transform) {
         if (!drawing) return;
         const t = transform || null;
