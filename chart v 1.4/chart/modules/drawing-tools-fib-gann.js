@@ -2757,16 +2757,6 @@ class PitchfanTool extends BaseDrawing {
 
 // ============================================================================
 // Gann Square Fixed Tool
-/** 1×1 trend diagonal stops where it meets the reference arc (default ARC 0.25). */
-function gannSquareFixedTrendArcFactor(arcEnabled) {
-    const eps = 1e-6;
-    const enabled = Array.isArray(arcEnabled) ? arcEnabled.filter(l => l && l.enabled !== false && isFinite(l.value) && l.value > 0) : [];
-    if (!enabled.length) return 0.25 / Math.SQRT2;
-    const atQuarter = enabled.find(l => Math.abs(l.value - 0.25) < eps);
-    const arcVal = atQuarter ? 0.25 : enabled.sort((a, b) => a.value - b.value)[0].value;
-    return arcVal / Math.SQRT2;
-}
-
 // ============================================================================
 class GannSquareFixedTool extends BaseDrawing {
     constructor(points = [], style = {}) {
@@ -3054,18 +3044,14 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('opacity', 0.7);
         });
 
-        // 1×1 trend diagonal — from anchor to ARC intersection (not opposite corner)
+        // Diagonals
         const diagW = Math.max(0.5, 1.2 * scaleFactor);
         const diagHitW = Math.max(10, diagW * 6);
-        const trendT = gannSquareFixedTrendArcFactor(arcEnabled);
-        const trendEndX = anchorX + (sx * size * trendT);
-        const trendEndY = anchorY + (sy * size * trendT);
-        const trendColor = this.style.trendLineColor || '#00bcd4';
 
         this.group.append('line')
-            .attr('class', 'gann-level-hit gann-square-trend-line')
-            .attr('x1', anchorX).attr('y1', anchorY)
-            .attr('x2', trendEndX).attr('y2', trendEndY)
+            .attr('class', 'gann-level-hit')
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', left + size).attr('y2', top + size)
             .attr('stroke', 'rgba(255,255,255,0.001)')
             .attr('stroke-width', diagHitW)
             .attr('stroke-dasharray', '')
@@ -3074,10 +3060,9 @@ class GannSquareFixedTool extends BaseDrawing {
             .style('cursor', 'move');
 
         this.group.append('line')
-            .attr('class', 'gann-square-trend-line')
-            .attr('x1', anchorX).attr('y1', anchorY)
-            .attr('x2', trendEndX).attr('y2', trendEndY)
-            .attr('stroke', trendColor)
+            .attr('x1', left).attr('y1', top)
+            .attr('x2', left + size).attr('y2', top + size)
+            .attr('stroke', '#00bcd4')
             .attr('stroke-width', diagW)
             .attr('opacity', 0.9);
 

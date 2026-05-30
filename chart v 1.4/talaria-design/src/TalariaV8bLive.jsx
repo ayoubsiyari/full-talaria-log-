@@ -971,12 +971,7 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
     v9ApplyGannBoxFromTlStyle(d, tlStyle);
     return true;
   }
-  if (
-    d.type === "gann-square-fixed" &&
-    (pickerKey.startsWith("gannGrid-") ||
-      pickerKey.startsWith("gannFanLv-") ||
-      pickerKey.startsWith("gannArc-"))
-  ) {
+  if (d.type === "gann-square-fixed" && pickerKey.startsWith("gannGrid-")) {
     v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
     return true;
   }
@@ -1002,6 +997,10 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
   }
   if (v9IsFibWedgeType(d.type) && (pickerKey.startsWith("fibLevel-") || pickerKey === "fibTrendColor" || pickerKey === "tlLineColor")) {
     v9ApplyFibWedgeFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (pickerKey.startsWith("gannArc-") && d.type === "gann-square-fixed") {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
     return true;
   }
   return false;
@@ -18633,7 +18632,7 @@ const TalariaV8bLive = () => {
               );
               const gannColorSwatch = (key, color) => (
                 <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-                  {...modalPointerActivate((e) => openCP(e, key, color))}
+                  onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
                   style={v9TlColorSwatchBoxStyle(color, {
                     active: colorPicker === key,
                     hover: swHov === key,
