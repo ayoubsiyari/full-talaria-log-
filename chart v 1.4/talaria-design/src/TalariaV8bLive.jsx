@@ -9937,6 +9937,25 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "indsett"]));
     setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
   };
+  const closeDrawingSettingsOnChartClickRef = useRef(() => {});
+  closeDrawingSettingsOnChartClickRef.current = () => {
+    const anyOpen =
+      tlSettOpenRef.current ||
+      txtSettOpen ||
+      vwapSettOpen ||
+      vpSettOpen ||
+      avSettOpen ||
+      indSettOpen;
+    if (!anyOpen) return;
+    try {
+      if (tlSettOpenRef.current) closeTlSett();
+      if (txtSettOpen) closeTxtSett();
+      if (vwapSettOpen) closeVwapSett();
+      if (vpSettOpen) closeVpSett();
+      if (avSettOpen) closeAvSett();
+      if (indSettOpen) closeIndSett();
+    } catch (_) {}
+  };
   closeOthersForIndSettRef.current = () => {
     try {
       if (tlSettOpen) closeTlSett();
@@ -10374,13 +10393,9 @@ const TalariaV8bLive = () => {
         el.closest("#panels-container");
       if (!onChartSurface) return;
 
-      // Keep the style panel open while editing a shape — chart clicks should not
-      // dismiss it before toggles/colors can reach the forward bridge.
-      if (tlSettOpenRef.current) return;
-
+      try { closeDrawingSettingsOnChartClickRef.current?.(); } catch (_) {}
       try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
-      setTlSettOpen(false);
     };
     const scrollHandler = (ev) => {
       const el = eventTargetEl(ev);
