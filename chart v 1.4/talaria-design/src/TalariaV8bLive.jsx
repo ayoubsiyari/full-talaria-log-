@@ -548,10 +548,10 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
-/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool` + spiral CCW). */
+/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool`). */
 const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
-  "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
+  "fibCircles", "fibArcs", "fibWedge",
 ]);
 
 /** Rail icons with no settings Text tab (and no working quick-menu text color). Shared by settings tabs + floating bar. */
@@ -11805,26 +11805,25 @@ const TalariaV8bLive = () => {
     });
   };
 
+  const tlCheckboxIndicator = (on, isH) => {
+    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+    return (
+      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+        {!on ? (
+          <rect x="0.9" y="0.9" width="8.2" height="8.2" stroke={bCol} strokeWidth={1.3} fill="none" rx={0.6}/>
+        ) : (
+          <>
+            <rect x="0.9" y="0.9" width="8.2" height="8.2" stroke={c.acL} strokeWidth={1.3} fill={c.acL} fillOpacity={0.12} rx={0.6}/>
+            <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
+          </>
+        )}
+      </svg>
+    );
+  };
   // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
   const Chk = (on, settKey, hKey, label) => {
     const isH = swHov === hKey;
-    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-    const indicator = (
-      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        {!on && isH && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-        </>}
-        {on && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
-          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-        </>}
-      </svg>
-    );
+    const indicator = tlCheckboxIndicator(on, isH);
     const shared = {
       ...modalPointerActivate(() => runTlCheckboxToggle(hKey, () => {
         setSettings(prev => {
@@ -11849,23 +11848,7 @@ const TalariaV8bLive = () => {
   // TL-style checkbox SVG — same visual as Chk but wired to tlStyle + hov
   const TlChk = (on, hKey, label, toggle) => {
     const isH = hov === hKey;
-    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-    const indicator = (
-      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-        {!on && isH && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
-        </>}
-        {on && <>
-          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
-          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
-          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-        </>}
-      </svg>
-    );
+    const indicator = tlCheckboxIndicator(on, isH);
     return (
       <div
         {...modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle))}
@@ -17836,11 +17819,6 @@ const TalariaV8bLive = () => {
                     active: colorPicker === key,
                     hover: swHov === key,
                   })}/>
-              );
-              if (fi === "fibSpiral") return (
-                <div style={{ padding:"8px 0" }}>
-                  {TlChk(tlStyle.fibSpiralCCW ?? false, "tlchk-fibSpiralCCW-in", "Counter Clockwise", () => setTlStyle(s => ({ ...s, fibSpiralCCW: !(s.fibSpiralCCW ?? false) })))}
-                </div>
               );
               if (fi === "fibTimeZone") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>FIBONACCI NUMBERS</div>
