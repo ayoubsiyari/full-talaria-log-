@@ -8274,8 +8274,8 @@ class DrawingToolsManager {
             }
         }
 
-        // Fib circles: level rings use circle.fib-level-hit (not line) and sit above the axis ray.
-        for (const element of drawing.group.selectAll('circle.fib-level-hit').nodes()) {
+        // Fib circles: level rings use ellipse.fib-level-hit (TradingView axis-aligned) or circle.fib-level-hit.
+        for (const element of drawing.group.selectAll('ellipse.fib-level-hit, circle.fib-level-hit').nodes()) {
             const elementSel = d3.select(element);
             if (elementSel.style('opacity') === '0') continue;
 
@@ -8285,8 +8285,24 @@ class DrawingToolsManager {
 
             const cx = parseFloat(element.getAttribute('cx'));
             const cy = parseFloat(element.getAttribute('cy'));
+            if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+
+            const tag = element.tagName && element.tagName.toLowerCase();
+            if (tag === 'ellipse') {
+                const rx = parseFloat(element.getAttribute('rx'));
+                const ry = parseFloat(element.getAttribute('ry'));
+                if (!Number.isFinite(rx) || !Number.isFinite(ry) || rx <= 0 || ry <= 0) continue;
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 10;
+                const effectiveTolerance = Math.max(circleHitTolerance, (strokeWidth / 2) + 0.5);
+                const nx = (mouseX - cx) / rx;
+                const ny = (mouseY - cy) / ry;
+                const dist = Math.sqrt(nx * nx + ny * ny);
+                if (Math.abs(dist - 1) * Math.min(rx, ry) <= effectiveTolerance) return true;
+                continue;
+            }
+
             const r = parseFloat(element.getAttribute('r'));
-            if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r) || r <= 0) continue;
+            if (!Number.isFinite(r) || r <= 0) continue;
 
             const dx = mouseX - cx;
             const dy = mouseY - cy;

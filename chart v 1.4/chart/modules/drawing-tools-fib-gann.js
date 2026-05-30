@@ -1043,11 +1043,29 @@ class FibCirclesTool extends BaseDrawing {
         const y1 = getY(this.points[0]);
         const x2 = getX(this.points[1]);
         const y2 = getY(this.points[1]);
-        const baseRadius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        // TradingView default: axis-aligned ellipses (time × price), not a single screen radius.
+        const baseRx = Math.abs(dx);
+        const baseRy = Math.abs(dy);
+        const useGeometric = this.style.v9FibCirclesGeometric === true || this.style.geometricCircles === true;
+        const baseRadius = useGeometric
+            ? Math.hypot(dx, dy)
+            : Math.max(baseRx, baseRy);
         if (!baseRadius || !isFinite(baseRadius)) {
             if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
+
+        const levelRadii = (level) => {
+            const lv = parseFloat(level);
+            if (!isFinite(lv) || lv <= 0) return { rx: 0, ry: 0 };
+            if (useGeometric) {
+                const r = baseRadius * lv;
+                return { rx: r, ry: r };
+            }
+            return { rx: baseRx * lv, ry: baseRy * lv };
+        };
 
         const scaledStroke = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
         const hitStroke = Math.max(10, scaledStroke * 6);
@@ -1075,12 +1093,12 @@ class FibCirclesTool extends BaseDrawing {
             return `rgba(${r}, ${g}, ${b}, ${alpha})`;
         };
 
-        const zonePathRing = (r, prevR) => {
-            if (prevR > 0) {
-                return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} ` +
-                    `M ${x1 + prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 - prevR} ${y1} A ${prevR} ${prevR} 0 1 0 ${x1 + prevR} ${y1} Z`;
+        const zonePathRing = (rx, ry, prevRx, prevRy) => {
+            const outer = `M ${x1 - rx} ${y1} A ${rx} ${ry} 0 1 1 ${x1 + rx} ${y1} A ${rx} ${ry} 0 1 1 ${x1 - rx} ${y1} Z`;
+            if (prevRx > 0 && prevRy > 0) {
+                return `${outer} M ${x1 + prevRx} ${y1} A ${prevRx} ${prevRy} 0 1 0 ${x1 - prevRx} ${y1} A ${prevRx} ${prevRy} 0 1 0 ${x1 + prevRx} ${y1} Z`;
             }
-            return `M ${x1 - r} ${y1} A ${r} ${r} 0 1 1 ${x1 + r} ${y1} A ${r} ${r} 0 1 1 ${x1 - r} ${y1} Z`;
+            return outer;
         };
 
         const enabledLevelsSorted = (this.levels || [])
@@ -1093,21 +1111,24 @@ class FibCirclesTool extends BaseDrawing {
             .sort((a, b) => a.value - b.value);
 
         if (showZones && enabledLevelsSorted.length) {
-            let prevR = 0;
+            let prevRx = 0;
+            let prevRy = 0;
             enabledLevelsSorted.forEach((lvl) => {
-                const r = baseRadius * lvl.value;
-                if (!isFinite(r) || r <= 0) {
-                    prevR = r;
+                const { rx, ry } = levelRadii(lvl.value);
+                if (!isFinite(rx) || !isFinite(ry) || rx <= 0 || ry <= 0) {
+                    prevRx = rx;
+                    prevRy = ry;
                     return;
                 }
                 this.group.append('path')
                     .attr('class', 'fib-circles-zone')
-                    .attr('d', zonePathRing(r, prevR))
+                    .attr('d', zonePathRing(rx, ry, prevRx, prevRy))
                     .attr('fill', hexToRgba(lvl.color, zonesOpacity))
-                    .attr('fill-rule', prevR > 0 ? 'evenodd' : 'nonzero')
+                    .attr('fill-rule', prevRx > 0 ? 'evenodd' : 'nonzero')
                     .attr('stroke', 'none')
                     .style('pointer-events', 'none');
-                prevR = r;
+                prevRx = rx;
+                prevRy = ry;
             });
         }
 
@@ -1122,16 +1143,18 @@ class FibCirclesTool extends BaseDrawing {
             
             if (!enabled) return;
             
-            const r = baseRadius * level;
+            const { rx, ry } = levelRadii(level);
+            if (!isFinite(rx) || !isFinite(ry) || rx <= 0 || ry <= 0) return;
 
             const scaledWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
             const hitWidth = Math.max(10, scaledWidth * 6);
 
-            this.group.append('circle')
+            this.group.append('ellipse')
                 .attr('class', 'fib-level-hit')
                 .attr('cx', x1)
                 .attr('cy', y1)
-                .attr('r', r)
+                .attr('rx', rx)
+                .attr('ry', ry)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', hitWidth)
                 .attr('stroke-dasharray', '')
@@ -1140,10 +1163,11 @@ class FibCirclesTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            this.group.append('circle')
+            this.group.append('ellipse')
                 .attr('cx', x1)
                 .attr('cy', y1)
-                .attr('r', r)
+                .attr('rx', rx)
+                .attr('ry', ry)
                 .attr('stroke', color)
                 .attr('stroke-width', scaledWidth)
                 .attr('stroke-dasharray', lineType || 'none')
@@ -1152,10 +1176,12 @@ class FibCirclesTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            // Label
+            // Label on the trend line (TradingView-style)
+            const lx = x1 + dx * level;
+            const ly = y1 + dy * level;
             this.group.append('text')
-                .attr('x', x1 + r + 5)
-                .attr('y', y1)
+                .attr('x', lx + (Math.abs(dx) >= Math.abs(dy) ? 5 : 0))
+                .attr('y', ly + (Math.abs(dy) > Math.abs(dx) ? -4 : 0))
                 .attr('fill', color)
                 .attr('font-size', '10px')
                 .style('pointer-events', 'none')
