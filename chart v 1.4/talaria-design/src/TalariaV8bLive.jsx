@@ -8386,6 +8386,8 @@ const TalariaV8bLive = () => {
   /** Final push of tlStyle when settings OK closes (belt-and-suspenders for fib subtypes). */
   const v9StyleBridgeFlushRef = useRef(null);
   const tlSettOpenRef = useRef(false);
+  /** Chart click dismissed settings only — keep shape selected + quick bar; skip prevTool restore. */
+  const v9DismissSettingsKeepSelectionRef = useRef(false);
   const v9LastSelectedDrawingTypeRef = useRef(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
   tlSettOpenRef.current = tlSettOpen;
@@ -9938,6 +9940,29 @@ const TalariaV8bLive = () => {
     setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
   };
   const closeDrawingSettingsOnChartClickRef = useRef(() => {});
+  const v9SuppressNextChartDeselect = () => {
+    try {
+      const charts = [];
+      if (typeof window.getActiveChart === "function") {
+        const ch = window.getActiveChart();
+        if (ch) charts.push(ch);
+      }
+      if (typeof window !== "undefined" && window.chart && !charts.includes(window.chart)) {
+        charts.push(window.chart);
+      }
+      if (typeof window !== "undefined" && Array.isArray(window.charts)) {
+        window.charts.forEach((ch) => {
+          if (ch && !charts.includes(ch)) charts.push(ch);
+        });
+      }
+      charts.forEach((ch) => {
+        const dm = ch && ch.drawingManager;
+        if (dm && typeof dm.suppressNextCanvasBackgroundClick === "function") {
+          dm.suppressNextCanvasBackgroundClick();
+        }
+      });
+    } catch (_) {}
+  };
   closeDrawingSettingsOnChartClickRef.current = () => {
     const anyOpen =
       tlSettOpenRef.current ||
@@ -9946,15 +9971,18 @@ const TalariaV8bLive = () => {
       vpSettOpen ||
       avSettOpen ||
       indSettOpen;
-    if (!anyOpen) return;
+    if (!anyOpen) return false;
+    v9DismissSettingsKeepSelectionRef.current = true;
+    v9SuppressNextChartDeselect();
     try {
-      if (tlSettOpenRef.current) closeTlSett();
-      if (txtSettOpen) closeTxtSett();
+      if (tlSettOpenRef.current) confirmTlSett();
+      if (txtSettOpen) confirmTxtSett();
       if (vwapSettOpen) closeVwapSett();
       if (vpSettOpen) closeVpSett();
       if (avSettOpen) closeAvSett();
       if (indSettOpen) closeIndSett();
     } catch (_) {}
+    return true;
   };
   closeOthersForIndSettRef.current = () => {
     try {
@@ -10393,7 +10421,12 @@ const TalariaV8bLive = () => {
         el.closest("#panels-container");
       if (!onChartSurface) return;
 
-      try { closeDrawingSettingsOnChartClickRef.current?.(); } catch (_) {}
+      const closedSettingsOnly = closeDrawingSettingsOnChartClickRef.current?.();
+      if (closedSettingsOnly) {
+        setTlSettTplDrop(false);
+        return;
+      }
+
       try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
     };
@@ -14052,6 +14085,11 @@ const TalariaV8bLive = () => {
     if (tlSettOpen) return;
     const editing = editingDrawingRef.current;
     if (!editing) return;
+    if (v9DismissSettingsKeepSelectionRef.current) {
+      v9DismissSettingsKeepSelectionRef.current = false;
+      editingDrawingRef.current = null;
+      return;
+    }
     editingDrawingRef.current = null;
     // Restore prior tool / sub-tool. Schedule a microtask so the JSX
     // panel's exit animation (closing.has('tlsett')) finishes first.
@@ -14067,6 +14105,11 @@ const TalariaV8bLive = () => {
     if (txtSettOpen) return;
     const editing = editingDrawingRef.current;
     if (!editing) return;
+    if (v9DismissSettingsKeepSelectionRef.current) {
+      v9DismissSettingsKeepSelectionRef.current = false;
+      editingDrawingRef.current = null;
+      return;
+    }
     // Only clear if it was set by a text-tool dblclick (group === 'text').
     const group = editing.drawing && drawingTypeToPanelGroupRef.current(editing.drawing.type);
     if (group !== 'text') return;
