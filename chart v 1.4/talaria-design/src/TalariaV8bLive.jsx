@@ -4485,13 +4485,13 @@ function v9GannBgOpacityFromTlStyle(tlStyle) {
 function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
   if (!out || !legacyType) return;
   if (legacyType === "gann-fan") {
-    if (!Array.isArray(out.gannFanLevels) || !out.gannFanLevels.length) {
+    if (!Array.isArray(out.gannFanLevels)) {
       out.gannFanLevels = v9GannFanDefaultLevelsTl();
     }
     return;
   }
   if (legacyType === "gann-box") {
-    if (!Array.isArray(out.gannPriceLevels) || !out.gannPriceLevels.length) {
+    if (!Array.isArray(out.gannPriceLevels)) {
       out.gannPriceLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.25", color: "#2196F3" },
@@ -4500,7 +4500,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
         { on: true, value: "1", color: "#787B86" },
       ];
     }
-    if (!Array.isArray(out.gannTimeLevels) || !out.gannTimeLevels.length) {
+    if (!Array.isArray(out.gannTimeLevels)) {
       out.gannTimeLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.25", color: "#2196F3" },
@@ -4514,7 +4514,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
     return;
   }
   if (legacyType === "gann-square-fixed") {
-    if (!Array.isArray(out.gannGridLevels) || !out.gannGridLevels.length) {
+    if (!Array.isArray(out.gannGridLevels)) {
       out.gannGridLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.125", color: "#2196F3" },
@@ -4527,7 +4527,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
         { on: true, value: "1", color: "#787B86" },
       ];
     }
-    if (!Array.isArray(out.gannFanLevels) || !out.gannFanLevels.length) {
+    if (!Array.isArray(out.gannFanLevels)) {
       out.gannFanLevels = [
         { on: true, value: "1", color: "#F44336" },
         { on: true, value: "2", color: "#FF9800" },
@@ -4536,7 +4536,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
         { on: true, value: "8", color: "#2196F3" },
       ];
     }
-    if (!Array.isArray(out.gannArcLevels) || !out.gannArcLevels.length) {
+    if (!Array.isArray(out.gannArcLevels)) {
       out.gannArcLevels = [
         { on: true, value: "0", color: "#787B86" },
         { on: true, value: "0.25", color: "#2196F3" },

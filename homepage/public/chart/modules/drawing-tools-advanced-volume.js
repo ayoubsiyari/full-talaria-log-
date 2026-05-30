@@ -161,7 +161,7 @@ class GannBoxTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Hitbox (makes selecting the drawing much easier than targeting thin strokes)
+        // Hitbox — full interior grab for select + move (level lines stack above for ratio drag)
         this.group.append('rect')
             .attr('class', 'shape-border-hit gann-box-hitbox')
             .attr('x', left)
@@ -171,8 +171,8 @@ class GannBoxTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         // Price levels (horizontal grid + left/right labels)
         const priceRaw = Array.isArray(this.style.priceLevels) ? this.style.priceLevels : [];

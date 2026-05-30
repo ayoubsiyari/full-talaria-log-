@@ -7913,7 +7913,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const ensureLevelArray = (key, defaults) => {
 
-            if (Array.isArray(drawing.style[key]) && drawing.style[key].length > 0) {
+            if (Array.isArray(drawing.style[key])) {
 
                 return drawing.style[key];
 

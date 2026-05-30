@@ -2869,7 +2869,7 @@ class GannSquareFixedTool extends BaseDrawing {
         if (!this.style) this.style = {};
 
         const ensureLevelArray = (key, defaults) => {
-            if (Array.isArray(this.style[key]) && this.style[key].length > 0) return;
+            if (Array.isArray(this.style[key])) return;
             if (Array.isArray(this.style.squareLevels) && this.style.squareLevels.length > 0) {
                 this.style[key] = this.style.squareLevels.map(l => ({ ...l }));
                 return;
@@ -2910,9 +2910,11 @@ class GannSquareFixedTool extends BaseDrawing {
             }
         };
         const zoneLevels = gridEnabled.map(l => ({ ...l }));
-        ensureBoundary(zoneLevels, 0);
-        ensureBoundary(zoneLevels, 1);
-        zoneLevels.sort((a, b) => a.value - b.value);
+        if (zoneLevels.length > 0) {
+            ensureBoundary(zoneLevels, 0);
+            ensureBoundary(zoneLevels, 1);
+            zoneLevels.sort((a, b) => a.value - b.value);
+        }
 
         const globalDash = (this.style.levelsLineDasharray != null && `${this.style.levelsLineDasharray}` !== '' && `${this.style.levelsLineDasharray}` !== 'none')
             ? `${this.style.levelsLineDasharray}`
@@ -2959,8 +2961,8 @@ class GannSquareFixedTool extends BaseDrawing {
             .attr('fill', 'transparent')
             .attr('stroke', 'transparent')
             .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
 
         if (showZones && zoneLevels.length >= 2) {
             for (let i = 0; i < zoneLevels.length - 1; i++) {
@@ -3570,7 +3572,7 @@ class GannFanTool extends BaseDrawing {
         };
 
         const fanLevelsRaw = Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [];
-        const fanLevelsSource = fanLevelsRaw.length > 0
+        const fanLevelsSource = Array.isArray(this.style.fanLevels)
             ? fanLevelsRaw
             : GannFanTool.defaultFanLevels().map((l) => ({ ...l }));
 

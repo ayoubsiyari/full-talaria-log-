@@ -3770,8 +3770,13 @@ class DrawingToolsManager {
                 return;
             }
 
-            // Fib/Gann line tools: preview always uses each tool's built-in default level colors.
-            const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool);
+            // Gann tools: live preview must match armed toolbar style (levels, colors, background).
+            const gannUsesArmedPreview = (
+                this.currentTool === 'gann-box'
+                || this.currentTool === 'gann-square-fixed'
+                || this.currentTool === 'gann-fan'
+            );
+            const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool) && !gannUsesArmedPreview;
             let styleOverrides;
             if (useFibDefaultPreview) {
                 styleOverrides = { opacity: 0.85 };
@@ -3792,6 +3797,9 @@ class DrawingToolsManager {
             
             if (!useFibDefaultPreview) {
                 this.applySavedStyle(tempDrawing);
+            }
+            if (gannUsesArmedPreview) {
+                this._applyArmedStyleExtras(tempDrawing);
             }
             
             // Pass isPreview flag for regression trend to show simple line while dragging
@@ -4612,6 +4620,9 @@ class DrawingToolsManager {
         if (this._isFibLikeDrawingType(drawing.type)) {
             drawing.group.style('pointer-events', 'none');
             interactiveElements.style('pointer-events', 'stroke');
+            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox')
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
         }
 
         const isEmptyImageUploadTarget = (eventTarget) => {
@@ -4698,8 +4709,13 @@ class DrawingToolsManager {
                     || targetSel.classed('fib-wedge-trend')
                     || targetSel.classed('fib-wedge-trend-hit')
                     || targetSel.classed('fib-fan-anchor');
+                const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
+                    && (targetSel.classed('gann-box-hitbox') || targetSel.classed('gann-square-fixed-hitbox')
+                        || self._isPointOnGannToolBody(drawing, mouseX, mouseY))
+                    && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnFibLine = onFibStroke
+                    || onGannBody
                     || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 if (!clickedOnFibLine) {
@@ -5035,6 +5051,9 @@ class DrawingToolsManager {
                     if (targetEl && targetEl.closest && targetEl.closest('.rr-plus-btn')) {
                         return false;
                     }
+                    if (targetSelection.classed('gann-level-hit') && targetSelection.attr('data-gann-level-array')) {
+                        return false;
+                    }
                     const isShapeFill = targetSelection.classed('shape-fill');
                     const isUpperFill = targetSelection.classed('upper-fill');
                     const isLowerFill = targetSelection.classed('lower-fill');
@@ -5057,24 +5076,29 @@ class DrawingToolsManager {
                     // TradingView-style: only allow drag from edges (lines/strokes), not filled areas
                     // Exception: position-zone elements, emoji/text elements can be dragged
                     const tagName = event.target.tagName.toLowerCase();
-                    if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle) {
+                    const isGannBoxBodyHit = targetSelection.classed('gann-box-hitbox')
+                        || targetSelection.classed('gann-square-fixed-hitbox');
+                    if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle && !isGannBoxBodyHit) {
                         const srcEvent = event.sourceEvent || event;
                         if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
                             const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
-                            if (!self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                            const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
+                                && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                                && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
+                            if (!onGannBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                                 return false;
                             }
                         }
                     }
 
-                    if (targetSelection.classed('gann-box-hitbox')
-                        || targetSelection.classed('gann-fan-hitbox')
-                        || targetSelection.classed('gann-square-fixed-hitbox')) {
+                    if (targetSelection.classed('gann-fan-hitbox')) {
                         return false;
                     }
 
                     const isFibLevelHit = targetSelection.classed('fib-level-hit');
-                    const isGannLevelHit = targetSelection.classed('gann-level-hit');
+                    const isGannLevelHit = targetSelection.classed('gann-level-hit')
+                        && !targetSelection.attr('data-gann-level-array');
+                    const isGannBodyHit = isGannBoxBodyHit;
                     const isFibTrendHit = targetSelection.classed('fib-circles-axis')
                         || targetSelection.classed('fib-trend-line')
                         || targetSelection.classed('fib-tz-anchor')
@@ -5169,7 +5193,7 @@ class DrawingToolsManager {
                     // shape borders, stroked elements, or emoji/text
                     // Block drag from: filled areas and resize handles
                     const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox
-                        || isFibLevelHit || isGannLevelHit || isFibTrendHit || isLineElement || isShapeBorder
+                        || isFibLevelHit || isGannLevelHit || isGannBodyHit || isFibTrendHit || isLineElement || isShapeBorder
                         || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
@@ -5391,6 +5415,58 @@ class DrawingToolsManager {
         return type === 'gann-box' || type === 'gann-square-fixed' || type === 'gann-fan';
     }
 
+    _isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY) {
+        if (!drawing?.group || !this._isGannLevelAdjustDrawingType(drawing.type)) return false;
+
+        const svgPoint = this.svg?.node?.()?.createSVGPoint?.();
+        if (svgPoint) {
+            svgPoint.x = mouseX;
+            svgPoint.y = mouseY;
+        }
+        const lineHitTolerance = 14;
+
+        for (const element of drawing.group.selectAll('line.gann-level-hit[data-gann-level-array], path.gann-level-hit[data-gann-level-array]').nodes()) {
+            const elementSel = d3.select(element);
+            if (elementSel.style('opacity') === '0') continue;
+
+            if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                return true;
+            }
+
+            const x1 = parseFloat(element.getAttribute('x1'));
+            const y1 = parseFloat(element.getAttribute('y1'));
+            const x2 = parseFloat(element.getAttribute('x2'));
+            const y2 = parseFloat(element.getAttribute('y2'));
+            if ([x1, y1, x2, y2].every(Number.isFinite)) {
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 16;
+                if (distance <= Math.max(lineHitTolerance, (strokeWidth / 2) + 0.5)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when pointer is inside the Gann Box / Square body (whole-tool move, not level drag). */
+    _isPointOnGannToolBody(drawing, mouseX, mouseY) {
+        if (!drawing || !this._getGannDrawingScales()) return false;
+        const scales = this._getGannDrawingScales();
+        if (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') {
+            const layout = typeof drawing.getPixelLayout === 'function'
+                ? drawing.getPixelLayout(scales)
+                : null;
+            if (!layout) return false;
+            if (drawing.type === 'gann-box') {
+                return mouseX >= layout.left && mouseX <= layout.right
+                    && mouseY >= layout.top && mouseY <= layout.bottom;
+            }
+            const right = layout.left + layout.size;
+            const bottom = layout.top + layout.size;
+            return mouseX >= layout.left && mouseX <= right
+                && mouseY >= layout.top && mouseY <= bottom;
+        }
+        return false;
+    }
+
     _getGannDrawingScales() {
         if (!this.chart) return null;
         return { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -5575,10 +5651,13 @@ class DrawingToolsManager {
             if (shouldBlockVolumeProfileTextDirectMove) {
                 return;
             }
-            const shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) =>
-                this._drawingRequiresStrokeOnlyDrag(d.type)
-                && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY)
-            );
+            const shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) => {
+                if (d.type === 'gann-box' || d.type === 'gann-square-fixed') {
+                    return this._isPointOnGannLevelAdjustHit(d, startMouseX, startMouseY);
+                }
+                return this._drawingRequiresStrokeOnlyDrag(d.type)
+                    && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY);
+            });
             if (shouldBlockStrokeOnlyToolBodyMove) {
                 return;
             }
@@ -9232,6 +9311,13 @@ class DrawingToolsManager {
             if (isFibLikeType && !hitsById.has(drawing.id) && this._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                 hitsById.set(drawing.id, { drawing, distance: 0, z });
                 continue;
+            }
+            if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') && !hitsById.has(drawing.id)) {
+                if (this._isPointOnGannToolBody(drawing, mouseX, mouseY)
+                    && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
             }
             if (isFibLikeType && !hitsById.has(drawing.id)) {
                 continue;
