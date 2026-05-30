@@ -5485,7 +5485,7 @@ class DrawingToolsManager {
     }
 
     _clampGannUnitRatio(v) {
-        return Math.max(0.001, Math.min(0.999, v));
+        return Math.max(0, Math.min(1, v));
     }
 
     _computeGannLevelValueFromPointer(drawing, meta, mouseX, mouseY) {

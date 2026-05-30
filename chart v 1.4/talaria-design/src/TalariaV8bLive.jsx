@@ -4418,11 +4418,15 @@ function v9ChartRatioLevelsToGannTl(arr) {
 
 function v9GannTlLevelsToChartRatioLevels(arr) {
   if (!Array.isArray(arr)) return [];
-  return arr.map((l) => ({
-    enabled: l && l.on !== false,
-    value: parseFloat(String(l && l.value != null ? l.value : "0")) || 0,
-    color: l && l.color ? l.color : "#787b86",
-  }));
+  return arr.map((l) => {
+    const raw = parseFloat(String(l && l.value != null ? l.value : "0"));
+    const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+    return {
+      enabled: l && l.on !== false,
+      value,
+      color: l && l.color ? l.color : "#787b86",
+    };
+  });
 }
 
 /** Default Gann Fan Input rows — multipliers match `GannFanTool` (`drawing-tools-fib-gann.js`). */
@@ -4437,6 +4441,15 @@ function v9GannFanDefaultLevelsTl() {
     { on: true, value: "3", color: "#e91e63" },
     { on: true, value: "4", color: "#f23645" },
     { on: true, value: "8", color: "#b71c1c" },
+  ];
+}
+
+/** Gann Square Fixed fan rows — edge ratios 0–1 (not Gann Fan multipliers). */
+function v9GannSquareFixedFanDefaultLevelsTl() {
+  return [
+    { on: true, value: "0.25", color: "#00bcd4" },
+    { on: true, value: "0.5", color: "#4caf50" },
+    { on: true, value: "0.75", color: "#2962ff" },
   ];
 }
 
@@ -4534,13 +4547,7 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
       ];
     }
     if (!Array.isArray(out.gannFanLevels)) {
-      out.gannFanLevels = [
-        { on: true, value: "1", color: "#F44336" },
-        { on: true, value: "2", color: "#FF9800" },
-        { on: true, value: "3", color: "#FFEB3B" },
-        { on: true, value: "4", color: "#4CAF50" },
-        { on: true, value: "8", color: "#2196F3" },
-      ];
+      out.gannFanLevels = v9GannSquareFixedFanDefaultLevelsTl();
     }
     if (!Array.isArray(out.gannArcLevels)) {
       out.gannArcLevels = [
@@ -18812,11 +18819,7 @@ const TalariaV8bLive = () => {
                   {on:true,value:"0.75",color:"#4CAF50"},{on:true,value:"0.875",color:"#2196F3"},
                   {on:true,value:"1",color:"#787B86"},
                 ])}
-                {mkSection("FAN LEVELS","gannFanLevels","gannFanLv",[
-                  {on:true,value:"1",color:"#F44336"},{on:true,value:"2",color:"#FF9800"},
-                  {on:true,value:"3",color:"#FFEB3B"},{on:true,value:"4",color:"#4CAF50"},
-                  {on:true,value:"8",color:"#2196F3"},
-                ])}
+                {mkSection("FAN LEVELS","gannFanLevels","gannFanLv",v9GannSquareFixedFanDefaultLevelsTl())}
                 {mkSection("ARC LEVELS","gannArcLevels","gannArc",[
                   {on:true,value:"0",color:"#787B86"},{on:true,value:"0.25",color:"#2196F3"},
                   {on:true,value:"0.5",color:"#4CAF50"},{on:true,value:"0.75",color:"#FF9800"},

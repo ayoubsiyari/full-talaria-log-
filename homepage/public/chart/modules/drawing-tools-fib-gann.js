@@ -2996,11 +2996,17 @@ class GannSquareFixedTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
+        const clampUnitRatio = (raw) => {
+            const n = parseFloat(raw);
+            if (!Number.isFinite(n)) return NaN;
+            return Math.max(0, Math.min(1, n));
+        };
+
         // Grid lines
         const gridRaw = Array.isArray(this.style.gridLevels) ? this.style.gridLevels : [];
         gridRaw.forEach((rawLevel, idx) => {
-            const v = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
-            if (!isFinite(v) || v <= 0 || v >= 1) return;
+            const v = clampUnitRatio(rawLevel && rawLevel.value != null ? rawLevel.value : '');
+            if (!Number.isFinite(v)) return;
             if (rawLevel && rawLevel.enabled === false) return;
             const offset = size * v;
             const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
@@ -3102,8 +3108,8 @@ class GannSquareFixedTool extends BaseDrawing {
         const anchorY = y0;
         const fanRaw = Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [];
         fanRaw.forEach((rawLevel, idx) => {
-            const v = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
-            if (!isFinite(v) || v <= 0 || v >= 1) return;
+            const v = clampUnitRatio(rawLevel && rawLevel.value != null ? rawLevel.value : '');
+            if (!Number.isFinite(v) || v <= 0) return;
             if (rawLevel && rawLevel.enabled === false) return;
             const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
             const w = Math.max(0.5, ((rawLevel.lineWidth != null && isFinite(rawLevel.lineWidth)) ? rawLevel.lineWidth : globalWidth) * scaleFactor);
