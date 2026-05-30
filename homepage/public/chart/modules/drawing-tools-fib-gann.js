@@ -1114,8 +1114,19 @@ class FibCirclesTool extends BaseDrawing {
             (max, lvl) => Math.max(max, lvl.value),
             1
         );
-        const axisEndX = x1 + dx * maxEnabledLevel;
-        const axisEndY = y1 + dy * maxEnabledLevel;
+        /** Ray parameter s along (dx,dy) where ellipse at `level` meets the p1→p2 axis (TV axis-aligned ellipses). */
+        const rayScaleForLevel = (level) => {
+            const lv = parseFloat(level);
+            if (!isFinite(lv) || lv <= 0) return 0;
+            if (useGeometric) return lv;
+            if (baseRx <= 0 || baseRy <= 0) return lv;
+            const denom = Math.hypot(dx / baseRx, dy / baseRy);
+            if (!denom || !isFinite(denom)) return lv;
+            return lv / denom;
+        };
+        const maxRayScale = rayScaleForLevel(maxEnabledLevel);
+        const axisEndX = x1 + dx * maxRayScale;
+        const axisEndY = y1 + dy * maxRayScale;
         const axisLen = Math.hypot(dx, dy) || 1;
         const labelOffsetX = (-dy / axisLen) * 5;
         const labelOffsetY = (dx / axisLen) * 5;
@@ -1186,9 +1197,10 @@ class FibCirclesTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            // Label on the trend line (TradingView-style)
-            const lx = x1 + dx * level;
-            const ly = y1 + dy * level;
+            // Label on the trend line at the ellipse border (same ray as middle line)
+            const rayS = rayScaleForLevel(level);
+            const lx = x1 + dx * rayS;
+            const ly = y1 + dy * rayS;
             this.group.append('text')
                 .attr('x', lx + labelOffsetX)
                 .attr('y', ly + labelOffsetY)
