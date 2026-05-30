@@ -10580,15 +10580,15 @@ class DrawingToolsManager {
         if (toolType === 'note') {
             return {
                 textColor: '#FFFFFF',
-                fontSize: 12,
+                fontSize: 14,
                 fontFamily: 'Roboto, sans-serif',
                 fontWeight: 'normal',
                 fontStyle: 'normal',
                 textAlign: 'left',
                 stroke: '#787b86',
                 strokeWidth: 1,
-                fill: 'rgba(50, 50, 50, 0.9)',
-                backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                fill: '#000000',
+                backgroundColor: '#000000',
             };
         }
 
