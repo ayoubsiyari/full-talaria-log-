@@ -2929,8 +2929,13 @@ class DrawingToolsManager {
             }
 
             if (!handledByDrawing) {
-                this.resizingDrawing.points[this.resizingPointIndex] = currentPoint;
+                this.resizingDrawing.points[this.resizingPointIndex] = this._snapPointXForDrawingType(
+                    currentPoint,
+                    this.resizingDrawing.type
+                );
                 this.resizingDrawing.meta.updatedAt = Date.now();
+            } else {
+                this._snapDrawingPointsX(this.resizingDrawing);
             }
 
             this.scheduleRenderDrawing(this.resizingDrawing);
@@ -3553,7 +3558,7 @@ class DrawingToolsManager {
         const isFreehandStroke = activeToolType === 'path'
             || activeToolType === 'brush'
             || activeToolType === 'highlighter';
-        const isContinuousTool = isFreehandStroke || allowsExtrabar;
+        const isContinuousTool = isFreehandStroke;
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -3581,10 +3586,8 @@ class DrawingToolsManager {
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
-        // Keep panel/original behavior consistent for non-freehand tools:
-        // anchor X to candle indices so points cannot land between candles.
-        // Text / signpost / pin may sit in future padding beyond the last candle.
-        if (!isFreehandStroke && !allowsExtrabar) {
+        // Anchor X to whole bar indices for geometric tools (not freehand / text labels).
+        if (!isFreehandStroke && !this._isTextDrawingType(activeToolType)) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -3661,21 +3664,31 @@ class DrawingToolsManager {
         if (drawingType === 'path' || drawingType === 'brush' || drawingType === 'highlighter') {
             return false;
         }
-        if (typeof CoordinateUtils !== 'undefined'
-            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
-            && CoordinateUtils.allowsExtrabarBarIndex(drawingType)) {
+        if (this._isTextDrawingType(drawingType)) {
             return false;
         }
         return true;
     }
 
-    _normalizePointAfterPixelTranslate(point, drawingType) {
+    _snapPointXForDrawingType(point, drawingType) {
         if (!point) return point;
         let out = this.clampPointToCandleRange(point, drawingType);
         if (this._shouldSnapPointXToCandle(drawingType)) {
             out = this.snapPointXToNearestCandle(out);
         }
         return out;
+    }
+
+    _snapDrawingPointsX(drawing) {
+        if (!drawing || !Array.isArray(drawing.points) || !this._shouldSnapPointXToCandle(drawing.type)) {
+            return;
+        }
+        drawing.points = drawing.points.map((p) => this._snapPointXForDrawingType(p, drawing.type));
+    }
+
+    _normalizePointAfterPixelTranslate(point, drawingType) {
+        if (!point) return point;
+        return this._snapPointXForDrawingType(point, drawingType);
     }
 
 
@@ -5598,6 +5611,7 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
+                    self._snapDrawingPointsX(drawing);
                     self.scheduleRenderDrawing(drawing);
                     return true;
                 }
@@ -5804,7 +5818,7 @@ class DrawingToolsManager {
         }
         
         // Update point
-        drawing.points[index] = point;
+        drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
         drawing.meta.updatedAt = Date.now();
 
         this.scheduleRenderDrawing(drawing);
@@ -5819,6 +5833,8 @@ class DrawingToolsManager {
         if (this.history && this.resizeBeforeState) {
             this.history.recordModify(drawing, this.resizeBeforeState);
         }
+
+        this._snapDrawingPointsX(drawing);
 
         const isVolumeProfileResize = !!(drawing && this.isVolumeProfileToolType(drawing.type));
         if (isVolumeProfileResize) {
@@ -5902,6 +5918,7 @@ class DrawingToolsManager {
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
         }
+        this._snapDrawingPointsX(drawing);
 
         // Always re-render during drag
         this.scheduleRenderDrawing(drawing);
@@ -5922,6 +5939,8 @@ class DrawingToolsManager {
         if (typeof drawing.endHandleDrag === 'function') {
             drawing.endHandleDrag(handleRole, context);
         }
+
+        this._snapDrawingPointsX(drawing);
 
         drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
