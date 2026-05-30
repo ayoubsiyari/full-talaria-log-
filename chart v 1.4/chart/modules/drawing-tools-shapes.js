@@ -406,6 +406,188 @@ class RectangleTool extends BaseDrawing {
         }
     }
 
+    _normalizeRectTextVAlign(style) {
+        let position = (style.textVAlign || style.textPosition || 'middle').toLowerCase();
+        if (position === 'start') position = 'top';
+        if (position === 'end') position = 'bottom';
+        if (position === 'center') position = 'middle';
+        return position;
+    }
+
+    /** Shared text placement + optional midline gap when label crosses the horizontal center. */
+    _computeRectangleTextLayout(bounds, scaleFactor, measureGroup) {
+        const empty = { hasText: false };
+        if (!this.text || !this.text.trim()) return empty;
+
+        const { x, y, width, height } = bounds;
+        const rawPadding = Number.isFinite(this.style.textPadding) ? this.style.textPadding : RECTANGLE_TEXT_DEFAULTS.textPadding;
+        const clampedPadding = Math.max(0, Math.min(rawPadding, Math.min(width, height) / 2));
+        const align = (this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
+        const anchor = RECTANGLE_TEXT_ANCHOR_MAP[align] || 'middle';
+        const position = this._normalizeRectTextVAlign(this.style);
+
+        const baseFontSize = Number(this.style.fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
+        const fontSize = Math.max(6, baseFontSize * scaleFactor);
+        const lineHeight = fontSize * 1.2;
+        const rawLines = this.text.split('\n');
+        const lines = rawLines.length ? rawLines : [''];
+        const blockHeight = Math.max(lineHeight, lines.length * lineHeight);
+
+        let baseX;
+        switch (align) {
+            case 'left':
+            case 'start':
+                baseX = x + clampedPadding;
+                break;
+            case 'right':
+            case 'end':
+                baseX = x + width - clampedPadding;
+                break;
+            default:
+                baseX = x + width / 2;
+        }
+
+        let topY;
+        let useMiddleBaseline = false;
+        const externalGap = Math.max(
+            Number.isFinite(this.style.textPadding) ? Math.min(this.style.textPadding, 12) : 5,
+            fontSize * 0.35
+        );
+        switch (position) {
+            case 'top':
+                topY = y - externalGap - blockHeight;
+                break;
+            case 'bottom':
+                topY = y + height + externalGap;
+                break;
+            default:
+                useMiddleBaseline = true;
+                topY = y + height / 2;
+        }
+
+        const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
+        const offsetY = Number.isFinite(this.style.textOffsetY) ? this.style.textOffsetY : 0;
+        const textX = baseX + offsetX;
+        const textTop = topY + offsetY;
+
+        const fontFamily = this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily;
+        const fontWeight = this.style.fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight;
+        const fontStyle = this.style.fontStyle || RECTANGLE_TEXT_DEFAULTS.fontStyle;
+
+        let blockWidth = 0;
+        if (measureGroup && !measureGroup.empty()) {
+            const temp = measureGroup.append('g').attr('visibility', 'hidden');
+            lines.forEach((line, index) => {
+                const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+                const lineY = useMiddleBaseline
+                    ? textTop + (index - (lines.length - 1) / 2) * lineHeight
+                    : textTop + index * lineHeight;
+                temp.append('text')
+                    .attr('x', textX)
+                    .attr('y', lineY)
+                    .attr('font-size', `${fontSize}px`)
+                    .attr('font-family', fontFamily)
+                    .attr('font-weight', fontWeight)
+                    .attr('font-style', fontStyle)
+                    .attr('text-anchor', anchor)
+                    .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
+                    .text(sanitized);
+            });
+            try {
+                const bbox = temp.node().getBBox();
+                blockWidth = Number.isFinite(bbox.width) ? bbox.width : 0;
+            } catch (_) {}
+            temp.remove();
+        }
+        if (!blockWidth) {
+            const longest = lines.reduce((max, line) => Math.max(max, (line || '').length), 0);
+            blockWidth = Math.max(longest, 1) * fontSize * 0.55;
+        }
+
+        const midY = y + height / 2;
+        const blockTop = useMiddleBaseline ? textTop - blockHeight / 2 : textTop;
+        const blockBottom = useMiddleBaseline ? textTop + blockHeight / 2 : textTop + blockHeight;
+        const intersectsMidline = midY >= blockTop - 1 && midY <= blockBottom + 1;
+
+        const layout = {
+            hasText: true,
+            textX,
+            textTop,
+            useMiddleBaseline,
+            align,
+            anchor,
+            lines,
+            fontSize,
+            lineHeight,
+            blockHeight,
+            fontFamily,
+            fontWeight,
+            fontStyle
+        };
+
+        if (intersectsMidline) {
+            let textLeft;
+            let textRight;
+            switch (align) {
+                case 'left':
+                case 'start':
+                    textLeft = textX;
+                    textRight = textX + blockWidth;
+                    break;
+                case 'right':
+                case 'end':
+                    textLeft = textX - blockWidth;
+                    textRight = textX;
+                    break;
+                default:
+                    textLeft = textX - blockWidth / 2;
+                    textRight = textX + blockWidth / 2;
+            }
+            const pad = Math.max(4, fontSize * 0.3);
+            layout.midlineGap = { left: textLeft - pad, right: textRight + pad };
+        }
+
+        return layout;
+    }
+
+    _drawRectangleMiddleLine(group, x, y, width, height, scaleFactor, textLayout) {
+        if (!shapeMiddleLineEnabled(this.style)) return;
+
+        const midY = y + height / 2;
+        const midLineColor = this.style.middleLineColor || '#2962FF';
+        const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
+        const midLineDash = this.style.middleLineDash || '';
+        const lineOpacity = this.style.opacity !== undefined && this.style.opacity !== null ? this.style.opacity : 1;
+        const lineLeft = x;
+        const lineRight = x + width;
+        const capPad = Math.max(2, midLineWidth / 2);
+        const gap = textLayout && textLayout.midlineGap;
+
+        const appendSeg = (segX1, segX2) => {
+            if (!Number.isFinite(segX1) || !Number.isFinite(segX2) || segX2 - segX1 < 0.5) return;
+            group.append('line')
+                .attr('class', 'middle-line')
+                .attr('x1', segX1)
+                .attr('y1', midY)
+                .attr('x2', segX2)
+                .attr('y2', midY)
+                .attr('stroke', midLineColor)
+                .attr('stroke-width', midLineWidth)
+                .attr('stroke-dasharray', midLineDash)
+                .attr('opacity', lineOpacity)
+                .style('pointer-events', 'none');
+        };
+
+        if (gap && Number.isFinite(gap.left) && Number.isFinite(gap.right) && gap.right > gap.left) {
+            const gapLeft = Math.max(lineLeft, Math.min(gap.left, lineRight));
+            const gapRight = Math.min(lineRight, Math.max(gap.right, lineLeft));
+            appendSeg(lineLeft, gapLeft - capPad);
+            appendSeg(gapRight + capPad, lineRight);
+        } else {
+            appendSeg(lineLeft, lineRight);
+        }
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -476,35 +658,12 @@ class RectangleTool extends BaseDrawing {
             this._syncBoxHandlePositions(this.group, scales, { useExtendedHorizontal: false });
         }
 
-        // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
-        const middleLineOn = shapeMiddleLineEnabled(this.style);
-        const hasText = !!(this.text && this.text.trim());
-        let textPosition = (this.style.textVAlign || this.style.textPosition || 'middle').toLowerCase();
-        if (textPosition === 'start') textPosition = 'top';
-        if (textPosition === 'end') textPosition = 'bottom';
-        if (textPosition === 'center') textPosition = 'middle';
-        const skipMidLineForText = hasText && textPosition === 'middle';
-        if (middleLineOn && !skipMidLineForText) {
-            const midLineColor = this.style.middleLineColor || '#2962FF';
-            const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
-            const midLineDash = this.style.middleLineDash || '';
+        // Middle line after handles; gap under text when label crosses the horizontal center.
+        const textLayout = this._computeRectangleTextLayout({ x, y, width, height }, scaleFactor, this.group);
+        this._drawRectangleMiddleLine(this.group, x, y, width, height, scaleFactor, textLayout);
 
-            this.group.append('line')
-                .attr('class', 'middle-line')
-                .attr('x1', x)
-                .attr('y1', y + height / 2)
-                .attr('x2', x + width)
-                .attr('y2', y + height / 2)
-                .attr('stroke', midLineColor)
-                .attr('stroke-width', midLineWidth)
-                .attr('stroke-dasharray', midLineDash)
-                .attr('opacity', this.style.opacity !== undefined && this.style.opacity !== null ? this.style.opacity : 1)
-                .style('pointer-events', 'none')
-                .raise();
-        }
-
-        // Text after middle line so labels paint above the midline stroke.
-        this.renderTextLabel({ x, y, width, height }, scaleFactor);
+        // Text after middle line so labels always paint above the midline stroke.
+        this.renderTextLabel({ x, y, width, height }, scaleFactor, textLayout);
 
         return this.group;
     }
@@ -594,9 +753,12 @@ class RectangleTool extends BaseDrawing {
                 .attr('x1', e.x1).attr('y1', e.y1).attr('x2', e.x2).attr('y2', e.y2);
         });
 
-        const midLine = this.group.select('line.middle-line');
+        const midLine = this.group.selectAll('line.middle-line');
         if (!midLine.empty()) {
-            midLine.attr('x1', x).attr('y1', y + height / 2).attr('x2', x + width).attr('y2', y + height / 2);
+            this.group.selectAll('line.middle-line').remove();
+            const scaleFactor = this.getZoomScaleFactor(scales);
+            const textLayout = this._computeRectangleTextLayout({ x, y, width, height }, scaleFactor, this.group);
+            this._drawRectangleMiddleLine(this.group, x, y, width, height, scaleFactor, textLayout);
         }
 
         this._syncBoxHandlePositions(this.group, scales, { useExtendedHorizontal: false });
@@ -723,71 +885,24 @@ class RectangleTool extends BaseDrawing {
         return true;
     }
 
-    renderTextLabel(bounds, scaleFactor = 1) {
-        if (!this.text || !this.text.trim()) {
+    renderTextLabel(bounds, scaleFactor = 1, layoutArg) {
+        const layout = layoutArg || this._computeRectangleTextLayout(bounds, scaleFactor, this.group);
+        if (!layout.hasText) {
             return;
         }
 
-        const { x, y, width, height } = bounds;
-        const rawPadding = Number.isFinite(this.style.textPadding) ? this.style.textPadding : RECTANGLE_TEXT_DEFAULTS.textPadding;
-        const clampedPadding = Math.max(0, Math.min(rawPadding, Math.min(width, height) / 2));
-        // Use textHAlign (from UI) or textAlign as fallback
-        const align = (this.style.textHAlign || this.style.textAlign || 'center').toLowerCase();
-        const anchor = RECTANGLE_TEXT_ANCHOR_MAP[align] || 'middle';
-
-        // Use textVAlign (from UI) or textPosition as fallback (V9 uses vertAlign → middle/center).
-        let position = (this.style.textVAlign || this.style.textPosition || 'middle').toLowerCase();
-        if (position === 'start') position = 'top';
-        if (position === 'end') position = 'bottom';
-        if (position === 'center') position = 'middle';
-
-        const baseFontSize = Number(this.style.fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
-        const fontSize = Math.max(6, baseFontSize * scaleFactor);
-        const lineHeight = fontSize * 1.2;
-        const rawLines = this.text.split('\n');
-        const lines = rawLines.length ? rawLines : [''];
-        const blockHeight = Math.max(lineHeight, lines.length * lineHeight);
-
-        let baseX;
-        switch (align) {
-            case 'left':
-            case 'start':
-                baseX = x + clampedPadding;
-                break;
-            case 'right':
-            case 'end':
-                baseX = x + width - clampedPadding;
-                break;
-            default:
-                baseX = x + width / 2;
-        }
-
-        let topY;
-        let useMiddleBaseline = false;
-        const externalGap = Math.max(
-            Number.isFinite(this.style.textPadding) ? Math.min(this.style.textPadding, 12) : 5,
-            fontSize * 0.35
-        );
-        switch (position) {
-            case 'top':
-                // Position text ABOVE the rectangle (outside); bottom of block sits `externalGap` above top edge.
-                topY = y - externalGap - blockHeight;
-                break;
-            case 'bottom':
-                // Position text BELOW the rectangle (outside); top of block sits `externalGap` below bottom edge.
-                topY = y + height + externalGap;
-                break;
-            default:
-                // Middle — anchor on horizontal midline (y + height/2).
-                useMiddleBaseline = true;
-                topY = y + height / 2;
-        }
-
-        const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
-        const offsetY = Number.isFinite(this.style.textOffsetY) ? this.style.textOffsetY : 0;
-
-        const textX = baseX + offsetX;
-        const textTop = topY + offsetY;
+        const {
+            textX,
+            textTop,
+            useMiddleBaseline,
+            anchor,
+            lines,
+            fontSize,
+            lineHeight,
+            fontFamily,
+            fontWeight,
+            fontStyle
+        } = layout;
 
         const labelGroup = this.group.append('g')
             .attr('class', 'rectangle-text-label')
@@ -795,9 +910,6 @@ class RectangleTool extends BaseDrawing {
             .style('user-select', 'none');
 
         const textColor = this.style.textColor || RECTANGLE_TEXT_DEFAULTS.textColor;
-        const fontFamily = this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily;
-        const fontWeight = this.style.fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight;
-        const fontStyle = this.style.fontStyle || RECTANGLE_TEXT_DEFAULTS.fontStyle;
 
         lines.forEach((line, index) => {
             const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
