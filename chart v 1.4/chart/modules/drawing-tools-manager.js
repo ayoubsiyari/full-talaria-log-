@@ -1853,7 +1853,10 @@ class DrawingToolsManager {
         dx = constrained.dx;
         dy = constrained.dy;
 
-        drawing.points = startPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+        drawing.points = startPoints.map((p) => this._normalizePointAfterPixelTranslate(
+            { ...p, x: p.x + dx, y: p.y + dy },
+            drawing.type
+        ));
         if (typeof drawing.afterPointsMoveDelta === 'function') {
             drawing.afterPointsMoveDelta(dx, dy);
         }
@@ -1881,7 +1884,7 @@ class DrawingToolsManager {
                 : (this.chart.xScale && typeof this.chart.xScale.invert === 'function' ? this.chart.xScale.invert(pxX) : baseX);
             const y = (typeof this.chart.yScale.invert === 'function') ? this.chart.yScale.invert(pxY) : baseY;
             const out = { ...pt, x, y };
-            return this.clampPointToCandleRange(out, drawingType || this.currentTool);
+            return this._normalizePointAfterPixelTranslate(out, drawingType || this.currentTool);
         });
     }
 
@@ -3650,6 +3653,29 @@ class DrawingToolsManager {
             ...point,
             x: Math.round(point.x)
         };
+    }
+
+    /** Match getDataPoint: freehand + extrabar tools keep fractional bar index. */
+    _shouldSnapPointXToCandle(drawingType) {
+        if (!drawingType) return true;
+        if (drawingType === 'path' || drawingType === 'brush' || drawingType === 'highlighter') {
+            return false;
+        }
+        if (typeof CoordinateUtils !== 'undefined'
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+            && CoordinateUtils.allowsExtrabarBarIndex(drawingType)) {
+            return false;
+        }
+        return true;
+    }
+
+    _normalizePointAfterPixelTranslate(point, drawingType) {
+        if (!point) return point;
+        let out = this.clampPointToCandleRange(point, drawingType);
+        if (this._shouldSnapPointXToCandle(drawingType)) {
+            out = this.snapPointXToNearestCandle(out);
+        }
+        return out;
     }
 
 
