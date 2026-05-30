@@ -1052,28 +1052,6 @@ class FibCirclesTool extends BaseDrawing {
         const scaledStroke = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
         const hitStroke = Math.max(10, scaledStroke * 6);
 
-        // Anchor ray (center → radius point) for moving the whole tool
-        this.group.append('line')
-            .attr('class', 'fib-level-hit fib-circles-axis')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', 'rgba(255,255,255,0.001)')
-            .attr('stroke-width', hitStroke)
-            .attr('stroke-dasharray', '')
-            .attr('opacity', 1)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
-        this.group.append('line')
-            .attr('class', 'fib-circles-axis')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStroke)
-            .attr('opacity', 0.35)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
-
         const showZones = this.style.v9FibCirclesBackground != null
             ? this.style.v9FibCirclesBackground !== false
             : this.style.showZones !== false;
@@ -1183,6 +1161,28 @@ class FibCirclesTool extends BaseDrawing {
                 .style('pointer-events', 'none')
                 .text(level.toFixed(3));
         });
+
+        // Anchor ray (center → radius point) on top so the levels line is draggable through the rings
+        this.group.append('line')
+            .attr('class', 'fib-level-hit fib-circles-axis')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', 'rgba(255,255,255,0.001)')
+            .attr('stroke-width', hitStroke)
+            .attr('stroke-dasharray', '')
+            .attr('opacity', 1)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('class', 'fib-circles-axis fib-level-hit')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStroke)
+            .attr('opacity', 0.35)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;

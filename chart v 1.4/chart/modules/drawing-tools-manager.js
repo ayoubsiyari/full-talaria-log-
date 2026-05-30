@@ -4628,6 +4628,7 @@ class DrawingToolsManager {
             if (self._isFibLikeDrawingType(drawing.type)) {
                 const onFibStroke = targetSel.classed('fib-level-hit')
                     || targetSel.classed('gann-level-hit')
+                    || targetSel.classed('fib-circles-axis')
                     || targetSel.classed('fib-trend-line')
                     || targetSel.classed('fib-tz-anchor')
                     || targetSel.classed('fib-arcs-trend')
@@ -5012,7 +5013,8 @@ class DrawingToolsManager {
 
                     const isFibLevelHit = targetSelection.classed('fib-level-hit');
                     const isGannLevelHit = targetSelection.classed('gann-level-hit');
-                    const isFibTrendHit = targetSelection.classed('fib-trend-line')
+                    const isFibTrendHit = targetSelection.classed('fib-circles-axis')
+                        || targetSelection.classed('fib-trend-line')
                         || targetSelection.classed('fib-tz-anchor')
                         || targetSelection.classed('fib-arcs-trend')
                         || targetSelection.classed('fib-arcs-trend-hit')
@@ -8227,8 +8229,10 @@ class DrawingToolsManager {
             svgPoint.y = mouseY;
         }
         const lineHitTolerance = 14;
+        const circleHitTolerance = 14;
         const strokeSelectors = [
             'line.fib-level-hit',
+            'line.fib-circles-axis',
             'line.gann-level-hit',
             'line.fib-trend-line',
             'line.fib-tz-anchor',
@@ -8268,6 +8272,28 @@ class DrawingToolsManager {
             if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
                 return true;
             }
+        }
+
+        // Fib circles: level rings use circle.fib-level-hit (not line) and sit above the axis ray.
+        for (const element of drawing.group.selectAll('circle.fib-level-hit').nodes()) {
+            const elementSel = d3.select(element);
+            if (elementSel.style('opacity') === '0') continue;
+
+            if (svgPoint && typeof element.isPointInStroke === 'function' && element.isPointInStroke(svgPoint)) {
+                return true;
+            }
+
+            const cx = parseFloat(element.getAttribute('cx'));
+            const cy = parseFloat(element.getAttribute('cy'));
+            const r = parseFloat(element.getAttribute('r'));
+            if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r) || r <= 0) continue;
+
+            const dx = mouseX - cx;
+            const dy = mouseY - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const strokeWidth = parseFloat(elementSel.attr('stroke-width') || elementSel.style('stroke-width')) || 10;
+            const effectiveTolerance = Math.max(circleHitTolerance, (strokeWidth / 2) + 0.5);
+            if (Math.abs(dist - r) <= effectiveTolerance) return true;
         }
 
         return false;
