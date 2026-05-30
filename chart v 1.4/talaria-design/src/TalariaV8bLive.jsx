@@ -1453,10 +1453,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         patch.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
       }
       if (Array.isArray(tlStyle.gannFanLevels)) {
-        patch.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+        patch.fanLevels = v9GannSquareFixedFanTlToChartLevels(tlStyle.gannFanLevels);
       }
       if (Array.isArray(tlStyle.gannArcLevels)) {
-        patch.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+        patch.arcLevels = v9GannSquareFixedArcTlToChartLevels(tlStyle.gannArcLevels);
       }
     }
     if (legacyTool === "gann-fan" && Array.isArray(tlStyle.gannFanLevels)) {
@@ -4453,6 +4453,67 @@ function v9GannSquareFixedFanDefaultLevelsTl() {
   ];
 }
 
+function v9GannSquareFixedArcDefaultLevelsTl() {
+  return [
+    { on: true, value: "0.25", color: "#ff9800" },
+    { on: true, value: "0.5", color: "#00bcd4" },
+    { on: true, value: "0.75", color: "#4caf50" },
+    { on: true, value: "1", color: "#2962ff" },
+  ];
+}
+
+/** Map legacy Gann Fan multipliers (1,2,3,4,8) → square edge ratios for Gann Square Fixed. */
+function v9GannSquareFixedFanValueToRatio(raw) {
+  const v = parseFloat(String(raw ?? ""));
+  if (!Number.isFinite(v)) return 0;
+  if (v <= 1) return Math.max(0, Math.min(1, v));
+  const inverseMap = { 8: 0.125, 4: 0.25, 3: 0.333, 2: 0.5, 1: 1 };
+  for (const [k, ratio] of Object.entries(inverseMap)) {
+    if (Math.abs(v - parseFloat(k)) < 0.02) return ratio;
+  }
+  return Math.max(0, Math.min(1, 1 / v));
+}
+
+function v9FormatGannSquareRatioValue(ratio) {
+  const r = Math.round(ratio * 1000) / 1000;
+  return String(r).replace(/\.?0+$/, "") || "0";
+}
+
+function v9NormalizeGannSquareFixedFanLevelsTl(rows) {
+  if (!Array.isArray(rows)) return rows;
+  const needsMigrate = rows.some((l) => {
+    const v = parseFloat(l && l.value != null ? l.value : "");
+    return Number.isFinite(v) && v > 1;
+  });
+  if (!needsMigrate) return rows;
+  return rows.map((l) => ({
+    ...l,
+    value: v9FormatGannSquareRatioValue(v9GannSquareFixedFanValueToRatio(l && l.value)),
+  }));
+}
+
+function v9GannSquareFixedFanTlToChartLevels(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((l) => ({
+    enabled: l && l.on !== false,
+    value: v9GannSquareFixedFanValueToRatio(l && l.value),
+    color: l && l.color ? l.color : "#787b86",
+  }));
+}
+
+function v9GannSquareFixedArcTlToChartLevels(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((l) => {
+    const raw = parseFloat(String(l && l.value != null ? l.value : "0"));
+    const value = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0;
+    return {
+      enabled: l && l.on !== false,
+      value,
+      color: l && l.color ? l.color : "#787b86",
+    };
+  });
+}
+
 const V9_GANN_FAN_VALUE_TO_LABEL = {
   0.125: "1/8",
   0.25: "1/4",
@@ -4548,15 +4609,11 @@ function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
     }
     if (!Array.isArray(out.gannFanLevels)) {
       out.gannFanLevels = v9GannSquareFixedFanDefaultLevelsTl();
+    } else {
+      out.gannFanLevels = v9NormalizeGannSquareFixedFanLevelsTl(out.gannFanLevels);
     }
     if (!Array.isArray(out.gannArcLevels)) {
-      out.gannArcLevels = [
-        { on: true, value: "0", color: "#787B86" },
-        { on: true, value: "0.25", color: "#2196F3" },
-        { on: true, value: "0.5", color: "#4CAF50" },
-        { on: true, value: "0.75", color: "#FF9800" },
-        { on: true, value: "1", color: "#787B86" },
-      ];
+      out.gannArcLevels = v9GannSquareFixedArcDefaultLevelsTl();
     }
   }
 }
@@ -4612,10 +4669,10 @@ function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
     d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
   }
   if (Array.isArray(tlStyle.gannFanLevels)) {
-    d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
+    d.style.fanLevels = v9GannSquareFixedFanTlToChartLevels(tlStyle.gannFanLevels);
   }
   if (Array.isArray(tlStyle.gannArcLevels)) {
-    d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
+    d.style.arcLevels = v9GannSquareFixedArcTlToChartLevels(tlStyle.gannArcLevels);
   }
 }
 
@@ -15271,7 +15328,13 @@ const TalariaV8bLive = () => {
   const applyTlGannLevelsPatch = useCallback((levelKey, rowMapper) => {
     applyTlGannStylePatch((s) => {
       const rows = Array.isArray(s[levelKey]) ? s[levelKey] : [];
-      return { ...s, [levelKey]: rowMapper(rows) };
+      const legacyType =
+        editingDrawingRef.current?.drawing?.type ?? null;
+      return v9EnsureTlStyleArrays(
+        { ...s, [levelKey]: rowMapper(rows) },
+        s,
+        legacyType,
+      );
     });
   }, [applyTlGannStylePatch]);
 
@@ -18820,11 +18883,7 @@ const TalariaV8bLive = () => {
                   {on:true,value:"1",color:"#787B86"},
                 ])}
                 {mkSection("FAN LEVELS","gannFanLevels","gannFanLv",v9GannSquareFixedFanDefaultLevelsTl())}
-                {mkSection("ARC LEVELS","gannArcLevels","gannArc",[
-                  {on:true,value:"0",color:"#787B86"},{on:true,value:"0.25",color:"#2196F3"},
-                  {on:true,value:"0.5",color:"#4CAF50"},{on:true,value:"0.75",color:"#FF9800"},
-                  {on:true,value:"1",color:"#787B86"},
-                ])}
+                {mkSection("ARC LEVELS","gannArcLevels","gannArc",v9GannSquareFixedArcDefaultLevelsTl())}
               </>;
               // gannBox
               return <>

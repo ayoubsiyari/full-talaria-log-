@@ -3174,9 +3174,8 @@ class GannSquareFixedTool extends BaseDrawing {
         // Quarter-circle arcs from anchor corner
         const arcRaw = Array.isArray(this.style.arcLevels) ? this.style.arcLevels : [];
         arcRaw.forEach((rawLevel, idx) => {
-            let f = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
-            if (!isFinite(f) || f <= 0) return;
-            f = Math.min(1, f);
+            const f = clampUnitRatio(rawLevel && rawLevel.value != null ? rawLevel.value : '');
+            if (!Number.isFinite(f) || f < 1e-6) return;
             if (rawLevel && rawLevel.enabled === false) return;
             const r = size * f;
             const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
