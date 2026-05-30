@@ -548,10 +548,10 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
-/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool`). */
+/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool` + spiral CCW). */
 const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
-  "fibCircles", "fibArcs", "fibWedge",
+  "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
 ]);
 
 /** Rail icons with no settings Text tab (and no working quick-menu text color). Shared by settings tabs + floating bar. */
@@ -826,9 +826,6 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
       const p = parseColor(col);
       const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
       return { stroke: strokeRgba, color: strokeRgba, opacity: 1 };
-    }
-    if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
-      return { stroke: col, color: col, borderColor: col };
     }
     return { stroke: col, color: col };
   }
@@ -1449,14 +1446,11 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
     const borderOn = tlStyle.showBorder !== false;
-    // Settings panel "Borders" row edits `lineColor`; prefer it over stale `borderColor`.
-    const outline = tlStyle.lineColor || tlStyle.borderColor || "#787b86";
+    const outline = tlStyle.borderColor || tlStyle.lineColor || "#787b86";
     patch.borderEnabled = borderOn;
     patch.borderColor = outline;
     patch.stroke = borderOn ? outline : "none";
     patch.strokeWidth = borderOn ? widthNum : 0;
-    patch.borderWidth = borderOn ? (parseInt(tlStyle.borderWidth, 10) || widthNum) : 0;
-    patch.borderDasharray = V9_DASH_TO_LEGACY[tlStyle.borderType] ?? patch.borderDasharray ?? "";
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
@@ -2526,7 +2520,7 @@ function v9TxtCoordBridgeShouldApply(editingSession, txtSettingsOpen) {
   return false;
 }
 
-function collectV9BridgeTargetPairs(editingRefDrawing, editSession) {
+function collectV9BridgeTargetPairs(editingRefDrawing) {
   const targets = [];
   const seenIds = new Set();
   const pushPair = (dm, raw) => {
@@ -2539,26 +2533,8 @@ function collectV9BridgeTargetPairs(editingRefDrawing, editSession) {
     }
     targets.push({ dm, d: live });
   };
-  const edDraw = editSession?.drawing || editingRefDrawing;
-  if (edDraw) {
-    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-      let live = resolveLiveDrawingInDm(dm, edDraw);
-      if (!live && edDraw.id != null && Array.isArray(dm.drawings)) {
-        live = dm.drawings.find((x) => x && x.id === edDraw.id) || null;
-      }
-      pushPair(dm, live || edDraw);
-    });
-    if (!targets.length) {
-      try {
-        const fallback = getSelectedDrawingAcrossCharts(edDraw);
-        if (fallback) {
-          for (const dm of enumerateV9DrawingManagersFromWindow()) {
-            pushPair(dm, resolveLiveDrawingInDm(dm, fallback) || fallback);
-          }
-        }
-      } catch (_) {}
-    }
-    if (targets.length) return targets;
+  if (editingRefDrawing) {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => pushPair(dm, editingRefDrawing));
   }
   enumerateV9DrawingManagersFromWindow().forEach((dm) => {
     const tb = dm.toolbar;
@@ -2594,12 +2570,11 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
   const editingRefDrawing = opts.editingRefDrawing ?? null;
   const resolveLegacyTool = opts.resolveLegacyTool;
   const colorOnly = !!opts.colorOnly;
-  const editSess = opts.editSession
-    || (editingRefDrawing ? { drawing: editingRefDrawing } : null);
+  const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
   const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
   const chartsToRender = new Set();
   try {
-    const pairs = collectV9BridgeTargetPairs(editingRefDrawing, editSess);
+    const pairs = collectV9BridgeTargetPairs(editingRefDrawing);
     pairs.forEach(({ dm, d }) => {
       if (!d || !d.style) return;
       const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
@@ -4075,9 +4050,6 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
   if (v9IsPatternLabelSyncSubToolIcon(subToolIcon) && v9PatternLabelColorCoupled(prev)) {
     return { ...prev, lineColor: colorVal, textColor: colorVal };
   }
-  if (["rect", "ellipse", "circle", "triangle", "arcShape"].includes(subToolIcon)) {
-    return { ...prev, lineColor: colorVal, borderColor: colorVal };
-  }
   return { ...prev, lineColor: colorVal };
 }
 
@@ -4702,15 +4674,9 @@ function v9TlStylePatchFromDrawing(d) {
           : s.borderEnabled !== false,
     ...(v9IsArrowMarkChartType(d.type)
       ? { borderColor: s.borderColor || (s.stroke && s.stroke !== "none" ? s.stroke : undefined) }
-      : V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type)
-        ? {
-            borderColor: (s.borderColor && s.borderColor !== "none")
-              ? s.borderColor
-              : (s.stroke && s.stroke !== "none" ? s.stroke : "#787b86"),
-          }
-        : s.borderColor
-          ? { borderColor: s.borderColor }
-          : {}),
+      : s.borderColor
+        ? { borderColor: s.borderColor }
+        : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
     extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
@@ -5383,77 +5349,6 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
 function v9DeepCloneJson(obj) {
   if (obj === undefined) return undefined;
   return JSON.parse(JSON.stringify(obj));
-}
-
-/** Deep snapshot of chart drawing state when the V9 settings panel opens (Cancel restores this). */
-function v9SnapshotDrawingForEdit(d) {
-  if (!d) return null;
-  return {
-    style: v9DeepCloneJson(d.style) || {},
-    levels: d.levels !== undefined ? v9DeepCloneJson(d.levels) : undefined,
-    points: Array.isArray(d.points) ? v9DeepCloneJson(d.points) : undefined,
-    text: d.text,
-    visibility: d.visibility !== undefined ? v9DeepCloneJson(d.visibility) : undefined,
-  };
-}
-
-function v9RestoreDrawingFromEditSnapshot(d, snap, dm) {
-  if (!d || !snap) return;
-  d.style = v9DeepCloneJson(snap.style) || {};
-  if (snap.levels !== undefined) {
-    d.levels = v9DeepCloneJson(snap.levels);
-  } else if (Object.prototype.hasOwnProperty.call(d, "levels")) {
-    delete d.levels;
-  }
-  if (snap.points) {
-    d.points = v9DeepCloneJson(snap.points);
-  }
-  if (snap.text !== undefined) {
-    d.text = snap.text;
-    try {
-      if (typeof d.setText === "function") d.setText(d.text);
-    } catch (_) {}
-  }
-  if (snap.visibility !== undefined) {
-    d.visibility = v9DeepCloneJson(snap.visibility);
-  }
-  if (d.group) d.group = null;
-  const tb = dm && dm.toolbar;
-  try {
-    if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
-  } catch (_) {}
-  try {
-    if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
-    else if (dm && typeof dm.renderDrawing === "function") dm.renderDrawing(d);
-  } catch (_) {
-    try {
-      if (dm && typeof dm.renderDrawing === "function") dm.renderDrawing(d);
-    } catch (_) {}
-  }
-  v9SyncDrawingAxisHighlights(d);
-}
-
-/** Undo live-preview edits when the user closes settings without OK. */
-function v9RevertDrawingEditSession(editSess) {
-  if (!editSess || !editSess.editSnapshot || !editSess.drawing) return;
-  const chartsToRender = new Set();
-  collectV9BridgeTargetPairs(editSess.drawing).forEach(({ dm, d }) => {
-    if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
-    v9RestoreDrawingFromEditSnapshot(d, editSess.editSnapshot, dm);
-    if (dm.chart) chartsToRender.add(dm.chart);
-  });
-  chartsToRender.forEach((c) => {
-    try {
-      if (c.drawingManager && typeof c.drawingManager.redrawAll === "function") {
-        c.drawingManager.redrawAll();
-      } else if (typeof c.scheduleRender === "function") {
-        c.scheduleRender();
-      }
-    } catch (_) {}
-  });
-  try {
-    window.dispatchEvent(new CustomEvent("drawingsChanged", { detail: { source: "v9-cancel-settings" } }));
-  } catch (_) {}
 }
 
 /** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
@@ -9701,19 +9596,10 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "tlbardrop"]));
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
-  const closeTlSett = (opts = {}) => {
-    const commit = opts.commit === true;
-    if (!commit) {
-      suppressForwardBridge.current = true;
-      const editing = editingDrawingRef.current;
-      if (editing?.editSnapshot) {
-        v9RevertDrawingEditSession(editing);
-      }
-    } else {
-      try {
-        v9StyleBridgeFlushRef.current?.();
-      } catch (_) {}
-    }
+  const closeTlSett = () => {
+    try {
+      v9StyleBridgeFlushRef.current?.();
+    } catch (_) {}
     cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -11915,30 +11801,30 @@ const TalariaV8bLive = () => {
     });
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   };
 
-  const tlCheckboxIndicator = (on, isH) => {
-    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
-    return (
-      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
-        {!on ? (
-          <rect x="0.9" y="0.9" width="8.2" height="8.2" stroke={bCol} strokeWidth={1.3} fill="none" rx={0.6}/>
-        ) : (
-          <>
-            <rect x="0.9" y="0.9" width="8.2" height="8.2" stroke={c.acL} strokeWidth={1.3} fill={c.acL} fillOpacity={0.12} rx={0.6}/>
-            <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
-          </>
-        )}
-      </svg>
-    );
-  };
   // Bracket-style on/off indicator. Pass label to make the text part of the clickable area.
   const Chk = (on, settKey, hKey, label) => {
     const isH = swHov === hKey;
-    const indicator = tlCheckboxIndicator(on, isH);
+    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+    const indicator = (
+      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+        {!on && isH && <>
+          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+        </>}
+        {on && <>
+          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
+          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
+        </>}
+      </svg>
+    );
     const shared = {
       ...modalPointerActivate(() => runTlCheckboxToggle(hKey, () => {
         setSettings(prev => {
@@ -11963,7 +11849,23 @@ const TalariaV8bLive = () => {
   // TL-style checkbox SVG — same visual as Chk but wired to tlStyle + hov
   const TlChk = (on, hKey, label, toggle) => {
     const isH = hov === hKey;
-    const indicator = tlCheckboxIndicator(on, isH);
+    const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
+    const indicator = (
+      <svg width={10} height={10} style={{display:"block",overflow:"visible",flexShrink:0}}>
+        <path d="M0.8,4 L0.8,0.8 L4,0.8" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+        <path d="M6,9.2 L9.2,9.2 L9.2,6" stroke={bCol} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+        {!on && isH && <>
+          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke="rgba(74,106,255,0.35)" strokeWidth={1} fill="none" strokeLinecap="square"/>
+        </>}
+        {on && <>
+          <path d="M6,0.8 L9.2,0.8 L9.2,4" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+          <path d="M0.8,6 L0.8,9.2 L4,9.2" stroke={c.acL} strokeWidth={1.3} fill="none" strokeLinecap="square"/>
+          <circle cx={5} cy={5} r={2.8} fill={c.acL} opacity={0.12}/>
+          <circle cx={5} cy={5} r={1.6} fill={c.acL}/>
+        </>}
+      </svg>
+    );
     return (
       <div
         {...modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle))}
@@ -12035,7 +11937,6 @@ const TalariaV8bLive = () => {
   tlSubToolIconRef.current = tlSubTool.icon;
   const cpFlushTlOpts = (extra = {}) => ({
     editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-    editSession: editingDrawingRef.current,
     resolveLegacyTool: () =>
       editingDrawingRef.current?.drawing?.type
       ?? V9_FREEHAND_ICON_TO_LEGACY[tlSubToolIconRef.current]
@@ -13558,19 +13459,6 @@ const TalariaV8bLive = () => {
         // and so closeTlSett (Esc / outside-click) can clear this on close.
         editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected, panelGroup: group };
 
-        let drawingForStyleSnapshot = drawing;
-        try {
-          const dmSnap =
-            typeof window !== "undefined" && typeof window.getActiveChart === "function"
-              ? window.getActiveChart()?.drawingManager
-              : window.chart?.drawingManager;
-          if (dmSnap && Array.isArray(dmSnap.drawings) && drawing.id != null) {
-            const liveSnap = dmSnap.drawings.find((x) => x && x.id === drawing.id);
-            if (liveSnap) drawingForStyleSnapshot = liveSnap;
-          }
-        } catch (_) {}
-        editingDrawingRef.current.editSnapshot = v9SnapshotDrawingForEdit(drawingForStyleSnapshot);
-
         // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
         // dblclick/gear opens the panel while `groupSelected` still reflects the last line
         // tool (e.g. Trend Line) because `editDrawing` calls `toolbar.hide()` and never
@@ -13643,7 +13531,6 @@ const TalariaV8bLive = () => {
               : prev.showBorder,
           borderColor: sPartial.borderColor
             || (v9IsArrowMarkChartType(drawingForStyle.type) && sPartial.stroke && sPartial.stroke !== 'none' ? sPartial.stroke : null)
-            || (V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(drawingForStyle.type) && sPartial.stroke && sPartial.stroke !== "none" ? sPartial.stroke : null)
             || prev.borderColor,
           borderType: LEGACY_DASH_TO_V9[(sPartial.borderDasharray || '')] || prev.borderType,
           borderWidth: sPartial.borderWidth != null ? String(sPartial.borderWidth) : prev.borderWidth,
@@ -14606,7 +14493,7 @@ const TalariaV8bLive = () => {
       const editSess = editingDrawingRef.current;
       const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
       const borderOn = tl.showBorder !== false;
-      const outline = tl.lineColor || tl.borderColor || "#787b86";
+      const outline = tl.borderColor || tl.lineColor || "#787b86";
       const widthNum = Math.max(1, parseInt(tl.borderWidth, 10) || parseInt(tl.lineWidth, 10) || 1);
       const patch = {
         borderEnabled: borderOn,
@@ -14941,7 +14828,6 @@ const TalariaV8bLive = () => {
     v9PushLineTypeToSelectedDrawings(lineType);
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   }, []);
@@ -14951,7 +14837,6 @@ const TalariaV8bLive = () => {
     flushSync(() => setTlStyle((s) => ({ ...s, lineWidth })));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   }, []);
@@ -17658,6 +17543,10 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>);})()}
                   </div>}
+                  {/* ── fibSpiral counter clockwise ── */}
+                  {tlSubTool.icon === "fibSpiral" && <div style={{ padding:"6px 0" }}>
+                    {TlChk(tlStyle.fibSpiralCCW ?? false,"tlchk-fibSpiralCCW","Counter Clockwise",()=>setTlStyle(s=>({...s,fibSpiralCCW:!(s.fibSpiralCCW??false)})))}
+                  </div>}
                   {/* ── Gann Style section ── */}
                   {isGannTool && (()=>{
                     return <>
@@ -17947,6 +17836,11 @@ const TalariaV8bLive = () => {
                     active: colorPicker === key,
                     hover: swHov === key,
                   })}/>
+              );
+              if (fi === "fibSpiral") return (
+                <div style={{ padding:"8px 0" }}>
+                  {TlChk(tlStyle.fibSpiralCCW ?? false, "tlchk-fibSpiralCCW-in", "Counter Clockwise", () => setTlStyle(s => ({ ...s, fibSpiralCCW: !(s.fibSpiralCCW ?? false) })))}
+                </div>
               );
               if (fi === "fibTimeZone") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>FIBONACCI NUMBERS</div>
@@ -19152,8 +19046,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" fireOnPointerDown onClick={() => closeTlSett()}>Cancel</B>
-            <B primary hk="tl-ok" fireOnPointerDown onClick={() => closeTlSett({ commit: true })}>OK</B>
+            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
+            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
           </div>
         </div>
       , document.body)}
