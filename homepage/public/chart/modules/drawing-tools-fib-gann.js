@@ -93,28 +93,20 @@ class FibChannelTool extends BaseDrawing {
 
         // Full drawing (3 points): draw channel lines as parallels to the base line
         if (this.points.length >= 3) {
-            const x3 = getX(this.points[2]);
-            const y3 = getY(this.points[2]);
-
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const len = Math.hypot(dx, dy);
-            if (!len) {
+            const geom = BaseDrawing.computeFibChannelGeometry(this, scales);
+            if (!geom) {
                 if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
                 return this.group;
             }
 
-            // Unit normal vector to the base line
-            const nx = -dy / len;
-            const ny = dx / len;
-
-            // Signed perpendicular distance from base line (through point1->point2) to point3.
-            // When level=1, the parallel line passes through point3.
-            const channelOffset = (x3 - x1) * nx + (y3 - y1) * ny;
+            const { reverse, getSegment, offsetPoint, p1, p2, p3, toPx, nx, ny, channelOffset } = geom;
+            const x1 = toPx(p1).x;
+            const y1 = toPx(p1).y;
+            const x3 = toPx(p3).x;
+            const y3 = toPx(p3).y;
 
             // If the 3rd point is outside the rendered segment span (when not extending lines),
-            // the handle can look "off" the channel because the level line segment doesn't reach it.
-            // Clamp handle position to the rendered level=1 segment using virtualPoints.
+            // clamp handle position to the rendered level=1 segment using virtualPoints.
             if (!extendLines && scales) {
                 const chart = scales.chart;
                 const xScale = scales.xScale;
@@ -126,38 +118,28 @@ class FibChannelTool extends BaseDrawing {
                     ? yScale.invert(py)
                     : this.points[2].y;
 
-                const ux = dx / len;
-                const uy = dy / len;
-                const proj = (x3 - x1) * ux + (y3 - y1) * uy; // projection length along baseline from p1
-                const t = proj / len;
-                const tClamped = Math.max(0, Math.min(1, t));
-
-                const hx = (x1 + dx * tClamped) + nx * channelOffset;
-                const hy = (y1 + dy * tClamped) + ny * channelOffset;
-
-                this.virtualPoints = [
-                    this.points[0],
-                    this.points[1],
-                    { x: toDataX(hx), y: toDataY(hy) }
-                ];
+                const p1Px = toPx(p1);
+                const p2Px = toPx(p2);
+                const dx = p2Px.x - p1Px.x;
+                const dy = p2Px.y - p1Px.y;
+                const len = Math.hypot(dx, dy);
+                if (len) {
+                    const ux = dx / len;
+                    const uy = dy / len;
+                    const proj = (x3 - p1Px.x) * ux + (y3 - p1Px.y) * uy;
+                    const t = proj / len;
+                    const tClamped = Math.max(0, Math.min(1, t));
+                    const hx = p1Px.x + dx * tClamped + (toPx(offsetPoint(p1, 1)).x - p1Px.x);
+                    const hy = p1Px.y + dy * tClamped + (toPx(offsetPoint(p1, 1)).y - p1Px.y);
+                    this.virtualPoints = [
+                        this.points[0],
+                        this.points[1],
+                        { x: toDataX(hx), y: toDataY(hy) }
+                    ];
+                }
             } else {
                 this.virtualPoints = null;
             }
-
-            const getSegment = (xA, yA, xB, yB) => {
-                if (!extendLines) return { x1: xA, y1: yA, x2: xB, y2: yB };
-                const xMin = Math.min(xRange[0], xRange[1]);
-                const xMax = Math.max(xRange[0], xRange[1]);
-                const dx2 = xB - xA;
-                if (Math.abs(dx2) < 1e-6) return { x1: xA, y1: yA, x2: xB, y2: yB };
-                const m = (yB - yA) / dx2;
-                return {
-                    x1: xMin,
-                    y1: yA + m * (xMin - xA),
-                    x2: xMax,
-                    y2: yA + m * (xMax - xA)
-                };
-            };
 
             if (zonesEnabled) {
                 const zoneLevels = this.levels
@@ -175,10 +157,9 @@ class FibChannelTool extends BaseDrawing {
                 for (let i = 0; i < zoneLevels.length - 1; i++) {
                     const aV1 = zoneLevels[i].actual;
                     const aV2 = zoneLevels[i + 1].actual;
-                    const off1 = channelOffset * aV1;
-                    const off2 = channelOffset * aV2;
-                    const a1 = getSegment(x1 + nx * off1, y1 + ny * off1, x2 + nx * off1, y2 + ny * off1);
-                    const a2 = getSegment(x1 + nx * off2, y1 + ny * off2, x2 + nx * off2, y2 + ny * off2);
+                    const a1 = getSegment(offsetPoint(p1, aV1), offsetPoint(p2, aV1));
+                    const a2 = getSegment(offsetPoint(p1, aV2), offsetPoint(p2, aV2));
+                    if (!a1 || !a2) continue;
                     this.group.insert('path', ':first-child')
                         .attr('data-fib-zone-idx', i)
                         .attr('d', `M ${a1.x1},${a1.y1} L ${a1.x2},${a1.y2} L ${a2.x2},${a2.y2} L ${a2.x1},${a2.y1} Z`)
@@ -204,18 +185,12 @@ class FibChannelTool extends BaseDrawing {
 
                 const lvl = parseFloat(level);
                 const actualLevel = reverse ? (1 - lvl) : lvl;
-                const offset = channelOffset * actualLevel;
-                const x1o = x1 + nx * offset;
-                const y1o = y1 + ny * offset;
-                const x2o = x2 + nx * offset;
-                const y2o = y2 + ny * offset;
-
-                const seg = getSegment(x1o, y1o, x2o, y2o);
+                const seg = getSegment(offsetPoint(p1, actualLevel), offsetPoint(p2, actualLevel));
+                if (!seg) return;
 
                 const scaledLevelWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
                 const levelHitWidth = Math.max(10, scaledLevelWidth * 6);
 
-                // Hit area (solid, nearly invisible) so dashed lines are easy to click
                 this.group.append('line')
                     .attr('class', 'fib-level-hit')
                     .attr('data-fib-channel-level', lvl)
@@ -243,7 +218,6 @@ class FibChannelTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                // Level label at line end
                 const baseLabel = formatLevelText(lvl);
                 let priceText = '';
                 if (showPrices && scales.yScale && typeof scales.yScale.invert === 'function') {
@@ -408,8 +382,12 @@ class FibTimeZoneTool extends BaseDrawing {
             const perWidth = (typeof fibObj === 'object' && fibObj.lineWidth != null && !isNaN(parseInt(fibObj.lineWidth)))
                 ? parseInt(fibObj.lineWidth) : null;
             const perType = (typeof fibObj === 'object' && fibObj.lineType != null) ? `${fibObj.lineType}` : null;
-            const lineWidth = perWidth !== null ? perWidth : (globalLevelsWidth !== null ? globalLevelsWidth : baseWidth);
-            const lineType = perType !== null ? perType : (globalLevelsDash !== null ? globalLevelsDash : baseType);
+            const lineWidth = perWidth !== null
+                ? perWidth
+                : (globalLevelsWidth !== null ? globalLevelsWidth : baseWidth);
+            const lineType = perType !== null
+                ? perType
+                : (globalLevelsDash !== null ? globalLevelsDash : baseType);
 
             if (!enabled) return;
 
@@ -978,12 +956,24 @@ class TrendFibTimeTool extends BaseDrawing {
         return this.group;
     }
 
+    toJSON() {
+        if (this.style) this.style.levels = this.levels;
+        return {
+            ...super.toJSON(),
+            levels: this.levels
+        };
+    }
+
     static fromJSON(data, chart = null) {
         const tool = new TrendFibTimeTool(data.points, data.style);
         tool.id = data.id;
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
+        if (Array.isArray(data.levels) && data.levels.length) {
+            tool.levels = data.levels;
+            if (tool.style) tool.style.levels = data.levels;
+        }
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,
@@ -1020,6 +1010,14 @@ class FibCirclesTool extends BaseDrawing {
         this.style.levels = this.levels;
     }
 
+    toJSON() {
+        this.style.levels = this.levels;
+        return {
+            ...super.toJSON(),
+            levels: this.levels
+        };
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -1050,6 +1048,31 @@ class FibCirclesTool extends BaseDrawing {
             if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
             return this.group;
         }
+
+        const scaledStroke = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
+        const hitStroke = Math.max(10, scaledStroke * 6);
+
+        // Anchor ray (center → radius point) for moving the whole tool
+        this.group.append('line')
+            .attr('class', 'fib-level-hit fib-circles-axis')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', 'rgba(255,255,255,0.001)')
+            .attr('stroke-width', hitStroke)
+            .attr('stroke-dasharray', '')
+            .attr('opacity', 1)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
+
+        this.group.append('line')
+            .attr('class', 'fib-circles-axis')
+            .attr('x1', x1).attr('y1', y1)
+            .attr('x2', x2).attr('y2', y2)
+            .attr('stroke', this.style.stroke)
+            .attr('stroke-width', scaledStroke)
+            .attr('opacity', 0.35)
+            .style('pointer-events', 'stroke')
+            .style('cursor', 'move');
 
         const showZones = this.style.v9FibCirclesBackground != null
             ? this.style.v9FibCirclesBackground !== false
@@ -1171,6 +1194,10 @@ class FibCirclesTool extends BaseDrawing {
         tool.visible = data.visible !== undefined ? data.visible : true;
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
+        if (Array.isArray(data.levels) && data.levels.length) {
+            tool.levels = data.levels;
+            tool.style.levels = data.levels;
+        }
         if (data.coordinateSystem === 'timestamp' && data.points) {
             tool.timestampPoints = data.points.map(p => ({
                 timestamp: p.timestamp,

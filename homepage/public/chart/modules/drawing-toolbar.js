@@ -2158,6 +2158,14 @@ class DrawingToolbar {
 
         if (template.levels) {
             actualDrawing.levels = this.deepClone(template.levels);
+            if (!actualDrawing.style) actualDrawing.style = {};
+            actualDrawing.style.levels = actualDrawing.levels;
+            if (actualDrawing.type === 'fib-timezone') {
+                actualDrawing.fibNumbers = actualDrawing.levels;
+                actualDrawing.style.fibNumbers = actualDrawing.levels;
+                delete actualDrawing.style.levelsLineWidth;
+                delete actualDrawing.style.levelsLineDasharray;
+            }
         }
 
         if (typeof this.onUpdate === 'function') {
@@ -2165,6 +2173,12 @@ class DrawingToolbar {
         } else {
             drawingManager?.renderDrawing?.(actualDrawing);
             drawingManager?.chart?.scheduleRender?.();
+        }
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', {
+                detail: { drawing: actualDrawing, builtinDefault: false },
+            }));
         }
 
         // Legacy DOM toolbar only — V9 uses React floating bar.

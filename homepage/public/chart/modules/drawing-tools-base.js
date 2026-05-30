@@ -447,6 +447,57 @@ class BaseDrawing {
         return bands;
     }
 
+    /** Fib channel geometry in data space (stable under non-uniform x/y zoom). */
+    static computeFibChannelGeometry(tool, scales) {
+        if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 3) return null;
+        const p1 = tool.points[0];
+        const p2 = tool.points[1];
+        const p3 = tool.points[2];
+        if (!p1 || !p2 || !p3) return null;
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy);
+        if (!len) return null;
+
+        const nx = -dy / len;
+        const ny = dx / len;
+        const channelOffset = (p3.x - p1.x) * nx + (p3.y - p1.y) * ny;
+        const reverse = !!(tool.style && tool.style.reverse);
+        const extendLines = !!(tool.style && tool.style.extendLines);
+        const xRange = scales.xScale.range();
+
+        const toPx = (dp) => ({
+            x: BaseDrawing.fibIndexToPixel(scales, dp.x),
+            y: BaseDrawing.fibPriceToPixel(scales, dp.y)
+        });
+
+        const getSegment = (dA, dB) => {
+            const a = toPx(dA);
+            const b = toPx(dB);
+            if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return null;
+            if (!extendLines) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+            const xMin = Math.min(xRange[0], xRange[1]);
+            const xMax = Math.max(xRange[0], xRange[1]);
+            const dx2 = b.x - a.x;
+            if (Math.abs(dx2) < 1e-6) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+            const m = (b.y - a.y) / dx2;
+            return {
+                x1: xMin,
+                y1: a.y + m * (xMin - a.x),
+                x2: xMax,
+                y2: a.y + m * (xMax - a.x)
+            };
+        };
+
+        const offsetPoint = (dp, mult) => ({
+            x: dp.x + nx * channelOffset * mult,
+            y: dp.y + ny * channelOffset * mult
+        });
+
+        return { channelOffset, reverse, getSegment, offsetPoint, p1, p2, p3, toPx, nx, ny };
+    }
+
     static patchTwoPointHorizontalFib(tool, scales) {
         if (!tool || !tool.group || tool.group.empty() || !scales) return false;
         if (!tool.group.select('line[data-level]').node()) return false;
@@ -539,49 +590,18 @@ class BaseDrawing {
         if (!tool.group.select('line[data-fib-channel-level]').node()) return false;
         if (!Array.isArray(tool.points) || tool.points.length < 3) return false;
 
-        const getX = (p) => BaseDrawing.fibIndexToPixel(scales, p.x);
-        const getY = (p) => BaseDrawing.fibPriceToPixel(scales, p.y);
-        const x1 = getX(tool.points[0]);
-        const y1 = getY(tool.points[0]);
-        const x2 = getX(tool.points[1]);
-        const y2 = getY(tool.points[1]);
-        const x3 = getX(tool.points[2]);
-        const y3 = getY(tool.points[2]);
-        if (![x1, y1, x2, y2, x3, y3].every(Number.isFinite)) return false;
+        const geom = BaseDrawing.computeFibChannelGeometry(tool, scales);
+        if (!geom) return false;
 
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.hypot(dx, dy);
-        if (!len) return false;
-
-        const nx = -dy / len;
-        const ny = dx / len;
-        const channelOffset = (x3 - x1) * nx + (y3 - y1) * ny;
-        const extendLines = !!tool.style.extendLines;
-        const reverse = !!tool.style.reverse;
-        const xRange = scales.xScale.range();
-        const getSegment = (xA, yA, xB, yB) => {
-            if (!extendLines) return { x1: xA, y1: yA, x2: xB, y2: yB };
-            const xMin = Math.min(xRange[0], xRange[1]);
-            const xMax = Math.max(xRange[0], xRange[1]);
-            const dx2 = xB - xA;
-            if (Math.abs(dx2) < 1e-6) return { x1: xA, y1: yA, x2: xB, y2: yB };
-            const m = (yB - yA) / dx2;
-            return {
-                x1: xMin,
-                y1: yA + m * (xMin - xA),
-                x2: xMax,
-                y2: yA + m * (xMax - xA)
-            };
-        };
-
+        const { reverse, getSegment, offsetPoint, p1, p2 } = geom;
         const group = tool.group;
+
         group.selectAll('line[data-fib-channel-level]').each(function () {
             const lvl = parseFloat(d3.select(this).attr('data-fib-channel-level'));
             if (!Number.isFinite(lvl)) return;
             const actualLevel = reverse ? (1 - lvl) : lvl;
-            const offset = channelOffset * actualLevel;
-            const seg = getSegment(x1 + nx * offset, y1 + ny * offset, x2 + nx * offset, y2 + ny * offset);
+            const seg = getSegment(offsetPoint(p1, actualLevel), offsetPoint(p2, actualLevel));
+            if (!seg) return;
             d3.select(this)
                 .attr('x1', seg.x1).attr('y1', seg.y1)
                 .attr('x2', seg.x2).attr('y2', seg.y2);
@@ -591,8 +611,8 @@ class BaseDrawing {
             const lvl = parseFloat(d3.select(this).attr('data-fib-channel-label'));
             if (!Number.isFinite(lvl)) return;
             const actualLevel = reverse ? (1 - lvl) : lvl;
-            const offset = channelOffset * actualLevel;
-            const seg = getSegment(x1 + nx * offset, y1 + ny * offset, x2 + nx * offset, y2 + ny * offset);
+            const seg = getSegment(offsetPoint(p1, actualLevel), offsetPoint(p2, actualLevel));
+            if (!seg) return;
             d3.select(this).attr('x', seg.x2 + 5).attr('y', seg.y2 + 4);
         });
 
@@ -614,10 +634,9 @@ class BaseDrawing {
                 if (!Number.isFinite(idx) || idx < 0 || idx >= zoneLevels.length - 1) return;
                 const aV1 = zoneLevels[idx].actual;
                 const aV2 = zoneLevels[idx + 1].actual;
-                const off1 = channelOffset * aV1;
-                const off2 = channelOffset * aV2;
-                const a1 = getSegment(x1 + nx * off1, y1 + ny * off1, x2 + nx * off1, y2 + ny * off1);
-                const a2 = getSegment(x1 + nx * off2, y1 + ny * off2, x2 + nx * off2, y2 + ny * off2);
+                const a1 = getSegment(offsetPoint(p1, aV1), offsetPoint(p2, aV1));
+                const a2 = getSegment(offsetPoint(p1, aV2), offsetPoint(p2, aV2));
+                if (!a1 || !a2) return;
                 d3.select(this).attr('d', `M ${a1.x1},${a1.y1} L ${a1.x2},${a1.y2} L ${a2.x2},${a2.y2} L ${a2.x1},${a2.y1} Z`);
             });
         }
