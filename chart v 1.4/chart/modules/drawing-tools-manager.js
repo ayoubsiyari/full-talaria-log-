@@ -6641,51 +6641,55 @@ class DrawingToolsManager {
             ? helpers.scheduleTextAnnotationLiveRender
             : (d) => this.scheduleRenderDrawing(d);
 
-        const inlineOpts = {
-            inline: true,
-            placeholderMode: !String(initialText).trim(),
-            fontSize: `${drawing.style.fontSize || 13}px`,
-            fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
-            fontWeight: drawing.style.fontWeight || 'normal',
-            color: drawing.style.textColor || '#FFFFFF',
-            textAlign: drawing.style.textAlign || 'left',
-            noWrap: true,
-            hideSelector: `.drawing[data-id="${drawing.id}"] text`,
-            onInput: (newText) => {
-                const next = (newText || '').replace(/\r\n/g, '\n');
-                drawing.setText(isPlaceholderText(next) ? '' : next);
-                if (typeof drawing._updateCommentBubble === 'function') {
-                    drawing._updateCommentBubble();
-                }
-                scheduleLive(drawing);
-            }
-        };
-
-        // Prefer the SVG <text> element for pixel-perfect inline positioning
-        let editableNode = drawing.group.select('text.inline-editable-text').node();
-        // Fall back to any inline-editable-text element (rect/path background shapes)
-        if (!editableNode) {
-            editableNode = drawing.group.select('.inline-editable-text').node();
-        }
-
-        let posNode = editableNode;
+        let posNode = null;
         if (drawing.type === 'note' && drawing.group) {
             const boxNode = drawing.group.select('rect.note-body-hit').node();
             if (boxNode && document.contains(boxNode)) {
                 posNode = boxNode;
-                inlineOpts.hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text`;
-                inlineOpts.editorBackground = drawing.style.fill || 'rgba(50, 50, 50, 0.9)';
-                inlineOpts.editorPadding = '6px 8px';
             }
+        }
+        if (!posNode) {
+            let editableNode = drawing.group.select('text.inline-editable-text').node();
+            if (!editableNode) {
+                editableNode = drawing.group.select('.inline-editable-text').node();
+            }
+            posNode = editableNode;
         }
 
         if (posNode) {
             const rect = posNode.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
-                if (drawing.type === 'note') {
-                    inlineOpts.editorWidth = rect.width;
-                    inlineOpts.editorMinHeight = rect.height;
-                }
+                const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
+                    ? helpers.buildNoteInlineEditorOptions(drawing, rect, {
+                        initialText,
+                        onInput: (newText) => {
+                            const next = (newText || '').replace(/\r\n/g, '\n');
+                            drawing.setText(isPlaceholderText(next) ? '' : next);
+                            if (typeof drawing._updateCommentBubble === 'function') {
+                                drawing._updateCommentBubble();
+                            }
+                            scheduleLive(drawing);
+                        }
+                    })
+                    : {
+                        inline: true,
+                        placeholderMode: !String(initialText).trim(),
+                        fontSize: `${drawing.style.fontSize || 13}px`,
+                        fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                        fontWeight: drawing.style.fontWeight || 'normal',
+                        color: drawing.style.textColor || '#FFFFFF',
+                        textAlign: drawing.style.textAlign || 'left',
+                        noWrap: true,
+                        hideSelector: `.drawing[data-id="${drawing.id}"] text`,
+                        onInput: (newText) => {
+                            const next = (newText || '').replace(/\r\n/g, '\n');
+                            drawing.setText(isPlaceholderText(next) ? '' : next);
+                            if (typeof drawing._updateCommentBubble === 'function') {
+                                drawing._updateCommentBubble();
+                            }
+                            scheduleLive(drawing);
+                        }
+                    };
                 this.textEditor.show(
                     rect.left + window.scrollX,
                     rect.top + window.scrollY,

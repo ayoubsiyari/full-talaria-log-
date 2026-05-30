@@ -33736,7 +33736,7 @@ class InlineTextEditor {
         style.textContent = `
             .inline-text-editor-field[data-placeholder]:empty::before {
                 content: attr(data-placeholder);
-                color: rgba(120, 123, 134, 0.85);
+                color: var(--inline-editor-placeholder-color, rgba(120, 123, 134, 0.85));
                 pointer-events: none;
             }
         `;
@@ -33889,8 +33889,14 @@ class InlineTextEditor {
             if (typeof opts.editorBackground === 'string' && opts.editorBackground) {
                 this.editor
                     .style('background', opts.editorBackground)
-                    .style('border-radius', '4px')
+                    .style('border-radius', opts.editorBorderRadius || '4px')
                     .style('box-sizing', 'border-box');
+            }
+            if (typeof opts.editorBorder === 'string') {
+                this.editor.style('border', opts.editorBorder);
+            }
+            if (typeof opts.editorBorderRadius === 'string' && !opts.editorBackground) {
+                this.editor.style('border-radius', opts.editorBorderRadius);
             }
             if (typeof opts.editorPadding === 'string') {
                 this.editor.style('padding', opts.editorPadding);
@@ -33909,6 +33915,9 @@ class InlineTextEditor {
 
 
             const _noWrap = opts.noWrap === true;
+            const placeholderColor = typeof opts.placeholderColor === 'string'
+                ? opts.placeholderColor
+                : color;
 
             const contentEl = this.editor.append('div')
 
@@ -33931,6 +33940,8 @@ class InlineTextEditor {
                 .style('overflow-wrap', _noWrap ? 'normal' : 'break-word')
 
                 .style('color', color)
+
+                .style('--inline-editor-placeholder-color', placeholderColor)
 
                 .style('font-size', fontSize)
 

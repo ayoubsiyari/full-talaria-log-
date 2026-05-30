@@ -79,6 +79,58 @@ function resolveAnnotationTextFill(textColor, backgroundColor, isPlaceholder) {
     return fg;
 }
 
+/** Resolved line/box colors for Note (SVG + inline editor must match). */
+function resolveNoteBoxStyle(style = {}) {
+    const lineStroke = (style.stroke && style.stroke !== 'none')
+        ? style.stroke
+        : '#787b86';
+    const boxFill = (style.fill && style.fill !== 'none' && style.fill !== 'transparent')
+        ? style.fill
+        : ((style.backgroundColor && style.backgroundColor !== 'transparent')
+            ? style.backgroundColor
+            : 'rgba(50, 50, 50, 0.9)');
+    const borderOn = !!(style.stroke && style.stroke !== 'none' && (Number(style.strokeWidth) || 1) > 0);
+    const boxStroke = borderOn ? lineStroke : 'none';
+    return { lineStroke, boxFill, boxStroke, borderOn };
+}
+
+/** Inline editor options aligned with the on-chart note box. */
+function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
+    const style = drawing.style || {};
+    const chart = drawing.chart;
+    const scales = chart ? { chart, xScale: chart.xScale, yScale: chart.yScale } : {};
+    const scaleFactor = (typeof drawing.getZoomScaleFactor === 'function')
+        ? drawing.getZoomScaleFactor(scales)
+        : 1;
+    const scaledFontSize = Math.max(8, (style.fontSize || 12) * scaleFactor);
+    const noteDisplay = resolveTextToolDisplay(drawing.text);
+    const initialText = extra.initialText != null ? extra.initialText : '';
+    const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
+    const textFill = resolveAnnotationTextFill(style.textColor, boxFill, noteDisplay.isPlaceholder);
+    const hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text, .drawing[data-id="${drawing.id}"] > rect.note-body-hit`;
+    const opts = {
+        inline: true,
+        placeholderMode: !String(initialText).trim(),
+        fontSize: `${scaledFontSize}px`,
+        fontFamily: style.fontFamily || 'Roboto, sans-serif',
+        fontWeight: style.fontWeight || 'normal',
+        fontStyle: style.fontStyle || 'normal',
+        color: textFill,
+        placeholderColor: textFill,
+        textAlign: 'left',
+        noWrap: true,
+        hideSelector,
+        editorBackground: boxFill,
+        editorPadding: '6px 8px',
+        editorBorder: borderOn ? `1px solid ${boxStroke}` : 'none',
+        editorBorderRadius: '4px',
+        ...extra
+    };
+    if (bbox && bbox.width > 0) opts.editorWidth = bbox.width;
+    if (bbox && bbox.height > 0) opts.editorMinHeight = bbox.height;
+    return opts;
+}
+
 /**
  * Inline editor onSave: keep drawing when user clicks away without typing.
  * Delete only when confirmed (Enter) with empty/placeholder text.
@@ -1508,10 +1560,9 @@ class NoteTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
+        const { lineStroke, boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(this.style);
+
         // Draw the visible line
-        const lineStroke = (this.style.stroke && this.style.stroke !== 'none')
-            ? this.style.stroke
-            : '#787b86';
         const noteLineEl = this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
@@ -1571,12 +1622,6 @@ class NoteTool extends BaseDrawing {
         noteLineHitEl.attr('x2', x2).attr('y2', y2);
 
         // Background rectangle - use fill for background color
-        const boxFill = (this.style.fill && this.style.fill !== 'none')
-            ? this.style.fill
-            : (this.style.backgroundColor && this.style.backgroundColor !== 'transparent'
-                ? this.style.backgroundColor
-                : 'rgba(50, 50, 50, 0.9)');
-        const boxStroke = (this.style.stroke && this.style.stroke !== 'none') ? lineStroke : '#787b86';
         const textBox = this.group.append('rect')
             .attr('class', 'inline-editable-text note-body-hit text-body-hit')
             .attr('x', boxX)
@@ -1586,7 +1631,7 @@ class NoteTool extends BaseDrawing {
             .attr('fill', boxFill)
             .attr('rx', 4)
             .attr('stroke', boxStroke)
-            .attr('stroke-width', 1)
+            .attr('stroke-width', borderOn ? 1 : 0)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
@@ -1652,27 +1697,14 @@ class NoteTool extends BaseDrawing {
                 initialText,
                 createInlineTextSaveHandler(self),
                 placeholderLabel,
-                {
-                    inline: true,
-                    placeholderMode: !String(initialText).trim(),
-                    fontSize: `${scaledFontSize}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
-                    color: self.style.textColor,
-                    textAlign: 'left',
-                    noWrap: true,
-                    hideSelector: `.drawing[data-id="${self.id}"] > text.inline-editable-text`,
-                    editorBackground: self.style.fill || 'rgba(50, 50, 50, 0.9)',
-                    editorPadding: '6px 8px',
-                    editorWidth: bbox.width,
-                    editorMinHeight: bbox.height,
+                buildNoteInlineEditorOptions(self, bbox, {
+                    initialText,
                     onInput: (newText) => {
                         const next = (newText || '').replace(/\r\n/g, '\n');
                         self.setText(helpers && helpers.isTextToolPlaceholder(next) ? '' : next);
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
             return true;
         };
@@ -4188,6 +4220,8 @@ if (typeof module !== 'undefined' && module.exports) {
         TEXT_TOOL_PLACEHOLDER_COLOR,
         isTextToolPlaceholder,
         resolveTextToolDisplay,
+        resolveNoteBoxStyle,
+        buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
         TextTool,
@@ -4213,6 +4247,8 @@ if (typeof window !== 'undefined') {
         TEXT_TOOL_PLACEHOLDER_COLOR,
         isTextToolPlaceholder,
         resolveTextToolDisplay,
+        resolveNoteBoxStyle,
+        buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
         syncTextHandlePositions,
