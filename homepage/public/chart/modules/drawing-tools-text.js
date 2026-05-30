@@ -80,17 +80,15 @@ function resolveAnnotationTextFill(textColor, backgroundColor, isPlaceholder) {
 }
 
 /** Resolved line/box colors for Note (SVG + inline editor must match). */
-function resolveNoteBoxStyle(style = {}, toolType = null) {
-    const isNote = toolType === 'note';
+function resolveNoteBoxStyle(style = {}) {
     const lineStroke = (style.stroke && style.stroke !== 'none')
         ? style.stroke
         : '#787b86';
-    const defaultFill = isNote ? '#000000' : 'rgba(50, 50, 50, 0.9)';
     const boxFill = (style.fill && style.fill !== 'none' && style.fill !== 'transparent')
         ? style.fill
         : ((style.backgroundColor && style.backgroundColor !== 'transparent')
             ? style.backgroundColor
-            : defaultFill);
+            : 'rgba(50, 50, 50, 0.9)');
     const borderOn = !!(style.stroke && style.stroke !== 'none' && (Number(style.strokeWidth) || 1) > 0);
     const boxStroke = borderOn ? lineStroke : 'none';
     return { lineStroke, boxFill, boxStroke, borderOn };
@@ -107,7 +105,7 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const scaledFontSize = Math.max(8, (style.fontSize || 12) * scaleFactor);
     const noteDisplay = resolveTextToolDisplay(drawing.text);
     const initialText = extra.initialText != null ? extra.initialText : '';
-    const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style, drawing.type);
+    const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
     const textFill = resolveAnnotationTextFill(style.textColor, boxFill, noteDisplay.isPlaceholder);
     const hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text, .drawing[data-id="${drawing.id}"] > rect.note-body-hit`;
     const opts = {
@@ -1518,7 +1516,7 @@ class NoteTool extends BaseDrawing {
         this.style.stroke = style.stroke || '#787b86';
         this.style.strokeWidth = style.strokeWidth || 1;
         // Use fill for background color (UI uses fill)
-        this.style.fill = style.fill || style.backgroundColor || '#000000';
+        this.style.fill = style.fill || style.backgroundColor || 'rgba(50, 50, 50, 0.9)';
         this.style.textColor = style.textColor || '#FFFFFF';
         this.style.fontSize = style.fontSize || 12;
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
@@ -1551,8 +1549,7 @@ class NoteTool extends BaseDrawing {
         const y2 = scales.yScale(p2.y);
 
         const noteDisplay = resolveTextToolDisplay(this.text);
-        const { lineStroke, boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(this.style, 'note');
-        const textFill = resolveAnnotationTextFill(this.style.textColor, boxFill, noteDisplay.isPlaceholder);
+        const { lineStroke, boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(this.style);
 
         // Invisible hit area for easier selection (rendered first, behind visible line)
         const noteLineHitEl = this.group.append('line')
@@ -1643,7 +1640,7 @@ class NoteTool extends BaseDrawing {
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', textFill)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.fill || this.style.backgroundColor, noteDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
