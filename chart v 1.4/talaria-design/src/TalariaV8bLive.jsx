@@ -827,6 +827,9 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
       const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
       return { stroke: strokeRgba, color: strokeRgba, opacity: 1 };
     }
+    if (legacyTool && V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(legacyTool)) {
+      return { stroke: col, color: col, borderColor: col };
+    }
     return { stroke: col, color: col };
   }
   if (pickerKey === "tlMidLineColor" && tlStyle.midLineColor) {
@@ -1446,11 +1449,14 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? (tlStyle.bgColor || V9_DEFAULT_TL_SHAPE_FILL) : "none";
     const borderOn = tlStyle.showBorder !== false;
-    const outline = tlStyle.borderColor || tlStyle.lineColor || "#787b86";
+    // Settings panel "Borders" row edits `lineColor`; prefer it over stale `borderColor`.
+    const outline = tlStyle.lineColor || tlStyle.borderColor || "#787b86";
     patch.borderEnabled = borderOn;
     patch.borderColor = outline;
     patch.stroke = borderOn ? outline : "none";
     patch.strokeWidth = borderOn ? widthNum : 0;
+    patch.borderWidth = borderOn ? (parseInt(tlStyle.borderWidth, 10) || widthNum) : 0;
+    patch.borderDasharray = V9_DASH_TO_LEGACY[tlStyle.borderType] ?? patch.borderDasharray ?? "";
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
@@ -2520,7 +2526,7 @@ function v9TxtCoordBridgeShouldApply(editingSession, txtSettingsOpen) {
   return false;
 }
 
-function collectV9BridgeTargetPairs(editingRefDrawing) {
+function collectV9BridgeTargetPairs(editingRefDrawing, editSession) {
   const targets = [];
   const seenIds = new Set();
   const pushPair = (dm, raw) => {
@@ -2533,8 +2539,26 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
     }
     targets.push({ dm, d: live });
   };
-  if (editingRefDrawing) {
-    enumerateV9DrawingManagersFromWindow().forEach((dm) => pushPair(dm, editingRefDrawing));
+  const edDraw = editSession?.drawing || editingRefDrawing;
+  if (edDraw) {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      let live = resolveLiveDrawingInDm(dm, edDraw);
+      if (!live && edDraw.id != null && Array.isArray(dm.drawings)) {
+        live = dm.drawings.find((x) => x && x.id === edDraw.id) || null;
+      }
+      pushPair(dm, live || edDraw);
+    });
+    if (!targets.length) {
+      try {
+        const fallback = getSelectedDrawingAcrossCharts(edDraw);
+        if (fallback) {
+          for (const dm of enumerateV9DrawingManagersFromWindow()) {
+            pushPair(dm, resolveLiveDrawingInDm(dm, fallback) || fallback);
+          }
+        }
+      } catch (_) {}
+    }
+    if (targets.length) return targets;
   }
   enumerateV9DrawingManagersFromWindow().forEach((dm) => {
     const tb = dm.toolbar;
@@ -2570,11 +2594,12 @@ function v9FlushTlStyleToChartTargets(tlStyle, opts = {}) {
   const editingRefDrawing = opts.editingRefDrawing ?? null;
   const resolveLegacyTool = opts.resolveLegacyTool;
   const colorOnly = !!opts.colorOnly;
-  const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
+  const editSess = opts.editSession
+    || (editingRefDrawing ? { drawing: editingRefDrawing } : null);
   const legacyTool = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
   const chartsToRender = new Set();
   try {
-    const pairs = collectV9BridgeTargetPairs(editingRefDrawing);
+    const pairs = collectV9BridgeTargetPairs(editingRefDrawing, editSess);
     pairs.forEach(({ dm, d }) => {
       if (!d || !d.style) return;
       const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
@@ -4050,6 +4075,9 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
   if (v9IsPatternLabelSyncSubToolIcon(subToolIcon) && v9PatternLabelColorCoupled(prev)) {
     return { ...prev, lineColor: colorVal, textColor: colorVal };
   }
+  if (["rect", "ellipse", "circle", "triangle", "arcShape"].includes(subToolIcon)) {
+    return { ...prev, lineColor: colorVal, borderColor: colorVal };
+  }
   return { ...prev, lineColor: colorVal };
 }
 
@@ -4674,9 +4702,15 @@ function v9TlStylePatchFromDrawing(d) {
           : s.borderEnabled !== false,
     ...(v9IsArrowMarkChartType(d.type)
       ? { borderColor: s.borderColor || (s.stroke && s.stroke !== "none" ? s.stroke : undefined) }
-      : s.borderColor
-        ? { borderColor: s.borderColor }
-        : {}),
+      : V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(d.type)
+        ? {
+            borderColor: (s.borderColor && s.borderColor !== "none")
+              ? s.borderColor
+              : (s.stroke && s.stroke !== "none" ? s.stroke : "#787b86"),
+          }
+        : s.borderColor
+          ? { borderColor: s.borderColor }
+          : {}),
     ...(s.startStyle ? { ep1: s.startStyle } : {}),
     ...(s.endStyle ? { ep2: s.endStyle } : {}),
     extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
@@ -11881,6 +11915,7 @@ const TalariaV8bLive = () => {
     });
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   };
@@ -12000,6 +12035,7 @@ const TalariaV8bLive = () => {
   tlSubToolIconRef.current = tlSubTool.icon;
   const cpFlushTlOpts = (extra = {}) => ({
     editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+    editSession: editingDrawingRef.current,
     resolveLegacyTool: () =>
       editingDrawingRef.current?.drawing?.type
       ?? V9_FREEHAND_ICON_TO_LEGACY[tlSubToolIconRef.current]
@@ -13607,6 +13643,7 @@ const TalariaV8bLive = () => {
               : prev.showBorder,
           borderColor: sPartial.borderColor
             || (v9IsArrowMarkChartType(drawingForStyle.type) && sPartial.stroke && sPartial.stroke !== 'none' ? sPartial.stroke : null)
+            || (V9_TL_LINE_COLOR_OPACITY_CHART_TYPES.has(drawingForStyle.type) && sPartial.stroke && sPartial.stroke !== "none" ? sPartial.stroke : null)
             || prev.borderColor,
           borderType: LEGACY_DASH_TO_V9[(sPartial.borderDasharray || '')] || prev.borderType,
           borderWidth: sPartial.borderWidth != null ? String(sPartial.borderWidth) : prev.borderWidth,
@@ -14569,7 +14606,7 @@ const TalariaV8bLive = () => {
       const editSess = editingDrawingRef.current;
       const legacy = v9ResolveLegacyToolForStyleBridge(resolveLegacyTool, editSess);
       const borderOn = tl.showBorder !== false;
-      const outline = tl.borderColor || tl.lineColor || "#787b86";
+      const outline = tl.lineColor || tl.borderColor || "#787b86";
       const widthNum = Math.max(1, parseInt(tl.borderWidth, 10) || parseInt(tl.lineWidth, 10) || 1);
       const patch = {
         borderEnabled: borderOn,
@@ -14904,6 +14941,7 @@ const TalariaV8bLive = () => {
     v9PushLineTypeToSelectedDrawings(lineType);
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   }, []);
@@ -14913,6 +14951,7 @@ const TalariaV8bLive = () => {
     flushSync(() => setTlStyle((s) => ({ ...s, lineWidth })));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      editSession: editingDrawingRef.current,
       resolveLegacyTool,
     });
   }, []);
