@@ -1885,8 +1885,31 @@ class DrawingToolsManager {
         });
     }
 
+    /** Throttled V9 Coordinates tab refresh while dragging/resizing (single- or multi-panel). */
+    _notifyV9DrawingGeometryLive(drawing, pointsOverride = null) {
+        if (!drawing || typeof window === 'undefined') return;
+        const now = performance.now();
+        if (this._lastV9GeomLiveNotify && (now - this._lastV9GeomLiveNotify) < 16) return;
+        this._lastV9GeomLiveNotify = now;
+        const points = Array.isArray(pointsOverride) ? pointsOverride : drawing.points;
+        if (!Array.isArray(points) || points.length === 0) return;
+        const id = drawing.id || this._ensureDrawingId(drawing);
+        if (!id) return;
+        try {
+            window.dispatchEvent(new CustomEvent('v9DrawingGeometryLive', {
+                detail: {
+                    id,
+                    type: drawing.type,
+                    points: points.map((p) => (p ? { ...p } : p)),
+                },
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
     _broadcastLiveEditUpdate(drawing, pointsOverride = null) {
-        if (!drawing || !this.chart || !this.chart.broadcastDrawingChange) return;
+        if (!drawing) return;
+        this._notifyV9DrawingGeometryLive(drawing, pointsOverride);
+        if (!this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
 
@@ -5186,11 +5209,29 @@ class DrawingToolsManager {
                             const sx = item.startTransform ? item.startTransform.x : 0;
                             const sy = item.startTransform ? item.startTransform.y : 0;
                             item.drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                            const previewPoints = self._translatePointsByPixels(
+                                item.points,
+                                pixelDx,
+                                pixelDy,
+                                item.drawing.type
+                            );
+                            if (previewPoints) {
+                                self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
+                            }
                         });
                     } else if (drawing.group) {
                         const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
                         const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
                         drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                        const previewPoints = self._translatePointsByPixels(
+                            dragStartPoints,
+                            pixelDx,
+                            pixelDy,
+                            drawing.type
+                        );
+                        if (previewPoints) {
+                            self._notifyV9DrawingGeometryLive(drawing, previewPoints);
+                        }
                     }
                 })
                 .on('end', function(event) {
@@ -7101,6 +7142,15 @@ class DrawingToolsManager {
 
         // Update clip path dimensions in case chart was resized
         this.updateClipPath();
+        const clipUrl = this._clipUrl();
+        if (clipUrl) {
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('clip-path', clipUrl);
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.attr('clip-path', clipUrl);
+            }
+        }
         
         // Set re-entry guard so hideAxisHighlights → scheduleRender doesn't re-enter
         // during the render cycle (would cause stack overflow when scheduleRender is synchronous)

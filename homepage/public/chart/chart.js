@@ -15560,10 +15560,8 @@ class Chart {
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
-        if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
-            dm.setDrawingsClipDuringChartPan(true);
-        }
-        this._setChartPanDomOverflow(true);
+        // Per-frame redraw during pan (no CSS translate) — keep clip + container overflow so
+        // fib/rectangle fills do not spill over candles while dragging.
     }
 
     _clearPanTimeTickCache() {
@@ -16152,7 +16150,9 @@ class Chart {
             this.drawAxes();
             // Margin may widen after axis labels — refresh scales (Y domain stays pan-frozen).
             this.calculateScales();
+            // Horizontal grid uses post-axis y ticks; redraw candles on top so lines do not paint through bodies.
             this.drawGrid({ panFast: true, skipVertical: true });
+            this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
             if (typeof this.renderSeparatePanelIndicators === 'function') {

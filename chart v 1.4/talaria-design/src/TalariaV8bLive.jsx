@@ -13299,54 +13299,58 @@ const TalariaV8bLive = () => {
       !!t
       && (t.startsWith("fibonacci-") || t.startsWith("fib-") || t.startsWith("trend-fib-")
         || t === "gann-box" || t === "gann-square-fixed" || t === "gann-fan");
-    const syncTlStyleFromSelectedDrawing = () => {
-      try {
-        if (suppressForwardBridge.current || editingDrawingRef.current) return;
-        const d = getSelectedDrawingAcrossCharts(
-          editingDrawingRef.current ? editingDrawingRef.current.drawing : null,
-        );
-        if (!d || !d.type) return;
-        const patch = {
+    const applyCanvasToTlStylePatch = (d, { coordsOnly = false } = {}) => {
+      if (!d || !d.type) return;
+      const patch = {
+        ...v9CoordPatchFromDrawing(d),
+        ...v9VisibilityPatchFromDrawing(d),
+      };
+      if (!coordsOnly && v9DrawingUsesFibStyleBridge(d.type)) {
+        Object.assign(patch, v9TlStylePatchFromDrawing(d) || {});
+      }
+      if (Object.keys(patch).length === 0) return;
+      suppressForwardBridge.current = true;
+      suppressCoordBridge.current = true;
+      setTlStyle((s) => {
+        let changed = false;
+        const next = { ...s };
+        for (const key of Object.keys(patch)) {
+          if (next[key] !== patch[key]) {
+            next[key] = patch[key];
+            changed = true;
+          }
+        }
+        return changed ? next : s;
+      });
+      if (drawingTypeToPanelGroupRef.current(d.type) === "text") {
+        const txtPatch = {
           ...v9CoordPatchFromDrawing(d),
           ...v9VisibilityPatchFromDrawing(d),
         };
-        if (v9DrawingUsesFibStyleBridge(d.type)) {
-          Object.assign(patch, v9TlStylePatchFromDrawing(d) || {});
-        }
-        if (Object.keys(patch).length === 0) return;
-        suppressForwardBridge.current = true;
-        suppressCoordBridge.current = true;
-        setTlStyle((s) => {
-          let changed = false;
-          const next = { ...s };
-          for (const key of Object.keys(patch)) {
-            if (next[key] !== patch[key]) {
-              next[key] = patch[key];
-              changed = true;
-            }
-          }
-          return changed ? next : s;
-        });
-        if (drawingTypeToPanelGroupRef.current(d.type) === "text") {
-          const txtPatch = {
-            ...v9CoordPatchFromDrawing(d),
-            ...v9VisibilityPatchFromDrawing(d),
-          };
-          if (Object.keys(txtPatch).length > 0) {
-            suppressTxtForwardBridge.current = true;
-            setTxtStyle((s) => {
-              let changed = false;
-              const next = { ...s };
-              for (const key of Object.keys(txtPatch)) {
-                if (next[key] !== txtPatch[key]) {
-                  next[key] = txtPatch[key];
-                  changed = true;
-                }
+        if (Object.keys(txtPatch).length > 0) {
+          suppressTxtForwardBridge.current = true;
+          setTxtStyle((s) => {
+            let changed = false;
+            const next = { ...s };
+            for (const key of Object.keys(txtPatch)) {
+              if (next[key] !== txtPatch[key]) {
+                next[key] = txtPatch[key];
+                changed = true;
               }
-              return changed ? next : s;
-            });
-          }
+            }
+            return changed ? next : s;
+          });
         }
+      }
+    };
+    const syncTlStyleFromSelectedDrawing = () => {
+      try {
+        if (suppressForwardBridge.current) return;
+        const editSess = editingDrawingRef.current;
+        const d = editSess?.drawing
+          || getSelectedDrawingAcrossCharts(null);
+        if (!d || !d.type) return;
+        applyCanvasToTlStylePatch(d, { coordsOnly: !!editSess });
       } catch (_) { /* ignore */ }
     };
     const onDrawingsChanged = () => {
@@ -13356,11 +13360,31 @@ const TalariaV8bLive = () => {
         syncTlStyleFromSelectedDrawing();
       });
     };
+    const onGeometryLive = (ev) => {
+      try {
+        const detail = ev?.detail;
+        const id = detail?.id;
+        const points = detail?.points;
+        if (!id || !Array.isArray(points) || points.length === 0) return;
+        const editSess = editingDrawingRef.current;
+        const editDraw = editSess?.drawing;
+        if (editDraw && editDraw.id === id) {
+          applyCanvasToTlStylePatch({ ...editDraw, points }, { coordsOnly: true });
+          return;
+        }
+        const sel = getSelectedDrawingAcrossCharts(editDraw);
+        if (sel && sel.id === id) {
+          applyCanvasToTlStylePatch({ ...sel, points }, { coordsOnly: true });
+        }
+      } catch (_) { /* ignore */ }
+    };
     if (typeof window === "undefined") return undefined;
     window.addEventListener("drawingsChanged", onDrawingsChanged);
+    window.addEventListener("v9DrawingGeometryLive", onGeometryLive);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener("drawingsChanged", onDrawingsChanged);
+      window.removeEventListener("v9DrawingGeometryLive", onGeometryLive);
     };
   }, []);
 
