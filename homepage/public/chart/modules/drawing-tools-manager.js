@@ -10432,6 +10432,8 @@ class DrawingToolsManager {
             'middleLineColor', 'middleLineDash', 'middleLineWidth', 'showMiddleLine',
             'startStyle', 'endStyle', 'extendLeft', 'extendRight',
             'showPriceLabel', 'showTimeLabel',
+            'showZones', 'backgroundOpacity', 'levelsLineWidth', 'levelsLineDasharray',
+            'priceLevels', 'timeLevels', 'gridLevels', 'fanLevels', 'arcLevels',
         ]);
         for (const k of Object.keys(drawing.style)) {
             if (resetKeys.has(k)) delete drawing.style[k];

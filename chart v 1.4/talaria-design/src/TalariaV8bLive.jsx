@@ -3141,6 +3141,27 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   }
   v9EnsureFibLevelsTlForLegacy(out, legacyType, fall);
   v9EnsureGannLevelsTlForLegacy(out, legacyType);
+  if (
+    legacyType === "gann-box" ||
+    legacyType === "gann-square-fixed" ||
+    legacyType === "gann-fan"
+  ) {
+    if (out.gannBackground == null) {
+      out.gannBackground = fall.gannBackground ?? false;
+    }
+    if (!out.gannLineType) {
+      out.gannLineType = fall.gannLineType || "solid";
+    }
+    if (out.gannLineWidth == null || out.gannLineWidth === "") {
+      out.gannLineWidth = fall.gannLineWidth != null ? fall.gannLineWidth : "2";
+    }
+    if (out.gannBgOpacity == null || out.gannBgOpacity === "" || Number.isNaN(+out.gannBgOpacity)) {
+      out.gannBgOpacity =
+        fall.gannBgOpacity != null && !Number.isNaN(+fall.gannBgOpacity)
+          ? +fall.gannBgOpacity
+          : V9_GANN_DEFAULT_BG_OPACITY;
+    }
+  }
   if (legacyType === "trend-fib-time") {
     if (!out.fibTimeTrendType) out.fibTimeTrendType = fall.fibTimeTrendType || "dashed";
     if (out.fibTimeTrendWidth == null || out.fibTimeTrendWidth === "") {
@@ -4431,6 +4452,33 @@ function v9GannFanLabelForValue(value) {
   return "";
 }
 
+const V9_GANN_DEFAULT_BG_OPACITY = 0.12;
+
+/** Default Gann Style-tab fields (background off, low zone fill opacity). */
+function v9GannDefaultTlStyleFields(legacyType) {
+  if (
+    legacyType !== "gann-box" &&
+    legacyType !== "gann-square-fixed" &&
+    legacyType !== "gann-fan"
+  ) {
+    return {};
+  }
+  return {
+    gannLineType: "solid",
+    gannLineWidth: "2",
+    gannBackground: false,
+    gannBgOpacity: V9_GANN_DEFAULT_BG_OPACITY,
+  };
+}
+
+function v9GannBgOpacityFromTlStyle(tlStyle) {
+  const raw = tlStyle && tlStyle.gannBgOpacity;
+  if (raw != null && !Number.isNaN(+raw)) {
+    return Math.max(0, Math.min(1, +raw));
+  }
+  return V9_GANN_DEFAULT_BG_OPACITY;
+}
+
 function v9EnsureGannLevelsTlForLegacy(out, legacyType) {
   if (!out || !legacyType) return;
   if (legacyType === "gann-fan") {
@@ -5523,7 +5571,11 @@ function v9ApplyDrawingTemplate(drawing, templateId) {
 function v9BuildDefaultTlStyleForDrawingType(type) {
   if (!type) return null;
   const toolDefaults = v9DefaultArmedStyleForLegacyTool(type);
-  return v9EnsureTlStyleArrays({ ...v9FreshTlStyleDefaults(), ...toolDefaults }, null, type);
+  return v9EnsureTlStyleArrays(
+    { ...v9FreshTlStyleDefaults(), ...toolDefaults, ...v9GannDefaultTlStyleFields(type) },
+    null,
+    type,
+  );
 }
 
 function v9ApplyDefaultDrawingTemplate(drawing) {
@@ -5548,6 +5600,8 @@ function v9ApplyDefaultDrawingTemplate(drawing) {
       "middleLineColor", "middleLineDash", "middleLineWidth", "showMiddleLine",
       "startStyle", "endStyle", "extendLeft", "extendRight",
       "showPriceLabel", "showTimeLabel",
+      "showZones", "backgroundOpacity", "levelsLineWidth", "levelsLineDasharray",
+      "priceLevels", "timeLevels", "gridLevels", "fanLevels", "arcLevels",
     ]);
     for (const k of Object.keys(live.style)) {
       if (resetKeys.has(k)) delete live.style[k];
@@ -8323,7 +8377,7 @@ const TalariaV8bLive = () => {
     fibLineType: "solid", fibLineWidth: "2",
     fibLevels: v9ClassicFibDefaultLevelsTlForLegacy("fibonacci-retracement"),
     gannLineType: "solid", gannLineWidth: "2",
-    gannBackground: false, gannBgOpacity: 0.5,
+    gannBackground: false, gannBgOpacity: V9_GANN_DEFAULT_BG_OPACITY,
     gannPriceLevels: [
       { on: true, value: "0", color: "#787B86" },
       { on: true, value: "0.25", color: "#2196F3" },
@@ -11985,7 +12039,7 @@ const TalariaV8bLive = () => {
     return <div {...shared} style={{...shared.style,flexShrink:0,width:10,height:10}}>{indicator}</div>;
   };
   // TL-style checkbox SVG — same visual as Chk but wired to tlStyle + hov
-  const TlChk = (on, hKey, label, toggle) => {
+  const TlChk = (on, hKey, label, toggle, opts) => {
     const isH = hov === hKey;
     const bCol = on ? c.acL : isH ? c.ts : "rgba(140,160,255,0.22)";
     const indicator = (
@@ -12004,9 +12058,12 @@ const TalariaV8bLive = () => {
         </>}
       </svg>
     );
+    const activate = opts?.immediate
+      ? modalPointerActivate(toggle)
+      : modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle));
     return (
       <div
-        {...modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle))}
+        {...activate}
         onMouseEnter={()=>setHov(hKey)} onMouseLeave={()=>setHov(null)}
         style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"default",userSelect:"none",WebkitUserSelect:"none",
                 opacity: on && isH ? 0.65 : 1, transition:"opacity 0.12s"}}>
@@ -15154,6 +15211,36 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Gann Style/Input — push `next` tlStyle in the same frame (avoids stale ref after delete/redraw). */
+  const applyTlGannStylePatch = useCallback((patchFn) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = patchFn(s);
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  const toggleTlGannBackground = useCallback(() => {
+    applyTlGannStylePatch((s) => ({ ...s, gannBackground: !s.gannBackground }));
+  }, [applyTlGannStylePatch]);
+
+  const applyTlGannBgOpacity = useCallback((gannBgOpacity) => {
+    applyTlGannStylePatch((s) => ({ ...s, gannBgOpacity }));
+  }, [applyTlGannStylePatch]);
+
+  /** Gann Input-tab level rows — immediate chart sync (toggle / edit / add / delete / reset). */
+  const applyTlGannLevelsPatch = useCallback((levelKey, rowMapper) => {
+    applyTlGannStylePatch((s) => {
+      const rows = Array.isArray(s[levelKey]) ? s[levelKey] : [];
+      return { ...s, [levelKey]: rowMapper(rows) };
+    });
+  }, [applyTlGannStylePatch]);
+
   /** Regression channel line on/off — sync chart in same frame (avoids double-click from midLine patch race). */
   const applyRegLineRowToggle = useCallback((srcIdx) => {
     flushSync(() => {
@@ -17748,23 +17835,24 @@ const TalariaV8bLive = () => {
                   </div>}
                   {/* ── Gann Style section ── */}
                   {isGannTool && (()=>{
+                    const gannBgOp = v9GannBgOpacityFromTlStyle(tlStyle);
+                    const pct = gannBgOp * 100;
                     return <>
                       <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                        <div style={{ width:130 }}>{TlChk(tlStyle.gannBackground,"tlchk-gannBg","Background",()=>setTlStyle(s=>({...s,gannBackground:!s.gannBackground})))}</div>
-                        {(()=>{const pct=tlStyle.gannBgOpacity*100;return(
+                        <div style={{ width:130 }}>{TlChk(!!tlStyle.gannBackground,"tlchk-gannBg","Background",toggleTlGannBackground,{ immediate:true })}</div>
                         <div style={{ marginLeft:78, display:"flex", alignItems:"center", opacity:tlStyle.gannBackground?1:0.38, pointerEvents:tlStyle.gannBackground?"auto":"none", transition:"opacity 0.15s" }}>
                           <div style={{ position:"relative", width:100, height:20, display:"flex", alignItems:"center" }}>
                             <div style={{ position:"absolute", left:0, right:0, height:3, top:"50%", transform:"translateY(-50%)", borderRadius:99, background:c.trk }}>
                               <div style={{ width:`${pct}%`, height:"100%", borderRadius:99, background:`linear-gradient(90deg,rgba(74,106,255,0.35),${c.acL})`, boxShadow:`0 0 5px ${c.acG}` }}/>
                             </div>
                             <div style={{ position:"absolute", left:`calc(${pct}% - 6px)`, top:"calc(50% + 2px)", width:12, height:9, clipPath:"polygon(50% 0%,0% 100%,100% 100%)", background:`linear-gradient(180deg,${c.acL},${c.ac})`, filter:hov==="gann-bg-sl"?`drop-shadow(0 0 8px ${c.acG}) brightness(1.35)`:`drop-shadow(0 0 4px ${c.acG})`, transform:hov==="gann-bg-sl"?"scale(1.18)":"scale(1)", transition:"transform 0.08s ease,filter 0.08s ease", pointerEvents:"none" }}/>
-                            <input type="range" min="0" max="1" step="0.01" value={tlStyle.gannBgOpacity}
-                              onChange={e=>setTlStyle(s=>({...s,gannBgOpacity:+e.target.value}))}
+                            <input type="range" min="0" max="1" step="0.01" value={gannBgOp}
+                              onChange={e=>applyTlGannBgOpacity(+e.target.value)}
                               onPointerDown={()=>setHov("gann-bg-sl")} onPointerUp={()=>setHov(null)} onPointerLeave={()=>setHov(null)}
                               onClick={e=>e.stopPropagation()}
                               style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
                           </div>
-                        </div>);})()}
+                        </div>
                       </div>
                     </>;
                   })()}
@@ -18559,18 +18647,18 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
                     <div style={{ width:18, flexShrink:0 }}>
-                      {TlChk(lv.on, `tlchk-${levelKey}-${idx}`, "", ()=>setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,i)=>i===idx?{...l,on:!l.on}:l)})))}
+                      {TlChk(lv.on, `tlchk-${levelKey}-${idx}`, "", ()=>applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l)), { immediate:true })}
                     </div>
                     <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                       <input value={lv.value}
-                        onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,i)=>i===idx?{...l,value:val}:l)}));}}
+                        onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
                         onClick={e=>e.stopPropagation()}
                         className="tlr-nospinner"
                         style={{ width:"100%", height:24, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s, [levelKey]: s[levelKey].map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)})))}
+                          <button type="button" key={i} {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>rows.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
@@ -18582,7 +18670,7 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>
                     <div style={{ opacity:op, transition:"opacity 0.15s" }}>{gannColorSwatch(swatchKey, lv.color)}</div>
-                    <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, [levelKey]: s[levelKey].filter((_,i)=>i!==idx)}));}}
+                    <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>rows.filter((_,i)=>i!==idx)))}
                       onMouseEnter={()=>setHov(`gannDel-${levelKey}-${idx}`)} onMouseLeave={()=>setHov(null)}
                       style={{ cursor:"default", padding:"0 2px" }}>
                       <I n="x" s={9} cl={hov===`gannDel-${levelKey}-${idx}`?c.rd:c.tm}/>
@@ -18667,13 +18755,13 @@ const TalariaV8bLive = () => {
                     {(Array.isArray(tlStyle[levelKey]) ? tlStyle[levelKey] : addDefault).map((_, idx) => mkLevelRow(levelKey, idx, swatchPrefix))}
                   </div>
                   <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
-                    <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[levelKey]:[...s[levelKey],{on:true,value:(s[levelKey].length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]}));}}
+                    <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, (rows)=>[...rows,{on:true,value:(rows.length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}]))}
                       onMouseEnter={()=>setHov(`gannAdd-${levelKey}`)} onMouseLeave={()=>setHov(null)}
                       style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                                border:`1px solid rgba(140,160,255,0.15)`, background:hov===`gannAdd-${levelKey}`?c.hv2:"transparent", transition:"background 0.1s" }}>
                       <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                     </div>
-                    <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s,[levelKey]:addDefault}));}}
+                    <div {...modalPointerActivate(() => applyTlGannLevelsPatch(levelKey, ()=>addDefault.map((l)=>({...l}))))}
                       onMouseEnter={()=>setHov(`gannReset-${levelKey}`)} onMouseLeave={()=>setHov(null)}
                       style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                                border:`1px solid rgba(140,160,255,0.15)`, background:hov===`gannReset-${levelKey}`?c.hv2:"transparent", transition:"background 0.1s" }}>
