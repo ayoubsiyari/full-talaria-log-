@@ -5488,11 +5488,6 @@ class DrawingToolsManager {
         return Math.max(0.001, Math.min(0.999, v));
     }
 
-    /** Arc radius ratio for Gann Square — 1.0 = quarter arc to opposite edges. */
-    _clampGannArcRatio(v) {
-        return Math.max(0.001, Math.min(1, v));
-    }
-
     _computeGannLevelValueFromPointer(drawing, meta, mouseX, mouseY) {
         const scales = this._getGannDrawingScales();
         if (!scales || !drawing || !meta) return null;
@@ -5529,12 +5524,6 @@ class DrawingToolsManager {
             const sx = layout.sx || 1;
             next = (mouseX - layout.anchorX) / (sx * layout.size);
             return Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
-        }
-        if (orient === 'arc' && layout.size > 0) {
-            const dx = Math.abs(mouseX - layout.anchorX);
-            const dy = Math.abs(mouseY - layout.anchorY);
-            next = Math.max(dx, dy) / layout.size;
-            return Number.isFinite(next) ? this._clampGannArcRatio(next) : null;
         }
         if (orient === 'fan-multiplier' && layout.xBound != null && layout.baseSlope != null) {
             const dx = layout.xBound - layout.x1;

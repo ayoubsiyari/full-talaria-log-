@@ -3181,21 +3181,6 @@ class GannSquareFixedTool extends BaseDrawing {
             const sweep = (sx === 1 && sy === 1) ? 1 : 0;
 
             const arcW = Math.max(0.5, levelStrokeWidth * 2);
-            const arcHitW = Math.max(10, arcW * 6);
-
-            this.group.append('path')
-                .attr('class', 'gann-level-hit')
-                .attr('d', `M ${startX} ${startY} A ${r} ${r} 0 0 ${sweep} ${endX} ${endY}`)
-                .attr('fill', 'none')
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', arcHitW)
-                .attr('stroke-dasharray', '')
-                .attr('opacity', 1)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move')
-                .attr('data-gann-level-array', 'arcLevels')
-                .attr('data-gann-level-index', idx)
-                .attr('data-gann-level-orient', 'arc');
 
             this.group.append('path')
                 .attr('d', `M ${startX} ${startY} A ${r} ${r} 0 0 ${sweep} ${endX} ${endY}`)
