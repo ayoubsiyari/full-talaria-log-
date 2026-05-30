@@ -97,6 +97,7 @@ class DrawingToolsManager {
         this._hoverHandleBoundGroupNode = null;
         /** After closing drawing settings (Apply/Close), ignore one stray canvas click so selection is not cleared. */
         this._suppressNextCanvasBgClick = false;
+        this._suppressNextCanvasBgClickUntil = 0;
         
         // Style persistence - remember last used style per tool type
         this.savedToolStyles = this.loadSavedToolStyles();
@@ -376,9 +377,25 @@ class DrawingToolsManager {
      * Call when the drawing settings modal closes (Apply / Cancel / Close). Prevents the next
      * click on the chart from running the "empty canvas" deselect path — common after the modal
      * is removed and the event hits the canvas (e.g. after choosing BE options and clicking Apply).
+     * @param {number} [durationMs=650]
      */
-    suppressNextCanvasBackgroundClick() {
+    suppressNextCanvasBackgroundClick(durationMs = 650) {
+        const ms = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 650;
         this._suppressNextCanvasBgClick = true;
+        this._suppressNextCanvasBgClickUntil = Date.now() + ms;
+    }
+
+    _shouldSuppressCanvasBackgroundDeselect() {
+        if (this._suppressNextCanvasBgClick) return true;
+        const until = Number(this._suppressNextCanvasBgClickUntil || 0);
+        return until > 0 && Date.now() <= until;
+    }
+
+    /** @returns {boolean} true when a background deselect was suppressed */
+    _consumeCanvasBackgroundDeselectSuppress() {
+        if (!this._shouldSuppressCanvasBackgroundDeselect()) return false;
+        this._suppressNextCanvasBgClick = false;
+        return true;
     }
 
     scheduleRenderDrawing(drawing) {
@@ -414,7 +431,7 @@ class DrawingToolsManager {
 
     _isLiveDrawingInteraction() {
         return !!(this.isDragging || this.isResizing || this.isCustomHandleDrag
-            || this._textBodyLiveDragActive || this._textInlineEditDrawing);
+            || this._textInlineEditDrawing);
     }
 
     beginTextInlineEdit(drawing) {
@@ -1479,8 +1496,7 @@ class DrawingToolsManager {
                     suppressNextCanvasClick = false;
                     return;
                 }
-                if (this._suppressNextCanvasBgClick) {
-                    this._suppressNextCanvasBgClick = false;
+                if (this._consumeCanvasBackgroundDeselectSuppress()) {
                     return;
                 }
 
@@ -2516,7 +2532,7 @@ class DrawingToolsManager {
                 }
             } else {
                 // Clicked on empty space - deselect all (unless Shift is held)
-                if (!event.shiftKey) {
+                if (!event.shiftKey && !this._consumeCanvasBackgroundDeselectSuppress()) {
                     this.deselectAll({ fromCanvasBackground: true });
                 }
                 // Ensure SVG is transparent so canvas can receive panning events
@@ -2871,7 +2887,7 @@ class DrawingToolsManager {
             return;
         }
         
-        // Handle dragging - use pixel-based transform for smooth movement
+        // Handle dragging - CSS transform during move; commit points on mouseup.
         if (this.isDragging && this.draggingDrawing && this.dragStartScreen) {
             // If mouse button is no longer pressed (e.g. mouseup happened outside SVG), end drag.
             // This prevents drawings from "sticking" to the cursor.
@@ -2889,20 +2905,30 @@ class DrawingToolsManager {
             const pixelDy = currentScreenY - this.dragStartScreen.y;
             
             if (this.draggingMultiple && this.multiDragStartPositions) {
-                this.multiDragStartPositions.forEach(({ drawing, points }) => {
+                this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
+                    if (drawing.group) {
+                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
+                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
+                        drawing.group.attr('transform', `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                    }
                     if (Array.isArray(points)) {
-                        this._applyLiveDrawingMovePixels(drawing, points, pixelDx, pixelDy);
-                        this._broadcastLiveEditUpdate(drawing, drawing.points);
+                        const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
+                        this._broadcastLiveEditUpdate(drawing, previewPoints);
                     }
                 });
-            } else if (Array.isArray(this.singleDragStartPoints)) {
-                this._applyLiveDrawingMovePixels(
-                    this.draggingDrawing,
-                    this.singleDragStartPoints,
-                    pixelDx,
-                    pixelDy
-                );
-                this._broadcastLiveEditUpdate(this.draggingDrawing, this.draggingDrawing.points);
+            } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
+                const newX = this.dragStartOriginalPos.x + pixelDx;
+                const newY = this.dragStartOriginalPos.y + pixelDy;
+                this.draggingDrawing.group.attr('transform', `translate(${newX}, ${newY})`);
+                if (Array.isArray(this.singleDragStartPoints)) {
+                    const previewPoints = this._translatePointsByPixels(
+                        this.singleDragStartPoints,
+                        pixelDx,
+                        pixelDy,
+                        this.draggingDrawing.type
+                    );
+                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
+                }
             }
             return;
         }
@@ -5024,7 +5050,7 @@ class DrawingToolsManager {
                 : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
-        const useTextLiveBodyDrag = this._isTextDrawingType(drawing.type);
+        let textBodyDragOverflowActive = false;
 
         dragElements.on('.drag', null);
 
@@ -5240,8 +5266,8 @@ class DrawingToolsManager {
                     }
                     rrLastCumulative = { x: 0, y: 0 };
                     rrLastByDrawingId = Object.create(null);
-                    if (useTextLiveBodyDrag) {
-                        self._textBodyLiveDragActive = true;
+                    if (self._isTextDrawingType(drawing.type)) {
+                        textBodyDragOverflowActive = true;
                         self._beginDrawingLiveInteraction();
                     }
                 })
@@ -5251,20 +5277,6 @@ class DrawingToolsManager {
                     const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
                     const pixelDx = currentScreenX - bodyDragStartScreen.x;
                     const pixelDy = currentScreenY - bodyDragStartScreen.y;
-
-                    if (self._textBodyLiveDragActive && useTextLiveBodyDrag) {
-                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                            multiDragStartPoints.forEach((item) => {
-                                if (!item.drawing || !Array.isArray(item.points)) return;
-                                self._applyLiveDrawingMovePixels(item.drawing, item.points, pixelDx, pixelDy);
-                                self._broadcastLiveEditUpdate(item.drawing, item.drawing.points);
-                            });
-                        } else {
-                            self._applyLiveDrawingMovePixels(drawing, dragStartPoints, pixelDx, pixelDy);
-                            self._broadcastLiveEditUpdate(drawing, drawing.points);
-                        }
-                        return;
-                    }
 
                     // Smooth drag: CSS transform only — commit to data points once on drag end.
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
@@ -5301,55 +5313,6 @@ class DrawingToolsManager {
                 .on('end', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
-                    }
-
-                    if (self._textBodyLiveDragActive && useTextLiveBodyDrag) {
-                        self._textBodyLiveDragActive = false;
-                        self._endDrawingLiveInteraction();
-
-                        const finalizeTextBodyDrag = (itemDrawing, startPoints, before) => {
-                            if (!itemDrawing) return;
-                            if (itemDrawing.group) itemDrawing.group.attr('transform', null);
-                            const didMove = Array.isArray(startPoints) && Array.isArray(itemDrawing.points)
-                                && itemDrawing.points.some((p, i) => {
-                                    const s = startPoints[i];
-                                    return !s || p.x !== s.x || p.y !== s.y;
-                                });
-                            if (didMove && self.history && before) {
-                                self.history.recordModify(itemDrawing, before);
-                            }
-                            if (didMove) {
-                                self._refreshDrawingTimestampAnchors(itemDrawing);
-                                if (typeof itemDrawing.recalculateTimestamps === 'function') {
-                                    itemDrawing.recalculateTimestamps();
-                                }
-                                self.renderDrawing(itemDrawing);
-                                if (itemDrawing.selected && typeof itemDrawing.showAxisHighlights === 'function') {
-                                    itemDrawing.showAxisHighlights();
-                                }
-                            }
-                        };
-
-                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                            multiDragStartPoints.forEach((item) => {
-                                finalizeTextBodyDrag(item.drawing, item.points, item.beforeState);
-                            });
-                            multiDragStartPoints = null;
-                        } else if (dragStartPoints) {
-                            finalizeTextBodyDrag(drawing, dragStartPoints, beforeState);
-                            beforeState = null;
-                        }
-
-                        dragStartPoints = null;
-                        startDataPoint = null;
-                        bodyDragStartScreen = null;
-                        bodyDragStartTransform = null;
-                        self.saveDrawings();
-                        const index = self.drawings.indexOf(drawing);
-                        if (self.chart.broadcastDrawingChange && index > -1) {
-                            self.chart.broadcastDrawingChange('update', drawing, index);
-                        }
-                        return;
                     }
 
                     // Record modification for undo/redo
@@ -5397,6 +5360,10 @@ class DrawingToolsManager {
                     startDataPoint = null;
                     bodyDragStartScreen = null;
                     bodyDragStartTransform = null;
+                    if (textBodyDragOverflowActive) {
+                        textBodyDragOverflowActive = false;
+                        self._endDrawingLiveInteraction();
+                    }
                     self.saveDrawings();
                     
                     // Broadcast update to other panels
@@ -6247,8 +6214,9 @@ class DrawingToolsManager {
      */
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
-        this._useLiveGeometryDrag = true;
-        this._beginDrawingLiveInteraction();
+        if (this._isTextDrawingType(drawing.type)) {
+            this._beginDrawingLiveInteraction();
+        }
         this.isDragging = true;
         this.draggingDrawing = drawing;
         this.dragStartPoint = this.getDataPoint(event);
@@ -6307,36 +6275,6 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
-        if (this._useLiveGeometryDrag) {
-            const finalize = (drawing) => {
-                if (!drawing) return;
-                if (drawing.group) drawing.group.attr('transform', null);
-                drawing.meta.updatedAt = Date.now();
-                this._refreshDrawingTimestampAnchors(drawing);
-                this.renderDrawing(drawing);
-            };
-            if (this.draggingMultiple && this.multiDragStartPositions) {
-                this.multiDragStartPositions.forEach(({ drawing }) => finalize(drawing));
-            } else {
-                finalize(this.draggingDrawing);
-            }
-            this._useLiveGeometryDrag = false;
-            this._endDrawingLiveInteraction();
-            this.isDragging = false;
-            this.draggingDrawing = null;
-            this.dragStartPoint = null;
-            this.dragStartScreen = null;
-            this.dragStartOriginalPos = null;
-            this.draggingMultiple = false;
-            this.multiDragStartPositions = null;
-            this.singleDragStartPoints = null;
-            const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
-            if (canvas) canvas.style.cursor = '';
-            this.svg.style('cursor', '');
-            this.saveDrawings();
-            return;
-        }
-
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };

@@ -8388,9 +8388,15 @@ const TalariaV8bLive = () => {
   const tlSettOpenRef = useRef(false);
   /** Chart click dismissed settings only — keep shape selected + quick bar; skip prevTool restore. */
   const v9DismissSettingsKeepSelectionRef = useRef(false);
+  const txtSettOpenRef = useRef(false);
+  const vwapSettOpenRef = useRef(false);
+  const vpSettOpenRef = useRef(false);
+  const avSettOpenRef = useRef(false);
+  const indSettOpenRef = useRef(false);
+  const v9AnyDrawingSettingsOpenRef = useRef(false);
+  const v9SettingsChartDismissLockUntilRef = useRef(0);
   const v9LastSelectedDrawingTypeRef = useRef(null);
   const [tlSettOpen, setTlSettOpen] = useState(false);
-  tlSettOpenRef.current = tlSettOpen;
   const [tlSettPos, setTlSettPos] = useState({ x: 200, y: 90 });
   const [tlName, setTlName] = useState("Trend Line");
   const [tlNameEditing, setTlNameEditing] = useState(false);
@@ -8634,6 +8640,15 @@ const TalariaV8bLive = () => {
   });
   const [indSettOpen, setIndSettOpen] = useState(false);
   const [indSettPos, setIndSettPos] = useState({ x: 120, y: 80 });
+  tlSettOpenRef.current = tlSettOpen;
+  txtSettOpenRef.current = txtSettOpen;
+  vwapSettOpenRef.current = vwapSettOpen;
+  vpSettOpenRef.current = vpSettOpen;
+  avSettOpenRef.current = avSettOpen;
+  indSettOpenRef.current = indSettOpen;
+  v9AnyDrawingSettingsOpenRef.current = !!(
+    tlSettOpen || txtSettOpen || vwapSettOpen || vpSettOpen || avSettOpen || indSettOpen
+  );
   const [indSettTab, setIndSettTab] = useState("style");
   const [indSettDraft, setIndSettDraft] = useState({});
   /** Open V9 indicator settings dropdown + viewport anchor (fixed layer avoids overflow clipping). */
@@ -9939,8 +9954,12 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "indsett"]));
     setTimeout(() => { setIndSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("indsett"); return n; }); }, 155);
   };
-  const closeDrawingSettingsOnChartClickRef = useRef(() => {});
+  const closeDrawingSettingsOnChartClickRef = useRef(() => false);
   const v9SuppressNextChartDeselect = () => {
+    const until = Date.now() + 700;
+    if (typeof window !== "undefined") {
+      window.__v9SuppressToolbarHideUntil = until;
+    }
     try {
       const charts = [];
       if (typeof window.getActiveChart === "function") {
@@ -9958,30 +9977,144 @@ const TalariaV8bLive = () => {
       charts.forEach((ch) => {
         const dm = ch && ch.drawingManager;
         if (dm && typeof dm.suppressNextCanvasBackgroundClick === "function") {
-          dm.suppressNextCanvasBackgroundClick();
+          dm.suppressNextCanvasBackgroundClick(700);
         }
       });
     } catch (_) {}
   };
+  const dismissTlSettOnChartKeepSelection = () => {
+    if (!tlSettOpenRef.current) return;
+    try { v9StyleBridgeFlushRef.current?.(); } catch (_) {}
+    cpPickerDraggingRef.current = false;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setTlSettTplDrop(false);
+    setTlSaveAsMode(false);
+    setTlNewTplName("");
+    setTlStyleDrop(null);
+    setClosing((s) => {
+      const n = new Set(s);
+      n.delete("cp");
+      n.add("tlsett");
+      return n;
+    });
+    flushSync(() => setTlSettOpen(false));
+    tlSettOpenRef.current = false;
+    v9AnyDrawingSettingsOpenRef.current = !!(
+      txtSettOpenRef.current || vwapSettOpenRef.current || vpSettOpenRef.current
+      || avSettOpenRef.current || indSettOpenRef.current
+    );
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("tlsett");
+        return n;
+      });
+    }, 105);
+  };
+  const dismissTxtSettOnChartKeepSelection = () => {
+    if (!txtSettOpenRef.current) return;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing((s) => new Set([...s, "txtsett"]));
+    setTxtSizeOpen(false);
+    setTxtBarSizeOpen(false);
+    setTxtBarDrop(null);
+    flushSync(() => setTxtSettOpen(false));
+    txtSettOpenRef.current = false;
+    v9AnyDrawingSettingsOpenRef.current = !!(
+      tlSettOpenRef.current || vwapSettOpenRef.current || vpSettOpenRef.current
+      || avSettOpenRef.current || indSettOpenRef.current
+    );
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("txtsett");
+        return n;
+      });
+    }, 155);
+  };
+  const dismissVwapSettOnChartKeepSelection = () => {
+    if (!vwapSettOpenRef.current) return;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing((s) => new Set([...s, "vwapsett"]));
+    setVwapStyleDrop(null);
+    flushSync(() => setVwapSettOpen(false));
+    vwapSettOpenRef.current = false;
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("vwapsett");
+        return n;
+      });
+    }, 155);
+  };
+  const dismissVpSettOnChartKeepSelection = () => {
+    if (!vpSettOpenRef.current) return;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing((s) => new Set([...s, "vpsett"]));
+    setVpStyleDrop(null);
+    flushSync(() => setVpSettOpen(false));
+    vpSettOpenRef.current = false;
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("vpsett");
+        return n;
+      });
+    }, 155);
+  };
+  const dismissAvSettOnChartKeepSelection = () => {
+    if (!avSettOpenRef.current) return;
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing((s) => new Set([...s, "avsett"]));
+    setAvStyleDrop(null);
+    flushSync(() => setAvSettOpen(false));
+    avSettOpenRef.current = false;
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("avsett");
+        return n;
+      });
+    }, 155);
+  };
+  const dismissIndSettOnChartKeepSelection = () => {
+    if (!indSettOpenRef.current) return;
+    setV9IndSelectMenu(null);
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setClosing((s) => new Set([...s, "indsett"]));
+    flushSync(() => setIndSettOpen(false));
+    indSettOpenRef.current = false;
+    setTimeout(() => {
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("indsett");
+        return n;
+      });
+    }, 155);
+  };
   closeDrawingSettingsOnChartClickRef.current = () => {
-    const anyOpen =
-      tlSettOpenRef.current ||
-      txtSettOpen ||
-      vwapSettOpen ||
-      vpSettOpen ||
-      avSettOpen ||
-      indSettOpen;
-    if (!anyOpen) return false;
+    const now = Date.now();
+    if (now < v9SettingsChartDismissLockUntilRef.current) return false;
+    if (!v9AnyDrawingSettingsOpenRef.current) return false;
+
+    v9SettingsChartDismissLockUntilRef.current = now + 700;
     v9DismissSettingsKeepSelectionRef.current = true;
     v9SuppressNextChartDeselect();
-    try {
-      if (tlSettOpenRef.current) confirmTlSett();
-      if (txtSettOpen) confirmTxtSett();
-      if (vwapSettOpen) closeVwapSett();
-      if (vpSettOpen) closeVpSett();
-      if (avSettOpen) closeAvSett();
-      if (indSettOpen) closeIndSett();
-    } catch (_) {}
+
+    dismissTlSettOnChartKeepSelection();
+    dismissTxtSettOnChartKeepSelection();
+    dismissVwapSettOnChartKeepSelection();
+    dismissVpSettOnChartKeepSelection();
+    dismissAvSettOnChartKeepSelection();
+    dismissIndSettOnChartKeepSelection();
+
+    v9AnyDrawingSettingsOpenRef.current = false;
     return true;
   };
   closeOthersForIndSettRef.current = () => {
@@ -10398,7 +10531,28 @@ const TalariaV8bLive = () => {
       const el = eventTargetEl(e);
       dismissColorPickerIfOutside(el);
     };
+    const tryDismissDrawingSettingsOnChart = (e) => {
+      const el = eventTargetEl(e);
+      if (!el) return false;
+      try {
+        const ae = document.activeElement;
+        if (ae && ae.tagName === "SELECT" && typeof ae.closest === "function" && ae.closest("[data-v9-ind-sett=\"1\"]")) {
+          return false;
+        }
+      } catch (_) {}
+      if (!isOutsideUiChrome(el)) return false;
+      const onChartSurface =
+        el.closest("#chart-container") ||
+        el.closest("#panels-container");
+      if (!onChartSurface) return false;
+      return closeDrawingSettingsOnChartClickRef.current?.() === true;
+    };
+    const chartSettingsDismissCapture = (e) => {
+      if (!e || e.button !== 0) return;
+      tryDismissDrawingSettingsOnChart(e);
+    };
     const chromeMouseHandler = (e) => {
+      if (Date.now() < v9SettingsChartDismissLockUntilRef.current) return;
       const el = eventTargetEl(e);
       if (!el) return;
       // Native <select> lists can deliver mousedown outside the portal subtree; never treat that as
@@ -10411,6 +10565,15 @@ const TalariaV8bLive = () => {
       // clear tlBar on first press ("needs many taps").
       if (!isOutsideUiChrome(el)) return;
 
+      if (tryDismissDrawingSettingsOnChart(e)) {
+        setTlBarDrop(null);
+        setTlSaveAsMode(false);
+        setTlNewTplName("");
+        setVwapBarDrop(null);
+        setTlSettTplDrop(false);
+        return;
+      }
+
       setTlBarDrop(null);
       setTlSaveAsMode(false);
       setTlNewTplName("");
@@ -10420,12 +10583,6 @@ const TalariaV8bLive = () => {
         el.closest("#chart-container") ||
         el.closest("#panels-container");
       if (!onChartSurface) return;
-
-      const closedSettingsOnly = closeDrawingSettingsOnChartClickRef.current?.();
-      if (closedSettingsOnly) {
-        setTlSettTplDrop(false);
-        return;
-      }
 
       try { closeAllRef.current?.(); } catch (_) {}
       setTlSettTplDrop(false);
@@ -10438,10 +10595,12 @@ const TalariaV8bLive = () => {
       setSettDrop(null);
     };
     document.addEventListener("pointerdown", dismissPointerHandler, false);
+    document.addEventListener("pointerdown", chartSettingsDismissCapture, true);
     document.addEventListener("mousedown", chromeMouseHandler, false);
     document.addEventListener("wheel", scrollHandler, { passive: true });
     return () => {
       document.removeEventListener("pointerdown", dismissPointerHandler, false);
+      document.removeEventListener("pointerdown", chartSettingsDismissCapture, true);
       document.removeEventListener("mousedown", chromeMouseHandler, false);
       document.removeEventListener("wheel", scrollHandler);
     };
@@ -13976,6 +14135,7 @@ const TalariaV8bLive = () => {
         setTool("crosshair");
 
         if (dropdown) closeDropdown();
+        v9SettingsChartDismissLockUntilRef.current = 0;
         if (group === 'text') {
           closeIndSett();
           setTxtSettPos({ x: px, y: py });
@@ -14016,6 +14176,7 @@ const TalariaV8bLive = () => {
           setAvSettTab("style");
         } else {
           closeIndSett();
+          v9SettingsChartDismissLockUntilRef.current = 0;
           flushSync(() => {
             setTlBarSelected(true);
             setTlBarSelectedType(drawing.type);
@@ -14392,6 +14553,12 @@ const TalariaV8bLive = () => {
       };
       tb.hide = function () {
         try {
+          if (typeof window !== "undefined") {
+            const until = Number(window.__v9SuppressToolbarHideUntil || 0);
+            if (until > 0 && Date.now() <= until) {
+              return origHide ? origHide() : undefined;
+            }
+          }
           const br = v9ToolbarBridgeActRef.current;
           br.setTlBarSelected(false);
           br.setTlBarSelectedType(null);
