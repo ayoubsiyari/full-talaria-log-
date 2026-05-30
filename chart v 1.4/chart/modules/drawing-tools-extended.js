@@ -1296,6 +1296,10 @@ class ArcTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing arc', renderOpts);
         this._clearDrawingLabels(scales);
 
+        if (renderOpts.isPreview) {
+            this._needsScreenOffset = true;
+        }
+
         this._applyScreenSpaceBend(scales);
 
         const p1 = this.points[0];

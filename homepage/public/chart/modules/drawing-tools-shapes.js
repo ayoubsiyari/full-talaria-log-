@@ -79,6 +79,29 @@ function getRectanglePlotHorizontalBounds(scales) {
     return { left: plotLeft, right: plotLeft + 1 };
 }
 
+/** Extend a segment to plot horizontal edges (dataIndexToPixel space). */
+function extendSegmentToPlotHorizontalEdges(x1, y1, x2, y2, scales, extendLeft, extendRight) {
+    if (!extendLeft && !extendRight) return { x1, y1, x2, y2 };
+    const bounds = getRectanglePlotHorizontalBounds(scales);
+    let outX1 = x1;
+    let outY1 = y1;
+    let outX2 = x2;
+    let outY2 = y2;
+    const dx = x2 - x1;
+    if (Math.abs(dx) < 1e-9) return { x1: outX1, y1: outY1, x2: outX2, y2: outY2 };
+    const slope = (y2 - y1) / dx;
+    const yAt = (x) => y1 + slope * (x - x1);
+    if (extendLeft) {
+        outX1 = bounds.left;
+        outY1 = yAt(bounds.left);
+    }
+    if (extendRight) {
+        outX2 = bounds.right;
+        outY2 = yAt(bounds.right);
+    }
+    return { x1: outX1, y1: outY1, x2: outX2, y2: outY2 };
+}
+
 /** Apply rectangle extend-left/right in pixel space (same coords as dataIndexToPixel). */
 function applyRectangleHorizontalExtend(x1, x2, scales, style) {
     if (!style || (!isRectangleExtendOn(style, 'extendLeft') && !isRectangleExtendOn(style, 'extendRight'))) {
@@ -109,6 +132,22 @@ function shapeBorderVisible(style) {
     return !style || style.borderEnabled !== false;
 }
 
+/** Effective border stroke props (V9 uses borderColor/borderDasharray/borderWidth). */
+function resolveShapeBorderDrawStyle(style, scaleFactor = 1) {
+    const rawWidth = style && style.borderWidth != null && style.borderWidth !== ''
+        ? style.borderWidth
+        : (style && style.strokeWidth);
+    const baseWidth = parseFloat(rawWidth);
+    const width = Math.max(0.5, (Number.isFinite(baseWidth) ? baseWidth : 1) * scaleFactor);
+    const stroke = (style && style.borderColor && style.borderColor !== 'none')
+        ? style.borderColor
+        : (style && style.stroke ? style.stroke : '#787b86');
+    const dash = style && style.borderDasharray != null && style.borderDasharray !== undefined
+        ? style.borderDasharray
+        : (style && (style.strokeDasharray || style.dashArray || ''));
+    return { stroke, width, dash };
+}
+
 /**
  * Append visible border + transparent hit-stroke lines for shape edges.
  * @param {d3.Selection} group
@@ -121,6 +160,7 @@ function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts
     const respectBorderToggle = opts.respectBorderToggle !== false;
     const borderOn = respectBorderToggle ? shapeBorderVisible(style) : true;
     const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
+    const borderStyle = resolveShapeBorderDrawStyle(style, scaledStrokeWidth / Math.max(0.5, parseFloat(style.strokeWidth) || 1));
 
     edges.forEach((edge) => {
         if (borderOn) {
@@ -130,12 +170,12 @@ function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts
                 .attr('y1', edge.y1)
                 .attr('x2', edge.x2)
                 .attr('y2', edge.y2)
-                .attr('stroke', style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', style.strokeDasharray || '')
+                .attr('stroke', borderStyle.stroke)
+                .attr('stroke-width', borderStyle.width)
+                .attr('stroke-dasharray', borderStyle.dash)
                 .attr('opacity', style.opacity)
                 .attr('data-edge', edge.name || '')
-                .attr('data-original-width', style.strokeWidth)
+                .attr('data-original-width', style.borderWidth != null ? style.borderWidth : style.strokeWidth)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
         }
@@ -166,6 +206,7 @@ function appendShapeBorderPolylineLines(group, polyPts, style, scaledStrokeWidth
     const closed = opts.closed !== false;
     const borderOn = shapeBorderVisible(style);
     const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
+    const borderStyle = resolveShapeBorderDrawStyle(style, scaledStrokeWidth / Math.max(0.5, parseFloat(style.strokeWidth) || 1));
     const n = polyPts.length;
     if (n < 2) return;
 
@@ -181,11 +222,11 @@ function appendShapeBorderPolylineLines(group, polyPts, style, scaledStrokeWidth
                 .attr('y1', pA.y)
                 .attr('x2', pB.x)
                 .attr('y2', pB.y)
-                .attr('stroke', style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', style.strokeDasharray || '')
+                .attr('stroke', borderStyle.stroke)
+                .attr('stroke-width', borderStyle.width)
+                .attr('stroke-dasharray', borderStyle.dash)
                 .attr('opacity', style.opacity)
-                .attr('data-original-width', style.strokeWidth)
+                .attr('data-original-width', style.borderWidth != null ? style.borderWidth : style.strokeWidth)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
         }
@@ -437,7 +478,13 @@ class RectangleTool extends BaseDrawing {
 
         // Middle line after handles so it paints above fill/border; thin strokes were easy to miss under side handles.
         const middleLineOn = shapeMiddleLineEnabled(this.style);
-        if (middleLineOn) {
+        const hasText = !!(this.text && this.text.trim());
+        let textPosition = (this.style.textVAlign || this.style.textPosition || 'middle').toLowerCase();
+        if (textPosition === 'start') textPosition = 'top';
+        if (textPosition === 'end') textPosition = 'bottom';
+        if (textPosition === 'center') textPosition = 'middle';
+        const skipMidLineForText = hasText && textPosition === 'middle';
+        if (middleLineOn && !skipMidLineForText) {
             const midLineColor = this.style.middleLineColor || '#2962FF';
             const midLineWidth = Math.max(0.5, (this.style.middleLineWidth || 1) * scaleFactor);
             const midLineDash = this.style.middleLineDash || '';
@@ -717,15 +764,18 @@ class RectangleTool extends BaseDrawing {
 
         let topY;
         let useMiddleBaseline = false;
-        const textMargin = 5;
+        const externalGap = Math.max(
+            Number.isFinite(this.style.textPadding) ? Math.min(this.style.textPadding, 12) : 5,
+            fontSize * 0.35
+        );
         switch (position) {
             case 'top':
-                // Position text ABOVE the rectangle (outside)
-                topY = y - blockHeight - textMargin;
+                // Position text ABOVE the rectangle (outside); bottom of block sits `externalGap` above top edge.
+                topY = y - externalGap - blockHeight;
                 break;
             case 'bottom':
-                // Position text BELOW the rectangle (outside)
-                topY = y + height + textMargin;
+                // Position text BELOW the rectangle (outside); top of block sits `externalGap` below bottom edge.
+                topY = y + height + externalGap;
                 break;
             default:
                 // Middle — anchor on horizontal midline (y + height/2).
@@ -921,6 +971,11 @@ class EllipseTool extends BaseDrawing {
             if (hg.empty()) return;
             hg.selectAll('circle').attr('cx', pos.x).attr('cy', pos.y);
         });
+    }
+
+    /** Live-resize path in drawing-tools-manager calls `_syncBoxHandlePositions`. */
+    _syncBoxHandlePositions(group, scales) {
+        this._syncEllipseHandlePositions(group, scales);
     }
 
     /**
@@ -1124,14 +1179,15 @@ class TriangleTool extends BaseDrawing {
             // Two points - show a line (first edge of triangle)
             const p1 = this.points[0];
             const p2 = this.points[1];
+            const borderStyle = resolveShapeBorderDrawStyle(this.style, scaleFactor);
             this.group.append('line')
                 .attr('x1', getX(p1))
                 .attr('y1', scales.yScale(p1.y))
                 .attr('x2', getX(p2))
                 .attr('y2', scales.yScale(p2.y))
-                .attr('stroke', this.style.stroke)
-                .attr('stroke-width', scaledStrokeWidth)
-                .attr('stroke-dasharray', this.style.strokeDasharray || null)
+                .attr('stroke', borderStyle.stroke)
+                .attr('stroke-width', borderStyle.width)
+                .attr('stroke-dasharray', borderStyle.dash || null)
                 .attr('opacity', this.style.opacity);
             
             // Show dots at endpoints
@@ -1140,7 +1196,7 @@ class TriangleTool extends BaseDrawing {
                     .attr('cx', getX(p))
                     .attr('cy', scales.yScale(p.y))
                     .attr('r', 4 * scaleFactor)
-                    .attr('fill', this.style.stroke)
+                    .attr('fill', borderStyle.stroke)
                     .attr('opacity', this.style.opacity);
             });
             return this.group;
@@ -1170,7 +1226,7 @@ class TriangleTool extends BaseDrawing {
             { x1: pts[1].x, y1: pts[1].y, x2: pts[2].x, y2: pts[2].y, name: 'edge2' },
             { x1: pts[2].x, y1: pts[2].y, x2: pts[0].x, y2: pts[0].y, name: 'edge3' }
         ];
-        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth, { respectBorderToggle: false });
+        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
 
         // Create resize handles at vertices
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -1293,30 +1349,16 @@ class ArrowTool extends BaseDrawing {
             if (Math.abs(extDx) < 0.5 && Math.abs(extDy) < 0.5) return;
             appendVisibleShaft(origX2, origY2, x2, y2);
         };
+
+        // Extend line to plot edges when requested (same pixel space as dataIndexToPixel).
+        if (this.style.extendLeft || this.style.extendRight) {
+            ({ x1, y1, x2, y2 } = extendSegmentToPlotHorizontalEdges(
+                origX1, origY1, origX2, origY2, scales,
+                !!this.style.extendLeft, !!this.style.extendRight
+            ));
+        }
         const shaftStartX = this.style.extendLeft ? x1 : origX1;
         const shaftStartY = this.style.extendLeft ? y1 : origY1;
-        
-        // Extend line if needed
-        if (this.style.extendLeft || this.style.extendRight) {
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            
-            if (length > 0) {
-                const dirX = dx / length;
-                const dirY = dy / length;
-                const extendLength = 10000;
-                
-                if (this.style.extendLeft) {
-                    x1 = x1 - dirX * extendLength;
-                    y1 = y1 - dirY * extendLength;
-                }
-                if (this.style.extendRight) {
-                    x2 = x2 + dirX * extendLength;
-                    y2 = y2 + dirY * extendLength;
-                }
-            }
-        }
 
         // Fill hit area (interactive) - allows select/move/hover by fill (wide band around the line)
         {
@@ -1685,10 +1727,19 @@ class ArrowTool extends BaseDrawing {
 
         const sh_mP1IsLeft = origX1 <= origX2;
         let t = 0.5;
+        let anchor = 'middle';
         switch (textHAlign) {
-            case 'left':  t = sh_mP1IsLeft ? 0.05 : 0.95; break;
-            case 'right': t = sh_mP1IsLeft ? 0.95 : 0.05; break;
-            default:      t = 0.5;
+            case 'left':
+                t = sh_mP1IsLeft ? 0 : 1;
+                anchor = sh_mP1IsLeft ? 'start' : 'end';
+                break;
+            case 'right':
+                t = sh_mP1IsLeft ? 1 : 0;
+                anchor = sh_mP1IsLeft ? 'end' : 'start';
+                break;
+            default:
+                t = 0.5;
+                anchor = 'middle';
         }
         
         const angleRad_sh = Math.atan2(origY2 - origY1, origX2 - origX1);
@@ -1709,7 +1760,7 @@ class ArrowTool extends BaseDrawing {
         appendTextLabel(this.group, label, {
             x: baseX + (this.style.textOffsetX || 0),
             y: baseY + offY,
-            anchor: 'middle',
+            anchor,
             fill: this.style.textColor || this.style.stroke,
             fontSize: this.style.fontSize || 14,
             fontFamily: this.style.fontFamily || 'Roboto, sans-serif',

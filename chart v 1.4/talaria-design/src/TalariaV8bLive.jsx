@@ -191,21 +191,8 @@ function v9ArrowMarkDefaultColorForLegacy(legacy) {
   if (legacy === "arrow-mark-down") return V9_ARROW_MARK_DOWN_COLOR;
   return null;
 }
-/** Floating bar `tl-bgcol` drives fill + outline for arrow marks (enabled by default). */
-function v9TlStyleWithArrowMarkSyncedColor(prev, colorVal) {
-  return {
-    ...prev,
-    bgColor: colorVal,
-    lineColor: colorVal,
-    borderColor: colorVal,
-    showBg: true,
-    showBorder: true,
-  };
-}
 function v9ApplyTlBgColorToStyle(prev, colorVal, subToolIcon, chartDrawingType) {
-  return v9IsArrowMarkUiActive(subToolIcon, chartDrawingType)
-    ? v9TlStyleWithArrowMarkSyncedColor(prev, colorVal)
-    : { ...prev, bgColor: colorVal };
+  return { ...prev, bgColor: colorVal };
 }
 function v9TlLineColorSupportsOpacity(subToolIcon, chartDrawingType) {
   if (["draw", "brush"].includes(subToolIcon)) return true;
@@ -705,8 +692,8 @@ function v9SanitizeGroupSelected(prev) {
 }
 
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
-  const show = !!tlStyle?.showInfo;
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
+  const show = !!tlStyle?.showInfo && types.length > 0;
   const info = {
     showInfo: show,
     priceRange: false,
@@ -722,9 +709,6 @@ function v9ChartInfoSettingsFromTlStyle(tlStyle) {
     const prop = V9_INFO_LABEL_TO_PROP[label];
     if (prop) info[prop] = true;
   });
-  if (show && types.length === 0) {
-    info.priceRange = true;
-  }
   return info;
 }
 
@@ -856,7 +840,7 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
       : { fill: "none", backgroundColor: "transparent" };
   }
   if (pickerKey === "tlTextColor" && tlStyle.textColor) {
-    return { textColor: tlStyle.textColor, fill: tlStyle.textColor };
+    return { textColor: tlStyle.textColor };
   }
   if (pickerKey === "tlLabelColor" && tlStyle.labelColor) {
     return { labelColor: tlStyle.labelColor };
@@ -1470,12 +1454,11 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
   }
   if (legacyTool && v9IsArrowMarkChartType(legacyTool)) {
     const borderOn = tlStyle.showBorder !== false;
-    const fillColor =
-      tlStyle.bgColor ||
-      tlStyle.lineColor ||
+    const fallback =
       v9ArrowMarkDefaultColorForLegacy(legacyTool) ||
       V9_ARROW_MARK_DOWN_COLOR;
-    const outline = tlStyle.borderColor || fillColor;
+    const fillColor = tlStyle.bgColor || fallback;
+    const outline = tlStyle.borderColor || tlStyle.lineColor || fallback;
     patch.showBackground = shapeBgOn;
     patch.fill = shapeBgOn ? fillColor : "none";
     patch.borderEnabled = borderOn;
@@ -4713,11 +4696,11 @@ function v9TlStylePatchFromDrawing(d) {
       ? (() => {
           const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
           const show =
-            s.infoSettings.showInfo === true ||
-            (types.length > 0 && s.infoSettings.showInfo !== false);
+            types.length > 0 &&
+            (s.infoSettings.showInfo === true || s.infoSettings.showInfo !== false);
           return {
             showInfo: show,
-            showInfoTypes: types.length > 0 ? types : ['Price range'],
+            showInfoTypes: types,
           };
         })()
       : {}),
@@ -5086,12 +5069,24 @@ function v9TlStylePatchFromDrawing(d) {
       : {}),
     ...(v9IsArrowMarkChartType(d.type)
       ? (() => {
-          const c =
+          const fallback =
+            d.type === "arrow-mark-up"
+              ? V9_ARROW_MARK_UP_COLOR
+              : d.type === "arrow-mark-down"
+                ? V9_ARROW_MARK_DOWN_COLOR
+                : "#2962FF";
+          const bg =
             (s.fill && s.fill !== "none" && s.fill !== "transparent")
               ? s.fill
+              : undefined;
+          const outline =
+            (s.borderColor && s.borderColor !== "none")
+              ? s.borderColor
               : (s.stroke && s.stroke !== "none" ? s.stroke : undefined);
-          if (!c) return {};
-          return { lineColor: c, bgColor: c, borderColor: s.borderColor || c };
+          return {
+            ...(bg ? { bgColor: bg } : {}),
+            ...(outline ? { borderColor: outline, lineColor: outline } : {}),
+          };
         })()
       : {}),
     ...v9CoordPatchFromDrawing(d),
