@@ -4577,6 +4577,8 @@ function v9FibSubtypeDefaultTlStyleFields(legacyType) {
       fibBgOpacity: 0.12,
       fibLineWidth: "1",
       fibLineType: "solid",
+      lineColor: V9_DEFAULT_TL_LINE_COLOR,
+      lineWidth: "1",
     };
   }
   if (legacyType === "fib-arcs") {
@@ -5718,8 +5720,17 @@ function v9ApplyDrawingTemplate(drawing, templateId) {
 function v9BuildDefaultTlStyleForDrawingType(type) {
   if (!type) return null;
   const toolDefaults = v9DefaultArmedStyleForLegacyTool(type);
+  const fibLevelsDefault = v9DefaultFibLevelsTlForLegacy(type);
   return v9EnsureTlStyleArrays(
-    { ...v9FreshTlStyleDefaults(), ...toolDefaults, ...v9GannDefaultTlStyleFields(type), ...v9FibSubtypeDefaultTlStyleFields(type) },
+    {
+      ...v9FreshTlStyleDefaults(),
+      ...toolDefaults,
+      ...v9GannDefaultTlStyleFields(type),
+      ...v9FibSubtypeDefaultTlStyleFields(type),
+      ...(fibLevelsDefault.length
+        ? { fibLevels: fibLevelsDefault.map((r) => ({ ...r })) }
+        : {}),
+    },
     null,
     type,
   );
@@ -12914,16 +12925,13 @@ const TalariaV8bLive = () => {
     },
   });
 
-  /** Style/thickness dropdown menu item. */
+  /** Style/thickness dropdown menu item — apply on pointerdown for immediate chart sync. */
   const tlStyleDropPick = (pickFn) => ({
     "data-tl-style-drop": "1",
-    onPointerDown: (e) => e.stopPropagation(),
-    onMouseDown: (e) => e.stopPropagation(),
-    onClick: (e) => {
-      e.stopPropagation();
+    ...modalPointerActivate(() => {
       pickFn();
       setTlStyleDrop(null);
-    },
+    }),
   });
 
   const Sel = ({ children, w }) => (
@@ -15587,10 +15595,57 @@ const TalariaV8bLive = () => {
 
   /** Fib levels line thickness — first-click chart sync. */
   const applyTlFibLineWidth = useCallback((fibLineWidth) => {
-    flushSync(() => setTlStyle((s) => ({ ...s, fibLineWidth })));
-    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
-      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-      resolveLegacyTool,
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, fibLineWidth };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  /** Fib levels line style — first-click chart sync. */
+  const applyTlFibLineType = useCallback((fibLineType) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, fibLineType };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  /** Fib wedge/arcs/circles Input-tab level rows — immediate chart sync. */
+  const applyTlFibLevelsPatch = useCallback((subToolIcon, rowMapper) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = v9PatchFibLevelsInStyle(s, subToolIcon, rowMapper);
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  /** Fib wedge/arcs Input-tab trend STYLE + THICKNESS — immediate chart sync. */
+  const applyTlFibTrendStyleField = useCallback((patch) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, ...patch };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
     });
   }, []);
 
@@ -18779,7 +18834,7 @@ const TalariaV8bLive = () => {
                           [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                             const isA=tlStyle.fibTimeTrendType===v; const isH=hov===`fibTTt-${v}`;
                             return (
-                              <div key={v} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibTimeTrendType:v})))}
+                              <div key={v} {...tlStyleDropPick(() => applyTlFibTrendStyleField({ fibTimeTrendType: v }))}
                                 onMouseEnter={()=>setHov(`fibTTt-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18809,7 +18864,7 @@ const TalariaV8bLive = () => {
                           ["1","2","3","4"].map(w=>{
                             const isA=tlStyle.fibTimeTrendWidth===w; const isH=hov===`fibTTw-${w}`;
                             return (
-                              <div key={w} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibTimeTrendWidth:w})))}
+                              <div key={w} {...tlStyleDropPick(() => applyTlFibTrendStyleField({ fibTimeTrendWidth: w }))}
                                 onMouseEnter={()=>setHov(`fibTTw-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18861,8 +18916,8 @@ const TalariaV8bLive = () => {
                             const isA=typeVal===v; const isH=hov===`${hkPfx}-${v}`;
                             return (
                               <div key={v} {...tlStyleDropPick(() => {
-                                if (isArcs) setTlStyle(s=>({...s,fibArcsTrendType:v}));
-                                else setTlStyle(s=>({...s,fibWedgeTrendType:v}));
+                                if (isArcs) applyTlFibTrendStyleField({ fibArcsTrendType: v });
+                                else applyTlFibTrendStyleField({ fibWedgeTrendType: v });
                               })}
                                 onMouseEnter={()=>setHov(`${hkPfx}-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
@@ -18894,8 +18949,8 @@ const TalariaV8bLive = () => {
                             const isA=widVal===w; const isH=hov===`${hkWPfx}-${w}`;
                             return (
                               <div key={w} {...tlStyleDropPick(() => {
-                                if (isArcs) setTlStyle(s=>({...s,fibArcsTrendWidth:w}));
-                                else setTlStyle(s=>({...s,fibWedgeTrendWidth:w}));
+                                if (isArcs) applyTlFibTrendStyleField({ fibArcsTrendWidth: w });
+                                else applyTlFibTrendStyleField({ fibWedgeTrendWidth: w });
                               })}
                                 onMouseEnter={()=>setHov(`${hkWPfx}-${w}`)} onMouseLeave={()=>setHov(null)}
                                 style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
@@ -18938,7 +18993,7 @@ const TalariaV8bLive = () => {
                       [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                         const isA=tlStyle.fibLineType===v; const isH=hov===`fiblt-${v}`;
                         return (
-                          <div key={v} {...tlStyleDropPick(() => setTlStyle(s=>({...s,fibLineType:v})))}
+                          <div key={v} {...tlStyleDropPick(() => applyTlFibLineType(v))}
                             onMouseEnter={()=>setHov(`fiblt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                      background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18997,7 +19052,7 @@ const TalariaV8bLive = () => {
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", gap:5 }}>
                         <div style={{ width:18, flexShrink:0 }}>
-                          {TlChk(lv.on, `tlchk-fib-${idx}`, "", ()=>setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.map((l,i)=>i===idx?{...l,on:!l.on}:l))))}
+                          {TlChk(lv.on, `tlchk-fib-${idx}`, "", () => applyTlFibLevelsPatch(fi, (rows) => rows.map((l, i) => (i === idx ? { ...l, on: !l.on } : l))), { immediate: true })}
                         </div>
                         <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                           <input value={lv.value}
@@ -19033,14 +19088,19 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* Add Level + Reset */}
                 <div style={{ display:"flex", gap:8, padding:"8px 0" }}>
-                  <div {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>[...rows,{on:true,value:(rows.length*0.1).toFixed(3).replace(/\.?0+$/,""),color:"#787B86"}])))}
+                  <div {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, (rows) => [
+                    ...rows,
+                    { on: true, value: (rows.length * 0.1).toFixed(3).replace(/\.?0+$/, ""), color: "#787B86" },
+                  ]))}
                     onMouseEnter={()=>setHov("fibAdd")} onMouseLeave={()=>setHov(null)}
                     style={{ flex:1, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibAdd"?c.hv2:"transparent",
                              transition:"background 0.1s" }}>
                     <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                   </div>
-                  <div {...modalPointerActivate(() => setTlStyle(s=>({...s, fibLevels: fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")})))}
+                  <div {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, () =>
+                    (fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")).map((l) => ({ ...l }))
+                  ))}
                     onMouseEnter={()=>setHov("fibReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibReset"?c.hv2:"transparent",
