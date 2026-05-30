@@ -997,6 +997,15 @@ class DrawingToolsManager {
         let clipY = m.t;
         let clipW = w - m.l - m.r;
         let clipH = h - m.t - m.b;
+        // Price-note pills render inside the clipped drawings layer; extend clip into the
+        // price-axis column so the label stays visible (without a separate labelsGroup split).
+        const axisLeft = !!this.chart.priceAxisLeft;
+        if (axisLeft) {
+            clipX = 0;
+            clipW = w - m.r;
+        } else {
+            clipW = w - m.l;
+        }
         if (panPadding) {
             const padL = Math.max(0, Number(panPadding.left) || 0);
             const padR = Math.max(0, Number(panPadding.right) || 0);
@@ -5399,11 +5408,6 @@ class DrawingToolsManager {
                 });
 
         dragElements.call(bodyDrag);
-        if (drawing.type === 'price-note' && self.labelsGroup && !self.labelsGroup.empty()) {
-            const labelHits = self.labelsGroup.selectAll(`[data-id="${drawing.id}"] .shape-border-hit`);
-            labelHits.on('.drag', null);
-            labelHits.call(bodyDrag);
-        }
 
         this._setupGannLevelDrag(drawing);
     }

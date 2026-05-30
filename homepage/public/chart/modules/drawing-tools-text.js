@@ -2037,14 +2037,7 @@ class PriceNoteTool extends BaseDrawing {
         lineEl.attr('x2', lineEndX).attr('y2', lineEndY);
         lineHitEl.attr('x2', lineEndX).attr('y2', lineEndY);
 
-        const labelsGroup = scales && scales.labelsGroup;
-        const labelHost = (labelsGroup && !labelsGroup.empty()) ? labelsGroup : this.group;
-        const labelRoot = labelHost.append('g')
-            .attr('data-id', this.id)
-            .attr('class', 'price-note-label-layer')
-            .style('pointer-events', 'none');
-
-        const labelGroup = labelRoot.append('g')
+        const labelGroup = this.group.append('g')
             .attr('class', 'price-note-label')
             .attr('transform', `translate(${labelX},${labelY})`);
 
