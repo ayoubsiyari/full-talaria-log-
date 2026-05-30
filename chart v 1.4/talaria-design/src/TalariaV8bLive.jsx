@@ -5351,6 +5351,77 @@ function v9DeepCloneJson(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/** Deep snapshot of chart drawing state when the V9 settings panel opens (Cancel restores this). */
+function v9SnapshotDrawingForEdit(d) {
+  if (!d) return null;
+  return {
+    style: v9DeepCloneJson(d.style) || {},
+    levels: d.levels !== undefined ? v9DeepCloneJson(d.levels) : undefined,
+    points: Array.isArray(d.points) ? v9DeepCloneJson(d.points) : undefined,
+    text: d.text,
+    visibility: d.visibility !== undefined ? v9DeepCloneJson(d.visibility) : undefined,
+  };
+}
+
+function v9RestoreDrawingFromEditSnapshot(d, snap, dm) {
+  if (!d || !snap) return;
+  d.style = v9DeepCloneJson(snap.style) || {};
+  if (snap.levels !== undefined) {
+    d.levels = v9DeepCloneJson(snap.levels);
+  } else if (Object.prototype.hasOwnProperty.call(d, "levels")) {
+    delete d.levels;
+  }
+  if (snap.points) {
+    d.points = v9DeepCloneJson(snap.points);
+  }
+  if (snap.text !== undefined) {
+    d.text = snap.text;
+    try {
+      if (typeof d.setText === "function") d.setText(d.text);
+    } catch (_) {}
+  }
+  if (snap.visibility !== undefined) {
+    d.visibility = v9DeepCloneJson(snap.visibility);
+  }
+  if (d.group) d.group = null;
+  const tb = dm && dm.toolbar;
+  try {
+    if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
+  } catch (_) {}
+  try {
+    if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+    else if (dm && typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+  } catch (_) {
+    try {
+      if (dm && typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+    } catch (_) {}
+  }
+  v9SyncDrawingAxisHighlights(d);
+}
+
+/** Undo live-preview edits when the user closes settings without OK. */
+function v9RevertDrawingEditSession(editSess) {
+  if (!editSess || !editSess.editSnapshot || !editSess.drawing) return;
+  const chartsToRender = new Set();
+  collectV9BridgeTargetPairs(editSess.drawing).forEach(({ dm, d }) => {
+    if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+    v9RestoreDrawingFromEditSnapshot(d, editSess.editSnapshot, dm);
+    if (dm.chart) chartsToRender.add(dm.chart);
+  });
+  chartsToRender.forEach((c) => {
+    try {
+      if (c.drawingManager && typeof c.drawingManager.redrawAll === "function") {
+        c.drawingManager.redrawAll();
+      } else if (typeof c.scheduleRender === "function") {
+        c.scheduleRender();
+      }
+    } catch (_) {}
+  });
+  try {
+    window.dispatchEvent(new CustomEvent("drawingsChanged", { detail: { source: "v9-cancel-settings" } }));
+  } catch (_) {}
+}
+
 /** Persists a drawing template like `drawing-toolbar.js` showSaveTemplateDialog (per drawing.type). */
 function v9SaveDrawingTemplateToStorage(name, drawing) {
   if (typeof window === 'undefined' || !name || !drawing || !drawing.type) return false;
@@ -9596,10 +9667,19 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "tlbardrop"]));
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
-  const closeTlSett = () => {
-    try {
-      v9StyleBridgeFlushRef.current?.();
-    } catch (_) {}
+  const closeTlSett = (opts = {}) => {
+    const commit = opts.commit === true;
+    if (!commit) {
+      suppressForwardBridge.current = true;
+      const editing = editingDrawingRef.current;
+      if (editing?.editSnapshot) {
+        v9RevertDrawingEditSession(editing);
+      }
+    } else {
+      try {
+        v9StyleBridgeFlushRef.current?.();
+      } catch (_) {}
+    }
     cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -13441,6 +13521,19 @@ const TalariaV8bLive = () => {
         // Stash the drawing so the tool bridge keeps chart.js in cursor mode
         // and so closeTlSett (Esc / outside-click) can clear this on close.
         editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected, panelGroup: group };
+
+        let drawingForStyleSnapshot = drawing;
+        try {
+          const dmSnap =
+            typeof window !== "undefined" && typeof window.getActiveChart === "function"
+              ? window.getActiveChart()?.drawingManager
+              : window.chart?.drawingManager;
+          if (dmSnap && Array.isArray(dmSnap.drawings) && drawing.id != null) {
+            const liveSnap = dmSnap.drawings.find((x) => x && x.id === drawing.id);
+            if (liveSnap) drawingForStyleSnapshot = liveSnap;
+          }
+        } catch (_) {}
+        editingDrawingRef.current.editSnapshot = v9SnapshotDrawingForEdit(drawingForStyleSnapshot);
 
         // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
         // dblclick/gear opens the panel while `groupSelected` still reflects the last line
@@ -17526,10 +17619,6 @@ const TalariaV8bLive = () => {
                       </div>
                     </div>);})()}
                   </div>}
-                  {/* ── fibSpiral counter clockwise ── */}
-                  {tlSubTool.icon === "fibSpiral" && <div style={{ padding:"6px 0" }}>
-                    {TlChk(tlStyle.fibSpiralCCW ?? false,"tlchk-fibSpiralCCW","Counter Clockwise",()=>setTlStyle(s=>({...s,fibSpiralCCW:!(s.fibSpiralCCW??false)})))}
-                  </div>}
                   {/* ── Gann Style section ── */}
                   {isGannTool && (()=>{
                     return <>
@@ -19024,8 +19113,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
-            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
+            <B hk="tl-cancel" fireOnPointerDown onClick={() => closeTlSett()}>Cancel</B>
+            <B primary hk="tl-ok" fireOnPointerDown onClick={() => closeTlSett({ commit: true })}>OK</B>
           </div>
         </div>
       , document.body)}
