@@ -1110,6 +1110,16 @@ class FibCirclesTool extends BaseDrawing {
             .filter(l => l.enabled)
             .sort((a, b) => a.value - b.value);
 
+        const maxEnabledLevel = enabledLevelsSorted.reduce(
+            (max, lvl) => Math.max(max, lvl.value),
+            1
+        );
+        const axisEndX = x1 + dx * maxEnabledLevel;
+        const axisEndY = y1 + dy * maxEnabledLevel;
+        const axisLen = Math.hypot(dx, dy) || 1;
+        const labelOffsetX = (-dy / axisLen) * 5;
+        const labelOffsetY = (dx / axisLen) * 5;
+
         if (showZones && enabledLevelsSorted.length) {
             let prevRx = 0;
             let prevRy = 0;
@@ -1180,35 +1190,60 @@ class FibCirclesTool extends BaseDrawing {
             const lx = x1 + dx * level;
             const ly = y1 + dy * level;
             this.group.append('text')
-                .attr('x', lx + (Math.abs(dx) >= Math.abs(dy) ? 5 : 0))
-                .attr('y', ly + (Math.abs(dy) > Math.abs(dx) ? -4 : 0))
+                .attr('x', lx + labelOffsetX)
+                .attr('y', ly + labelOffsetY)
                 .attr('fill', color)
                 .attr('font-size', '10px')
+                .attr('dominant-baseline', 'middle')
                 .style('pointer-events', 'none')
                 .text(level.toFixed(3));
         });
 
-        // Anchor ray (center → radius point) on top so the levels line is draggable through the rings
-        this.group.append('line')
-            .attr('class', 'fib-level-hit fib-circles-axis')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', 'rgba(255,255,255,0.001)')
-            .attr('stroke-width', hitStroke)
-            .attr('stroke-dasharray', '')
-            .attr('opacity', 1)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        const showTrendLine = this.style.trendLineEnabled !== false
+            && this.style.v9FibCirclesTrendLine !== false;
 
-        this.group.append('line')
-            .attr('class', 'fib-circles-axis fib-level-hit')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', scaledStroke)
-            .attr('opacity', 0.35)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
+        // Anchor ray through all enabled levels (center → max level on the 1.0→point2 direction)
+        if (showTrendLine) {
+            const trendColor = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
+            const trendWidth = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || this.style.strokeWidth || 1) * scaleFactor);
+            const trendHit = Math.max(10, trendWidth * 6);
+            const trendDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
+            const trendDash = trendDashRaw.replace(/\s+/g, '') === '' ? '' : trendDashRaw;
+
+            this.group.append('line')
+                .attr('class', 'fib-level-hit fib-circles-axis')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', axisEndX).attr('y2', axisEndY)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', trendHit)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+
+            this.group.append('line')
+                .attr('class', 'fib-circles-axis fib-level-hit')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', axisEndX).attr('y2', axisEndY)
+                .attr('stroke', trendColor)
+                .attr('stroke-width', trendWidth)
+                .attr('stroke-dasharray', trendDash || 'none')
+                .attr('opacity', 0.35)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        } else {
+            // Invisible hit ray only (trend line hidden)
+            this.group.append('line')
+                .attr('class', 'fib-level-hit fib-circles-axis')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', axisEndX).attr('y2', axisEndY)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitStroke)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+        }
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
