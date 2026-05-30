@@ -10603,6 +10603,26 @@ class DrawingToolsManager {
             };
         }
 
+        if (toolType === 'fib-wedge' || toolType === 'fib-arcs') {
+            return {
+                stroke,
+                color: stroke,
+                lineColor: stroke,
+                strokeWidth: 1,
+                opacity: 1,
+                dashArray: '',
+                strokeDasharray: '',
+                levelsLineWidth: 1,
+                levelsLineDasharray: '',
+                showZones: true,
+                backgroundOpacity: 0.12,
+                trendLineEnabled: true,
+                trendLineColor: stroke,
+                trendLineWidth: 1,
+                trendLineDasharray: '',
+            };
+        }
+
         return {
             stroke,
             color: stroke,

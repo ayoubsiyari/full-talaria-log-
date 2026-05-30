@@ -1846,30 +1846,42 @@ class FibWedgeTool extends BaseDrawing {
 
         const boundaryWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
 
-        if (this.style.trendLineEnabled !== false) {
-            const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
-            const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
-            const tHit = Math.max(10, tW * 6);
-            const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
-            const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
-            this.group.append('line')
-                .attr('class', 'fib-wedge-trend-hit')
-                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', tHit)
-                .attr('stroke-dasharray', '')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-            this.group.append('line')
-                .attr('class', 'fib-wedge-trend fib-trend-line')
-                .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2)
-                .attr('stroke', tCol)
-                .attr('stroke-width', tW)
-                .attr('stroke-dasharray', tDash)
-                .attr('opacity', 0.85)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-        }
+        const appendWedgeRay = (xA, yA, xB, yB) => {
+            if (this.style.trendLineEnabled !== false) {
+                const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
+                const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
+                const tHit = Math.max(10, tW * 6);
+                const tDashRaw = this.style.trendLineDasharray != null ? `${this.style.trendLineDasharray}` : '';
+                const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
+                this.group.append('line')
+                    .attr('class', 'fib-wedge-trend-hit')
+                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
+                    .attr('stroke', 'rgba(255,255,255,0.001)')
+                    .attr('stroke-width', tHit)
+                    .attr('stroke-dasharray', '')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+                this.group.append('line')
+                    .attr('class', 'fib-wedge-trend fib-trend-line')
+                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
+                    .attr('stroke', tCol)
+                    .attr('stroke-width', tW)
+                    .attr('stroke-dasharray', tDash)
+                    .attr('opacity', 0.85)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            } else {
+                this.group.append('line')
+                    .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
+                    .attr('stroke', this.style.stroke)
+                    .attr('stroke-width', boundaryWidth)
+                    .attr('opacity', 0.9)
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
+            }
+        };
+
+        appendWedgeRay(x1, y1, x2, y2);
 
         if (this.points.length < 3) {
             if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -1894,17 +1906,10 @@ class FibWedgeTool extends BaseDrawing {
         const p2 = polar(a1, baseRadius);
         const p3 = polar(a2, baseRadius);
 
+        appendWedgeRay(x1, y1, p3.x, p3.y);
+
         const toDataX = (px) => scales.chart && scales.chart.pixelToDataIndex ? scales.chart.pixelToDataIndex(px) : scales.xScale.invert(px);
         const toDataY = (py) => scales.yScale.invert(py);
-
-        this.group.append('line')
-            .attr('x1', x1).attr('y1', y1)
-            .attr('x2', p3.x).attr('y2', p3.y)
-            .attr('stroke', this.style.stroke)
-            .attr('stroke-width', boundaryWidth)
-            .attr('opacity', 0.9)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'move');
 
         const hexToRgba = (hex, alpha) => {
             if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;

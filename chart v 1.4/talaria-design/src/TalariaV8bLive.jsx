@@ -3181,6 +3181,35 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
       out.fibBgOpacity = fall.fibBgOpacity != null ? fall.fibBgOpacity : "0.12";
     }
   }
+  if (legacyType === "fib-wedge") {
+    if (out.fibWedgeTrendLine == null) out.fibWedgeTrendLine = fall.fibWedgeTrendLine !== false;
+    if (!out.fibWedgeTrendType) out.fibWedgeTrendType = fall.fibWedgeTrendType || "solid";
+    if (out.fibWedgeTrendWidth == null || out.fibWedgeTrendWidth === "") {
+      out.fibWedgeTrendWidth = fall.fibWedgeTrendWidth != null ? fall.fibWedgeTrendWidth : "1";
+    }
+    if (out.fibBackground == null) out.fibBackground = fall.fibBackground !== false;
+    if (out.fibBgOpacity == null || out.fibBgOpacity === "") {
+      out.fibBgOpacity = fall.fibBgOpacity != null ? fall.fibBgOpacity : 0.12;
+    }
+  }
+  if (legacyType === "fib-arcs") {
+    if (out.fibArcsTrendLine == null) out.fibArcsTrendLine = fall.fibArcsTrendLine !== false;
+    if (!out.fibArcsTrendType) out.fibArcsTrendType = fall.fibArcsTrendType || "solid";
+    if (out.fibArcsTrendWidth == null || out.fibArcsTrendWidth === "") {
+      out.fibArcsTrendWidth = fall.fibArcsTrendWidth != null ? fall.fibArcsTrendWidth : "1";
+    }
+    if (out.fibArcsFullCircle == null) out.fibArcsFullCircle = !!fall.fibArcsFullCircle;
+    if (out.fibBackground == null) out.fibBackground = fall.fibBackground !== false;
+    if (out.fibBgOpacity == null || out.fibBgOpacity === "") {
+      out.fibBgOpacity = fall.fibBgOpacity != null ? fall.fibBgOpacity : 0.12;
+    }
+  }
+  if (legacyType === "fib-circles") {
+    if (out.fibBackground == null) out.fibBackground = fall.fibBackground !== false;
+    if (out.fibBgOpacity == null || out.fibBgOpacity === "") {
+      out.fibBgOpacity = fall.fibBgOpacity != null ? fall.fibBgOpacity : 0.12;
+    }
+  }
   if (out.fibLineWidth == null || out.fibLineWidth === "") {
     out.fibLineWidth = fall.fibLineWidth != null ? fall.fibLineWidth : "2";
   }
@@ -4537,6 +4566,42 @@ function v9GannFanLabelForValue(value) {
 
 const V9_GANN_DEFAULT_BG_OPACITY = 0.12;
 
+/** Default Fib arcs/wedge/circles Style+Input fields for Apply default + fresh hydrate. */
+function v9FibSubtypeDefaultTlStyleFields(legacyType) {
+  if (legacyType === "fib-wedge") {
+    return {
+      fibWedgeTrendLine: true,
+      fibWedgeTrendType: "solid",
+      fibWedgeTrendWidth: "1",
+      fibBackground: true,
+      fibBgOpacity: 0.12,
+      fibLineWidth: "1",
+      fibLineType: "solid",
+    };
+  }
+  if (legacyType === "fib-arcs") {
+    return {
+      fibArcsTrendLine: true,
+      fibArcsTrendType: "solid",
+      fibArcsTrendWidth: "1",
+      fibArcsFullCircle: false,
+      fibBackground: true,
+      fibBgOpacity: 0.12,
+      fibLineWidth: "1",
+      fibLineType: "solid",
+    };
+  }
+  if (legacyType === "fib-circles") {
+    return {
+      fibBackground: true,
+      fibBgOpacity: 0.12,
+      fibLineWidth: "1",
+      fibLineType: "solid",
+    };
+  }
+  return {};
+}
+
 /** Default Gann Style-tab fields (background off, low zone fill opacity). */
 function v9GannDefaultTlStyleFields(legacyType) {
   if (
@@ -5654,7 +5719,7 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
   if (!type) return null;
   const toolDefaults = v9DefaultArmedStyleForLegacyTool(type);
   return v9EnsureTlStyleArrays(
-    { ...v9FreshTlStyleDefaults(), ...toolDefaults, ...v9GannDefaultTlStyleFields(type) },
+    { ...v9FreshTlStyleDefaults(), ...toolDefaults, ...v9GannDefaultTlStyleFields(type), ...v9FibSubtypeDefaultTlStyleFields(type) },
     null,
     type,
   );
@@ -12837,22 +12902,28 @@ const TalariaV8bLive = () => {
     onClick: (e) => e.stopPropagation(),
   });
 
-  /** Style/thickness dropdown trigger — toggle on pointerdown so panel backdrop click does not cancel the same press. */
+  /** Style/thickness dropdown trigger — guard panel backdrop; stop press propagation without pointerdown activate. */
   const tlStyleDropTrigger = (dropKey, beforeToggle) => ({
     "data-tl-style-drop": "1",
-    ...modalPointerActivate((e) => {
+    onPointerDown: (e) => e.stopPropagation(),
+    onMouseDown: (e) => e.stopPropagation(),
+    onClick: (e) => {
+      e.stopPropagation();
       if (beforeToggle) beforeToggle(e);
       setTlStyleDrop((prev) => (prev === dropKey ? null : dropKey));
-    }),
+    },
   });
 
-  /** Style/thickness dropdown menu item — apply on pointerdown for reliable single-click pick. */
+  /** Style/thickness dropdown menu item. */
   const tlStyleDropPick = (pickFn) => ({
     "data-tl-style-drop": "1",
-    ...modalPointerActivate(() => {
+    onPointerDown: (e) => e.stopPropagation(),
+    onMouseDown: (e) => e.stopPropagation(),
+    onClick: (e) => {
+      e.stopPropagation();
       pickFn();
       setTlStyleDrop(null);
-    }),
+    },
   });
 
   const Sel = ({ children, w }) => (

@@ -2018,12 +2018,29 @@ class PriceNoteTool extends BaseDrawing {
         const clampMinY = Math.max(0, minY - chartMarginTop);
         const edgePad = 0;
         const chart = scales.chart;
+        const marginL = (chart && chart.margin && typeof chart.margin.l === 'number') ? chart.margin.l : 0;
         const marginR = (chart && chart.margin && typeof chart.margin.r === 'number') ? chart.margin.r : 0;
         const canvasW = (chart && chart.w) ? chart.w : (maxX + marginR);
         const axisInset = 4;
-        // Allow the price pill to sit in the price-axis column (not clamped to plot right edge).
-        const labelMaxX = canvasW - axisInset - boxWidth / 2;
-        labelX = Math.max(minX + boxWidth / 2 + edgePad, Math.min(labelMaxX, labelX));
+        const axisLeft = !!(chart && chart.priceAxisLeft);
+        // TradingView-style: anchor the price pill in the price-axis column so the line
+        // runs through the plot edge; Y follows the line through p1→p2.
+        const axisColumnCenterX = axisLeft
+            ? Math.max(boxWidth / 2 + axisInset, marginL / 2)
+            : Math.min(canvasW - boxWidth / 2 - axisInset, canvasW - marginR / 2);
+        labelX = axisColumnCenterX;
+        if (Math.abs(x2 - x1) > 1e-6) {
+            labelY = y1 + (labelX - x1) * (y2 - y1) / (x2 - x1);
+        } else {
+            labelY = y2;
+        }
+        const labelMinX = axisLeft
+            ? (boxWidth / 2 + axisInset)
+            : (minX + boxWidth / 2 + edgePad);
+        const labelMaxX = axisLeft
+            ? (marginL - axisInset - boxWidth / 2)
+            : (canvasW - axisInset - boxWidth / 2);
+        labelX = Math.max(labelMinX, Math.min(labelMaxX, labelX));
         labelY = Math.max(clampMinY + boxHeight / 2 + edgePad, Math.min(maxY - boxHeight / 2 - edgePad, labelY));
 
         // Shorten line so it stops at the near edge of the label box
