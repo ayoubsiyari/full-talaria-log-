@@ -829,8 +829,15 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
     return v9BuildColorOnlyStrokePatchFromTlStyle(tlStyle, legacyTool);
   }
   if (pickerKey === "tlLineColor" || pickerKey === "fibTrendColor") {
-    const col = tlStyle.lineColor;
+    const col = pickerKey === "fibTrendColor"
+      ? (tlStyle.fibTrendLineColor || tlStyle.lineColor)
+      : tlStyle.lineColor;
     if (!col) return {};
+    if (pickerKey === "fibTrendColor" && (
+      v9IsFibArcsType(legacyTool) || v9IsFibWedgeType(legacyTool) || v9IsTrendFibTimeType(legacyTool)
+    )) {
+      return { trendLineColor: col };
+    }
     if (legacyTool === "brush" || legacyTool === "highlighter") {
       const p = parseColor(col);
       const strokeRgba = cpBuildColor(p.r, p.g, p.b, p.a != null ? p.a : 1);
@@ -911,14 +918,27 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
     v9ApplyClassicFibFromTlStyle(d, tlStyle, w);
     return true;
   }
+  if (pickerKey.startsWith("fibLevel-") && (
+    v9IsTrendFibTimeType(d.type) || v9IsFibCirclesType(d.type) || v9IsFibArcsType(d.type) || v9IsFibWedgeType(d.type)
+  )) {
+    if (v9IsTrendFibTimeType(d.type)) v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, w);
+    else if (v9IsFibCirclesType(d.type)) v9ApplyFibCirclesFromTlStyle(d, tlStyle, w);
+    else if (v9IsFibArcsType(d.type)) v9ApplyFibArcsFromTlStyle(d, tlStyle, w);
+    else if (v9IsFibWedgeType(d.type)) v9ApplyFibWedgeFromTlStyle(d, tlStyle, w);
+    return true;
+  }
   if (pickerKey.startsWith("fibTzLevel-") && v9IsFibTimeZoneType(d.type)) {
     v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, w);
     return true;
   }
   if (
-    (pickerKey.startsWith("fibFanTimeLevel-") || pickerKey === "fibTrendColor" || pickerKey === "fibGridColor") &&
-    v9IsTrendFibTimeType(d.type)
+    (pickerKey.startsWith("fibFanTimeLevel-") || pickerKey === "fibGridColor") &&
+    v9IsFibSpeedFanType(d.type)
   ) {
+    v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, w);
+    return true;
+  }
+  if (pickerKey === "fibTrendColor" && v9IsTrendFibTimeType(d.type)) {
     v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, w);
     return true;
   }
@@ -961,15 +981,15 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
     v9ApplyFibChannelFromTlStyle(d, tlStyle, w);
     return true;
   }
-  if (v9IsFibCirclesType(d.type)) {
+  if (v9IsFibCirclesType(d.type) && (pickerKey.startsWith("fibLevel-") || pickerKey === "tlLineColor")) {
     v9ApplyFibCirclesFromTlStyle(d, tlStyle, w);
     return true;
   }
-  if (v9IsFibArcsType(d.type)) {
+  if (v9IsFibArcsType(d.type) && (pickerKey.startsWith("fibLevel-") || pickerKey === "fibTrendColor" || pickerKey === "tlLineColor")) {
     v9ApplyFibArcsFromTlStyle(d, tlStyle, w);
     return true;
   }
-  if (v9IsFibWedgeType(d.type)) {
+  if (v9IsFibWedgeType(d.type) && (pickerKey.startsWith("fibLevel-") || pickerKey === "fibTrendColor" || pickerKey === "tlLineColor")) {
     v9ApplyFibWedgeFromTlStyle(d, tlStyle, w);
     return true;
   }
@@ -1338,7 +1358,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     );
     if (chartLevels.length) patch.levels = chartLevels;
     patch.trendLineEnabled = tlStyle.fibTrendLine !== false;
-    patch.trendLineColor = tlStyle.lineColor;
+    patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
     patch.trendLineWidth = trendW;
     patch.trendLineDasharray = trendDashStr;
     patch.levelsLineWidth = levelsW;
@@ -1373,7 +1393,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
             ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
             : "");
       patch.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
-      patch.trendLineColor = tlStyle.lineColor;
+      patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
       patch.trendLineWidth = parseInt(String(tlStyle.fibArcsTrendWidth), 10) || 1;
       patch.trendLineDasharray = arcsTrendDash;
     }
@@ -1385,7 +1405,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
             ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibWedgeTrendType]
             : "");
       patch.trendLineEnabled = tlStyle.fibWedgeTrendLine !== false;
-      patch.trendLineColor = tlStyle.lineColor;
+      patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
       patch.trendLineWidth = parseInt(String(tlStyle.fibWedgeTrendWidth), 10) || 1;
       patch.trendLineDasharray = wedgeTrendDash;
     }
@@ -3414,9 +3434,8 @@ function v9FibTlLevelsWrongForTool(legacyType, fibLevels) {
   if (v9IsClassicFibRetracementType(legacyType)) {
     return !v9FibTlLevelsMatchLegacyType(legacyType, fibLevels);
   }
-  const expected = v9DefaultFibLevelsTlForLegacy(legacyType);
-  if (!expected.length) return false;
-  return v9FibTlLevelsSig(fibLevels) !== v9FibTlLevelsSig(expected);
+  // Custom level sets are valid for channel / time / circles / arcs / wedge tools.
+  return false;
 }
 
 function v9EnsureFibLevelsTlForLegacy(out, legacyType, fall) {
@@ -3505,7 +3524,7 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
   const st = d.style;
   st.stroke = tlStyle.lineColor;
   st.trendLineEnabled = tlStyle.fibTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
   st.levelsLineWidth = levelsW;
@@ -3569,7 +3588,7 @@ function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
       : 0.12;
 
   st.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
 
@@ -3623,7 +3642,7 @@ function v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthFallback) {
       : 0.12;
 
   st.trendLineEnabled = tlStyle.fibWedgeTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
 }
@@ -3749,6 +3768,13 @@ function v9FibTzLevelsBridgeSig(rows) {
     .join(";");
 }
 
+function v9FibTlLevelsBridgeSig(rows) {
+  if (!Array.isArray(rows) || !rows.length) return "";
+  return rows
+    .map((l) => `${l.value}|${l.on !== false ? 1 : 0}|${l.color}`)
+    .join(";");
+}
+
 function v9FibTzLevelsChartToTl(levels) {
   if (!Array.isArray(levels) || !levels.length) return undefined;
   return levels.map((lv) => {
@@ -3784,7 +3810,7 @@ function v9TlFibTzLevelsToChart(levels) {
       enabled: ln.on !== false,
       color: ln.color || "#787b86",
       lineType: dashStr,
-      lineWidth: isBold ? Math.max(w, 2) : w,
+      lineWidth: w,
     };
   });
 }
@@ -3881,7 +3907,7 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
     (typeof widthFallback === "number" ? widthFallback : 1) ||
     1;
   st.trendLineEnabled = tlStyle.fibTrendLine !== false;
-  st.trendLineColor = tlStyle.lineColor;
+  st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
 }
@@ -11975,7 +12001,10 @@ const TalariaV8bLive = () => {
     else if(targetKey?.startsWith("pfLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, pfLevels: s.pfLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("fibLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibLevelsInStyle(s, tlSubTool.icon, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
     else if(targetKey?.startsWith("fibTzLevel-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>v9PatchFibTzLevelsInStyle(s, rows=>rows.map((l,i)=>i===idx?{...l,color:colorVal}:l)), { colorOnly: true }); }
-    else if(targetKey === "fibTrendColor") cpApplyTlStyle(s=>({...s, lineColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "fibTrendColor") {
+      const trendOnly = tlSubTool && (tlSubTool.icon === "fibArcs" || tlSubTool.icon === "fibWedge" || tlSubTool.icon === "fibTime");
+      cpApplyTlStyle(s => trendOnly ? ({ ...s, fibTrendLineColor: colorVal }) : ({ ...s, lineColor: colorVal }), { colorOnly: true });
+    }
     else if(targetKey?.startsWith("gannPrice-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannPriceLevels: s.gannPriceLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("gannTime-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannTimeLevels: s.gannTimeLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "fibGridColor") cpApplyTlStyle(s=>({...s, fibGridColor: colorVal}), { colorOnly: true });
@@ -14700,7 +14729,9 @@ const TalariaV8bLive = () => {
     tlStyle.pfBgColor,
     tlStyle.pfBgOpacity,
     tlStyle.fibLevels,
+    v9FibTlLevelsBridgeSig(tlStyle.fibLevels),
     tlStyle.fibTrendLine,
+    tlStyle.fibTrendLineColor,
     tlStyle.fibLineWidth,
     tlStyle.fibLineType,
     tlStyle.fibBackground,
@@ -14723,6 +14754,9 @@ const TalariaV8bLive = () => {
     tlStyle.fibArcsTrendType,
     tlStyle.fibArcsTrendWidth,
     tlStyle.fibArcsFullCircle,
+    tlStyle.fibWedgeTrendLine,
+    tlStyle.fibWedgeTrendType,
+    tlStyle.fibWedgeTrendWidth,
     tlStyle.gannPriceLevels,
     tlStyle.gannTimeLevels,
     tlStyle.gannGridLevels,
@@ -18235,7 +18269,7 @@ const TalariaV8bLive = () => {
                              transition:"background 0.1s" }}>
                     <span style={{ fontSize:11, color:c.ts }}>+ Add Level</span>
                   </div>
-                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")}));}}
+                  <div onClick={e=>{e.stopPropagation();setTlStyle(s=>({...s, fibLevels: fi === "fibChannel" ? v9FibChannelDefaultLevelsTl() : fi === "fibTime" ? v9TrendFibTimeDefaultLevelsTl() : (fi === "fibCircles" || fi === "fibSpiral") ? v9FibCirclesDefaultLevelsTl() : fi === "fibArcs" ? v9FibArcsDefaultLevelsTl() : fi === "fibWedge" ? v9FibWedgeDefaultLevelsTl() : v9ClassicFibDefaultLevelsTlForLegacy(fi === "fibExtension" ? "fibonacci-extension" : "fibonacci-retracement")}));}}
                     onMouseEnter={()=>setHov("fibReset")} onMouseLeave={()=>setHov(null)}
                     style={{ width:60, height:28, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default",
                              border:`1px solid rgba(140,160,255,0.15)`, background:hov==="fibReset"?c.hv2:"transparent",

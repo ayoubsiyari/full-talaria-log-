@@ -24030,9 +24030,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
                 // Also copy levels if they exist (for pitchfork/channel tools)
 
-                if (drawing.levels) {
+        if (drawing.levels) {
 
                     actualDrawing.levels = JSON.parse(JSON.stringify(drawing.levels));
+                    if (!actualDrawing.style) actualDrawing.style = {};
+                    actualDrawing.style.levels = actualDrawing.levels;
 
                 }
 
@@ -25255,6 +25257,14 @@ applyTemplate(drawing, templateId, modal) {
             if (template.levels) {
 
                 actualDrawing.levels = this.deepClone(template.levels);
+                if (!actualDrawing.style) actualDrawing.style = {};
+                actualDrawing.style.levels = actualDrawing.levels;
+                if (actualDrawing.type === 'fib-timezone') {
+                    actualDrawing.fibNumbers = actualDrawing.levels;
+                    actualDrawing.style.fibNumbers = actualDrawing.levels;
+                    delete actualDrawing.style.levelsLineWidth;
+                    delete actualDrawing.style.levelsLineDasharray;
+                }
 
             }
 
@@ -25277,6 +25287,12 @@ applyTemplate(drawing, templateId, modal) {
             // Re-render + persist
 
             this.applyChangesImmediately(actualDrawing);
+
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('v9DrawingTemplateApplied', {
+                    detail: { drawing: actualDrawing, builtinDefault: false },
+                }));
+            }
 
             
 
