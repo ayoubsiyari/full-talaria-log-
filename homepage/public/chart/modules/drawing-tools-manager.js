@@ -2038,6 +2038,20 @@ class DrawingToolsManager {
             // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
 
+            // Handles use pointer-events:none until selected — hit-test pixel positions so resize works on first click.
+            if (event.button === 0 && !event.shiftKey && !event.altKey) {
+                const pointHandleHit = this._findTopDrawingPointHandleAt(mouseX, mouseY);
+                if (pointHandleHit && !pointHandleHit.drawing.locked) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    this._beginDirectPointHandleDrag(pointHandleHit.drawing, pointHandleHit.pointIndex, event);
+                    return;
+                }
+            }
+
             if (event.detail >= 2) {
                 const domDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
                 if (domDrawing && !domDrawing.locked) {
@@ -4714,9 +4728,12 @@ class DrawingToolsManager {
                     && (targetSel.classed('gann-box-hitbox') || targetSel.classed('gann-square-fixed-hitbox')
                         || self._isPointOnGannToolBody(drawing, mouseX, mouseY))
                     && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
+                const onFibCirclesBody = drawing.type === 'fib-circles'
+                    && self._isPointOnFibCirclesBody(drawing, mouseX, mouseY);
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnFibLine = onFibStroke
                     || onGannBody
+                    || onFibCirclesBody
                     || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 if (!clickedOnFibLine) {
@@ -5086,7 +5103,9 @@ class DrawingToolsManager {
                             const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
                                 && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
                                 && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
-                            if (!onGannBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                            const onFibCirclesBody = drawing.type === 'fib-circles'
+                                && self._isPointOnFibCirclesBody(drawing, mouseX, mouseY);
+                            if (!onGannBody && !onFibCirclesBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                                 return false;
                             }
                         }
@@ -5445,6 +5464,158 @@ class DrawingToolsManager {
             }
         }
         return false;
+    }
+
+    /** Resize-handle hit radius (matches createHandles hit circle). */
+    _drawingPointHandleHitRadius() {
+        return 12;
+    }
+
+    /** Pixel positions for point-index resize handles (uses virtualPoints when set). */
+    _getDrawingPointHandlePixels(drawing) {
+        if (!drawing?.points?.length || !this.chart) return [];
+        const chart = this.chart;
+        const xScale = chart.xScale;
+        const yScale = chart.yScale;
+        if (!yScale) return [];
+        const toPxX = (p) => (chart.dataIndexToPixel ? chart.dataIndexToPixel(p.x) : (xScale ? xScale(p.x) : p.x));
+        const toPxY = (p) => yScale(p.y);
+        const pts = drawing.virtualPoints || drawing.points;
+        return pts.map((p, index) => ({
+            index,
+            x: toPxX(p),
+            y: toPxY(p),
+        }));
+    }
+
+    /**
+     * Topmost drawing whose resize handle is under (mx, my). Works before selection because
+     * DOM handles keep pointer-events:none until selected.
+     */
+    _findTopDrawingPointHandleAt(mouseX, mouseY) {
+        const hitR = this._drawingPointHandleHitRadius();
+        const hitR2 = hitR * hitR;
+        for (let z = this.drawings.length - 1; z >= 0; z--) {
+            const drawing = this.drawings[z];
+            if (!drawing || drawing.locked || drawing.visible === false) continue;
+            if (this.isVolumeProfileToolType(drawing.type)) continue;
+            const handles = this._getDrawingPointHandlePixels(drawing);
+            if (!handles.length) continue;
+            // Prefer outer handles (index > 0) when overlapping the anchor.
+            for (let hi = handles.length - 1; hi >= 0; hi--) {
+                const h = handles[hi];
+                if (!Number.isFinite(h.x) || !Number.isFinite(h.y)) continue;
+                const dx = mouseX - h.x;
+                const dy = mouseY - h.y;
+                if (dx * dx + dy * dy <= hitR2) {
+                    return { drawing, pointIndex: h.index };
+                }
+            }
+        }
+        return null;
+    }
+
+    /** True when pointer is inside the outermost Fib Circles ellipse (whole-tool move). */
+    _isPointOnFibCirclesBody(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'fib-circles' || !drawing.points || drawing.points.length < 2) {
+            return false;
+        }
+        const chart = this.chart;
+        const xScale = chart?.xScale;
+        const yScale = chart?.yScale;
+        if (!yScale) return false;
+        const toPxX = (p) => (chart && chart.dataIndexToPixel ? chart.dataIndexToPixel(p.x) : (xScale ? xScale(p.x) : p.x));
+        const toPxY = (p) => yScale(p.y);
+        const x1 = toPxX(drawing.points[0]);
+        const y1 = toPxY(drawing.points[0]);
+        const x2 = toPxX(drawing.points[1]);
+        const y2 = toPxY(drawing.points[1]);
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const baseRx = Math.abs(dx);
+        const baseRy = Math.abs(dy);
+        const useGeometric = drawing.style?.v9FibCirclesGeometric === true
+            || drawing.style?.geometricCircles === true;
+        const baseRadius = useGeometric ? Math.hypot(dx, dy) : Math.max(baseRx, baseRy);
+        if (!baseRadius || !Number.isFinite(baseRadius)) return false;
+
+        const rawLevels = drawing.levels || drawing.style?.levels || [];
+        let maxLevel = 1;
+        for (const l of rawLevels) {
+            const v = parseFloat(typeof l === 'object' ? l.value : l);
+            if (Number.isFinite(v) && v > maxLevel) maxLevel = v;
+        }
+
+        if (useGeometric) {
+            const dist = Math.hypot(mouseX - x1, mouseY - y1);
+            return dist <= baseRadius * maxLevel + 1;
+        }
+        const rx = baseRx * maxLevel;
+        const ry = baseRy * maxLevel;
+        if (rx <= 0 || ry <= 0) return false;
+        const nx = (mouseX - x1) / rx;
+        const ny = (mouseY - y1) / ry;
+        return nx * nx + ny * ny <= 1;
+    }
+
+    /** Select (if needed) and start a document-level point-handle drag from mousedown. */
+    _beginDirectPointHandleDrag(drawing, pointIndex, event) {
+        if (!drawing || drawing.locked || pointIndex == null || isNaN(pointIndex)) return;
+
+        if (!drawing.selected || this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== drawing) {
+            this.deselectAll({ forSelectionChange: true });
+            drawing.select();
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];
+        }
+
+        if (this._directResizeMoveHandler) {
+            document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
+        }
+        if (this._directResizeUpHandler) {
+            document.removeEventListener('mouseup', this._directResizeUpHandler, true);
+        }
+        this._directResizeMoveHandler = null;
+        this._directResizeUpHandler = null;
+
+        this.startHandleDrag(drawing, pointIndex, event);
+
+        this._directResizeMoveHandler = (e) => {
+            if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
+            const point = this.getDataPoint(e, drawing.type);
+            let handledByDrawing = false;
+            if (typeof drawing.onPointHandleDrag === 'function') {
+                handledByDrawing = drawing.onPointHandleDrag(pointIndex, {
+                    point,
+                    scales: {
+                        xScale: this.chart.xScale,
+                        yScale: this.chart.yScale,
+                        chart: this.chart,
+                    },
+                }) === true;
+            }
+            if (handledByDrawing) {
+                this._snapDrawingPointsX(drawing);
+                this.scheduleRenderDrawing(drawing);
+                this._broadcastLiveEditUpdate(drawing);
+            } else {
+                this.handleDrag({ sourceEvent: e });
+            }
+        };
+        this._directResizeUpHandler = () => {
+            if (this._directResizeMoveHandler) {
+                document.removeEventListener('mousemove', this._directResizeMoveHandler, true);
+            }
+            if (this._directResizeUpHandler) {
+                document.removeEventListener('mouseup', this._directResizeUpHandler, true);
+            }
+            this._directResizeMoveHandler = null;
+            this._directResizeUpHandler = null;
+            this.endHandleDrag(drawing);
+        };
+
+        document.addEventListener('mousemove', this._directResizeMoveHandler, true);
+        document.addEventListener('mouseup', this._directResizeUpHandler, true);
     }
 
     /** True when pointer is inside the Gann Box / Square body (whole-tool move, not level drag). */
@@ -9318,6 +9489,12 @@ class DrawingToolsManager {
             if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') && !hitsById.has(drawing.id)) {
                 if (this._isPointOnGannToolBody(drawing, mouseX, mouseY)
                     && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
+            }
+            if (drawing.type === 'fib-circles' && !hitsById.has(drawing.id)) {
+                if (this._isPointOnFibCirclesBody(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
                     continue;
                 }
