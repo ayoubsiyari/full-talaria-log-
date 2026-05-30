@@ -175,13 +175,19 @@ class GannBoxTool extends BaseDrawing {
             .style('cursor', 'default');
 
         // Price levels (horizontal grid + left/right labels)
-        sortedPrice.forEach(level => {
-            if (!level || level.enabled === false) return;
-            const v = Number(level.value);
+        const priceRaw = Array.isArray(this.style.priceLevels) ? this.style.priceLevels : [];
+        priceRaw.forEach((rawLevel, idx) => {
+            if (!rawLevel || rawLevel.enabled === false) return;
+            const v = Number(rawLevel.value);
             if (!Number.isFinite(v)) return;
 
             const y = top + (height * v);
-            const c = level.color || strokeColor;
+            const c = rawLevel.color || strokeColor;
+            const levelMeta = {
+                'data-gann-level-array': 'priceLevels',
+                'data-gann-level-index': idx,
+                'data-gann-level-orient': 'h',
+            };
 
             if (v !== 0 && v !== 1) {
                 const hitW = Math.max(10, levelsWidth * 6);
@@ -196,7 +202,8 @@ class GannBoxTool extends BaseDrawing {
                     .attr('stroke-dasharray', '')
                     .attr('opacity', 1)
                     .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('cursor', 'ns-resize')
+                    .attr(levelMeta);
 
                 this.group.append('line')
                     .attr('x1', left)
@@ -238,13 +245,19 @@ class GannBoxTool extends BaseDrawing {
         });
 
         // Time levels (vertical grid + top/bottom labels)
-        sortedTime.forEach(level => {
-            if (!level || level.enabled === false) return;
-            const v = Number(level.value);
+        const timeRaw = Array.isArray(this.style.timeLevels) ? this.style.timeLevels : [];
+        timeRaw.forEach((rawLevel, idx) => {
+            if (!rawLevel || rawLevel.enabled === false) return;
+            const v = Number(rawLevel.value);
             if (!Number.isFinite(v)) return;
 
             const x = left + (width * v);
-            const c = level.color || strokeColor;
+            const c = rawLevel.color || strokeColor;
+            const levelMeta = {
+                'data-gann-level-array': 'timeLevels',
+                'data-gann-level-index': idx,
+                'data-gann-level-orient': 'v',
+            };
 
             if (v !== 0 && v !== 1) {
                 const hitW = Math.max(10, levelsWidth * 6);
@@ -259,7 +272,8 @@ class GannBoxTool extends BaseDrawing {
                     .attr('stroke-dasharray', '')
                     .attr('opacity', 1)
                     .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('cursor', 'ew-resize')
+                    .attr(levelMeta);
 
                 this.group.append('line')
                     .attr('x1', x)
@@ -301,6 +315,27 @@ class GannBoxTool extends BaseDrawing {
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+    }
+
+    /** Pixel layout for level drag + hit tests (matches `render`). */
+    getPixelLayout(scales) {
+        if (!this.points || this.points.length < 2 || !scales) return null;
+        const x1 = scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(this.points[0].x)
+            : scales.xScale(this.points[0].x);
+        const y1 = scales.yScale(this.points[0].y);
+        const x2 = scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(this.points[1].x)
+            : scales.xScale(this.points[1].x);
+        const y2 = scales.yScale(this.points[1].y);
+        const left = Math.min(x1, x2);
+        const right = Math.max(x1, x2);
+        const top = Math.min(y1, y2);
+        const bottom = Math.max(y1, y2);
+        const width = right - left;
+        const height = bottom - top;
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+        return { left, top, right, bottom, width, height };
     }
 
     static fromJSON(data) {

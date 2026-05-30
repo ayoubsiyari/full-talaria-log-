@@ -2995,15 +2995,22 @@ class GannSquareFixedTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Grid lines
-        gridEnabled.forEach(level => {
-            const v = level.value;
+        const gridRaw = Array.isArray(this.style.gridLevels) ? this.style.gridLevels : [];
+        gridRaw.forEach((rawLevel, idx) => {
+            const v = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
             if (!isFinite(v) || v <= 0 || v >= 1) return;
+            if (rawLevel && rawLevel.enabled === false) return;
             const offset = size * v;
-            const color = level.color || this.style.stroke;
-            const w = Math.max(0.5, ((level.lineWidth != null && isFinite(level.lineWidth)) ? level.lineWidth : globalWidth) * scaleFactor);
-            const dash = level.lineType != null && `${level.lineType}` !== '' ? `${level.lineType}` : globalDash;
+            const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
+            const w = Math.max(0.5, ((rawLevel.lineWidth != null && isFinite(rawLevel.lineWidth)) ? rawLevel.lineWidth : globalWidth) * scaleFactor);
+            const dash = rawLevel.lineType != null && `${rawLevel.lineType}` !== '' ? `${rawLevel.lineType}` : globalDash;
 
             const hitW = Math.max(10, w * 6);
+            const levelMeta = (arrayKey, orient) => ({
+                'data-gann-level-array': arrayKey,
+                'data-gann-level-index': idx,
+                'data-gann-level-orient': orient,
+            });
 
             this.group.append('line')
                 .attr('class', 'gann-level-hit')
@@ -3014,7 +3021,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke-dasharray', '')
                 .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', 'ns-resize')
+                .attr(levelMeta('gridLevels', 'h'));
 
             this.group.append('line')
                 .attr('x1', left).attr('y1', top + offset)
@@ -3022,7 +3030,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke', color)
                 .attr('stroke-width', w)
                 .attr('stroke-dasharray', dash || 'none')
-                .attr('opacity', 0.7);
+                .attr('opacity', 0.7)
+                .style('pointer-events', 'none');
 
             this.group.append('line')
                 .attr('class', 'gann-level-hit')
@@ -3033,7 +3042,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke-dasharray', '')
                 .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', 'ew-resize')
+                .attr(levelMeta('gridLevels', 'v'));
 
             this.group.append('line')
                 .attr('x1', left + offset).attr('y1', top)
@@ -3041,7 +3051,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke', color)
                 .attr('stroke-width', w)
                 .attr('stroke-dasharray', dash || 'none')
-                .attr('opacity', 0.7);
+                .attr('opacity', 0.7)
+                .style('pointer-events', 'none');
         });
 
         // Diagonals
@@ -3087,12 +3098,14 @@ class GannSquareFixedTool extends BaseDrawing {
         // Fan lines from anchor corner to opposite edges
         const anchorX = x0;
         const anchorY = y0;
-        fanEnabled.forEach(level => {
-            const v = level.value;
+        const fanRaw = Array.isArray(this.style.fanLevels) ? this.style.fanLevels : [];
+        fanRaw.forEach((rawLevel, idx) => {
+            const v = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
             if (!isFinite(v) || v <= 0 || v >= 1) return;
-            const color = level.color || this.style.stroke;
-            const w = Math.max(0.5, ((level.lineWidth != null && isFinite(level.lineWidth)) ? level.lineWidth : globalWidth) * scaleFactor);
-            const dash = level.lineType != null && `${level.lineType}` !== '' ? `${level.lineType}` : globalDash;
+            if (rawLevel && rawLevel.enabled === false) return;
+            const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
+            const w = Math.max(0.5, ((rawLevel.lineWidth != null && isFinite(rawLevel.lineWidth)) ? rawLevel.lineWidth : globalWidth) * scaleFactor);
+            const dash = rawLevel.lineType != null && `${rawLevel.lineType}` !== '' ? `${rawLevel.lineType}` : globalDash;
 
             const hitW = Math.max(10, w * 6);
 
@@ -3101,6 +3114,12 @@ class GannSquareFixedTool extends BaseDrawing {
             const xOnBottomEdge = anchorX + (sx * (size * v));
             const yOnBottomEdge = anchorY + (sy * size);
 
+            const levelMeta = (orient) => ({
+                'data-gann-level-array': 'fanLevels',
+                'data-gann-level-index': idx,
+                'data-gann-level-orient': orient,
+            });
+
             this.group.append('line')
                 .attr('class', 'gann-level-hit')
                 .attr('x1', anchorX).attr('y1', anchorY)
@@ -3110,7 +3129,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke-dasharray', '')
                 .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', 'move')
+                .attr(levelMeta('fan-h'));
 
             this.group.append('line')
                 .attr('x1', anchorX).attr('y1', anchorY)
@@ -3118,7 +3138,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke', color)
                 .attr('stroke-width', w)
                 .attr('stroke-dasharray', dash || 'none')
-                .attr('opacity', 0.8);
+                .attr('opacity', 0.8)
+                .style('pointer-events', 'none');
 
             this.group.append('line')
                 .attr('class', 'gann-level-hit')
@@ -3129,7 +3150,8 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke-dasharray', '')
                 .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', 'move')
+                .attr(levelMeta('fan-v'));
 
             this.group.append('line')
                 .attr('x1', anchorX).attr('y1', anchorY)
@@ -3137,15 +3159,18 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke', color)
                 .attr('stroke-width', w)
                 .attr('stroke-dasharray', dash || 'none')
-                .attr('opacity', 0.75);
+                .attr('opacity', 0.75)
+                .style('pointer-events', 'none');
         });
 
         // Quarter-circle arcs from anchor corner
-        arcEnabled.forEach((level) => {
-            const f = level.value;
+        const arcRaw = Array.isArray(this.style.arcLevels) ? this.style.arcLevels : [];
+        arcRaw.forEach((rawLevel, idx) => {
+            const f = parseFloat(rawLevel && rawLevel.value != null ? rawLevel.value : '');
             if (!isFinite(f) || f <= 0) return;
+            if (rawLevel && rawLevel.enabled === false) return;
             const r = size * f;
-            const color = level.color || this.style.stroke;
+            const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
             const startX = anchorX + (sx * r);
             const startY = anchorY;
             const endX = anchorX;
@@ -3164,7 +3189,10 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('stroke-dasharray', '')
                 .attr('opacity', 1)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                .style('cursor', 'move')
+                .attr('data-gann-level-array', 'arcLevels')
+                .attr('data-gann-level-index', idx)
+                .attr('data-gann-level-orient', 'arc');
 
             this.group.append('path')
                 .attr('d', `M ${startX} ${startY} A ${r} ${r} 0 0 ${sweep} ${endX} ${endY}`)
@@ -3190,6 +3218,28 @@ class GannSquareFixedTool extends BaseDrawing {
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    /** Pixel layout for level drag + hit tests (matches `render`). */
+    getPixelLayout(scales) {
+        if (!this.points || this.points.length < 2 || !scales) return null;
+        const getX = (p) => scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const getY = (p) => scales.yScale(p.y);
+        const x0 = getX(this.points[0]);
+        const y0 = getY(this.points[0]);
+        const x1p = getX(this.points[1]);
+        const y1p = getY(this.points[1]);
+        const dx = x1p - x0;
+        const dy = y1p - y0;
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        if (!Number.isFinite(size) || size <= 0) return null;
+        const sx = dx === 0 ? 1 : Math.sign(dx);
+        const sy = dy === 0 ? 1 : Math.sign(dy);
+        const left = Math.min(x0, x0 + sx * size);
+        const top = Math.min(y0, y0 + sy * size);
+        return { left, top, size, sx, sy, anchorX: x0, anchorY: y0 };
     }
 
     static fromJSON(data, chart = null) {
@@ -3590,17 +3640,6 @@ class GannFanTool extends BaseDrawing {
             const hitW = Math.max(10, w * 6);
 
             this.group.append('line')
-                .attr('class', 'gann-level-hit')
-                .attr('x1', x1).attr('y1', y1)
-                .attr('x2', ray.end.x).attr('y2', ray.end.y)
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', hitW)
-                .attr('stroke-dasharray', '')
-                .attr('opacity', 1)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
-
-            this.group.append('line')
                 .attr('x1', x1).attr('y1', y1)
                 .attr('x2', ray.end.x).attr('y2', ray.end.y)
                 .attr('stroke', ray.color || this.style.stroke)
@@ -3625,8 +3664,63 @@ class GannFanTool extends BaseDrawing {
             }
         });
 
+        // Level hit targets (indexed by style.fanLevels for drag + settings sync)
+        fanLevelsRaw.forEach((rawLevel, idx) => {
+            if (rawLevel && rawLevel.enabled === false) return;
+            const v = rawLevel && rawLevel.value != null ? parseFloat(rawLevel.value) : NaN;
+            if (!isFinite(v)) return;
+            const slope = baseSlope * v;
+            const end = rayEndToBounds(slope);
+            const color = (rawLevel && rawLevel.color) ? rawLevel.color : (this.style.stroke || '#4caf50');
+            const perLevelWidth = (rawLevel.lineWidth != null && !isNaN(parseInt(rawLevel.lineWidth))) ? parseInt(rawLevel.lineWidth) : null;
+            const widthPx = (globalWidth !== null ? globalWidth : (perLevelWidth !== null ? perLevelWidth : baseLineWidth));
+            const w = (v === 1) ? Math.max(0.5, (widthPx * scaleFactor) * 1.6) : Math.max(0.5, widthPx * scaleFactor);
+            const hitW = Math.max(10, w * 6);
+
+            this.group.append('line')
+                .attr('class', 'gann-level-hit')
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', end.x).attr('y2', end.y)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitW)
+                .attr('stroke-dasharray', '')
+                .attr('opacity', 1)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move')
+                .attr('data-gann-level-array', 'fanLevels')
+                .attr('data-gann-level-index', idx)
+                .attr('data-gann-level-orient', 'fan-multiplier');
+        });
+
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    /** Pixel layout for level drag (matches `render` anchor + bounds). */
+    getPixelLayout(scales) {
+        if (!this.points || this.points.length < 2 || !scales) return null;
+        const getX = (p) => scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const getY = (p) => scales.yScale(p.y);
+        const x1 = getX(this.points[0]);
+        const y1 = getY(this.points[0]);
+        const x2 = getX(this.points[1]);
+        const y2 = getY(this.points[1]);
+        const chartW = scales.chart?.width || (scales.xScale?.range ? Math.abs(scales.xScale.range()[1] - scales.xScale.range()[0]) : 0);
+        const chartH = scales.chart?.height || (scales.yScale?.range ? Math.abs(scales.yScale.range()[0] - scales.yScale.range()[1]) : 0);
+        const pad = 40;
+        const xMin = -pad;
+        const xMax = (chartW > 0 ? chartW : Math.max(x1, x2) + pad) + pad;
+        const yMin = -pad;
+        const yMax = (chartH > 0 ? chartH : Math.max(y1, y2) + pad) + pad;
+        const baseDx = x2 - x1;
+        const baseDy = y2 - y1;
+        const xBound = baseDx >= 0 ? xMax : xMin;
+        const baseSlope = (Math.abs(baseDx) < 1e-6)
+            ? (baseDy >= 0 ? 1e6 : -1e6)
+            : (baseDy / baseDx);
+        return { x1, y1, xBound, baseSlope, xMin, xMax, yMin, yMax };
     }
 
     static fromJSON(data, chart = null) {

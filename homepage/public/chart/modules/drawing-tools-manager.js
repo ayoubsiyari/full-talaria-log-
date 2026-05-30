@@ -5383,6 +5383,167 @@ class DrawingToolsManager {
                     // [debug removed]
                 })
         );
+
+        this._setupGannLevelDrag(drawing);
+    }
+
+    _isGannLevelAdjustDrawingType(type) {
+        return type === 'gann-box' || type === 'gann-square-fixed' || type === 'gann-fan';
+    }
+
+    _getGannDrawingScales() {
+        if (!this.chart) return null;
+        return { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
+    }
+
+    _parseGannLevelHitMeta(targetSel) {
+        if (!targetSel || !targetSel.attr) return null;
+        const arrayKey = targetSel.attr('data-gann-level-array');
+        const idxRaw = targetSel.attr('data-gann-level-index');
+        const orient = targetSel.attr('data-gann-level-orient');
+        if (!arrayKey || idxRaw == null || idxRaw === '') return null;
+        const idx = parseInt(idxRaw, 10);
+        if (!Number.isFinite(idx) || idx < 0) return null;
+        return { arrayKey, idx, orient: orient || 'h' };
+    }
+
+    _clampGannUnitRatio(v) {
+        return Math.max(0.001, Math.min(0.999, v));
+    }
+
+    _computeGannLevelValueFromPointer(drawing, meta, mouseX, mouseY) {
+        const scales = this._getGannDrawingScales();
+        if (!scales || !drawing || !meta) return null;
+        const layout = typeof drawing.getPixelLayout === 'function'
+            ? drawing.getPixelLayout(scales)
+            : null;
+        if (!layout) return null;
+
+        const orient = meta.orient;
+        let next = null;
+
+        if (orient === 'h') {
+            if (layout.height != null && layout.height > 0) {
+                next = (mouseY - layout.top) / layout.height;
+            } else if (layout.size != null && layout.size > 0) {
+                next = (mouseY - layout.top) / layout.size;
+            }
+            return next != null && Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
+        }
+        if (orient === 'v') {
+            if (layout.width != null && layout.width > 0) {
+                next = (mouseX - layout.left) / layout.width;
+            } else if (layout.size != null && layout.size > 0) {
+                next = (mouseX - layout.left) / layout.size;
+            }
+            return next != null && Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
+        }
+        if (orient === 'fan-h' && layout.size > 0) {
+            const sy = layout.sy || 1;
+            next = (mouseY - layout.anchorY) / (sy * layout.size);
+            return Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
+        }
+        if (orient === 'fan-v' && layout.size > 0) {
+            const sx = layout.sx || 1;
+            next = (mouseX - layout.anchorX) / (sx * layout.size);
+            return Number.isFinite(next) ? this._clampGannUnitRatio(next) : null;
+        }
+        if (orient === 'arc' && layout.size > 0) {
+            const dx = Math.abs(mouseX - layout.anchorX);
+            const dy = Math.abs(mouseY - layout.anchorY);
+            next = Math.max(dx, dy) / layout.size;
+            return Number.isFinite(next) ? Math.max(0.001, Math.min(2, next)) : null;
+        }
+        if (orient === 'fan-multiplier' && layout.xBound != null && layout.baseSlope != null) {
+            const dx = layout.xBound - layout.x1;
+            if (Math.abs(dx) < 1e-6) return null;
+            const slope = (mouseY - layout.y1) / dx;
+            if (!Number.isFinite(slope) || Math.abs(layout.baseSlope) < 1e-9) return null;
+            next = slope / layout.baseSlope;
+            return Number.isFinite(next) ? Math.max(0.001, Math.min(16, next)) : null;
+        }
+        return null;
+    }
+
+    _setupGannLevelDrag(drawing) {
+        if (!this._isGannLevelAdjustDrawingType(drawing.type) || !drawing.group) return;
+
+        const self = this;
+        const levelHits = drawing.group.selectAll('.gann-level-hit[data-gann-level-array]');
+        levelHits.on('mousedown.gann-level-drag', null);
+
+        levelHits.on('mousedown.gann-level-drag', function(event) {
+            if (self.currentTool) return;
+            if (event.ctrlKey) return;
+            event.stopPropagation();
+            event.preventDefault();
+
+            const targetSel = d3.select(event.currentTarget);
+            const dragMeta = self._parseGannLevelHitMeta(targetSel);
+            if (!dragMeta) return;
+
+            if (!drawing.selected) {
+                self.selectDrawing(drawing, event.shiftKey);
+            }
+
+            const arr = drawing.style?.[dragMeta.arrayKey];
+            const row = Array.isArray(arr) ? arr[dragMeta.idx] : null;
+            if (!row) return;
+
+            const startValue = parseFloat(row.value);
+            const beforeState = self.history ? self.history.captureState(drawing) : null;
+            let moved = false;
+
+            const applyPointer = (ev) => {
+                const [mx, my] = self._eventCanvasLocalXY(ev);
+                const nextVal = self._computeGannLevelValueFromPointer(drawing, dragMeta, mx, my);
+                if (nextVal == null || !Number.isFinite(nextVal)) return;
+                const levels = drawing.style?.[dragMeta.arrayKey];
+                if (!Array.isArray(levels) || !levels[dragMeta.idx]) return;
+                const rounded = Math.round(nextVal * 1000) / 1000;
+                if (Math.abs(parseFloat(levels[dragMeta.idx].value) - rounded) < 1e-6) return;
+                levels[dragMeta.idx] = { ...levels[dragMeta.idx], value: rounded };
+                moved = true;
+                self.renderDrawing(drawing, { skipInteraction: true });
+                if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                    drawing.showAxisHighlights();
+                }
+            };
+
+            const onMove = (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                applyPointer(ev);
+            };
+
+            const onUp = (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                document.removeEventListener('mousemove', onMove, true);
+                document.removeEventListener('mouseup', onUp, true);
+
+                if (drawing.selected) {
+                    self.setupDrawingInteraction(drawing);
+                }
+
+                if (moved && self.history && beforeState) {
+                    self.history.recordModify(drawing, beforeState);
+                }
+                if (moved) {
+                    self.saveDrawings();
+                    const index = self.drawings.indexOf(drawing);
+                    if (self.chart?.broadcastDrawingChange && index > -1) {
+                        self.chart.broadcastDrawingChange('update', drawing, index);
+                    }
+                    if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('drawingsChanged'));
+                    }
+                }
+            };
+
+            document.addEventListener('mousemove', onMove, true);
+            document.addEventListener('mouseup', onUp, true);
+        });
     }
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
@@ -8358,7 +8519,7 @@ class DrawingToolsManager {
             if (distance <= effectiveTolerance) return true;
         }
 
-        const pathSelectors = 'path.fib-level-hit, path.fib-arcs-trend, path.fib-spiral-path';
+        const pathSelectors = 'path.fib-level-hit, path.fib-arcs-trend, path.fib-spiral-path, path.gann-level-hit';
         for (const element of drawing.group.selectAll(pathSelectors).nodes()) {
             const elementSel = d3.select(element);
             if (elementSel.style('opacity') === '0') continue;

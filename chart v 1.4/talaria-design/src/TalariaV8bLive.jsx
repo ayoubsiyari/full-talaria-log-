@@ -975,6 +975,13 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
     v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
     return true;
   }
+  if (
+    d.type === "gann-square-fixed" &&
+    (pickerKey.startsWith("gannFanLv-") || pickerKey.startsWith("gannArc-"))
+  ) {
+    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
+    return true;
+  }
   if (d.type === "gann-fan" && pickerKey.startsWith("gannFanLv-")) {
     v9ApplyGannFanFromTlStyle(d, tlStyle);
     return true;
@@ -997,10 +1004,6 @@ function v9ApplyPickerColorOnlyExtras(d, tlStyle, pickerKey) {
   }
   if (v9IsFibWedgeType(d.type) && (pickerKey.startsWith("fibLevel-") || pickerKey === "fibTrendColor" || pickerKey === "tlLineColor")) {
     v9ApplyFibWedgeFromTlStyle(d, tlStyle, w);
-    return true;
-  }
-  if (pickerKey.startsWith("gannArc-") && d.type === "gann-square-fixed") {
-    v9ApplyGannSquareFixedFromTlStyle(d, tlStyle);
     return true;
   }
   return false;
@@ -4399,7 +4402,7 @@ function v9ApplyClassicFibFromTlStyle(d, tlStyle, trendWidthFallback) {
 
 /** Chart Gann level rows ↔ V9 Input tab (`on` / string `value` / `color`). */
 function v9ChartRatioLevelsToGannTl(arr) {
-  if (!Array.isArray(arr) || !arr.length) return null;
+  if (!Array.isArray(arr)) return [];
   return arr.map((l) => ({
     on: l && l.enabled !== false,
     value: l && l.value != null ? String(l.value) : "0",
@@ -4581,10 +4584,10 @@ function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
 function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-box" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  if (Array.isArray(tlStyle.gannPriceLevels) && tlStyle.gannPriceLevels.length) {
+  if (Array.isArray(tlStyle.gannPriceLevels)) {
     d.style.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
   }
-  if (Array.isArray(tlStyle.gannTimeLevels) && tlStyle.gannTimeLevels.length) {
+  if (Array.isArray(tlStyle.gannTimeLevels)) {
     d.style.timeLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannTimeLevels);
   }
 }
@@ -4592,13 +4595,13 @@ function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
 function v9ApplyGannSquareFixedFromTlStyle(d, tlStyle) {
   if (!d || d.type !== "gann-square-fixed" || !d.style) return;
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
-  if (Array.isArray(tlStyle.gannGridLevels) && tlStyle.gannGridLevels.length) {
+  if (Array.isArray(tlStyle.gannGridLevels)) {
     d.style.gridLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannGridLevels);
   }
-  if (Array.isArray(tlStyle.gannFanLevels) && tlStyle.gannFanLevels.length) {
+  if (Array.isArray(tlStyle.gannFanLevels)) {
     d.style.fanLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannFanLevels);
   }
-  if (Array.isArray(tlStyle.gannArcLevels) && tlStyle.gannArcLevels.length) {
+  if (Array.isArray(tlStyle.gannArcLevels)) {
     d.style.arcLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannArcLevels);
   }
 }
@@ -4608,7 +4611,11 @@ function v9ApplyGannFanFromTlStyle(d, tlStyle) {
   v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle);
   const prev = Array.isArray(d.style.fanLevels) ? d.style.fanLevels : [];
   const tl = tlStyle.gannFanLevels;
-  if (!Array.isArray(tl) || !tl.length) return;
+  if (!Array.isArray(tl)) return;
+  if (!tl.length) {
+    d.style.fanLevels = [];
+    return;
+  }
   d.style.fanLevels = tl.map((l, i) => {
     const value = parseFloat(String(l && l.value != null ? l.value : "0")) || 0;
     const p = prev[i];
@@ -5168,8 +5175,8 @@ function v9TlStylePatchFromDrawing(d) {
               ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
               : 0.12;
           return {
-            ...(price ? { gannPriceLevels: price } : {}),
-            ...(time ? { gannTimeLevels: time } : {}),
+            gannPriceLevels: price,
+            gannTimeLevels: time,
             gannLineType: v9GannDashArrayToLineType(dashRaw),
             gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
             gannBackground: !!s.showZones,
@@ -5190,9 +5197,9 @@ function v9TlStylePatchFromDrawing(d) {
               ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
               : 0.12;
           return {
-            ...(grid ? { gannGridLevels: grid } : {}),
-            ...(fan ? { gannFanLevels: fan } : {}),
-            ...(arc ? { gannArcLevels: arc } : {}),
+            gannGridLevels: grid,
+            gannFanLevels: fan,
+            gannArcLevels: arc,
             gannLineType: v9GannDashArrayToLineType(dashRaw),
             gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
             gannBackground: s.showZones !== false,
@@ -5216,7 +5223,7 @@ function v9TlStylePatchFromDrawing(d) {
               ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
               : 0.12;
           return {
-            ...(fan.length ? { gannFanLevels: fan } : {}),
+            gannFanLevels: fan,
             gannLineType: v9GannDashArrayToLineType(dashRaw),
             gannLineWidth: String(parseInt(s.levelsLineWidth, 10) || 2),
             gannBackground: s.showZones !== false,
@@ -13539,8 +13546,13 @@ const TalariaV8bLive = () => {
         let changed = false;
         const next = { ...s };
         for (const key of Object.keys(patch)) {
-          if (next[key] !== patch[key]) {
-            next[key] = patch[key];
+          const pv = patch[key];
+          const nv = next[key];
+          const eq = Array.isArray(pv) && Array.isArray(nv)
+            ? JSON.stringify(pv) === JSON.stringify(nv)
+            : nv === pv;
+          if (!eq) {
+            next[key] = pv;
             changed = true;
           }
         }
@@ -15213,6 +15225,7 @@ const TalariaV8bLive = () => {
 
   /** Gann Style/Input — push `next` tlStyle in the same frame (avoids stale ref after delete/redraw). */
   const applyTlGannStylePatch = useCallback((patchFn) => {
+    suppressForwardBridge.current = true;
     flushSync(() => {
       setTlStyle((s) => {
         const next = patchFn(s);
@@ -15222,6 +15235,9 @@ const TalariaV8bLive = () => {
         });
         return next;
       });
+    });
+    requestAnimationFrame(() => {
+      suppressForwardBridge.current = false;
     });
   }, []);
 
@@ -18632,7 +18648,7 @@ const TalariaV8bLive = () => {
               );
               const gannColorSwatch = (key, color) => (
                 <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-                  onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
+                  {...modalPointerActivate((e) => openCP(e, key, color))}
                   style={v9TlColorSwatchBoxStyle(color, {
                     active: colorPicker === key,
                     hover: swHov === key,
