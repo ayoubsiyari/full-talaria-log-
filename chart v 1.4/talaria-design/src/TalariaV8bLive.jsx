@@ -2588,6 +2588,69 @@ function v9SyncDrawingAxisHighlights(d) {
   } catch (_) {}
 }
 
+/** Deep snapshot of a drawing before the V9 settings panel edits it (Cancel restores this). */
+function v9CloneDrawingEditState(drawing) {
+  if (!drawing) return null;
+  const snap = {
+    id: drawing.id,
+    type: drawing.type,
+    text: typeof drawing.text === "string" ? drawing.text : "",
+    locked: !!drawing.locked,
+    style: drawing.style ? JSON.parse(JSON.stringify(drawing.style)) : {},
+  };
+  if (drawing.visible === false) snap.visible = false;
+  else if (drawing.visible === true) snap.visible = true;
+  if (Array.isArray(drawing.levels)) {
+    snap.levels = JSON.parse(JSON.stringify(drawing.levels));
+  }
+  return snap;
+}
+
+/** Revert a drawing to its pre-edit snapshot and repaint. */
+function v9RestoreDrawingFromEditSnapshot(snap) {
+  if (!snap || snap.id == null) return false;
+  let restored = false;
+  const chartsToRender = new Set();
+  enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+    const d = resolveLiveDrawingInDm(dm, { id: snap.id });
+    if (!d) return;
+    restored = true;
+    d.style = JSON.parse(JSON.stringify(snap.style || {}));
+    d.text = snap.text || "";
+    d.locked = !!snap.locked;
+    if (snap.visible !== undefined) d.visible = snap.visible;
+    if (snap.levels !== undefined) {
+      d.levels = JSON.parse(JSON.stringify(snap.levels));
+    }
+    if (typeof d.setText === "function") {
+      try {
+        d.setText(d.text);
+      } catch (_) {}
+    }
+    const tb = dm.toolbar;
+    try {
+      if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
+    } catch (_) {}
+    try {
+      if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+      else if (typeof dm.renderDrawing === "function") dm.renderDrawing(d);
+    } catch (_) {
+      try {
+        dm.renderDrawing?.(d);
+      } catch (_) {}
+    }
+    v9SyncDrawingAxisHighlights(d);
+    try {
+      if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+    } catch (_) {}
+    if (dm.chart) chartsToRender.add(dm.chart);
+  });
+  chartsToRender.forEach((c) => {
+    if (c && typeof c.scheduleRender === "function") c.scheduleRender();
+  });
+  return restored;
+}
+
 /**
  * Apply full `tlStyle` → selected/edited drawings immediately (all TlChk toggles, first click).
  * Does not re-run the layout bridge (avoids stale-state revert on checkbox toggles).
@@ -8184,7 +8247,7 @@ const TalariaV8bLive = () => {
   const [tlBarSelectedType, setTlBarSelectedType] = useState(null);
   // Must be declared before render-time `settingsEditGroup` (line ~6980) — TDZ if defined later.
   const editingDrawingRef = useRef(null);
-  /** Final push of tlStyle when settings OK/Cancel closes (belt-and-suspenders for fib subtypes). */
+  /** Final push of tlStyle when settings OK closes (belt-and-suspenders for fib subtypes). */
   const v9StyleBridgeFlushRef = useRef(null);
   const tlSettOpenRef = useRef(false);
   const v9LastSelectedDrawingTypeRef = useRef(null);
@@ -9644,10 +9707,18 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "tlbardrop"]));
     setTimeout(() => { setTlBarDrop(null); setTlSaveAsMode(false); setTlNewTplName(""); setClosing(s => { const n = new Set(s); n.delete("tlbardrop"); return n; }); }, 130);
   };
-  const closeTlSett = () => {
-    try {
-      v9StyleBridgeFlushRef.current?.();
-    } catch (_) {}
+  const finishTlSettPanel = ({ save = false, restore = false } = {}) => {
+    if (restore) {
+      const editing = editingDrawingRef.current;
+      if (editing?.editSnapshot) {
+        suppressForwardBridge.current = true;
+        v9RestoreDrawingFromEditSnapshot(editing.editSnapshot);
+      }
+    } else if (save) {
+      try {
+        v9StyleBridgeFlushRef.current?.();
+      } catch (_) {}
+    }
     cpPickerDraggingRef.current = false;
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -9660,8 +9731,17 @@ const TalariaV8bLive = () => {
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName(""); setTlStyleDrop(null);
     setTimeout(() => { setTlSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("tlsett"); return n; }); }, 105);
   };
+  const cancelTlSett = () => finishTlSettPanel({ restore: true });
+  const confirmTlSett = () => finishTlSettPanel({ save: true });
+  const closeTlSett = cancelTlSett;
   /** User clicked a different shape while settings were open — drop panel state immediately. */
   const dismissShapeSettingsForNewSelection = () => {
+    const editing = editingDrawingRef.current;
+    if (editing?.editSnapshot) {
+      suppressForwardBridge.current = true;
+      suppressTxtForwardBridge.current = true;
+      v9RestoreDrawingFromEditSnapshot(editing.editSnapshot);
+    }
     editingDrawingRef.current = null;
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -9676,13 +9756,23 @@ const TalariaV8bLive = () => {
     });
     setTlSettOpen(false);
   };
-  const closeTxtSett = () => {
+  const finishTxtSettPanel = ({ restore = false } = {}) => {
+    if (restore) {
+      const editing = editingDrawingRef.current;
+      if (editing?.editSnapshot) {
+        suppressTxtForwardBridge.current = true;
+        v9RestoreDrawingFromEditSnapshot(editing.editSnapshot);
+      }
+    }
     cpBarAnchorRef.current = null;
     setColorPicker(null);
     setClosing(s => new Set([...s, "txtsett"]));
     setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null);
     setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
   };
+  const cancelTxtSett = () => finishTxtSettPanel({ restore: true });
+  const confirmTxtSett = () => finishTxtSettPanel({ restore: false });
+  const closeTxtSett = cancelTxtSett;
   const closeVwapSett = () => {
     cpBarAnchorRef.current = null;
     setColorPicker(null);
@@ -13553,6 +13643,10 @@ const TalariaV8bLive = () => {
               if (live) drawingForStyle = live;
             }
           } catch (_) {}
+          if (editingDrawingRef.current) {
+            editingDrawingRef.current.drawing = drawingForStyle;
+            editingDrawingRef.current.editSnapshot = v9CloneDrawingEditState(drawingForStyle);
+          }
           const fullEd = v9NeedsFullTlStyleReplaceForType(drawingForStyle.type)
             ? v9BuildFullTlStyleFromDrawing(drawingForStyle, dmEd)
             : null;
@@ -19151,8 +19245,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{ borderTop:`1px solid ${c.brH}`, display:"flex", alignItems:"center", justifyContent:"flex-end", padding:"10px 14px 14px", gap:8 }}>
-            <B hk="tl-cancel" fireOnPointerDown onClick={closeTlSett}>Cancel</B>
-            <B primary hk="tl-ok" fireOnPointerDown onClick={closeTlSett}>OK</B>
+            <B hk="tl-cancel" fireOnPointerDown onClick={cancelTlSett}>Cancel</B>
+            <B primary hk="tl-ok" fireOnPointerDown onClick={confirmTlSett}>OK</B>
           </div>
         </div>
       , document.body)}
@@ -19985,8 +20079,8 @@ const TalariaV8bLive = () => {
           {/* footer */}
           <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
             style={{borderTop:`1px solid ${c.brH}`,display:"flex",alignItems:"center",justifyContent:"flex-end",padding:"10px 14px 14px",gap:8}}>
-            <B hk="txt-cancel" fireOnPointerDown onClick={closeTxtSett}>Cancel</B>
-            <B primary hk="txt-ok" fireOnPointerDown onClick={closeTxtSett}>OK</B>
+            <B hk="txt-cancel" fireOnPointerDown onClick={cancelTxtSett}>Cancel</B>
+            <B primary hk="txt-ok" fireOnPointerDown onClick={confirmTxtSett}>OK</B>
           </div>
         </div>
         );
