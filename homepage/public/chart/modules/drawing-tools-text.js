@@ -1509,13 +1509,16 @@ class NoteTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Draw the visible line
+        const lineStroke = (this.style.stroke && this.style.stroke !== 'none')
+            ? this.style.stroke
+            : '#787b86';
         const noteLineEl = this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x2)
             .attr('y2', y2)
-            .attr('stroke', this.style.stroke)
+            .attr('stroke', lineStroke)
             .attr('stroke-width', scaledStrokeWidth)
             .style('pointer-events', 'none')
             .style('cursor', 'move');
@@ -1568,15 +1571,21 @@ class NoteTool extends BaseDrawing {
         noteLineHitEl.attr('x2', x2).attr('y2', y2);
 
         // Background rectangle - use fill for background color
+        const boxFill = (this.style.fill && this.style.fill !== 'none')
+            ? this.style.fill
+            : (this.style.backgroundColor && this.style.backgroundColor !== 'transparent'
+                ? this.style.backgroundColor
+                : 'rgba(50, 50, 50, 0.9)');
+        const boxStroke = (this.style.stroke && this.style.stroke !== 'none') ? lineStroke : '#787b86';
         const textBox = this.group.append('rect')
             .attr('class', 'inline-editable-text note-body-hit text-body-hit')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
-            .attr('fill', this.style.fill)
+            .attr('fill', boxFill)
             .attr('rx', 4)
-            .attr('stroke', this.style.stroke)
+            .attr('stroke', boxStroke)
             .attr('stroke-width', 1)
             .style('pointer-events', 'all')
             .style('cursor', 'move');
@@ -1947,13 +1956,16 @@ class PriceNoteTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
+        const lineStroke = (this.style.stroke && this.style.stroke !== 'none')
+            ? this.style.stroke
+            : (typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined' ? DRAWING_TOOL_DEFAULT_STROKE : '#2962ff');
         const noteLineEl = this.group.append('line')
             .attr('class', 'note-line')
             .attr('x1', x1)
             .attr('y1', y1)
             .attr('x2', x2)
             .attr('y2', y2)
-            .attr('stroke', this.style.stroke)
+            .attr('stroke', lineStroke)
             .attr('stroke-width', scaledStrokeWidth)
             .style('pointer-events', 'none')
             .style('cursor', 'move');
@@ -1999,9 +2011,12 @@ class PriceNoteTool extends BaseDrawing {
         noteLineEl.attr('x2', x2).attr('y2', y2);
         noteLineHitEl.attr('x2', x2).attr('y2', y2);
 
+        const boxFill = (this.style.fill && this.style.fill !== 'none')
+            ? this.style.fill
+            : '#2962ff';
         const brd = this.style.borderColor;
         const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
-        const boxStroke = hasLabelBorder ? brd : (this.style.stroke || 'none');
+        const boxStroke = hasLabelBorder ? brd : (lineStroke !== 'none' ? lineStroke : 'none');
 
         this.group.append('rect')
             .attr('class', 'note-body-hit text-body-hit')
@@ -2009,7 +2024,7 @@ class PriceNoteTool extends BaseDrawing {
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
-            .attr('fill', this.style.fill)
+            .attr('fill', boxFill)
             .attr('rx', 4)
             .attr('stroke', boxStroke)
             .attr('stroke-width', hasLabelBorder ? 1 : 0)

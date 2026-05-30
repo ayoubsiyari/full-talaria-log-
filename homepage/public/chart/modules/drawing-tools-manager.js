@@ -10573,8 +10573,40 @@ class DrawingToolsManager {
             };
         }
 
+        if (toolType === 'note') {
+            return {
+                textColor: '#FFFFFF',
+                fontSize: 12,
+                fontFamily: 'Roboto, sans-serif',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+                textAlign: 'left',
+                stroke: '#787b86',
+                strokeWidth: 1,
+                fill: 'rgba(50, 50, 50, 0.9)',
+                backgroundColor: 'rgba(50, 50, 50, 0.9)',
+            };
+        }
+
+        if (toolType === 'price-note') {
+            const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                ? DRAWING_TOOL_DEFAULT_STROKE
+                : '#2962ff';
+            return {
+                textColor: '#FFFFFF',
+                fontSize: 12,
+                fontFamily: 'Roboto, sans-serif',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+                stroke: lineStroke,
+                strokeWidth: 1,
+                fill: '#2962ff',
+                borderColor: 'none',
+            };
+        }
+
         const textAnnotationTypes = new Set([
-            'text', 'notebox', 'label', 'anchored-text', 'note', 'price-note', 'callout', 'comment',
+            'text', 'notebox', 'label', 'anchored-text', 'callout', 'comment',
             'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin', 'table', 'emoji', 'image',
         ]);
         if (textAnnotationTypes.has(toolType)) {
