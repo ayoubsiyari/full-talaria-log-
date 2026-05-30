@@ -1018,6 +1018,74 @@ class FibCirclesTool extends BaseDrawing {
         };
     }
 
+    /** Ray parameter along p1→p2 where an ellipse at `level` meets the axis (TV axis-aligned ellipses). */
+    static _rayScaleForLevel(level, dx, dy, baseRx, baseRy, useGeometric) {
+        const lv = parseFloat(level);
+        if (!isFinite(lv) || lv <= 0) return 0;
+        if (useGeometric) return lv;
+        if (baseRx <= 0 || baseRy <= 0) return lv;
+        const denom = Math.hypot(dx / baseRx, dy / baseRy);
+        if (!denom || !isFinite(denom)) return lv;
+        return lv / denom;
+    }
+
+    /** Stored corner offset from center so level-1 intersection sits at (ivx, ivy). */
+    static _cornerOffsetFromLevel1Hit(ivx, ivy, useGeometric) {
+        if (useGeometric) return { dx: ivx, dy: ivy };
+        if (Math.abs(ivx) < 1e-6 && Math.abs(ivy) < 1e-6) return { dx: 0, dy: 0 };
+        const ax = ivx !== 0 ? ivx / Math.abs(ivx) : 0;
+        const ay = ivy !== 0 ? ivy / Math.abs(ivy) : 0;
+        const denom = Math.hypot(ax, ay) || 1;
+        return { dx: ivx * denom, dy: ivy * denom };
+    }
+
+    onPointHandleDrag(index, context = {}) {
+        const { point, scales } = context;
+        if (!point || !scales || !this.points[0]) return false;
+
+        if (index === 0) {
+            if (!this.points[1]) return false;
+            const dx = point.x - this.points[0].x;
+            const dy = point.y - this.points[0].y;
+            this.points = this.points.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+            return true;
+        }
+
+        if (index !== 1) return false;
+
+        const chart = scales.chart;
+        const xScale = scales.xScale;
+        const yScale = scales.yScale;
+        if (!yScale) return false;
+
+        const toPxX = (p) => (chart && typeof chart.dataIndexToPixel === 'function')
+            ? chart.dataIndexToPixel(p.x)
+            : (xScale ? xScale(p.x) : p.x);
+        const toPxY = (p) => yScale(p.y);
+        const invPxX = (px) => (chart && typeof chart.pixelToDataIndex === 'function')
+            ? chart.pixelToDataIndex(px)
+            : (xScale && typeof xScale.invert === 'function' ? xScale.invert(px) : point.x);
+        const invPxY = (py) => (yScale && typeof yScale.invert === 'function')
+            ? yScale.invert(py)
+            : point.y;
+
+        const x0 = toPxX(this.points[0]);
+        const y0 = toPxY(this.points[0]);
+        const xM = toPxX(point);
+        const yM = toPxY(point);
+        const ivx = xM - x0;
+        const ivy = yM - y0;
+        if (Math.hypot(ivx, ivy) < 1e-6) return false;
+
+        const useGeometric = this.style.v9FibCirclesGeometric === true || this.style.geometricCircles === true;
+        const { dx, dy } = FibCirclesTool._cornerOffsetFromLevel1Hit(ivx, ivy, useGeometric);
+        this.points[1] = {
+            x: invPxX(x0 + dx),
+            y: invPxY(y0 + dy),
+        };
+        return true;
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -1115,15 +1183,9 @@ class FibCirclesTool extends BaseDrawing {
             1
         );
         /** Ray parameter s along (dx,dy) where ellipse at `level` meets the p1→p2 axis (TV axis-aligned ellipses). */
-        const rayScaleForLevel = (level) => {
-            const lv = parseFloat(level);
-            if (!isFinite(lv) || lv <= 0) return 0;
-            if (useGeometric) return lv;
-            if (baseRx <= 0 || baseRy <= 0) return lv;
-            const denom = Math.hypot(dx / baseRx, dy / baseRy);
-            if (!denom || !isFinite(denom)) return lv;
-            return lv / denom;
-        };
+        const rayScaleForLevel = (level) => FibCirclesTool._rayScaleForLevel(
+            level, dx, dy, baseRx, baseRy, useGeometric
+        );
         const maxRayScale = rayScaleForLevel(maxEnabledLevel);
         const axisEndX = x1 + dx * maxRayScale;
         const axisEndY = y1 + dy * maxRayScale;
@@ -1256,6 +1318,21 @@ class FibCirclesTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
         }
+
+        // Second handle on level-1 ellipse border (same ray as labels / middle line).
+        const invPxX = (px) => (scales.chart && typeof scales.chart.pixelToDataIndex === 'function')
+            ? scales.chart.pixelToDataIndex(px)
+            : (scales.xScale && typeof scales.xScale.invert === 'function' ? scales.xScale.invert(px) : this.points[1].x);
+        const invPxY = (py) => (scales.yScale && typeof scales.yScale.invert === 'function')
+            ? scales.yScale.invert(py)
+            : this.points[1].y;
+        const ray1 = rayScaleForLevel(1);
+        const hx = x1 + dx * ray1;
+        const hy = y1 + dy * ray1;
+        this.virtualPoints = [
+            this.points[0],
+            { x: invPxX(hx), y: invPxY(hy) },
+        ];
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
