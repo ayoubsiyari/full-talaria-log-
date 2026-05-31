@@ -146,7 +146,7 @@ function resolveTextAnnotationEditBoxNode(drawing, fallbackNode) {
         callout: 'rect.shape-border-hit',
         pin: 'path.note-body-hit',
         'signpost-2': 'rect.signpost-label-fill',
-        text: 'rect.text-background, rect.text-body-hit'
+        text: 'text.inline-editable-text, rect.text-background, rect.text-body-hit'
     };
     const sel = byType[drawing.type];
     if (!sel) return fallbackNode || null;
@@ -162,7 +162,8 @@ function buildTextAnnotationInlineHideSelector(drawing) {
     const root = `.drawing[data-id="${drawing.id}"]`;
     const byType = {
         comment: `${root} text, ${root} path.shape-fill, ${root} rect.comment-body-hit, ${root} path.comment-body-hit`,
-        callout: `${root} text, ${root} path.shape-fill, ${root} path.shape-border-hit`
+        callout: `${root} text, ${root} path.shape-fill, ${root} path.shape-border-hit`,
+        text: `${root} text, ${root} rect.text-body-hit, ${root} rect.text-background, ${root} rect.text-border`
     };
     return byType[drawing.type] || `${root} text`;
 }
@@ -330,6 +331,20 @@ function syncPlainTextSelectionChrome(group, bbox, drawing) {
             .attr('y', bbox.y)
             .attr('width', bbox.width)
             .attr('height', bbox.height);
+    }
+}
+
+/** Live typing handler — prefer in-place layout updaters over full SVG re-render. */
+function runTextAnnotationLiveInput(drawing, newText, scheduleLive) {
+    if (!drawing) return;
+    const normalized = (newText || '').replace(/\r\n/g, '\n');
+    drawing.setText(normalized);
+    if (typeof drawing._updatePlainTextLayout === 'function') {
+        drawing._updatePlainTextLayout();
+    } else if (typeof drawing._updateCommentBubble === 'function') {
+        drawing._updateCommentBubble();
+    } else if (typeof scheduleLive === 'function') {
+        scheduleLive(drawing);
     }
 }
 
@@ -822,9 +837,7 @@ class TextTool extends BaseDrawing {
             };
             self.bbox = nextBbox;
             syncPlainTextSelectionChrome(self.group, nextBbox, self);
-            syncInlineEditorToEditBoxRect(
-                resolveTextAnnotationEditBoxNode(self, textEl.node())
-            );
+            syncInlineEditorToEditBoxRect(textEl.node());
         };
 
         const bodyHitArea = this.group.insert('rect', 'text')
@@ -842,7 +855,6 @@ class TextTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', textAnnotationHoverCursor(this));
 
-        const self = this;
         const CLICK_DELAY = 250;
         let clickTimer = null;
         let downPos = null;
@@ -855,6 +867,7 @@ class TextTool extends BaseDrawing {
 
         const handleMouseMove = (event) => {
             if (!downPos) return;
+            if (self._inlineTextEditing) return;
             const dx = event.clientX - downPos.x;
             const dy = event.clientY - downPos.y;
             if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
@@ -878,6 +891,7 @@ class TextTool extends BaseDrawing {
 
         const handleMouseDown = (event) => {
             if (event.button !== 0) return;
+            if (self._inlineTextEditing) return;
             downPos = { x: event.clientX, y: event.clientY };
             moved = false;
             document.addEventListener('mousemove', handleMouseMove, true);
@@ -2008,6 +2022,13 @@ class AnchoredTextTool extends BaseDrawing {
 function v9StartAnnotationDragFromTextPointer(self, event) {
     const manager = self.chart && self.chart.drawingManager;
     if (!manager || typeof manager.startDrag !== 'function' || self.locked) return false;
+    if (self._inlineTextEditing || manager._textInlineEditDrawing === self) {
+        if (manager.textEditor && typeof manager.textEditor.save === 'function') {
+            manager.textEditor.save();
+        } else if (typeof manager.endTextInlineEdit === 'function') {
+            manager.endTextInlineEdit(self);
+        }
+    }
     if (!self.selected && typeof manager.selectDrawing === 'function') {
         manager.selectDrawing(self);
     }
@@ -5015,6 +5036,7 @@ if (typeof window !== 'undefined') {
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
         syncTextHandlePositions,
+        runTextAnnotationLiveInput,
         scheduleTextAnnotationLiveRender,
         beginTextAnnotationInlineEdit,
         endTextAnnotationInlineEdit,

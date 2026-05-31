@@ -5537,6 +5537,7 @@ class DrawingToolsManager {
 
                     if (self._isAnnotationTextLabelDrawingType(drawing.type)
                         && (isTextElement || isInlineEditable || isTextBodyHit || isNoteBodyHit)) {
+                        if (self._textInlineEditDrawing === drawing) return false;
                         return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle;
                     }
 
@@ -6620,6 +6621,9 @@ class DrawingToolsManager {
      */
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
+        if (this._textInlineEditDrawing === drawing && this.textEditor && typeof this.textEditor.save === 'function') {
+            this.textEditor.save();
+        }
         if (this._isTextDrawingType(drawing.type)) {
             this._beginDrawingLiveInteraction();
         }
@@ -7074,11 +7078,19 @@ class DrawingToolsManager {
         if (posNode && rect && (rect.width > 0 || rect.height > 0)) {
             const liveOnInput = (newText) => {
                 const next = (newText || '').replace(/\r\n/g, '\n');
-                drawing.setText(isPlaceholderText(next) ? '' : next);
-                if (typeof drawing._updateCommentBubble === 'function') {
-                    drawing._updateCommentBubble();
+                const textValue = isPlaceholderText(next) ? '' : next;
+                if (helpers && typeof helpers.runTextAnnotationLiveInput === 'function') {
+                    helpers.runTextAnnotationLiveInput(drawing, textValue, scheduleLive);
+                } else {
+                    drawing.setText(textValue);
+                    if (typeof drawing._updatePlainTextLayout === 'function') {
+                        drawing._updatePlainTextLayout();
+                    } else if (typeof drawing._updateCommentBubble === 'function') {
+                        drawing._updateCommentBubble();
+                    } else {
+                        scheduleLive(drawing);
+                    }
                 }
-                scheduleLive(drawing);
             };
             const commentLike = drawing.type === 'comment' || drawing.type === 'callout';
             const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
@@ -7115,11 +7127,19 @@ class DrawingToolsManager {
                         : `.drawing[data-id="${drawing.id}"] text`,
                     onInput: (newText) => {
                         const next = (newText || '').replace(/\r\n/g, '\n');
-                        drawing.setText(isPlaceholderText(next) ? '' : next);
-                        if (typeof drawing._updateCommentBubble === 'function') {
-                            drawing._updateCommentBubble();
+                        const textValue = isPlaceholderText(next) ? '' : next;
+                        if (helpers && typeof helpers.runTextAnnotationLiveInput === 'function') {
+                            helpers.runTextAnnotationLiveInput(drawing, textValue, scheduleLive);
+                        } else {
+                            drawing.setText(textValue);
+                            if (typeof drawing._updatePlainTextLayout === 'function') {
+                                drawing._updatePlainTextLayout();
+                            } else if (typeof drawing._updateCommentBubble === 'function') {
+                                drawing._updateCommentBubble();
+                            } else {
+                                scheduleLive(drawing);
+                            }
                         }
-                        scheduleLive(drawing);
                     }
                 };
             this.textEditor.show(
@@ -7170,8 +7190,19 @@ class DrawingToolsManager {
                     : `.drawing[data-id="${drawing.id}"] text`,
                 onInput: (newText) => {
                     const next = (newText || '').replace(/\r\n/g, '\n');
-                    drawing.setText(isPlaceholderText(next) ? '' : next);
-                    scheduleLive(drawing);
+                    const textValue = isPlaceholderText(next) ? '' : next;
+                    if (helpers && typeof helpers.runTextAnnotationLiveInput === 'function') {
+                        helpers.runTextAnnotationLiveInput(drawing, textValue, scheduleLive);
+                    } else {
+                        drawing.setText(textValue);
+                        if (typeof drawing._updatePlainTextLayout === 'function') {
+                            drawing._updatePlainTextLayout();
+                        } else if (typeof drawing._updateCommentBubble === 'function') {
+                            drawing._updateCommentBubble();
+                        } else {
+                            scheduleLive(drawing);
+                        }
+                    }
                 }
             };
             this.textEditor.show(
