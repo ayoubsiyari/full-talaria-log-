@@ -4911,23 +4911,17 @@ class DrawingToolsManager {
                 .style('cursor', 'default');
 
             if (drawing.type === 'anchored-volume-profile') {
-                // TradingView-like: only the anchor vertical line / resize handle is interactive.
+                // TradingView-like: only the anchor resize point is interactive — not the vertical line.
                 drawing.group.selectAll('.volume-profile-level-line')
                     .style('pointer-events', 'none')
                     .style('cursor', 'default');
                 drawing.group.selectAll('.volume-profile-values-label')
                     .style('pointer-events', 'none')
                     .style('cursor', 'default');
-                drawing.group.selectAll('.volume-profile-boundary:not(.volume-profile-anchor-boundary)')
+                drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-anchor-boundary, .volume-profile-boundary')
                     .style('pointer-events', 'none')
                     .style('cursor', 'default');
-                drawing.group.selectAll('.volume-profile-boundary-hit')
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'ew-resize');
-                drawing.group.selectAll('.volume-profile-anchor-boundary.shape-border-hit')
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'ew-resize');
-                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                drawing.group.selectAll('.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]')
                     .style('pointer-events', 'all')
                     .style('cursor', 'ew-resize');
             } else {
@@ -4983,6 +4977,8 @@ class DrawingToolsManager {
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
         const selector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-curve, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .custom-handle'
+            : drawing.type === 'anchored-volume-profile'
+                ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
                 : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
@@ -5420,6 +5416,8 @@ class DrawingToolsManager {
         const isVolumeProfileType = this.isVolumeProfileToolType(drawing.type);
         const dragSelector = drawing.type === 'anchored-vwap'
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
+            : drawing.type === 'anchored-volume-profile'
+                ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
                 : drawing.type === 'image'
@@ -6222,7 +6220,9 @@ class DrawingToolsManager {
             return false;
         };
 
-        const handles = drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group');
+        const handles = drawing.type === 'anchored-volume-profile'
+            ? drawing.group.selectAll('.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]')
+            : drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group');
         handles.on('.drag', null);
 
         handles.call(
@@ -9837,7 +9837,7 @@ class DrawingToolsManager {
                 try {
                     const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
 
-                    // Anchored profile: only the anchor line / resize handle is hittable (not POC/VA lines).
+                    // Anchored profile: only the anchor resize point is hittable (not the vertical line or POC/VA).
                     if (isAnchoredVolumeProfile) {
                         if (this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)) {
                             hitsById.set(drawing.id, { drawing, distance: 0, z });
@@ -10652,49 +10652,28 @@ class DrawingToolsManager {
         return false;
     }
 
-    /** Anchor vertical line + resize handle only (anchored volume profile). */
+    /** Anchor resize handle only — not the vertical guide line (anchored volume profile). */
     isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY) {
         if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
             return false;
         }
-        const baseHitTolerance = 10;
         try {
-            const handleNodes = drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').nodes();
+            const handleNodes = drawing.group.selectAll(
+                '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
+            ).nodes();
             for (const node of handleNodes) {
                 if (!node) continue;
-                if (typeof node.getBBox === 'function') {
-                    const bb = node.getBBox();
-                    const pad = 6;
-                    if (mouseX >= bb.x - pad && mouseX <= bb.x + bb.width + pad
-                        && mouseY >= bb.y - pad && mouseY <= bb.y + bb.height + pad) {
-                        return true;
-                    }
+                const cx = parseFloat(node.getAttribute('cx'));
+                const cy = parseFloat(node.getAttribute('cy'));
+                if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
+                const r = parseFloat(node.getAttribute('r'));
+                const hitR = (Number.isFinite(r) ? r : 14) + 4;
+                const dx = mouseX - cx;
+                const dy = mouseY - cy;
+                if ((dx * dx) + (dy * dy) <= hitR * hitR) {
+                    return true;
                 }
             }
-
-            const anchorEls = drawing.group.selectAll(
-                '.volume-profile-boundary-hit[data-point-index="0"], .volume-profile-anchor-boundary.shape-border-hit'
-            ).nodes();
-            let bestDistance = Infinity;
-            for (const el of anchorEls) {
-                if (!el) continue;
-                const x1 = parseFloat(el.getAttribute('x1'));
-                const y1 = parseFloat(el.getAttribute('y1'));
-                const x2 = parseFloat(el.getAttribute('x2'));
-                const y2 = parseFloat(el.getAttribute('y2'));
-                if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
-                const elSel = d3.select(el);
-                const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
-                const isBoundaryHit = elSel.classed('volume-profile-boundary-hit');
-                const tolerance = isBoundaryHit
-                    ? Math.max(14, (strokeWidth / 2) + 0.5)
-                    : Math.max(baseHitTolerance, (strokeWidth / 2) + 0.5);
-                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
-                if (distance <= tolerance) {
-                    bestDistance = Math.min(bestDistance, distance);
-                }
-            }
-            return bestDistance !== Infinity;
         } catch (_) {}
         return false;
     }

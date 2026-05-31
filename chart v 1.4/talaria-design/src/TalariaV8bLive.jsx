@@ -2467,9 +2467,68 @@ function v9TxtStylePatchFromDrawing(d) {
   return out;
 }
 
+/** Push live string into one chart text drawing (settings panel / explicit flush only). */
+function v9ApplyTxtContentToDrawing(d, content, dm) {
+  if (!d) return;
+  const next = content == null ? "" : String(content);
+  const cur = typeof d.text === "string" ? d.text : "";
+  if (next === cur) return;
+  if (next.trim() === "" && cur.trim() !== "") return;
+  d.text = next;
+  if (typeof d.setText === "function") {
+    try {
+      d.setText(d.text);
+    } catch (_) {}
+  }
+  const tb = dm && dm.toolbar;
+  try {
+    if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
+  } catch (_) {}
+  if (tb && typeof tb.onUpdate === "function") {
+    try {
+      tb.onUpdate(d);
+    } catch (_) {
+      try {
+        dm?.renderDrawing?.(d);
+      } catch (_) {}
+    }
+  } else {
+    try {
+      dm?.renderDrawing?.(d);
+    } catch (_) {}
+  }
+}
+
+/** Settings-panel textarea → one selected / panel drawing only (never all text objects). */
+function v9FlushTxtContentToChartTargets(content, editingRefDrawing) {
+  const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
+  const chartsToRender = new Set();
+  try {
+    collectV9BridgeTargetPairs(editingRefDrawing).forEach(({ dm, d }) => {
+      if (!d || !d.style) return;
+      if (v9DrawingTypeToPanelGroup(d.type) !== "text") return;
+      if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+      if (editSess?.drawing) {
+        if (!v9IsSameDrawingSession(d, editSess.drawing)) return;
+      } else if (!v9IsActiveStyleBridgeTarget(dm, d)) {
+        return;
+      }
+      v9ApplyTxtContentToDrawing(d, content, dm);
+      v9SyncDrawingAxisHighlights(d);
+      if (dm.chart) chartsToRender.add(dm.chart);
+    });
+    chartsToRender.forEach((c) => {
+      if (c && typeof c.scheduleRender === "function") c.scheduleRender();
+    });
+  } catch (err) {
+    console.warn("[V9 txtContent flush] failed:", err);
+  }
+}
+
 /** Push V9 text floating-bar state into chart.js drawing.style (+ text) for the selected annotation. */
-function v9ApplyTxtStyleToDrawing(d, txt) {
+function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
   if (!d || !d.style || !txt) return;
+  const applyContent = opts.applyContent === true;
   const s = d.style;
   const t = d.type;
   const applyCommon = () => {
@@ -2481,6 +2540,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
   };
   const applyTextBlock = () => {
     if (txt.horizAlign != null) s.textAlign = txt.horizAlign;
+    if (!applyContent) return;
     if (txt.content == null) return;
     const next = String(txt.content);
     const cur = typeof d.text === "string" ? d.text : "";
@@ -2880,6 +2940,15 @@ function v9DeselectChartForTextSubToolArm(chartInstance) {
   try {
     const dm = chartInstance && chartInstance.drawingManager;
     if (!dm) return;
+    if (dm._textInlineEditDrawing && typeof dm.endTextInlineEdit === "function") {
+      try {
+        dm.endTextInlineEdit(dm._textInlineEditDrawing);
+      } catch (_) {}
+    } else if (dm.textEditor && typeof dm.textEditor.hide === "function") {
+      try {
+        dm.textEditor.hide();
+      } catch (_) {}
+    }
     if (typeof dm.deselectAll === "function") {
       dm.deselectAll({ forSelectionChange: true });
     }
@@ -2887,6 +2956,13 @@ function v9DeselectChartForTextSubToolArm(chartInstance) {
       dm.toolbar.hide();
     }
   } catch (_) {}
+}
+
+/** Drop inline-edit string from shared React state before arming another text sub-tool. */
+function v9ClearSharedTxtStyleContent(setTxtStyle, suppressRef) {
+  if (typeof setTxtStyle !== "function") return;
+  if (suppressRef) suppressRef.current = true;
+  setTxtStyle((s) => (s && s.content ? { ...s, content: "" } : s));
 }
 
 function v9IsTextSubToolSwitch(prevSub, nextSub) {
@@ -3099,7 +3175,7 @@ function v9FlushTxtStyleToChartTargets(txtStyle, opts = {}) {
       try {
         if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
       } catch (_) {}
-      v9ApplyTxtStyleToDrawing(d, txtStyle);
+      v9ApplyTxtStyleToDrawing(d, txtStyle, { applyContent: opts.applyContent === true });
       if (tb && typeof tb.onUpdate === "function") {
         try {
           tb.onUpdate(d);
@@ -15977,6 +16053,20 @@ const TalariaV8bLive = () => {
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
 
+  /** Settings-panel text field — one drawing only; never broadcast via the style bridge. */
+  const applyTxtContent = useCallback((content) => {
+    const next = typeof content === "string" ? content : "";
+    flushSync(() => setTxtStyle((s) => ({ ...s, content: next })));
+    txtStyleLiveRef.current = { ...txtStyleLiveRef.current, content: next };
+    let editDraw = editingDrawingRef.current?.drawing ?? null;
+    if (!editDraw) {
+      try {
+        editDraw = getPrimarySelectedDrawingForActiveChart(null);
+      } catch (_) {}
+    }
+    v9FlushTxtContentToChartTargets(next, editDraw);
+  }, []);
+
   /** Label bold — same-frame chart sync. */
   const applyTlTextBold = useCallback(() => {
     flushSync(() => setTlStyle((s) => ({ ...s, textBold: !s.textBold })));
@@ -16320,7 +16410,7 @@ const TalariaV8bLive = () => {
         try {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
-        v9ApplyTxtStyleToDrawing(d, txtStyle);
+        v9ApplyTxtStyleToDrawing(d, txtStyle, { applyContent: false });
         if (isInlineEditing) {
           const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
           if (helpers && typeof helpers.scheduleTextAnnotationLiveRender === "function") {
@@ -16365,7 +16455,6 @@ const TalariaV8bLive = () => {
     txtStyle.wrapText,
     txtStyle.anchored,
     txtStyle.lineColor,
-    txtStyle.content,
     txtStyle.horizAlign,
     txtStyle.pinLabelColor,
     txtStyle.imageDataUrl,
@@ -16404,7 +16493,6 @@ const TalariaV8bLive = () => {
     txtStyle.lineColor,
     txtStyle.horizAlign,
     txtStyle.pinLabelColor,
-    txtStyle.content,
     txtStyle.imageDataUrl,
     txtStyle.imageTransparency,
     txtStyle.selectedEmoji,
@@ -20823,7 +20911,7 @@ const TalariaV8bLive = () => {
                 </div>
                 {/* textarea — hidden for price note */}
                 {!isPriceNote && !isPriceLabel && !isFlag && !isImage && <div style={{marginTop:8}}>
-                  <textarea value={txtStyle.content} onChange={e=>setTxtStyle(s=>({...s,content:e.target.value}))}
+                  <textarea value={txtStyle.content} onChange={e=>applyTxtContent(e.target.value)}
                     onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
                     placeholder="Enter text…"
                     style={{width:"100%",height:68,resize:"none",background:"rgba(140,160,255,0.05)",

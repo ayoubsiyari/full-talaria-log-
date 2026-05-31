@@ -1235,7 +1235,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('y2', bottom)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', boundaryHitWidth)
-                .style('pointer-events', this.selected ? 'stroke' : 'none')
+                .style('pointer-events', (this.selected && !isAnchoredProxy) ? 'stroke' : 'none')
                 .style('cursor', 'ew-resize')
                 .attr('data-point-index', pointIndex);
         });
@@ -1248,8 +1248,8 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('y2', bottom)
             .attr('stroke', 'transparent')
             .attr('stroke-width', 14)
-            .style('pointer-events', 'stroke')
-            .style('cursor', isAnchoredProxy ? 'ew-resize' : 'pointer');
+            .style('pointer-events', isAnchoredProxy ? 'none' : 'stroke')
+            .style('cursor', isAnchoredProxy ? 'default' : 'pointer');
         this.group.append('line')
             .attr('class', 'volume-profile-boundary volume-profile-anchor-boundary')
             .attr('x1', anchorBoundaryX)
@@ -1897,7 +1897,11 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('pointer-events', 'none');
         }
 
-        pointPositions.forEach(({ point, index, cx, pointY }) => {
+        const handlePoints = this._isAnchoredProxy === true
+            ? pointPositions.filter(({ index }) => index === 0)
+            : pointPositions;
+
+        handlePoints.forEach(({ point, index, cx, pointY }) => {
             const handleY = resolveHandleY({ index, pointY });
 
             if (showGuides) {
