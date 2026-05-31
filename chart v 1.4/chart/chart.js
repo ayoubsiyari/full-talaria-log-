@@ -2820,7 +2820,12 @@ class Chart {
         // During replay, chart.rawData is only the prefix up to the playhead — never cache that.
         if (replay?.isActive && Array.isArray(replay.fullRawData) && replay.fullRawData.length) {
             const replayNative = String(replay.rawTimeframe || nativeTf).toLowerCase().trim();
+            const displayTf = String(this.currentTimeframe || '').toLowerCase().trim();
             if (tf === replayNative || tf === nativeTf) {
+                source = replay.fullRawData;
+            } else if (tf === displayTf) {
+                // Resampled display TF (e.g. 15m while native master is 1m) — cache
+                // fullRawData so 15m→5m→15m can hot-swap without refetch.
                 source = replay.fullRawData;
             }
         }
@@ -2838,10 +2843,13 @@ class Chart {
             return;
         }
 
+        const cacheNativeTf = replay?.isActive
+            ? String(replay.rawTimeframe || this._nativeRawFetchTf || nativeTf).toLowerCase().trim()
+            : String(this._nativeRawFetchTf || timeframe).toLowerCase().trim();
         this._storeBtTfDataCacheEntry(fileId, timeframe, source, {
             totalCandles: this.totalCandles,
             serverCursors: this._serverCursors,
-            nativeRawFetchTf: this._nativeRawFetchTf || timeframe,
+            nativeRawFetchTf: cacheNativeTf || tf,
             reuseArrayReference: replay?.isActive && source === replay.fullRawData,
         });
     }
@@ -3102,8 +3110,8 @@ class Chart {
         if (typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
         }
-        if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
-            try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_dr) { /* ignore */ }
+        if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+            try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
         }
 
         if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
@@ -13677,7 +13685,15 @@ class Chart {
         const haveCurrentTfData = (this.currentTimeframe === normalizedTf)
             && Array.isArray(this.data) && this.data.length > 0
             && !this._panLoading;
-        if (haveCurrentTfData) return;
+        if (haveCurrentTfData) {
+            if (this.drawingManager
+                && this.drawings
+                && this.drawings.length > 0
+                && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_) { /* ignore */ }
+            }
+            return;
+        }
 
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
