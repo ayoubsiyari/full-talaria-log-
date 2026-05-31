@@ -276,6 +276,12 @@ class DrawingToolsManager {
                 const delta = now - last;
 
                 if (delta < HANDLE_DBLCLICK_DELAY && delta > 50) {
+                    const suppressUntil = Number(this._suppressNextDrawingDblClickUntil || 0);
+                    if (suppressUntil > 0 && now <= suppressUntil) {
+                        if (this._handleClickTimes) this._handleClickTimes[key] = now;
+                        return;
+                    }
+
                     if (this._handleClickTimes) this._handleClickTimes[key] = 0;
 
                     event.preventDefault();
@@ -4634,6 +4640,12 @@ class DrawingToolsManager {
         this.renderDrawing(drawing);
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
+
+        // Placement click can arrive as detail>=2; do not open settings on the same gesture.
+        if (this.isVolumeProfileToolType(drawing.type)) {
+            this._suppressNextDrawingDblClickUntil = Date.now() + 900;
+            this.suppressNextCanvasBackgroundClick(650);
+        }
         
         // Record for undo/redo
         if (this.history) {
@@ -5165,7 +5177,12 @@ class DrawingToolsManager {
             // [debug removed]
             
             // Double-click detection (within 400ms)
-            if (timeSinceLastClick < DOUBLE_CLICK_DELAY && timeSinceLastClick > 50) {
+            const suppressSettingsUntil = Number(self._suppressNextDrawingDblClickUntil || 0);
+            if (
+                timeSinceLastClick < DOUBLE_CLICK_DELAY
+                && timeSinceLastClick > 50
+                && !(suppressSettingsUntil > 0 && now <= suppressSettingsUntil)
+            ) {
                 if (self._isTextAnnotationInteractionTarget(event.target)) {
                     self._drawingClickTimes[drawing.id] = 0;
                     return;
@@ -5197,6 +5214,12 @@ class DrawingToolsManager {
         
         // Double-click handler
         const handleDblClick = function(event) {
+            const suppressUntil = Number(self._suppressNextDrawingDblClickUntil || 0);
+            if (suppressUntil > 0 && Date.now() <= suppressUntil) {
+                if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+                return;
+            }
             if (event.target && event.target.closest && event.target.closest('.rr-plus-btn')) {
                 return;
             }

@@ -11042,7 +11042,8 @@ const TalariaV8bLive = () => {
     const dismissColorPickerIfOutside = (el) => {
       if (!el) return;
       const insideCp = typeof el.closest === "function" && el.closest(".tlr-cp");
-      if (colorPickerRef.current && !insideCp && !cpPickerDraggingRef.current) {
+      const onColorSwatch = typeof el.closest === "function" && el.closest("[data-v9-color-swatch]");
+      if (colorPickerRef.current && !insideCp && !onColorSwatch && !cpPickerDraggingRef.current) {
         cpBarAnchorRef.current = null;
         setColorPicker(null);
       }
@@ -14519,24 +14520,24 @@ const TalariaV8bLive = () => {
         // Suppress the forward bridge once: this read-back into tlStyle
         // would otherwise re-emit the same values back to the drawing.
         suppressForwardBridge.current = true;
-        {
-          let dmEd = null;
-          try {
-            dmEd = typeof window !== "undefined" && typeof window.getActiveChart === "function"
-              ? window.getActiveChart()?.drawingManager
-              : window.chart?.drawingManager;
-          } catch (_) {}
-          let drawingForStyle = drawing;
-          try {
-            if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
-              const live = dmEd.drawings.find((x) => x && x.id === drawing.id);
-              if (live) drawingForStyle = live;
-            }
-          } catch (_) {}
-          if (editingDrawingRef.current) {
-            editingDrawingRef.current.drawing = drawingForStyle;
-            editingDrawingRef.current.editSnapshot = v9CloneDrawingEditState(drawingForStyle);
+        let dmEd = null;
+        try {
+          dmEd = typeof window !== "undefined" && typeof window.getActiveChart === "function"
+            ? window.getActiveChart()?.drawingManager
+            : window.chart?.drawingManager;
+        } catch (_) {}
+        let drawingForStyle = drawing;
+        try {
+          if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
+            const live = dmEd.drawings.find((x) => x && x.id === drawing.id);
+            if (live) drawingForStyle = live;
           }
+        } catch (_) {}
+        if (editingDrawingRef.current) {
+          editingDrawingRef.current.drawing = drawingForStyle;
+          editingDrawingRef.current.editSnapshot = v9CloneDrawingEditState(drawingForStyle);
+        }
+        {
           const fullEd = v9NeedsFullTlStyleReplaceForType(drawingForStyle.type)
             ? v9BuildFullTlStyleFromDrawing(drawingForStyle, dmEd)
             : null;
@@ -20624,22 +20625,36 @@ const TalariaV8bLive = () => {
       {(txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
+          if (key === "txtBgColor") {
+            setTxtStyle((s) => (s.bgOn ? s : { ...s, bgOn: true }));
+          } else if (key === "txtBorderColor") {
+            setTxtStyle((s) => (s.borderOn ? s : { ...s, borderOn: true }));
+          }
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
           setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p.a);
           setCpHex(toHex2(p.r)+toHex2(p.g)+toHex2(p.b));
           setCpPos(posFromRect(e.currentTarget.getBoundingClientRect(), cpW));
           cpBarAnchorRef.current = null; setColorPicker(key);
         };
-        const TxtSwatch = ({ck, val, disabled}) => (
-          <div onMouseEnter={()=>!disabled&&setHov(ck)} onMouseLeave={()=>setHov(null)}
-            onClick={e=>!disabled&&openTxtCP(e,ck,val)}
-            style={v9TlColorSwatchBoxStyle(val, {
-              active: colorPicker === ck,
-              hover: hov === ck,
-              disabled,
-              extra: disabled ? { opacity: 0.3 } : null,
-            })}/>
-        );
+        const TxtSwatch = ({ck, val, showDisabled}) => {
+          const visuallyOff = !!showDisabled;
+          return (
+            <div data-v9-color-swatch="1"
+              onMouseEnter={()=>setHov(ck)} onMouseLeave={()=>setHov(null)}
+              onPointerDown={(e)=>{
+                e.stopPropagation();
+                openTxtCP(e, ck, val);
+              }}
+              onMouseDown={(e)=>e.stopPropagation()}
+              onClick={(e)=>e.stopPropagation()}
+              style={v9TlColorSwatchBoxStyle(val, {
+                active: colorPicker === ck,
+                hover: hov === ck,
+                disabled: visuallyOff,
+                extra: visuallyOff ? { opacity: 0.45 } : null,
+              })}/>
+          );
+        };
         const isNote = txtSubTool.icon === "note";
         const isPriceNote = txtSubTool.icon === "priceNote";
         const isCallout = txtSubTool.icon === "callout";
@@ -21006,7 +21021,7 @@ const TalariaV8bLive = () => {
                 <span onClick={()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn}))}
                   style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>{isSignpost ? "Label background" : "Background"}</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor} disabled={!txtStyle.bgOn}/>
+                  <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor} showDisabled={!txtStyle.bgOn}/>
                   <div style={{width:42,height:26,visibility:"hidden"}}/>
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
@@ -21033,7 +21048,7 @@ const TalariaV8bLive = () => {
                 <span onClick={()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn}))}
                   style={{fontSize:12,color:txtStyle.borderOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Border</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <TxtSwatch ck="txtBorderColor" val={txtStyle.borderColor} disabled={!txtStyle.borderOn}/>
+                  <TxtSwatch ck="txtBorderColor" val={txtStyle.borderColor} showDisabled={!txtStyle.borderOn}/>
                   <div style={{width:42,height:26,visibility:"hidden"}}/>
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
