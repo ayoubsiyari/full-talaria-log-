@@ -2353,17 +2353,24 @@ class DrawingToolsManager {
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
 
             if (event.detail >= 2) {
-                const domDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
-                if (domDrawing && !domDrawing.locked) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
+                const dblClickTarget = (event && event.target) ? event.target : null;
+                const skipGenericDblSettings = this._isTextAnnotationInlineEditTarget(dblClickTarget);
+                if (!skipGenericDblSettings) {
+                    const domDrawing = this._resolveDrawingFromDomTarget(dblClickTarget);
+                    const skipTextChromeSettings = domDrawing
+                        && this._isTextDrawingType(domDrawing.type)
+                        && this._isTextAnnotationInteractionTarget(dblClickTarget);
+                    if (domDrawing && !domDrawing.locked && !skipTextChromeSettings) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        this.selectDrawing(domDrawing, false);
+                        this.editDrawing(domDrawing, event.pageX, event.pageY);
+                        this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                        return;
                     }
-                    this.selectDrawing(domDrawing, false);
-                    this.editDrawing(domDrawing, event.pageX, event.pageY);
-                    this._suppressNextDrawingDblClickUntil = Date.now() + 600;
-                    return;
                 }
             }
             
@@ -2582,19 +2589,19 @@ class DrawingToolsManager {
                 }
             }
             
-            const rawTargetNode = target.node();
-            const resizeHandleNode = rawTargetNode && rawTargetNode.closest
-                ? rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group')
+            const clickTargetNode = target.node();
+            const resizeHandleNode = clickTargetNode && clickTargetNode.closest
+                ? clickTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group')
                 : null;
-            const customHandleNode = rawTargetNode && rawTargetNode.closest
-                ? rawTargetNode.closest('.custom-handle')
+            const customHandleNode = clickTargetNode && clickTargetNode.closest
+                ? clickTargetNode.closest('.custom-handle')
                 : null;
 
             // Fallback for volume-profile labels/boundaries/levels when geometric hit-testing misses
             // (notably anchored profiles where only edge/label clicks should select).
-            if (!drawing && rawTargetNode && rawTargetNode.closest) {
-                const volumeProfileHitNode = rawTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line, .volume-profile-hitbox, .volume-profile-range');
-                const domDrawingGroup = rawTargetNode.closest('.drawing');
+            if (!drawing && clickTargetNode && clickTargetNode.closest) {
+                const volumeProfileHitNode = clickTargetNode.closest('.volume-profile-values-label, .volume-profile-boundary, .volume-profile-boundary-hit, .volume-profile-level-line, .volume-profile-hitbox, .volume-profile-range');
+                const domDrawingGroup = clickTargetNode.closest('.drawing');
                 if (volumeProfileHitNode && domDrawingGroup) {
                     const domDrawingId = d3.select(domDrawingGroup).attr('data-id');
                     const domDrawing = this.drawings.find(d => d && d.id === domDrawingId);
@@ -2609,8 +2616,8 @@ class DrawingToolsManager {
             // This avoids missing the drawing when geometric stroke-only hit testing fails
             // on transparent handle centers.
             if (!drawing && (resizeHandleNode || customHandleNode)) {
-                const handleDrawingGroup = rawTargetNode && rawTargetNode.closest
-                    ? rawTargetNode.closest('.drawing')
+                const handleDrawingGroup = clickTargetNode && clickTargetNode.closest
+                    ? clickTargetNode.closest('.drawing')
                     : null;
                 if (handleDrawingGroup) {
                     const handleDrawingId = d3.select(handleDrawingGroup).attr('data-id');
@@ -2624,11 +2631,11 @@ class DrawingToolsManager {
 
             // RR + buttons are outside the zone geometry — findDrawingsAtPoint misses them; without this
             // mousedown falls through to "empty space" and deselects the tool before the click runs.
-            const rrPlusBtnNode = rawTargetNode && rawTargetNode.closest
-                ? rawTargetNode.closest('.rr-plus-btn')
+            const rrPlusBtnNode = clickTargetNode && clickTargetNode.closest
+                ? clickTargetNode.closest('.rr-plus-btn')
                 : null;
             if (!drawing && rrPlusBtnNode) {
-                const plusDrawingGroup = rawTargetNode.closest('.drawing');
+                const plusDrawingGroup = clickTargetNode.closest('.drawing');
                 if (plusDrawingGroup) {
                     const plusDrawingId = d3.select(plusDrawingGroup).attr('data-id');
                     const plusDrawing = this.drawings.find(d => d && d.id === plusDrawingId);
@@ -2640,11 +2647,11 @@ class DrawingToolsManager {
             }
 
             if (!drawing) {
-                const domDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
+                const domDrawing = this._resolveDrawingFromDomTarget(clickTargetNode);
                 if (domDrawing) {
                     drawing = domDrawing;
-                    if (rawTargetNode && rawTargetNode.closest) {
-                        const g = rawTargetNode.closest('.drawing');
+                    if (clickTargetNode && clickTargetNode.closest) {
+                        const g = clickTargetNode.closest('.drawing');
                         if (g) drawingGroup = g;
                     }
                 }
@@ -2652,7 +2659,7 @@ class DrawingToolsManager {
 
             if (drawing) {
                 // Let + buttons handle activation on pointerdown/mousedown (click can be suppressed).
-                if (rawTargetNode && rawTargetNode.closest && rawTargetNode.closest('.rr-plus-btn')) {
+                if (clickTargetNode && clickTargetNode.closest && clickTargetNode.closest('.rr-plus-btn')) {
                     event.stopPropagation();
                     return;
                 }
