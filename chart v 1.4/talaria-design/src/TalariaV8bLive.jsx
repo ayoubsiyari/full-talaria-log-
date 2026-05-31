@@ -19894,33 +19894,7 @@ const TalariaV8bLive = () => {
               </svg>}
             </TxBtn>
           </div>
-          {/* Background before border on note/priceNote — matches Style tab order and user expectation */}
-          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol" isAct={colorPicker==="txtBgColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
-            {(_,isAct,col)=>(() => {
-              const dimLn = "rgba(120,123,134,0.38)";
-              const innerFill = txtStyle.bgOn ? txtStyle.bgColor : "transparent";
-              const barBg = txtStyle.bgOn ? txtStyle.bgColor : dimLn;
-              return (
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/>
-                    <rect x="6" y="6" width="12" height="12" rx="1" fill={innerFill}/>
-                  </svg>
-                  <div style={{width:12,height:2,background:barBg,borderRadius:1,opacity:txtStyle.bgOn ? 1 : 0.85}}/>
-                </div>
-              );
-            })()}
-          </TxBtn>}
-          {/* tool color button — note: leader/box stroke; priceNote: leader line only */}
-          {txtQuickIcon === "note" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtQuickIcon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn ? txtStyle.borderColor : "rgba(120,123,134,0.38)",borderRadius:1,opacity:txtStyle.borderOn ? 1 : 0.85}}/></div>}
-          </TxBtn>}
-          {txtQuickIcon === "priceNote" && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtLineColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtQuickIcon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.lineColor||"rgba(120,123,134,0.38)",borderRadius:1}}/></div>}
-          </TxBtn>}
+          {/* Background + leader line swatches hidden on note/priceNote quick bar — use Text settings panel instead */}
           {/* tool color button — pin marker / signpost line+label */}
           {txtQuickIcon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
