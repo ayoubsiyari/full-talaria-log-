@@ -2906,6 +2906,13 @@ class DrawingToolsManager {
             if (this._isCurveLikePlacementTool(this.currentTool)) {
                 this.updateTempDrawing(this.drawingState.tempPoints);
             }
+            if (this.currentTool === 'image' || this.currentTool === 'emoji') {
+                if (event) {
+                    event.preventDefault();
+                    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                }
+                this.suppressNextCanvasBackgroundClick(500);
+            }
             this.finalizeDrawing();
         } else {
             // [debug removed]
@@ -3825,7 +3832,8 @@ class DrawingToolsManager {
         const isFreehandStroke = activeToolType === 'path'
             || activeToolType === 'brush'
             || activeToolType === 'highlighter';
-        const isContinuousTool = isFreehandStroke;
+        const isContinuousTool = isFreehandStroke
+            || this._usesPointScreenAnchor(activeToolType);
         
         // Pass chart instance for accurate index calculation
         // Use continuous mode for freehand tools to get smooth curves
@@ -4154,12 +4162,14 @@ class DrawingToolsManager {
             // [debug removed]
             // Add to drawings temporarily so it can be selected and edited
             drawing.chart = this.chart;
-            // Mark as an empty image that can be auto-removed on deselect UNTIL the user opens settings.
+            // Keep empty placeholder until user uploads or explicitly deletes — background
+            // clicks after pan/placement were auto-removing it via deselectAll().
             drawing._autoRemoveIfEmpty = true;
-            drawing._keepEmpty = false;
+            drawing._keepEmpty = true;
             this.drawings.push(drawing);
             // Select it so user can upload image via settings (renderDrawing runs inside selectDrawing).
             this.selectDrawing(drawing);
+            this.suppressNextCanvasBackgroundClick(500);
             try {
                 if (typeof window !== 'undefined') {
                     const anchor = drawing.points && drawing.points[0] ? { ...drawing.points[0] } : null;
@@ -6919,68 +6929,59 @@ class DrawingToolsManager {
             : (d) => this.scheduleRenderDrawing(d);
 
         let posNode = null;
-        if (drawing.type === 'note' && drawing.group) {
-            const boxNode = drawing.group.select('rect.note-body-hit').node();
-            if (boxNode && document.contains(boxNode)) {
-                posNode = boxNode;
-            }
-        }
-        if (!posNode && drawing.type === 'comment' && drawing.group) {
-            const boxNode = drawing.group.select('rect.comment-body-hit').node();
-            if (boxNode && document.contains(boxNode)) {
-                posNode = boxNode;
-            }
-        }
-        if (!posNode) {
-            let editableNode = drawing.group.select('text.inline-editable-text').node();
+        let editableNode = null;
+        if (drawing.group) {
+            editableNode = drawing.group.select('text.inline-editable-text').node();
             if (!editableNode) {
                 editableNode = drawing.group.select('.inline-editable-text').node();
             }
-            posNode = editableNode;
+            if (helpers && typeof helpers.resolveTextAnnotationEditBoxNode === 'function') {
+                posNode = helpers.resolveTextAnnotationEditBoxNode(drawing, editableNode);
+            } else if (drawing.type === 'note' && drawing.group) {
+                const boxNode = drawing.group.select('rect.note-body-hit').node();
+                if (boxNode && document.contains(boxNode)) posNode = boxNode;
+            } else if (drawing.type === 'comment' && drawing.group) {
+                const boxNode = drawing.group.select('rect.comment-body-hit').node();
+                if (boxNode && document.contains(boxNode)) posNode = boxNode;
+            }
         }
+        if (!posNode) posNode = editableNode;
+
+        const wrapPaddingByType = {
+            comment: 12,
+            callout: 12,
+            pin: 14,
+            'signpost-2': 10,
+            notebox: 8,
+            note: 6,
+            text: 6,
+            'anchored-text': 6
+        };
 
         if (posNode) {
             const rect = posNode.getBoundingClientRect();
             if (rect.width > 0 || rect.height > 0) {
+                const liveOnInput = (newText) => {
+                    const next = (newText || '').replace(/\r\n/g, '\n');
+                    drawing.setText(isPlaceholderText(next) ? '' : next);
+                    if (typeof drawing._updateCommentBubble === 'function') {
+                        drawing._updateCommentBubble();
+                    }
+                    scheduleLive(drawing);
+                };
                 const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
                     ? helpers.buildNoteInlineEditorOptions(drawing, rect, {
                         initialText,
-                        onInput: (newText) => {
-                            const next = (newText || '').replace(/\r\n/g, '\n');
-                            drawing.setText(isPlaceholderText(next) ? '' : next);
-                            if (typeof drawing._updateCommentBubble === 'function') {
-                                drawing._updateCommentBubble();
-                            }
-                            scheduleLive(drawing);
-                        }
+                        onInput: liveOnInput
                     })
-                    : (helpers && typeof helpers.buildWrapAwareInlineEditorOptions === 'function')
-                    ? {
-                        inline: true,
+                    : (helpers && typeof helpers.buildStandardInlineEditorOptions === 'function')
+                    ? helpers.buildStandardInlineEditorOptions(drawing, rect, {
+                        padding: wrapPaddingByType[drawing.type] || 6,
                         placeholderMode: !String(initialText).trim(),
-                        fontSize: `${drawing.style.fontSize || 13}px`,
-                        fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
-                        fontWeight: drawing.style.fontWeight || 'normal',
-                        fontStyle: drawing.style.fontStyle || 'normal',
-                        color: drawing.style.textColor || '#FFFFFF',
-                        textAlign: drawing.style.textAlign || 'left',
-                        hideSelector: `.drawing[data-id="${drawing.id}"] text`,
                         editorBackground: drawing.style.backgroundColor || drawing.style.fill,
                         editorPadding: '4px 8px',
-                        ...helpers.buildWrapAwareInlineEditorOptions(
-                            drawing,
-                            rect,
-                            drawing.type === 'comment' ? 12 : 6
-                        ),
-                        onInput: (newText) => {
-                            const next = (newText || '').replace(/\r\n/g, '\n');
-                            drawing.setText(isPlaceholderText(next) ? '' : next);
-                            if (typeof drawing._updateCommentBubble === 'function') {
-                                drawing._updateCommentBubble();
-                            }
-                            scheduleLive(drawing);
-                        }
-                    }
+                        onInput: liveOnInput
+                    })
                     : {
                         inline: true,
                         placeholderMode: !String(initialText).trim(),

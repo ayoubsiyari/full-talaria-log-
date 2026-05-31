@@ -1675,7 +1675,7 @@ function v9ApplyPointsFromTlStyle(d, tlStyle) {
     }
     const rawB = tlStyle[`pt${n}Bar`];
     if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
-      const px = parseInt(String(rawB), 10);
+      const px = parseFloat(String(rawB).replace(/,/g, ""));
       if (Number.isFinite(px) && px !== d.points[i].x) { d.points[i].x = px; changed = true; }
     }
   }
@@ -2140,11 +2140,13 @@ function v9TxtStylePatchFromDrawing(d) {
     const sw = s.strokeWidth != null ? Number(s.strokeWidth) : 0;
     out.borderOn = !!(s.stroke && s.stroke !== "none" && sw > 0);
     if (out.borderOn) out.borderColor = s.stroke;
+    out.wrapText = !!s.wrapText;
   } else if (t === "anchored-text") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
     out.borderColor = s.borderColor ?? out.borderColor;
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+    out.wrapText = !!s.wrapText;
   } else if (t === "note") {
     const fill = s.fill;
     out.bgColor = fill ?? out.bgColor;
@@ -2278,6 +2280,10 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
       s.stroke = "none";
       s.strokeWidth = 0;
     }
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 200;
+    }
     return;
   }
   if (t === "anchored-text") {
@@ -2285,6 +2291,10 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyTextBlock();
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "transparent";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 200;
+    }
     return;
   }
   if (t === "note") {
@@ -16059,6 +16069,10 @@ const TalariaV8bLive = () => {
       suppressCoordBridge.current = false;
       return;
     }
+    if (suppressTxtCoordBridge.current) {
+      suppressTxtCoordBridge.current = false;
+      return;
+    }
     if (suppressTxtForwardBridge.current) {
       suppressTxtForwardBridge.current = false;
       return;
@@ -20580,6 +20594,9 @@ const TalariaV8bLive = () => {
                               border:"1px solid rgba(140,160,255,0.2)",outline:"none",color:c.tx,fontSize:13,fontFamily:F,
                               padding:"6px 8px",boxSizing:"border-box",
                               fontStyle:txtStyle.italic?"italic":"normal",fontWeight:txtStyle.bold?700:400}}/>
+                  </div>
+                  <div style={{padding:"8px 0"}}>
+                    {TlChk(txtStyle.wrapText,"txtWrapChkPin","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
                   </div>
                 </div>
             </>}

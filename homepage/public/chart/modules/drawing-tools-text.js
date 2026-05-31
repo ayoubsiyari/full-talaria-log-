@@ -134,6 +134,61 @@ function attachTextClipRect(group, clipKey, x, y, w, h) {
     return clipId;
 }
 
+/** Best on-chart box node for sizing/placing the inline text editor. */
+function resolveTextAnnotationEditBoxNode(drawing, fallbackNode) {
+    if (!drawing || !drawing.group || typeof drawing.group.select !== 'function') {
+        return fallbackNode || null;
+    }
+    const byType = {
+        note: 'rect.note-body-hit',
+        notebox: 'rect.note-body-hit',
+        comment: 'rect.comment-body-hit',
+        callout: 'rect.shape-border-hit',
+        pin: 'path.note-body-hit',
+        'signpost-2': 'rect.signpost-label-fill',
+        text: 'rect.text-background, rect.text-body-hit'
+    };
+    const sel = byType[drawing.type];
+    if (!sel) return fallbackNode || null;
+    for (const part of sel.split(',')) {
+        const node = drawing.group.select(part.trim()).node();
+        if (node && document.contains(node)) return node;
+    }
+    return fallbackNode || null;
+}
+
+/** Standard inline editor options for any wrap-capable text annotation. */
+function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
+    const style = drawing.style || {};
+    const padding = Number(config.padding) || 6;
+    const chart = drawing.chart;
+    const scales = chart ? { chart, xScale: chart.xScale, yScale: chart.yScale } : {};
+    const scaleFactor = (typeof drawing.getZoomScaleFactor === 'function')
+        ? drawing.getZoomScaleFactor(scales)
+        : 1;
+    const scaledFontSize = Math.max(8, (Number(style.fontSize) || 12) * scaleFactor);
+    const fontSize = config.fontSize || `${scaledFontSize}px`;
+    return {
+        inline: true,
+        fontSize,
+        fontFamily: style.fontFamily || 'Roboto, sans-serif',
+        fontWeight: style.fontWeight || 'normal',
+        fontStyle: style.fontStyle || 'normal',
+        color: config.color || style.textColor || '#FFFFFF',
+        textAlign: config.textAlign || style.textAlign || 'left',
+        hideSelector: config.hideSelector || `.drawing[data-id="${drawing.id}"] text`,
+        editorBackground: config.editorBackground,
+        editorPadding: config.editorPadding,
+        editorBorder: config.editorBorder,
+        editorBorderRadius: config.editorBorderRadius,
+        placeholderMode: config.placeholderMode,
+        placeholderColor: config.placeholderColor,
+        onInput: config.onInput,
+        ...buildWrapAwareInlineEditorOptions(drawing, bbox, padding),
+        ...config.extra
+    };
+}
+
 /** Inline editor options aligned with the on-chart note box. */
 function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const style = drawing.style || {};
@@ -603,12 +658,9 @@ class TextTool extends BaseDrawing {
             const liveNode = (self.group && typeof self.group.select === 'function')
                 ? self.group.select('text.inline-editable-text').node()
                 : null;
-            const liveBox = (self.group && typeof self.group.select === 'function')
-                ? self.group.select('.text-background, rect.text-body-hit').node()
-                : null;
             const targetNode = (liveNode && document.contains(liveNode))
                 ? liveNode : textElement.node();
-            const posNode = (liveBox && document.contains(liveBox)) ? liveBox : targetNode;
+            const posNode = resolveTextAnnotationEditBoxNode(self, targetNode);
             const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -623,25 +675,19 @@ class TextTool extends BaseDrawing {
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
-                {
-                    inline: true,
-                    fontSize: `${scaledFontSize}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight,
-                    fontStyle: self.style.fontStyle,
+                buildStandardInlineEditorOptions(self, rect, {
+                    padding,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
                     editorBackground: hasBackground ? self.style.fill : undefined,
                     editorPadding: hasBackground ? '6px 8px' : undefined,
                     editorBorder: hasBorder ? `1px solid ${self.style.stroke}` : undefined,
                     editorBorderRadius: hasBackground ? '4px' : undefined,
-                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
         };
 
@@ -955,45 +1001,72 @@ class NoteBoxTool extends BaseDrawing {
         this.style.maxWidth = style.maxWidth || 200;
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
     }
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
-        const isPreview = renderOpts.isPreview;
-        // Remove existing if any
         if (this.points.length < 1) return;
 
-        // Create group for this drawing
+        const scaleFactor = this.getZoomScaleFactor(scales);
+        const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
+
         this._prepareRenderGroup(container, 'drawing notebox', renderOpts);
         this._clearDrawingLabels(scales);
 
+        this._lastContainer = container;
+        this._lastScales = scales;
+
         const p = this.points[0];
-        const x = scales.chart && scales.chart.dataIndexToPixel ? 
+        const x = scales.chart && scales.chart.dataIndexToPixel ?
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
 
         const noteboxDisplay = resolveTextToolDisplay(this.text);
+        const padding = this.style.padding || 8;
+        const maxBubbleWidth = this.style.maxWidth || 200;
+        const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
 
-        // Create temporary text element to measure size
-        const tempText = container.append('text')
-            .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .text(noteboxDisplay.text);
-        
-        const textBBox = tempText.node().getBBox();
-        tempText.remove();
+        const _nbCanvas = document.createElement('canvas');
+        const _nbCtx = _nbCanvas.getContext('2d');
+        _nbCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        const measureWidth = (str) => {
+            try { return _nbCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
+            catch (e) { return (str || '').length * scaledFontSize * 0.6; }
+        };
 
-        // Calculate box dimensions
-        const boxWidth = Math.min(textBBox.width + (this.style.padding * 2), this.style.maxWidth);
-        const boxHeight = textBBox.height + (this.style.padding * 2);
+        const splitLines = (rawText) => {
+            const lines = String(rawText || '').split('\n');
+            return lines.length ? lines : [''];
+        };
+        const lines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                noteboxDisplay.text,
+                innerMaxW,
+                scaledFontSize,
+                this.style.fontFamily || 'Roboto, sans-serif',
+                this.style.fontWeight || 'normal',
+                this.style.fontStyle || 'normal'
+            )
+            : splitLines(noteboxDisplay.text);
+        const lineHeight = scaledFontSize * 1.2;
+        let maxLineWidth = 40;
+        lines.forEach((line) => {
+            const w = measureWidth(line || ' ');
+            if (w > maxLineWidth) maxLineWidth = w;
+        });
 
-        // Draw background box
+        const boxWidth = this.style.wrapText
+            ? Math.max(Math.min(maxLineWidth + padding * 2, maxBubbleWidth), 60)
+            : Math.max(maxLineWidth + padding * 2, 60);
+        const boxHeight = Math.max(lines.length * lineHeight + padding * 2, scaledFontSize + padding);
+        const boxX = x;
+        const boxY = y - boxHeight;
+
         const box = this.group.append('rect')
             .attr('class', 'note-body-hit text-body-hit')
-            .attr('x', x)
-            .attr('y', y - boxHeight)
+            .attr('x', boxX)
+            .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', this.style.backgroundColor)
@@ -1005,8 +1078,8 @@ class NoteBoxTool extends BaseDrawing {
 
         this.group.append('rect')
             .attr('class', 'shape-border-hit')
-            .attr('x', x)
-            .attr('y', y - boxHeight)
+            .attr('x', boxX)
+            .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
             .attr('fill', 'none')
@@ -1016,13 +1089,12 @@ class NoteBoxTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Draw the text
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
-            .attr('x', x + this.style.padding)
-            .attr('y', y - this.style.padding)
+            .attr('x', boxX + padding)
+            .attr('y', boxY + padding + scaledFontSize)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, noteboxDisplay.isPlaceholder))
-            .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
@@ -1031,43 +1103,19 @@ class NoteBoxTool extends BaseDrawing {
             .style('cursor', 'text')
             .style('user-select', 'none');
 
-        // Handle text wrapping if needed
-        const words = noteboxDisplay.text.split(/\s+/).filter((w) => w.length > 0);
-        let line = '';
-        let lineNumber = 0;
-        const lineHeight = this.style.fontSize * 1.2;
-        
-        words.forEach((word, i) => {
-            const testLine = line + (line ? ' ' : '') + word;
-            const testText = container.append('text')
-                .attr('font-size', `${this.style.fontSize}px`)
-                .attr('font-family', this.style.fontFamily)
-                .attr('font-weight', this.style.fontWeight || 'normal')
-                .attr('font-style', this.style.fontStyle || 'normal')
-                .text(testLine);
-            const testWidth = testText.node().getBBox().width;
-            testText.remove();
-
-            if (testWidth > (this.style.maxWidth - this.style.padding * 2) && line !== '') {
-                textElement.append('tspan')
-                    .attr('x', x + this.style.padding)
-                    .attr('dy', lineNumber === 0 ? 0 : lineHeight)
-                    .text(line);
-                line = word;
-                lineNumber++;
-            } else {
-                line = testLine;
-            }
+        lines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', boxX + padding)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
         });
 
-        // Add final line
-        textElement.append('tspan')
-            .attr('x', x + this.style.padding)
-            .attr('dy', lineNumber === 0 ? 0 : lineHeight)
-            .text(line);
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, boxX, boxY, boxWidth, boxHeight);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
 
-        // Store bbox for handle creation
-        this.bbox = { x: x, y: y - boxHeight, width: boxWidth, height: boxHeight };
+        this.bbox = { x: boxX, y: boxY, width: boxWidth, height: boxHeight };
 
         if (this._shouldCreateHandles(renderOpts)) {
             this.createTextHandles(this.group, this.bbox);
@@ -1123,7 +1171,8 @@ class NoteBoxTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const rect = textElement.node().getBoundingClientRect();
+            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
+            const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -1131,25 +1180,26 @@ class NoteBoxTool extends BaseDrawing {
                 manager.selectDrawing(self);
             }
 
+            const hasBorder = self.style.stroke && self.style.stroke !== 'none';
             editor.show(
                 editX,
                 editY,
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter note text…',
-                {
-                    inline: true,
-                    fontSize: `${self.style.fontSize || 14}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
+                buildStandardInlineEditorOptions(self, rect, {
+                    padding,
                     color: self.style.textColor,
                     textAlign: 'left',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    editorBackground: self.style.backgroundColor,
+                    editorPadding: '6px 8px',
+                    editorBorder: hasBorder ? `1px solid ${self.style.stroke}` : 'none',
+                    editorBorderRadius: '4px',
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
         };
 
@@ -1399,51 +1449,87 @@ class AnchoredTextTool extends BaseDrawing {
         this.style.anchorLength = style.anchorLength || 30;
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
+        if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 200;
     }
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
-        const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
+
+        const scaleFactor = this.getZoomScaleFactor(scales);
+        const scaledFontSize = Math.max(8, this.style.fontSize * scaleFactor);
+        const scaledAnchorLen = (this.style.anchorLength || 30) * scaleFactor;
 
         this._prepareRenderGroup(container, 'drawing anchored-text', renderOpts);
         this._clearDrawingLabels(scales);
+
+        this._lastContainer = container;
+        this._lastScales = scales;
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
         const y = scales.yScale(p.y);
 
-        // Draw anchor line
         this.group.append('line')
             .attr('x1', x).attr('y1', y)
-            .attr('x2', x).attr('y2', y - this.style.anchorLength)
+            .attr('x2', x).attr('y2', y - scaledAnchorLen)
             .attr('stroke', this.style.stroke || '#787b86')
             .attr('stroke-width', 2);
 
-        // Draw anchor point
         this.group.append('circle')
             .attr('cx', x).attr('cy', y)
             .attr('r', 4)
             .attr('fill', this.style.stroke || '#787b86');
 
-        // Draw text background
         const padding = 6;
-        const tempText = container.append('text')
-            .attr('font-size', `${this.style.fontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .attr('font-weight', this.style.fontWeight || 'normal')
-            .attr('font-style', this.style.fontStyle || 'normal')
-            .text(this.text);
-        const bbox = tempText.node().getBBox();
-        tempText.remove();
+        const maxBubbleWidth = this.style.maxWidth || 200;
+        const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
+        const anchoredDisplay = resolveTextToolDisplay(this.text);
+
+        const _atCanvas = document.createElement('canvas');
+        const _atCtx = _atCanvas.getContext('2d');
+        _atCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily || 'Roboto, sans-serif'}`;
+        const measureWidth = (str) => {
+            try { return _atCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
+            catch (e) { return (str || '').length * scaledFontSize * 0.6; }
+        };
+
+        const splitLines = (rawText) => {
+            const lines = String(rawText || '').split('\n');
+            return lines.length ? lines : [''];
+        };
+        const lines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                anchoredDisplay.text,
+                innerMaxW,
+                scaledFontSize,
+                this.style.fontFamily || 'Roboto, sans-serif',
+                this.style.fontWeight || 'normal',
+                this.style.fontStyle || 'normal'
+            )
+            : splitLines(anchoredDisplay.text);
+        const lineHeight = scaledFontSize * 1.2;
+        let maxLineWidth = 40;
+        lines.forEach((line) => {
+            const w = measureWidth(line || ' ');
+            if (w > maxLineWidth) maxLineWidth = w;
+        });
+
+        const boxWidth = this.style.wrapText
+            ? Math.max(Math.min(maxLineWidth + padding * 2, maxBubbleWidth), 60)
+            : Math.max(maxLineWidth + padding * 2, 60);
+        const boxHeight = Math.max(lines.length * lineHeight + padding * 2, scaledFontSize + padding);
+        const boxX = x - boxWidth / 2;
+        const boxY = y - scaledAnchorLen - boxHeight;
 
         const hasBorder = this.style.borderColor && this.style.borderColor !== 'transparent' && this.style.borderColor !== 'none';
         const background = this.group.append('rect')
-            .attr('class', 'inline-editable-text')
-            .attr('x', x - bbox.width/2 - padding)
-            .attr('y', y - this.style.anchorLength - bbox.height - padding*2)
-            .attr('width', bbox.width + padding*2)
-            .attr('height', bbox.height + padding*2)
+            .attr('class', 'note-body-hit text-body-hit')
+            .attr('x', boxX)
+            .attr('y', boxY)
+            .attr('width', boxWidth)
+            .attr('height', boxHeight)
             .attr('fill', this.style.backgroundColor)
             .attr('rx', 4)
             .attr('stroke', hasBorder ? this.style.borderColor : 'none')
@@ -1453,10 +1539,10 @@ class AnchoredTextTool extends BaseDrawing {
 
         this.group.append('rect')
             .attr('class', 'shape-border-hit')
-            .attr('x', x - bbox.width/2 - padding)
-            .attr('y', y - this.style.anchorLength - bbox.height - padding*2)
-            .attr('width', bbox.width + padding*2)
-            .attr('height', bbox.height + padding*2)
+            .attr('x', boxX)
+            .attr('y', boxY)
+            .attr('width', boxWidth)
+            .attr('height', boxHeight)
             .attr('fill', 'none')
             .attr('stroke', 'transparent')
             .attr('stroke-width', 12)
@@ -1464,19 +1550,33 @@ class AnchoredTextTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
+        const textStartY = boxY + padding + scaledFontSize;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', x)
-            .attr('y', y - this.style.anchorLength - padding)
-            .attr('fill', this.style.textColor)
-            .attr('font-size', `${this.style.fontSize}px`)
+            .attr('y', textStartY)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, anchoredDisplay.isPlaceholder))
+            .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
-            .style('cursor', 'move')
-            .text(this.text);
+            .style('cursor', 'move');
+
+        lines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', x)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
+        });
+
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, boxX, boxY, boxWidth, boxHeight);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
+        this.bbox = { x: boxX, y: boxY, width: boxWidth, height: boxHeight };
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -1526,7 +1626,8 @@ class AnchoredTextTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const rect = textElement.node().getBoundingClientRect();
+            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
+            const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -1540,20 +1641,19 @@ class AnchoredTextTool extends BaseDrawing {
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
-                {
-                    inline: true,
-                    fontSize: `${self.style.fontSize || 12}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
+                buildStandardInlineEditorOptions(self, rect, {
+                    padding,
                     color: self.style.textColor,
                     textAlign: 'center',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    editorBackground: self.style.backgroundColor,
+                    editorPadding: '6px 8px',
+                    editorBorder: hasBorder ? `1px solid ${self.style.borderColor}` : 'none',
+                    editorBorderRadius: '4px',
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
         };
 
@@ -2564,9 +2664,7 @@ class PinTool extends BaseDrawing {
 
                 beginTextAnnotationInlineEdit(self);
 
-                const posNode = (boxPathEl && boxPathEl.node && document.contains(boxPathEl.node()))
-                    ? boxPathEl.node()
-                    : boxTextEl.node();
+                const posNode = resolveTextAnnotationEditBoxNode(self, boxTextEl.node());
                 const rect = posNode.getBoundingClientRect();
                 const editX = rect.left + window.scrollX;
                 const editY = rect.top + window.scrollY;
@@ -2581,23 +2679,17 @@ class PinTool extends BaseDrawing {
                     self.text || '',
                     createInlineTextSaveHandler(self),
                     'Enter text…',
-                    {
-                        inline: true,
-                        fontSize: `${scaledFontSize}px`,
-                        fontFamily: self.style.fontFamily,
-                        fontWeight: self.style.fontWeight || 'normal',
-                        fontStyle: self.style.fontStyle || 'normal',
+                    buildStandardInlineEditorOptions(self, rect, {
+                        padding,
                         color: self.style.textColor,
                         textAlign: 'center',
                         editorBackground: self.style.backgroundColor,
                         editorPadding: '4px 8px',
-                        hideSelector: `.drawing[data-id="${self.id}"] text`,
-                        ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                         onInput: (newText) => {
                             self.setText((newText || '').replace(/\r\n/g, '\n'));
                             scheduleTextAnnotationLiveRender(self);
                         }
-                    }
+                    })
                 );
             };
 
@@ -2971,6 +3063,9 @@ class CalloutTool extends BaseDrawing {
         const isPreview = renderOpts.isPreview;
         if (this.points.length < 2) return;
 
+        const scaleFactor = this.getZoomScaleFactor(scales);
+        const scaledFontSize = Math.max(8, (this.style.fontSize || 14) * scaleFactor);
+
         this._prepareRenderGroup(container, 'drawing callout', renderOpts);
         this._clearDrawingLabels(scales);
 
@@ -2993,7 +3088,7 @@ class CalloutTool extends BaseDrawing {
         const maxBubbleWidth = this.style.maxWidth || 280;
 
         // Helper: measure single line width via canvas (reliable, no DOM dependency)
-        const _cFontSize = this.style.fontSize || 14;
+        const _cFontSize = scaledFontSize;
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
@@ -3109,14 +3204,14 @@ class CalloutTool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Text with wrapped lines
-        const textStartY = bubbleY + padding + this.style.fontSize;
+        const textStartY = bubbleY + padding + scaledFontSize;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', bubbleX + padding)
             .attr('y', textStartY)
             .attr('text-anchor', 'start')
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, calloutDisplay.isPlaceholder))
-            .attr('font-size', `${this.style.fontSize}px`)
+            .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', _cFontFamily)
             .attr('font-weight', _cFontWeight)
             .attr('font-style', _cFontStyle)
@@ -3183,12 +3278,7 @@ class CalloutTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const liveBox = (self.group && typeof self.group.select === 'function')
-                ? self.group.select('rect.shape-border-hit').node()
-                : null;
-            const posNode = (liveBox && document.contains(liveBox))
-                ? liveBox
-                : textElement.node();
+            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -3209,23 +3299,17 @@ class CalloutTool extends BaseDrawing {
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
-                {
-                    inline: true,
-                    fontSize: `${self.style.fontSize || 14}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
+                buildStandardInlineEditorOptions(self, rect, {
+                    padding,
                     color: calloutEditFill,
                     textAlign: 'left',
                     editorBackground: self.style.backgroundColor,
                     editorPadding: '4px 8px',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
         };
 
@@ -3621,12 +3705,7 @@ class CommentTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const liveBox = (self.group && typeof self.group.select === 'function')
-                ? self.group.select('rect.comment-body-hit').node()
-                : null;
-            const posNode = (liveBox && document.contains(liveBox))
-                ? liveBox
-                : textElement.node();
+            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
@@ -3647,25 +3726,19 @@ class CommentTool extends BaseDrawing {
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
-                {
-                    inline: true,
-                    fontSize: `${scaledFontSize}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
+                buildStandardInlineEditorOptions(self, rect, {
+                    padding,
                     color: commentEditFill,
                     textAlign: self.style.textAlign || 'left',
                     editorBackground: self.style.backgroundColor,
                     editorPadding: '4px 8px',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         if (typeof self._updateCommentBubble === 'function') {
                             self._updateCommentBubble();
                         }
                     }
-                }
+                })
             );
         };
 
@@ -4295,9 +4368,7 @@ class Signpost2Tool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const posNode = (labelBox && labelBox.node && document.contains(labelBox.node()))
-                ? labelBox.node()
-                : textElement.node();
+            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const bbox = posNode.getBoundingClientRect();
             const x = bbox.left + window.scrollX;
             const y = bbox.top + window.scrollY;
@@ -4319,23 +4390,17 @@ class Signpost2Tool extends BaseDrawing {
                 self.text || '',
                 createInlineTextSaveHandler(self),
                 'Enter text…',
-                {
-                    inline: true,
-                    fontSize: `${scaledFontSize}px`,
-                    fontFamily: self.style.fontFamily,
-                    fontWeight: self.style.fontWeight || 'normal',
-                    fontStyle: self.style.fontStyle || 'normal',
+                buildStandardInlineEditorOptions(self, bbox, {
+                    padding,
                     color: editFill,
                     textAlign: 'center',
                     editorBackground: self.style.fill,
                     editorPadding: '4px 8px',
-                    hideSelector: `.drawing[data-id="${self.id}"] text`,
-                    ...buildWrapAwareInlineEditorOptions(self, bbox, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
                     }
-                }
+                })
             );
         };
 
@@ -4689,6 +4754,8 @@ if (typeof module !== 'undefined' && module.exports) {
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
         buildWrapAwareInlineEditorOptions,
+        buildStandardInlineEditorOptions,
+        resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
@@ -4717,6 +4784,8 @@ if (typeof window !== 'undefined') {
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
         buildWrapAwareInlineEditorOptions,
+        buildStandardInlineEditorOptions,
+        resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
