@@ -615,7 +615,7 @@ class TextTool extends BaseDrawing {
             .attr('text-anchor', 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
-            .style('cursor', textAnnotationHoverCursor(this));
+            .style('cursor', textAnnotationHoverCursor(this))
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
@@ -729,7 +729,7 @@ class TextTool extends BaseDrawing {
             .attr('rx', 4)
             .attr('ry', 4)
             .style('pointer-events', 'all')
-            .style('cursor', textAnnotationHoverCursor(this));;
+            .style('cursor', textAnnotationHoverCursor(this));
 
         const self = this;
         const CLICK_DELAY = 250;

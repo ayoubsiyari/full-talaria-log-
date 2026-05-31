@@ -1517,7 +1517,9 @@ class VolumeProfileTool extends BaseDrawing {
         const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
         const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const levelLineStartX = hasFixedProfileSide ? fixedProfileLeftEdge : left;
-        const levelLineEndX = hasFixedProfileSide ? fixedProfileRightEdge : profileLineEndX;
+        const levelLineEndX = hasFixedProfileSide
+            ? (extendRightLevels ? fixedProfileRightEdge : effectiveProfileRight)
+            : profileLineEndX;
         const developingPOCColor = this.style.developingPOCColor || '#9ea4ad';
         const developingVAColor = this.style.developingVAColor || '#35bad1';
 
@@ -2041,10 +2043,13 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         this.group = proxy.group;
         this.group
             .attr('class', 'drawing drawing-anchored-volume-profile')
-            .attr('data-id', this.id)
-            .style('pointer-events', 'none');
+            .attr('data-id', this.id);
 
+        const preservedShowBackground = this.style.showBackground;
+        const preservedExtendRight = this.style.extendRight;
         Object.assign(this.style, proxy.style || {});
+        if (preservedShowBackground !== undefined) this.style.showBackground = preservedShowBackground;
+        if (preservedExtendRight !== undefined) this.style.extendRight = preservedExtendRight;
 
         // Right side is fixed to latest candle for anchored profile.
         this.group.selectAll('.volume-profile-boundary-hit[data-point-index="1"]').remove();
