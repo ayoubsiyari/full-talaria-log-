@@ -106,7 +106,7 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const noteDisplay = resolveTextToolDisplay(drawing.text);
     const initialText = extra.initialText != null ? extra.initialText : '';
     const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
-    const textFill = resolveAnnotationTextFill(style.textColor, boxFill, noteDisplay.isPlaceholder);
+    const typedColor = (style.textColor && style.textColor !== 'none') ? style.textColor : '#FFFFFF';
     const hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text, .drawing[data-id="${drawing.id}"] > rect.note-body-hit`;
     const opts = {
         inline: true,
@@ -115,10 +115,11 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
         fontFamily: style.fontFamily || 'Roboto, sans-serif',
         fontWeight: style.fontWeight || 'normal',
         fontStyle: style.fontStyle || 'normal',
-        color: textFill,
-        placeholderColor: textFill,
+        color: typedColor,
+        placeholderColor: TEXT_TOOL_PLACEHOLDER_COLOR,
         textAlign: 'left',
         noWrap: true,
+        autoGrowWidth: true,
         hideSelector,
         editorBackground: boxFill,
         editorPadding: '6px 8px',
@@ -126,7 +127,7 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
         editorBorderRadius: '4px',
         ...extra
     };
-    if (bbox && bbox.width > 0) opts.editorWidth = bbox.width;
+    if (bbox && bbox.width > 0) opts.editorMinWidth = bbox.width;
     if (bbox && bbox.height > 0) opts.editorMinHeight = bbox.height;
     return opts;
 }
@@ -1635,12 +1636,16 @@ class NoteTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', 'move');
 
+        const textFill = noteDisplay.isPlaceholder
+            ? TEXT_TOOL_PLACEHOLDER_COLOR
+            : resolveAnnotationTextFill(this.style.textColor, boxFill, false);
+
         // Text with wrapped lines
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.fill || this.style.backgroundColor, noteDisplay.isPlaceholder))
+            .attr('fill', textFill)
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')

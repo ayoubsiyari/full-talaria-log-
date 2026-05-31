@@ -33726,6 +33726,30 @@ class InlineTextEditor {
 
         this._placeholderMode = false;
 
+        this._editorMinWidth = 60;
+
+    }
+
+    _fitInlineEditorWidth() {
+        if (!this.editor || this.editor.empty()) return;
+        const fieldNode = this.editor.select('.inline-text-editor-field').node();
+        if (!fieldNode) return;
+        const minW = this._editorMinWidth || 60;
+        fieldNode.style.width = 'auto';
+        const contentW = Math.ceil(fieldNode.scrollWidth || 0);
+        const editorNode = this.editor.node();
+        let total = minW;
+        try {
+            const cs = window.getComputedStyle(editorNode);
+            const padL = parseFloat(cs.paddingLeft) || 0;
+            const padR = parseFloat(cs.paddingRight) || 0;
+            const borderL = parseFloat(cs.borderLeftWidth) || 0;
+            const borderR = parseFloat(cs.borderRightWidth) || 0;
+            total = Math.max(minW, contentW + padL + padR + borderL + borderR + 2);
+        } catch (_) {
+            total = Math.max(minW, contentW + 16);
+        }
+        this.editor.style('width', `${total}px`);
     }
 
     _ensurePlaceholderStyles() {
@@ -33901,7 +33925,13 @@ class InlineTextEditor {
             if (typeof opts.editorPadding === 'string') {
                 this.editor.style('padding', opts.editorPadding);
             }
-            if (Number.isFinite(opts.editorWidth) && opts.editorWidth > 0) {
+            this._editorMinWidth = Math.max(60, Number.isFinite(opts.editorMinWidth) ? opts.editorMinWidth : 60);
+            if (opts.autoGrowWidth === true) {
+                this.editor
+                    .style('display', 'inline-block')
+                    .style('width', 'auto')
+                    .style('min-width', `${this._editorMinWidth}px`);
+            } else if (Number.isFinite(opts.editorWidth) && opts.editorWidth > 0) {
                 this.editor.style('width', `${opts.editorWidth}px`);
             }
             if (Number.isFinite(opts.editorMinHeight) && opts.editorMinHeight > 0) {
@@ -34001,8 +34031,16 @@ class InlineTextEditor {
 
                     _onInputCb(txt);
 
+                    if (opts.autoGrowWidth === true && typeof this._fitInlineEditorWidth === 'function') {
+                        this._fitInlineEditorWidth();
+                    }
+
                 });
 
+            }
+
+            if (opts.autoGrowWidth === true && typeof this._fitInlineEditorWidth === 'function') {
+                requestAnimationFrame(() => this._fitInlineEditorWidth());
             }
 
 
