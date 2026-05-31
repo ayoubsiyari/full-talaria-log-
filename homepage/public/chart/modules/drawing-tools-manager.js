@@ -753,7 +753,7 @@ class DrawingToolsManager {
     }
 
     static get API_SAVE_DEBOUNCE_MS() {
-        return 1200;
+        return 600;
     }
 
     _isStorageQuotaError(error) {
@@ -7990,10 +7990,7 @@ class DrawingToolsManager {
 
         if (!isUndoRedo && !skipRemote) {
             this._drawingsSaveError = false;
-            this._drawingsPendingTargets = {
-                api: !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'))
-            };
-            this._syncDrawingsSaveUiFromTargets();
+            // Cloud icon pulses only while the API request is in flight — not during debounce.
         }
 
         try {
@@ -8014,11 +8011,13 @@ class DrawingToolsManager {
 
         this._pendingApiSaveClientUpdatedAt = clientUpdatedAt || Date.now();
 
-        // Debounce API saves — fast enough to survive refresh, light enough for the server
+        // Debounce API saves — local cache is instant; pulse only when fetch starts.
         this._apiSaveTimer = setTimeout(() => {
+            if (!this.chart || !Array.isArray(this.drawings)) return;
+            const fresh = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
             const key = this.getStorageKey();
             const meta = this._readDrawingsCacheMeta(key);
-            this.saveDrawingsToAPI(data, meta?.client_updated_at || this._pendingApiSaveClientUpdatedAt);
+            this.saveDrawingsToAPI(fresh, meta?.client_updated_at || this._pendingApiSaveClientUpdatedAt);
         }, DrawingToolsManager.API_SAVE_DEBOUNCE_MS);
     }
 
@@ -8036,6 +8035,9 @@ class DrawingToolsManager {
             if (!token) {
                 return;
             }
+
+            this._drawingsPendingTargets = { api: true };
+            this._syncDrawingsSaveUiFromTargets();
 
             const sentAt = clientUpdatedAt || Date.now();
 

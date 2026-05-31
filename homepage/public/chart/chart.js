@@ -25832,7 +25832,8 @@ async function _talariaInitializeChart() {
     let lastDispatchedPending = null;
 
     function refresh() {
-        const pending = !!(state.sessionPending || state.drawingsPending);
+        // Drawings cloud button reflects chart_drawings API only — not session PATCH debounce.
+        const pending = !!state.drawingsPending;
         const err = !!state.drawingsError;
         const btn = document.getElementById('drawingsSyncToolbarBtn');
         if (btn) {
