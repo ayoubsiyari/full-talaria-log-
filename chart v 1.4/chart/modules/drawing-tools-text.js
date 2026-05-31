@@ -1016,6 +1016,8 @@ class TextTool extends BaseDrawing {
         };
 
         const handleHitDblClickSettings = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;

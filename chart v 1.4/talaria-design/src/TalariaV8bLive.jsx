@@ -2804,6 +2804,24 @@ function v9DrawingTypeToPanelGroup(type) {
   return null;
 }
 
+/** Same-window / parent / top lookup for chart.js → V9 settings bridge. */
+function v9ResolveOpenDrawingSettingsHook() {
+  if (typeof window === "undefined") return null;
+  const wins = [window];
+  try {
+    if (window.parent && window.parent !== window) wins.push(window.parent);
+  } catch (_) { /* cross-origin */ }
+  try {
+    if (window.top && window.top !== window) wins.push(window.top);
+  } catch (_) { /* cross-origin */ }
+  for (const w of wins) {
+    if (w && typeof w.__v9OpenDrawingSettings === "function") {
+      return w.__v9OpenDrawingSettings.bind(w);
+    }
+  }
+  return null;
+}
+
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
 const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel', 'brush2']);
 
@@ -14756,6 +14774,10 @@ const TalariaV8bLive = () => {
           window.parent.__v9OpenDrawingSettings = hook;
           window.parent.__v9OnDrawingDeleted = onDrawingDeleted;
         }
+        if (window.top && window.top !== window) {
+          window.top.__v9OpenDrawingSettings = hook;
+          window.top.__v9OnDrawingDeleted = onDrawingDeleted;
+        }
       } catch (_) {}
     }
     return () => {
@@ -14766,6 +14788,10 @@ const TalariaV8bLive = () => {
           if (window.parent && window.parent !== window) {
             if (window.parent.__v9OpenDrawingSettings === hook) window.parent.__v9OpenDrawingSettings = null;
             if (window.parent.__v9OnDrawingDeleted === onDrawingDeleted) window.parent.__v9OnDrawingDeleted = null;
+          }
+          if (window.top && window.top !== window) {
+            if (window.top.__v9OpenDrawingSettings === hook) window.top.__v9OpenDrawingSettings = null;
+            if (window.top.__v9OnDrawingDeleted === onDrawingDeleted) window.top.__v9OnDrawingDeleted = null;
           }
         } catch (_) {}
       }
@@ -20572,7 +20598,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;const d=getSelectedDrawingForTemplate();const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,r.left+r.width/2,r.bottom+8))return;}catch(_){}}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options (menu portaled below) */}
@@ -24161,7 +24187,7 @@ const TalariaV8bLive = () => {
               const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
               const yFallback = r.bottom / Z + 8;
               const d = getSelectedDrawingForTemplate();
-              const hook = typeof window !== "undefined" ? window.__v9OpenDrawingSettings : null;
+              const hook = v9ResolveOpenDrawingSettingsHook();
               if (d && typeof hook === "function") {
                 const anchorX = r.left + r.width / 2;
                 const anchorY = r.bottom + 8;

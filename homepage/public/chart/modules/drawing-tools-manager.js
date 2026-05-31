@@ -25,6 +25,25 @@
  *     - Disabled pointer-events on all fill elements after rendering
  */
 
+/** V9 React shell may live on parent/top while chart.js runs in an iframe — resolve hook across windows. */
+function resolveV9OpenDrawingSettings() {
+    if (typeof window === 'undefined') return null;
+    const wins = [window];
+    try {
+        if (window.parent && window.parent !== window) wins.push(window.parent);
+    } catch (_) { /* cross-origin */ }
+    try {
+        if (window.top && window.top !== window) wins.push(window.top);
+    } catch (_) { /* cross-origin */ }
+    for (let i = 0; i < wins.length; i++) {
+        const w = wins[i];
+        if (w && typeof w.__v9OpenDrawingSettings === 'function') {
+            return w.__v9OpenDrawingSettings.bind(w);
+        }
+    }
+    return null;
+}
+
 class DrawingToolsManager {
     constructor(chartInstance) {
         this.chart = chartInstance;
@@ -1075,16 +1094,24 @@ class DrawingToolsManager {
                 typeof anchorY === 'number' && !Number.isNaN(anchorY)
                     ? anchorY
                     : rect.bottom + 10;
-            if (typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function') {
+            const v9Open = resolveV9OpenDrawingSettings();
+            if (v9Open) {
                 try {
-                    const handled = window.__v9OpenDrawingSettings(drawing, x, y);
+                    const handled = v9Open(drawing, x, y);
                     if (handled) {
                         if (self.toolbar && typeof self.toolbar.hide === 'function') self.toolbar.hide();
+                        if (self.settingsPanel && typeof self.settingsPanel.hide === 'function') {
+                            self.settingsPanel.hide();
+                        }
                         if (drawing && drawing.type === 'image') drawing._keepEmpty = true;
                         return;
                     }
                 } catch (err) {
                     console.warn('[V9 toolbar settings] hook threw, falling back to legacy panel:', err);
+                }
+                if (drawing && self._isTextDrawingType(drawing.type)) {
+                    console.warn('[V9] Text settings hook did not handle this drawing; legacy modal suppressed.');
+                    return;
                 }
             }
             const beforeState = self.history ? self.history.captureState(drawing) : null;
@@ -7223,19 +7250,24 @@ class DrawingToolsManager {
         // V9 hook: if TalariaV8bLive has registered an opener, use the V9
         // floating panel instead of the legacy tv-settings-modal. The hook
         // returns true if it handled the drawing, false to fall through.
-        if (typeof window !== 'undefined' && typeof window.__v9OpenDrawingSettings === 'function') {
+        const v9Open = resolveV9OpenDrawingSettings();
+        if (v9Open && drawing) {
             try {
-                const handled = window.__v9OpenDrawingSettings(drawing, x, y);
+                const handled = v9Open(drawing, x, y);
                 if (handled) {
-                    // V9 panel renders its own toolbar; legacy floating
-                    // toolbar would overlap, so hide it the same way we do
-                    // before opening the legacy panel below.
                     if (this.toolbar && typeof this.toolbar.hide === 'function') this.toolbar.hide();
-                    if (drawing && drawing.type === 'image') drawing._keepEmpty = true;
+                    if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
+                        this.settingsPanel.hide();
+                    }
+                    if (drawing.type === 'image') drawing._keepEmpty = true;
                     return;
                 }
             } catch (err) {
                 console.warn('[V9 dblclick] hook threw, falling back to legacy panel:', err);
+            }
+            if (this._isTextDrawingType(drawing.type)) {
+                console.warn('[V9] Text annotation settings require the V9 panel (legacy tv-settings-modal suppressed).');
+                return;
             }
         }
 

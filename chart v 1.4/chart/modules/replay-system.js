@@ -142,67 +142,57 @@ class ReplaySystem {
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
 
         try {
-            // Only trust the saved currentIndex if the timeframe matches the
-            // current chart. A 1H session saves index ~12000 but on reload the
-            // chart forces 1D (~500 bars) — blindly using the old index clamps
-            // to the last bar, making it look like "all data is gone."
             const tfMatches = !state.timeframe || state.timeframe === this.chart.currentTimeframe;
-            const idxFromState = tfMatches
-                && typeof state.currentIndex === 'number'
-                && Number.isFinite(state.currentIndex)
-                ? Math.floor(state.currentIndex)
-                : null;
 
-            let idx = null;
-            if (idxFromState !== null) {
-                idx = idxFromState;
-            } else {
-                const rawTs = state.replayTimestamp;
-                let ts = null;
-                if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
-                    ts = rawTs;
-                } else if (typeof rawTs === 'string') {
-                    const n = Number(rawTs);
-                    if (Number.isFinite(n)) {
-                        ts = n;
-                    } else {
-                        const parsed = Date.parse(rawTs);
-                        if (Number.isFinite(parsed)) {
-                            ts = parsed;
-                        }
+            let ts = null;
+            const rawTs = state.replayTimestamp;
+            if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
+                ts = rawTs;
+            } else if (typeof rawTs === 'string') {
+                const n = Number(rawTs);
+                if (Number.isFinite(n)) {
+                    ts = n;
+                } else {
+                    const parsed = Date.parse(rawTs);
+                    if (Number.isFinite(parsed)) {
+                        ts = parsed;
                     }
                 }
+            }
 
-                if (ts !== null) {
-                    // Bars are sorted by period open `t`. A wall-clock `ts` that falls *inside*
-                    // a bar (e.g. 1m tick mid-session mapped onto 1D) must resolve to that bar's
-                    // index — "last bar with t <= ts". The old "first t >= ts" rule picked the
-                    // *next* period's bar (off-by-one on coarse TFs) and broke price continuity.
-                    const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
-                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
-                        : -1;
-                    const smin = this.sessionStartIndex || 0;
-                    idx = hit < 0 ? smin : Math.max(hit, smin);
-                }
+            let idx = null;
+            if (ts !== null) {
+                const hit = typeof this._findLastRawIndexAtOrBefore === 'function'
+                    ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                    : -1;
+                const smin = this.sessionStartIndex || 0;
+                idx = hit < 0 ? smin : Math.max(hit, smin);
+            } else if (tfMatches
+                && typeof state.currentIndex === 'number'
+                && Number.isFinite(state.currentIndex)) {
+                // Fallback only when no wall-clock playhead was saved (legacy blobs).
+                idx = Math.floor(state.currentIndex);
             }
 
             if (idx !== null) {
                 const persistMinIdx = this.sessionStartIndex || 0;
                 this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
-                this.replayTimestamp = this.fullRawData[this.currentIndex]?.t || this.replayTimestamp;
+                const bar = this.fullRawData[this.currentIndex];
+                if (bar && Number.isFinite(bar.t)) {
+                    this.replayTimestamp = bar.t;
+                } else if (ts !== null) {
+                    this.replayTimestamp = ts;
+                }
                 this.tickElapsedMs = typeof state.tickElapsedMs === 'number' ? state.tickElapsedMs : 0;
                 this.speed = typeof state.speed === 'number' ? this.normalizeSpeed(state.speed) : this.speed;
                 if (typeof state.playbackMode === 'string') {
                     this.setPlaybackMode(state.playbackMode, { restartPlayback: false });
                 }
                 this.isPlaying = false;
-                // Sync speed bar UI to the restored speed so it doesn't mismatch on first play
                 this.updateSpeedButtonUI(this.speed);
                 if (typeof window.updateSpeedDisplay === 'function') {
                     window.updateSpeedDisplay(this.speed);
                 }
-                // Backtest TF refetch passes deferChartSync so chart.js can fine-re-anchor first,
-                // then run a single updateChartData (avoids SL/TP on session-start bar mid-refetch).
                 if (!state.deferChartSync) {
                     this.updateChartData(true);
                 }

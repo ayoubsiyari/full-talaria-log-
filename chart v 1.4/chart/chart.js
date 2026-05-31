@@ -1508,16 +1508,29 @@ class Chart {
                 this.viewportData.chunkSize = initialBars;
             }
 
+            const restoreSessionId = this.getActiveTradingSessionId();
+            this._pendingReplayRestore = restoreSessionId
+                ? this._getSavedReplayRestoreState(restoreSessionId)
+                : null;
+            const savedReplayTs = this._pendingReplayRestore?.replayTimestamp ?? null;
+
             let result = null;
             if (sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m') {
                 try {
-                    result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf);
+                    result = await this._fetchReplaySeekBuffer(
+                        fileId,
+                        session,
+                        replayRawTf,
+                        savedReplayTs
+                    );
                 } catch (e) {
                     console.warn('Replay seek /bars fetch failed, falling back to /smart:', e);
                 }
             }
             if (!result) {
-                const initialRange = this._getBacktestInitialFetchRange(replayRawTf, session);
+                const initialRange = Number.isFinite(savedReplayTs)
+                    ? this._getBacktestReplayFetchRange(replayRawTf, session, savedReplayTs)
+                    : this._getBacktestInitialFetchRange(replayRawTf, session);
                 result = await this._fetchSmartWindow(
                     fileId,
                     replayRawTf,
@@ -2127,7 +2140,7 @@ class Chart {
         };
     }
 
-    async _fetchReplaySeekBuffer(fileId, session, replayRawTf = '1m') {
+    async _fetchReplaySeekBuffer(fileId, session, replayRawTf = '1m', playheadMs = null) {
         const sessionStartMs = (() => {
             const raw = session?.startDate || session?.start_date;
             if (!raw) return null;
@@ -2143,10 +2156,22 @@ class Chart {
         const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
         const contextMs = 500 * tfMs;
         const forwardMs = 2500 * tfMs;
-        const fromMs = sessionStartMs != null ? sessionStartMs - contextMs : null;
-        const toMs = sessionEndMs != null
-            ? sessionEndMs
-            : (sessionStartMs != null ? sessionStartMs + forwardMs : null);
+        let fromMs;
+        let toMs;
+        if (Number.isFinite(playheadMs)) {
+            const anchor = Math.floor(playheadMs);
+            fromMs = anchor - contextMs;
+            toMs = anchor + forwardMs;
+            if (sessionEndMs != null) toMs = Math.min(toMs, sessionEndMs);
+            if (sessionStartMs != null) {
+                fromMs = Math.max(fromMs, sessionStartMs - contextMs);
+            }
+        } else {
+            fromMs = sessionStartMs != null ? sessionStartMs - contextMs : null;
+            toMs = sessionEndMs != null
+                ? sessionEndMs
+                : (sessionStartMs != null ? sessionStartMs + forwardMs : null);
+        }
         const resolution = replayRawTf === '1m' ? '1m' : 'auto';
         const payload = await this._fetchBarsWindow(fileId, fromMs, toMs, resolution, 2000);
         return this._smartPayloadFromBars(payload);
@@ -4219,7 +4244,14 @@ class Chart {
 
         if (this.replaySystem) {
             queueMicrotask(() => {
-                this.replaySystem.enterReplayMode();
+                const restore = this._pendingReplayRestore;
+                const restoreTs = restore && Number.isFinite(restore.replayTimestamp)
+                    ? restore.replayTimestamp
+                    : null;
+                this.replaySystem.enterReplayMode({
+                    preservePlayhead: Number.isFinite(restoreTs),
+                    initialReplayTimestamp: restoreTs,
+                });
                 if (this.replaySystem.isActive
                     && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
                     this.replaySystem.syncReplayViewportToPlayhead(this, {
@@ -4229,6 +4261,7 @@ class Chart {
                     });
                 }
                 this.loadTradingSessionStateIfNeeded();
+                this._pendingReplayRestore = null;
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
                 requestAnimationFrame(() => this.hideLoader());
@@ -4619,6 +4652,30 @@ class Chart {
         }
     }
 
+    /** Sync read of last saved replay playhead for refresh restore (before OHLC fetch). */
+    _getSavedReplayRestoreState(sessionId) {
+        if (!sessionId) return null;
+        const backup = this._readTradingSessionLocalBackup(sessionId);
+        const replay = backup && backup.replay;
+        if (!replay || typeof replay !== 'object') return null;
+        let ts = null;
+        const rawTs = replay.replayTimestamp;
+        if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {
+            ts = rawTs;
+        } else if (typeof rawTs === 'string') {
+            const n = Number(rawTs);
+            ts = Number.isFinite(n) ? n : (Number.isFinite(Date.parse(rawTs)) ? Date.parse(rawTs) : null);
+        }
+        if (!Number.isFinite(ts)) return null;
+        return {
+            replayTimestamp: ts,
+            timeframe: this._normalizeBacktestTimeframe(replay.timeframe || backup.chartView?.timeframe),
+            speed: typeof replay.speed === 'number' ? replay.speed : undefined,
+            playbackMode: replay.playbackMode,
+            tickElapsedMs: replay.tickElapsedMs,
+        };
+    }
+
     /**
      * GET /state failed or threw — restore journal + runtime from last local snapshot.
      */
@@ -4864,6 +4921,15 @@ class Chart {
                 if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                     this.replaySystem.applyPersistedState(state.replay);
                     this._pendingReplayState = null;
+                    if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                        try {
+                            this.replaySystem.syncReplayViewportToPlayhead(this, {
+                                centerPlayhead: true,
+                                resetPriceScale: true,
+                                render: true,
+                            });
+                        } catch (_) { /* ignore */ }
+                    }
                     if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
                         try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
                     }
