@@ -3817,6 +3817,12 @@ class ReplaySystem {
 
     _persistReplayStateThrottled() {
         if (!this.chart || !this.isActive) return;
+        const now = Date.now();
+        const intervalMs = this.isPlaying ? 5000 : 2500;
+        if (this._lastReplayPersistAt && now - this._lastReplayPersistAt < intervalMs) {
+            return;
+        }
+        this._lastReplayPersistAt = now;
         const patch = this._buildReplaySessionPatch();
         if (typeof this.chart.scheduleReplaySessionStateSave === 'function') {
             this.chart.scheduleReplaySessionStateSave(patch);

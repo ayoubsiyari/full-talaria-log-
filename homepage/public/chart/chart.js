@@ -601,6 +601,11 @@ class Chart {
         /** Min interval between replay position PATCH merges while playback is running. */
         this._replaySessionStateSaveIntervalMs = 8000;
         this._replaySessionStateLastPatchAt = 0;
+        /** Throttle localStorage session backup (full journal stringify is expensive). */
+        this._localBackupLastWriteAt = 0;
+        this._localBackupPlayingIntervalMs = 20000;
+        this._localBackupIdleIntervalMs = 5000;
+        this._localBackupQuotaWarned = false;
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
@@ -4461,10 +4466,48 @@ class Chart {
      * When PATCH /api/sessions/:id/state fails (Failed to fetch), persist journal + balance in
      * localStorage so refresh still restores until nginx /api is fixed.
      */
-    _writeTradingSessionLocalBackup() {
+    _slimJournalRowForLocalBackup(trade) {
+        if (!trade || typeof trade !== 'object') return trade;
+        const heavyKeys = [
+            'screenshot', 'screenshotBase64', 'image', 'chartImage',
+            'entryScreenshot', 'exitScreenshot', 'thumbnail', 'preview',
+        ];
+        const slim = { ...trade };
+        heavyKeys.forEach((k) => { if (k in slim) delete slim[k]; });
+        if (slim.metadata && typeof slim.metadata === 'object') {
+            const meta = { ...slim.metadata };
+            heavyKeys.forEach((k) => { if (k in meta) delete meta[k]; });
+            slim.metadata = meta;
+        }
+        return slim;
+    }
+
+    _slimJournalForLocalBackup(journal, maxRows = 80) {
+        const arr = Array.isArray(journal) ? journal : [];
+        const tail = arr.length > maxRows ? arr.slice(-maxRows) : arr;
+        return tail.map((t) => this._slimJournalRowForLocalBackup(t));
+    }
+
+    _writeTradingSessionLocalBackupThrottled(options = {}) {
+        const force = !!options.force;
+        const playing = !!(this.replaySystem && this.replaySystem.isPlaying);
+        const minMs = options.minMs != null
+            ? options.minMs
+            : (playing ? this._localBackupPlayingIntervalMs : this._localBackupIdleIntervalMs);
+        const now = Date.now();
+        if (!force && this._localBackupLastWriteAt && now - this._localBackupLastWriteAt < minMs) {
+            return;
+        }
+        this._localBackupLastWriteAt = now;
+        this._writeTradingSessionLocalBackup(options);
+    }
+
+    _writeTradingSessionLocalBackup(options = {}) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
         const om = this._getOrderManagerForSessionPersistence();
+        const minimal = !!options.minimal;
+        const slim = options.slim !== false;
         try {
             const safeClone = (arr) => {
                 try {
@@ -4476,9 +4519,12 @@ class Chart {
             const payload = {
                 savedAt: Date.now(),
             };
-            if (om) {
+            if (om && !minimal) {
+                const journalSource = slim
+                    ? this._slimJournalForLocalBackup(om.tradeJournal)
+                    : safeClone(om.tradeJournal);
                 Object.assign(payload, {
-                    journal: safeClone(om.tradeJournal),
+                    journal: journalSource,
                     pending_orders: safeClone(om.pendingOrders),
                     open_positions: safeClone(om.openPositions),
                     account_runtime: {
@@ -4495,20 +4541,28 @@ class Chart {
                         tradeGroupIdCounter: om.tradeGroupIdCounter,
                     },
                 });
-                if (typeof om.buildPerInstrumentStats === 'function') {
-                    try {
-                        payload.per_instrument_stats = om.buildPerInstrumentStats();
-                    } catch (e) {
-                        /* ignore */
+                if (!slim) {
+                    if (typeof om.buildPerInstrumentStats === 'function') {
+                        try {
+                            payload.per_instrument_stats = om.buildPerInstrumentStats();
+                        } catch (e) {
+                            /* ignore */
+                        }
+                    }
+                    if (typeof om.groupJournalByTicker === 'function') {
+                        try {
+                            payload.journal_by_ticker = om.groupJournalByTicker();
+                        } catch (e) {
+                            /* ignore */
+                        }
                     }
                 }
-                if (typeof om.groupJournalByTicker === 'function') {
-                    try {
-                        payload.journal_by_ticker = om.groupJournalByTicker();
-                    } catch (e) {
-                        /* ignore */
-                    }
-                }
+            } else if (om && minimal) {
+                payload.account_runtime = {
+                    balance: om.balance,
+                    equity: om.equity,
+                    initialBalance: om.initialBalance,
+                };
             }
             const tf = this._normalizeBacktestTimeframe(this.currentTimeframe);
             if (tf) {
@@ -4529,8 +4583,16 @@ class Chart {
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
+            this._localBackupQuotaWarned = false;
         } catch (e) {
-            console.warn('local session backup write failed', e);
+            if (e && e.name === 'QuotaExceededError' && !options.minimalRetry) {
+                this._writeTradingSessionLocalBackup({ slim: true, minimal: true, minimalRetry: true });
+                return;
+            }
+            if (!this._localBackupQuotaWarned) {
+                this._localBackupQuotaWarned = true;
+                console.warn('local session backup write failed', e);
+            }
         }
     }
 
@@ -5037,7 +5099,7 @@ class Chart {
             this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, {
                 replay: { dashboard: dash },
             });
-            this._writeTradingSessionLocalBackup();
+            this._writeTradingSessionLocalBackupThrottled({ force: true });
         } catch (e) {
             /* ignore */
         }
@@ -5161,7 +5223,7 @@ class Chart {
         if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
 
         this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
-        this._writeTradingSessionLocalBackup();
+        this._writeTradingSessionLocalBackupThrottled();
         this._armSessionStateSaveDebounce();
         this._syncCloudSaveUiFromSession();
     }
@@ -5176,7 +5238,7 @@ class Chart {
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
-        this._writeTradingSessionLocalBackup();
+        this._writeTradingSessionLocalBackupThrottled();
 
         const intervalMs =
             Number(this._replaySessionStateSaveIntervalMs) > 0 ? Number(this._replaySessionStateSaveIntervalMs) : 8000;
@@ -5196,7 +5258,7 @@ class Chart {
         if (patch && typeof patch === 'object') {
             if (this._sessionStateLoadedFor !== String(sessionId) || this._sessionStatePatchAllowedBeforeHydrate(patch)) {
                 this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
-                this._writeTradingSessionLocalBackup();
+                this._writeTradingSessionLocalBackupThrottled({ force: true });
             }
         }
         this._replaySessionStateLastPatchAt = 0;
@@ -5214,7 +5276,7 @@ class Chart {
         if (!patch || typeof patch !== 'object') return;
 
         this._pendingCriticalSessionStatePatch = this._mergeSessionStatePatches(this._pendingCriticalSessionStatePatch, patch);
-        this._writeTradingSessionLocalBackup();
+        this._writeTradingSessionLocalBackupThrottled({ force: true });
         if (this._criticalSessionStateSaveTimer) {
             clearTimeout(this._criticalSessionStateSaveTimer);
             this._criticalSessionStateSaveTimer = null;
@@ -5238,7 +5300,7 @@ class Chart {
 
         this._sessionStatePatchInFlight = true;
         try {
-            this._writeTradingSessionLocalBackup();
+            this._writeTradingSessionLocalBackupThrottled({ force: true });
             // Do NOT use fetch({ keepalive: true }) here — Chromium limits keepalive bodies to ~64KB.
             // Journal payloads (base64 screenshots) exceed that and the request fails → nothing saved server-side.
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
@@ -5359,7 +5421,7 @@ class Chart {
 
         this._sessionStatePatchInFlight = true;
         try {
-            this._writeTradingSessionLocalBackup();
+            this._writeTradingSessionLocalBackupThrottled({ force: true });
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
