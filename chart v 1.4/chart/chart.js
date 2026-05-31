@@ -2039,6 +2039,29 @@ class Chart {
         return inflight;
     }
 
+    /** End timestamp (exclusive) of the last bar in replay.fullRawData. */
+    _replayMasterLastBarEndMs() {
+        const replay = this.replaySystem;
+        if (!replay?.isActive || !Array.isArray(replay.fullRawData) || !replay.fullRawData.length) {
+            return null;
+        }
+        const frd = replay.fullRawData;
+        const lastIdx = frd.length - 1;
+        const lastBar = frd[lastIdx];
+        if (!lastBar || !Number.isFinite(lastBar.t)) return null;
+        const periodMs = this._getNativeRawStepMs();
+        return this._getBarPeriodEndMs(lastBar.t, frd, lastIdx, periodMs);
+    }
+
+    /** True when replay master series has loaded through the inclusive backtest session end. */
+    _hasLoadedThroughBacktestSessionEnd(session) {
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        if (sessionEndMs == null) return false;
+        const lastBarEndMs = this._replayMasterLastBarEndMs();
+        if (!Number.isFinite(lastBarEndMs)) return false;
+        return lastBarEndMs >= sessionEndMs;
+    }
+
     /** Keep pan cursors aligned with replay fullRawData edges (1m TF switch fix). */
     _syncReplayPanCursorsFromFullRaw() {
         const replay = this.replaySystem;
@@ -2046,6 +2069,9 @@ class Chart {
         if (!this._serverCursors) this._serverCursors = {};
         this._serverCursors.firstTs = String(replay.fullRawData[0].t);
         this._serverCursors.lastTs = String(replay.fullRawData[replay.fullRawData.length - 1].t);
+        if (this.isBacktestMode && typeof this._hasLoadedThroughBacktestSessionEnd === 'function') {
+            this._serverCursors.hasMoreRight = !this._hasLoadedThroughBacktestSessionEnd();
+        }
     }
 
     _smartPayloadFromBars(barsPayload) {
@@ -14690,18 +14716,32 @@ class Chart {
 
         const session = this.backtestingSession || {};
         const sessionStartTs = session.startDate ? new Date(session.startDate).getTime() : null;
-        const sessionEndTs = session.endDate ? new Date(session.endDate).getTime() : null;
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
         const hasSessionStart = Number.isFinite(sessionStartTs);
-        const hasSessionEnd = Number.isFinite(sessionEndTs);
+        const hasSessionEnd = sessionEndMs != null;
         
         // Check if there's more data in this direction
         if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return false;
         if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return false;
 
-        // Respect configured backtesting bounds
+        // Respect configured backtesting bounds — compare bar period END to inclusive session end.
+        // Using bar start >= midnight of end-date falsely blocks 1m forward loads on the morning
+        // of the last session day (1D still works because its bar starts are day-aligned).
         if (direction === 'forward' && hasSessionEnd) {
-            const lastCursorTs = Number(this._serverCursors.lastTs);
-            if (Number.isFinite(lastCursorTs) && lastCursorTs >= sessionEndTs) {
+            let lastBarEndMs = null;
+            if (isReplay && typeof this._replayMasterLastBarEndMs === 'function') {
+                lastBarEndMs = this._replayMasterLastBarEndMs();
+            }
+            if (!Number.isFinite(lastBarEndMs)) {
+                const lastCursorTs = Number(this._serverCursors.lastTs);
+                const periodMs = this._getNativeRawStepMs()
+                    || this.parseTimeframe(replayRawTf || this.currentTimeframe || '1m')
+                    || 60000;
+                if (Number.isFinite(lastCursorTs)) {
+                    lastBarEndMs = lastCursorTs + periodMs;
+                }
+            }
+            if (Number.isFinite(lastBarEndMs) && lastBarEndMs >= sessionEndMs) {
                 this._serverCursors.hasMoreRight = false;
                 return false;
             }

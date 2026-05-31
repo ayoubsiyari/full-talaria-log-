@@ -2754,7 +2754,23 @@ class ReplaySystem {
         const bar = this.fullRawData && this.fullRawData[this.currentIndex];
         const barTs = bar && Number.isFinite(bar.t) ? Number(bar.t) : Number(this.replayTimestamp);
         if (!Number.isFinite(barTs)) return false;
-        return barTs >= Number(sessionEndMs) - 86400000;
+
+        let periodMs = 60000;
+        if (this.fullRawData && this.fullRawData.length >= 2) {
+            const step = Number(this.fullRawData[1].t) - Number(this.fullRawData[0].t);
+            if (Number.isFinite(step) && step > 0) periodMs = step;
+        } else if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(this.rawTimeframe || this.chart.currentTimeframe || '1m');
+            if (Number.isFinite(parsed) && parsed > 0) periodMs = parsed;
+        }
+
+        let barEndTs = barTs + periodMs;
+        if (Array.isArray(this.fullRawData) && typeof this.currentIndex === 'number'
+            && this.currentIndex + 1 < this.fullRawData.length) {
+            const nextT = Number(this.fullRawData[this.currentIndex + 1].t);
+            if (Number.isFinite(nextT) && nextT > barTs) barEndTs = nextT;
+        }
+        return barEndTs >= Number(sessionEndMs);
     }
 
     /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
@@ -2792,6 +2808,16 @@ class ReplaySystem {
      * Call when playback auto-stops because there is no more data to advance into.
      */
     _notifyReplayReachedEndOfData() {
+        let sessionEndMs = null;
+        try {
+            const sess = this.chart && this.chart.backtestingSession;
+            if (sess && this.chart && typeof this.chart._getBacktestSessionEndMs === 'function') {
+                sessionEndMs = this.chart._getBacktestSessionEndMs(sess);
+            }
+        } catch (_) { /* ignore */ }
+        if (sessionEndMs != null && !this._isAtBacktestSessionEnd(sessionEndMs)) {
+            return;
+        }
         this._maybeNotifyReplayToast('Backtest replay complete — you reached the end of this session.');
     }
 
