@@ -2452,6 +2452,57 @@ class Chart {
         });
     }
 
+    /** Enable with `window.__CHART_TF_SWITCH_DEBUG__ = true` in the browser console. */
+    _logTfSwitch(path, detail = {}) {
+        try {
+            if (typeof window !== 'undefined' && window.__CHART_TF_SWITCH_DEBUG__ !== true) return;
+            const from = this._switchingFromTimeframe || detail.from || null;
+            const to = this._switchingToTimeframe || detail.to || this.currentTimeframe || null;
+            console.info('[TF-switch]', path, {
+                from,
+                to,
+                fileId: this.currentFileId || null,
+                bars: Array.isArray(this.data) ? this.data.length : 0,
+                replay: !!(this.replaySystem && this.replaySystem.isActive),
+                backtest: !!this.isBacktestMode,
+                ...detail,
+            });
+        } catch (_) { /* ignore */ }
+    }
+
+    /**
+     * Debounced post-TF-switch indicator refresh (mirrors drawing scheduleRefreshAfterTimeframe).
+     * Recalculates all active indicators against the current chart.data so overlays stay
+     * correct on every timeframe, including replay paths that skip heavy recalc mid-switch.
+     */
+    _scheduleIndicatorsAfterTimeframe() {
+        if (typeof this.recalculateIndicators !== 'function') return;
+        if (this._tfIndicatorRefreshScheduled) return;
+        this._tfIndicatorRefreshScheduled = true;
+
+        const attempt = (retriesLeft) => {
+            requestAnimationFrame(() => {
+                const dataReady = Array.isArray(this.data) && this.data.length > 0;
+                if (!dataReady) {
+                    if (retriesLeft > 0) {
+                        attempt(retriesLeft - 1);
+                        return;
+                    }
+                    this._tfIndicatorRefreshScheduled = false;
+                    return;
+                }
+
+                this._tfIndicatorRefreshScheduled = false;
+                try {
+                    this.recalculateIndicators();
+                    if (typeof this.render === 'function') this.render();
+                } catch (_) { /* ignore */ }
+            });
+        };
+
+        attempt(3);
+    }
+
     _getTimeframesToPrefetch(currentTf) {
         const cur = String(currentTf || '1m').toLowerCase().trim();
         const out = new Set();
@@ -2554,6 +2605,7 @@ class Chart {
         if (this._isBacktestReplayActive()) return false;
         if (this.isBacktestMode) return false;
         if (!this._restoreFromTfDataCache(this.currentFileId, normalizedTf)) return false;
+        this._logTfSwitch('live-cache', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -2578,6 +2630,7 @@ class Chart {
      */
     _applyClientResampleTimeframeSwitch(normalizedTf, options = {}) {
         const replayPath = !!options.replayPath;
+        this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
         if (this.currentFileId) {
@@ -3209,6 +3262,7 @@ class Chart {
             sessionEndMs,
             coarsePeriodExclusiveEndTs,
         });
+        this._logTfSwitch('backtest-cache', { to: timeframe });
         return true;
     }
 
@@ -13686,12 +13740,14 @@ class Chart {
             && Array.isArray(this.data) && this.data.length > 0
             && !this._panLoading;
         if (haveCurrentTfData) {
+            this._logTfSwitch('noop', { to: normalizedTf });
             if (this.drawingManager
                 && this.drawings
                 && this.drawings.length > 0
                 && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
                 try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_) { /* ignore */ }
             }
+            this._scheduleIndicatorsAfterTimeframe();
             return;
         }
 
@@ -13757,6 +13813,7 @@ class Chart {
 
             // Client-side resample path: commit synchronously THEN let replay redraw,
             // so onTimeframeChange's resampleData() reads the new timeframe.
+            this._logTfSwitch('replay-resample-fallback', { to: normalizedTf });
             this._commitTimeframeChange(normalizedTf);
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -13810,6 +13867,7 @@ class Chart {
 
         // Path F: local CSV — resample without network.
         // Commit BEFORE resample so the new data + new timeframe land together.
+        this._logTfSwitch('local-resample', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
         this._deferRecalculateIndicators();
@@ -13915,6 +13973,7 @@ class Chart {
             if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
                 try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
             }
+            this._scheduleIndicatorsAfterTimeframe();
         });
     }
 
@@ -14080,6 +14139,7 @@ class Chart {
 
             // Cache hit when called directly (bypassing setTimeframe's early check).
             if (!this.isBacktestMode && this._restoreFromTfDataCache(this.currentFileId, timeframe)) {
+                this._logTfSwitch('live-cache', { to: timeframe });
                 this._commitTimeframeChange(timeframe);
                 if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                     this.compareOverlay.refreshForTimeframe(timeframe);
@@ -14116,6 +14176,8 @@ class Chart {
 
             if (loadId !== this._timeframeLoadSeq) return;
             if (!this._smartResponseHasPayload(result)) throw new Error('No data');
+
+            this._logTfSwitch('server', { to: timeframe });
 
             this.rawData = [];
             this.data = [];
@@ -14424,6 +14486,8 @@ class Chart {
         if (await this._applyBacktestTimeframeFromCache(timeframe)) {
             return;
         }
+
+        this._logTfSwitch('backtest-server', { to: timeframe });
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
