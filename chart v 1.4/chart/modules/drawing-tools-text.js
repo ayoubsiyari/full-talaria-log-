@@ -940,7 +940,7 @@ class NoteBoxTool extends BaseDrawing {
         // Draw background box
         const box = this.group.append('rect')
             .attr('class', 'note-body-hit text-body-hit')
-            .attr('x', x))
+            .attr('x', x)
             .attr('y', y - boxHeight)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
