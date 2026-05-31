@@ -2052,6 +2052,46 @@ function resolveDrawingManagerForDrawing(drawing) {
   return null;
 }
 
+/** Delete selected drawings of a type — resolves live dm.drawings[] refs (proxy re-render safe). */
+function v9DeleteSelectedDrawingsOfType(type, editingRefDrawing) {
+  let deleted = false;
+  const deleteLiveOnDm = (dm, live) => {
+    if (!dm || !live) return;
+    deleted = true;
+    try { dm.deleteDrawing(live); } catch (_) {}
+    try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
+    if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+  };
+  enumerateV9DrawingManagersActiveFirst().forEach((dm) => {
+    let sel = [];
+    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+      sel = dm.selectedDrawings.filter((d) => d && d.type === type);
+    } else if (dm.selectedDrawing?.type === type) {
+      sel = [dm.selectedDrawing];
+    }
+    if (!sel.length && dm.toolbar?.currentDrawing?.type === type) {
+      sel = [dm.toolbar.currentDrawing];
+    }
+    if (!sel.length) return;
+    const seen = new Set();
+    sel.forEach((d) => {
+      const live = resolveLiveDrawingInDm(dm, d);
+      if (!live || seen.has(live.id)) return;
+      seen.add(live.id);
+      deleteLiveOnDm(dm, live);
+    });
+  });
+  if (!deleted) {
+    const cross = getSelectedDrawingAcrossCharts(editingRefDrawing);
+    if (cross?.type === type) {
+      const dm = resolveDrawingManagerForDrawing(cross);
+      const live = dm && resolveLiveDrawingInDm(dm, cross);
+      if (live) deleteLiveOnDm(dm, live);
+    }
+  }
+  return deleted;
+}
+
 function v9NotifyDrawingAction(message) {
   if (typeof window === "undefined") return;
   try {
@@ -14463,6 +14503,18 @@ const TalariaV8bLive = () => {
         const group = drawingTypeToPanelGroupRef.current(drawing.type);
         if (!group) return false; // Unknown type → legacy settings panel
 
+        let drawingForStyle = drawing;
+        try {
+          const dmStyle =
+            typeof window !== "undefined" && typeof window.getActiveChart === "function"
+              ? window.getActiveChart()?.drawingManager
+              : window.chart?.drawingManager;
+          if (dmStyle && Array.isArray(dmStyle.drawings) && drawing.id != null) {
+            const liveStyle = dmStyle.drawings.find((x) => x && x.id === drawing.id);
+            if (liveStyle) drawingForStyle = liveStyle;
+          }
+        } catch (_) {}
+
         // Sync: abort half-started placement + disarm draw tool before React effects run.
         try {
           const ch =
@@ -14526,13 +14578,12 @@ const TalariaV8bLive = () => {
             ? window.getActiveChart()?.drawingManager
             : window.chart?.drawingManager;
         } catch (_) {}
-        let drawingForStyle = drawing;
-        try {
-          if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
+        if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
+          try {
             const live = dmEd.drawings.find((x) => x && x.id === drawing.id);
             if (live) drawingForStyle = live;
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
         if (editingDrawingRef.current) {
           editingDrawingRef.current.drawing = drawingForStyle;
           editingDrawingRef.current.editSnapshot = v9CloneDrawingEditState(drawingForStyle);
@@ -14700,7 +14751,7 @@ const TalariaV8bLive = () => {
         } else if (drawing.type === 'anchored-vwap') {
           closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
           suppressVwapBridge.current = true;
-          const ds = drawing.style || {};
+          const ds = drawingForStyle.style || drawing.style || {};
           const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
           const SRC_R2 = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
           const CALC_R2 = {standard_deviation:"Std Deviation",percentage:"Percentage"};
@@ -14714,7 +14765,7 @@ const TalariaV8bLive = () => {
         } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
           closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett(); closeIndSett();
           suppressVpBridge.current = true;
-          const ds = drawing.style || {};
+          const ds = drawingForStyle.style || drawing.style || {};
           const PLC_R2 = {left:"Left",right:"Right"};
           const ROW_R2 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
           const VOL_R2 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
@@ -14728,7 +14779,7 @@ const TalariaV8bLive = () => {
         } else if (drawing.type === 'anchored-volume-profile') {
           closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett(); closeIndSett();
           suppressAvBridge.current = true;
-          const ds = drawing.style || {};
+          const ds = drawingForStyle.style || drawing.style || {};
           const PLC_R3 = {left:"Left",right:"Right"};
           const ROW_R3 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
           const VOL_R3 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
@@ -24788,15 +24839,10 @@ const TalariaV8bLive = () => {
               if (avSettOpen || closing.has("avsett")) closeAvSett();
               let deleted = false;
               try {
-                enumerateV9DrawingManagersFromWindow().forEach((dm) => {
-                  const sel = dm.selectedDrawings && dm.selectedDrawings.length
-                    ? dm.selectedDrawings.filter((d) => d && d.type === "anchored-volume-profile")
-                    : (dm.selectedDrawing && dm.selectedDrawing.type === "anchored-volume-profile" ? [dm.selectedDrawing] : []);
-                  if (!sel.length) return;
-                  deleted = true;
-                  sel.forEach((d) => { try { dm.deleteDrawing && dm.deleteDrawing(d); } catch (_) {} });
-                  if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
-                });
+                deleted = v9DeleteSelectedDrawingsOfType(
+                  "anchored-volume-profile",
+                  editingDrawingRef.current?.drawing,
+                );
               } catch (err) { console.warn("[V9 av delete] failed:", err); }
               if (deleted) {
                 setAvLocked(false);
