@@ -8100,7 +8100,12 @@ class DrawingToolsManager {
         }
         const dataLen = Array.isArray(this.chart.data) ? this.chart.data.length : 0;
         const lastIdx = dataLen > 0 ? dataLen - 1 : 0;
-        if (typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
+        const hasTimestampAnchors = drawing.timestampPoints && drawing.timestampPoints.length > 0;
+        // After viewing a finer TF (e.g. 1m), bar indices are larger than the coarser
+        // series length (e.g. 15m). Do not treat that as intentional extrabar placement —
+        // always re-resolve from stored timestamps when anchors exist.
+        if (!hasTimestampAnchors
+            && typeof CoordinateUtils.allowsExtrabarBarIndex === 'function'
             && CoordinateUtils.allowsExtrabarBarIndex(drawing.type)
             && Array.isArray(drawing.points)
             && drawing.points.some((p) => p && Number.isFinite(p.x) && p.x > lastIdx + 0.001)) {
@@ -8150,6 +8155,29 @@ class DrawingToolsManager {
     _refreshDrawingTimestampAnchors(drawing) {
         if (!drawing || typeof drawing.recalculateTimestamps !== 'function') return;
         try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
+    }
+
+    /** One-time capture of wall-clock anchors from current bar indices (legacy drawings). */
+    _captureDrawingTimestampAnchors(drawing) {
+        if (!drawing || !this.chart) return;
+        if (drawing.timestampPoints && drawing.timestampPoints.length > 0) return;
+        if (!Array.isArray(drawing.points) || drawing.points.length === 0) return;
+        if (!Array.isArray(this.chart.data) || this.chart.data.length === 0) return;
+        if (typeof CoordinateUtils === 'undefined'
+            || typeof CoordinateUtils.pointsToTimestamps !== 'function') {
+            return;
+        }
+        try {
+            const tsPoints = CoordinateUtils.pointsToTimestamps(
+                drawing.points,
+                this.chart.data,
+                this.chart.currentTimeframe
+            );
+            if (Array.isArray(tsPoints) && tsPoints.length > 0) {
+                drawing.timestampPoints = tsPoints;
+                drawing.coordinateSystem = 'timestamp';
+            }
+        } catch (_) { /* ignore */ }
     }
 
     /**
@@ -8834,6 +8862,10 @@ class DrawingToolsManager {
         this.drawings.forEach((drawing) => {
             if (!drawing) return;
             drawing.chart = this.chart;
+
+            if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
+                this._captureDrawingTimestampAnchors(drawing);
+            }
 
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
                 this._syncDrawingPointsFromTimestamps(drawing);
