@@ -658,15 +658,9 @@ class DrawingToolsManager {
             if (newTimeframe && newTimeframe !== lastTimeframe) {
                 // [debug removed]
                 lastTimeframe = newTimeframe;
-                
-                // Refresh drawings after a small delay to ensure data is resampled
-                requestAnimationFrame(() => {
-                    if (this.drawings.length > 0) {
-                        // [debug removed]
-                        this.refreshDrawingsForTimeframe();
-                        this.saveDrawings();
-                    }
-                });
+                if (this.drawings.length > 0) {
+                    this.scheduleRefreshAfterTimeframe();
+                }
             }
         };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;
@@ -8789,6 +8783,45 @@ class DrawingToolsManager {
     }
 
     /**
+     * Debounced post-TF-switch refresh (called from chart._endTimeframeSwitching).
+     * Waits until chart.data is ready, re-resolves timestamp anchors, then full redraw.
+     */
+    scheduleRefreshAfterTimeframe() {
+        if (this._tfRefreshScheduled) return;
+        this._tfRefreshScheduled = true;
+
+        const attempt = (retriesLeft) => {
+            requestAnimationFrame(() => {
+                const dataReady = this.chart
+                    && Array.isArray(this.chart.data)
+                    && this.chart.data.length > 0;
+                if (!dataReady) {
+                    if (retriesLeft > 0) {
+                        attempt(retriesLeft - 1);
+                        return;
+                    }
+                    this._tfRefreshScheduled = false;
+                    return;
+                }
+
+                this._tfRefreshScheduled = false;
+                try {
+                    this.refreshDrawingsForTimeframe();
+                    if (this.chart.xScale && this.chart.yScale) {
+                        this.redrawAll({ forceFull: true });
+                    }
+                } catch (_) { /* ignore */ }
+
+                if (this.drawings.length > 0) {
+                    try { this.saveDrawings(); } catch (_) { /* ignore */ }
+                }
+            });
+        };
+
+        attempt(2);
+    }
+
+    /**
      * Refresh drawings for new timeframe
      * Converts all drawings from their stored timestamps to indices for current timeframe
      */
@@ -8797,31 +8830,23 @@ class DrawingToolsManager {
             console.warn('⚠️ Cannot refresh drawings: no chart data available');
             return;
         }
-        
-        // [debug removed]
-        // [debug removed]
-        
-        // Instead of destroying and recreating, just update the points
-        this.drawings.forEach((drawing, index) => {
-            // Use the STORED timestamps (not recalculated ones)
+
+        this.drawings.forEach((drawing) => {
+            if (!drawing) return;
+            drawing.chart = this.chart;
+
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
                 this._syncDrawingPointsFromTimestamps(drawing);
-                drawing.chart = this.chart; // Update chart reference
-                
-                // Destroy old SVG elements
-                if (drawing.group) {
-                    drawing.group.remove();
-                    drawing.group = null;
-                }
-                
-                // Re-render with new points
-                this.renderDrawing(drawing);
             }
+
+            if (drawing.group) {
+                try { drawing.group.remove(); } catch (_) { /* ignore */ }
+                drawing.group = null;
+            }
+
+            this.renderDrawing(drawing);
         });
-        
-        // [debug removed]
-        
-        // Refresh object tree if available
+
         if (this.objectTreeManager) {
             this.objectTreeManager.refresh();
         }

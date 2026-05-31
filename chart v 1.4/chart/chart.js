@@ -14070,6 +14070,7 @@ class Chart {
                 }
                 if (this.hideLoader) this.hideLoader();
                 requestAnimationFrame(() => {
+                    if (loadId !== this._timeframeLoadSeq) return;
                     if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                     this.resize();
                     if (this.data && this.data.length > 0) {
@@ -14143,6 +14144,7 @@ class Chart {
             if (this.hideLoader) this.hideLoader();
 
             requestAnimationFrame(() => {
+                if (loadId !== this._timeframeLoadSeq) return;
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
@@ -14885,6 +14887,8 @@ class Chart {
                     // Playback loop already redraws continuously and will pick up merged data.
                     if (!this.replaySystem.isPlaying) {
                         this.replaySystem.updateChartData(false);
+                    } else if (direction === 'backward' && uniqueNew.length > 0) {
+                        this._pendingReplayBackwardDataSync = true;
                     }
                     if (this.isBacktestMode && this.viewportData && this._serverCursors) {
                         this.viewportData.hasMoreLeft = !!this._serverCursors.hasMoreLeft;
@@ -14983,6 +14987,20 @@ class Chart {
                             this._scheduleReplayPanLoadLeft();
                         }
                     });
+                }
+
+                if (this._pendingReplayBackwardDataSync && this.replaySystem) {
+                    this._pendingReplayBackwardDataSync = false;
+                    try { this.replaySystem.updateChartData(false); } catch (_e) { /* ignore */ }
+                }
+
+                // Backward replay history extends chart.data — re-anchor drawings whose
+                // timestamps were previously off-screen (negative bar indices).
+                if (direction === 'backward'
+                    && isReplay
+                    && this.drawingManager
+                    && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                    try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
                 }
             });
 
