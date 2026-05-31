@@ -2069,8 +2069,13 @@ class Chart {
         if (!this._serverCursors) this._serverCursors = {};
         this._serverCursors.firstTs = String(replay.fullRawData[0].t);
         this._serverCursors.lastTs = String(replay.fullRawData[replay.fullRawData.length - 1].t);
+        // Only clamp forward when the master series truly reaches session end — do not force
+        // hasMoreRight=true (stale server flags) or false when the playhead is mid-session but
+        // the cached window tail happens to end at session end.
         if (this.isBacktestMode && typeof this._hasLoadedThroughBacktestSessionEnd === 'function') {
-            this._serverCursors.hasMoreRight = !this._hasLoadedThroughBacktestSessionEnd();
+            if (this._hasLoadedThroughBacktestSessionEnd()) {
+                this._serverCursors.hasMoreRight = false;
+            }
         }
     }
 
@@ -4197,6 +4202,14 @@ class Chart {
         if (this.replaySystem) {
             queueMicrotask(() => {
                 this.replaySystem.enterReplayMode();
+                if (this.replaySystem.isActive
+                    && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                    this.replaySystem.syncReplayViewportToPlayhead(this, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        render: true,
+                    });
+                }
                 this.loadTradingSessionStateIfNeeded();
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
@@ -14719,6 +14732,9 @@ class Chart {
         const sessionEndMs = this._getBacktestSessionEndMs(session);
         const hasSessionStart = Number.isFinite(sessionStartTs);
         const hasSessionEnd = sessionEndMs != null;
+
+        const replayRawTf = isReplay ? this._getReplayPanFetchTimeframe() : null;
+        const tf = replayRawTf || this.currentTimeframe || '1m';
         
         // Check if there's more data in this direction
         if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return false;
@@ -14735,7 +14751,7 @@ class Chart {
             if (!Number.isFinite(lastBarEndMs)) {
                 const lastCursorTs = Number(this._serverCursors.lastTs);
                 const periodMs = this._getNativeRawStepMs()
-                    || this.parseTimeframe(replayRawTf || this.currentTimeframe || '1m')
+                    || this.parseTimeframe(tf)
                     || 60000;
                 if (Number.isFinite(lastCursorTs)) {
                     lastBarEndMs = lastCursorTs + periodMs;
@@ -14763,8 +14779,6 @@ class Chart {
         
         this._panLoading = true;
 
-        const replayRawTf = isReplay ? this._getReplayPanFetchTimeframe() : null;
-        const tf = replayRawTf || this.currentTimeframe || '1m';
         const cursor = direction === 'backward' 
             ? this._serverCursors.firstTs 
             : this._serverCursors.lastTs;
