@@ -16144,8 +16144,9 @@ const TalariaV8bLive = () => {
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        const isInlineEditing = dm._textInlineEditDrawing === d || d._inlineTextEditing || d._pendingAutoInlineEdit;
         try {
-          if (dm.textEditor && typeof dm.textEditor.hide === "function") {
+          if (!isInlineEditing && dm.textEditor && typeof dm.textEditor.hide === "function") {
             dm.textEditor.hide();
           }
         } catch (_) {}
@@ -16154,6 +16155,18 @@ const TalariaV8bLive = () => {
           tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d);
         } catch (_) {}
         v9ApplyTxtStyleToDrawing(d, txtStyle);
+        if (isInlineEditing) {
+          const helpers = typeof window !== "undefined" ? window.DrawingTextHelpers : null;
+          if (helpers && typeof helpers.scheduleTextAnnotationLiveRender === "function") {
+            helpers.scheduleTextAnnotationLiveRender(d);
+          } else if (typeof dm.scheduleRenderDrawing === "function") {
+            dm.scheduleRenderDrawing(d);
+          } else {
+            try { dm.renderDrawing?.(d); } catch (_) {}
+          }
+          if (dm.chart) chartsToRender.add(dm.chart);
+          return;
+        }
         if (tb && typeof tb.onUpdate === "function") {
           try {
             tb.onUpdate(d);

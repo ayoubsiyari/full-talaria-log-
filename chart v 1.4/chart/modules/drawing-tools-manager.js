@@ -4209,13 +4209,27 @@ class DrawingToolsManager {
             drawing.setText('');
         }
 
+        const autoEditOnPlace = this._shouldAutoEditTextOnPlace(this.currentTool);
+        const placedDrawing = drawing;
+
         this.addDrawing(drawing);
 
-        if (this._shouldAutoEditTextOnPlace(this.currentTool)) {
+        if (autoEditOnPlace) {
+            placedDrawing._pendingAutoInlineEdit = true;
             requestAnimationFrame(() => {
-                this.selectDrawing(drawing, false, { allowWhileArmed: true });
-                if (this.chart) this.chart.render();
-                requestAnimationFrame(() => this._triggerAutoInlineEdit(drawing));
+                this.selectDrawing(placedDrawing, false, { allowWhileArmed: true });
+                if (this.chart && typeof this.chart.render === 'function') {
+                    this.chart.render();
+                } else {
+                    this.renderDrawing(placedDrawing);
+                }
+                this.beginTextInlineEdit(placedDrawing);
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        this._triggerAutoInlineEdit(placedDrawing);
+                        placedDrawing._pendingAutoInlineEdit = false;
+                    });
+                });
             });
         } else {
             // Select the drawing synchronously so it is already selected when
@@ -6900,7 +6914,7 @@ class DrawingToolsManager {
      * shows the editor overlaid on it. Falls back to the anchor point position.
      */
     _triggerAutoInlineEdit(drawing) {
-        if (!drawing || !drawing.group) return;
+        if (!drawing) return;
 
         const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
         const placeholder = helpers ? helpers.TEXT_TOOL_PLACEHOLDER : 'Type here';
@@ -6930,19 +6944,33 @@ class DrawingToolsManager {
         const storedText = drawing.text || '';
         const initialText = isPlaceholderText(storedText) ? '' : storedText;
 
-        this.beginTextInlineEdit(drawing);
+        if (this._textInlineEditDrawing !== drawing) {
+            this.beginTextInlineEdit(drawing);
+        }
 
         const scheduleLive = helpers && typeof helpers.scheduleTextAnnotationLiveRender === 'function'
             ? helpers.scheduleTextAnnotationLiveRender
             : (d) => this.scheduleRenderDrawing(d);
 
-        let posNode = null;
+        if (!drawing.group || drawing.group.empty()) {
+            this.renderDrawing(drawing);
+        }
+
         let editableNode = null;
         if (drawing.group) {
             editableNode = drawing.group.select('text.inline-editable-text').node();
             if (!editableNode) {
                 editableNode = drawing.group.select('.inline-editable-text').node();
             }
+        }
+
+        const measured = (helpers && typeof helpers.measureTextAnnotationEditRect === 'function')
+            ? helpers.measureTextAnnotationEditRect(drawing, editableNode)
+            : null;
+        let posNode = measured && measured.posNode ? measured.posNode : null;
+        let rect = measured && measured.rect ? measured.rect : null;
+
+        if (!posNode && drawing.group) {
             if (helpers && typeof helpers.resolveTextAnnotationEditBoxNode === 'function') {
                 posNode = helpers.resolveTextAnnotationEditBoxNode(drawing, editableNode);
             } else if (drawing.type === 'note' && drawing.group) {
@@ -6954,6 +6982,9 @@ class DrawingToolsManager {
             }
         }
         if (!posNode) posNode = editableNode;
+        if (!rect && posNode) {
+            rect = posNode.getBoundingClientRect();
+        }
 
         const wrapPaddingByType = {
             comment: 12,
@@ -6965,66 +6996,68 @@ class DrawingToolsManager {
             text: 6,
             'anchored-text': 6
         };
+        const padding = wrapPaddingByType[drawing.type] || 6;
 
-        if (posNode) {
-            const rect = posNode.getBoundingClientRect();
-            if (rect.width > 0 || rect.height > 0) {
-                const liveOnInput = (newText) => {
-                    const next = (newText || '').replace(/\r\n/g, '\n');
-                    drawing.setText(isPlaceholderText(next) ? '' : next);
-                    if (typeof drawing._updateCommentBubble === 'function') {
-                        drawing._updateCommentBubble();
-                    }
-                    scheduleLive(drawing);
-                };
-                const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
-                    ? helpers.buildNoteInlineEditorOptions(drawing, rect, {
-                        focusOpts: { selectAllOnFocus: false, focusAtEnd: !String(initialText).trim() },
-                        initialText,
-                        onInput: liveOnInput
-                    })
-                    : (helpers && typeof helpers.buildStandardInlineEditorOptions === 'function')
-                    ? helpers.buildStandardInlineEditorOptions(drawing, rect, {
-                        focusOpts: { selectAllOnFocus: false, focusAtEnd: !String(initialText).trim() },
-                        padding: wrapPaddingByType[drawing.type] || 6,
-                        placeholderMode: !String(initialText).trim(),
-                        editorBackground: drawing.style.backgroundColor || drawing.style.fill,
-                        editorPadding: '4px 8px',
-                        onInput: liveOnInput
-                    })
-                    : {
-                        inline: true,
-                        placeholderMode: !String(initialText).trim(),
-                        selectAllOnFocus: false,
-                        focusAtEnd: !String(initialText).trim(),
-                        fontSize: `${drawing.style.fontSize || 13}px`,
-                        fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
-                        fontWeight: drawing.style.fontWeight || 'normal',
-                        fontStyle: drawing.style.fontStyle || 'normal',
-                        color: drawing.style.textColor || '#FFFFFF',
-                        textAlign: drawing.style.textAlign || 'left',
-                        noWrap: drawing.style.wrapText !== true,
-                        maxWidth: drawing.style.maxWidth || (drawing.type === 'comment' ? 280 : 180),
-                        hideSelector: `.drawing[data-id="${drawing.id}"] text`,
-                        onInput: (newText) => {
-                            const next = (newText || '').replace(/\r\n/g, '\n');
-                            drawing.setText(isPlaceholderText(next) ? '' : next);
-                            if (typeof drawing._updateCommentBubble === 'function') {
-                                drawing._updateCommentBubble();
-                            }
-                            scheduleLive(drawing);
-                        }
-                    };
-                this.textEditor.show(
-                    rect.left + window.scrollX,
-                    rect.top + window.scrollY,
+        if (posNode && rect && (rect.width > 0 || rect.height > 0)) {
+            const liveOnInput = (newText) => {
+                const next = (newText || '').replace(/\r\n/g, '\n');
+                drawing.setText(isPlaceholderText(next) ? '' : next);
+                if (typeof drawing._updateCommentBubble === 'function') {
+                    drawing._updateCommentBubble();
+                }
+                scheduleLive(drawing);
+            };
+            const commentLike = drawing.type === 'comment' || drawing.type === 'callout';
+            const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
+                ? helpers.buildNoteInlineEditorOptions(drawing, rect, {
+                    focusOpts: { selectAllOnFocus: false, focusAtEnd: true },
                     initialText,
-                    onSave,
-                    placeholder,
-                    inlineOpts
-                );
-                return;
-            }
+                    onInput: liveOnInput
+                })
+                : (helpers && typeof helpers.buildStandardInlineEditorOptions === 'function')
+                ? helpers.buildStandardInlineEditorOptions(drawing, rect, {
+                    focusOpts: { selectAllOnFocus: false, focusAtEnd: true },
+                    padding,
+                    placeholderMode: !String(initialText).trim(),
+                    editorBackground: drawing.style.backgroundColor || drawing.style.fill,
+                    editorPadding: commentLike ? `${padding}px` : '4px 8px',
+                    editorBorderRadius: drawing.type === 'comment' ? '16px' : undefined,
+                    onInput: liveOnInput
+                })
+                : {
+                    inline: true,
+                    placeholderMode: !String(initialText).trim(),
+                    selectAllOnFocus: false,
+                    focusAtEnd: true,
+                    fontSize: `${drawing.style.fontSize || 13}px`,
+                    fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                    fontWeight: drawing.style.fontWeight || 'normal',
+                    fontStyle: drawing.style.fontStyle || 'normal',
+                    color: drawing.style.textColor || '#FFFFFF',
+                    textAlign: drawing.style.textAlign || 'left',
+                    noWrap: drawing.style.wrapText !== true,
+                    maxWidth: drawing.style.maxWidth || (drawing.type === 'comment' ? 280 : 180),
+                    hideSelector: (helpers && typeof helpers.buildTextAnnotationInlineHideSelector === 'function')
+                        ? helpers.buildTextAnnotationInlineHideSelector(drawing)
+                        : `.drawing[data-id="${drawing.id}"] text`,
+                    onInput: (newText) => {
+                        const next = (newText || '').replace(/\r\n/g, '\n');
+                        drawing.setText(isPlaceholderText(next) ? '' : next);
+                        if (typeof drawing._updateCommentBubble === 'function') {
+                            drawing._updateCommentBubble();
+                        }
+                        scheduleLive(drawing);
+                    }
+                };
+            this.textEditor.show(
+                rect.left + window.scrollX,
+                rect.top + window.scrollY,
+                initialText,
+                onSave,
+                placeholder,
+                inlineOpts
+            );
+            return;
         }
 
         // Fallback: no rendered text element yet (e.g. pin placed with empty initial text)
@@ -7046,13 +7079,35 @@ class DrawingToolsManager {
                     }
                 }
             } catch (e) {}
+            const fallbackInlineOpts = {
+                inline: true,
+                placeholderMode: !String(initialText).trim(),
+                selectAllOnFocus: false,
+                focusAtEnd: true,
+                fontSize: `${drawing.style.fontSize || 13}px`,
+                fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                fontWeight: drawing.style.fontWeight || 'normal',
+                fontStyle: drawing.style.fontStyle || 'normal',
+                color: drawing.style.textColor || '#FFFFFF',
+                textAlign: drawing.style.textAlign || 'left',
+                noWrap: drawing.style.wrapText !== true,
+                maxWidth: drawing.style.maxWidth || 180,
+                hideSelector: (helpers && typeof helpers.buildTextAnnotationInlineHideSelector === 'function')
+                    ? helpers.buildTextAnnotationInlineHideSelector(drawing)
+                    : `.drawing[data-id="${drawing.id}"] text`,
+                onInput: (newText) => {
+                    const next = (newText || '').replace(/\r\n/g, '\n');
+                    drawing.setText(isPlaceholderText(next) ? '' : next);
+                    scheduleLive(drawing);
+                }
+            };
             this.textEditor.show(
                 fallbackX - 60,
                 fallbackY - 80,
                 initialText,
                 onSave,
                 placeholder,
-                inlineOpts
+                fallbackInlineOpts
             );
         }
     }
