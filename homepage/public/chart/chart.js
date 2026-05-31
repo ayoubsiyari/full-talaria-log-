@@ -4425,13 +4425,8 @@ class Chart {
                     isActive: true,
                 };
             }
-            if (this.drawingManager && Array.isArray(this.drawingManager.drawings)) {
-                try {
-                    payload.drawings = this.drawingManager.drawings.map((d) => (
-                        typeof d.toJSON === 'function' ? d.toJSON() : d
-                    ));
-                } catch (_drawE) { /* ignore */ }
-            }
+            // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
+            // Omit from session backup blob to avoid localStorage quota exhaustion.
             userStorage.setItem(this._tradingSessionLocalBackupKey(sessionId), JSON.stringify(payload));
         } catch (e) {
             console.warn('local session backup write failed', e);
@@ -5065,8 +5060,17 @@ class Chart {
     scheduleSessionStateSave(patch) {
         const sessionId = this.getActiveTradingSessionId();
         if (!sessionId) return;
-        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
         if (!patch || typeof patch !== 'object') return;
+
+        // Drawings persist via POST /api/chart/drawings/{symbol} — not session state_json.
+        if (Object.prototype.hasOwnProperty.call(patch, 'drawings')) {
+            if (Object.keys(patch).length === 1) return;
+            patch = Object.assign({}, patch);
+            delete patch.drawings;
+            if (!Object.keys(patch).length) return;
+        }
+
+        if (this._sessionStateLoadedFor !== String(sessionId) && !this._sessionStatePatchAllowedBeforeHydrate(patch)) return;
 
         this._pendingSessionStatePatch = this._mergeSessionStatePatches(this._pendingSessionStatePatch, patch);
         this._writeTradingSessionLocalBackup();
@@ -5289,7 +5293,7 @@ class Chart {
                         res.status,
                         this._truncateUpstreamErrorBody(errText) || errText
                     );
-                    this._notifyJournalSaveFailed(res.status);
+                    this._notifySessionStateSaveFailed(res.status);
                 }
                 if (res.status === 403) {
                     console.warn(
@@ -5300,6 +5304,16 @@ class Chart {
             } else {
                 this._clearSessionPatchBackoff();
                 this._markSessionStateSyncedToServer(sessionId);
+                try {
+                    const body = await res.json();
+                    if (body && body.warning && typeof this.showNotification === 'function') {
+                        this.showNotification(
+                            'Session storage nearly full — consider archiving old sessions',
+                            'warning',
+                            4500
+                        );
+                    }
+                } catch (_) { /* ignore */ }
             }
         } catch (e) {
             let patchUrl = '';
@@ -5319,6 +5333,17 @@ class Chart {
             this._sessionStatePatchInFlight = false;
             this._syncCloudSaveUiFromSession();
             this._drainSessionPatchQueueMicrotask();
+        }
+    }
+
+    _notifySessionStateSaveFailed(status) {
+        this._notifyJournalSaveFailed(status);
+        if (status === 413 && typeof this.showNotification === 'function') {
+            this.showNotification(
+                'Session save too large — journal may not sync until you free space',
+                'warning',
+                5000
+            );
         }
     }
     
@@ -25795,31 +25820,38 @@ async function _talariaInitializeChart() {
 /** TradingView-style cloud save indicator (#drawingsSyncToolbarBtn in V9 top bar). */
 (function initTalariaCloudSaveUi() {
     if (typeof window === 'undefined') return;
-    const state = { sessionPending: false, drawingsPending: false };
+    const state = { sessionPending: false, drawingsPending: false, drawingsError: false };
     let lastDispatchedPending = null;
 
     function refresh() {
         const pending = !!(state.sessionPending || state.drawingsPending);
+        const err = !!state.drawingsError;
         const btn = document.getElementById('drawingsSyncToolbarBtn');
         if (btn) {
-            if (pending) {
-                btn.classList.add('drawings-sync-pending');
+            btn.classList.toggle('drawings-sync-pending', pending && !err);
+            btn.classList.toggle('drawings-sync-error', err);
+            if (pending && !err) {
                 btn.setAttribute('aria-busy', 'true');
                 btn.setAttribute('data-tooltip', 'Saving to cloud… — click to save now');
+            } else if (err) {
+                btn.setAttribute('aria-busy', 'false');
+                btn.setAttribute('data-tooltip', 'Cloud sync failed — click to retry');
             } else {
-                btn.classList.remove('drawings-sync-pending');
                 btn.setAttribute('aria-busy', 'false');
                 btn.setAttribute(
                     'data-tooltip',
-                    'Saved — click to sync drawings & session to cloud now'
+                    'Saved — click to sync drawings to cloud now'
                 );
             }
         }
-        if (lastDispatchedPending === pending) return;
-        lastDispatchedPending = pending;
+        const dispatchPending = pending || err;
+        if (lastDispatchedPending === dispatchPending && !err) return;
+        lastDispatchedPending = dispatchPending;
         try {
             window.dispatchEvent(
-                new CustomEvent('talariaCloudSaveStatus', { detail: { pending, saved: !pending } })
+                new CustomEvent('talariaCloudSaveStatus', {
+                    detail: { pending: pending && !err, saved: !pending && !err, error: err }
+                })
             );
         } catch (_) {}
     }
@@ -25828,6 +25860,7 @@ async function _talariaInitializeChart() {
         if (!partial || typeof partial !== 'object') return;
         if ('sessionPending' in partial) state.sessionPending = !!partial.sessionPending;
         if ('drawingsPending' in partial) state.drawingsPending = !!partial.drawingsPending;
+        if ('drawingsError' in partial) state.drawingsError = !!partial.drawingsError;
         refresh();
     };
     window.talariaRefreshCloudSaveUi = refresh;

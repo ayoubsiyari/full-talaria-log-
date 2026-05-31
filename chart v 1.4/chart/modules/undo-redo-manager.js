@@ -456,9 +456,9 @@ class UndoRedoManager {
     _scheduleFinalSave() {
         clearTimeout(this._finalSaveTimer);
         this._finalSaveTimer = setTimeout(() => {
-            if (this.drawingManager.chart && typeof this.drawingManager.chart.scheduleSessionStateSave === 'function') {
+            if (this.drawingManager && typeof this.drawingManager.scheduleSaveToAPI === 'function') {
                 const data = this.drawingManager.drawings.map(d => d.toJSON());
-                this.drawingManager.chart.scheduleSessionStateSave({ drawings: data });
+                this.drawingManager.scheduleSaveToAPI(data);
             }
         }, 300);
     }

@@ -16922,6 +16922,8 @@ const TalariaV8bLive = () => {
         @keyframes talariaDrawingsSyncPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.38; } }
         #drawingsSyncToolbarBtn.drawings-sync-pending { color: #ffa726 !important; }
         #drawingsSyncToolbarBtn.drawings-sync-pending .drawings-sync-icon { animation: talariaDrawingsSyncPulse 1.1s ease-in-out infinite; }
+        #drawingsSyncToolbarBtn.drawings-sync-error { color: #ef5350 !important; }
+        #drawingsSyncToolbarBtn.drawings-sync-error .drawings-sync-icon { opacity: 0.95; }
         @keyframes tlrPopOut   { from { opacity:1; transform:scale(1) translateY(0); } to { opacity:0; transform:scale(0.96) translateY(4px); } }
         @keyframes tlrTipIn    { from { opacity:0; } to { opacity:1; } }
         /* Style panel: minimal motion + ~50ms so the window reads as instant */

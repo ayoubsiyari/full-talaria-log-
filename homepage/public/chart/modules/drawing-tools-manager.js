@@ -704,8 +704,15 @@ class DrawingToolsManager {
     _syncDrawingsSaveUiFromTargets() {
         if (this._drawingsFlushAllInProgress) return;
         const p = this._drawingsPendingTargets;
-        const busy = !!(p && (p.session || p.api));
-        this._setDrawingsSaveUi(busy ? 'pending' : 'saved');
+        const busy = !!(p && p.api);
+        const state = this._drawingsSaveError ? 'error' : (busy ? 'pending' : 'saved');
+        this._setDrawingsSaveUi(state);
+        if (typeof window !== 'undefined' && typeof window.talariaUpdateCloudSaveStatus === 'function') {
+            window.talariaUpdateCloudSaveStatus({
+                drawingsPending: busy,
+                drawingsError: !!this._drawingsSaveError
+            });
+        }
     }
 
     _setDrawingsSaveUi(state) {
@@ -714,11 +721,17 @@ class DrawingToolsManager {
         this._drawingsSaveBtn = btn;
         if (state === 'pending') {
             btn.classList.add('drawings-sync-pending');
-            btn.setAttribute('data-tooltip', 'Saving… — click to save to cloud & session now');
+            btn.classList.remove('drawings-sync-error');
+            btn.setAttribute('data-tooltip', 'Saving to cloud… — click to save now');
             btn.setAttribute('aria-busy', 'true');
-        } else {
+        } else if (state === 'error') {
             btn.classList.remove('drawings-sync-pending');
-            btn.setAttribute('data-tooltip', 'Saved locally — click to sync to cloud & session now');
+            btn.classList.add('drawings-sync-error');
+            btn.setAttribute('data-tooltip', 'Cloud sync failed — click to retry');
+            btn.setAttribute('aria-busy', 'false');
+        } else {
+            btn.classList.remove('drawings-sync-pending', 'drawings-sync-error');
+            btn.setAttribute('data-tooltip', 'Saved — click to sync to cloud now');
             btn.setAttribute('aria-busy', 'false');
         }
     }
@@ -739,6 +752,124 @@ class DrawingToolsManager {
         this._syncDrawingsSaveUiFromTargets();
     }
 
+    static get API_SAVE_DEBOUNCE_MS() {
+        return 1200;
+    }
+
+    _isStorageQuotaError(error) {
+        if (!error) return false;
+        const name = error.name || '';
+        const msg = String(error.message || error || '');
+        return name === 'QuotaExceededError' || /quota/i.test(msg);
+    }
+
+    _physicalUserStorageKey(logicalKey) {
+        if (typeof window !== 'undefined' && typeof window.userKey === 'function') {
+            return window.userKey(logicalKey);
+        }
+        return logicalKey;
+    }
+
+    _evictStaleDrawingsCacheKeys(preserveLogicalKey) {
+        if (typeof localStorage === 'undefined') return 0;
+        const preserve = this._physicalUserStorageKey(preserveLogicalKey);
+        const candidates = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k || k === preserve) continue;
+            if (/^u\d+_chart_drawings_/.test(k) || (k.startsWith('chart_drawings_') && !/^u\d+_/.test(k))) {
+                candidates.push(k);
+            }
+        }
+        candidates.sort();
+        let removed = 0;
+        for (const k of candidates) {
+            try {
+                localStorage.removeItem(k);
+                removed++;
+            } catch (_) { /* ignore */ }
+            if (removed >= 12) break;
+        }
+        return removed;
+    }
+
+    _notifyDrawingsCacheQuota() {
+        const now = Date.now();
+        if (this._drawingsQuotaToastAt && now - this._drawingsQuotaToastAt < 60000) return;
+        this._drawingsQuotaToastAt = now;
+        try {
+            const hasToken = typeof localStorage !== 'undefined' && localStorage.getItem('token');
+            const msg = hasToken
+                ? 'Browser storage full — drawings still sync to your account'
+                : 'Browser storage full — sign in to save drawings to the cloud';
+            if (this.chart && typeof this.chart.showNotification === 'function') {
+                this.chart.showNotification(msg, 'warning', 4500);
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    _writeDrawingsCache(logicalKey, jsonString) {
+        try {
+            userStorage.setItem(logicalKey, jsonString);
+            return true;
+        } catch (error) {
+            if (!this._isStorageQuotaError(error)) {
+                console.warn('⚠️ Failed to save drawings to localStorage:', error?.message || error);
+                return false;
+            }
+            this._evictStaleDrawingsCacheKeys(logicalKey);
+            try {
+                userStorage.setItem(logicalKey, jsonString);
+                this._notifyDrawingsCacheQuota();
+                return true;
+            } catch (retryErr) {
+                console.warn('⚠️ Failed to save drawings to localStorage after cache eviction:', retryErr?.message || retryErr);
+                this._notifyDrawingsCacheQuota();
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Flush debounced chart_drawings API save — used on tab hide / pagehide.
+     */
+    _flushScheduledSaveDrawings() {
+        if (this._apiSaveTimer) {
+            clearTimeout(this._apiSaveTimer);
+            this._apiSaveTimer = null;
+        }
+        if (!this.chart || !Array.isArray(this.drawings)) return;
+        const data = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+        this._saveDrawingsToAPIKeepalive(data);
+    }
+
+    _saveDrawingsToAPIKeepalive(data) {
+        try {
+            const symbol = this.chart.currentFileId || 'default';
+            const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
+                ? this.chart.getActiveTradingSessionId()
+                : null;
+            const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+            if (!token) return;
+
+            const body = JSON.stringify({ drawings: data, session_id: sessionId });
+            if (body.length > 60000) {
+                void this.saveDrawingsToAPI(data);
+                return;
+            }
+            fetch(`/api/chart/drawings/${encodeURIComponent(symbol)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
+                body,
+                keepalive: true
+            }).catch(() => { /* ignore on unload */ });
+        } catch (_) { /* ignore */ }
+    }
+
     /**
      * Force immediate cloud + session sync (TradingView-style manual save). localStorage is already updated on each edit.
      */
@@ -752,11 +883,7 @@ class DrawingToolsManager {
             if (!d.chart) d.chart = this.chart;
         });
         const data = this.drawings.map(d => d.toJSON());
-        try {
-            userStorage.setItem(this.getStorageKey(), JSON.stringify(data));
-        } catch (e) {
-            console.warn('flushDrawingsSyncNow localStorage:', e?.message || e);
-        }
+        this._writeDrawingsCache(this.getStorageKey(), JSON.stringify(data));
 
         this._drawingsFlushAllInProgress = true;
         try {
@@ -764,36 +891,23 @@ class DrawingToolsManager {
                 clearTimeout(this._apiSaveTimer);
                 this._apiSaveTimer = null;
             }
+            this._drawingsSaveError = false;
             await this.saveDrawingsToAPI(data);
 
-            const ch = this.chart;
-            const sid = ch && typeof ch.getActiveTradingSessionId === 'function' ? ch.getActiveTradingSessionId() : null;
-            if (sid && typeof ch.scheduleSessionStateSave === 'function') {
-                ch.scheduleSessionStateSave({ drawings: data });
-                if (ch._sessionStateSaveTimer) {
-                    clearTimeout(ch._sessionStateSaveTimer);
-                    ch._sessionStateSaveTimer = null;
-                }
-                if (typeof ch.flushSessionStateSave === 'function') {
-                    await ch.flushSessionStateSave();
-                }
-            }
-
-            this._drawingsPendingTargets = { session: false, api: false };
+            this._drawingsPendingTargets = { api: false };
             this._setDrawingsSaveUi('saved');
             try {
                 if (typeof this.chart.showNotification === 'function') {
-                    const hadRemote =
-                        !!(typeof localStorage !== 'undefined' && localStorage.getItem('token')) ||
-                        !!(ch && typeof ch.getActiveTradingSessionId === 'function' && ch.getActiveTradingSessionId());
+                    const hadRemote = !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'));
                     this.chart.showNotification(hadRemote ? 'Drawings synced' : 'Saved locally');
                 }
             } catch (_) { /* ignore */ }
         } catch (e) {
             console.warn('flushDrawingsSyncNow failed', e);
+            this._drawingsSaveError = true;
             try {
                 if (typeof this.chart.showNotification === 'function') {
-                    this.chart.showNotification('Could not sync drawings — try again');
+                    this.chart.showNotification('Could not sync drawings — try again', 'error');
                 }
             } catch (_) { /* ignore */ }
         } finally {
@@ -7734,29 +7848,14 @@ class DrawingToolsManager {
         const data = this.drawings.map(d => d.toJSON());
         const key = this.getStorageKey(fileIdOverride);
 
-        // 1. Save to localStorage immediately (instant, works offline)
-        try {
-            userStorage.setItem(key, JSON.stringify(data));
-        } catch (error) {
-            console.warn('⚠️ Failed to save drawings to localStorage:', error?.message || error);
-        }
+        // 1. Save to localStorage cache immediately (instant UX; evicts stale keys on quota)
+        this._writeDrawingsCache(key, JSON.stringify(data));
 
-        // 2. Save to session state for backtesting sessions (skip when persisting a *different* file id than
-        // chart.currentFileId — otherwise PATCH would replace the whole session drawings blob with one pair).
         const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
-        // Only skip session/API when persisting under a file id that is *not* the chart's current dataset
-        // (e.g. ghost save) — pair-switch saves pass the outgoing id while chart.currentFileId still matches it.
         const skipRemote = fileIdOverride != null
             && String(fileIdOverride) !== String(this.chart.currentFileId || '');
-        if (!isUndoRedo && !skipRemote && this.chart && typeof this.chart.scheduleSessionStateSave === 'function') {
-            try {
-                this.chart.scheduleSessionStateSave({ drawings: data });
-            } catch (error) {
-                console.warn('⚠️ Failed to queue session state save for drawings:', error?.message || error);
-            }
-        }
-        
-        // 3. Save to API for cross-device sync (background, debounced)
+
+        // 2. Debounced POST /api/chart/drawings/{symbol} — canonical server store when logged in
         if (!isUndoRedo && !skipRemote) {
             try {
                 this.scheduleSaveToAPI(data);
@@ -7765,7 +7864,7 @@ class DrawingToolsManager {
             }
         }
         
-        // 4. Optional URL sync for drawings (disabled by default to avoid very long URLs / 414 errors)
+        // Optional URL sync for drawings (disabled by default to avoid very long URLs / 414 errors)
         const shouldSyncDrawingsToUrl = (
             typeof window !== 'undefined' &&
             window &&
@@ -7785,8 +7884,8 @@ class DrawingToolsManager {
         });
 
         if (!isUndoRedo && !skipRemote) {
+            this._drawingsSaveError = false;
             this._drawingsPendingTargets = {
-                session: !!(this.chart && typeof this.chart.getActiveTradingSessionId === 'function' && this.chart.getActiveTradingSessionId()),
                 api: !!(typeof localStorage !== 'undefined' && localStorage.getItem('token'))
             };
             this._syncDrawingsSaveUiFromTargets();
@@ -7808,10 +7907,10 @@ class DrawingToolsManager {
             clearTimeout(this._apiSaveTimer);
         }
         
-        // Debounce API saves by 2 seconds
+        // Debounce API saves — fast enough to survive refresh, light enough for the server
         this._apiSaveTimer = setTimeout(() => {
             this.saveDrawingsToAPI(data);
-        }, 2000);
+        }, DrawingToolsManager.API_SAVE_DEBOUNCE_MS);
     }
 
     /**
@@ -7845,13 +7944,21 @@ class DrawingToolsManager {
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
+                this._drawingsSaveError = false;
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - drawings saved locally only');
             } else {
                 console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
+                this._drawingsSaveError = true;
+                try {
+                    if (this.chart && typeof this.chart.showNotification === 'function') {
+                        this.chart.showNotification('Could not save drawings to cloud — click cloud icon to retry', 'error', 4000);
+                    }
+                } catch (_) { /* ignore */ }
             }
         } catch (error) {
             console.warn('⚠️ Error syncing drawings to cloud:', error.message);
+            this._drawingsSaveError = true;
         } finally {
             try {
                 this._onChartDrawingsApiSaveFinished();
@@ -8082,21 +8189,31 @@ class DrawingToolsManager {
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
                 : null;
+            const hasToken = typeof localStorage !== 'undefined' && localStorage.getItem('token');
+            if (sessionId && hasToken) {
+                const apiDrawings = await this.loadDrawingsFromAPI();
+                if (apiDrawings) {
+                    saved = JSON.stringify(apiDrawings);
+                    console.log('📥 Loaded drawings from cloud (session, server-first)');
+                }
+            }
             if (sessionId) {
-                const key = this.getStorageKey();
-                saved = userStorage.getItem(key);
-                if (!saved && key.includes('_s')) {
-                    const fileId = this.chart.currentFileId || 'default';
-                    const legacyKey = `chart_drawings_${fileId}`;
-                    const legacy = userStorage.getItem(legacyKey);
-                    if (legacy) {
-                        saved = legacy;
+                if (!saved) {
+                    const key = this.getStorageKey();
+                    saved = userStorage.getItem(key);
+                    if (!saved && key.includes('_s')) {
+                        const fileId = this.chart.currentFileId || 'default';
+                        const legacyKey = `chart_drawings_${fileId}`;
+                        const legacy = userStorage.getItem(legacyKey);
+                        if (legacy) {
+                            saved = legacy;
+                        }
+                    }
+                    if (saved) {
+                        console.log('📥 Loaded drawings from localStorage cache (session)');
                     }
                 }
-                if (saved) {
-                    console.log('📥 Loaded drawings from localStorage (session)');
-                }
-                if (!saved) {
+                if (!saved && !hasToken) {
                     const apiDrawings = await this.loadDrawingsFromAPI();
                     if (apiDrawings) {
                         saved = JSON.stringify(apiDrawings);
@@ -8305,7 +8422,7 @@ class DrawingToolsManager {
             this._drawingsLoaded = true;
             try {
                 const serialized = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
-                userStorage.setItem(this.getStorageKey(), JSON.stringify(serialized));
+                this._writeDrawingsCache(this.getStorageKey(), JSON.stringify(serialized));
             } catch (_) { /* ignore */ }
         } catch (e) {
             console.warn('⚠️ Failed to load drawings from data', e);
