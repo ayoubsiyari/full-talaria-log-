@@ -4743,6 +4743,13 @@ class DrawingToolsManager {
             // group and breaks handle dragging after the first animation frame.
             this._applyMinimalPointerEvents(drawing);
         }
+        const textHelpers = typeof window !== 'undefined' ? window.DrawingTextHelpers : null;
+        if (textHelpers && typeof textHelpers.refreshTextAnnotationTextCursors === 'function') {
+            const inlineTextTypes = new Set(['text', 'note', 'notebox', 'anchored-text', 'callout', 'comment', 'pin', 'signpost-2']);
+            if (inlineTextTypes.has(drawing.type)) {
+                textHelpers.refreshTextAnnotationTextCursors(drawing);
+            }
+        }
         if (this._isPlacementModeActive()) {
             this._disableDrawingPointerEvents(drawing);
         }
@@ -5169,6 +5176,10 @@ class DrawingToolsManager {
                 rawTargetNode.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .anchored-vwap-anchor, .anchored-vwap-anchor-hit, .volume-profile-boundary-hit')
             );
             const isInlineEditable = target && target.classed('inline-editable-text');
+            const textHelpers = typeof window !== 'undefined' ? window.DrawingTextHelpers : null;
+            const isInlineTextTarget = textHelpers && typeof textHelpers.isTextAnnotationInlineTextNode === 'function'
+                ? textHelpers.isTextAnnotationInlineTextNode(rawTargetNode)
+                : isInlineEditable;
             const isVolumeProfileLevelLineTarget = self.isVolumeProfileToolType(drawing.type)
                 && target
                 && target.classed('volume-profile-level-line');
@@ -5182,9 +5193,12 @@ class DrawingToolsManager {
                     drawing.group.style('cursor', 'move');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
-                } else if (isInlineEditable) {
-                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
-                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
+                } else if (isInlineTextTarget) {
+                    const hoverCursor = (textHelpers && typeof textHelpers.resolveTextAnnotationHoverCursor === 'function')
+                        ? (textHelpers.resolveTextAnnotationHoverCursor(drawing, rawTargetNode) || 'move')
+                        : (drawing.selected ? 'text' : 'move');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = hoverCursor;
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = hoverCursor;
                 } else {
                     drawing.group.style('cursor', 'move');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
@@ -10663,7 +10677,9 @@ class DrawingToolsManager {
         }
 
         const textHoverNodes = this.svg.selectAll('.inline-editable-text, .text-body-hit, .pin-body-hit').nodes();
+        const textHelpers = typeof window !== 'undefined' ? window.DrawingTextHelpers : null;
         let isOverTextHitArea = false;
+        let textHoverCursor = 'move';
         for (let i = 0; i < textHoverNodes.length; i++) {
             const n = textHoverNodes[i];
             if (!n || typeof n.getBoundingClientRect !== 'function') continue;
@@ -10675,13 +10691,19 @@ class DrawingToolsManager {
                 event.clientY <= r.bottom
             ) {
                 isOverTextHitArea = true;
+                if (n.classList && n.classList.contains('inline-editable-text') && textHelpers) {
+                    const drawing = textHelpers.findDrawingFromDomNode(n, this);
+                    if (drawing && textHelpers.canTextAnnotationOpenInlineEdit(drawing)) {
+                        textHoverCursor = 'text';
+                    }
+                }
                 break;
             }
         }
 
         if (isOverTextHitArea) {
-            canvas.style.cursor = 'move';
-            this.svg.style('cursor', 'move');
+            canvas.style.cursor = textHoverCursor;
+            this.svg.style('cursor', textHoverCursor);
             this._cursorOverInlineText = true;
             this._cursorOverLine = false;
             return;

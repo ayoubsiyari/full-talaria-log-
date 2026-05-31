@@ -396,9 +396,55 @@ function handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, minMs, m
         }
     } else if (manager && typeof manager.selectDrawing === 'function') {
         manager.selectDrawing(self);
-        document.body.classList.add('text-selected');
     }
     return true;
+}
+
+function isTextAnnotationInlineTextNode(node) {
+    if (!node) return false;
+    const tag = (node.tagName || '').toLowerCase();
+    if (tag === 'text') {
+        try { return d3.select(node).classed('inline-editable-text'); } catch (_) { return false; }
+    }
+    if (tag === 'tspan') {
+        const parent = node.parentNode;
+        if (parent && (parent.tagName || '').toLowerCase() === 'text') {
+            try { return d3.select(parent).classed('inline-editable-text'); } catch (_) { return false; }
+        }
+    }
+    return false;
+}
+
+function canTextAnnotationOpenInlineEdit(drawing) {
+    if (!drawing || drawing.locked) return false;
+    const manager = drawing.chart && drawing.chart.drawingManager;
+    if (manager && manager._textInlineEditDrawing === drawing) return true;
+    return !!drawing.selected;
+}
+
+function textAnnotationHoverCursor(drawing) {
+    return canTextAnnotationOpenInlineEdit(drawing) ? 'text' : 'move';
+}
+
+function refreshTextAnnotationTextCursors(drawing) {
+    if (!drawing || !drawing.group || typeof drawing.group.selectAll !== 'function') return;
+    const cursor = textAnnotationHoverCursor(drawing);
+    drawing.group.selectAll('text.inline-editable-text').style('cursor', cursor);
+    drawing.group.selectAll('text.inline-editable-text tspan').style('cursor', cursor);
+}
+
+function resolveTextAnnotationHoverCursor(drawing, rawTargetNode) {
+    if (!isTextAnnotationInlineTextNode(rawTargetNode)) return null;
+    return textAnnotationHoverCursor(drawing);
+}
+
+function findDrawingFromDomNode(node, manager) {
+    if (!node || !manager) return null;
+    const el = node.closest ? node.closest('.drawing') : null;
+    if (!el) return null;
+    const id = el.getAttribute('data-id');
+    if (!id) return null;
+    return (manager.drawings || []).find((d) => d.id === id) || null;
 }
 
 function inlineEditorFocusOptions(event, selectAll) {
@@ -569,7 +615,7 @@ class TextTool extends BaseDrawing {
             .attr('text-anchor', 'start')
             .attr('xml:space', 'preserve')
             .style('pointer-events', 'all')
-            .style('cursor', this.selected ? 'text' : 'move')
+            .style('cursor', textAnnotationHoverCursor(this));
             .style('user-select', 'none');
 
         const lineHeight = scaledFontSize * 1.2;
@@ -683,7 +729,7 @@ class TextTool extends BaseDrawing {
             .attr('rx', 4)
             .attr('ry', 4)
             .style('pointer-events', 'all')
-            .style('cursor', this.selected ? 'text' : 'move');
+            .style('cursor', textAnnotationHoverCursor(this));;
 
         const self = this;
         const CLICK_DELAY = 250;
@@ -735,20 +781,15 @@ class TextTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            // Resolve live element — selectDrawing re-renders so captured node may be detached
-            const liveNode = (self.group && typeof self.group.select === 'function')
-                ? self.group.select('text.inline-editable-text').node()
-                : null;
-            const targetNode = (liveNode && document.contains(liveNode))
-                ? liveNode : textElement.node();
-            const posNode = resolveTextAnnotationEditBoxNode(self, targetNode);
-            const rect = posNode.getBoundingClientRect();
-            const editX = rect.left + window.scrollX;
-            const editY = rect.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect } = measured;
+            const editX = rect.left + window.scrollX;
+            const editY = rect.top + window.scrollY;
 
             editor.show(
                 editX,
@@ -806,10 +847,9 @@ class TextTool extends BaseDrawing {
             }
 
             // Already selected → open inline editor after delay (cursor at click — continue typing)
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
+            if (!self.locked) {
                 startInlineEdit(event, false);
-            }, CLICK_DELAY);
+            }
         };
 
         const handleTextDblClickEdit = function(event) {
@@ -1043,7 +1083,6 @@ class TextTool extends BaseDrawing {
     }
 
     deselect() {
-        document.body.classList.remove('text-selected');
         super.deselect();
     }
 
@@ -1182,7 +1221,7 @@ class NoteBoxTool extends BaseDrawing {
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('dominant-baseline', 'alphabetic')
             .style('pointer-events', 'all')
-            .style('cursor', 'text')
+            .style('cursor', 'move')
             .style('user-select', 'none');
 
         lines.forEach((line, i) => {
@@ -1254,14 +1293,15 @@ class NoteBoxTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
-            const rect = posNode.getBoundingClientRect();
-            const editX = rect.left + window.scrollX;
-            const editY = rect.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect } = measured;
+            const editX = rect.left + window.scrollX;
+            const editY = rect.top + window.scrollY;
 
             const hasBorder = self.style.stroke && self.style.stroke !== 'none';
             editor.show(
@@ -1313,17 +1353,13 @@ class NoteBoxTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleBodyClick = (event) => {
@@ -1344,7 +1380,6 @@ class NoteBoxTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
             }
         };
@@ -1711,14 +1746,15 @@ class AnchoredTextTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
-            const rect = posNode.getBoundingClientRect();
-            const editX = rect.left + window.scrollX;
-            const editY = rect.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect } = measured;
+            const editX = rect.left + window.scrollX;
+            const editY = rect.top + window.scrollY;
 
             editor.show(
                 editX,
@@ -1769,17 +1805,13 @@ class AnchoredTextTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleBodyClick = (event) => {
@@ -1800,7 +1832,6 @@ class AnchoredTextTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
             }
         };
@@ -2248,18 +2279,14 @@ class NoteTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
             // Already selected: second single click opens edit (TradingView-style)
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleTextDblClick = function(event) {
@@ -2293,7 +2320,6 @@ class NoteTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
             }
         };
@@ -2749,14 +2775,15 @@ class PinTool extends BaseDrawing {
                 const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
                 if (focusOpts === null) return;
 
-                const posNode = resolveTextAnnotationEditBoxNode(self, boxTextEl.node());
-                const rect = posNode.getBoundingClientRect();
-                const editX = rect.left + window.scrollX;
-                const editY = rect.top + window.scrollY;
-
                 if (typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
                 }
+
+                const measured = measureTextAnnotationEditRect(self, boxTextEl.node());
+                if (!measured) return;
+                const { rect } = measured;
+                const editX = rect.left + window.scrollX;
+                const editY = rect.top + window.scrollY;
 
                 editor.show(
                     editX,
@@ -2805,17 +2832,13 @@ class PinTool extends BaseDrawing {
                 if (!self.selected) {
                     if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                         manager.selectDrawing(self);
-                        document.body.classList.add('text-selected');
                     }
                     return;
                 }
 
-                clickTimer = setTimeout(() => {
-                    clickTimer = null;
-                    if (!self.locked) {
-                        startInlineEdit(event, false);
-                    }
-                }, CLICK_DELAY);
+                if (!self.locked) {
+                    startInlineEdit(event, false);
+                }
             };
 
             const handleBodyClick = (event) => {
@@ -2836,7 +2859,6 @@ class PinTool extends BaseDrawing {
                 if (!self.selected) {
                     if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                         manager.selectDrawing(self);
-                        document.body.classList.add('text-selected');
                     }
                 }
             };
@@ -3365,14 +3387,15 @@ class CalloutTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
-            const rect = posNode.getBoundingClientRect();
-            const editX = rect.left + window.scrollX;
-            const editY = rect.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect } = measured;
+            const editX = rect.left + window.scrollX;
+            const editY = rect.top + window.scrollY;
 
             const calloutEditDisplay = resolveTextToolDisplay(self.text);
             const calloutEditFill = resolveAnnotationTextFill(
@@ -3427,17 +3450,13 @@ class CalloutTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleOpenSettings = (event) => {
@@ -3854,17 +3873,13 @@ class CommentTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleBodyClick = (event) => {
@@ -3885,7 +3900,6 @@ class CommentTool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
             }
         };
@@ -4455,14 +4469,15 @@ class Signpost2Tool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
-            const bbox = posNode.getBoundingClientRect();
-            const x = bbox.left + window.scrollX;
-            const y = bbox.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect: bbox } = measured;
+            const x = bbox.left + window.scrollX;
+            const y = bbox.top + window.scrollY;
 
             const editDisplay = resolveTextToolDisplay(self.text);
             const editFill = resolveAnnotationTextFill(
@@ -4518,17 +4533,13 @@ class Signpost2Tool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
                 return;
             }
 
-            clickTimer = setTimeout(() => {
-                clickTimer = null;
-                if (!self.locked) {
-                    startInlineEdit(event, false);
-                }
-            }, CLICK_DELAY);
+            if (!self.locked) {
+                startInlineEdit(event, false);
+            }
         };
 
         const handleBodyClick = (event) => {
@@ -4549,7 +4560,6 @@ class Signpost2Tool extends BaseDrawing {
             if (!self.selected) {
                 if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
-                    document.body.classList.add('text-selected');
                 }
             }
         };
@@ -4890,6 +4900,12 @@ if (typeof window !== 'undefined') {
         syncTextHandlePositions,
         scheduleTextAnnotationLiveRender,
         beginTextAnnotationInlineEdit,
-        endTextAnnotationInlineEdit
+        endTextAnnotationInlineEdit,
+        isTextAnnotationInlineTextNode,
+        canTextAnnotationOpenInlineEdit,
+        textAnnotationHoverCursor,
+        refreshTextAnnotationTextCursors,
+        resolveTextAnnotationHoverCursor,
+        findDrawingFromDomNode
     };
 }

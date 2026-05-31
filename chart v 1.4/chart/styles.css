@@ -1128,9 +1128,7 @@ canvas.cursor-time-axis {
     width: 0%;
 }
 
-/* Force text cursor when a text drawing is selected or being edited */
-body.text-selected,
-body.text-selected *,
+/* I-beam only while the HTML inline editor is active (not merely selected) */
 body.text-editing,
 body.text-editing * {
     cursor: text !important;
