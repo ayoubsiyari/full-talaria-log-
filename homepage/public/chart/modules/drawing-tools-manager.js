@@ -1274,7 +1274,7 @@ class DrawingToolsManager {
             if (this.eraserMode) return false;
 
             const rawTargetNode = event?.target || null;
-            if (this._isTextAnnotationInteractionTarget(rawTargetNode)) {
+            if (this._isTextAnnotationInlineEditTarget(rawTargetNode)) {
                 return false;
             }
 
@@ -2041,6 +2041,30 @@ class DrawingToolsManager {
         const m = transform.match(/translate\(([-\d.]+),\s*([-\d.]+)\)/);
         if (!m) return { x: 0, y: 0 };
         return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
+    }
+
+    /** Screen anchor for single-point tools (image, emoji) from data points — not SVG transform. */
+    _getSinglePointScreenAnchor(drawing) {
+        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length < 1) {
+            return { x: 0, y: 0 };
+        }
+        const chart = this.chart;
+        const p0 = drawing.points[0];
+        if (!p0 || !Number.isFinite(p0.x) || !Number.isFinite(p0.y)) {
+            return { x: 0, y: 0 };
+        }
+        const x = chart && typeof chart.dataIndexToPixel === 'function'
+            ? chart.dataIndexToPixel(p0.x)
+            : (chart && typeof chart.xScale === 'function' ? chart.xScale(p0.x) : 0);
+        const y = chart && typeof chart.yScale === 'function' ? chart.yScale(p0.y) : 0;
+        return {
+            x: Number.isFinite(x) ? x : 0,
+            y: Number.isFinite(y) ? y : 0
+        };
+    }
+
+    _usesPointScreenAnchor(drawingType) {
+        return drawingType === 'image' || drawingType === 'emoji';
     }
 
     /** Sync drag translate on main group (+ optional unclipped labels layer). */
@@ -3849,8 +3873,8 @@ class DrawingToolsManager {
 
         point = this.clampPointToCandleRange(point, activeToolType);
 
-        // Anchor X to whole bar indices for geometric tools (not freehand / text labels).
-        if (!isFreehandStroke && !this._isTextDrawingType(activeToolType)) {
+        // Anchor X to whole bar indices for geometric tools (not freehand / text / pixel-anchored tools).
+        if (!isFreehandStroke && !this._isTextDrawingType(activeToolType) && !this._usesPointScreenAnchor(activeToolType)) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -4150,12 +4174,17 @@ class DrawingToolsManager {
             drawing._autoRemoveIfEmpty = true;
             drawing._keepEmpty = false;
             this.drawings.push(drawing);
-            this.renderDrawing(drawing);
-            // Select it so user can upload image via settings
+            // Select it so user can upload image via settings (renderDrawing runs inside selectDrawing).
             this.selectDrawing(drawing);
             try {
                 if (typeof window !== 'undefined') {
-                    window.dispatchEvent(new CustomEvent('v9ImageDrawingPlaced'));
+                    const anchor = drawing.points && drawing.points[0] ? { ...drawing.points[0] } : null;
+                    window.dispatchEvent(new CustomEvent('v9ImageDrawingPlaced', {
+                        detail: {
+                            id: drawing.id,
+                            points: anchor ? [anchor] : [],
+                        }
+                    }));
                 }
             } catch (_) {}
             
@@ -5242,32 +5271,53 @@ class DrawingToolsManager {
     }
 
     /**
-     * True when the event target is the editable label (text, tspan, note box),
-     * not the leader line / border chrome.
+     * True when the target is rendered text (text/tspan) — dblclick opens inline edit, not settings.
      */
-    _isTextAnnotationInteractionTarget(rawTargetNode) {
+    _isTextAnnotationInlineEditTarget(rawTargetNode) {
         if (!rawTargetNode) return false;
-        if (rawTargetNode.closest
-            && rawTargetNode.closest('.inline-editable-text, .text-body-hit, .note-body-hit')) {
-            return true;
-        }
-        try {
-            const sel = d3.select(rawTargetNode);
-            if (sel.classed('inline-editable-text') || sel.classed('text-body-hit') || sel.classed('note-body-hit')) {
-                return true;
-            }
-        } catch (_) { /* ignore */ }
         const tag = (rawTargetNode.tagName || '').toLowerCase();
+        if (tag === 'text') {
+            try {
+                return d3.select(rawTargetNode).classed('inline-editable-text');
+            } catch (_) { /* ignore */ }
+            return false;
+        }
         if (tag === 'tspan' && rawTargetNode.closest) {
             const textParent = rawTargetNode.closest('text');
-            if (textParent && d3.select(textParent).classed('inline-editable-text')) {
-                return true;
+            if (textParent) {
+                try {
+                    return d3.select(textParent).classed('inline-editable-text');
+                } catch (_) { /* ignore */ }
             }
         }
         return false;
     }
 
+    /**
+     * True when the target is label box fill/border or leader line — dblclick opens settings.
+     */
+    _isTextAnnotationChromeTarget(rawTargetNode) {
+        if (!rawTargetNode || !rawTargetNode.closest) return false;
+        return !!rawTargetNode.closest(
+            '.note-body-hit, .text-body-hit, .comment-body-hit, .signpost-stem-hit, .signpost-label-fill, .note-line-hit, .note-line'
+        );
+    }
+
+    /**
+     * Per-tool native handlers own these targets (skip generic d3 click/dblclick on the same node).
+     */
+    _isTextAnnotationInteractionTarget(rawTargetNode) {
+        return this._isTextAnnotationInlineEditTarget(rawTargetNode)
+            || this._isTextAnnotationChromeTarget(rawTargetNode);
+    }
+
     setupDrawingDrag(drawing) {
+        // Empty image placeholder: upload-only until a file is chosen — skip move drag so the
+        // same pointer gesture that placed the object cannot commit a spurious transform.
+        if (drawing.type === 'image' && (!drawing.style.imageUrl || drawing.style.imageUrl === '')) {
+            return;
+        }
+
         const self = this;
         let dragStartPoints = null;
         let startDataPoint = null;
@@ -5497,7 +5547,9 @@ class DrawingToolsManager {
                     startDataPoint = getDragDataPoint(event);
                     const [bodySx, bodySy] = self._eventCanvasLocalXY(event.sourceEvent);
                     bodyDragStartScreen = { x: bodySx, y: bodySy };
-                    bodyDragStartTransform = self._parseGroupTranslate(drawing.group ? drawing.group.attr('transform') : null);
+                    bodyDragStartTransform = self._usesPointScreenAnchor(drawing.type)
+                        ? self._getSinglePointScreenAnchor(drawing)
+                        : self._parseGroupTranslate(drawing.group ? drawing.group.attr('transform') : null);
                     
                     // Check if dragging multiple selected drawings
                     if (self.selectedDrawings.length > 1 && self.selectedDrawings.includes(drawing)) {
@@ -5506,7 +5558,9 @@ class DrawingToolsManager {
                             drawing: d,
                             points: d.points.map(p => ({...p})),
                             beforeState: self.history ? self.history.captureState(d) : null,
-                            startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
+                            startTransform: self._usesPointScreenAnchor(d.type)
+                                ? self._getSinglePointScreenAnchor(d)
+                                : self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
                         multiDragStartPoints.forEach(item => {
                             setAnchoredVWAPMovingState(item.drawing, true);
@@ -5606,6 +5660,9 @@ class DrawingToolsManager {
                             if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                                 drawing.showAxisHighlights();
                             }
+                        } else if (self._usesPointScreenAnchor(drawing.type)) {
+                            // Click without movement: re-sync translate from points (guards bad transform parse).
+                            self.renderDrawing(drawing);
                         }
                         setAnchoredVWAPMovingState(drawing, false);
                         beforeState = null;

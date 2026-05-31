@@ -644,6 +644,28 @@ class TextTool extends BaseDrawing {
             }
         };
 
+        const handleBodyClick = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                }
+            }
+        };
+
         const handleHitDblClickSettings = function(event) {
             if (clickTimer) {
                 clearTimeout(clickTimer);
@@ -665,7 +687,7 @@ class TextTool extends BaseDrawing {
 
         if (bodyHitArea && bodyHitArea.node()) {
             bodyHitArea.node().addEventListener('mousedown', handleMouseDown, true);
-            bodyHitArea.node().addEventListener('click', handleSingleClick, true);
+            bodyHitArea.node().addEventListener('click', handleBodyClick, true);
             bodyHitArea.node().addEventListener('dblclick', handleHitDblClickSettings, true);
         }
 
@@ -917,7 +939,8 @@ class NoteBoxTool extends BaseDrawing {
 
         // Draw background box
         const box = this.group.append('rect')
-            .attr('x', x)
+            .attr('class', 'note-body-hit text-body-hit')
+            .attr('x', x))
             .attr('y', y - boxHeight)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
@@ -943,6 +966,7 @@ class NoteBoxTool extends BaseDrawing {
 
         // Draw the text
         const textElement = this.group.append('text')
+            .attr('class', 'inline-editable-text')
             .attr('x', x + this.style.padding)
             .attr('y', y - this.style.padding)
             .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, noteboxDisplay.isPlaceholder))
@@ -951,7 +975,8 @@ class NoteBoxTool extends BaseDrawing {
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('dominant-baseline', 'alphabetic')
-            .style('pointer-events', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'text')
             .style('user-select', 'none');
 
         // Handle text wrapping if needed
@@ -1076,7 +1101,7 @@ class NoteBoxTool extends BaseDrawing {
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -1090,10 +1115,52 @@ class NoteBoxTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
+        };
+
+        const handleBodyClick = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
         };
 
         const handleOpenSettings = (event) => {
@@ -1116,14 +1183,25 @@ class NoteBoxTool extends BaseDrawing {
             }
         };
 
+        const noteboxTextNodes = [textElement.node()];
+        textElement.selectAll('tspan').each(function() {
+            noteboxTextNodes.push(this);
+        });
+        noteboxTextNodes.forEach((n) => {
+            if (!n) return;
+            n.addEventListener('mousedown', handleMouseDown, true);
+            n.addEventListener('click', handleTextClick, true);
+            n.addEventListener('dblclick', handleTextDblClickEdit, true);
+        });
+
         const borderHitNode = this.group.select('.shape-border-hit').node();
 
         box.node().addEventListener('mousedown', handleMouseDown, true);
-        box.node().addEventListener('click', handleInlineEdit, true);
-        box.node().addEventListener('dblclick', handleTextDblClickEdit, true);
+        box.node().addEventListener('click', handleBodyClick, true);
+        box.node().addEventListener('dblclick', handleOpenSettings, true);
         if (borderHitNode) {
             borderHitNode.addEventListener('mousedown', handleMouseDown, true);
-            borderHitNode.addEventListener('click', handleInlineEdit, true);
+            borderHitNode.addEventListener('click', handleBodyClick, true);
             borderHitNode.addEventListener('dblclick', handleOpenSettings, true);
         }
 
@@ -1427,7 +1505,7 @@ class AnchoredTextTool extends BaseDrawing {
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -1441,10 +1519,52 @@ class AnchoredTextTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
+        };
+
+        const handleBodyClick = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
         };
 
         const handleOpenSettings = (event) => {
@@ -1473,12 +1593,12 @@ class AnchoredTextTool extends BaseDrawing {
         });
         anchoredTextHitNodes.forEach((n) => {
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('click', handleTextClick, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
         if (background && background.node()) {
             background.node().addEventListener('mousedown', handleMouseDown, true);
-            background.node().addEventListener('click', handleInlineEdit, true);
+            background.node().addEventListener('click', handleBodyClick, true);
             background.node().addEventListener('dblclick', handleOpenSettings, true);
         }
         const anchoredBorderHit = this.group.select('.shape-border-hit').node();
@@ -1641,7 +1761,7 @@ class NoteTool extends BaseDrawing {
 
         // Background rectangle - use fill for background color
         const textBox = this.group.append('rect')
-            .attr('class', 'inline-editable-text note-body-hit text-body-hit')
+            .attr('class', 'note-body-hit text-body-hit')
             .attr('x', boxX)
             .attr('y', boxY)
             .attr('width', boxWidth)
@@ -1903,6 +2023,7 @@ class NoteTool extends BaseDrawing {
 
         const handleTextDblClick = function(event) {
             event.stopPropagation();
+            event.preventDefault();
             if (clickTimer) {
                 clearTimeout(clickTimer);
                 clickTimer = null;
@@ -1912,9 +2033,32 @@ class NoteTool extends BaseDrawing {
                 startInlineEdit();
             }
         };
+
+        const handleBodyClick = function(event) {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
+        };
         
-        // 1st click = select; 2nd click or dblclick on text = edit; leader line dblclick = settings
-        const noteTextHitNodes = [textBox.node(), textElement.node()];
+        // 1st click = select; 2nd click or dblclick on text = edit; box/line dblclick = settings
+        const noteTextHitNodes = [textElement.node()];
         textElement.selectAll('tspan').each(function() {
             noteTextHitNodes.push(this);
         });
@@ -1924,6 +2068,13 @@ class NoteTool extends BaseDrawing {
             node.addEventListener('click', handleTextClick, true);
             node.addEventListener('dblclick', handleTextDblClick, true);
         });
+
+        if (textBox && textBox.node()) {
+            const boxNode = textBox.node();
+            boxNode.addEventListener('mousedown', handleMouseDown, true);
+            boxNode.addEventListener('click', handleBodyClick, true);
+            boxNode.addEventListener('dblclick', handleOpenSettings, true);
+        }
 
         if (noteLineHitEl && noteLineHitEl.node()) {
             const lineNode = noteLineHitEl.node();
@@ -2377,7 +2528,7 @@ class PinTool extends BaseDrawing {
                 );
             };
 
-            const handleInlineEdit = (event) => {
+            const handleTextClick = (event) => {
                 event.stopPropagation();
                 event.preventDefault();
 
@@ -2391,10 +2542,52 @@ class PinTool extends BaseDrawing {
                     clickTimer = null;
                 }
 
+                const now = Date.now();
+                const timeSinceLastClick = now - (self._lastClickTime || 0);
+                self._lastClickTime = now;
+
+                if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                    return;
+                }
+
+                const manager = self.chart && self.chart.drawingManager;
+                if (!self.selected) {
+                    if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                        manager.selectDrawing(self);
+                        document.body.classList.add('text-selected');
+                    }
+                    return;
+                }
+
                 clickTimer = setTimeout(() => {
                     clickTimer = null;
-                    startInlineEdit();
+                    if (!self.locked) {
+                        startInlineEdit();
+                    }
                 }, CLICK_DELAY);
+            };
+
+            const handleBodyClick = (event) => {
+                event.stopPropagation();
+                event.preventDefault();
+
+                if (moved) {
+                    moved = false;
+                    return;
+                }
+
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+
+                const manager = self.chart && self.chart.drawingManager;
+                if (!self.selected) {
+                    if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                        manager.selectDrawing(self);
+                        document.body.classList.add('text-selected');
+                    }
+                }
             };
 
             const handleOpenSettings = (event) => {
@@ -2424,12 +2617,12 @@ class PinTool extends BaseDrawing {
             pinTextNodes.forEach((n) => {
                 if (!n) return;
                 n.addEventListener('mousedown', handleMouseDown, true);
-                n.addEventListener('click', handleInlineEdit, true);
+                n.addEventListener('click', handleTextClick, true);
                 n.addEventListener('dblclick', handleTextDblClickEdit, true);
             });
             if (boxPathEl && boxPathEl.node()) {
                 boxPathEl.node().addEventListener('mousedown', handleMouseDown, true);
-                boxPathEl.node().addEventListener('click', handleInlineEdit, true);
+                boxPathEl.node().addEventListener('click', handleBodyClick, true);
                 boxPathEl.node().addEventListener('dblclick', handleOpenSettings, true);
             }
         } else {
@@ -2953,7 +3146,7 @@ class CalloutTool extends BaseDrawing {
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -2967,9 +3160,28 @@ class CalloutTool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                if (!self.locked) {
+                    startInlineEdit();
+                }
             }, CLICK_DELAY);
         };
 
@@ -3000,10 +3212,11 @@ class CalloutTool extends BaseDrawing {
         calloutTextNodes.forEach((n) => {
             if (!n) return;
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('click', handleTextClick, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
         this.group.selectAll('.shape-border-hit').each(function() {
+            this.addEventListener('mousedown', handleMouseDown, true);
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
@@ -4021,7 +4234,7 @@ class Signpost2Tool extends BaseDrawing {
             );
         };
 
-        const handleInlineEdit = (event) => {
+        const handleTextClick = (event) => {
             event.stopPropagation();
             event.preventDefault();
 
@@ -4035,12 +4248,52 @@ class Signpost2Tool extends BaseDrawing {
                 clickTimer = null;
             }
 
+            const now = Date.now();
+            const timeSinceLastClick = now - (self._lastClickTime || 0);
+            self._lastClickTime = now;
+
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                return;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+                return;
+            }
+
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
                     startInlineEdit();
                 }
             }, CLICK_DELAY);
+        };
+
+        const handleBodyClick = (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+
+            if (moved) {
+                moved = false;
+                return;
+            }
+
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+            }
+
+            const manager = self.chart && self.chart.drawingManager;
+            if (!self.selected) {
+                if (manager && typeof manager.selectDrawing === 'function' && !self.locked) {
+                    manager.selectDrawing(self);
+                    document.body.classList.add('text-selected');
+                }
+            }
         };
 
         const handleOpenSettings = (event) => {
@@ -4070,13 +4323,13 @@ class Signpost2Tool extends BaseDrawing {
         signpostTextNodes.forEach((n) => {
             if (!n) return;
             n.addEventListener('mousedown', handleMouseDown, true);
-            n.addEventListener('click', handleInlineEdit, true);
+            n.addEventListener('click', handleTextClick, true);
             n.addEventListener('dblclick', handleTextDblClickEdit, true);
         });
         if (labelBox && labelBox.node()) {
             const boxNode = labelBox.node();
             boxNode.addEventListener('mousedown', handleMouseDown, true);
-            boxNode.addEventListener('click', handleInlineEdit, true);
+            boxNode.addEventListener('click', handleBodyClick, true);
             boxNode.addEventListener('dblclick', handleOpenSettings, true);
         }
         this.group.selectAll('.signpost-stem-hit').each(function() {

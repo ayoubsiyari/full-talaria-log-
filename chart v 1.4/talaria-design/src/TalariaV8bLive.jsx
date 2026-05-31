@@ -13949,11 +13949,24 @@ const TalariaV8bLive = () => {
   }, []);
 
   useEffect(() => {
-    const onNewImagePlaced = () => {
+    const onNewImagePlaced = (ev) => {
+      const detail = ev && ev.detail ? ev.detail : {};
+      const placedPoints = Array.isArray(detail.points) ? detail.points : null;
       suppressTxtForwardBridge.current = true;
-      setTxtStyle((s) => ({ ...s, imageDataUrl: "", imageTransparency: 100 }));
+      suppressTxtCoordBridge.current = true;
+      const coordPatch = placedPoints && placedPoints.length > 0
+        ? v9CoordPatchFromDrawing({ points: placedPoints })
+        : null;
+      setTxtStyle((s) => {
+        const next = { ...s, imageDataUrl: "", imageTransparency: 100 };
+        if (coordPatch && Object.keys(coordPatch).length) {
+          Object.assign(next, coordPatch);
+        }
+        return next;
+      });
       requestAnimationFrame(() => {
         suppressTxtForwardBridge.current = false;
+        suppressTxtCoordBridge.current = false;
       });
     };
     window.addEventListener("v9ImageDrawingPlaced", onNewImagePlaced);
