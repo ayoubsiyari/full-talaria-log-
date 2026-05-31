@@ -2744,16 +2744,29 @@ class ReplaySystem {
             && this.currentIndex >= this.fullRawData.length - 1);
     }
 
-    /**
-     * True when replay is at the backtest session end — NOT merely at the last bar
-     * of the currently fetched window (e.g. mid-session on 15m at Aug 2018).
-     */
-    _isAtBacktestSessionEnd(sessionEndMs) {
-        if (!this.isActive || !this._isAtLastLoadedBar()) return false;
-        if (sessionEndMs == null || !Number.isFinite(Number(sessionEndMs))) return false;
+    _getBacktestSessionEndMs() {
+        try {
+            const sess = this.chart && this.chart.backtestingSession;
+            if (sess && this.chart && typeof this.chart._getBacktestSessionEndMs === 'function') {
+                return this.chart._getBacktestSessionEndMs(sess);
+            }
+            const r = sess && (sess.endDate || sess.end_date);
+            if (r && this.chart && typeof this.chart._sessionEndToInclusiveUtcMs === 'function') {
+                const t = this.chart._sessionEndToInclusiveUtcMs(r);
+                return Number.isFinite(t) ? Math.floor(t) : null;
+            }
+            if (r) {
+                const t = new Date(r).getTime();
+                return Number.isFinite(t) ? t : null;
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    _getPlayheadBarEndMs() {
         const bar = this.fullRawData && this.fullRawData[this.currentIndex];
         const barTs = bar && Number.isFinite(bar.t) ? Number(bar.t) : Number(this.replayTimestamp);
-        if (!Number.isFinite(barTs)) return false;
+        if (!Number.isFinite(barTs)) return null;
 
         let periodMs = 60000;
         if (this.fullRawData && this.fullRawData.length >= 2) {
@@ -2770,23 +2783,62 @@ class ReplaySystem {
             const nextT = Number(this.fullRawData[this.currentIndex + 1].t);
             if (Number.isFinite(nextT) && nextT > barTs) barEndTs = nextT;
         }
-        return barEndTs >= Number(sessionEndMs);
+        const ts = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+        return Math.max(barEndTs, ts || 0);
+    }
+
+    _playheadReachedSessionEnd(sessionEndMs) {
+        if (sessionEndMs == null || !Number.isFinite(Number(sessionEndMs))) return false;
+        const playheadEnd = this._getPlayheadBarEndMs();
+        return Number.isFinite(playheadEnd) && playheadEnd >= Number(sessionEndMs);
+    }
+
+    /**
+     * True when replay is at the backtest session end — NOT merely at the last bar
+     * of the currently fetched window (e.g. mid-session on 15m at Aug 2018).
+     */
+    _isAtBacktestSessionEnd(sessionEndMs) {
+        if (!this.isActive) return false;
+        if (sessionEndMs == null || !Number.isFinite(Number(sessionEndMs))) return false;
+        if (!this._playheadReachedSessionEnd(sessionEndMs)) return false;
+        if (!this._isAtLastLoadedBar()) return false;
+        if (this.chart && this.chart._serverCursors && this.chart._serverCursors.hasMoreRight) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * At the forward edge of loaded data: keep playback alive while more session bars
+     * can still be fetched. Returns true when waiting (do not pause).
+     */
+    _handleForwardEdgeWhilePlaying(retryFn) {
+        if (this.tryRequestForwardDataProbe()) {
+            if (this.isPlaying && !this._nextCandleTimer && typeof retryFn === 'function') {
+                this.scheduleForwardEdgeRetry(retryFn);
+            }
+            return true;
+        }
+        const sessionEndMs = this._getBacktestSessionEndMs();
+        if (sessionEndMs != null && !this._playheadReachedSessionEnd(sessionEndMs)) {
+            if (this.isPlaying && !this._nextCandleTimer && typeof retryFn === 'function') {
+                this.scheduleForwardEdgeRetry(retryFn);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    _finishPlaybackAtSessionEnd() {
+        this.pause();
+        this._notifyReplayReachedEndOfData();
     }
 
     /** True when Play should no-op with "already at end" (still allow forward data probes + mid-tick resume on last bar). */
     _playWouldBeNoOpAtSessionEnd() {
         if (!this.isActive || !this._isAtLastLoadedBar()) return false;
-        let sessionEndMs = null;
-        try {
-            const sess = this.chart && this.chart.backtestingSession;
-            const r = sess && (sess.endDate || sess.end_date);
-            if (r && this.chart && typeof this.chart._sessionEndToInclusiveUtcMs === 'function') {
-                sessionEndMs = this.chart._sessionEndToInclusiveUtcMs(r);
-            } else if (r) {
-                sessionEndMs = new Date(r).getTime();
-            }
-        } catch (_) { /* ignore */ }
-        if (sessionEndMs != null && !this._isAtBacktestSessionEnd(sessionEndMs)) {
+        const sessionEndMs = this._getBacktestSessionEndMs();
+        if (sessionEndMs != null && !this._playheadReachedSessionEnd(sessionEndMs)) {
             return false;
         }
         const mode = this.getPlaybackMode();
@@ -2808,13 +2860,7 @@ class ReplaySystem {
      * Call when playback auto-stops because there is no more data to advance into.
      */
     _notifyReplayReachedEndOfData() {
-        let sessionEndMs = null;
-        try {
-            const sess = this.chart && this.chart.backtestingSession;
-            if (sess && this.chart && typeof this.chart._getBacktestSessionEndMs === 'function') {
-                sessionEndMs = this.chart._getBacktestSessionEndMs(sess);
-            }
-        } catch (_) { /* ignore */ }
+        const sessionEndMs = this._getBacktestSessionEndMs();
         if (sessionEndMs != null && !this._isAtBacktestSessionEnd(sessionEndMs)) {
             return;
         }
@@ -2962,20 +3008,12 @@ class ReplaySystem {
     simpleStepForward() {
         if (this._timeframeChanging) return;
         if (this.currentIndex >= this.fullRawData.length - 1) {
-            // Before giving up, try to trigger pan-loading for more data.
-            // We also allow a few forced probes in case local hasMoreRight got stale.
-            if (this.tryRequestForwardDataProbe()) {
-                if (this.isPlaying && !this._nextCandleTimer) {
-                    this.scheduleForwardEdgeRetry(() => {
-                        if (this.isPlaying) {
-                            this.simpleStepForward();
-                        }
-                    });
-                }
-                return; // Don't pause yet — data may still arrive
+            if (this._handleForwardEdgeWhilePlaying(() => {
+                if (this.isPlaying) this.simpleStepForward();
+            })) {
+                return;
             }
-            this.pause();
-            this._notifyReplayReachedEndOfData();
+            this._finishPlaybackAtSessionEnd();
             return;
         }
         
@@ -3287,12 +3325,10 @@ class ReplaySystem {
         }
         
         if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
-                this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
+            if (this._handleForwardEdgeWhilePlaying(() => this.startTickAnimation())) {
                 return;
             }
-            this.pause();
-            this._notifyReplayReachedEndOfData();
+            this._finishPlaybackAtSessionEnd();
             return;
         }
         this.edgeProbeRetryCount = 0;
@@ -3690,14 +3726,10 @@ class ReplaySystem {
         for (let i = 0; i < candlesToComplete; i++) {
             // Check bounds
             if (this.currentIndex >= this.fullRawData.length - 1) {
-                if (this.tryRequestForwardDataProbe()) {
-                    if (this.isPlaying) {
-                        this.scheduleForwardEdgeRetry(() => this.animateFastMode());
-                    }
+                if (this._handleForwardEdgeWhilePlaying(() => this.animateFastMode())) {
                     return;
                 }
-                this.pause();
-                this._notifyReplayReachedEndOfData();
+                this._finishPlaybackAtSessionEnd();
                 return;
             }
             
@@ -4408,13 +4440,8 @@ class ReplaySystem {
                 if (this.isPlaying) this.startTickAnimation();
             }, nextCandleDelay);
         } else if (this.currentIndex >= this.fullRawData.length - 1) {
-            if (this.tryRequestForwardDataProbe()) {
-                if (this.isPlaying) {
-                    this.scheduleForwardEdgeRetry(() => this.startTickAnimation());
-                }
-            } else {
-                this.pause();
-                this._notifyReplayReachedEndOfData();
+            if (!this._handleForwardEdgeWhilePlaying(() => this.startTickAnimation())) {
+                this._finishPlaybackAtSessionEnd();
             }
         }
     }

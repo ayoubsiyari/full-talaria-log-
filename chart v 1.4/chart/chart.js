@@ -2058,6 +2058,21 @@ class Chart {
         return this._getBarPeriodEndMs(lastBar.t, frd, lastIdx, periodMs);
     }
 
+    /** True when the replay playhead has reached the inclusive backtest session end. */
+    _replayPlayheadReachedSessionEnd(session) {
+        const replay = this.replaySystem;
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        if (!replay?.isActive || sessionEndMs == null) return false;
+        const frd = replay.fullRawData;
+        const idx = replay.currentIndex;
+        if (!Array.isArray(frd) || idx < 0 || idx >= frd.length) return false;
+        const periodMs = this._getNativeRawStepMs();
+        const barEnd = this._getBarPeriodEndMs(frd[idx].t, frd, idx, periodMs);
+        const ts = Number.isFinite(replay.replayTimestamp) ? replay.replayTimestamp : null;
+        const playheadEnd = Math.max(Number.isFinite(barEnd) ? barEnd : 0, ts || 0);
+        return playheadEnd >= sessionEndMs;
+    }
+
     /** True when replay master series has loaded through the inclusive backtest session end. */
     _hasLoadedThroughBacktestSessionEnd(session) {
         const sessionEndMs = this._getBacktestSessionEndMs(session);
@@ -2074,13 +2089,11 @@ class Chart {
         if (!this._serverCursors) this._serverCursors = {};
         this._serverCursors.firstTs = String(replay.fullRawData[0].t);
         this._serverCursors.lastTs = String(replay.fullRawData[replay.fullRawData.length - 1].t);
-        // Only clamp forward when the master series truly reaches session end — do not force
-        // hasMoreRight=true (stale server flags) or false when the playhead is mid-session but
-        // the cached window tail happens to end at session end.
-        if (this.isBacktestMode && typeof this._hasLoadedThroughBacktestSessionEnd === 'function') {
-            if (this._hasLoadedThroughBacktestSessionEnd()) {
-                this._serverCursors.hasMoreRight = false;
-            }
+        // Only clamp forward when the playhead (not just the buffer tail) has reached session end.
+        if (this.isBacktestMode
+            && typeof this._replayPlayheadReachedSessionEnd === 'function'
+            && this._replayPlayheadReachedSessionEnd()) {
+            this._serverCursors.hasMoreRight = false;
         }
     }
 
@@ -5111,7 +5124,10 @@ class Chart {
         const endRaw = session && (session.endDate || session.end_date);
         if (!session || !startRaw || !endRaw) return null;
         const cfgStart = new Date(startRaw).getTime();
-        const cfgEnd = new Date(endRaw).getTime();
+        const cfgEnd = (() => {
+            const t = this._sessionEndToInclusiveUtcMs(endRaw);
+            return Number.isFinite(t) ? Math.floor(t) : new Date(endRaw).getTime();
+        })();
         if (!Number.isFinite(cfgStart) || !Number.isFinite(cfgEnd) || cfgEnd <= cfgStart) return null;
 
         if (!Number.isFinite(this._dashboardFurthestReplayTs)) {
@@ -15098,6 +15114,22 @@ class Chart {
                         this.viewportData.hasMoreRight = !!this._serverCursors.hasMoreRight;
                     }
                     this._syncReplayPanCursorsFromFullRaw();
+                    if (direction === 'forward' && uniqueNew.length > 0 && this.replaySystem.isPlaying) {
+                        queueMicrotask(() => {
+                            const rs = this.replaySystem;
+                            if (!rs || !rs.isPlaying) return;
+                            try {
+                                if (typeof rs.getPlaybackMode === 'function'
+                                    && rs.getPlaybackMode() === 'tick'
+                                    && typeof rs.startTickAnimation === 'function') {
+                                    rs.startTickAnimation();
+                                } else if (typeof rs.simpleStepForward === 'function'
+                                    && rs.currentIndex < rs.fullRawData.length - 1) {
+                                    rs.simpleStepForward();
+                                }
+                            } catch (_) { /* ignore */ }
+                        });
+                    }
                     if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
                         this.dataPipeline.bumpDisplayVersion();
                     }
