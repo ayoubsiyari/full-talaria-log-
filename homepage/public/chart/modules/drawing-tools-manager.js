@@ -4167,8 +4167,12 @@ class DrawingToolsManager {
             drawing._autoRemoveIfEmpty = true;
             drawing._keepEmpty = true;
             this.drawings.push(drawing);
-            // Select it so user can upload image via settings (renderDrawing runs inside selectDrawing).
-            this.selectDrawing(drawing);
+            // Select + render while tool is still armed (clearTool runs below).
+            this.selectDrawing(drawing, false, { allowWhileArmed: true });
+            this.renderDrawing(drawing);
+            if (this.chart && typeof this.chart.scheduleRender === 'function') {
+                this.chart.scheduleRender();
+            }
             this.suppressNextCanvasBackgroundClick(500);
             try {
                 if (typeof window !== 'undefined') {
@@ -6971,11 +6975,13 @@ class DrawingToolsManager {
                 };
                 const inlineOpts = (drawing.type === 'note' && helpers && typeof helpers.buildNoteInlineEditorOptions === 'function')
                     ? helpers.buildNoteInlineEditorOptions(drawing, rect, {
+                        focusOpts: { selectAllOnFocus: false, focusAtEnd: !String(initialText).trim() },
                         initialText,
                         onInput: liveOnInput
                     })
                     : (helpers && typeof helpers.buildStandardInlineEditorOptions === 'function')
                     ? helpers.buildStandardInlineEditorOptions(drawing, rect, {
+                        focusOpts: { selectAllOnFocus: false, focusAtEnd: !String(initialText).trim() },
                         padding: wrapPaddingByType[drawing.type] || 6,
                         placeholderMode: !String(initialText).trim(),
                         editorBackground: drawing.style.backgroundColor || drawing.style.fill,

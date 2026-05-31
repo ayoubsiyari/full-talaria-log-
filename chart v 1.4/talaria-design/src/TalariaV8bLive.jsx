@@ -2368,9 +2368,12 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
       const curUrl = s.imageUrl || "";
       const nextUrl = String(txt.imageDataUrl);
       if (nextUrl !== curUrl) {
-        v9ApplyImageDataUrlToDrawingStyle(s, nextUrl, { resetSize: !!nextUrl && !curUrl });
-        d._keepEmpty = !nextUrl;
-        if (d.meta) d.meta.updatedAt = Date.now();
+        // Stale empty panel preview must not wipe an image already on the canvas.
+        if (!(nextUrl === "" && curUrl)) {
+          v9ApplyImageDataUrlToDrawingStyle(s, nextUrl, { resetSize: !!nextUrl && !curUrl });
+          d._keepEmpty = !nextUrl;
+          if (d.meta) d.meta.updatedAt = Date.now();
+        }
       }
     }
     return;

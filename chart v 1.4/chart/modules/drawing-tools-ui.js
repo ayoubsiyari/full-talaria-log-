@@ -33759,14 +33759,46 @@ class InlineTextEditor {
         document.head.appendChild(style);
     }
 
-
+    _focusEditableField(node, opts = {}) {
+        if (!node) return;
+        node.focus();
+        const sel = window.getSelection();
+        if (!sel) return;
+        if (opts.selectAll) {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return;
+        }
+        if (typeof opts.clientX === 'number' && typeof opts.clientY === 'number') {
+            let range = null;
+            if (document.caretRangeFromPoint) {
+                range = document.caretRangeFromPoint(opts.clientX, opts.clientY);
+            } else if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(opts.clientX, opts.clientY);
+                if (pos) {
+                    range = document.createRange();
+                    range.setStart(pos.offsetNode, pos.offset);
+                    range.collapse(true);
+                }
+            }
+            if (range && node.contains(range.startContainer)) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return;
+            }
+        }
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        range.collapse(opts.atEnd === false ? true : false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
 
     /**
-
      * Show inline editor at position (TradingView style - no buttons)
-
      */
-
     show(x, y, initialText, onSave, placeholder = 'Enter text…', options = null) {
 
         this.onSave = onSave;
@@ -34145,34 +34177,17 @@ class InlineTextEditor {
 
             const node = contentEl.node();
 
-            node.focus();
-
-            if (placeholderMode) {
-                const sel = window.getSelection();
-                const range = document.createRange();
-                range.setStart(node, 0);
-                range.collapse(true);
-                if (sel) {
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                }
-            } else if (initialText) {
-
-                // Select all existing text when re-editing (TradingView style — type to replace)
-
-                const range = document.createRange();
-
-                const sel = window.getSelection();
-
-                range.selectNodeContents(node);
-
-                sel.removeAllRanges();
-
-                sel.addRange(range);
-
+            if (opts.selectAllOnFocus && initialText && !placeholderMode) {
+                this._focusEditableField(node, { selectAll: true });
+            } else if (typeof opts.focusClientX === 'number' && typeof opts.focusClientY === 'number') {
+                this._focusEditableField(node, { clientX: opts.focusClientX, clientY: opts.focusClientY });
+            } else if (placeholderMode) {
+                this._focusEditableField(node, { atEnd: false });
+            } else if (initialText || opts.focusAtEnd) {
+                this._focusEditableField(node, { atEnd: true });
+            } else {
+                this._focusEditableField(node, { atEnd: false });
             }
-
-
 
             this._openedAt = Date.now();
             this.clickOutsideHandler = (event) => {
@@ -34328,12 +34343,21 @@ class InlineTextEditor {
 
         const textareaNode = textarea.node();
 
-        textareaNode.focus();
-
-        if (placeholderMode) {
+        if (opts.selectAllOnFocus && initialText && !placeholderMode) {
+            textareaNode.focus();
+            textareaNode.select();
+        } else if (typeof opts.focusClientX === 'number' && typeof opts.focusClientY === 'number') {
+            textareaNode.focus();
+            const len = textareaNode.value.length;
+            textareaNode.setSelectionRange(len, len);
+        } else if (placeholderMode) {
+            textareaNode.focus();
             textareaNode.setSelectionRange(0, 0);
         } else if (initialText) {
-            textareaNode.select();
+            textareaNode.focus();
+            textareaNode.setSelectionRange(textareaNode.value.length, textareaNode.value.length);
+        } else {
+            textareaNode.focus();
         }
 
         

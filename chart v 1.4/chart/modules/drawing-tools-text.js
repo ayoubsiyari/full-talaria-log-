@@ -185,6 +185,7 @@ function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
         placeholderColor: config.placeholderColor,
         onInput: config.onInput,
         ...buildWrapAwareInlineEditorOptions(drawing, bbox, padding),
+        ...(config.focusOpts || {}),
         ...config.extra
     };
 }
@@ -220,6 +221,7 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
         editorBorder: borderOn ? `1px solid ${boxStroke}` : 'none',
         editorBorderRadius: '4px',
         ...buildWrapAwareInlineEditorOptions(drawing, bbox, notePadding),
+        ...(extra.focusOpts || {}),
         ...extra
     };
     return opts;
@@ -360,6 +362,47 @@ function handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, minMs, m
         document.body.classList.add('text-selected');
     }
     return true;
+}
+
+function inlineEditorFocusOptions(event, selectAll) {
+    if (selectAll) {
+        return { selectAllOnFocus: true };
+    }
+    if (event && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
+        return {
+            selectAllOnFocus: false,
+            focusClientX: event.clientX,
+            focusClientY: event.clientY
+        };
+    }
+    return { selectAllOnFocus: false, focusAtEnd: true };
+}
+
+/** If this drawing is already in inline edit, move caret and skip reopening the editor. */
+function prepareTextInlineEditFocus(drawing, event, selectAll) {
+    const manager = drawing && drawing.chart && drawing.chart.drawingManager;
+    if (manager && manager._textInlineEditDrawing === drawing) {
+        const editor = manager.textEditor;
+        const field = (editor && editor.editor && !editor.editor.empty())
+            ? editor.editor.select('.inline-text-editor-field').node()
+            : null;
+        if (field) {
+            if (typeof editor._focusEditableField === 'function') {
+                if (selectAll) {
+                    editor._focusEditableField(field, { selectAll: true });
+                } else if (event && typeof event.clientX === 'number') {
+                    editor._focusEditableField(field, { clientX: event.clientX, clientY: event.clientY });
+                } else {
+                    editor._focusEditableField(field, { atEnd: true });
+                }
+            } else {
+                field.focus();
+            }
+            return null;
+        }
+    }
+    beginTextAnnotationInlineEdit(drawing);
+    return inlineEditorFocusOptions(event, selectAll);
 }
 
 // ============================================================================
@@ -647,12 +690,13 @@ class TextTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             // Resolve live element — selectDrawing re-renders so captured node may be detached
             const liveNode = (self.group && typeof self.group.select === 'function')
@@ -676,6 +720,7 @@ class TextTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 buildStandardInlineEditorOptions(self, rect, {
+                    focusOpts,
                     padding,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
@@ -710,7 +755,7 @@ class TextTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -723,10 +768,10 @@ class TextTool extends BaseDrawing {
                 return;
             }
 
-            // Already selected → open inline editor after delay
+            // Already selected → open inline editor after delay (cursor at click — continue typing)
             clickTimer = setTimeout(() => {
                 clickTimer = null;
-                startInlineEdit();
+                startInlineEdit(event, false);
             }, CLICK_DELAY);
         };
 
@@ -738,7 +783,7 @@ class TextTool extends BaseDrawing {
                 clickTimer = null;
             }
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -1164,12 +1209,13 @@ class NoteBoxTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
@@ -1188,6 +1234,7 @@ class NoteBoxTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter note text…',
                 buildStandardInlineEditorOptions(self, rect, {
+                    focusOpts,
                     padding,
                     color: self.style.textColor,
                     textAlign: 'left',
@@ -1221,7 +1268,7 @@ class NoteBoxTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -1237,7 +1284,7 @@ class NoteBoxTool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -1281,7 +1328,7 @@ class NoteBoxTool extends BaseDrawing {
                 clickTimer = null;
             }
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -1619,12 +1666,13 @@ class AnchoredTextTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
@@ -1642,6 +1690,7 @@ class AnchoredTextTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 buildStandardInlineEditorOptions(self, rect, {
+                    focusOpts,
                     padding,
                     color: self.style.textColor,
                     textAlign: 'center',
@@ -1675,7 +1724,7 @@ class AnchoredTextTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -1691,7 +1740,7 @@ class AnchoredTextTool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -1735,7 +1784,7 @@ class AnchoredTextTool extends BaseDrawing {
                 clickTimer = null;
             }
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -1956,7 +2005,7 @@ class NoteTool extends BaseDrawing {
 
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
-        const openNoteInlineEditor = function() {
+        const openNoteInlineEditor = function(event, selectAll = false) {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             const helpers = (typeof window !== 'undefined' && window.DrawingTextHelpers) || null;
@@ -1970,9 +2019,8 @@ class NoteTool extends BaseDrawing {
                 return false;
             }
 
-            if (typeof editor.hide === 'function') {
-                editor.hide();
-            }
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return true;
 
             const liveBox = (self.group && typeof self.group.select === 'function')
                 ? self.group.select('rect.note-body-hit').node()
@@ -1988,8 +2036,6 @@ class NoteTool extends BaseDrawing {
                 return false;
             }
 
-            beginTextAnnotationInlineEdit(self);
-
             editor.show(
                 bbox.left + window.scrollX,
                 bbox.top + window.scrollY,
@@ -1997,6 +2043,7 @@ class NoteTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 placeholderLabel,
                 buildNoteInlineEditorOptions(self, bbox, {
+                    focusOpts,
                     initialText,
                     onInput: (newText) => {
                         const next = (newText || '').replace(/\r\n/g, '\n');
@@ -2008,7 +2055,7 @@ class NoteTool extends BaseDrawing {
             return true;
         };
 
-        const startInlineEdit = function() {
+        const startInlineEdit = function(event, selectAll = false) {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
 
@@ -2016,11 +2063,11 @@ class NoteTool extends BaseDrawing {
                 if (!self.selected && manager && typeof manager.selectDrawing === 'function' && !self.locked) {
                     manager.selectDrawing(self);
                     requestAnimationFrame(() => {
-                        requestAnimationFrame(() => openNoteInlineEditor());
+                        requestAnimationFrame(() => openNoteInlineEditor(event, selectAll));
                     });
                     return;
                 }
-                openNoteInlineEditor();
+                openNoteInlineEditor(event, selectAll);
                 return;
             }
 
@@ -2156,7 +2203,7 @@ class NoteTool extends BaseDrawing {
             self._lastClickTime = now;
 
             // Double-click (timestamp fallback when native dblclick is lost after re-render)
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 20, 450, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 20, 450, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -2173,7 +2220,7 @@ class NoteTool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -2187,7 +2234,7 @@ class NoteTool extends BaseDrawing {
             }
             self._lastClickTime = 0;
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -2657,12 +2704,13 @@ class PinTool extends BaseDrawing {
                 document.addEventListener('mouseup', handleMouseUp, true);
             };
 
-            const startInlineEdit = () => {
+            const startInlineEdit = (event, selectAll = false) => {
                 const manager = self.chart && self.chart.drawingManager;
                 const editor = manager && manager.textEditor;
                 if (!editor || typeof editor.show !== 'function') return;
 
-                beginTextAnnotationInlineEdit(self);
+                const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+                if (focusOpts === null) return;
 
                 const posNode = resolveTextAnnotationEditBoxNode(self, boxTextEl.node());
                 const rect = posNode.getBoundingClientRect();
@@ -2711,7 +2759,7 @@ class PinTool extends BaseDrawing {
                 const timeSinceLastClick = now - (self._lastClickTime || 0);
                 self._lastClickTime = now;
 
-                if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+                if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                     return;
                 }
 
@@ -2727,7 +2775,7 @@ class PinTool extends BaseDrawing {
                 clickTimer = setTimeout(() => {
                     clickTimer = null;
                     if (!self.locked) {
-                        startInlineEdit();
+                        startInlineEdit(event, false);
                     }
                 }, CLICK_DELAY);
             };
@@ -2771,7 +2819,7 @@ class PinTool extends BaseDrawing {
                     clickTimer = null;
                 }
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, true);
                 }
             };
 
@@ -3271,12 +3319,13 @@ class CalloutTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
@@ -3300,6 +3349,7 @@ class CalloutTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 buildStandardInlineEditorOptions(self, rect, {
+                    focusOpts,
                     padding,
                     color: calloutEditFill,
                     textAlign: 'left',
@@ -3331,7 +3381,7 @@ class CalloutTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -3347,7 +3397,7 @@ class CalloutTool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -3368,7 +3418,7 @@ class CalloutTool extends BaseDrawing {
                 clickTimer = null;
             }
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -3698,12 +3748,13 @@ class CommentTool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const rect = posNode.getBoundingClientRect();
@@ -3727,6 +3778,7 @@ class CommentTool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 buildStandardInlineEditorOptions(self, rect, {
+                    focusOpts,
                     padding,
                     color: commentEditFill,
                     textAlign: self.style.textAlign || 'left',
@@ -3760,7 +3812,7 @@ class CommentTool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -3776,7 +3828,7 @@ class CommentTool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -3821,7 +3873,7 @@ class CommentTool extends BaseDrawing {
             }
             self._lastClickTime = 0;
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -4361,12 +4413,13 @@ class Signpost2Tool extends BaseDrawing {
             document.addEventListener('mouseup', handleMouseUp, true);
         };
 
-        const startInlineEdit = () => {
+        const startInlineEdit = (event, selectAll = false) => {
             const manager = self.chart && self.chart.drawingManager;
             const editor = manager && manager.textEditor;
             if (!editor || typeof editor.show !== 'function') return;
 
-            beginTextAnnotationInlineEdit(self);
+            const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
+            if (focusOpts === null) return;
 
             const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
             const bbox = posNode.getBoundingClientRect();
@@ -4422,7 +4475,7 @@ class Signpost2Tool extends BaseDrawing {
             const timeSinceLastClick = now - (self._lastClickTime || 0);
             self._lastClickTime = now;
 
-            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, startInlineEdit)) {
+            if (handleTextAnnotationQuickSecondClick(self, timeSinceLastClick, 30, 400, () => startInlineEdit(event, true))) {
                 return;
             }
 
@@ -4438,7 +4491,7 @@ class Signpost2Tool extends BaseDrawing {
             clickTimer = setTimeout(() => {
                 clickTimer = null;
                 if (!self.locked) {
-                    startInlineEdit();
+                    startInlineEdit(event, false);
                 }
             }, CLICK_DELAY);
         };
@@ -4482,7 +4535,7 @@ class Signpost2Tool extends BaseDrawing {
                 clickTimer = null;
             }
             if (!self.locked) {
-                startInlineEdit();
+                startInlineEdit(event, true);
             }
         };
 
@@ -4753,6 +4806,8 @@ if (typeof module !== 'undefined' && module.exports) {
         isTextToolPlaceholder,
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
+        prepareTextInlineEditFocus,
+        inlineEditorFocusOptions,
         buildWrapAwareInlineEditorOptions,
         buildStandardInlineEditorOptions,
         resolveTextAnnotationEditBoxNode,
@@ -4783,6 +4838,8 @@ if (typeof window !== 'undefined') {
         isTextToolPlaceholder,
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
+        prepareTextInlineEditFocus,
+        inlineEditorFocusOptions,
         buildWrapAwareInlineEditorOptions,
         buildStandardInlineEditorOptions,
         resolveTextAnnotationEditBoxNode,

@@ -587,17 +587,24 @@ class ImageTool extends BaseDrawing {
                             this.style.heightInDataUnits = null;
                         }
                         this.meta.updatedAt = Date.now();
+                        this._keepEmpty = false;
                         this._notifyV9ImageChanged();
 
-                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                        const dm = this.chart && this.chart.drawingManager;
+                        if (dm && typeof dm.renderDrawing === 'function') {
                             try {
-                                this.chart.drawingManager.saveDrawings();
-                            } catch (error) {
-                                console.warn('Image upload saved to canvas but failed to persist drawings:', error?.message || error);
-                            }
+                                dm.renderDrawing(this);
+                            } catch (_) {}
                         }
                         if (this.chart && typeof this.chart.scheduleRender === 'function') {
                             this.chart.scheduleRender();
+                        }
+                        if (dm && typeof dm.saveDrawings === 'function') {
+                            try {
+                                dm.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
                         }
                     } finally {
                         cleanup();
@@ -615,17 +622,24 @@ class ImageTool extends BaseDrawing {
                             this.style.heightInDataUnits = null;
                         }
                         this.meta.updatedAt = Date.now();
+                        this._keepEmpty = false;
                         this._notifyV9ImageChanged();
 
-                        if (this.chart && this.chart.drawingManager && typeof this.chart.drawingManager.saveDrawings === 'function') {
+                        const dm = this.chart && this.chart.drawingManager;
+                        if (dm && typeof dm.renderDrawing === 'function') {
                             try {
-                                this.chart.drawingManager.saveDrawings();
-                            } catch (error) {
-                                console.warn('Image upload fallback saved to canvas but failed to persist drawings:', error?.message || error);
-                            }
+                                dm.renderDrawing(this);
+                            } catch (_) {}
                         }
                         if (this.chart && typeof this.chart.scheduleRender === 'function') {
                             this.chart.scheduleRender();
+                        }
+                        if (dm && typeof dm.saveDrawings === 'function') {
+                            try {
+                                dm.saveDrawings();
+                            } catch (error) {
+                                console.warn('Image upload fallback saved to canvas but failed to persist drawings:', error?.message || error);
+                            }
                         }
                     } finally {
                         cleanup();
