@@ -1812,7 +1812,12 @@ class VolumeProfileTool extends BaseDrawing {
         group.selectAll('.resize-handle-hit:not(.volume-profile-boundary-hit)').remove();
         group.selectAll('.vertical-guide').remove();
 
-        if (!this.selected || this.points.length < 2) return;
+        const isAnchoredProxyHandle = this._isAnchoredProxy === true;
+        if (isAnchoredProxyHandle) {
+            if (this.points.length < 1) return;
+        } else if (!this.selected || this.points.length < 2) {
+            return;
+        }
 
         const chartData = scales.chart && Array.isArray(scales.chart.data) ? scales.chart.data : [];
         const maxIndex = chartData.length > 0 ? chartData.length - 1 : null;
@@ -1921,6 +1926,10 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', index);
 
+            const handleInteractive = this.selected && !isAnchoredProxyHandle
+                ? true
+                : (this.selected || isAnchoredProxyHandle);
+
             handleGroup.append('circle')
                 .attr('class', 'resize-handle-hit')
                 .attr('cx', cx)
@@ -1929,7 +1938,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('fill', 'transparent')
                 .attr('stroke', 'none')
                 .style('cursor', 'ew-resize')
-                .style('pointer-events', 'all')
+                .style('pointer-events', handleInteractive ? 'all' : 'none')
                 .attr('data-point-index', index);
 
             const handle = handleGroup.append('circle')
@@ -1941,7 +1950,8 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('stroke', '#2962FF')
                 .attr('stroke-width', 2)
                 .style('cursor', 'ew-resize')
-                .style('pointer-events', 'all')
+                .style('pointer-events', handleInteractive ? 'all' : 'none')
+                .style('opacity', (this.selected || isAnchoredProxyHandle) ? (this.selected ? 1 : 0) : 0)
                 .attr('data-point-index', index);
 
             this.handles.push({ element: handle, point, index });

@@ -1287,7 +1287,22 @@ class DrawingToolsManager {
                 && handleNode.classList.contains('volume-profile-boundary-hit')
             );
             if (handleNode && !isVolumeProfileBoundaryHandle) {
-                return false;
+                const handleDrawingGroup = handleNode.closest ? handleNode.closest('.drawing') : null;
+                const handleDrawingId = handleDrawingGroup ? handleDrawingGroup.getAttribute('data-id') : null;
+                const handleDrawing = handleDrawingId
+                    ? this.drawings.find((d) => d && d.id === handleDrawingId)
+                    : null;
+                const handleGroup = handleNode.closest ? handleNode.closest('.resize-handle-group') : null;
+                const pointIdx = (handleNode.getAttribute && handleNode.getAttribute('data-point-index'))
+                    || (handleGroup && handleGroup.getAttribute && handleGroup.getAttribute('data-point-index'));
+                const isAnchoredVpAnchorHandle = !!(
+                    handleDrawing
+                    && handleDrawing.type === 'anchored-volume-profile'
+                    && pointIdx === '0'
+                );
+                if (!isAnchoredVpAnchorHandle) {
+                    return false;
+                }
             }
 
             const valueLabelNode = rawTargetNode && rawTargetNode.closest
@@ -9837,10 +9852,14 @@ class DrawingToolsManager {
                 try {
                     const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
 
-                    // Anchored profile: only the anchor resize point is hittable (not the vertical line or POC/VA).
+                    // Anchored profile: handle + anchor line + body for hover/select/dblclick; only handle is interactive.
                     if (isAnchoredVolumeProfile) {
                         if (this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)) {
                             hitsById.set(drawing.id, { drawing, distance: 0, z });
+                        } else if (this.isVolumeProfileAnchoredAnchorLineHit(drawing, mouseX, mouseY)) {
+                            hitsById.set(drawing.id, { drawing, distance: 1, z });
+                        } else if (this.isVolumeProfileAnchoredBodyHit(drawing, mouseX, mouseY)) {
+                            hitsById.set(drawing.id, { drawing, distance: 2, z });
                         }
                         continue;
                     }
@@ -10678,6 +10697,109 @@ class DrawingToolsManager {
         return false;
     }
 
+    /** Vertical anchor guide line — hover reveals resize point (anchored volume profile). */
+    isVolumeProfileAnchoredAnchorLineHit(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
+            return false;
+        }
+        const baseHitTolerance = 10;
+        try {
+            const anchorLines = drawing.group.selectAll('.volume-profile-anchor-boundary').nodes();
+            for (const el of anchorLines) {
+                if (!el) continue;
+                const x1 = parseFloat(el.getAttribute('x1'));
+                const y1 = parseFloat(el.getAttribute('y1'));
+                const x2 = parseFloat(el.getAttribute('x2'));
+                const y2 = parseFloat(el.getAttribute('y2'));
+                if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+                const elSel = d3.select(el);
+                const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+                const tolerance = Math.max(baseHitTolerance, (strokeWidth / 2) + 6);
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                if (distance <= tolerance) {
+                    return true;
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    shouldShowAnchoredVolumeProfileHoverHandle(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-volume-profile') return false;
+        if (drawing.selected) return true;
+        return this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)
+            || this.isVolumeProfileAnchoredAnchorLineHit(drawing, mouseX, mouseY);
+    }
+
+    /** Profile body/zone for anchored VP — select + dblclick settings only (not drag/resize). */
+    isVolumeProfileAnchoredBodyHit(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
+            return false;
+        }
+        try {
+            const isInsideRect = (rectNode, pad = 0) => {
+                if (!rectNode) return false;
+                const x = Number(rectNode.getAttribute('x'));
+                const y = Number(rectNode.getAttribute('y'));
+                const width = Number(rectNode.getAttribute('width'));
+                const height = Number(rectNode.getAttribute('height'));
+                if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                    return false;
+                }
+                return mouseX >= (x - pad) && mouseX <= (x + width + pad)
+                    && mouseY >= (y - pad) && mouseY <= (y + height + pad);
+            };
+
+            const rangeRect = drawing.group.select('.volume-profile-range').node();
+            if (isInsideRect(rangeRect, 0.75)) {
+                return true;
+            }
+
+            const barRects = drawing.group.selectAll('rect').nodes();
+            for (const rect of barRects) {
+                if (!rect) continue;
+                const rectSel = d3.select(rect);
+                if (rectSel.classed('volume-profile-range')) continue;
+                const x = Number(rect.getAttribute('x'));
+                const y = Number(rect.getAttribute('y'));
+                const width = Number(rect.getAttribute('width'));
+                const height = Number(rect.getAttribute('height'));
+                if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                    continue;
+                }
+                if (mouseX >= (x - 0.75) && mouseX <= (x + width + 0.75)
+                    && mouseY >= (y - 0.75) && mouseY <= (y + height + 0.75)) {
+                    return true;
+                }
+            }
+
+            const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
+            if (Array.isArray(boundaryLines) && boundaryLines.length >= 1) {
+                const xValues = [];
+                let minY = Infinity;
+                let maxY = -Infinity;
+                boundaryLines.forEach((line) => {
+                    if (!line) return;
+                    const x1 = Number(line.getAttribute('x1'));
+                    const x2 = Number(line.getAttribute('x2'));
+                    const y1 = Number(line.getAttribute('y1'));
+                    const y2 = Number(line.getAttribute('y2'));
+                    if ([x1, x2, y1, y2].every(Number.isFinite)) {
+                        xValues.push(x1, x2);
+                        minY = Math.min(minY, y1, y2);
+                        maxY = Math.max(maxY, y1, y2);
+                    }
+                });
+                if (xValues.length >= 1 && Number.isFinite(minY) && Number.isFinite(maxY)) {
+                    const minX = Math.min(...xValues);
+                    const maxX = Math.max(...xValues);
+                    return mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY;
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
     /** Bars, boundaries, level lines, and value labels — not empty zone fill. */
     isVolumeProfileInteractiveHit(drawing, mouseX, mouseY) {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type)) return false;
@@ -10878,13 +11000,25 @@ class DrawingToolsManager {
         }
 
         if (drawingsAtPoint.length > 0) {
-            const cursorStyle = 'move';
+            const hoveredDrawing = drawingsAtPoint[0];
+            let cursorStyle = 'move';
+            if (hoveredDrawing && hoveredDrawing.type === 'anchored-volume-profile') {
+                if (this.isVolumeProfileAnchorBoundaryHit(hoveredDrawing, mouseX, mouseY)
+                    || this.isVolumeProfileAnchoredAnchorLineHit(hoveredDrawing, mouseX, mouseY)) {
+                    cursorStyle = 'ew-resize';
+                }
+            }
             canvas.style.cursor = cursorStyle;
             this.svg.style('cursor', cursorStyle);
             this._cursorOverLine = true;
 
-            const hoveredDrawing = drawingsAtPoint[0];
             if (hoveredDrawing && hoveredDrawing.group) {
+                const showAvHoverHandle = this.shouldShowAnchoredVolumeProfileHoverHandle(
+                    hoveredDrawing,
+                    mouseX,
+                    mouseY
+                );
+
                 // Clear previous hover
                 if (this._hoveredDrawing && this._hoveredDrawing !== hoveredDrawing) {
                     if (this._hoveredDrawing.group) {
@@ -10900,18 +11034,40 @@ class DrawingToolsManager {
                 // Apply hover effect + show handles (if not selected)
                 SVGHelpers.applyHoverEffect(hoveredDrawing.group, true);
                 if (!hoveredDrawing.selected) {
-                    hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 1);
-                    if (!this._isPlacementModeActive()) {
-                        hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
-                            .style('pointer-events', 'all');
+                    if (hoveredDrawing.type === 'anchored-volume-profile') {
+                        if (showAvHoverHandle) {
+                            hoveredDrawing.group.selectAll('.resize-handle[data-point-index="0"], .custom-handle')
+                                .style('opacity', 1);
+                            if (!this._isPlacementModeActive()) {
+                                hoveredDrawing.group.selectAll(
+                                    '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"], .custom-handle'
+                                ).style('pointer-events', 'all');
+                            }
+                        } else {
+                            hoveredDrawing.group.selectAll('.resize-handle[data-point-index="0"], .custom-handle')
+                                .style('opacity', 0);
+                            hoveredDrawing.group.selectAll(
+                                '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"], .custom-handle'
+                            ).style('pointer-events', 'none');
+                        }
+                    } else {
+                        hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 1);
+                        if (!this._isPlacementModeActive()) {
+                            hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
+                                .style('pointer-events', 'all');
+                        }
                     }
+                } else if (hoveredDrawing.type === 'anchored-volume-profile') {
+                    hoveredDrawing.group.selectAll('.resize-handle[data-point-index="0"], .custom-handle')
+                        .style('opacity', 1);
                 }
 
                 const shouldBindHoverResize =
                     !this._isPlacementModeActive() &&
                     !this._skipHandleSetup &&
                     !this.isResizing &&
-                    !hoveredDrawing.locked;
+                    !hoveredDrawing.locked &&
+                    (hoveredDrawing.type !== 'anchored-volume-profile' || showAvHoverHandle);
 
                 if (shouldBindHoverResize && hoveredDrawing.group) {
                     const hasHandles = !hoveredDrawing.group
