@@ -188,16 +188,6 @@ def save_drawings(symbol):
         
         drawing_record = query.first()
 
-        if drawing_record and client_updated_at_ms is not None and drawing_record.updated_at:
-            server_ms = int(drawing_record.updated_at.timestamp() * 1000)
-            if client_updated_at_ms < server_ms - 1500:
-                return jsonify({
-                    'success': False,
-                    'error': 'Stale client revision — reload drawings from server',
-                    'updated_at': drawing_record.updated_at.isoformat(),
-                    'server_newer': True
-                }), 409
-        
         if drawing_record:
             # Update existing record
             drawing_record.drawings_data = drawings

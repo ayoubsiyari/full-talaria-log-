@@ -2079,9 +2079,12 @@ class DrawingToolsManager {
         const pixelDx = parsed.x - startTx;
         const pixelDy = parsed.y - startTy;
 
+        if (pixelDx === 0 && pixelDy === 0) {
+            return false;
+        }
+
         drawing.group.attr('transform', null);
         this._clearDrawingDragTransform(drawing);
-        if (pixelDx === 0 && pixelDy === 0) return false;
 
         const chart = this.chart;
         if (!chart || typeof chart.yScale !== 'function') return false;
@@ -4150,6 +4153,11 @@ class DrawingToolsManager {
             this.renderDrawing(drawing);
             // Select it so user can upload image via settings
             this.selectDrawing(drawing);
+            try {
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('v9ImageDrawingPlaced'));
+                }
+            } catch (_) {}
             
             // Clear temp drawing
             this.tempGroup.selectAll('*').remove();
@@ -5288,9 +5296,11 @@ class DrawingToolsManager {
             ? '.anchored-vwap-anchor, .anchored-vwap-anchor-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
-                : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
+                : drawing.type === 'image'
+                    ? '.image-content, .image-placeholder'
+                    : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
         const dragElements = drawing.group.selectAll(dragSelector);
-        const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : 4;
+        const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : (drawing.type === 'image' ? 6 : 4);
         let textBodyDragOverflowActive = false;
 
         dragElements.on('.drag', null);
@@ -5381,6 +5391,8 @@ class DrawingToolsManager {
                     const isTextElement = tagName === 'text' || tagName === 'tspan';  // Allow dragging text and tspan
                     const isShapeBorder = targetSelection.classed('shape-border');
                     const isEmojiElement = targetSelection.classed('emoji-glyph') || targetSelection.classed('emoji-background');
+                    const isImageElement = drawing.type === 'image'
+                        && (targetSelection.classed('image-content') || targetSelection.classed('image-placeholder'));
                     const isTextBodyHit = targetSelection.classed('text-body-hit');
                     const isNoteBodyHit = targetSelection.classed('note-body-hit');
                     const isInlineEditable = targetSelection.classed('inline-editable-text');
@@ -5464,7 +5476,7 @@ class DrawingToolsManager {
                     // Block drag from: filled areas and resize handles
                     const canDrag = isPositionZone || isRrBodyDrag || isRangeFillHit || isRangeInfoBox
                         || isFibLevelHit || isGannLevelHit || isGannBodyHit || isFibTrendHit || isLineElement || isShapeBorder
-                        || isTextElement || isEmojiElement || isTextBodyHit || hasStroke;
+                        || isTextElement || isEmojiElement || isImageElement || isTextBodyHit || hasStroke;
                     
                     return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle && canDrag;
                 })
@@ -6048,6 +6060,9 @@ class DrawingToolsManager {
      */
     setupHandleDrag(drawing) {
         const self = this;
+
+        // Plain text is move/select only — no corner/side resize handles.
+        if (drawing && drawing.type === 'text') return;
 
         const allowResizeHandleDragWhenToolActive = function (event) {
             if (!self.currentTool) return true;
@@ -6905,9 +6920,11 @@ class DrawingToolsManager {
                         fontSize: `${drawing.style.fontSize || 13}px`,
                         fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
                         fontWeight: drawing.style.fontWeight || 'normal',
+                        fontStyle: drawing.style.fontStyle || 'normal',
                         color: drawing.style.textColor || '#FFFFFF',
                         textAlign: drawing.style.textAlign || 'left',
-                        noWrap: true,
+                        noWrap: drawing.style.wrapText !== true,
+                        maxWidth: drawing.style.maxWidth || (drawing.type === 'comment' ? 280 : 180),
                         hideSelector: `.drawing[data-id="${drawing.id}"] text`,
                         onInput: (newText) => {
                             const next = (newText || '').replace(/\r\n/g, '\n');
@@ -8025,6 +8042,27 @@ class DrawingToolsManager {
      * Save drawings to backend API for cross-device sync (canonical store).
      */
     async saveDrawingsToAPI(data, clientUpdatedAt) {
+        // Single-flight: overlapping debounced/flush saves in one tab must not 409 each other.
+        if (this._drawingsApiSaveInFlight) {
+            this._drawingsApiSaveQueued = true;
+            return;
+        }
+        this._drawingsApiSaveInFlight = true;
+        try {
+            await this._saveDrawingsToAPIOnce(data, clientUpdatedAt);
+        } finally {
+            this._drawingsApiSaveInFlight = false;
+            if (this._drawingsApiSaveQueued) {
+                this._drawingsApiSaveQueued = false;
+                if (this.chart && Array.isArray(this.drawings)) {
+                    const fresh = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
+                    void this.saveDrawingsToAPI(fresh, Date.now());
+                }
+            }
+        }
+    }
+
+    async _saveDrawingsToAPIOnce(data, clientUpdatedAt) {
         try {
             const symbol = this.chart.currentFileId || 'default';
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
@@ -8039,8 +8077,6 @@ class DrawingToolsManager {
             this._drawingsPendingTargets = { api: true };
             this._syncDrawingsSaveUiFromTargets();
 
-            const sentAt = clientUpdatedAt || Date.now();
-
             const response = await fetch(`/api/chart/drawings/${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: {
@@ -8051,7 +8087,7 @@ class DrawingToolsManager {
                 body: JSON.stringify({
                     drawings: data,
                     session_id: sessionId,
-                    client_updated_at: sentAt
+                    client_updated_at: Date.now()
                 })
             });
 
@@ -8065,23 +8101,6 @@ class DrawingToolsManager {
                     updated_at: result.updated_at || null,
                     client_updated_at: serverMs
                 });
-            } else if (response.status === 409) {
-                console.warn('⚠️ Drawings cloud revision conflict — reloading from server');
-                this._drawingsSaveError = false;
-                const apiResult = await this.loadDrawingsFromAPI();
-                if (apiResult && this.chart?.data?.length) {
-                    this.loadDrawingsFromData(apiResult.drawings);
-                    const key = this.getStorageKey();
-                    this._writeDrawingsCacheMeta(key, {
-                        updated_at: apiResult.updated_at || null,
-                        client_updated_at: this._parseUpdatedAtMs(apiResult.updated_at) || Date.now()
-                    });
-                }
-                try {
-                    if (this.chart && typeof this.chart.showNotification === 'function') {
-                        this.chart.showNotification('Drawings updated from cloud (another tab was newer)', 'info', 3500);
-                    }
-                } catch (_) { /* ignore */ }
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - drawings saved locally only');
             } else if (response.status === 413) {
@@ -10831,6 +10850,8 @@ class DrawingToolsManager {
                 strokeWidth: 1,
                 fill: 'rgba(50, 50, 50, 0.9)',
                 backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                wrapText: false,
+                maxWidth: 260,
             };
         }
 
@@ -10981,7 +11002,14 @@ class DrawingToolsManager {
             if (typeof window !== 'undefined' && window.__v9ArmedDrawStyle) {
                 const armed = window.__v9ArmedDrawStyle;
                 if (armed.tool === tool && armed.patch && typeof armed.patch === 'object') {
-                    return { ...base, ...armed.patch };
+                    const patch = { ...armed.patch };
+                    if (tool === 'image') {
+                        patch.imageUrl = '';
+                        patch.originalAspectRatio = null;
+                        patch.widthInDataUnits = null;
+                        patch.heightInDataUnits = null;
+                    }
+                    return { ...base, ...patch };
                 }
             }
         } catch (_) {}
@@ -11015,8 +11043,10 @@ class DrawingToolsManager {
     applySavedStyle(drawing) {
         const armedStyle = this.getArmedToolStyle(drawing.type);
         if (armedStyle && typeof armedStyle === 'object') {
+            const isImageTool = drawing.type === 'image';
             Object.keys(armedStyle).forEach((key) => {
-                if (key !== 'id' && key !== 'points') {
+                if (key !== 'id' && key !== 'points'
+                    && !(isImageTool && (key === 'imageUrl' || key === 'originalAspectRatio'))) {
                     drawing.style[key] = armedStyle[key];
                 }
             });

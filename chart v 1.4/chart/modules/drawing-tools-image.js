@@ -572,10 +572,12 @@ class ImageTool extends BaseDrawing {
                         }
 
                         this.style.imageUrl = imageDataUrl;
-                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
-                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
-                        this.style.widthInDataUnits = null;
-                        this.style.heightInDataUnits = null;
+                        if (!this.style.widthInDataUnits) {
+                            this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                            this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                            this.style.widthInDataUnits = null;
+                            this.style.heightInDataUnits = null;
+                        }
                         this.meta.updatedAt = Date.now();
                         this._notifyV9ImageChanged();
 
@@ -598,10 +600,12 @@ class ImageTool extends BaseDrawing {
                     try {
                         this.style.originalAspectRatio = null;
                         this.style.imageUrl = imageDataUrl;
-                        this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
-                        this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
-                        this.style.widthInDataUnits = null;
-                        this.style.heightInDataUnits = null;
+                        if (!this.style.widthInDataUnits) {
+                            this.style.width = IMAGE_TOOL_DEFAULT_WIDTH;
+                            this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
+                            this.style.widthInDataUnits = null;
+                            this.style.heightInDataUnits = null;
+                        }
                         this.meta.updatedAt = Date.now();
                         this._notifyV9ImageChanged();
 

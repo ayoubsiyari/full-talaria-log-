@@ -118,8 +118,9 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
         color: typedColor,
         placeholderColor: TEXT_TOOL_PLACEHOLDER_COLOR,
         textAlign: 'left',
-        noWrap: true,
-        autoGrowWidth: true,
+        noWrap: style.wrapText !== true,
+        maxWidth: style.maxWidth || 260,
+        autoGrowWidth: style.wrapText !== true,
         hideSelector,
         editorBackground: boxFill,
         editorPadding: '6px 8px',
@@ -668,13 +669,15 @@ class TextTool extends BaseDrawing {
             bodyHitArea.node().addEventListener('dblclick', handleHitDblClickSettings, true);
         }
 
-        if (this._shouldCreateHandles(renderOpts)) {
-            this.createTextHandles(this.group, this.bbox);
-        } else if (this.bbox) {
-            this._syncTextHandlePositions(this.group, this.bbox);
-        }
+        // Plain text: move/select only — font size via toolbar, not corner handles.
+        this.group.selectAll('.resize-handle, .resize-handle-group, .resize-handle-hit').remove();
+        this.handles = [];
 
         return this.group;
+    }
+
+    _shouldCreateHandles(opts = {}) {
+        return false;
     }
 
     _syncTextHandlePositions(group, bbox) {
@@ -1523,6 +1526,8 @@ class NoteTool extends BaseDrawing {
         this.style.fontFamily = style.fontFamily || 'Roboto, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
+        if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 260;
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -1589,8 +1594,18 @@ class NoteTool extends BaseDrawing {
             catch(e) { return (str || '').length * scaledFontSize * 0.6; }
         };
 
-        // Split only on explicit newlines — no auto word-wrap
-        const wrappedLines = noteDisplay.text.split('\n');
+        // Word-wrap or explicit newlines
+        const innerMaxW = Math.max(20, noteMaxWidth - padding * 2);
+        const wrappedLines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                noteDisplay.text,
+                innerMaxW,
+                scaledFontSize,
+                this.style.fontFamily || 'Arial, sans-serif',
+                this.style.fontWeight || 'normal',
+                this.style.fontStyle || 'normal'
+            )
+            : noteDisplay.text.split('\n');
         const lineHeight = scaledFontSize * 1.3;
         const totalTextHeight = wrappedLines.length * lineHeight;
 
@@ -1601,7 +1616,9 @@ class NoteTool extends BaseDrawing {
             if (w > maxLineWidth) maxLineWidth = w;
         });
 
-        const boxWidth = Math.max(maxLineWidth + padding * 2, 60);
+        const boxWidth = this.style.wrapText
+            ? Math.max(Math.min(maxLineWidth + padding * 2, noteMaxWidth), 60)
+            : Math.max(maxLineWidth + padding * 2, 60);
         const boxHeight = totalTextHeight + padding * 2;
 
         // Position box so its nearest edge always touches p2, regardless of line direction
@@ -2053,7 +2070,7 @@ class PriceNoteTool extends BaseDrawing {
             : '#2962ff';
         const brd = this.style.borderColor;
         const hasLabelBorder = brd && brd !== 'none' && brd !== 'transparent';
-        const boxStroke = hasLabelBorder ? brd : (lineStroke !== 'none' ? lineStroke : 'none');
+        const boxStroke = hasLabelBorder ? brd : 'none';
 
         this.group.append('rect')
             .attr('class', 'note-body-hit text-body-hit')
@@ -2129,6 +2146,8 @@ class PinTool extends BaseDrawing {
         this.style.fontFamily = style.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
+        if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 180;
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -2160,22 +2179,37 @@ class PinTool extends BaseDrawing {
         const boxGap = 8;
         if (displayText) {
             const padding = 14;
-            
-            // Measure text
-            const tempText = container.append('text')
-                .attr('font-size', `${scaledFontSize}px`)
-                .attr('font-family', this.style.fontFamily)
-                .text(displayText);
-            let textBbox;
-            try {
-                textBbox = tempText.node().getBBox();
-            } catch(e) {
-                textBbox = { width: 60, height: scaledFontSize * 1.2 };
-            }
-            tempText.remove();
+            const maxBubbleWidth = this.style.maxWidth || 180;
+            const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
+            const _pinCanvas = document.createElement('canvas');
+            const _pinCtx = _pinCanvas.getContext('2d');
+            _pinCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily}`;
+            const measureWidth = (str) => {
+                try { return _pinCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
+                catch (e) { return (str || '').length * scaledFontSize * 0.6; }
+            };
 
-            const boxWidth = Math.max(textBbox.width + padding * 2, 80);
-            const boxHeight = textBbox.height + padding;
+            const pinLines = this.style.wrapText
+                ? TextTool.wrapTextLines(
+                    displayText,
+                    innerMaxW,
+                    scaledFontSize,
+                    this.style.fontFamily,
+                    this.style.fontWeight || 'normal',
+                    this.style.fontStyle || 'normal'
+                )
+                : displayText.split('\n');
+            const lineHeight = scaledFontSize * 1.3;
+            let maxLineWidth = 40;
+            pinLines.forEach((line) => {
+                const w = measureWidth(line || ' ');
+                if (w > maxLineWidth) maxLineWidth = w;
+            });
+
+            const boxWidth = this.style.wrapText
+                ? Math.max(80, Math.min(maxLineWidth + padding * 2, maxBubbleWidth))
+                : Math.max(maxLineWidth + padding * 2, 80);
+            const boxHeight = Math.max(pinLines.length * lineHeight + padding, scaledFontSize + padding);
             const arrowSize = 8;
             const edgeMargin = 4;
 
@@ -2251,10 +2285,12 @@ class PinTool extends BaseDrawing {
 
             // Text (center within body; for below-render the body starts at boxY + arrowSize)
             const textBodyTop = renderBelow ? boxY + arrowSize : boxY;
+            const totalTextHeight = pinLines.length * lineHeight;
+            const firstLineY = textBodyTop + (boxHeight - totalTextHeight) / 2 + scaledFontSize * 0.85;
             const boxTextEl = textBoxGroup.append('text')
                 .attr('class', 'inline-editable-text')
                 .attr('x', boxX + boxWidth / 2)
-                .attr('y', textBodyTop + boxHeight / 2 + scaledFontSize * 0.35)
+                .attr('y', firstLineY)
                 .attr('fill', this.style.textColor)
                 .attr('font-size', `${scaledFontSize}px`)
                 .attr('font-family', this.style.fontFamily)
@@ -2262,8 +2298,14 @@ class PinTool extends BaseDrawing {
                 .attr('font-style', this.style.fontStyle || 'normal')
                 .attr('text-anchor', 'middle')
                 .style('pointer-events', 'all')
-                .style('cursor', 'move')
-                .text(displayText);
+                .style('cursor', 'move');
+
+            pinLines.forEach((line, i) => {
+                boxTextEl.append('tspan')
+                    .attr('x', boxX + boxWidth / 2)
+                    .attr('dy', i === 0 ? 0 : lineHeight)
+                    .text(line || '\u00A0');
+            });
 
             const self = this;
             const CLICK_DELAY = 250;
@@ -3024,6 +3066,8 @@ class CommentTool extends BaseDrawing {
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         this.style.textAlign = style.textAlign || 'center';
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
+        if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 280;
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -3061,13 +3105,29 @@ class CommentTool extends BaseDrawing {
         };
 
         const commentDisplay = resolveTextToolDisplay(this.text);
-        // Split on explicit newlines only
-        const lines = commentDisplay.text.split('\n');
+        const maxBubbleWidth = this.style.maxWidth || 280;
+        const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
+        const commentSplitLines = (rawText) => {
+            const lines = String(rawText || '').split('\n');
+            return lines.length ? lines : [''];
+        };
+        const lines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                commentDisplay.text,
+                innerMaxW,
+                _cFontSize,
+                _cFontFamily,
+                _cFontWeight,
+                _cFontStyle
+            )
+            : commentSplitLines(commentDisplay.text);
         const lineHeight = _cFontSize * 1.3;
         let maxLineW = minWidth - padding * 2;
         lines.forEach(l => { const lw = measureW(l || ' '); if (lw > maxLineW) maxLineW = lw; });
 
-        const w = Math.max(maxLineW + padding * 2, minWidth);
+        const w = this.style.wrapText
+            ? Math.max(minWidth, Math.min(maxLineW + padding * 2, maxBubbleWidth))
+            : Math.max(maxLineW + padding * 2, minWidth);
         const h = Math.max(lines.length * lineHeight + padding * 2, minHeight);
 
         // Center the bubble on the point
@@ -3155,10 +3215,26 @@ class CommentTool extends BaseDrawing {
         // In-place live updater — avoids full re-render, updates paths + tspans directly
         self._updateCommentBubble = () => {
             const liveDisplay = resolveTextToolDisplay(self.text);
-            const lNew = liveDisplay.text.split('\n');
+            const resolveLines = (rawText) => {
+                if (self.style.wrapText) {
+                    return TextTool.wrapTextLines(
+                        rawText,
+                        innerMaxW,
+                        _cFontSize,
+                        _cFontFamily,
+                        _cFontWeight,
+                        _cFontStyle
+                    );
+                }
+                const split = String(rawText || '').split('\n');
+                return split.length ? split : [''];
+            };
+            const lNew = resolveLines(liveDisplay.text);
             let mLW = minWidth - padding * 2;
             lNew.forEach(l => { const lw = measureW(l || ' '); if (lw > mLW) mLW = lw; });
-            const wN = Math.max(mLW + padding * 2, minWidth);
+            const wN = self.style.wrapText
+                ? Math.max(minWidth, Math.min(mLW + padding * 2, maxBubbleWidth))
+                : Math.max(mLW + padding * 2, minWidth);
             const hN = Math.max(lNew.length * lineHeight + padding * 2, minHeight);
             const bX = centerX - wN / 2;
             const bY = centerY - hN / 2;
@@ -3722,6 +3798,8 @@ class Signpost2Tool extends BaseDrawing {
         this.style.fontWeight = style.fontWeight || 'normal';
         this.style.fontStyle = style.fontStyle || 'normal';
         this.style.lineLength = style.lineLength || 100;
+        if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
+        if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 180;
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -3743,10 +3821,13 @@ class Signpost2Tool extends BaseDrawing {
         const p1 = this.points[0];
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
-        const lineColor = this.style.fill || this.style.stroke || '#787b86';
+        const lineColor = this.style.stroke || '#787b86';
+        const labelFill = (this.style.fill && this.style.fill !== 'none' && this.style.fill !== 'transparent')
+            ? this.style.fill
+            : '#2e3238';
         const rawTextBorderColor = this.style.borderColor;
         const textBorderColor = (rawTextBorderColor === undefined || rawTextBorderColor === null || rawTextBorderColor === '')
-            ? lineColor
+            ? 'none'
             : rawTextBorderColor;
         const hasTextBorder = textBorderColor !== 'none' && textBorderColor !== 'transparent';
 
@@ -3776,22 +3857,37 @@ class Signpost2Tool extends BaseDrawing {
         const signDisplay = resolveTextToolDisplay(this.text);
         const displayText = signDisplay.text;
         const padding = 10;
+        const maxBubbleWidth = this.style.maxWidth || 180;
+        const innerMaxW = Math.max(20, maxBubbleWidth - padding * 2);
+        const _spCanvas = document.createElement('canvas');
+        const _spCtx = _spCanvas.getContext('2d');
+        _spCtx.font = `${this.style.fontStyle || 'normal'} ${this.style.fontWeight || 'normal'} ${scaledFontSize}px ${this.style.fontFamily}`;
+        const measureWidth = (str) => {
+            try { return _spCtx.measureText(str || '').width || ((str || '').length * scaledFontSize * 0.6); }
+            catch (e) { return (str || '').length * scaledFontSize * 0.6; }
+        };
 
-        // Measure text
-        const tempText = container.append('text')
-            .attr('font-size', `${scaledFontSize}px`)
-            .attr('font-family', this.style.fontFamily)
-            .text(displayText);
-        let textBbox;
-        try {
-            textBbox = tempText.node().getBBox();
-        } catch(e) {
-            textBbox = { width: 40, height: scaledFontSize * 1.2 };
-        }
-        tempText.remove();
+        const signLines = this.style.wrapText
+            ? TextTool.wrapTextLines(
+                displayText,
+                innerMaxW,
+                scaledFontSize,
+                this.style.fontFamily,
+                this.style.fontWeight || 'normal',
+                this.style.fontStyle || 'normal'
+            )
+            : displayText.split('\n');
+        const lineHeight = scaledFontSize * 1.3;
+        let maxLineWidth = 40;
+        signLines.forEach((line) => {
+            const w = measureWidth(line || ' ');
+            if (w > maxLineWidth) maxLineWidth = w;
+        });
 
-        const boxWidth = textBbox.width + padding * 2;
-        const boxHeight = textBbox.height + padding;
+        const boxWidth = this.style.wrapText
+            ? Math.max(50, Math.min(maxLineWidth + padding * 2, maxBubbleWidth))
+            : Math.max(maxLineWidth + padding * 2, 50);
+        const boxHeight = Math.max(signLines.length * lineHeight + padding, scaledFontSize + padding);
         const cornerRadius = 6;
         
         // Position box below the line end, centered
@@ -3805,7 +3901,7 @@ class Signpost2Tool extends BaseDrawing {
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
-            .attr('fill', this.style.fill)
+            .attr('fill', labelFill)
             .attr('stroke', hasTextBorder ? textBorderColor : 'none')
             .attr('stroke-width', hasTextBorder ? 1 : 0)
             .attr('rx', cornerRadius)
@@ -3813,19 +3909,27 @@ class Signpost2Tool extends BaseDrawing {
             .style('cursor', 'move');
 
         // Text
+        const totalTextHeight = signLines.length * lineHeight;
+        const firstLineY = boxY + (boxHeight - totalTextHeight) / 2 + scaledFontSize * 0.85;
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', x1)
-            .attr('y', boxY + boxHeight / 2 + scaledFontSize / 3)
-            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.fill, signDisplay.isPlaceholder))
+            .attr('y', firstLineY)
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, labelFill, signDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
             .attr('font-style', this.style.fontStyle || 'normal')
             .attr('text-anchor', 'middle')
             .style('pointer-events', 'all')
-            .style('cursor', 'move')
-            .text(displayText);
+            .style('cursor', 'move');
+
+        signLines.forEach((line, i) => {
+            textElement.append('tspan')
+                .attr('x', x1)
+                .attr('dy', i === 0 ? 0 : lineHeight)
+                .text(line || '\u00A0');
+        });
 
         // Double-click label text = edit; double-click line/border = settings
         const self = this;

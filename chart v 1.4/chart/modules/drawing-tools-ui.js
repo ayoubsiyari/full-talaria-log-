@@ -14362,7 +14362,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-                if (drawing.type !== 'signpost-2' && drawing.type !== 'flag-mark' && drawing.type !== 'price-note' && drawing.type !== 'comment') {
+                if (drawing.type !== 'signpost-2' && drawing.type !== 'flag-mark') {
 
                 const borderRow = document.createElement('div');
 
@@ -19302,7 +19302,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
                     } else {
 
-                        const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2'].includes(drawing.type);
+                        const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2', 'price-note'].includes(drawing.type);
 
                         if (usesBorderColor) {
 
@@ -22652,7 +22652,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
             } else if (prop === 'borderColor') {
 
-                const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2'].includes(drawing.type);
+                const usesBorderColor = ['callout', 'comment', 'pin', 'anchored-text', 'signpost-2', 'price-note'].includes(drawing.type);
 
                 if (usesBorderColor) {
 
@@ -25221,15 +25221,7 @@ applyTemplate(drawing, templateId, modal) {
 
 
             if (template.style) {
-
-                for (const k in actualDrawing.style) {
-
-                    if (Object.prototype.hasOwnProperty.call(actualDrawing.style, k)) delete actualDrawing.style[k];
-
-                }
-
                 Object.assign(actualDrawing.style, this.deepClone(template.style));
-
             } else {
 
                 actualDrawing.style.stroke = template.stroke;
@@ -25244,7 +25236,7 @@ applyTemplate(drawing, templateId, modal) {
 
 
 
-            if (template.text !== undefined) {
+            if (template.text !== undefined && String(template.text).trim() !== '') {
 
                 actualDrawing.text = template.text;
 

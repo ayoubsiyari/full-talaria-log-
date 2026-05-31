@@ -1530,7 +1530,7 @@ function v9IsTextLegacyDrawingType(type) {
 function v9BuildTxtStyleLegacyPatch(txt, legacyTool) {
   if (!txt || !legacyTool) return {};
   const d = { type: legacyTool, style: {}, text: "" };
-  v9ApplyTxtStyleToDrawing(d, v9TxtStyleForPlacement(txt));
+  v9ApplyTxtStyleToDrawing(d, v9TxtStyleForPlacement(txt, legacyTool));
   return { ...d.style };
 }
 
@@ -1562,7 +1562,7 @@ function v9PushArmedDrawStyle(legacyTool, tlStyle, txtStyleArg) {
     return;
   }
   if (v9IsTextLegacyDrawingType(legacyTool) && txtStyleArg) {
-    const placementTxt = v9TxtStyleForPlacement(txtStyleArg);
+    const placementTxt = v9TxtStyleForPlacement(txtStyleArg, legacyTool);
     window.__v9ArmedDrawStyle = {
       tool: legacyTool,
       patch: v9BuildTxtStyleLegacyPatch(placementTxt, legacyTool),
@@ -2079,10 +2079,15 @@ function v9HasSelectedEmojiDrawing() {
   }
 }
 
-/** New text placements must not reuse panel/inline editor text from a prior object. */
-function v9TxtStyleForPlacement(txt) {
+/** New text placements must not reuse panel/inline editor state from a prior object. */
+function v9TxtStyleForPlacement(txt, legacyTool) {
   if (!txt || typeof txt !== "object") return txt;
-  return { ...txt, content: "" };
+  const next = { ...txt, content: "" };
+  if (legacyTool === "image") {
+    next.imageDataUrl = "";
+    next.imageTransparency = 100;
+  }
+  return next;
 }
 
 /** Clear cached text input when a text object is removed or a fresh tool is armed. */
@@ -2092,7 +2097,7 @@ function v9ClearTxtPlacementInput(setTxtStyle, suppressRef, armedLegacyTool) {
   setTxtStyle((s) => {
     const next = s.content ? { ...s, content: "" } : s;
     if (armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)) {
-      v9PushArmedDrawStyle(armedLegacyTool, null, v9TxtStyleForPlacement(next));
+      v9PushArmedDrawStyle(armedLegacyTool, null, v9TxtStyleForPlacement(next, armedLegacyTool));
     }
     return next;
   });
@@ -2151,6 +2156,7 @@ function v9TxtStylePatchFromDrawing(d) {
     } else {
       out.borderOn = false;
     }
+    out.wrapText = !!s.wrapText;
   } else if (t === "price-note") {
     const fill = s.fill;
     out.bgColor = fill ?? out.bgColor;
@@ -2167,7 +2173,9 @@ function v9TxtStylePatchFromDrawing(d) {
   } else if (t === "comment") {
     out.bgColor = s.backgroundColor ?? out.bgColor;
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
-    out.borderOn = false;
+    out.borderColor = s.borderColor ?? out.borderColor;
+    out.borderOn = !!(s.borderColor && s.borderColor !== "none" && s.borderColor !== "transparent");
+    out.wrapText = !!s.wrapText;
   }
 
   if (t === "pin") {
@@ -2176,12 +2184,15 @@ function v9TxtStylePatchFromDrawing(d) {
     out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
     out.borderColor = s.borderColor || "#555";
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
+    out.wrapText = !!s.wrapText;
   } else if (t === "signpost" || t === "signpost-2") {
-    out.bgColor = s.fill || s.color || s.stroke || "#787b86";
-    out.bgOn = true;
+    out.bgColor = s.fill || "#2e3238";
+    out.bgOn = !!(s.fill && s.fill !== "transparent" && s.fill !== "none");
+    out.lineColor = s.stroke && s.stroke !== "none" ? s.stroke : "#787b86";
     const brd = s.borderColor;
     out.borderColor = brd ?? out.borderColor;
     out.borderOn = !!(brd && brd !== "none" && brd !== "transparent");
+    out.wrapText = !!s.wrapText;
   } else if (t === "flag-mark") {
     out.bgColor = s.fill || s.stroke || "#787b86";
     out.bgOn = true;
@@ -2239,7 +2250,11 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     applyCommon();
     applyTextBlock();
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
-    s.borderColor = "transparent";
+    s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 280;
+    }
     return;
   }
   if (t === "text") {
@@ -2283,6 +2298,10 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
       s.stroke = "none";
       s.strokeWidth = 0;
     }
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 260;
+    }
     return;
   }
   if (t === "price-note") {
@@ -2305,16 +2324,24 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
     if (txt.pinLabelColor != null) { s.fill = txt.pinLabelColor; s.stroke = txt.pinLabelColor; }
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 180;
+    }
     return;
   }
   if (t === "signpost" || t === "signpost-2") {
     applyCommon();
-    if (txt.bgColor != null) {
-      s.fill = txt.bgColor;
-      s.stroke = txt.bgColor;
-      s.color = txt.bgColor;
+    s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
+    if (txt.lineColor != null) {
+      s.stroke = txt.lineColor;
+      s.color = txt.lineColor;
     }
     s.borderColor = txt.borderOn ? (txt.borderColor != null ? txt.borderColor : s.borderColor) : "none";
+    s.wrapText = !!txt.wrapText;
+    if (txt.wrapText) {
+      s.maxWidth = Number.isFinite(Number(s.maxWidth)) && Number(s.maxWidth) > 0 ? s.maxWidth : 180;
+    }
     if (txt.content != null) { d.text = String(txt.content); try { if (typeof d.setText === "function") d.setText(d.text); } catch (_) {} }
     return;
   }
@@ -2331,7 +2358,7 @@ function v9ApplyTxtStyleToDrawing(d, txt) {
       const curUrl = s.imageUrl || "";
       const nextUrl = String(txt.imageDataUrl);
       if (nextUrl !== curUrl) {
-        v9ApplyImageDataUrlToDrawingStyle(s, nextUrl, { resetSize: !!nextUrl });
+        v9ApplyImageDataUrlToDrawingStyle(s, nextUrl, { resetSize: !!nextUrl && !curUrl });
         d._keepEmpty = !nextUrl;
         if (d.meta) d.meta.updatedAt = Date.now();
       }
@@ -4887,7 +4914,7 @@ if (typeof window !== "undefined" && !window.__v9PlacedDrawingHooksInstalled) {
     drawing.locked = false;
     if (armed.txtStyle && v9IsTextLegacyDrawingType(drawing.type)) {
       if (!drawing.style) drawing.style = {};
-      v9ApplyTxtStyleToDrawing(drawing, v9TxtStyleForPlacement(armed.txtStyle));
+      v9ApplyTxtStyleToDrawing(drawing, v9TxtStyleForPlacement(armed.txtStyle, drawing.type));
       const manager = dm || null;
       try {
         const tb = manager && manager.toolbar;
@@ -12620,8 +12647,8 @@ const TalariaV8bLive = () => {
     else if(targetKey?.startsWith("gannFanLv-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannFanLevels: s.gannFanLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey?.startsWith("gannArc-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, gannArcLevels: s.gannArcLevels.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
     else if(targetKey === "txtTextColor") cpApplyTxtStyle(s=>({...s, textColor: colorVal}));
-    else if(targetKey === "txtBgColor") cpApplyTxtStyle(s=>({...s, bgColor: colorVal}));
-    else if(targetKey === "txtBorderColor") cpApplyTxtStyle(s=>({...s, borderColor: colorVal}));
+    else if(targetKey === "txtBgColor") cpApplyTxtStyle(s=>({...s, bgColor: colorVal, bgOn: true}));
+    else if(targetKey === "txtBorderColor") cpApplyTxtStyle(s=>({...s, borderColor: colorVal, borderOn: true}));
     else if(targetKey === "txtLineColor") cpApplyTxtStyle(s=>({...s, lineColor: colorVal}));
     else if(targetKey === "pinLabelColor") cpApplyTxtStyle(s=>({...s, pinLabelColor: colorVal}));
     else if(targetKey === "vwap_vwapColor")  setVwapStyle(s=>({...s, vwapColor:  colorVal}));
@@ -13802,6 +13829,7 @@ const TalariaV8bLive = () => {
   const suppressForwardBridge = useRef(false);
   /** Canvas → React coord/vis read-back; separate from style bridge so layout effect cannot clear style suppress early. */
   const suppressCoordBridge = useRef(false);
+  const suppressTxtCoordBridge = useRef(false);
   const suppressTxtForwardBridge = useRef(false);
   const suppressRrForwardBridge = useRef(false);
   const suppressVwapBridge = useRef(false);
@@ -13848,6 +13876,7 @@ const TalariaV8bLive = () => {
           };
           if (tp && Object.keys(tp).length) {
             suppressTxtForwardBridge.current = true;
+            suppressTxtCoordBridge.current = true;
             flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
           }
           v9SyncQuickBarLockFromDrawing(d, null, setTxtLocked);
@@ -13855,10 +13884,12 @@ const TalariaV8bLive = () => {
         requestAnimationFrame(() => {
           suppressForwardBridge.current = false;
           suppressTxtForwardBridge.current = false;
+          suppressTxtCoordBridge.current = false;
         });
       } catch (err) {
         suppressForwardBridge.current = false;
         suppressTxtForwardBridge.current = false;
+        suppressTxtCoordBridge.current = false;
         console.warn("[V9] template style sync failed:", err);
       }
     };
@@ -13915,6 +13946,18 @@ const TalariaV8bLive = () => {
     };
     window.addEventListener("v9ImageDrawingChanged", onImageChanged);
     return () => window.removeEventListener("v9ImageDrawingChanged", onImageChanged);
+  }, []);
+
+  useEffect(() => {
+    const onNewImagePlaced = () => {
+      suppressTxtForwardBridge.current = true;
+      setTxtStyle((s) => ({ ...s, imageDataUrl: "", imageTransparency: 100 }));
+      requestAnimationFrame(() => {
+        suppressTxtForwardBridge.current = false;
+      });
+    };
+    window.addEventListener("v9ImageDrawingPlaced", onNewImagePlaced);
+    return () => window.removeEventListener("v9ImageDrawingPlaced", onNewImagePlaced);
   }, []);
 
   // Legacy chart.js updates drawing geometry/style on canvas (drag, fib edits, etc.) without touching
@@ -15574,7 +15617,7 @@ const TalariaV8bLive = () => {
     if (textUiActive && !editingDrawingRef.current) {
       const legacy = resolveArmedTextLegacyTool();
       if (legacy && v9IsTextLegacyDrawingType(legacy)) {
-        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live));
+        v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(live, legacy));
       }
     }
   }, [tool, tlBarSelected, tlBarDrawingGroup, resolveArmedTextLegacyTool]);
@@ -15972,7 +16015,7 @@ const TalariaV8bLive = () => {
       return V9_GROUP_DEFAULT.text || "text";
     })();
     if (!legacy || !v9IsTextLegacyDrawingType(legacy)) return;
-    v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(txtStyle));
+    v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(txtStyle, legacy));
   }, [
     tool,
     groupSelected.text,
@@ -15996,6 +16039,10 @@ const TalariaV8bLive = () => {
   ]);
 
   useLayoutEffect(() => {
+    if (suppressCoordBridge.current) {
+      suppressCoordBridge.current = false;
+      return;
+    }
     if (suppressTxtForwardBridge.current) {
       suppressTxtForwardBridge.current = false;
       return;
@@ -19914,15 +19961,27 @@ const TalariaV8bLive = () => {
               </svg>}
             </TxBtn>
           </div>
-          {/* Background + leader line swatches hidden on note/priceNote quick bar — use Text settings panel instead */}
-          {/* tool color button — pin marker / signpost line+label */}
+          {/* Border + background swatches for note / priceNote */}
+          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-toolcol" isAct={colorPicker==="txtBorderColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBorderColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.borderColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBorderColor");}}}>
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n={txtQuickIcon} s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.borderOn?txtStyle.borderColor:"rgba(120,123,134,0.38)",borderRadius:1}}/></div>}
+          </TxBtn>}
+          {(txtQuickIcon === "note" || txtQuickIcon === "priceNote") && <TxBtn id="txt-bgcol-note" isAct={colorPicker==="txtBgColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#000000');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
+            {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={txtStyle.bgOn?txtStyle.bgColor:"transparent"}/></svg>}
+          </TxBtn>}
+          {txtQuickIcon === "priceNote" && <TxBtn id="txt-linecol" isAct={colorPicker==="txtLineColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787B86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><svg width={14} height={14} viewBox="0 0 14 14"><line x1="7" y1="1" x2="7" y2="13" stroke={txtStyle.lineColor||'#787B86'} strokeWidth="2" strokeLinecap="round"/></svg><div style={{width:12,height:2,background:txtStyle.lineColor||'#787B86',borderRadius:1}}/></div>}
+          </TxBtn>}
+          {/* tool color button — pin marker / signpost stem */}
           {txtQuickIcon === "pin" && <TxBtn id="txt-pincol" isAct={colorPicker==="pinLabelColor"}
             onClick={e=>{e.stopPropagation();if(colorPicker==="pinLabelColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.pinLabelColor||'#4A6AFF');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("pinLabelColor");}}}>
             {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="pin" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.pinLabelColor,borderRadius:1}}/></div>}
           </TxBtn>}
-          {txtQuickIcon === "signpost" && <TxBtn id="txt-signpostcol" isAct={colorPicker==="txtBgColor"}
-            onClick={e=>{e.stopPropagation();if(colorPicker==="txtBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.bgColor||'#787b86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtBgColor");}}}>
-            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="signpost" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.bgColor,borderRadius:1}}/></div>}
+          {txtQuickIcon === "signpost" && <TxBtn id="txt-signpostcol" isAct={colorPicker==="txtLineColor"}
+            onClick={e=>{e.stopPropagation();if(colorPicker==="txtLineColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{setTxtBarSizeOpen(false);setTxtSizeOpen(false);const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(txtStyle.lineColor||'#787b86');const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("txtLineColor");}}}>
+            {(_,isAct,col)=><div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><I n="signpost" s={16} cl={col}/><div style={{width:12,height:2,background:txtStyle.lineColor||'#787b86',borderRadius:1}}/></div>}
           </TxBtn>}
           {/* text color button — hidden for emoji, price note (auto price label) */}
           {!["emoji","flag","image","priceNote"].includes(txtQuickIcon) && <TxBtn id="txt-col" isAct={colorPicker==="txtTextColor"}
@@ -19992,14 +20051,6 @@ const TalariaV8bLive = () => {
           }}>
             {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
           </TxBtn>
-          {!["note","priceNote","callout","comment","priceLabel","signpost","flag","image"].includes(txtQuickIcon) && <TxBtn id="txt-anchor" isAct={txtStyle.anchored} onClick={()=>{setTxtBarDrop(null);setTxtStyle(s=>({...s,anchored:!s.anchored}));}}>
-            {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={col} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="5.5" r="2.5"/>
-              <line x1="12" y1="8" x2="12" y2="20"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <path d="M5,20 Q5,15.5 12,15.5 Q19,15.5 19,20"/>
-            </svg>}
-          </TxBtn>}
           <TxBtn id="txt-del" isDel onClick={()=>{
             setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);
             let deletedText = false;
@@ -20347,19 +20398,35 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Background row — tools with optional fill */}
-              {!isImage && !isFlag && !isSignpost && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {/* Background row — tools with optional fill (signpost label bg uses same row) */}
+              {!isImage && !isFlag && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 {TlChk(txtStyle.bgOn,"txtBgChk",null,()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn})))}
                 <span onClick={()=>setTxtStyle(s=>({...s,bgOn:!s.bgOn}))}
-                  style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Background</span>
+                  style={{fontSize:12,color:txtStyle.bgOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>{isSignpost ? "Label background" : "Background"}</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor} disabled={!txtStyle.bgOn}/>
                   <div style={{width:42,height:26,visibility:"hidden"}}/>
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Border row — hidden for signpost, flag, image, price note, comment */}
-              {!isSignpost && !isFlag && !isImage && !isPriceNote && !isComment && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {isSignpost && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+                <span style={{fontSize:12,color:c.ts,flex:1}}>Line</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <TxtSwatch ck="txtLineColor" val={txtStyle.lineColor||'#787b86'}/>
+                  <div style={{width:42,height:26,visibility:"hidden"}}/>
+                  <div style={{width:60,height:28,visibility:"hidden"}}/>
+                </div>
+              </div>}
+              {isPriceNote && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+                <span style={{fontSize:12,color:c.ts,flex:1}}>Leader line</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <TxtSwatch ck="txtLineColor" val={txtStyle.lineColor||'#787B86'}/>
+                  <div style={{width:42,height:26,visibility:"hidden"}}/>
+                  <div style={{width:60,height:28,visibility:"hidden"}}/>
+                </div>
+              </div>}
+              {/* Border row — hidden for flag, image */}
+              {!isFlag && !isImage && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 {TlChk(txtStyle.borderOn,"txtBorderChk",null,()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn})))}
                 <span onClick={()=>setTxtStyle(s=>({...s,borderOn:!s.borderOn}))}
                   style={{fontSize:12,color:txtStyle.borderOn?c.tx:c.ts,cursor:"default",flex:1,marginLeft:8,transition:"color 0.12s"}}>Border</span>
@@ -20424,8 +20491,8 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>}
-              {/* Wrap Text — text + callout */}
-              {!isNote && !isComment && !isPin && !isSignpost && !isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
+              {/* Wrap Text — tools with multiline label boxes */}
+              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
                 {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
               </div>}
             </>}
