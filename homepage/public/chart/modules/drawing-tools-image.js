@@ -111,8 +111,15 @@ class ImageTool extends BaseDrawing {
 
         this._prepareRenderGroup(container, 'drawing image-tool', renderOpts);
         this._clearDrawingLabels(scales);
-        this.group.attr('transform', `translate(${x}, ${y})`)
+        // Match emoji tool: anchor at absolute pixel coords — group transform is only for drag offset.
+        this.group
+            .attr('transform', null)
             .style('opacity', this.visible ? (this.style.opacity || 1) : 0);
+
+        const halfW = width / 2;
+        const halfH = height / 2;
+        const left = x - halfW;
+        const top = y - halfH;
 
         // Calculate actual rendered image dimensions when aspect ratio is maintained
         let borderWidth = width;
@@ -146,11 +153,11 @@ class ImageTool extends BaseDrawing {
             }
         }
 
-        // Add selection box (positioned relative to group's transform)
+        // Selection box (absolute coords — same pattern as emoji-sticker)
         this.group.append('rect')
             .attr('class', 'image-selection-box')
-            .attr('x', -borderWidth / 2)
-            .attr('y', -borderHeight / 2)
+            .attr('x', x - borderWidth / 2)
+            .attr('y', y - borderHeight / 2)
             .attr('width', borderWidth)
             .attr('height', borderHeight)
             .attr('fill', 'none')
@@ -160,12 +167,11 @@ class ImageTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('opacity', this.selected ? 1 : 0);
 
-        // Add image (positioned relative to group's transform)
         if (this.style.imageUrl) {
             this.group.append('image')
                 .attr('class', 'image-content')
-                .attr('x', -width / 2)
-                .attr('y', -height / 2)
+                .attr('x', left)
+                .attr('y', top)
                 .attr('width', width)
                 .attr('height', height)
                 .attr('href', this.style.imageUrl)
@@ -174,11 +180,10 @@ class ImageTool extends BaseDrawing {
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
         } else {
-            // Placeholder when no image is set
             const placeholderRect = this.group.append('rect')
                 .attr('class', 'image-placeholder')
-                .attr('x', -width / 2)
-                .attr('y', -height / 2)
+                .attr('x', left)
+                .attr('y', top)
                 .attr('width', width)
                 .attr('height', height)
                 .attr('fill', 'rgba(120, 123, 134, 0.05)')
@@ -207,8 +212,8 @@ class ImageTool extends BaseDrawing {
             const iconSize = Math.max(10, Math.min(15, btnFontSize + 2));
 
             const fo = this.group.append('foreignObject')
-                .attr('x', -btnW / 2)
-                .attr('y', -btnH / 2)
+                .attr('x', x - btnW / 2)
+                .attr('y', y - btnH / 2)
                 .attr('width', btnW)
                 .attr('height', btnH)
                 .style('pointer-events', 'all')
@@ -292,26 +297,29 @@ class ImageTool extends BaseDrawing {
         group.selectAll('.resize-handle-group').remove();
         
         if (this.points.length < 1) return;
-        
-        // Use border dimensions if available (for aspect ratio images), otherwise use full dimensions
+
+        const cx = this._screenX != null ? this._screenX : (
+            scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(this.points[0].x)
+                : scales.xScale(this.points[0].x)
+        );
+        const cy = this._screenY != null ? this._screenY : scales.yScale(this.points[0].y);
+
         const width = this._borderWidth || this._currentWidth || this.style.width;
         const height = this._borderHeight || this._currentHeight || this.style.height;
-        
-        // Positions relative to group's transform (0,0)
-        const minX = -width / 2;
-        const maxX = width / 2;
-        const minY = -height / 2;
-        const maxY = height / 2;
-        const midX = 0;
-        const midY = 0;
-        
+
+        const minX = cx - width / 2;
+        const maxX = cx + width / 2;
+        const minY = cy - height / 2;
+        const maxY = cy + height / 2;
+        const midX = cx;
+        const midY = cy;
+
         const handlePositions = [
-            // Corner handles
             { x: minX, y: minY, cursor: 'nwse-resize', role: 'corner-tl' },
             { x: maxX, y: minY, cursor: 'nesw-resize', role: 'corner-tr' },
             { x: maxX, y: maxY, cursor: 'nwse-resize', role: 'corner-br' },
             { x: minX, y: maxY, cursor: 'nesw-resize', role: 'corner-bl' },
-            // Edge handles
             { x: midX, y: minY, cursor: 'ns-resize', role: 'edge-top' },
             { x: maxX, y: midY, cursor: 'ew-resize', role: 'edge-right' },
             { x: midX, y: maxY, cursor: 'ns-resize', role: 'edge-bottom' },

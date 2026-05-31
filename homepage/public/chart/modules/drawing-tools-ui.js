@@ -33924,7 +33924,11 @@ class InlineTextEditor {
                     .style('width', 'auto')
                     .style('min-width', `${this._editorMinWidth}px`);
             } else if (Number.isFinite(opts.editorWidth) && opts.editorWidth > 0) {
-                this.editor.style('width', `${opts.editorWidth}px`);
+                this.editor
+                    .style('width', `${opts.editorWidth}px`)
+                    .style('max-width', `${opts.editorWidth}px`)
+                    .style('box-sizing', 'border-box')
+                    .style('overflow', 'hidden');
             }
             if (Number.isFinite(opts.editorMinHeight) && opts.editorMinHeight > 0) {
                 this.editor.style('min-height', `${opts.editorMinHeight}px`);
@@ -33951,7 +33955,13 @@ class InlineTextEditor {
 
                 .style('min-width', '4px')
 
+                .style('width', _noWrap ? 'auto' : '100%')
+
                 .style('max-width', _noWrap ? 'none' : `${maxWidth}px`)
+
+                .style('box-sizing', 'border-box')
+
+                .style('overflow-x', _noWrap ? 'visible' : 'hidden')
 
                 .style('outline', 'none')
 

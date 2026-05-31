@@ -94,6 +94,46 @@ function resolveNoteBoxStyle(style = {}) {
     return { lineStroke, boxFill, boxStroke, borderOn };
 }
 
+/** Inline editor width/wrap options that match the on-chart text box. */
+function buildWrapAwareInlineEditorOptions(drawing, bbox, padding = 6, extra = {}) {
+    const style = drawing.style || {};
+    const wrap = style.wrapText === true;
+    const maxW = (Number.isFinite(Number(style.maxWidth)) && Number(style.maxWidth) > 0)
+        ? Number(style.maxWidth)
+        : 260;
+    const pad = Number(padding) || 0;
+    const innerMax = Math.max(20, maxW - pad * 2);
+    const opts = {
+        noWrap: !wrap,
+        maxWidth: wrap ? innerMax : maxW,
+        autoGrowWidth: !wrap,
+        ...extra
+    };
+    if (bbox) {
+        if (bbox.width > 0) {
+            opts.editorMinWidth = bbox.width;
+            if (wrap) opts.editorWidth = bbox.width;
+        }
+        if (bbox.height > 0) opts.editorMinHeight = bbox.height;
+    }
+    return opts;
+}
+
+/** Clip SVG text to a rectangle so wrapped lines never paint outside the box. */
+function attachTextClipRect(group, clipKey, x, y, w, h) {
+    if (!group || group.empty() || !(w > 0) || !(h > 0)) return null;
+    const clipId = `txt-clip-${clipKey}`;
+    group.select(`#${clipId}`).remove();
+    group.append('clipPath')
+        .attr('id', clipId)
+        .append('rect')
+        .attr('x', x)
+        .attr('y', y)
+        .attr('width', w)
+        .attr('height', h);
+    return clipId;
+}
+
 /** Inline editor options aligned with the on-chart note box. */
 function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const style = drawing.style || {};
@@ -108,6 +148,7 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
     const { boxFill, boxStroke, borderOn } = resolveNoteBoxStyle(style);
     const typedColor = (style.textColor && style.textColor !== 'none') ? style.textColor : '#FFFFFF';
     const hideSelector = `.drawing[data-id="${drawing.id}"] > text.inline-editable-text, .drawing[data-id="${drawing.id}"] > rect.note-body-hit`;
+    const notePadding = 6;
     const opts = {
         inline: true,
         placeholderMode: !String(initialText).trim(),
@@ -118,18 +159,14 @@ function buildNoteInlineEditorOptions(drawing, bbox, extra = {}) {
         color: typedColor,
         placeholderColor: TEXT_TOOL_PLACEHOLDER_COLOR,
         textAlign: 'left',
-        noWrap: style.wrapText !== true,
-        maxWidth: style.maxWidth || 260,
-        autoGrowWidth: style.wrapText !== true,
         hideSelector,
         editorBackground: boxFill,
         editorPadding: '6px 8px',
         editorBorder: borderOn ? `1px solid ${boxStroke}` : 'none',
         editorBorderRadius: '4px',
+        ...buildWrapAwareInlineEditorOptions(drawing, bbox, notePadding),
         ...extra
     };
-    if (bbox && bbox.width > 0) opts.editorMinWidth = bbox.width;
-    if (bbox && bbox.height > 0) opts.editorMinHeight = bbox.height;
     return opts;
 }
 
@@ -489,6 +526,11 @@ class TextTool extends BaseDrawing {
         // Store bbox for handle creation
         this.bbox = bbox;
 
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, bbox.x, bbox.y, bbox.width, bbox.height);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
         // Store for live-update during inline editing
         this._lastContainer = container;
         this._lastScales = scales;
@@ -561,9 +603,13 @@ class TextTool extends BaseDrawing {
             const liveNode = (self.group && typeof self.group.select === 'function')
                 ? self.group.select('text.inline-editable-text').node()
                 : null;
+            const liveBox = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('.text-background, rect.text-body-hit').node()
+                : null;
             const targetNode = (liveNode && document.contains(liveNode))
                 ? liveNode : textElement.node();
-            const rect = targetNode.getBoundingClientRect();
+            const posNode = (liveBox && document.contains(liveBox)) ? liveBox : targetNode;
+            const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -582,9 +628,15 @@ class TextTool extends BaseDrawing {
                     fontSize: `${scaledFontSize}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight,
+                    fontStyle: self.style.fontStyle,
                     color: self.style.textColor,
                     textAlign: self.style.textAlign || 'left',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    editorBackground: hasBackground ? self.style.fill : undefined,
+                    editorPadding: hasBackground ? '6px 8px' : undefined,
+                    editorBorder: hasBorder ? `1px solid ${self.style.stroke}` : undefined,
+                    editorBorderRadius: hasBackground ? '4px' : undefined,
+                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
@@ -1797,6 +1849,11 @@ class NoteTool extends BaseDrawing {
                 .text(line || '\u00A0');
         });
 
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, boxX, boxY, boxWidth, boxHeight);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
         // Add double-click to edit text inline using native addEventListener (won't be overwritten)
         const self = this;
         const openNoteInlineEditor = function() {
@@ -2458,6 +2515,11 @@ class PinTool extends BaseDrawing {
                     .text(line || '\u00A0');
             });
 
+            if (this.style.wrapText) {
+                const clipId = attachTextClipRect(textBoxGroup, `${this.id}-pin`, boxX, textBodyTop, boxWidth, boxHeight);
+                if (clipId) boxTextEl.attr('clip-path', `url(#${clipId})`);
+            }
+
             const self = this;
             const CLICK_DELAY = 250;
             let clickTimer = null;
@@ -2502,7 +2564,10 @@ class PinTool extends BaseDrawing {
 
                 beginTextAnnotationInlineEdit(self);
 
-                const rect = boxTextEl.node().getBoundingClientRect();
+                const posNode = (boxPathEl && boxPathEl.node && document.contains(boxPathEl.node()))
+                    ? boxPathEl.node()
+                    : boxTextEl.node();
+                const rect = posNode.getBoundingClientRect();
                 const editX = rect.left + window.scrollX;
                 const editY = rect.top + window.scrollY;
 
@@ -2518,12 +2583,20 @@ class PinTool extends BaseDrawing {
                     'Enter text…',
                     {
                         inline: true,
-                        fontSize: `${self.style.fontSize || 12}px`,
+                        fontSize: `${scaledFontSize}px`,
                         fontFamily: self.style.fontFamily,
                         fontWeight: self.style.fontWeight || 'normal',
+                        fontStyle: self.style.fontStyle || 'normal',
                         color: self.style.textColor,
                         textAlign: 'center',
-                        hideSelector: `.drawing[data-id="${self.id}"] text`
+                        editorBackground: self.style.backgroundColor,
+                        editorPadding: '4px 8px',
+                        hideSelector: `.drawing[data-id="${self.id}"] text`,
+                        ...buildWrapAwareInlineEditorOptions(self, rect, padding),
+                        onInput: (newText) => {
+                            self.setText((newText || '').replace(/\r\n/g, '\n'));
+                            scheduleTextAnnotationLiveRender(self);
+                        }
                     }
                 );
             };
@@ -3057,6 +3130,11 @@ class CalloutTool extends BaseDrawing {
                 .text(line || '\u00A0');
         });
 
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
         const self = this;
         const CLICK_DELAY = 250;
         let clickTimer = null;
@@ -3105,7 +3183,13 @@ class CalloutTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const rect = textElement.node().getBoundingClientRect();
+            const liveBox = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('rect.shape-border-hit').node()
+                : null;
+            const posNode = (liveBox && document.contains(liveBox))
+                ? liveBox
+                : textElement.node();
+            const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -3133,11 +3217,10 @@ class CalloutTool extends BaseDrawing {
                     fontStyle: self.style.fontStyle || 'normal',
                     color: calloutEditFill,
                     textAlign: 'left',
-                    noWrap: true,
-                    maxWidth: self.style.maxWidth || 280,
                     editorBackground: self.style.backgroundColor,
                     editorPadding: '4px 8px',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
@@ -3288,6 +3371,9 @@ class CommentTool extends BaseDrawing {
         const isPreview = renderOpts.isPreview;
         if (this.points.length < 1) return;
 
+        const scaleFactor = this.getZoomScaleFactor(scales);
+        const scaledFontSize = Math.max(8, (this.style.fontSize || 14) * scaleFactor);
+
         this._prepareRenderGroup(container, 'drawing comment', renderOpts);
         this._clearDrawingLabels(scales);
 
@@ -3305,7 +3391,7 @@ class CommentTool extends BaseDrawing {
         const r = 16; // Larger radius for more rounded corners
         
         // Canvas-based measurement (reliable, no DOM dependency)
-        const _cFontSize = this.style.fontSize || 14;
+        const _cFontSize = scaledFontSize;
         const _cFontFamily = this.style.fontFamily || 'Arial, sans-serif';
         const _cFontWeight = this.style.fontWeight || 'normal';
         const _cFontStyle = this.style.fontStyle || 'normal';
@@ -3423,6 +3509,11 @@ class CommentTool extends BaseDrawing {
                 .text(line || '\u00A0');
         });
 
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, bubbleX, bubbleY, w, h);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
         const self = this;
 
         // In-place live updater — avoids full re-render, updates paths + tspans directly
@@ -3530,7 +3621,13 @@ class CommentTool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const rect = textElement.node().getBoundingClientRect();
+            const liveBox = (self.group && typeof self.group.select === 'function')
+                ? self.group.select('rect.comment-body-hit').node()
+                : null;
+            const posNode = (liveBox && document.contains(liveBox))
+                ? liveBox
+                : textElement.node();
+            const rect = posNode.getBoundingClientRect();
             const editX = rect.left + window.scrollX;
             const editY = rect.top + window.scrollY;
 
@@ -3552,17 +3649,16 @@ class CommentTool extends BaseDrawing {
                 'Enter text…',
                 {
                     inline: true,
-                    fontSize: `${self.style.fontSize || 14}px`,
+                    fontSize: `${scaledFontSize}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     fontStyle: self.style.fontStyle || 'normal',
                     color: commentEditFill,
-                    textAlign: 'left',
-                    noWrap: true,
-                    maxWidth: self.style.maxWidth || 280,
+                    textAlign: self.style.textAlign || 'left',
                     editorBackground: self.style.backgroundColor,
                     editorPadding: '4px 8px',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    ...buildWrapAwareInlineEditorOptions(self, rect, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         if (typeof self._updateCommentBubble === 'function') {
@@ -4144,6 +4240,11 @@ class Signpost2Tool extends BaseDrawing {
                 .text(line || '\u00A0');
         });
 
+        if (this.style.wrapText) {
+            const clipId = attachTextClipRect(this.group, this.id, boxX, boxY, boxWidth, boxHeight);
+            if (clipId) textElement.attr('clip-path', `url(#${clipId})`);
+        }
+
         // Double-click label text = edit; double-click line/border = settings
         const self = this;
         const CLICK_DELAY = 250;
@@ -4194,7 +4295,10 @@ class Signpost2Tool extends BaseDrawing {
 
             beginTextAnnotationInlineEdit(self);
 
-            const bbox = textElement.node().getBoundingClientRect();
+            const posNode = (labelBox && labelBox.node && document.contains(labelBox.node()))
+                ? labelBox.node()
+                : textElement.node();
+            const bbox = posNode.getBoundingClientRect();
             const x = bbox.left + window.scrollX;
             const y = bbox.top + window.scrollY;
 
@@ -4217,7 +4321,7 @@ class Signpost2Tool extends BaseDrawing {
                 'Enter text…',
                 {
                     inline: true,
-                    fontSize: `${self.style.fontSize || 12}px`,
+                    fontSize: `${scaledFontSize}px`,
                     fontFamily: self.style.fontFamily,
                     fontWeight: self.style.fontWeight || 'normal',
                     fontStyle: self.style.fontStyle || 'normal',
@@ -4226,6 +4330,7 @@ class Signpost2Tool extends BaseDrawing {
                     editorBackground: self.style.fill,
                     editorPadding: '4px 8px',
                     hideSelector: `.drawing[data-id="${self.id}"] text`,
+                    ...buildWrapAwareInlineEditorOptions(self, bbox, padding),
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         scheduleTextAnnotationLiveRender(self);
@@ -4583,6 +4688,7 @@ if (typeof module !== 'undefined' && module.exports) {
         isTextToolPlaceholder,
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
+        buildWrapAwareInlineEditorOptions,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,
@@ -4610,6 +4716,7 @@ if (typeof window !== 'undefined') {
         isTextToolPlaceholder,
         resolveTextToolDisplay,
         resolveNoteBoxStyle,
+        buildWrapAwareInlineEditorOptions,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
         openTextAnnotationSettings,

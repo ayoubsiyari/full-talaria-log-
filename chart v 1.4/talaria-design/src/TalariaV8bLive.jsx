@@ -13957,12 +13957,14 @@ const TalariaV8bLive = () => {
       const coordPatch = placedPoints && placedPoints.length > 0
         ? v9CoordPatchFromDrawing({ points: placedPoints })
         : null;
-      setTxtStyle((s) => {
-        const next = { ...s, imageDataUrl: "", imageTransparency: 100 };
-        if (coordPatch && Object.keys(coordPatch).length) {
-          Object.assign(next, coordPatch);
-        }
-        return next;
+      flushSync(() => {
+        setTxtStyle((s) => {
+          const next = { ...s, imageDataUrl: "", imageTransparency: 100 };
+          if (coordPatch && Object.keys(coordPatch).length) {
+            Object.assign(next, coordPatch);
+          }
+          return next;
+        });
       });
       requestAnimationFrame(() => {
         suppressTxtForwardBridge.current = false;
@@ -14602,7 +14604,8 @@ const TalariaV8bLive = () => {
               };
               if (tp && Object.keys(tp).length) {
                 br.suppressTxtForwardBridge.current = true;
-                br.setTxtStyle((s) => ({ ...s, ...tp }));
+                br.suppressTxtCoordBridge.current = true;
+                flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
               }
             }
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {

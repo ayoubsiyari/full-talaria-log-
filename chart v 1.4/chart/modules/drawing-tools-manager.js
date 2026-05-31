@@ -2043,26 +2043,6 @@ class DrawingToolsManager {
         return { x: parseFloat(m[1]) || 0, y: parseFloat(m[2]) || 0 };
     }
 
-    /** Screen anchor for single-point tools (image, emoji) from data points — not SVG transform. */
-    _getSinglePointScreenAnchor(drawing) {
-        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length < 1) {
-            return { x: 0, y: 0 };
-        }
-        const chart = this.chart;
-        const p0 = drawing.points[0];
-        if (!p0 || !Number.isFinite(p0.x) || !Number.isFinite(p0.y)) {
-            return { x: 0, y: 0 };
-        }
-        const x = chart && typeof chart.dataIndexToPixel === 'function'
-            ? chart.dataIndexToPixel(p0.x)
-            : (chart && typeof chart.xScale === 'function' ? chart.xScale(p0.x) : 0);
-        const y = chart && typeof chart.yScale === 'function' ? chart.yScale(p0.y) : 0;
-        return {
-            x: Number.isFinite(x) ? x : 0,
-            y: Number.isFinite(y) ? y : 0
-        };
-    }
-
     _usesPointScreenAnchor(drawingType) {
         return drawingType === 'image' || drawingType === 'emoji';
     }
@@ -4143,6 +4123,10 @@ class DrawingToolsManager {
 
         drawing.chart = this.chart;
 
+        if (placementPoints.length >= 1 && typeof drawing.recalculateTimestamps === 'function') {
+            try { drawing.recalculateTimestamps(); } catch (_) {}
+        }
+
         if (placementPoints.length >= 3 && this._isCurveLikePlacementTool(this.currentTool)) {
             drawing._controlPointGenerated = true;
             drawing._needsScreenOffset = false;
@@ -5547,9 +5531,7 @@ class DrawingToolsManager {
                     startDataPoint = getDragDataPoint(event);
                     const [bodySx, bodySy] = self._eventCanvasLocalXY(event.sourceEvent);
                     bodyDragStartScreen = { x: bodySx, y: bodySy };
-                    bodyDragStartTransform = self._usesPointScreenAnchor(drawing.type)
-                        ? self._getSinglePointScreenAnchor(drawing)
-                        : self._parseGroupTranslate(drawing.group ? drawing.group.attr('transform') : null);
+                    bodyDragStartTransform = self._parseGroupTranslate(drawing.group ? drawing.group.attr('transform') : null);
                     
                     // Check if dragging multiple selected drawings
                     if (self.selectedDrawings.length > 1 && self.selectedDrawings.includes(drawing)) {
@@ -5558,9 +5540,7 @@ class DrawingToolsManager {
                             drawing: d,
                             points: d.points.map(p => ({...p})),
                             beforeState: self.history ? self.history.captureState(d) : null,
-                            startTransform: self._usesPointScreenAnchor(d.type)
-                                ? self._getSinglePointScreenAnchor(d)
-                                : self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
+                            startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
                         multiDragStartPoints.forEach(item => {
                             setAnchoredVWAPMovingState(item.drawing, true);
@@ -5660,9 +5640,6 @@ class DrawingToolsManager {
                             if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
                                 drawing.showAxisHighlights();
                             }
-                        } else if (self._usesPointScreenAnchor(drawing.type)) {
-                            // Click without movement: re-sync translate from points (guards bad transform parse).
-                            self.renderDrawing(drawing);
                         }
                         setAnchoredVWAPMovingState(drawing, false);
                         beforeState = null;
@@ -6948,6 +6925,12 @@ class DrawingToolsManager {
                 posNode = boxNode;
             }
         }
+        if (!posNode && drawing.type === 'comment' && drawing.group) {
+            const boxNode = drawing.group.select('rect.comment-body-hit').node();
+            if (boxNode && document.contains(boxNode)) {
+                posNode = boxNode;
+            }
+        }
         if (!posNode) {
             let editableNode = drawing.group.select('text.inline-editable-text').node();
             if (!editableNode) {
@@ -6971,6 +6954,33 @@ class DrawingToolsManager {
                             scheduleLive(drawing);
                         }
                     })
+                    : (helpers && typeof helpers.buildWrapAwareInlineEditorOptions === 'function')
+                    ? {
+                        inline: true,
+                        placeholderMode: !String(initialText).trim(),
+                        fontSize: `${drawing.style.fontSize || 13}px`,
+                        fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
+                        fontWeight: drawing.style.fontWeight || 'normal',
+                        fontStyle: drawing.style.fontStyle || 'normal',
+                        color: drawing.style.textColor || '#FFFFFF',
+                        textAlign: drawing.style.textAlign || 'left',
+                        hideSelector: `.drawing[data-id="${drawing.id}"] text`,
+                        editorBackground: drawing.style.backgroundColor || drawing.style.fill,
+                        editorPadding: '4px 8px',
+                        ...helpers.buildWrapAwareInlineEditorOptions(
+                            drawing,
+                            rect,
+                            drawing.type === 'comment' ? 12 : 6
+                        ),
+                        onInput: (newText) => {
+                            const next = (newText || '').replace(/\r\n/g, '\n');
+                            drawing.setText(isPlaceholderText(next) ? '' : next);
+                            if (typeof drawing._updateCommentBubble === 'function') {
+                                drawing._updateCommentBubble();
+                            }
+                            scheduleLive(drawing);
+                        }
+                    }
                     : {
                         inline: true,
                         placeholderMode: !String(initialText).trim(),
