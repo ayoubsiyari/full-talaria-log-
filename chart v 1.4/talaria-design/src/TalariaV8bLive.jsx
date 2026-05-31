@@ -12223,6 +12223,7 @@ const TalariaV8bLive = () => {
   const tplWatchKeys = new Set(["bullBody","bullBorder","bullWick","bearBody","bearBorder","bearWick","background","gridColor","unifiedBarColorVal","crosshairColor","priceLineColor","textColor"]);
   const updateSetting = (key, val) => setSettings(prev => {
     const next = {...prev, [key]: val};
+    if (key === "textColor") next.scaleTextColor = val;
     if (tplWatchKeys.has(key) && prev.chartTemplate !== "CUSTOM") next.chartTemplate = "CUSTOM";
     return next;
   });
@@ -12334,7 +12335,9 @@ const TalariaV8bLive = () => {
 
   const applyTemplate = (name, overrideSettings) => {
     const base = overrideSettings || defaultTemplateMap[name] || {};
-    setSettings(prev => ({...prev, ...base, chartTemplate: name}));
+    const patch = { ...base, chartTemplate: name };
+    if (base.textColor != null) patch.scaleTextColor = base.textColor;
+    setSettings(prev => ({ ...prev, ...patch }));
   };
   const saveCustomTemplate = () => {
     const name = tplNameInput.trim();

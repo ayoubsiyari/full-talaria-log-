@@ -115,7 +115,8 @@
     var chart = window.chart;
     if (!chart || !chart.chartSettings) return false;
     var cs = chart.chartSettings;
-    var axisTextColor = settings.scaleTextColor != null ? settings.scaleTextColor : settings.textColor;
+    // V9 settings UI drives textColor; scaleTextColor is legacy and must not win over templates.
+    var axisTextColor = settings.textColor != null ? settings.textColor : settings.scaleTextColor;
     var map = {
       bodyUpColor: settings.bullBody,
       candleUpColor: settings.bullBody,

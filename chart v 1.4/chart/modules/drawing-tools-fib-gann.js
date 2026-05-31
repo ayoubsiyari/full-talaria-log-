@@ -1959,6 +1959,17 @@ class FibWedgeTool extends BaseDrawing {
             });
         }
 
+        // Body hitbox — full wedge interior for select + move (level arcs stack above for ratio drag).
+        const wedgeBodyPath = `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y} L ${x1} ${y1} Z`;
+        this.group.append('path')
+            .attr('class', 'shape-border-hit fib-wedge-hitbox')
+            .attr('d', wedgeBodyPath)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'transparent')
+            .attr('stroke-width', 0)
+            .style('pointer-events', 'all')
+            .style('cursor', 'move');
+
         const midAngle = sweepFlag === 1 ? (a1 + delta / 2) : (a1 - delta / 2);
 
         // Draw arcs + labels
@@ -2045,6 +2056,58 @@ class FibWedgeTool extends BaseDrawing {
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;
+    }
+
+    /** Pixel layout for wedge body hit tests (matches `render`). */
+    getPixelLayout(scales) {
+        if (!this.points || this.points.length < 3 || !scales) return null;
+
+        const getX = (p) => scales.chart?.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const getY = (p) => scales.yScale(p.y);
+
+        const cx = getX(this.points[0]);
+        const cy = getY(this.points[0]);
+        const x2 = getX(this.points[1]);
+        const y2 = getY(this.points[1]);
+        const x3 = getX(this.points[2]);
+        const y3 = getY(this.points[2]);
+
+        const baseRadius = Math.hypot(x2 - cx, y2 - cy);
+        if (!baseRadius || !Number.isFinite(baseRadius)) return null;
+
+        const a1 = Math.atan2(y2 - cy, x2 - cx);
+        const a2 = Math.atan2(y3 - cy, x3 - cx);
+
+        const twoPi = Math.PI * 2;
+        const deltaCW = (a2 - a1 + twoPi) % twoPi;
+        const deltaCCW = (a1 - a2 + twoPi) % twoPi;
+        const sweepFlag = (deltaCW <= deltaCCW) ? 1 : 0;
+        const delta = (sweepFlag === 1) ? deltaCW : deltaCCW;
+
+        return { cx, cy, baseRadius, a1, a2, sweepFlag, delta };
+    }
+
+    /** True when pointer is inside the wedge sector (whole-tool move, not level drag). */
+    isPointInsideBody(mouseX, mouseY, scales) {
+        const layout = this.getPixelLayout(scales);
+        if (!layout) return false;
+
+        const { cx, cy, baseRadius, a1, sweepFlag, delta } = layout;
+        const dx = mouseX - cx;
+        const dy = mouseY - cy;
+        const dist = Math.hypot(dx, dy);
+        if (dist > baseRadius + 8) return false;
+
+        const ang = Math.atan2(dy, dx);
+        const twoPi = Math.PI * 2;
+        if (sweepFlag === 1) {
+            const na = (ang - a1 + twoPi) % twoPi;
+            return na <= delta + 0.05;
+        }
+        const na = (a1 - ang + twoPi) % twoPi;
+        return na <= delta + 0.05;
     }
 
     static fromJSON(data, chart = null) {

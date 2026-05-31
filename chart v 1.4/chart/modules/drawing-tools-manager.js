@@ -4671,7 +4671,7 @@ class DrawingToolsManager {
         if (this._isFibLikeDrawingType(drawing.type)) {
             drawing.group.style('pointer-events', 'none');
             interactiveElements.style('pointer-events', 'stroke');
-            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox')
+            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .fib-wedge-hitbox')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
         }
@@ -4764,9 +4764,12 @@ class DrawingToolsManager {
                     && (targetSel.classed('gann-box-hitbox') || targetSel.classed('gann-square-fixed-hitbox')
                         || self._isPointOnGannToolBody(drawing, mouseX, mouseY))
                     && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
+                const onFibWedgeBody = drawing.type === 'fib-wedge'
+                    && (targetSel.classed('fib-wedge-hitbox') || self._isPointInFibWedgeBody(drawing, mouseX, mouseY));
                 const drawingsAtPoint = self.findDrawingsAtPoint(mouseX, mouseY);
                 const clickedOnFibLine = onFibStroke
                     || onGannBody
+                    || onFibWedgeBody
                     || self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)
                     || drawingsAtPoint.some(d => d && d.id === drawing.id);
                 if (!clickedOnFibLine) {
@@ -5128,14 +5131,17 @@ class DrawingToolsManager {
                     const tagName = event.target.tagName.toLowerCase();
                     const isGannBoxBodyHit = targetSelection.classed('gann-box-hitbox')
                         || targetSelection.classed('gann-square-fixed-hitbox');
-                    if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle && !isGannBoxBodyHit) {
+                    const isFibWedgeBodyHit = targetSelection.classed('fib-wedge-hitbox');
+                    if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle && !isGannBoxBodyHit && !isFibWedgeBodyHit) {
                         const srcEvent = event.sourceEvent || event;
                         if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
                             const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
                             const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
                                 && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
                                 && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
-                            if (!onGannBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
+                            const onFibWedgeBody = drawing.type === 'fib-wedge'
+                                && self._isPointInFibWedgeBody(drawing, mouseX, mouseY);
+                            if (!onGannBody && !onFibWedgeBody && !self._isPointOnFibLikeStroke(drawing, mouseX, mouseY)) {
                                 return false;
                             }
                         }
@@ -5148,7 +5154,7 @@ class DrawingToolsManager {
                     const isFibLevelHit = targetSelection.classed('fib-level-hit');
                     const isGannLevelHit = targetSelection.classed('gann-level-hit')
                         && !targetSelection.attr('data-gann-level-array');
-                    const isGannBodyHit = isGannBoxBodyHit;
+                    const isGannBodyHit = isGannBoxBodyHit || isFibWedgeBodyHit;
                     const isFibTrendHit = targetSelection.classed('fib-circles-axis')
                         || targetSelection.classed('fib-trend-line')
                         || targetSelection.classed('fib-tz-anchor')
@@ -5436,6 +5442,14 @@ class DrawingToolsManager {
             }
         }
         return false;
+    }
+
+    /** True when pointer is inside the Fib Wedge sector (whole-tool move, not level drag). */
+    _isPointInFibWedgeBody(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'fib-wedge') return false;
+        const scales = this._getGannDrawingScales();
+        if (!scales || typeof drawing.isPointInsideBody !== 'function') return false;
+        return drawing.isPointInsideBody(mouseX, mouseY, scales);
     }
 
     /** True when pointer is inside the Gann Box / Square body (whole-tool move, not level drag). */
@@ -8760,6 +8774,7 @@ class DrawingToolsManager {
 
         return selected.filter((d) => {
             if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
+                if (d.type === 'fib-wedge' && this._isPointInFibWedgeBody(d, mx, my)) return true;
                 return this._isPointOnDrawingVisibleStroke(d, mx, my);
             }
             return this._isPointInDrawingVisualBounds(d, mx, my);
@@ -8778,6 +8793,7 @@ class DrawingToolsManager {
         const pad = padding * z;
         return selected.some((d) => {
             if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
+                if (d.type === 'fib-wedge' && this._isPointInFibWedgeBody(d, mx, my)) return true;
                 return this._isPointOnDrawingVisibleStroke(d, mx, my);
             }
             const groupNode = d?.group?.node?.();
@@ -9284,6 +9300,12 @@ class DrawingToolsManager {
                     continue;
                 }
             }
+            if (drawing.type === 'fib-wedge' && !hitsById.has(drawing.id)) {
+                if (this._isPointInFibWedgeBody(drawing, mouseX, mouseY)) {
+                    hitsById.set(drawing.id, { drawing, distance: 0, z });
+                    continue;
+                }
+            }
             if (isFibLikeType && !hitsById.has(drawing.id)) {
                 continue;
             }
@@ -9539,7 +9561,8 @@ class DrawingToolsManager {
 
                     if (elementSel.classed('gann-box-hitbox')
                         || elementSel.classed('gann-fan-hitbox')
-                        || elementSel.classed('gann-square-fixed-hitbox')) {
+                        || elementSel.classed('gann-square-fixed-hitbox')
+                        || elementSel.classed('fib-wedge-hitbox')) {
                         continue;
                     }
 

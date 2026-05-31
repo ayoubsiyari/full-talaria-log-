@@ -115,7 +115,9 @@ export function applyV9ThemeSettingsToChart(settings) {
   const chart = typeof window !== "undefined" ? window.chart : null;
   if (!chart || !chart.chartSettings) return false;
   const cs = chart.chartSettings;
-  const axisTextColor = settings.scaleTextColor ?? settings.textColor;
+  // V9 settings UI exposes textColor (OHLC + axis labels). scaleTextColor is legacy
+  // state that must not override template / picker updates.
+  const axisTextColor = settings.textColor ?? settings.scaleTextColor;
   const normalizeTvCandle = (value, legacySet, target) => {
     const v = String(value || "").trim().toLowerCase();
     return legacySet.has(v) ? target : value;
