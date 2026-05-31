@@ -2728,6 +2728,7 @@ class PinTool extends BaseDrawing {
                     createInlineTextSaveHandler(self),
                     'Enter text…',
                     buildStandardInlineEditorOptions(self, rect, {
+                        focusOpts,
                         padding,
                         color: self.style.textColor,
                         textAlign: 'center',
@@ -4444,6 +4445,7 @@ class Signpost2Tool extends BaseDrawing {
                 createInlineTextSaveHandler(self),
                 'Enter text…',
                 buildStandardInlineEditorOptions(self, bbox, {
+                    focusOpts,
                     padding,
                     color: editFill,
                     textAlign: 'center',

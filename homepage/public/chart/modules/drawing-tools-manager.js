@@ -6991,6 +6991,8 @@ class DrawingToolsManager {
                     : {
                         inline: true,
                         placeholderMode: !String(initialText).trim(),
+                        selectAllOnFocus: false,
+                        focusAtEnd: !String(initialText).trim(),
                         fontSize: `${drawing.style.fontSize || 13}px`,
                         fontFamily: drawing.style.fontFamily || 'Roboto, sans-serif',
                         fontWeight: drawing.style.fontWeight || 'normal',
