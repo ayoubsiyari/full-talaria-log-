@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId } from "./v9ThemeSync.js";
+import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
 import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
@@ -12223,7 +12223,22 @@ const TalariaV8bLive = () => {
   const tplWatchKeys = new Set(["bullBody","bullBorder","bullWick","bearBody","bearBorder","bearWick","background","gridColor","unifiedBarColorVal","crosshairColor","priceLineColor","textColor"]);
   const updateSetting = (key, val) => setSettings(prev => {
     const next = {...prev, [key]: val};
-    if (key === "textColor") next.scaleTextColor = val;
+    if (key === "textColor") {
+      next.scaleTextColor = val;
+      const bg = next.background ?? prev.background;
+      if (bg && axisTextNeedsContrastFix(bg, val)) {
+        const autoText = contrastingAxisTextColor(bg);
+        next.textColor = autoText;
+        next.scaleTextColor = autoText;
+      }
+    } else if (key === "background") {
+      const curText = next.textColor ?? prev.textColor ?? prev.scaleTextColor;
+      if (axisTextNeedsContrastFix(val, curText)) {
+        const autoText = contrastingAxisTextColor(val);
+        next.textColor = autoText;
+        next.scaleTextColor = autoText;
+      }
+    }
     if (tplWatchKeys.has(key) && prev.chartTemplate !== "CUSTOM") next.chartTemplate = "CUSTOM";
     return next;
   });

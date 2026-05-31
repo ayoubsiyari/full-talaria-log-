@@ -17689,9 +17689,13 @@ async def get_trading_session_state(session_id: int, request: Request):
             sync_fn=_sync_trading_session_journal_trades,
         )
         sjs.apply_journal_to_state_for_response(state, journal)
+        # Drawings canonical store: chart_drawings table (per symbol/session). Legacy blob stripped from API.
+        if isinstance(state.get('drawings'), list):
+            state.pop('drawings', None)
         return {
             "state": {
-                "drawings": state.get("drawings") if isinstance(state.get("drawings"), list) else [],
+                "drawings": [],
+                "drawings_source": "chart_drawings_api",
                 "journal": state.get("journal") if isinstance(state.get("journal"), list) else [],
                 "journal_by_ticker": state.get("journal_by_ticker")
                 if isinstance(state.get("journal_by_ticker"), dict)
@@ -17974,7 +17978,8 @@ async def patch_trading_session_state(session_id: int, request: Request):
         state = _parse_json_dict(st.state_json)
 
         if payload.drawings is not None:
-            state["drawings"] = payload.drawings
+            # Legacy: drawings live in chart_drawings (per symbol). Drop from state_json to save space.
+            state.pop("drawings", None)
         if payload.journal is not None:
             try:
                 sjs.enforce_journal_trade_limit(payload.journal)

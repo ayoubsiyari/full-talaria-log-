@@ -1,6 +1,8 @@
 # routes/chart_routes.py
 
 import copy
+import json
+import os
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
@@ -12,6 +14,21 @@ from functools import wraps
 from subscription_access import user_entitles_journal
 
 chart_bp = Blueprint('chart', __name__)
+
+# Per-symbol drawing payload cap (canonical store — separate from session state_json).
+CHART_DRAWINGS_MAX_BYTES = int(os.getenv('CHART_DRAWINGS_MAX_BYTES', str(2 * 1024 * 1024)))
+
+
+def _parse_client_updated_at_ms(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)) and raw > 0:
+        return int(raw)
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+        return int(parsed.timestamp() * 1000)
+    except Exception:
+        return None
 
 
 # Panel-only color templates (admin UI): only these may sync for non-admins.
@@ -104,13 +121,16 @@ def get_drawings(symbol):
         if not drawing_record:
             return jsonify({
                 'success': True,
-                'drawings': []
+                'drawings': [],
+                'updated_at': None,
+                'source': 'chart_drawings'
             }), 200
         
         return jsonify({
             'success': True,
-            'drawings': drawing_record.drawings_data,
-            'updated_at': drawing_record.updated_at.isoformat()
+            'drawings': drawing_record.drawings_data if isinstance(drawing_record.drawings_data, list) else [],
+            'updated_at': drawing_record.updated_at.isoformat() if drawing_record.updated_at else None,
+            'source': 'chart_drawings'
         }), 200
         
     except Exception as e:
@@ -143,6 +163,17 @@ def save_drawings(symbol):
         
         drawings = data.get('drawings', [])
         session_id = data.get('session_id', None)
+        client_updated_at_ms = _parse_client_updated_at_ms(data.get('client_updated_at'))
+
+        try:
+            payload_bytes = len(json.dumps({'drawings': drawings}, separators=(',', ':')).encode('utf-8'))
+        except Exception:
+            payload_bytes = 0
+        if payload_bytes > CHART_DRAWINGS_MAX_BYTES:
+            return jsonify({
+                'success': False,
+                'error': f'Drawings payload too large ({payload_bytes // 1024} KB). Max {CHART_DRAWINGS_MAX_BYTES // (1024 * 1024)} MB per symbol.'
+            }), 413
         
         # Find existing record or create new one
         query = ChartDrawing.query.filter_by(
@@ -156,6 +187,16 @@ def save_drawings(symbol):
             query = query.filter_by(session_id=None)
         
         drawing_record = query.first()
+
+        if drawing_record and client_updated_at_ms is not None and drawing_record.updated_at:
+            server_ms = int(drawing_record.updated_at.timestamp() * 1000)
+            if client_updated_at_ms < server_ms - 1500:
+                return jsonify({
+                    'success': False,
+                    'error': 'Stale client revision — reload drawings from server',
+                    'updated_at': drawing_record.updated_at.isoformat(),
+                    'server_newer': True
+                }), 409
         
         if drawing_record:
             # Update existing record
@@ -177,7 +218,8 @@ def save_drawings(symbol):
             'success': True,
             'message': 'Drawings saved successfully',
             'count': len(drawings),
-            'updated_at': drawing_record.updated_at.isoformat()
+            'updated_at': drawing_record.updated_at.isoformat(),
+            'source': 'chart_drawings'
         }), 200
         
     except Exception as e:

@@ -786,6 +786,9 @@ class DrawingToolsManager {
         for (const k of candidates) {
             try {
                 localStorage.removeItem(k);
+                if (k.includes('chart_drawings_')) {
+                    localStorage.removeItem(`${k}_meta`);
+                }
                 removed++;
             } catch (_) { /* ignore */ }
             if (removed >= 12) break;
@@ -830,6 +833,97 @@ class DrawingToolsManager {
         }
     }
 
+    _getDrawingsCacheMetaKey(logicalKey) {
+        return `${logicalKey}_meta`;
+    }
+
+    _readDrawingsCacheMeta(logicalKey) {
+        try {
+            const raw = userStorage.getItem(this._getDrawingsCacheMetaKey(logicalKey));
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeDrawingsCacheMeta(logicalKey, meta) {
+        if (!meta || typeof meta !== 'object') return;
+        try {
+            userStorage.setItem(this._getDrawingsCacheMetaKey(logicalKey), JSON.stringify(meta));
+        } catch (_) { /* ignore */ }
+    }
+
+    _parseUpdatedAtMs(value) {
+        if (value == null) return 0;
+        if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+        const parsed = Date.parse(String(value));
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    }
+
+    _readLocalDrawingsCache(logicalKey) {
+        let raw = userStorage.getItem(logicalKey);
+        if (!raw && logicalKey.includes('_s')) {
+            const fileId = this.chart?.currentFileId || 'default';
+            raw = userStorage.getItem(`chart_drawings_${fileId}`);
+        }
+        if (!raw) return null;
+        try {
+            const data = JSON.parse(raw);
+            return Array.isArray(data) ? data : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /**
+     * Server-first load with timestamp merge (chart_drawings API is canonical when logged in).
+     */
+    async _resolveDrawingsPayloadForLoad() {
+        const key = this.getStorageKey();
+        const hasToken = typeof localStorage !== 'undefined' && localStorage.getItem('token');
+        const localData = this._readLocalDrawingsCache(key);
+        const localMeta = this._readDrawingsCacheMeta(key);
+        const localMs = this._parseUpdatedAtMs(localMeta?.client_updated_at || localMeta?.updated_at);
+
+        if (hasToken) {
+            const apiResult = await this.loadDrawingsFromAPI();
+            if (apiResult) {
+                const serverMs = this._parseUpdatedAtMs(apiResult.updated_at);
+                const serverDrawings = Array.isArray(apiResult.drawings) ? apiResult.drawings : [];
+
+                if (localData && localMs > serverMs + 1500) {
+                    console.log('📥 Loaded drawings from local cache (newer than server — re-syncing)');
+                    this.scheduleSaveToAPI(localData, localMs);
+                    return { data: localData, source: 'local' };
+                }
+
+                console.log(`📥 Loaded drawings from cloud (${serverDrawings.length} shapes)`);
+                this._writeDrawingsCache(key, JSON.stringify(serverDrawings));
+                this._writeDrawingsCacheMeta(key, {
+                    updated_at: apiResult.updated_at || null,
+                    client_updated_at: serverMs || Date.now()
+                });
+                return { data: serverDrawings, source: 'server' };
+            }
+        }
+
+        if (localData) {
+            console.log('📥 Loaded drawings from localStorage cache');
+            return { data: localData, source: 'local' };
+        }
+
+        return { data: null, source: 'none' };
+    }
+
+    /**
+     * Single save pipeline: local cache (instant) + debounced chart_drawings API POST.
+     */
+    persistDrawings(fileIdOverride = null) {
+        this.saveDrawings(fileIdOverride);
+    }
+
     /**
      * Flush debounced chart_drawings API save — used on tab hide / pagehide.
      */
@@ -852,7 +946,11 @@ class DrawingToolsManager {
             const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
             if (!token) return;
 
-            const body = JSON.stringify({ drawings: data, session_id: sessionId });
+            const body = JSON.stringify({
+                drawings: data,
+                session_id: sessionId,
+                client_updated_at: this._readDrawingsCacheMeta(this.getStorageKey())?.client_updated_at || Date.now()
+            });
             if (body.length > 60000) {
                 void this.saveDrawingsToAPI(data);
                 return;
@@ -883,7 +981,8 @@ class DrawingToolsManager {
             if (!d.chart) d.chart = this.chart;
         });
         const data = this.drawings.map(d => d.toJSON());
-        this._writeDrawingsCache(this.getStorageKey(), JSON.stringify(data));
+        const cacheKey = this.getStorageKey();
+        this._writeDrawingsCache(cacheKey, JSON.stringify(data));
 
         this._drawingsFlushAllInProgress = true;
         try {
@@ -892,7 +991,8 @@ class DrawingToolsManager {
                 this._apiSaveTimer = null;
             }
             this._drawingsSaveError = false;
-            await this.saveDrawingsToAPI(data);
+            const meta = this._readDrawingsCacheMeta(cacheKey);
+            await this.saveDrawingsToAPI(data, meta?.client_updated_at || Date.now());
 
             this._drawingsPendingTargets = { api: false };
             this._setDrawingsSaveUi('saved');
@@ -7847,9 +7947,14 @@ class DrawingToolsManager {
         
         const data = this.drawings.map(d => d.toJSON());
         const key = this.getStorageKey(fileIdOverride);
+        const clientUpdatedAt = Date.now();
 
-        // 1. Save to localStorage cache immediately (instant UX; evicts stale keys on quota)
+        // 1. Local cache (instant UX)
         this._writeDrawingsCache(key, JSON.stringify(data));
+        this._writeDrawingsCacheMeta(key, {
+            ...(this._readDrawingsCacheMeta(key) || {}),
+            client_updated_at: clientUpdatedAt
+        });
 
         const isUndoRedo = this.history && this.history.isPerformingUndoRedo;
         const skipRemote = fileIdOverride != null
@@ -7858,7 +7963,7 @@ class DrawingToolsManager {
         // 2. Debounced POST /api/chart/drawings/{symbol} — canonical server store when logged in
         if (!isUndoRedo && !skipRemote) {
             try {
-                this.scheduleSaveToAPI(data);
+                this.scheduleSaveToAPI(data, clientUpdatedAt);
             } catch (error) {
                 console.warn('⚠️ Failed to schedule drawings API sync:', error?.message || error);
             }
@@ -7901,22 +8006,26 @@ class DrawingToolsManager {
     /**
      * Schedule API save with debouncing to avoid excessive requests
      */
-    scheduleSaveToAPI(data) {
+    scheduleSaveToAPI(data, clientUpdatedAt) {
         // Clear existing timer
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);
         }
-        
+
+        this._pendingApiSaveClientUpdatedAt = clientUpdatedAt || Date.now();
+
         // Debounce API saves — fast enough to survive refresh, light enough for the server
         this._apiSaveTimer = setTimeout(() => {
-            this.saveDrawingsToAPI(data);
+            const key = this.getStorageKey();
+            const meta = this._readDrawingsCacheMeta(key);
+            this.saveDrawingsToAPI(data, meta?.client_updated_at || this._pendingApiSaveClientUpdatedAt);
         }, DrawingToolsManager.API_SAVE_DEBOUNCE_MS);
     }
 
     /**
-     * Save drawings to backend API for cross-device sync
+     * Save drawings to backend API for cross-device sync (canonical store).
      */
-    async saveDrawingsToAPI(data) {
+    async saveDrawingsToAPI(data, clientUpdatedAt) {
         try {
             const symbol = this.chart.currentFileId || 'default';
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
@@ -7928,6 +8037,8 @@ class DrawingToolsManager {
                 return;
             }
 
+            const sentAt = clientUpdatedAt || Date.now();
+
             const response = await fetch(`/api/chart/drawings/${encodeURIComponent(symbol)}`, {
                 method: 'POST',
                 headers: {
@@ -7937,7 +8048,8 @@ class DrawingToolsManager {
                 credentials: 'include',
                 body: JSON.stringify({
                     drawings: data,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    client_updated_at: sentAt
                 })
             });
 
@@ -7945,8 +8057,39 @@ class DrawingToolsManager {
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
                 this._drawingsSaveError = false;
+                const key = this.getStorageKey();
+                const serverMs = this._parseUpdatedAtMs(result.updated_at) || Date.now();
+                this._writeDrawingsCacheMeta(key, {
+                    updated_at: result.updated_at || null,
+                    client_updated_at: serverMs
+                });
+            } else if (response.status === 409) {
+                console.warn('⚠️ Drawings cloud revision conflict — reloading from server');
+                this._drawingsSaveError = false;
+                const apiResult = await this.loadDrawingsFromAPI();
+                if (apiResult && this.chart?.data?.length) {
+                    this.loadDrawingsFromData(apiResult.drawings);
+                    const key = this.getStorageKey();
+                    this._writeDrawingsCacheMeta(key, {
+                        updated_at: apiResult.updated_at || null,
+                        client_updated_at: this._parseUpdatedAtMs(apiResult.updated_at) || Date.now()
+                    });
+                }
+                try {
+                    if (this.chart && typeof this.chart.showNotification === 'function') {
+                        this.chart.showNotification('Drawings updated from cloud (another tab was newer)', 'info', 3500);
+                    }
+                } catch (_) { /* ignore */ }
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - drawings saved locally only');
+            } else if (response.status === 413) {
+                console.warn('⚠️ Drawings payload too large for cloud');
+                this._drawingsSaveError = true;
+                try {
+                    if (this.chart && typeof this.chart.showNotification === 'function') {
+                        this.chart.showNotification('Too many drawings to sync — remove some and retry', 'warning', 5000);
+                    }
+                } catch (_) { /* ignore */ }
             } else {
                 console.warn('⚠️ Failed to sync drawings to cloud:', response.statusText);
                 this._drawingsSaveError = true;
@@ -8143,8 +8286,11 @@ class DrawingToolsManager {
             
             if (response.ok) {
                 const result = await response.json();
-                if (result.success && result.drawings && result.drawings.length > 0) {
-                    return result.drawings;
+                if (result.success) {
+                    return {
+                        drawings: Array.isArray(result.drawings) ? result.drawings : [],
+                        updated_at: result.updated_at || null
+                    };
                 }
             } else if (response.status === 401) {
                 console.warn('⚠️ Not authenticated - using local drawings only');
@@ -8183,63 +8329,11 @@ class DrawingToolsManager {
             saved = JSON.stringify(urlDrawings);
             console.log('📥 Loaded drawings from URL (shared link)');
         }
-        // 2. API vs localStorage: when a trading session is active, prefer session-scoped local data
-        //    so symbol-wide cloud rows do not mask shapes saved under chart_drawings_s{session}_{file}.
+        // 2. Server-first load (chart_drawings API) with local cache merge
         else {
-            const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
-                ? this.chart.getActiveTradingSessionId()
-                : null;
-            const hasToken = typeof localStorage !== 'undefined' && localStorage.getItem('token');
-            if (sessionId && hasToken) {
-                const apiDrawings = await this.loadDrawingsFromAPI();
-                if (apiDrawings) {
-                    saved = JSON.stringify(apiDrawings);
-                    console.log('📥 Loaded drawings from cloud (session, server-first)');
-                }
-            }
-            if (sessionId) {
-                if (!saved) {
-                    const key = this.getStorageKey();
-                    saved = userStorage.getItem(key);
-                    if (!saved && key.includes('_s')) {
-                        const fileId = this.chart.currentFileId || 'default';
-                        const legacyKey = `chart_drawings_${fileId}`;
-                        const legacy = userStorage.getItem(legacyKey);
-                        if (legacy) {
-                            saved = legacy;
-                        }
-                    }
-                    if (saved) {
-                        console.log('📥 Loaded drawings from localStorage cache (session)');
-                    }
-                }
-                if (!saved && !hasToken) {
-                    const apiDrawings = await this.loadDrawingsFromAPI();
-                    if (apiDrawings) {
-                        saved = JSON.stringify(apiDrawings);
-                        console.log('📥 Loaded drawings from cloud');
-                    }
-                }
-            } else {
-                const apiDrawings = await this.loadDrawingsFromAPI();
-                if (apiDrawings) {
-                    saved = JSON.stringify(apiDrawings);
-                    console.log('📥 Loaded drawings from cloud');
-                } else {
-                    const key = this.getStorageKey();
-                    saved = userStorage.getItem(key);
-                    if (!saved && key.includes('_s')) {
-                        const fileId = this.chart.currentFileId || 'default';
-                        const legacyKey = `chart_drawings_${fileId}`;
-                        const legacy = userStorage.getItem(legacyKey);
-                        if (legacy) {
-                            saved = legacy;
-                        }
-                    }
-                    if (saved) {
-                        console.log('📥 Loaded drawings from localStorage');
-                    }
-                }
+            const resolved = await this._resolveDrawingsPayloadForLoad();
+            if (resolved.data) {
+                saved = JSON.stringify(resolved.data);
             }
         }
         
@@ -8422,7 +8516,13 @@ class DrawingToolsManager {
             this._drawingsLoaded = true;
             try {
                 const serialized = this.drawings.map((d) => (typeof d.toJSON === 'function' ? d.toJSON() : d));
-                this._writeDrawingsCache(this.getStorageKey(), JSON.stringify(serialized));
+                const cacheKey = this.getStorageKey();
+                this._writeDrawingsCache(cacheKey, JSON.stringify(serialized));
+                const meta = this._readDrawingsCacheMeta(cacheKey) || {};
+                this._writeDrawingsCacheMeta(cacheKey, {
+                    ...meta,
+                    client_updated_at: meta.client_updated_at || Date.now()
+                });
             } catch (_) { /* ignore */ }
         } catch (e) {
             console.warn('⚠️ Failed to load drawings from data', e);

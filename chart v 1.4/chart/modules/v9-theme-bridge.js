@@ -106,6 +106,55 @@
       || norm(settings.bearBorder) !== norm(settings.bearBody);
   }
 
+  function parseColorRgb(color) {
+    if (color == null) return null;
+    var value = String(color).trim();
+    if (!value) return null;
+    if (value.charAt(0) === '#') {
+      var hex = value.slice(1);
+      if (hex.length === 3) {
+        return [
+          parseInt(hex.charAt(0) + hex.charAt(0), 16),
+          parseInt(hex.charAt(1) + hex.charAt(1), 16),
+          parseInt(hex.charAt(2) + hex.charAt(2), 16)
+        ];
+      }
+      if (hex.length >= 6) {
+        return [
+          parseInt(hex.slice(0, 2), 16),
+          parseInt(hex.slice(2, 4), 16),
+          parseInt(hex.slice(4, 6), 16)
+        ];
+      }
+      return null;
+    }
+    var rgbMatch = value.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (rgbMatch) {
+      return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
+    }
+    return null;
+  }
+
+  function isLightBackground(color) {
+    var rgb = parseColorRgb(color);
+    if (!rgb) return false;
+    var brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+    return brightness > 128;
+  }
+
+  function contrastingAxisTextColor(backgroundColor) {
+    return isLightBackground(backgroundColor) ? '#000000' : '#FFFFFF';
+  }
+
+  function resolveAxisTextColor(settings) {
+    var bg = settings && settings.background;
+    var preferred = settings && settings.textColor != null ? settings.textColor : settings && settings.scaleTextColor;
+    if (!bg) return preferred || '#FFFFFF';
+    if (!preferred) return contrastingAxisTextColor(bg);
+    if (isLightBackground(bg) === isLightBackground(preferred)) return contrastingAxisTextColor(bg);
+    return preferred;
+  }
+
   /**
    * @param {object} settings V9 settings state (same shape as TalariaV8bLive useState)
    * @returns {boolean} true if chart was ready and sync ran; false if window.chart not ready
@@ -115,8 +164,8 @@
     var chart = window.chart;
     if (!chart || !chart.chartSettings) return false;
     var cs = chart.chartSettings;
-    // V9 settings UI drives textColor; scaleTextColor is legacy and must not win over templates.
-    var axisTextColor = settings.textColor != null ? settings.textColor : settings.scaleTextColor;
+    // Auto-flip axis/OHLC text when background and text share the same lightness.
+    var axisTextColor = resolveAxisTextColor(settings);
     var map = {
       bodyUpColor: settings.bullBody,
       candleUpColor: settings.bullBody,

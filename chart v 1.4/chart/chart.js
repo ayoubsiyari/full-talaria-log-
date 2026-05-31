@@ -4518,7 +4518,7 @@ class Chart {
             }
         }
 
-        this._applySessionDrawingsRestore(backup.drawings);
+        // Drawings: chart_drawings API + dm.loadDrawings() — not session backup blob.
 
         if (typeof this.showNotification === 'function') {
             this.showNotification(
@@ -4575,21 +4575,8 @@ class Chart {
 
                 this._sessionStateLoadedFor = String(sessionId);
 
-            // Only merge server drawings when non-empty. Session payloads often include `drawings: []`
-            // when the server never stored shapes — applying that would wipe shapes just loaded from localStorage.
-            if (
-                this.drawingManager &&
-                Array.isArray(state.drawings) &&
-                state.drawings.length > 0
-            ) {
-                this._applySessionDrawingsRestore(state.drawings);
-            } else if (Array.isArray(state.drawings) && state.drawings.length === 0) {
-                this._pendingSessionDrawingsFromState = null;
-                const backupDrawings = this._readTradingSessionLocalBackup(sessionId);
-                if (backupDrawings && Array.isArray(backupDrawings.drawings) && backupDrawings.drawings.length > 0) {
-                    this._applySessionDrawingsRestore(backupDrawings.drawings);
-                }
-            }
+            // Drawings canonical store: GET /api/chart/drawings/{symbol} via DrawingToolsManager.loadDrawings().
+            // Do not hydrate from state_json.drawings (legacy flat blob, wrong for multi-symbol).
 
             // Always treat journal as an array (legacy/corrupt blobs may omit it or use a non-array).
             if (this.orderManager) {
@@ -8700,28 +8687,32 @@ class Chart {
             timeLabel.style.background = targetChart.chartSettings.cursorLabelBgColor;
         }
         
-        // Apply symbol/OHLC text color
+        // Apply symbol/OHLC text color (auto-contrast with chart background)
         const ohlcInfo = container.querySelector('.ohlc-info');
+        const effectiveSymbolTextColor = targetChart.resolveAxisTextColor(
+            targetChart.chartSettings.symbolTextColor,
+            targetChart.chartSettings.backgroundColor
+        );
         if (ohlcInfo) {
             // Apply to symbol text
             const symbolText = ohlcInfo.querySelector('.ohlc-symbol-text');
-            if (symbolText) symbolText.style.color = targetChart.chartSettings.symbolTextColor;
+            if (symbolText) symbolText.style.color = effectiveSymbolTextColor;
             
             // Apply to OHLC labels and values
             ohlcInfo.querySelectorAll('.ohlc-label, .ohlc-value, .ohlc-change').forEach(el => {
-                el.style.color = targetChart.chartSettings.symbolTextColor;
+                el.style.color = effectiveSymbolTextColor;
             });
             ohlcInfo.querySelectorAll('.ohlc-separator').forEach(el => {
-                el.style.color = targetChart.chartSettings.symbolTextColor;
+                el.style.color = effectiveSymbolTextColor;
             });
             
             // Apply to timeframe text
             const timeframeText = ohlcInfo.querySelector('#chartTimeframe');
-            if (timeframeText) timeframeText.style.color = targetChart.chartSettings.symbolTextColor;
+            if (timeframeText) timeframeText.style.color = effectiveSymbolTextColor;
             
             // Apply to Volume label
             const volumeLabel = ohlcInfo.querySelector('.volume-label');
-            if (volumeLabel) volumeLabel.style.color = targetChart.chartSettings.symbolTextColor;
+            if (volumeLabel) volumeLabel.style.color = effectiveSymbolTextColor;
             
             // Apply to volume value
             const volumeValue = ohlcInfo.querySelector('.volume-value');
@@ -16536,7 +16527,11 @@ class Chart {
         this.ctx.stroke();
         
         const scaleFont = `${this.chartSettings.scaleTextSize}px Roboto`;
-        this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+        const axisTextColor = this.resolveAxisTextColor(
+            this.chartSettings.scaleTextColor,
+            this.chartSettings.backgroundColor
+        );
+        this.ctx.fillStyle = axisTextColor;
         this.ctx.font = scaleFont;
         this.ctx.textAlign = 'center';
         
@@ -16551,14 +16546,14 @@ class Chart {
             const y = this.yScale(price);
             if (y > m.t + 8 && y < this.h - m.b - volumeAreaHeight - 8) {
                 const text = price.toFixed(decimals);
-                this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+                this.ctx.fillStyle = axisTextColor;
                 this.ctx.fillText(text, axisMidX, y + 4);
             }
         });
         
         // X-axis (time) labels – use pre-built ticks (synced with vertical grid lines)
         this.ctx.textAlign = 'center';
-        this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+        this.ctx.fillStyle = axisTextColor;
         // Bottom strip reserved for #timeAxisZone hit-testing (must match CSS height in layout).
         // A full-height transparent overlay above canvas in Chromium/Brave can composit in a way
         // that hides fillText in the margin; keep labels in the band above the strip.
@@ -16580,7 +16575,7 @@ class Chart {
                 this.ctx.moveTo(xLine, this.h - m.b);
                 this.ctx.lineTo(xLine, this.h - m.b + 5);
                 this.ctx.stroke();
-                this.ctx.fillStyle = this.chartSettings.scaleTextColor;
+                this.ctx.fillStyle = axisTextColor;
                 this.ctx.font = scaleFont;
                 this.ctx.fillText(tick.label, labelX, timeLabelY);
             }
@@ -17734,6 +17729,19 @@ class Chart {
         // Calculate brightness
         const brightness = (r * 299 + g * 587 + b * 114) / 1000;
         return brightness > 128;
+    }
+
+    /**
+     * Ensure axis/OHLC text contrasts with chart background (auto light/dark flip).
+     */
+    resolveAxisTextColor(textColor, backgroundColor) {
+        const text = textColor || '#ffffff';
+        const bg = backgroundColor || this.chartSettings?.backgroundColor || '#000000';
+        const bgLight = this.isLightColor(bg);
+        const textLight = this.isLightColor(text);
+        if (bgLight && textLight) return '#000000';
+        if (!bgLight && !textLight) return '#ffffff';
+        return text;
     }
     
     /**

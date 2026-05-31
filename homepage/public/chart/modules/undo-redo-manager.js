@@ -458,7 +458,9 @@ class UndoRedoManager {
         this._finalSaveTimer = setTimeout(() => {
             if (this.drawingManager && typeof this.drawingManager.scheduleSaveToAPI === 'function') {
                 const data = this.drawingManager.drawings.map(d => d.toJSON());
-                this.drawingManager.scheduleSaveToAPI(data);
+                const key = this.drawingManager.getStorageKey();
+                const meta = this.drawingManager._readDrawingsCacheMeta(key);
+                this.drawingManager.scheduleSaveToAPI(data, meta?.client_updated_at || Date.now());
             }
         }, 300);
     }

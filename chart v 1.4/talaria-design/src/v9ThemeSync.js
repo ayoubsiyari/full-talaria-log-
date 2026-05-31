@@ -80,14 +80,6 @@ const LEGACY_V9_TIMEZONE_LABELS = {
   "UTC-8 (PST)": "America/Los_Angeles",
 };
 
-/** Legacy UI labels or any valid IANA zone id stored from Settings → Time zone */
-function v9CandleBorderColorsDistinct(settings) {
-  if (!settings) return false;
-  const norm = (c) => String(c ?? "").trim().toLowerCase();
-  return norm(settings.bullBorder) !== norm(settings.bullBody)
-    || norm(settings.bearBorder) !== norm(settings.bearBody);
-}
-
 export function resolveV9TimezoneToId(value) {
   if (value == null || value === "") return "UTC";
   const v = String(value).trim();
@@ -106,6 +98,69 @@ export function resolveV9TimezoneToId(value) {
   return "UTC";
 }
 
+function v9CandleBorderColorsDistinct(settings) {
+  if (!settings) return false;
+  const norm = (c) => String(c ?? "").trim().toLowerCase();
+  return norm(settings.bullBorder) !== norm(settings.bullBody)
+    || norm(settings.bearBorder) !== norm(settings.bearBody);
+}
+
+function parseColorRgb(color) {
+  if (color == null) return null;
+  const value = String(color).trim();
+  if (!value) return null;
+  if (value.startsWith("#")) {
+    const hex = value.slice(1);
+    if (hex.length === 3) {
+      return [
+        parseInt(hex[0] + hex[0], 16),
+        parseInt(hex[1] + hex[1], 16),
+        parseInt(hex[2] + hex[2], 16),
+      ];
+    }
+    if (hex.length >= 6) {
+      return [
+        parseInt(hex.slice(0, 2), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(4, 6), 16),
+      ];
+    }
+    return null;
+  }
+  const rgbMatch = value.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgbMatch) {
+    return [parseInt(rgbMatch[1], 10), parseInt(rgbMatch[2], 10), parseInt(rgbMatch[3], 10)];
+  }
+  return null;
+}
+
+/** Perceived brightness — matches chart.js isLightColor threshold (~128/255). */
+export function isLightBackground(color) {
+  const rgb = parseColorRgb(color);
+  if (!rgb) return false;
+  const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+  return brightness > 128;
+}
+
+export function contrastingAxisTextColor(backgroundColor) {
+  return isLightBackground(backgroundColor) ? "#000000" : "#FFFFFF";
+}
+
+export function axisTextNeedsContrastFix(backgroundColor, textColor) {
+  if (!backgroundColor || !textColor) return false;
+  return isLightBackground(backgroundColor) === isLightBackground(textColor);
+}
+
+/** Pick axis/OHLC text that contrasts with chart background. */
+export function resolveAxisTextColor(settings) {
+  const bg = settings?.background;
+  const preferred = settings?.textColor ?? settings?.scaleTextColor;
+  if (!bg) return preferred ?? "#FFFFFF";
+  if (!preferred) return contrastingAxisTextColor(bg);
+  if (axisTextNeedsContrastFix(bg, preferred)) return contrastingAxisTextColor(bg);
+  return preferred;
+}
+
 /**
  * @param {object} settings V9 settings state
  * @returns {boolean} true if chart exists and sync completed (or nothing to do); false if window.chart not ready
@@ -115,9 +170,8 @@ export function applyV9ThemeSettingsToChart(settings) {
   const chart = typeof window !== "undefined" ? window.chart : null;
   if (!chart || !chart.chartSettings) return false;
   const cs = chart.chartSettings;
-  // V9 settings UI exposes textColor (OHLC + axis labels). scaleTextColor is legacy
-  // state that must not override template / picker updates.
-  const axisTextColor = settings.textColor ?? settings.scaleTextColor;
+  // Auto-flip axis/OHLC text when background and text share the same lightness.
+  const axisTextColor = resolveAxisTextColor(settings);
   const normalizeTvCandle = (value, legacySet, target) => {
     const v = String(value || "").trim().toLowerCase();
     return legacySet.has(v) ? target : value;
