@@ -2090,12 +2090,164 @@ function v9TxtStyleForPlacement(txt, legacyTool) {
   return next;
 }
 
+/** Baseline V9 text-toolbar state before per-tool defaults. */
+function v9FreshTxtStyleDefaults() {
+  return {
+    fontSize: 14,
+    textColor: "#ffffff",
+    italic: false,
+    bold: false,
+    content: "",
+    horizAlign: "left",
+    bgOn: false,
+    bgColor: "#000000",
+    borderOn: false,
+    borderColor: "#787B86",
+    wrapText: false,
+    anchored: false,
+    lineColor: "#787B86",
+    pt1Price: "0.00000",
+    pt1Bar: "0",
+    pt2Price: "0.00000",
+    pt2Bar: "0",
+    pinLabelColor: "#4A6AFF",
+    imageDataUrl: "",
+    imageTransparency: 100,
+    selectedEmoji: "😀",
+    visMinutes: { checked: true, min: 1, max: 60 },
+    visHours: { checked: true, min: 1, max: 24 },
+    visDays: { checked: true, min: 1, max: 366 },
+    visWeeks: { checked: true, min: 1, max: 260 },
+    visMonths: { checked: true, min: 1, max: 120 },
+  };
+}
+
+const V9_TEXT_TOOL_CONSTRUCTOR_STYLE_DEFAULTS = {
+  comment: {
+    backgroundColor: "#2962FF",
+    borderColor: "transparent",
+    textColor: "#FFFFFF",
+    textAlign: "center",
+    fontSize: 14,
+  },
+  callout: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#B2B5BE",
+    textColor: "#F23645",
+    fontSize: 14,
+  },
+  notebox: {
+    backgroundColor: "rgba(41, 98, 255, 0.9)",
+    textColor: "#FFFFFF",
+    fontSize: 12,
+  },
+  "anchored-text": {
+    backgroundColor: "rgba(41, 98, 255, 0.9)",
+    borderColor: "#B2B5BE",
+    textColor: "#FFFFFF",
+    fontSize: 12,
+  },
+  note: {
+    fill: "rgba(50, 50, 50, 0.9)",
+    stroke: "#787b86",
+    strokeWidth: 1,
+    textColor: "#FFFFFF",
+    fontSize: 12,
+  },
+  pin: {
+    fill: "#2962ff",
+    stroke: "#2962ff",
+    backgroundColor: "#363a45",
+    borderColor: "#555",
+    textColor: "#d1d4dc",
+    fontSize: 14,
+  },
+  "signpost-2": {
+    fill: "#2e3238",
+    stroke: "#787b86",
+    borderColor: "#787b86",
+    textColor: "#d1d4dc",
+    fontSize: 13,
+  },
+  "price-note": {
+    fill: "#2962ff",
+    textColor: "#FFFFFF",
+    fontSize: 12,
+  },
+  "price-label": {
+    fill: "#2962ff",
+    textColor: "#FFFFFF",
+    fontSize: 12,
+  },
+  "price-label-2": {
+    fill: "#2962ff",
+    textColor: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  "flag-mark": {
+    fill: "#787b86",
+    stroke: "#787b86",
+  },
+  signpost: {
+    color: "#787b86",
+  },
+};
+
+/** Default txtStyle + armed patch when selecting a text tool to draw (not from a selected object). */
+function v9BuildDefaultTxtStyleForLegacyTool(legacyTool, prevTxtStyle) {
+  const base = v9FreshTxtStyleDefaults();
+  if (!legacyTool) return base;
+
+  const preserve = prevTxtStyle && typeof prevTxtStyle === "object" ? prevTxtStyle : {};
+  const preserved = {};
+  [
+    "pt1Price", "pt1Bar", "pt2Price", "pt2Bar",
+    "visMinutes", "visHours", "visDays", "visWeeks", "visMonths",
+  ].forEach((key) => {
+    if (preserve[key] != null) preserved[key] = preserve[key];
+  });
+
+  let managerPatch = null;
+  try {
+    const ch =
+      typeof window !== "undefined" && typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : typeof window !== "undefined"
+          ? window.chart
+          : null;
+    const dm = ch && ch.drawingManager;
+    if (dm && typeof dm.getDefaultToolStylePatch === "function") {
+      managerPatch = dm.getDefaultToolStylePatch(legacyTool);
+    }
+  } catch (_) {}
+
+  const style = {
+    ...(managerPatch && typeof managerPatch === "object" ? managerPatch : {}),
+    ...(V9_TEXT_TOOL_CONSTRUCTOR_STYLE_DEFAULTS[legacyTool] || {}),
+  };
+  const fromDrawing = v9TxtStylePatchFromDrawing({
+    type: legacyTool,
+    style,
+    text: "",
+  }) || {};
+
+  return {
+    ...base,
+    ...fromDrawing,
+    ...preserved,
+    content: "",
+  };
+}
+
 /** Clear cached text input when a text object is removed or a fresh tool is armed. */
 function v9ClearTxtPlacementInput(setTxtStyle, suppressRef, armedLegacyTool) {
   if (typeof setTxtStyle !== "function") return;
   if (suppressRef) suppressRef.current = true;
   setTxtStyle((s) => {
-    const next = s.content ? { ...s, content: "" } : s;
+    const next = armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)
+      ? v9BuildDefaultTxtStyleForLegacyTool(armedLegacyTool, s)
+      : (s.content ? { ...s, content: "" } : s);
     if (armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)) {
       v9PushArmedDrawStyle(armedLegacyTool, null, v9TxtStyleForPlacement(next, armedLegacyTool));
     }
@@ -8538,6 +8690,7 @@ const TalariaV8bLive = () => {
   const [tlSaveAsMode, setTlSaveAsMode] = useState(false);
   const [tlNewTplName, setTlNewTplName] = useState("");
   const [tlSettTplDrop, setTlSettTplDrop] = useState(false);
+  const [txtSettTplDrop, setTxtSettTplDrop] = useState(false);
   const [tlStyle, setTlStyle] = useState({
     lineColor: V9_DEFAULT_TL_LINE_COLOR, bgColor: V9_DEFAULT_TL_SHAPE_FILL, lineType: "solid", lineWidth: "2", ep1: "normal", ep2: "normal",
     extendLeft: false, extendRight: false, priceLabels: true, timeLabels: true, flatChPrices: true,
@@ -10037,6 +10190,7 @@ const TalariaV8bLive = () => {
     setColorPicker(null);
     setClosing(s => new Set([...s, "txtsett"]));
     setTxtSizeOpen(false); setTxtBarSizeOpen(false); setTxtBarDrop(null);
+    setTxtSettTplDrop(false); setTxtSaveAsMode(false); setTxtNewTplName("");
     setTimeout(() => { setTxtSettOpen(false); setClosing(s => { const n = new Set(s); n.delete("txtsett"); return n; }); }, 155);
   };
   const cancelTxtSett = () => finishTxtSettPanel({ restore: true });
@@ -10136,6 +10290,9 @@ const TalariaV8bLive = () => {
     setTxtSizeOpen(false);
     setTxtBarSizeOpen(false);
     setTxtBarDrop(null);
+    setTxtSettTplDrop(false);
+    setTxtSaveAsMode(false);
+    setTxtNewTplName("");
     flushSync(() => setTxtSettOpen(false));
     txtSettOpenRef.current = false;
     v9AnyDrawingSettingsOpenRef.current = !!(
@@ -10324,6 +10481,12 @@ const TalariaV8bLive = () => {
     setClosing(s => new Set([...s, "tlSettTplDrop"]));
     setTlSettTplDrop(false); setTlSaveAsMode(false); setTlNewTplName("");
     setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("tlSettTplDrop"); return n; }); }, 130);
+  };
+  const closeTxtSettTplDrop = () => {
+    if (!txtSettTplDrop && !closing.has("txtSettTplDrop")) return;
+    setClosing(s => new Set([...s, "txtSettTplDrop"]));
+    setTxtSettTplDrop(false); setTxtSaveAsMode(false); setTxtNewTplName("");
+    setTimeout(() => { setClosing(s => { const n = new Set(s); n.delete("txtSettTplDrop"); return n; }); }, 130);
   };
   const closeCP = () => {
     cpPickerDraggingRef.current = false;
@@ -13378,7 +13541,7 @@ const TalariaV8bLive = () => {
     } catch (_) {
       return [];
     }
-  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, getSelectedDrawingForTemplate]);
+  }, [tlTemplatesRev, tool, groupSelected, tlBarSelected, tlBarSelectedType, tlSettOpen, txtSettOpen, getSelectedDrawingForTemplate]);
 
   useEffect(() => {
     const bump = () => setTlTemplatesRev((n) => n + 1);
@@ -15333,8 +15496,9 @@ const TalariaV8bLive = () => {
     if (v9IsTextLegacyDrawingType(legacy)) {
       flushSync(() => {
         setTxtStyle((s) => {
-          const next = { ...s, content: "" };
-          v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(next));
+          const next = v9BuildDefaultTxtStyleForLegacyTool(legacy, s);
+          suppressTxtForwardBridge.current = true;
+          v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(next, legacy));
           return next;
         });
       });
@@ -20199,21 +20363,101 @@ const TalariaV8bLive = () => {
                   style={{fontSize:14,fontWeight:700,color:c.tx,marginLeft:8,cursor:"text",lineHeight:"1.4"}}>{txtName}</span>
             }
             <div style={{flex:1,cursor:"move"}}/>
-            {/* template icon button */}
-            <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
-              onMouseEnter={()=>setHov("txt-tmpl-hdr")} onMouseLeave={()=>setHov(null)}
-              onClick={e=>e.stopPropagation()}
-              style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
-                      background:hov==="txt-tmpl-hdr"?c.hv:"transparent",
-                      transition:"background 0.12s",color:hov==="txt-tmpl-hdr"?c.tx:c.ts}}>
-              <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
-                <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/>
-                <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
-                <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-                <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
-              </svg>
-              {hov==="txt-tmpl-hdr"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
+            {/* template button — same dropdown pattern as TL settings header */}
+            <div style={{position:"relative"}}>
+              <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+                onMouseEnter={()=>setHov("txt-tmpl-hdr")} onMouseLeave={()=>setHov(null)}
+                onClick={e=>{e.stopPropagation();if(txtSettTplDrop||closing.has("txtSettTplDrop")){closeTxtSettTplDrop();}else{setTxtSettTplDrop(true);setTxtSaveAsMode(false);setTxtNewTplName("");}if(txtBarDrop)setTxtBarDrop(null);setColorPicker(null);cpBarAnchorRef.current=null;setTxtSizeOpen(false);}}
+                style={{width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
+                        background:(txtSettTplDrop||closing.has("txtSettTplDrop"))?"rgba(74,106,255,0.10)":hov==="txt-tmpl-hdr"?c.hv:"transparent",
+                        transition:"background 0.12s",color:(txtSettTplDrop||closing.has("txtSettTplDrop"))?c.acL:hov==="txt-tmpl-hdr"?c.tx:c.ts}}>
+                <svg width={14} height={14} viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/>
+                  <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+                  <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                  <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+                </svg>
+                {(txtSettTplDrop||closing.has("txtSettTplDrop"))&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                {hov==="txt-tmpl-hdr"&&!(txtSettTplDrop||closing.has("txtSettTplDrop"))&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
+              </div>
+              {(txtSettTplDrop || closing.has("txtSettTplDrop")) && (
+                <div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
+                  style={{position:"absolute", top:"calc(100% + 4px)", right:-30, zIndex:10, width:180, cursor:"default",
+                          background:c.sf, border:`1px solid rgba(140,160,255,0.22)`, fontFamily:F,
+                          boxShadow:"0 4px 16px rgba(0,0,0,0.5)",
+                          animation:closing.has("txtSettTplDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
+                  <div style={{height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
+                  <div style={{padding:"4px 0"}}>
+                    {[["Save as", ()=>{ setTxtSaveAsMode(true); setTxtNewTplName(""); }],
+                      ["Apply default", ()=>{
+                        const d = getSelectedDrawingForTemplate();
+                        if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                        if (!v9ApplyDefaultDrawingTemplate(d)) { v9NotifyDrawingAction("Apply default failed"); return; }
+                        closeTxtSettTplDrop();
+                      }]].map(([lbl, action])=>{
+                      const isH=hov===`txt-stpl-${lbl}`, isAct=lbl==="Save as"&&txtSaveAsMode;
+                      return (
+                        <div key={lbl} onClick={action}
+                          onMouseEnter={()=>setHov(`txt-stpl-${lbl}`)} onMouseLeave={()=>setHov(null)}
+                          style={{ display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default", position:"relative",
+                                   background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
+                          {isAct&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                          <span style={{fontSize:13, color:isAct?c.acL:isH?c.tx:c.ts, fontWeight:isAct?700:500}}>{lbl}</span>
+                        </div>
+                      );
+                    })}
+                    <div style={{height:1, margin:"4px 0", background:c.brH}}/>
+                    {txtSaveAsMode && (
+                      <div style={{padding:"4px 8px 4px 12px",display:"flex",alignItems:"center",gap:4,boxSizing:"border-box",width:"100%"}} onMouseDown={e=>e.stopPropagation()}>
+                        <input autoFocus value={txtNewTplName} onChange={e=>setTxtNewTplName(e.target.value)}
+                          onKeyDown={e=>{
+                            if (e.key === "Enter" && txtNewTplName.trim()) {
+                              const d = getSelectedDrawingForTemplate();
+                              if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; }
+                              if (v9SaveDrawingTemplateToStorage(txtNewTplName, d)) { setTxtSaveAsMode(false); setTxtNewTplName(""); }
+                            }
+                            if (e.key === "Escape") { setTxtSaveAsMode(false); setTxtNewTplName(""); }
+                          }}
+                          placeholder="Template name…"
+                          style={{flex:1,minWidth:0,background:c.hv,border:"1px solid rgba(140,160,255,0.22)",outline:"none",color:c.tx,fontSize:11,fontFamily:F,padding:"3px 6px",boxSizing:"border-box",cursor:"text"}}/>
+                        <div onClick={()=>{ if (!txtNewTplName.trim()) return; const d = getSelectedDrawingForTemplate(); if (!d) { v9NotifyDrawingAction("Select a drawing first"); return; } if (v9SaveDrawingTemplateToStorage(txtNewTplName, d)) { setTxtSaveAsMode(false); setTxtNewTplName(""); } }}
+                          onMouseEnter={()=>setHov("txt-stpl-save-ok")} onMouseLeave={()=>setHov(null)}
+                          style={{padding:"2px 4px",display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",flexShrink:0,position:"relative",
+                                  background:hov==="txt-stpl-save-ok"?c.hv:"transparent",transition:"background 0.12s"}}>
+                          <I n="check" s={11} cl={txtNewTplName.trim()?c.acL:c.tm}/>
+                          {hov==="txt-stpl-save-ok"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                        </div>
+                      </div>
+                    )}
+                    {tlSavedTemplateList.length === 0 && !txtSaveAsMode ? (
+                      <div style={{padding:"6px 12px"}}>
+                        <span style={{fontSize:11, color:c.tm, fontStyle:"italic"}}>No saved templates</span>
+                      </div>
+                    ) : tlSavedTemplateList.map((tpl, idx)=>(
+                      <div key={tpl.id || idx}
+                        onMouseEnter={()=>setHov(`txt-stpl-${idx}`)} onMouseLeave={()=>setHov(null)}
+                        style={{ display:"flex", alignItems:"center", padding:"4px 8px 4px 12px", cursor:"default", position:"relative",
+                                 background:hov===`txt-stpl-${idx}`?c.hv2:"transparent", transition:"background 0.1s" }}>
+                        <span onClick={()=>{
+                          const d = getSelectedDrawingForTemplate();
+                          if (!d || !tpl.id) return;
+                          if (v9ApplyDrawingTemplate(d, tpl.id)) closeTxtSettTplDrop();
+                        }}
+                          style={{flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12, color:hov===`txt-stpl-${idx}`?c.tx:c.ts, fontWeight:500}}>{tpl.name}</span>
+                        <div onClick={e=>{ e.stopPropagation();
+                          const d = getSelectedDrawingForTemplate();
+                          if (d && tpl.id) v9DeleteDrawingTemplate(d, tpl.id);
+                        }}
+                          onMouseEnter={()=>setHov(`txt-stpl-del-${idx}`)} onMouseLeave={()=>setHov(`txt-stpl-${idx}`)}
+                          style={{ padding:"2px 4px", cursor:"default" }}>
+                          <I n="x" s={11} cl={hov===`txt-stpl-del-${idx}`?c.rd:c.tm}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             {/* close button — identical to TL settings */}
             <div {...modalPointerActivate(closeTxtSett)}

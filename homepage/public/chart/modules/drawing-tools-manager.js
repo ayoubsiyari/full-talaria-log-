@@ -4058,8 +4058,12 @@ class DrawingToolsManager {
             } else {
                 const armedStyle = this.getArmedToolStyle(this.currentTool) || {};
                 const savedStyle = this.getSavedToolStyle(this.currentTool) || {};
+                const v9ArmedText = this._isTextDrawingType(this.currentTool)
+                    && typeof window !== 'undefined'
+                    && window.__v9ArmedDrawStyle
+                    && window.__v9ArmedDrawStyle.tool === this.currentTool;
                 styleOverrides = {
-                    ...savedStyle,
+                    ...(v9ArmedText ? {} : savedStyle),
                     ...armedStyle,
                     opacity: 0.85
                 };
@@ -11128,7 +11132,11 @@ class DrawingToolsManager {
             });
         }
         const savedStyle = this.getSavedToolStyle(drawing.type);
-        if (savedStyle) {
+        const skipSavedForV9TextArm = this._isTextDrawingType(drawing.type)
+            && typeof window !== 'undefined'
+            && window.__v9ArmedDrawStyle
+            && window.__v9ArmedDrawStyle.tool === drawing.type;
+        if (savedStyle && !skipSavedForV9TextArm) {
             // Merge saved style into drawing style (don't overwrite everything)
             Object.keys(savedStyle).forEach(key => {
                 // Skip certain properties that shouldn't be copied

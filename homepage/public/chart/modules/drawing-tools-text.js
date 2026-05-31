@@ -157,6 +157,43 @@ function resolveTextAnnotationEditBoxNode(drawing, fallbackNode) {
     return fallbackNode || null;
 }
 
+/** CSS selectors for on-chart elements to hide while the HTML inline editor is open. */
+function buildTextAnnotationInlineHideSelector(drawing) {
+    const root = `.drawing[data-id="${drawing.id}"]`;
+    const byType = {
+        comment: `${root} text, ${root} path.shape-fill, ${root} rect.comment-body-hit, ${root} path.comment-body-hit`,
+        callout: `${root} text, ${root} path.shape-fill, ${root} path.shape-border-hit`
+    };
+    return byType[drawing.type] || `${root} text`;
+}
+
+/** Measure the on-chart box used to place/size the inline editor (after any re-render). */
+function measureTextAnnotationEditRect(drawing, fallbackTextNode) {
+    const liveText = (drawing.group && typeof drawing.group.select === 'function')
+        ? drawing.group.select('text.inline-editable-text').node()
+        : null;
+    const textNode = (liveText && document.contains(liveText)) ? liveText : fallbackTextNode;
+    const posNode = resolveTextAnnotationEditBoxNode(drawing, textNode);
+    if (!posNode || !document.contains(posNode)) return null;
+    const rect = posNode.getBoundingClientRect();
+    if (rect.width <= 0 && rect.height <= 0) return null;
+    return { posNode, rect };
+}
+
+/** Keep the HTML inline editor aligned with the annotation body box during live typing. */
+function syncInlineEditorToEditBoxRect(editBoxNode) {
+    const edDiv = document.querySelector('.inline-text-editor--inline');
+    if (!edDiv || !editBoxNode || !document.contains(editBoxNode)) return;
+    const br = editBoxNode.getBoundingClientRect();
+    if (br.width <= 0 && br.height <= 0) return;
+    edDiv.style.left = `${br.left + window.scrollX}px`;
+    edDiv.style.top = `${br.top + window.scrollY}px`;
+    edDiv.style.width = `${br.width}px`;
+    edDiv.style.maxWidth = `${br.width}px`;
+    edDiv.style.minHeight = `${br.height}px`;
+    edDiv.style.boxSizing = 'border-box';
+}
+
 /** Standard inline editor options for any wrap-capable text annotation. */
 function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
     const style = drawing.style || {};
@@ -176,7 +213,7 @@ function buildStandardInlineEditorOptions(drawing, bbox, config = {}) {
         fontStyle: style.fontStyle || 'normal',
         color: config.color || style.textColor || '#FFFFFF',
         textAlign: config.textAlign || style.textAlign || 'left',
-        hideSelector: config.hideSelector || `.drawing[data-id="${drawing.id}"] text`,
+        hideSelector: config.hideSelector || buildTextAnnotationInlineHideSelector(drawing),
         editorBackground: config.editorBackground,
         editorPadding: config.editorPadding,
         editorBorder: config.editorBorder,
@@ -3698,15 +3735,9 @@ class CommentTool extends BaseDrawing {
             lNew.forEach((line, i) => {
                 tEl.append('tspan').attr('x', tXN).attr('dy', i === 0 ? 0 : lineHeight).text(line || '\u00A0');
             });
-            // Sync inline editor position to new text element location
-            const edDiv = document.querySelector('.inline-text-editor--inline');
-            if (edDiv && tEl.node()) {
-                const nr = tEl.node().getBoundingClientRect();
-                if (nr.left || nr.top) {
-                    edDiv.style.left = (nr.left + window.scrollX) + 'px';
-                    edDiv.style.top  = (nr.top  + window.scrollY) + 'px';
-                }
-            }
+            // Sync inline editor to bubble body (not text glyph bbox — avoids doubled offset bubble)
+            const boxNode = self.group.select('rect.comment-body-hit').node();
+            syncInlineEditorToEditBoxRect(boxNode);
         };
         const CLICK_DELAY = 250;
         let clickTimer = null;
@@ -3757,14 +3788,15 @@ class CommentTool extends BaseDrawing {
             const focusOpts = prepareTextInlineEditFocus(self, event, selectAll);
             if (focusOpts === null) return;
 
-            const posNode = resolveTextAnnotationEditBoxNode(self, textElement.node());
-            const rect = posNode.getBoundingClientRect();
-            const editX = rect.left + window.scrollX;
-            const editY = rect.top + window.scrollY;
-
             if (typeof manager.selectDrawing === 'function' && !self.locked) {
                 manager.selectDrawing(self);
             }
+
+            const measured = measureTextAnnotationEditRect(self, textElement.node());
+            if (!measured) return;
+            const { rect } = measured;
+            const editX = rect.left + window.scrollX;
+            const editY = rect.top + window.scrollY;
 
             const commentEditDisplay = resolveTextToolDisplay(self.text);
             const commentEditFill = resolveAnnotationTextFill(
@@ -3784,7 +3816,8 @@ class CommentTool extends BaseDrawing {
                     color: commentEditFill,
                     textAlign: self.style.textAlign || 'left',
                     editorBackground: self.style.backgroundColor,
-                    editorPadding: '4px 8px',
+                    editorPadding: `${padding}px`,
+                    editorBorderRadius: '16px',
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
                         if (typeof self._updateCommentBubble === 'function') {
@@ -4812,6 +4845,9 @@ if (typeof module !== 'undefined' && module.exports) {
         inlineEditorFocusOptions,
         buildWrapAwareInlineEditorOptions,
         buildStandardInlineEditorOptions,
+        buildTextAnnotationInlineHideSelector,
+        measureTextAnnotationEditRect,
+        syncInlineEditorToEditBoxRect,
         resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
@@ -4844,6 +4880,9 @@ if (typeof window !== 'undefined') {
         inlineEditorFocusOptions,
         buildWrapAwareInlineEditorOptions,
         buildStandardInlineEditorOptions,
+        buildTextAnnotationInlineHideSelector,
+        measureTextAnnotationEditRect,
+        syncInlineEditorToEditBoxRect,
         resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
