@@ -21127,7 +21127,7 @@ const TalariaV8bLive = () => {
                     </div>
                   </div>
                   <div style={{marginTop:8}}>
-                    <textarea value={txtStyle.content} onChange={e=>setTxtStyle(s=>({...s,content:e.target.value}))}
+                    <textarea value={txtStyle.content} onChange={e=>applyTxtContent(e.target.value)}
                       onClick={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}
                       placeholder="Enter text…"
                       style={{width:"100%",height:68,resize:"none",background:"rgba(140,160,255,0.05)",
@@ -24240,11 +24240,14 @@ const TalariaV8bLive = () => {
                         typeof window.getActiveChart === "function"
                           ? window.getActiveChart()
                           : window.chart;
-                      if (t.parentId === "text" && v9IsTextSubToolSwitch(groupSelected.text, t)) {
-                        v9DeselectChartForTextSubToolArm(ch);
-                        setTlBarSelected(false);
-                        setTlBarSelectedType(null);
-                        v9LastHydratedTextLegacyRef.current = null;
+                      if (t.parentId === "text") {
+                        v9ClearSharedTxtStyleContent(setTxtStyle, suppressTxtForwardBridge);
+                        if (v9IsTextSubToolSwitch(groupSelected.text, t)) {
+                          v9DeselectChartForTextSubToolArm(ch);
+                          setTlBarSelected(false);
+                          setTlBarSelectedType(null);
+                          v9LastHydratedTextLegacyRef.current = null;
+                        }
                       }
                       setTool(t.parentId || t.id);
                       if (t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t }));
@@ -24325,11 +24328,14 @@ const TalariaV8bLive = () => {
                       closeDropdown();
                       return;
                     }
-                    if (activeKey === "text" && !item.h && v9IsTextSubToolSwitch(groupSelected.text, item)) {
-                      v9DeselectChartForTextSubToolArm(ch);
-                      v9LastHydratedTextLegacyRef.current = null;
-                      setTlBarSelected(false);
-                      setTlBarSelectedType(null);
+                    if (activeKey === "text" && !item.h) {
+                      v9ClearSharedTxtStyleContent(setTxtStyle, suppressTxtForwardBridge);
+                      if (v9IsTextSubToolSwitch(groupSelected.text, item)) {
+                        v9DeselectChartForTextSubToolArm(ch);
+                        v9LastHydratedTextLegacyRef.current = null;
+                        setTlBarSelected(false);
+                        setTlBarSelectedType(null);
+                      }
                     } else if (tlBarSelected) {
                       setTlBarSelected(false);
                       setTlBarSelectedType(null);
