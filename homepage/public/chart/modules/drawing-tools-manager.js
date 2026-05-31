@@ -4744,7 +4744,11 @@ class DrawingToolsManager {
         }
 
         if (liveRender && drawingRenderOpts && drawingRenderOpts.skipHandles) {
-            if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox) {
+            if (typeof drawing._syncLiveTextChrome === 'function' && drawing.bbox) {
+                drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
+            } else if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox
+                && typeof drawing._shouldCreateHandles === 'function'
+                && drawing._shouldCreateHandles({ skipHandles: false })) {
                 drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
             } else if (typeof drawing._syncBoxHandlePositions === 'function') {
                 drawing._syncBoxHandlePositions(drawing.group, scales);

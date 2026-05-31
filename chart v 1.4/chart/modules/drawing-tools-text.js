@@ -311,6 +311,28 @@ function syncTextHandlePositions(group, bbox) {
     return true;
 }
 
+/** Keep plain-text selection box (dashed hit rect + optional bg) aligned with measured glyphs. */
+function syncPlainTextSelectionChrome(group, bbox, drawing) {
+    if (!group || group.empty() || !bbox) return;
+    group.select('rect.text-body-hit')
+        .attr('x', bbox.x)
+        .attr('y', bbox.y)
+        .attr('width', bbox.width)
+        .attr('height', bbox.height);
+    group.select('rect.text-background, rect.text-border')
+        .attr('x', bbox.x)
+        .attr('y', bbox.y)
+        .attr('width', bbox.width)
+        .attr('height', bbox.height);
+    if (drawing && drawing.id && drawing.style && drawing.style.wrapText) {
+        group.select(`#txt-clip-${drawing.id} rect`)
+            .attr('x', bbox.x)
+            .attr('y', bbox.y)
+            .attr('width', bbox.width)
+            .attr('height', bbox.height);
+    }
+}
+
 function scheduleTextAnnotationLiveRender(drawing) {
     if (!drawing) return;
     const manager = drawing.chart && drawing.chart.drawingManager;
@@ -324,7 +346,13 @@ function scheduleTextAnnotationLiveRender(drawing) {
             skipHandles: true
         };
         drawing.render(drawing._lastContainer, drawing._lastScales, liveOpts);
-        if (drawing.bbox) syncTextHandlePositions(drawing.group, drawing.bbox);
+        if (drawing.bbox && drawing.group) {
+            if (typeof drawing._syncLiveTextChrome === 'function') {
+                drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
+            } else {
+                syncTextHandlePositions(drawing.group, drawing.bbox);
+            }
+        }
     }
 }
 
@@ -723,6 +751,82 @@ class TextTool extends BaseDrawing {
         this._lastContainer = container;
         this._lastScales = scales;
 
+        const self = this;
+        self._updatePlainTextLayout = () => {
+            const liveScales = self._lastScales;
+            if (!self.group || self.group.empty() || !liveScales || self.points.length < 1) return;
+
+            const pt = self.points[0];
+            const px = liveScales.chart && liveScales.chart.dataIndexToPixel
+                ? liveScales.chart.dataIndexToPixel(pt.x)
+                : liveScales.xScale(pt.x);
+            const py = liveScales.yScale(pt.y);
+            const sf = self.getZoomScaleFactor(liveScales);
+            const fs = Math.max(6, self.style.fontSize * sf);
+            const lh = fs * 1.2;
+            const mw = Math.max(40, (self.style.maxWidth || 200) * sf);
+            const display = resolveTextToolDisplay(self.text);
+            const lineList = self.style.wrapText
+                ? TextTool.wrapTextLines(
+                    display.text,
+                    mw,
+                    fs,
+                    self.style.fontFamily,
+                    self.style.fontWeight,
+                    self.style.fontStyle
+                )
+                : display.text.split('\n');
+
+            const textEl = self.group.select('text.inline-editable-text');
+            if (textEl.empty()) return;
+
+            const phBg = self.style.fill && self.style.fill !== 'none' ? self.style.fill : null;
+            textEl
+                .attr('fill', display.isPlaceholder
+                    ? resolveAnnotationTextFill(self.style.textColor, phBg, true)
+                    : self.style.textColor)
+                .attr('font-size', `${fs}px`)
+                .attr('x', px)
+                .attr('text-anchor', 'start');
+            textEl.selectAll('tspan').remove();
+            lineList.forEach((line, index) => {
+                const sanitizedLine = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
+                textEl.append('tspan')
+                    .attr('x', px)
+                    .attr('dy', index === 0 ? 0 : lh)
+                    .text(sanitizedLine);
+            });
+
+            if (self.style.textAlign === 'center' || self.style.textAlign === 'right') {
+                let textWidth = 0;
+                try { textWidth = textEl.node().getBBox().width; } catch (e) {}
+                const anchorX = self.style.textAlign === 'center' ? px + textWidth / 2 : px + textWidth;
+                const textAnchor = self.style.textAlign === 'center' ? 'middle' : 'end';
+                textEl.attr('x', anchorX).attr('text-anchor', textAnchor);
+                textEl.selectAll('tspan').attr('x', anchorX);
+            }
+
+            let rawBbox;
+            try {
+                rawBbox = textEl.node().getBBox();
+            } catch (e) {
+                rawBbox = { x: px, y: py - fs, width: 50, height: fs * 1.2 };
+            }
+
+            const pad = 6;
+            const nextBbox = {
+                x: rawBbox.x - pad,
+                y: rawBbox.y - pad,
+                width: rawBbox.width + pad * 2,
+                height: rawBbox.height + pad * 2
+            };
+            self.bbox = nextBbox;
+            syncPlainTextSelectionChrome(self.group, nextBbox, self);
+            syncInlineEditorToEditBoxRect(
+                resolveTextAnnotationEditBoxNode(self, textEl.node())
+            );
+        };
+
         const bodyHitArea = this.group.insert('rect', 'text')
             .attr('class', 'shape-border-hit text-body-hit')
             .attr('x', bbox.x)
@@ -815,7 +919,11 @@ class TextTool extends BaseDrawing {
                     editorBorderRadius: hasBackground ? '4px' : undefined,
                     onInput: (newText) => {
                         self.setText((newText || '').replace(/\r\n/g, '\n'));
-                        scheduleTextAnnotationLiveRender(self);
+                        if (typeof self._updatePlainTextLayout === 'function') {
+                            self._updatePlainTextLayout();
+                        } else {
+                            scheduleTextAnnotationLiveRender(self);
+                        }
                     }
                 })
             );
@@ -929,10 +1037,12 @@ class TextTool extends BaseDrawing {
         return false;
     }
 
+    _syncLiveTextChrome(group, bbox) {
+        syncPlainTextSelectionChrome(group, bbox, this);
+    }
+
     _syncTextHandlePositions(group, bbox) {
-        if (!syncTextHandlePositions(group, bbox)) {
-            this.createTextHandles(group, bbox);
-        }
+        syncPlainTextSelectionChrome(group, bbox, this);
     }
 
     /**

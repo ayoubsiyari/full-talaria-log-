@@ -5317,8 +5317,6 @@ class Chart {
         this._sessionStatePatchInFlight = true;
         try {
             this._writeTradingSessionLocalBackupThrottled({ force: true });
-            // Do NOT use fetch({ keepalive: true }) here — Chromium limits keepalive bodies to ~64KB.
-            // Journal payloads (base64 screenshots) exceed that and the request fails → nothing saved server-side.
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
