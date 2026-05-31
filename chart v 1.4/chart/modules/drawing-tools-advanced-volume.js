@@ -1653,8 +1653,8 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('y2', pocY)
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', 14)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'pointer');
+                .style('pointer-events', isAnchoredProxy ? 'none' : 'stroke')
+                .style('cursor', isAnchoredProxy ? 'default' : 'pointer');
             this.group.append('line')
                 .attr('class', 'volume-profile-level-line volume-profile-poc-line')
                 .attr('x1', levelLineStartX)
@@ -1679,8 +1679,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('y2', vahY)
                     .attr('stroke', 'transparent')
                     .attr('stroke-width', 14)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'pointer');
+                    .style('pointer-events', isAnchoredProxy ? 'none' : 'stroke')
+                    .style('cursor', isAnchoredProxy ? 'default' : 'pointer');
                 this.group.append('line')
                     .attr('class', 'volume-profile-level-line volume-profile-vah-line')
                     .attr('x1', levelLineStartX)
@@ -1768,8 +1768,8 @@ class VolumeProfileTool extends BaseDrawing {
                     .attr('y2', valY)
                     .attr('stroke', 'transparent')
                     .attr('stroke-width', 14)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'pointer');
+                    .style('pointer-events', isAnchoredProxy ? 'none' : 'stroke')
+                    .style('cursor', isAnchoredProxy ? 'default' : 'pointer');
                 this.group.append('line')
                     .attr('class', 'volume-profile-level-line volume-profile-val-line')
                     .attr('x1', levelLineStartX)

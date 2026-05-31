@@ -4910,24 +4910,46 @@ class DrawingToolsManager {
                 .style('pointer-events', 'none')
                 .style('cursor', 'default');
 
-            drawing.group.selectAll('.volume-profile-boundary-hit')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'ew-resize');
+            if (drawing.type === 'anchored-volume-profile') {
+                // TradingView-like: only the anchor vertical line / resize handle is interactive.
+                drawing.group.selectAll('.volume-profile-level-line')
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
+                drawing.group.selectAll('.volume-profile-values-label')
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
+                drawing.group.selectAll('.volume-profile-boundary:not(.volume-profile-anchor-boundary)')
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
+                drawing.group.selectAll('.volume-profile-boundary-hit')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'ew-resize');
+                drawing.group.selectAll('.volume-profile-anchor-boundary.shape-border-hit')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'ew-resize');
+                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'ew-resize');
+            } else {
+                drawing.group.selectAll('.volume-profile-boundary-hit')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'ew-resize');
 
-            drawing.group.selectAll('.volume-profile-boundary')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                drawing.group.selectAll('.volume-profile-boundary')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
 
-            drawing.group.selectAll('.volume-profile-level-line')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+                drawing.group.selectAll('.volume-profile-level-line')
+                    .style('pointer-events', 'stroke')
+                    .style('cursor', 'move');
 
-            drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
-                .style('pointer-events', 'all');
+                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                    .style('pointer-events', 'all');
 
-            drawing.group.selectAll('.volume-profile-values-label')
-                .style('pointer-events', 'all')
-                .style('cursor', 'move');
+                drawing.group.selectAll('.volume-profile-values-label')
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'move');
+            }
 
             drawing.group.selectAll('.volume-profile-hitbox')
                 .style('pointer-events', 'none')
@@ -5969,7 +5991,7 @@ class DrawingToolsManager {
         }
 
         const drawings = (Array.isArray(drawingOrDrawings) ? drawingOrDrawings : [drawingOrDrawings])
-            .filter(d => d && d.type !== 'anchored-vwap');
+            .filter(d => d && d.type !== 'anchored-vwap' && d.type !== 'anchored-volume-profile');
         if (!drawings || drawings.length === 0) return;
 
         drawings.forEach((d) => {
@@ -9184,6 +9206,9 @@ class DrawingToolsManager {
         if (strokeSelected.length > 0) return strokeSelected;
 
         return selected.filter((d) => {
+            if (d.type === 'anchored-volume-profile') {
+                return this.isVolumeProfileAnchorBoundaryHit(d, mx, my);
+            }
             if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
                 if (d.type === 'fib-wedge' && this._isPointInFibWedgeBody(d, mx, my)) return true;
                 return this._isPointOnDrawingVisibleStroke(d, mx, my);
@@ -9811,8 +9836,17 @@ class DrawingToolsManager {
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
                     const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
+
+                    // Anchored profile: only the anchor line / resize handle is hittable (not POC/VA lines).
+                    if (isAnchoredVolumeProfile) {
+                        if (this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY)) {
+                            hitsById.set(drawing.id, { drawing, distance: 0, z });
+                        }
+                        continue;
+                    }
+
                     // Allow clicking anywhere inside the profile body (not only near 1px boundaries).
-                    const allowProfileBodyZoneHit = !isAnchoredVolumeProfile;
+                    const allowProfileBodyZoneHit = true;
                     const allowProfileBarHit = true;
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
@@ -10618,9 +10652,59 @@ class DrawingToolsManager {
         return false;
     }
 
+    /** Anchor vertical line + resize handle only (anchored volume profile). */
+    isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-volume-profile' || !drawing.group) {
+            return false;
+        }
+        const baseHitTolerance = 10;
+        try {
+            const handleNodes = drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').nodes();
+            for (const node of handleNodes) {
+                if (!node) continue;
+                if (typeof node.getBBox === 'function') {
+                    const bb = node.getBBox();
+                    const pad = 6;
+                    if (mouseX >= bb.x - pad && mouseX <= bb.x + bb.width + pad
+                        && mouseY >= bb.y - pad && mouseY <= bb.y + bb.height + pad) {
+                        return true;
+                    }
+                }
+            }
+
+            const anchorEls = drawing.group.selectAll(
+                '.volume-profile-boundary-hit[data-point-index="0"], .volume-profile-anchor-boundary.shape-border-hit'
+            ).nodes();
+            let bestDistance = Infinity;
+            for (const el of anchorEls) {
+                if (!el) continue;
+                const x1 = parseFloat(el.getAttribute('x1'));
+                const y1 = parseFloat(el.getAttribute('y1'));
+                const x2 = parseFloat(el.getAttribute('x2'));
+                const y2 = parseFloat(el.getAttribute('y2'));
+                if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+                const elSel = d3.select(el);
+                const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+                const isBoundaryHit = elSel.classed('volume-profile-boundary-hit');
+                const tolerance = isBoundaryHit
+                    ? Math.max(14, (strokeWidth / 2) + 0.5)
+                    : Math.max(baseHitTolerance, (strokeWidth / 2) + 0.5);
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                if (distance <= tolerance) {
+                    bestDistance = Math.min(bestDistance, distance);
+                }
+            }
+            return bestDistance !== Infinity;
+        } catch (_) {}
+        return false;
+    }
+
     /** Bars, boundaries, level lines, and value labels — not empty zone fill. */
     isVolumeProfileInteractiveHit(drawing, mouseX, mouseY) {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type)) return false;
+        if (drawing.type === 'anchored-volume-profile') {
+            return this.isVolumeProfileAnchorBoundaryHit(drawing, mouseX, mouseY);
+        }
         if (this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return true;
         if (this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY)) return true;
         if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) return true;
@@ -10634,6 +10718,9 @@ class DrawingToolsManager {
      */
     isVolumeProfileLevelLineHit(drawing, mouseX, mouseY) {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+        if (drawing.type === 'anchored-volume-profile') {
             return false;
         }
 

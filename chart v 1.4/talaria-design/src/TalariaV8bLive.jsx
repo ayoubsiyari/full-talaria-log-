@@ -548,6 +548,62 @@ const V9_RAIL_ICONS_BY_GROUP = Object.freeze({
   magnet: new Set(["magnet", "magnetOff", "magnetWeak", "magnetStrong"]),
 });
 
+/** V9 icon id → legacy chart.js tool registry key (DrawingToolsManager.toolRegistry). */
+const V9_ICON_TO_LEGACY = Object.freeze({
+  // Cursor / utility
+  crosshair: null, cursorDot: null, cursorArrow: null, eraser: null, lock: null,
+  // Brushes
+  draw: 'brush', brush: 'highlighter',
+  // Lines
+  trendline: 'trendline', hray: 'horizontal-ray', hline: 'horizontal',
+  vline: 'vertical', ray: 'ray', extendedLine: 'extended-line',
+  crossLine: 'cross-line', polyline: 'polyline', pathTool: 'path',
+  curve: 'curve', doubleCurve: 'double-curve',
+  // Shapes
+  triangle: 'triangle', rect: 'rectangle', arcShape: 'arc',
+  ellipse: 'ellipse', circle: 'circle',
+  // Arrows
+  arrowMarker: 'arrow-marker', arrowLine: 'arrow',
+  arrowUp: 'arrow-mark-up', arrowDn: 'arrow-mark-down',
+  // Channels & pitchforks
+  channel: 'parallel-channel', regressionCh: 'regression-trend',
+  flatChannel: 'flat-top-bottom', disjointCh: 'disjoint-channel',
+  pitchfork: 'pitchfork',
+  // Fibonacci
+  fib: 'fibonacci-retracement', fibExtension: 'fibonacci-extension',
+  fibChannel: 'fib-channel', fibTimeZone: 'fib-timezone',
+  fibFan: 'fib-speed-fan', fibTime: 'trend-fib-time',
+  fibCircles: 'fib-circles', fibSpiral: 'fib-spiral',
+  fibArcs: 'fib-arcs', fibWedge: 'fib-wedge',
+  // Gann
+  gannBox: 'gann-box', gannSquare: 'gann-square-fixed', gannFan: 'gann-fan',
+  // Text & labels
+  text: 'text', note: 'note', priceNote: 'price-note',
+  callout: 'callout', comment: 'comment',
+  pin: 'pin', priceLabel: 'price-label', signpost: 'signpost-2',
+  flag: 'flag-mark', image: 'image', emoji: 'emoji',
+  // Patterns & waves
+  elliott5: 'elliott-impulse', elliottABC: 'elliott-correction',
+  elliottTri: 'elliott-triangle', elliottWXY: 'elliott-double-combo',
+  elliottWXYXZ: 'elliott-triple-combo',
+  xabcd: 'xabcd-pattern', headShoulders: 'head-shoulders',
+  abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
+  threeDrives: 'three-drives',
+  // Projections
+  shortPos: 'short-position', longPos: 'long-position', measure: 'date-price-range',
+  // Volume
+  vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
+  anchoredVol: 'anchored-volume-profile',
+});
+
+/** V9 group id → default legacy tool when no sub-tool is picked yet. */
+const V9_GROUP_DEFAULT = Object.freeze({
+  crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
+  channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
+  pattern: 'elliott-impulse', measure: 'date-price-range', brush: 'anchored-vwap',
+  eye: null, magnet: null, lock: null,
+});
+
 /** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool` + spiral CCW). */
 const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
@@ -13403,57 +13459,6 @@ const TalariaV8bLive = () => {
   // Kept priceAxisWidth = 0 so any remaining layout calculations don't break.
   const priceAxisWidth = 0;
 
-  // ─── V9 ICON → LEGACY chart.js TOOL REGISTRY KEY ────────────────────────
-  // Every V9 icon id maps to a key in DrawingToolsManager.toolRegistry
-  // (see chart/modules/drawing-tools-manager.js line 108). Unmapped icons
-  // resolve to null and clear the tool (cursor mode).
-  const V9_ICON_TO_LEGACY = {
-    // Cursor / utility
-    crosshair: null, cursorDot: null, cursorArrow: null, eraser: null, lock: null,
-    // Brushes
-    draw: 'brush', brush: 'highlighter',
-    // Lines
-    trendline: 'trendline', hray: 'horizontal-ray', hline: 'horizontal',
-    vline: 'vertical', ray: 'ray', extendedLine: 'extended-line',
-    crossLine: 'cross-line', polyline: 'polyline', pathTool: 'path',
-    curve: 'curve', doubleCurve: 'double-curve',
-    // Shapes
-    triangle: 'triangle', rect: 'rectangle', arcShape: 'arc',
-    ellipse: 'ellipse', circle: 'circle',
-    // Arrows
-    arrowMarker: 'arrow-marker', arrowLine: 'arrow',
-    arrowUp: 'arrow-mark-up', arrowDn: 'arrow-mark-down',
-    // Channels & pitchforks
-    channel: 'parallel-channel', regressionCh: 'regression-trend',
-    flatChannel: 'flat-top-bottom', disjointCh: 'disjoint-channel',
-    pitchfork: 'pitchfork',
-    // Fibonacci
-    fib: 'fibonacci-retracement', fibExtension: 'fibonacci-extension',
-    fibChannel: 'fib-channel', fibTimeZone: 'fib-timezone',
-    fibFan: 'fib-speed-fan', fibTime: 'trend-fib-time',
-    fibCircles: 'fib-circles', fibSpiral: 'fib-spiral',
-    fibArcs: 'fib-arcs', fibWedge: 'fib-wedge',
-    // Gann
-    gannBox: 'gann-box', gannSquare: 'gann-square-fixed', gannFan: 'gann-fan',
-    // Text & labels
-    text: 'text', note: 'note', priceNote: 'price-note',
-    callout: 'callout', comment: 'comment',
-    pin: 'pin', priceLabel: 'price-label', signpost: 'signpost-2',
-    flag: 'flag-mark', image: 'image', emoji: 'emoji',
-    // Patterns & waves
-    elliott5: 'elliott-impulse', elliottABC: 'elliott-correction',
-    elliottTri: 'elliott-triangle', elliottWXY: 'elliott-double-combo',
-    elliottWXYXZ: 'elliott-triple-combo',
-    xabcd: 'xabcd-pattern', headShoulders: 'head-shoulders',
-    abcdPattern: 'abcd-pattern', triPattern: 'triangle-pattern',
-    threeDrives: 'three-drives',
-    // Projections
-    shortPos: 'short-position', longPos: 'long-position', measure: 'date-price-range',
-    // Volume
-    vwap: 'anchored-vwap', volProfile: 'fixed-range-volume-profile',
-    anchoredVol: 'anchored-volume-profile',
-  };
-
   // ─── Objects Tree sync ──────────────────────────────────────────────────
   // Build inverse map (legacy chart.js drawing.type → V9 icon id) from
   // V9_ICON_TO_LEGACY so the Objects Tree row icon matches the left-rail
@@ -13583,14 +13588,6 @@ const TalariaV8bLive = () => {
       window.__rebuildObjectsTree();
     }
   }, [rightPanel]);
-
-  // V9 group id → default legacy tool (used when no sub-tool was picked yet).
-  const V9_GROUP_DEFAULT = {
-    crosshair: null, brush2: 'brush', trendline: 'trendline', rect: 'rectangle',
-    channel: 'parallel-channel', fib: 'fibonacci-retracement', text: 'text',
-    pattern: 'elliott-impulse', measure: 'date-price-range', brush: 'anchored-vwap',
-    eye: null, magnet: null, lock: null,
-  };
 
   // Resolve current legacy tool from V9 state. Sub-tool selection in
   // groupSelected[tool] wins; otherwise falls back to the group default.
