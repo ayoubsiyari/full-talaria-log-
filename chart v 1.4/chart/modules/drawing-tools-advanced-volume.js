@@ -1172,14 +1172,36 @@ class VolumeProfileTool extends BaseDrawing {
             ? Math.max(0, Math.min(1, backgroundOpacityRaw))
             : 0.85;
         const shouldRenderProfileBody = !isPreview && this._isActiveResizing !== true;
+        const isAnchoredProxy = this._isAnchoredProxy === true;
+        const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
+        const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
+        const profileWidthRatioEarly = Math.max(0.15, Math.min(1, Number(this.style.profileWidthRatio) || 0.3));
+        const xScaleRangeEarly = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
+        const chartLeftEdgeEarly = Array.isArray(xScaleRangeEarly) && xScaleRangeEarly.length > 0 ? Math.min(...xScaleRangeEarly) : left;
+        const chartRightEdgeEarly = Array.isArray(xScaleRangeEarly) && xScaleRangeEarly.length > 0 ? Math.max(...xScaleRangeEarly) : right;
+
+        // Anchored profile: zone background covers the bar column only (TradingView-like),
+        // not the full anchor→latest-candle span (which blocked chart pan).
+        let zoneLeft = left;
+        let zoneWidth = width;
+        if (isAnchoredProxy && hasFixedProfileSide) {
+            const barColumnWidth = Math.max(12, effectiveProfileWidth * profileWidthRatioEarly);
+            if (fixedProfileSide === 'left') {
+                zoneLeft = chartLeftEdgeEarly;
+                zoneWidth = barColumnWidth;
+            } else {
+                zoneLeft = chartRightEdgeEarly - barColumnWidth;
+                zoneWidth = barColumnWidth;
+            }
+        }
 
         // Visual profile background.
         if (shouldRenderProfileBody) {
             this.group.append('rect')
                 .attr('class', 'volume-profile-range')
-                .attr('x', left)
+                .attr('x', zoneLeft)
                 .attr('y', top)
-                .attr('width', width)
+                .attr('width', Math.max(1, zoneWidth))
                 .attr('height', Math.max(1, height))
                 .attr('fill', backgroundFill)
                 .attr('opacity', Math.min(1, globalOpacity * backgroundOpacity))
@@ -1188,23 +1210,22 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        // Full-area hit target (pointer-events: stroke on a transparent rect misses interior clicks).
-        // Full-area geometry helper only — pointer-events none so chart pan works through the fill;
-        // selection from the body is handled via findDrawingsAtPoint + canvas click-release (chart.js).
+        // Geometry helper only — pointer-events none so chart pan works through the fill.
         this.group.append('rect')
             .attr('class', 'volume-profile-hitbox')
-            .attr('x', left)
+            .attr('x', zoneLeft)
             .attr('y', top)
-            .attr('width', width)
+            .attr('width', Math.max(1, zoneWidth))
             .attr('height', Math.max(1, height))
             .attr('fill', 'transparent')
             .style('pointer-events', 'none')
             .style('cursor', 'inherit');
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
+        const anchorBoundaryX = isAnchoredProxy && hasFixedProfileSide ? x1 : left;
         [
             { x: x1, pointIndex: 0 },
-            { x: x2, pointIndex: 1 }
+            ...(isAnchoredProxy ? [] : [{ x: x2, pointIndex: 1 }])
         ].forEach(({ x, pointIndex }) => {
             this.group.append('line')
                 .attr('class', 'volume-profile-boundary-hit shape-border-hit resize-handle-hit')
@@ -1220,46 +1241,48 @@ class VolumeProfileTool extends BaseDrawing {
         });
 
         this.group.append('line')
-            .attr('class', 'volume-profile-boundary shape-border-hit')
-            .attr('x1', left)
+            .attr('class', 'volume-profile-boundary shape-border-hit volume-profile-anchor-boundary')
+            .attr('x1', anchorBoundaryX)
             .attr('y1', top)
-            .attr('x2', left)
+            .attr('x2', anchorBoundaryX)
             .attr('y2', bottom)
             .attr('stroke', 'transparent')
             .attr('stroke-width', 14)
             .style('pointer-events', 'stroke')
-            .style('cursor', 'pointer');
+            .style('cursor', isAnchoredProxy ? 'ew-resize' : 'pointer');
         this.group.append('line')
-            .attr('class', 'volume-profile-boundary')
-            .attr('x1', left)
+            .attr('class', 'volume-profile-boundary volume-profile-anchor-boundary')
+            .attr('x1', anchorBoundaryX)
             .attr('y1', top)
-            .attr('x2', left)
+            .attr('x2', anchorBoundaryX)
             .attr('y2', bottom)
             .attr('stroke', boundaryStroke)
             .attr('stroke-width', boundaryWidth)
             .attr('opacity', Math.min(1, globalOpacity * 0.95))
             .style('pointer-events', 'none');
 
-        this.group.append('line')
-            .attr('class', 'volume-profile-boundary shape-border-hit')
-            .attr('x1', right)
-            .attr('y1', top)
-            .attr('x2', right)
-            .attr('y2', bottom)
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', 14)
-            .style('pointer-events', 'stroke')
-            .style('cursor', 'pointer');
-        this.group.append('line')
-            .attr('class', 'volume-profile-boundary')
-            .attr('x1', right)
-            .attr('y1', top)
-            .attr('x2', right)
-            .attr('y2', bottom)
-            .attr('stroke', boundaryStroke)
-            .attr('stroke-width', boundaryWidth)
-            .attr('opacity', Math.min(1, globalOpacity * 0.95))
-            .style('pointer-events', 'none');
+        if (!isAnchoredProxy) {
+            this.group.append('line')
+                .attr('class', 'volume-profile-boundary shape-border-hit')
+                .attr('x1', right)
+                .attr('y1', top)
+                .attr('x2', right)
+                .attr('y2', bottom)
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', 14)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'pointer');
+            this.group.append('line')
+                .attr('class', 'volume-profile-boundary')
+                .attr('x1', right)
+                .attr('y1', top)
+                .attr('x2', right)
+                .attr('y2', bottom)
+                .attr('stroke', boundaryStroke)
+                .attr('stroke-width', boundaryWidth)
+                .attr('opacity', Math.min(1, globalOpacity * 0.95))
+                .style('pointer-events', 'none');
+        }
 
         if (isPreview) {
             this.renderCornerPoint(this.group, left, top, Math.min(1, globalOpacity * 0.95));
@@ -1510,12 +1533,9 @@ class VolumeProfileTool extends BaseDrawing {
         const xScaleRange = scales.xScale && typeof scales.xScale.range === 'function' ? scales.xScale.range() : [left, right];
         const chartLeftEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.min(...xScaleRange) : left;
         const chartRightEdge = Array.isArray(xScaleRange) && xScaleRange.length > 0 ? Math.max(...xScaleRange) : right;
-        const isAnchoredProxy = this._isAnchoredProxy === true;
         const fixedProfileLeftEdge = chartLeftEdge;
         const fixedProfileRightEdge = chartRightEdge;
         const profileLineEndX = extendRightLevels ? Math.max(right, chartRightEdge) : effectiveProfileRight;
-        const fixedProfileSide = String(this.fixedProfileSide || '').toLowerCase();
-        const hasFixedProfileSide = fixedProfileSide === 'left' || fixedProfileSide === 'right';
         const levelLineStartX = hasFixedProfileSide ? fixedProfileLeftEdge : left;
         const levelLineEndX = hasFixedProfileSide
             ? (extendRightLevels ? fixedProfileRightEdge : effectiveProfileRight)
@@ -2043,7 +2063,8 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         this.group = proxy.group;
         this.group
             .attr('class', 'drawing drawing-anchored-volume-profile')
-            .attr('data-id', this.id);
+            .attr('data-id', this.id)
+            .style('pointer-events', 'none');
 
         const preservedShowBackground = this.style.showBackground;
         const preservedExtendRight = this.style.extendRight;

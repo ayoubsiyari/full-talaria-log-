@@ -433,6 +433,13 @@ function refreshTextAnnotationTextCursors(drawing) {
     drawing.group.selectAll('text.inline-editable-text tspan').style('cursor', cursor);
 }
 
+/** Invisible handles must not steal clicks from tail/text on unselected annotations. */
+function refreshTextAnnotationHandlePointerEvents(drawing) {
+    if (!drawing || !drawing.group || typeof drawing.group.selectAll !== 'function') return;
+    const pe = drawing.selected ? 'all' : 'none';
+    drawing.group.selectAll('.resize-handle, .resize-handle-hit').style('pointer-events', pe);
+}
+
 function resolveTextAnnotationHoverCursor(drawing, rawTargetNode) {
     if (!isTextAnnotationInlineTextNode(rawTargetNode)) return null;
     return textAnnotationHoverCursor(drawing);
@@ -3508,7 +3515,7 @@ class CalloutTool extends BaseDrawing {
             .attr('stroke', '#2962FF')
             .attr('stroke-width', handleStrokeWidth)
             .style('cursor', 'move')
-            .style('pointer-events', 'all')
+            .style('pointer-events', this.selected ? 'all' : 'none')
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 0);
 
@@ -3522,7 +3529,7 @@ class CalloutTool extends BaseDrawing {
             .attr('stroke', '#2962FF')
             .attr('stroke-width', handleStrokeWidth)
             .style('cursor', 'move')
-            .style('pointer-events', 'all')
+            .style('pointer-events', this.selected ? 'all' : 'none')
             .style('opacity', this.selected ? 1 : 0)
             .attr('data-point-index', 1);
 
@@ -4905,6 +4912,7 @@ if (typeof window !== 'undefined') {
         canTextAnnotationOpenInlineEdit,
         textAnnotationHoverCursor,
         refreshTextAnnotationTextCursors,
+        refreshTextAnnotationHandlePointerEvents,
         resolveTextAnnotationHoverCursor,
         findDrawingFromDomNode
     };

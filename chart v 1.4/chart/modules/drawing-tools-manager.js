@@ -1494,6 +1494,25 @@ class DrawingToolsManager {
                         return;
                     }
                 }
+
+                // TradingView-like: empty zone fill / chart background passes through to pan.
+                // Only bars, anchor boundary, level lines, and labels capture the pointer.
+                const hasInteractiveDrawingHit = (drawingsAtPoint || []).some((d) => {
+                    if (!d) return false;
+                    if (!this.isVolumeProfileToolType(d.type)) return true;
+                    return this.isVolumeProfileInteractiveHit(d, mouseX, mouseY);
+                });
+                if (drawingsAtPoint && drawingsAtPoint.length > 0 && !hasInteractiveDrawingHit) {
+                    if (event.detail >= 2) {
+                        const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                        if (openedFromDoubleClick) {
+                            this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                            suppressNextCanvasClick = true;
+                        }
+                    }
+                    return;
+                }
+
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) {
                     // Armed draw tool on empty chart — let SVG placement layer handle the click.
                     if (this.currentTool) return;
@@ -1656,7 +1675,7 @@ class DrawingToolsManager {
 
                 if (isVolumeProfileHit && !isVolumeProfileExplicitTarget) {
                     const best = drawingsAtPoint[0];
-                    if (best && !best.locked) {
+                    if (best && this.isVolumeProfileInteractiveHit(best, mouseX, mouseY) && !best.locked) {
                         this.selectDrawing(best, false);
                         this._volumeProfileValueLabelClickState = {
                             drawingId: best.id,
@@ -1668,12 +1687,14 @@ class DrawingToolsManager {
                         this._volumeProfileValueLabelClickState = null;
                     }
 
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (typeof event.stopImmediatePropagation === 'function') {
-                        event.stopImmediatePropagation();
+                    if (best && this.isVolumeProfileInteractiveHit(best, mouseX, mouseY)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        suppressNextCanvasClick = true;
                     }
-                    suppressNextCanvasClick = true;
                     return;
                 }
 
@@ -4748,6 +4769,9 @@ class DrawingToolsManager {
             const inlineTextTypes = new Set(['text', 'note', 'notebox', 'anchored-text', 'callout', 'comment', 'pin', 'signpost-2']);
             if (inlineTextTypes.has(drawing.type)) {
                 textHelpers.refreshTextAnnotationTextCursors(drawing);
+                if (typeof textHelpers.refreshTextAnnotationHandlePointerEvents === 'function') {
+                    textHelpers.refreshTextAnnotationHandlePointerEvents(drawing);
+                }
             }
         }
         if (this._isPlacementModeActive()) {
@@ -9786,8 +9810,9 @@ class DrawingToolsManager {
             // Volume Profile tools: select from boundaries/levels/labels.
             if (!hitsById.has(drawing.id) && this.isVolumeProfileToolType(drawing.type)) {
                 try {
+                    const isAnchoredVolumeProfile = drawing.type === 'anchored-volume-profile';
                     // Allow clicking anywhere inside the profile body (not only near 1px boundaries).
-                    const allowProfileBodyZoneHit = true;
+                    const allowProfileBodyZoneHit = !isAnchoredVolumeProfile;
                     const allowProfileBarHit = true;
                     let bestBoundaryDistance = Infinity;
                     const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line').nodes();
@@ -10535,6 +10560,72 @@ class DrawingToolsManager {
      */
     getLastStackedLines() {
         return this.lastStackedLines || null;
+    }
+
+    /** Volume profile bar rects (not zone background). */
+    isVolumeProfileBarHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+        try {
+            const barRects = drawing.group.selectAll('rect').nodes();
+            for (const rect of barRects) {
+                if (!rect) continue;
+                if (d3.select(rect).classed('volume-profile-range')) continue;
+                const x = Number(rect.getAttribute('x'));
+                const y = Number(rect.getAttribute('y'));
+                const width = Number(rect.getAttribute('width'));
+                const height = Number(rect.getAttribute('height'));
+                if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) continue;
+                if (mouseX >= (x - 0.75) && mouseX <= (x + width + 0.75)
+                    && mouseY >= (y - 0.75) && mouseY <= (y + height + 0.75)) {
+                    return true;
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    /** Anchor / range boundary lines and resize handles. */
+    isVolumeProfileBoundaryHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+        const baseHitTolerance = 10;
+        try {
+            const boundaryElements = drawing.group.selectAll('.volume-profile-boundary-hit, .volume-profile-boundary').nodes();
+            let bestBoundaryDistance = Infinity;
+            for (const el of boundaryElements) {
+                if (!el) continue;
+                const x1 = parseFloat(el.getAttribute('x1'));
+                const y1 = parseFloat(el.getAttribute('y1'));
+                const x2 = parseFloat(el.getAttribute('x2'));
+                const y2 = parseFloat(el.getAttribute('y2'));
+                if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+                const elSel = d3.select(el);
+                const strokeWidth = parseFloat(elSel.attr('stroke-width') || elSel.style('stroke-width')) || 1;
+                const isBoundaryHit = elSel.classed('volume-profile-boundary-hit');
+                const tolerance = isBoundaryHit
+                    ? Math.max(14, (strokeWidth / 2) + 0.5)
+                    : Math.max(baseHitTolerance, (strokeWidth / 2) + 0.5);
+                const distance = this.pointToLineDistance(mouseX, mouseY, x1, y1, x2, y2);
+                if (distance <= tolerance) {
+                    bestBoundaryDistance = Math.min(bestBoundaryDistance, distance);
+                }
+            }
+            return bestBoundaryDistance !== Infinity;
+        } catch (_) {}
+        return false;
+    }
+
+    /** Bars, boundaries, level lines, and value labels — not empty zone fill. */
+    isVolumeProfileInteractiveHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type)) return false;
+        if (this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return true;
+        if (this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY)) return true;
+        if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) return true;
+        if (this.isVolumeProfileBarHit(drawing, mouseX, mouseY)) return true;
+        return false;
     }
 
     /**

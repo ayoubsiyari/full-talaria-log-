@@ -2237,14 +2237,21 @@ const V9_TEXT_TOOL_CONSTRUCTOR_STYLE_DEFAULTS = {
 };
 
 /** Default txtStyle + armed patch when selecting a text tool to draw (not from a selected object). */
-function v9BuildDefaultTxtStyleForLegacyTool(legacyTool, prevTxtStyle) {
+function v9BuildDefaultTxtStyleForLegacyTool(legacyTool, prevTxtStyle, opts = {}) {
   const base = v9FreshTxtStyleDefaults();
   if (!legacyTool) return base;
 
   const preserve = prevTxtStyle && typeof prevTxtStyle === "object" ? prevTxtStyle : {};
   const preserved = {};
+  const preserveCoords = opts.preserveCoords === true;
+  if (preserveCoords) {
+    [
+      "pt1Price", "pt1Bar", "pt2Price", "pt2Bar",
+    ].forEach((key) => {
+      if (preserve[key] != null) preserved[key] = preserve[key];
+    });
+  }
   [
-    "pt1Price", "pt1Bar", "pt2Price", "pt2Bar",
     "visMinutes", "visHours", "visDays", "visWeeks", "visMonths",
   ].forEach((key) => {
     if (preserve[key] != null) preserved[key] = preserve[key];
@@ -2288,7 +2295,7 @@ function v9ClearTxtPlacementInput(setTxtStyle, suppressRef, armedLegacyTool) {
   if (suppressRef) suppressRef.current = true;
   setTxtStyle((s) => {
     const next = armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)
-      ? v9BuildDefaultTxtStyleForLegacyTool(armedLegacyTool, s)
+      ? v9BuildDefaultTxtStyleForLegacyTool(armedLegacyTool, s, { preserveCoords: false })
       : (s.content ? { ...s, content: "" } : s);
     if (armedLegacyTool && v9IsTextLegacyDrawingType(armedLegacyTool)) {
       v9PushArmedDrawStyle(armedLegacyTool, null, v9TxtStyleForPlacement(next, armedLegacyTool));
@@ -2781,13 +2788,55 @@ function v9StyleBridgeAppliesToDrawing(d, editingSession) {
   return true;
 }
 
-/** Text coord bridge: only when user edits Coordinates/Visibility in settings — not on selection churn. */
+/** Text coord bridge: only when the text settings panel is open (user editing Coordinates). */
 function v9TxtCoordBridgeShouldApply(editingSession, txtSettingsOpen) {
-  if (txtSettingsOpen) return true;
-  if (editingSession?.drawing && v9DrawingTypeToPanelGroup(editingSession.drawing.type) === "text") {
+  return !!txtSettingsOpen;
+}
+
+/** Resolve armed text sub-tool legacy type from React tool + groupSelected.text. */
+function v9ResolveArmedTextLegacyFromState(toolId, groupSelectedText) {
+  if (toolId !== "text") return null;
+  const sub = groupSelectedText;
+  if (sub && sub.icon && V9_ICON_TO_LEGACY[sub.icon] !== undefined) {
+    return V9_ICON_TO_LEGACY[sub.icon];
+  }
+  return V9_GROUP_DEFAULT.text || "text";
+}
+
+/** Never push Comment styles onto a selected Callout (and vice versa) while arming another sub-tool. */
+function v9ShouldApplyTxtStylePatch(d, armedLegacyTool, editingSession, dm) {
+  if (!d || !d.type || !d.style) return false;
+  if (v9DrawingTypeToPanelGroup(d.type) !== "text") return false;
+  if (
+    editingSession?.drawing &&
+    v9IsSameDrawingSession(d, editingSession.drawing)
+  ) {
     return true;
   }
-  return false;
+  if (!dm || !v9IsActiveStyleBridgeTarget(dm, d)) return false;
+  if (armedLegacyTool) {
+    if (d.type !== armedLegacyTool) return false;
+  }
+  return true;
+}
+
+function v9DeselectChartForTextSubToolArm(chartInstance) {
+  try {
+    const dm = chartInstance && chartInstance.drawingManager;
+    if (!dm) return;
+    if (typeof dm.deselectAll === "function") {
+      dm.deselectAll({ forSelectionChange: true });
+    }
+    if (dm.toolbar && typeof dm.toolbar.hide === "function") {
+      dm.toolbar.hide();
+    }
+  } catch (_) {}
+}
+
+function v9IsTextSubToolSwitch(prevSub, nextSub) {
+  if (!nextSub || nextSub.h || !nextSub.icon) return false;
+  if (!prevSub || !prevSub.icon) return true;
+  return prevSub.icon !== nextSub.icon;
 }
 
 function collectV9BridgeTargetPairs(editingRefDrawing) {
@@ -2981,6 +3030,7 @@ function v9CpPickerKeyFlushesTxtStyle(key) {
 function v9FlushTxtStyleToChartTargets(txtStyle, opts = {}) {
   if (!txtStyle) return;
   const editingRefDrawing = opts.editingRefDrawing ?? null;
+  const armedLegacyTool = opts.armedLegacyTool ?? null;
   const editSess = editingRefDrawing ? { drawing: editingRefDrawing } : null;
   const chartsToRender = new Set();
   try {
@@ -2988,6 +3038,7 @@ function v9FlushTxtStyleToChartTargets(txtStyle, opts = {}) {
       if (!d || !d.style) return;
       if (v9DrawingTypeToPanelGroup(d.type) !== "text") return;
       if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+      if (!v9ShouldApplyTxtStylePatch(d, armedLegacyTool, editSess, dm)) return;
       const tb = dm.toolbar;
       try {
         if (tb && typeof tb.onBeforeUpdate === "function") tb.onBeforeUpdate(d);
@@ -10219,6 +10270,7 @@ const TalariaV8bLive = () => {
       return n;
     });
     setTlSettOpen(false);
+    setTxtSettOpen(false);
   };
   const finishTxtSettPanel = ({ restore = false } = {}) => {
     if (restore) {
@@ -12610,6 +12662,8 @@ const TalariaV8bLive = () => {
   tlStyleLiveRef.current = tlStyle;
   const txtStyleLiveRef = useRef(txtStyle);
   txtStyleLiveRef.current = txtStyle;
+  const txtArmedLegacyRef = useRef(null);
+  txtArmedLegacyRef.current = v9ResolveArmedTextLegacyFromState(tool, groupSelected.text);
   const runTlCheckboxToggle = (hKey, toggle) => {
     if (typeof toggle !== "function") return;
     const now = Date.now();
@@ -12821,6 +12875,7 @@ const TalariaV8bLive = () => {
       v9ScheduleCpChartFlush(() => {
         v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
           editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          armedLegacyTool: txtArmedLegacyRef.current,
         });
       });
       return;
@@ -12828,6 +12883,7 @@ const TalariaV8bLive = () => {
     flushSync(() => setTxtStyle(next));
     v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      armedLegacyTool: txtArmedLegacyRef.current,
     });
   };
   const cpApply = (nh, ns, nv, na, key) => {
@@ -12928,6 +12984,7 @@ const TalariaV8bLive = () => {
     } else if (key && v9CpPickerKeyFlushesTxtStyle(key)) {
       v9FlushTxtStyleToChartTargets(txtStyleLiveRef.current, {
         editingRefDrawing: editDraw,
+        armedLegacyTool: txtArmedLegacyRef.current,
       });
     }
   }, []);
@@ -14529,6 +14586,16 @@ const TalariaV8bLive = () => {
         v9SettingsChartDismissLockUntilRef.current = 0;
         if (group === 'text') {
           closeIndSett();
+          const tp = {
+            ...v9TxtStylePatchFromDrawing(drawingForStyle),
+            ...v9CoordPatchFromDrawing(drawingForStyle),
+            ...v9VisibilityPatchFromDrawing(drawingForStyle),
+          };
+          if (tp && Object.keys(tp).length) {
+            suppressTxtForwardBridge.current = true;
+            suppressTxtCoordBridge.current = true;
+            flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
+          }
           setTxtSettPos({ x: px, y: py });
           if (drawing.type === 'price-note') setTxtSettTab('style');
           setTxtSettOpen(true);
@@ -14835,6 +14902,17 @@ const TalariaV8bLive = () => {
                 br.suppressTxtForwardBridge.current = true;
                 br.suppressTxtCoordBridge.current = true;
                 flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
+              }
+              const coordOnly = {
+                ...v9CoordPatchFromDrawing(drawing),
+                ...v9VisibilityPatchFromDrawing(drawing),
+              };
+              if (coordOnly && Object.keys(coordOnly).length) {
+                br.suppressForwardBridge.current = true;
+                br.suppressCoordBridge.current = true;
+                flushSync(() =>
+                  br.setTlStyle((s) => ({ ...s, ...coordOnly })),
+                );
               }
             }
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
@@ -15523,10 +15601,12 @@ const TalariaV8bLive = () => {
   // When the armed legacy tool changes (e.g. Rectangle → Triangle), reset `tlStyle`
   // to clean defaults so settings never carry over from the previous tool.
   const v9LastHydratedLegacyRef = useRef(null);
+  const v9LastHydratedTextLegacyRef = useRef(null);
   const [legacyHydrateNonce, setLegacyHydrateNonce] = useState(0);
   useEffect(() => {
     const onChartData = () => {
       v9LastHydratedLegacyRef.current = null;
+      v9LastHydratedTextLegacyRef.current = null;
       setLegacyHydrateNonce((n) => n + 1);
     };
     const onPanel = () => setLegacyHydrateNonce((n) => n + 1);
@@ -15540,6 +15620,42 @@ const TalariaV8bLive = () => {
 
   useLayoutEffect(() => {
     if (editingDrawingRef.current) return;
+
+    // Text sub-tools: hydrate only while the text group is armed on the rail.
+    // Chart selection sync sets tool→crosshair; skipping that path avoids re-applying
+    // armed Comment defaults onto a selected Callout via the style bridge.
+    if (tool === "text") {
+      const textLegacy = v9ResolveArmedTextLegacyFromState(tool, groupSelected.text);
+      if (textLegacy && v9IsTextLegacyDrawingType(textLegacy)) {
+        if (v9LastHydratedTextLegacyRef.current === textLegacy) return;
+        const prevTextLegacy = v9LastHydratedTextLegacyRef.current;
+        v9LastHydratedTextLegacyRef.current = textLegacy;
+        v9LastHydratedLegacyRef.current = textLegacy;
+        if (prevTextLegacy && prevTextLegacy !== textLegacy) {
+          try {
+            const ch =
+              typeof window !== "undefined" && typeof window.getActiveChart === "function"
+                ? window.getActiveChart()
+                : typeof window !== "undefined"
+                  ? window.chart
+                  : null;
+            v9DeselectChartForTextSubToolArm(ch);
+          } catch (_) {}
+        }
+        flushSync(() => {
+          setTxtStyle((s) => {
+            const next = v9BuildDefaultTxtStyleForLegacyTool(textLegacy, s, {
+              preserveCoords: false,
+            });
+            suppressTxtForwardBridge.current = true;
+            v9PushArmedDrawStyle(textLegacy, null, v9TxtStyleForPlacement(next, textLegacy));
+            return next;
+          });
+        });
+        return;
+      }
+    }
+
     const legacy = resolveLegacyTool();
     if (!legacy) {
       v9LastHydratedLegacyRef.current = null;
@@ -15547,16 +15663,9 @@ const TalariaV8bLive = () => {
     }
     if (v9LastHydratedLegacyRef.current === legacy) return;
 
+    const prevLegacy = v9LastHydratedLegacyRef.current;
     v9LastHydratedLegacyRef.current = legacy;
     if (v9IsTextLegacyDrawingType(legacy)) {
-      flushSync(() => {
-        setTxtStyle((s) => {
-          const next = v9BuildDefaultTxtStyleForLegacyTool(legacy, s);
-          suppressTxtForwardBridge.current = true;
-          v9PushArmedDrawStyle(legacy, null, v9TxtStyleForPlacement(next, legacy));
-          return next;
-        });
-      });
       return;
     }
     const freshDefaults = v9FreshTlStyleDefaults();
@@ -15583,7 +15692,7 @@ const TalariaV8bLive = () => {
         return next;
       });
     });
-  }, [tool, groupSelected, legacyHydrateNonce, txtStyle]);
+  }, [tool, groupSelected, legacyHydrateNonce]);
 
   // useLayoutEffect: apply drawing.style in the same frame as tlStyle (legacy TV panel mutates
   // synchronously on checkbox; late useEffect let the chart eat checkbox clicks and felt "unsynced").
@@ -15859,6 +15968,7 @@ const TalariaV8bLive = () => {
     txtStyleLiveRef.current = live;
     v9FlushTxtStyleToChartTargets(live, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      armedLegacyTool: txtArmedLegacyRef.current,
     });
     const textUiActive =
       tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text");
@@ -16135,6 +16245,7 @@ const TalariaV8bLive = () => {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm: dm2, d }) => {
         if (!d || !d.style) return;
+        if (drawingTypeToPanelGroupRef.current(d.type) === "text") return;
         const effectiveTool = v9EffectiveLegacyToolForDrawing(d, legacyTool, editSess);
         if (!v9ShouldApplyTlStylePatch(d, effectiveTool, editSess, dm2)) return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
@@ -16194,11 +16305,14 @@ const TalariaV8bLive = () => {
       suppressTxtForwardBridge.current = false;
       return;
     }
+    const armedLegacy = v9ResolveArmedTextLegacyFromState(tool, groupSelected.text);
+    const editSess = editingDrawingRef.current;
     try {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        if (!v9ShouldApplyTxtStylePatch(d, armedLegacy, editSess, dm)) return;
         const isInlineEditing = dm._textInlineEditDrawing === d || d._inlineTextEditing || d._pendingAutoInlineEdit;
         try {
           if (!isInlineEditing && dm.textEditor && typeof dm.textEditor.hide === "function") {
@@ -16314,12 +16428,14 @@ const TalariaV8bLive = () => {
     }
     const editSess = editingDrawingRef.current;
     if (!v9TxtCoordBridgeShouldApply(editSess, txtSettOpen)) return;
+    const armedLegacy = v9ResolveArmedTextLegacyFromState(tool, groupSelected.text);
     try {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
         if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
+        if (!v9ShouldApplyTxtStylePatch(d, armedLegacy, editSess, dm)) return;
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
         let txtPointsMoved = false;
@@ -16345,6 +16461,8 @@ const TalariaV8bLive = () => {
     txtStyle.pt1Price, txtStyle.pt1Bar, txtStyle.pt2Price, txtStyle.pt2Bar,
     txtStyle.visMinutes, txtStyle.visHours, txtStyle.visDays, txtStyle.visWeeks, txtStyle.visMonths,
     txtSettOpen,
+    tool,
+    groupSelected.text,
   ]);
 
   // Sync vwap/vp/av visibility changes → tlStyle so the main bridge propagates to drawing
@@ -24032,7 +24150,20 @@ const TalariaV8bLive = () => {
                 return (
                   <div key={pbKey}
                     onMouseEnter={()=>setHov(`pb-${i}`)} onMouseLeave={()=>setHov(null)}
-                    {...modalPointerActivate(() => { setTool(t.parentId||t.id); if(t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t })); })}
+                    {...modalPointerActivate(() => {
+                      const ch =
+                        typeof window.getActiveChart === "function"
+                          ? window.getActiveChart()
+                          : window.chart;
+                      if (t.parentId === "text" && v9IsTextSubToolSwitch(groupSelected.text, t)) {
+                        v9DeselectChartForTextSubToolArm(ch);
+                        setTlBarSelected(false);
+                        setTlBarSelectedType(null);
+                        v9LastHydratedTextLegacyRef.current = null;
+                      }
+                      setTool(t.parentId || t.id);
+                      if (t.parentId) setGroupSelected(p => v9SanitizeGroupSelected({ ...p, [t.parentId]: t }));
+                    })}
                     style={{width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"default",position:"relative",
                       background:isAct?"rgba(74,106,255,0.10)":isH?c.hv:"transparent",
                       transition:"background 0.12s"}}>
@@ -24109,7 +24240,12 @@ const TalariaV8bLive = () => {
                       closeDropdown();
                       return;
                     }
-                    if (tlBarSelected) {
+                    if (activeKey === "text" && !item.h && v9IsTextSubToolSwitch(groupSelected.text, item)) {
+                      v9DeselectChartForTextSubToolArm(ch);
+                      v9LastHydratedTextLegacyRef.current = null;
+                      setTlBarSelected(false);
+                      setTlBarSelectedType(null);
+                    } else if (tlBarSelected) {
                       setTlBarSelected(false);
                       setTlBarSelectedType(null);
                       try {
