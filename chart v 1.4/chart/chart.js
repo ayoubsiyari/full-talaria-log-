@@ -14902,7 +14902,7 @@ class Chart {
                     if (hasSessionStart && c.t < sessionStartTs) {
                         if (!allowPreSessionLeft) return false;
                     }
-                    if (hasSessionEnd && c.t > sessionEndTs) return false;
+                    if (hasSessionEnd && c.t > sessionEndMs) return false;
                     return true;
                 });
 
@@ -14917,8 +14917,17 @@ class Chart {
                 }
 
                 if (direction === 'forward' && hasSessionEnd) {
-                    const hitSessionEnd = boundedCandles[boundedCandles.length - 1].t >= sessionEndTs;
-                    if (hitSessionEnd) {
+                    const lastIn = boundedCandles[boundedCandles.length - 1];
+                    const periodMs = this._getNativeRawStepMs()
+                        || this.parseTimeframe(tf)
+                        || 60000;
+                    const lastEnd = this._getBarPeriodEndMs(
+                        lastIn.t,
+                        boundedCandles,
+                        boundedCandles.length - 1,
+                        periodMs
+                    ) || (lastIn.t + periodMs);
+                    if (Number.isFinite(lastEnd) && lastEnd >= sessionEndMs) {
                         this._serverCursors.hasMoreRight = false;
                     }
                 }
