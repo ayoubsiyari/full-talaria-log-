@@ -14659,6 +14659,9 @@ const TalariaV8bLive = () => {
         v9SettingsChartDismissLockUntilRef.current = 0;
         if (group === 'text') {
           closeIndSett();
+          closeTlSett();
+          setTlBarSelected(true);
+          setTlBarSelectedType(drawing.type);
           const tp = {
             ...v9TxtStylePatchFromDrawing(drawingForStyle),
             ...v9CoordPatchFromDrawing(drawingForStyle),
@@ -14671,7 +14674,10 @@ const TalariaV8bLive = () => {
           }
           setTxtSettPos({ x: px, y: py });
           if (drawing.type === 'price-note') setTxtSettTab('style');
-          setTxtSettOpen(true);
+          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
+          flushSync(() => {
+            setTxtSettOpen(true);
+          });
         } else if (drawing.type === 'anchored-vwap') {
           closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
           suppressVwapBridge.current = true;
@@ -20589,7 +20595,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Text Tool Settings Window (portal → body: same stacking as TL settings / chart toolbar) ── */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
+      {(txtSettOpen || closing.has("txtsett")) && typeof document !== "undefined" && createPortal((()=>{
         const txtSizes = [10,12,14,16,18,20,22,24];
         const openTxtCP = (e, key, val) => {
           const p = parseColor(val||'#ffffff'); const hsv = rgbToHsv(p.r,p.g,p.b);
