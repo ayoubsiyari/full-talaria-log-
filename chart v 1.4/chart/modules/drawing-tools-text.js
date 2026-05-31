@@ -842,7 +842,6 @@ class TextTool extends BaseDrawing {
             .style('pointer-events', 'all')
             .style('cursor', textAnnotationHoverCursor(this));
 
-        const self = this;
         const CLICK_DELAY = 250;
         let clickTimer = null;
         let downPos = null;
