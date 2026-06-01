@@ -3386,10 +3386,9 @@ class Chart {
 
         // GET /sessions/:id/state often finishes before the first OHLC ingest. In that case
         // `loadTradingSessionStateIfNeeded` stores `state.indicators` in `_pendingIndicatorsState`
-        // but skips `_applyPersistedIndicators()` because `this.data` is still empty — and nothing
-        // retried after data arrived. Re-apply here whenever bars exist (no-op if nothing pending).
-        if (typeof this._applyPersistedIndicators === 'function') {
-            this._applyPersistedIndicators();
+        // but skips apply because `this.data` is still empty — retry after bars land.
+        if (Array.isArray(this._pendingIndicatorsState) && this._pendingIndicatorsState.length > 0) {
+            this._scheduleApplyPersistedIndicators();
         }
 
         this.updateDateRange();
@@ -4534,6 +4533,77 @@ class Chart {
         return tail.map((t) => this._slimJournalRowForLocalBackup(t));
     }
 
+    /** Compact indicator list for session backup + server PATCH (mirrors persistIndicators). */
+    _snapshotIndicatorsForSessionBackup() {
+        if (!this.indicators || !Array.isArray(this.indicators.active) || !this.indicators.active.length) {
+            return null;
+        }
+        const TC = typeof window !== 'undefined' && window.TalariaCustomIndicators;
+        const maxScript = TC && TC.MAX_SCRIPT_CHARS ? TC.MAX_SCRIPT_CHARS : 48000;
+        return this.indicators.active.map((ind) => {
+            const base = {
+                type: ind.type,
+                name: ind.name,
+                params: Object.assign({}, ind.params || {}),
+                style: Object.assign({}, ind.style || {}),
+                visible: ind.visible !== false,
+                overlay: ind.overlay,
+                separatePanel: ind.separatePanel,
+                isVolume: ind.isVolume || false,
+            };
+            if (ind.visibility && typeof ind.visibility === 'object') {
+                try {
+                    base.visibility = JSON.parse(JSON.stringify(ind.visibility));
+                } catch (_) { /* ignore */ }
+            }
+            if (ind.type === 'custom' && base.params && typeof base.params.script === 'string') {
+                if (base.params.script.length > maxScript) {
+                    base.params.script = base.params.script.slice(0, maxScript);
+                    base.params.customScriptTruncated = true;
+                }
+                base.isCustomScript = true;
+            }
+            return base;
+        });
+    }
+
+    _resolveIndicatorsForSessionRestore(sessionId, state, backupSnap) {
+        const server = state && Array.isArray(state.indicators) ? state.indicators : [];
+        const backup = backupSnap && Array.isArray(backupSnap.indicators) ? backupSnap.indicators : [];
+        if (backup.length === 0) return server;
+        if (server.length === 0) return backup;
+        if (this._shouldPreferLocalBackupRuntime(sessionId, backupSnap)) return backup;
+        return server;
+    }
+
+    _queuePersistedIndicatorsRestore(list) {
+        if (!Array.isArray(list) || list.length === 0) return;
+        this._pendingIndicatorsState = list;
+        this._scheduleApplyPersistedIndicators();
+    }
+
+    _scheduleApplyPersistedIndicators() {
+        if (this._applyIndicatorsScheduled) return;
+        this._applyIndicatorsScheduled = true;
+        const attempt = (retriesLeft) => {
+            requestAnimationFrame(() => {
+                const ready = Array.isArray(this.data) && this.data.length > 0
+                    && typeof this.addIndicator === 'function';
+                if (!ready && retriesLeft > 0) {
+                    attempt(retriesLeft - 1);
+                    return;
+                }
+                this._applyIndicatorsScheduled = false;
+                if (ready
+                    && Array.isArray(this._pendingIndicatorsState)
+                    && this._pendingIndicatorsState.length > 0) {
+                    this._applyPersistedIndicators();
+                }
+            });
+        };
+        attempt(12);
+    }
+
     _writeTradingSessionLocalBackupThrottled(options = {}) {
         const force = !!options.force;
         const playing = !!(this.replaySystem && this.replaySystem.isPlaying);
@@ -4625,6 +4695,10 @@ class Chart {
                         ? this.replaySystem.getPlaybackMode() : undefined,
                     isActive: true,
                 };
+            }
+            const indicatorSnap = this._snapshotIndicatorsForSessionBackup();
+            if (indicatorSnap && indicatorSnap.length > 0) {
+                payload.indicators = indicatorSnap;
             }
             // Drawings are persisted per-symbol via chart_drawings API + chart_drawings_* cache keys.
             // Omit from session backup blob to avoid localStorage quota exhaustion.
@@ -4752,6 +4826,10 @@ class Chart {
         }
 
         // Drawings: chart_drawings API + dm.loadDrawings() — not session backup blob.
+
+        if (Array.isArray(backup.indicators) && backup.indicators.length > 0) {
+            this._queuePersistedIndicatorsRestore(backup.indicators);
+        }
 
         if (typeof this.showNotification === 'function') {
             this.showNotification(
@@ -5050,13 +5128,15 @@ class Chart {
                 });
             }
 
-            // Restore indicators
-            if (Array.isArray(state.indicators) && state.indicators.length > 0) {
-                this._pendingIndicatorsState = state.indicators;
-                // Will be applied by persistIndicators restore logic once data is ready
-                if (this.data && this.data.length > 0 && typeof this.addIndicator === 'function') {
-                    this._applyPersistedIndicators();
-                }
+            // Restore indicators (server + local backup merge — backup wins when fresher than last PATCH)
+            const backupSnapForIndicators = this._readTradingSessionLocalBackup(sessionId);
+            const indicatorsToRestore = this._resolveIndicatorsForSessionRestore(
+                sessionId,
+                state,
+                backupSnapForIndicators
+            );
+            if (indicatorsToRestore.length > 0) {
+                this._queuePersistedIndicatorsRestore(indicatorsToRestore);
             }
 
                 // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
@@ -5100,6 +5180,13 @@ class Chart {
                 console.warn('⚠️ Could not restore indicator', snap.type, e);
             }
         });
+        if (typeof this.recalculateIndicators === 'function') {
+            try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
+        }
+        if (this.replaySystem && this.replaySystem.isActive
+            && typeof this.replaySystem.updateChartData === 'function') {
+            try { this.replaySystem.updateChartData(false); } catch (_) { /* ignore */ }
+        }
         if (typeof this.render === 'function') this.render();
     }
 
@@ -5122,6 +5209,7 @@ class Chart {
         if (!patch || typeof patch !== 'object') return false;
         if (this._sessionStatePatchIsJournalRelated(patch)) return true;
         if (Object.prototype.hasOwnProperty.call(patch, 'drawings')) return true;
+        if (Object.prototype.hasOwnProperty.call(patch, 'indicators')) return true;
         if (patch.replay && typeof patch.replay === 'object') {
             const rk = Object.keys(patch.replay);
             if (rk.length === 1 && rk[0] === 'dashboard') return true;

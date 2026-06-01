@@ -3519,6 +3519,9 @@
         if (typeof this.scheduleSessionStateSave === 'function') {
             this.scheduleSessionStateSave({ indicators: snapshot });
         }
+        if (typeof this._writeTradingSessionLocalBackupThrottled === 'function') {
+            this._writeTradingSessionLocalBackupThrottled();
+        }
     };
 
     Chart.prototype.addCustomIndicator = function(opts) {
