@@ -944,6 +944,14 @@ class BaseDrawing {
         if (!opts.live && mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
             return;
         }
+
+        const usePreviewPoints = Array.isArray(opts.previewPoints) && opts.previewPoints.length > 0;
+        const savedPoints = usePreviewPoints ? this.points : null;
+        if (usePreviewPoints) {
+            this.points = opts.previewPoints.map((p) => ({ ...p }));
+        }
+
+        try {
         
         // Remove any existing highlights first
         this.hideAxisHighlights();
@@ -1398,6 +1406,11 @@ class BaseDrawing {
                 } else if (!this.chart._isRendering) {
                     this.chart.scheduleRender();
                 }
+            }
+        }
+        } finally {
+            if (savedPoints) {
+                this.points = savedPoints;
             }
         }
     }

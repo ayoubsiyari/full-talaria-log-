@@ -17943,10 +17943,6 @@ class Chart {
     drawAxisHighlightZones() {
         // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
         if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
-        const dm = this.drawingManager;
-        if (dm && typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
-            return;
-        }
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         

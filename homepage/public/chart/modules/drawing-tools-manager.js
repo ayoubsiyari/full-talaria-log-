@@ -2285,15 +2285,12 @@ class DrawingToolsManager {
         return drawingType === 'image' || drawingType === 'emoji';
     }
 
-    /** Sync drag translate on main group (+ axis highlight labels + optional unclipped labels layer). */
+    /** Sync drag translate on main group (+ optional unclipped labels layer). */
     _applyDrawingDragTransform(drawing, transform) {
         if (!drawing) return;
         const t = transform || null;
         if (drawing.group) {
             drawing.group.attr('transform', t);
-        }
-        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
-            drawing.axisHighlightGroup.attr('transform', t);
         }
         if (this.labelsGroup && !this.labelsGroup.empty() && drawing.id) {
             const layer = this.labelsGroup.select(`[data-id="${drawing.id}"]`);
@@ -2308,6 +2305,21 @@ class DrawingToolsManager {
         if (this.chart && typeof this.chart.updateCrosshair === 'function' && event) {
             this.chart.updateCrosshair(event);
         }
+    }
+
+    /**
+     * Repaint axis price/time labels at the dragged geometry (labels stay on the axes, not translated with the SVG group).
+     */
+    _syncAxisHighlightsDuringDrag(drawing, startPoints, pixelDx, pixelDy) {
+        if (!drawing || !drawing.selected) return;
+        if (typeof drawing.showAxisHighlights !== 'function') return;
+        if (!Array.isArray(startPoints) || startPoints.length === 0) return;
+        const preview = this._translatePointsByPixels(startPoints, pixelDx, pixelDy, drawing.type);
+        if (!preview || preview.length === 0) return;
+        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
+            drawing.axisHighlightGroup.attr('transform', null);
+        }
+        drawing.showAxisHighlights({ live: true, force: true, previewPoints: preview });
     }
 
     _clearDrawingDragTransform(drawing) {
@@ -3521,6 +3533,7 @@ class DrawingToolsManager {
                     if (Array.isArray(points)) {
                         const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
                         this._broadcastLiveEditUpdate(drawing, previewPoints);
+                        this._syncAxisHighlightsDuringDrag(drawing, points, pixelDx, pixelDy);
                     }
                 });
             } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
@@ -3535,6 +3548,12 @@ class DrawingToolsManager {
                         this.draggingDrawing.type
                     );
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
+                    this._syncAxisHighlightsDuringDrag(
+                        this.draggingDrawing,
+                        this.singleDragStartPoints,
+                        pixelDx,
+                        pixelDy
+                    );
                 }
             }
             this._refreshPointerChromeDuringGeometryDrag(event);
@@ -6292,6 +6311,7 @@ class DrawingToolsManager {
                             if (previewPoints) {
                                 self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
                             }
+                            self._syncAxisHighlightsDuringDrag(item.drawing, item.points, pixelDx, pixelDy);
                         });
                     } else if (drawing.group) {
                         const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
@@ -6306,6 +6326,7 @@ class DrawingToolsManager {
                         if (previewPoints) {
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
+                        self._syncAxisHighlightsDuringDrag(drawing, dragStartPoints, pixelDx, pixelDy);
                     }
                     if (event.sourceEvent) {
                         self._refreshPointerChromeDuringGeometryDrag(event.sourceEvent);
@@ -6710,6 +6731,7 @@ class DrawingToolsManager {
                 const sx = item.startTransform ? item.startTransform.x : 0;
                 const sy = item.startTransform ? item.startTransform.y : 0;
                 this._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                this._syncAxisHighlightsDuringDrag(item.drawing, item.points, pixelDx, pixelDy);
             });
         };
 
