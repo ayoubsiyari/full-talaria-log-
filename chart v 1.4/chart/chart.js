@@ -3338,6 +3338,9 @@ class Chart {
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
             }
+            if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
+            }
 
             if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
                 replay.currentIndex = replay.fullRawData.length - 1;

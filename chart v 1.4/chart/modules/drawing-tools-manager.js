@@ -773,18 +773,6 @@ class DrawingToolsManager {
         };
         window.__drawingToolsChartDataLoadedListeners[this._instanceKey] = this._chartDataLoadedListener;
         window.addEventListener('chartDataLoaded', this._chartDataLoadedListener);
-
-        window.__drawingToolsTimeframeChangedListeners = window.__drawingToolsTimeframeChangedListeners || {};
-        const prevTfListener = window.__drawingToolsTimeframeChangedListeners[this._instanceKey];
-        if (prevTfListener) {
-            window.removeEventListener('timeframeChanged', prevTfListener);
-        }
-        this._timeframeChangedListener = () => {
-            if (!this._drawingsLoaded || this.drawings.length === 0) return;
-            this.scheduleRefreshAfterTimeframe({ force: true });
-        };
-        window.__drawingToolsTimeframeChangedListeners[this._instanceKey] = this._timeframeChangedListener;
-        window.addEventListener('timeframeChanged', this._timeframeChangedListener);
         
         // Initialize undo/redo manager
         if (typeof UndoRedoManager !== 'undefined') {
@@ -8827,7 +8815,7 @@ class DrawingToolsManager {
     }
 
     /** Re-resolve bar indices from stored timestamps using the live replay slice. */
-    _syncDrawingPointsFromTimestamps(drawing, options = {}) {
+    _syncDrawingPointsFromTimestamps(drawing) {
         if (!drawing || !this.chart) return;
         if (this._isDrawingLiveEditing(drawing)) return;
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
@@ -8848,11 +8836,7 @@ class DrawingToolsManager {
             return;
         }
         try {
-            // TF refresh: skip replay clamp so multi-point tools keep geometry (clamp stacks
-            // future anchors onto the last visible bar and lines/boxes disappear).
-            const tsOpts = options.tfRefresh
-                ? null
-                : this._getTimestampConversionOptions(drawing);
+            const tsOpts = this._getTimestampConversionOptions(drawing);
             const resolved = CoordinateUtils.resolveDrawingPoints(drawing, this.chart, tsOpts);
             if (Array.isArray(resolved) && resolved.length > 0) {
                 drawing.points = resolved;
@@ -9554,27 +9538,16 @@ class DrawingToolsManager {
      * Debounced post-TF-switch refresh (called from chart._endTimeframeSwitching).
      * Waits until chart.data is ready, re-resolves timestamp anchors, then full redraw.
      */
-    scheduleRefreshAfterTimeframe(options = {}) {
-        const force = !!options.force;
-        if (this._tfRefreshScheduled && !force) return;
+    scheduleRefreshAfterTimeframe() {
+        if (this._tfRefreshScheduled) return;
         this._tfRefreshScheduled = true;
-        const token = (this._tfRefreshToken = (this._tfRefreshToken || 0) + 1);
 
         const attempt = (retriesLeft) => {
-            const run = () => {
-                if (token !== this._tfRefreshToken) return;
-
-                const chart = this.chart;
-                const replay = chart && chart.replaySystem;
-                const switching = !!(chart && chart._timeframeSwitching)
-                    || !!(replay && replay._timeframeChanging);
-                const dataReady = chart
-                    && Array.isArray(chart.data)
-                    && chart.data.length > 0
-                    && chart.xScale
-                    && chart.yScale;
-
-                if (switching || !dataReady) {
+            requestAnimationFrame(() => {
+                const dataReady = this.chart
+                    && Array.isArray(this.chart.data)
+                    && this.chart.data.length > 0;
+                if (!dataReady) {
                     if (retriesLeft > 0) {
                         attempt(retriesLeft - 1);
                         return;
@@ -9586,27 +9559,18 @@ class DrawingToolsManager {
                 this._tfRefreshScheduled = false;
                 try {
                     this.refreshDrawingsForTimeframe();
-                    if (chart.xScale && chart.yScale) {
+                    if (this.chart.xScale && this.chart.yScale) {
                         this.redrawAll({ forceFull: true });
-                    }
-                    if (typeof chart.render === 'function') {
-                        chart.render();
                     }
                 } catch (_) { /* ignore */ }
 
                 if (this.drawings.length > 0) {
                     try { this.saveDrawings(); } catch (_) { /* ignore */ }
                 }
-            };
-
-            if (retriesLeft <= 8) {
-                requestAnimationFrame(run);
-            } else {
-                setTimeout(run, 40);
-            }
+            });
         };
 
-        attempt(24);
+        attempt(2);
     }
 
     /**
@@ -9628,7 +9592,7 @@ class DrawingToolsManager {
             }
 
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
-                this._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                this._syncDrawingPointsFromTimestamps(drawing);
             }
 
             if (drawing.group) {
