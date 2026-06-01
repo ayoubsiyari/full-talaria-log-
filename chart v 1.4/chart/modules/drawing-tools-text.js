@@ -3634,37 +3634,9 @@ class CalloutTool extends BaseDrawing {
             this.addEventListener('dblclick', handleOpenSettings, true);
         });
 
-        // Resize handles
-        const handleRadius = 4;
-        const handleStrokeWidth = 2;
-
-        // Handle for anchor point (point 0)
-        const handle0 = this.group.append('circle')
-            .attr('class', 'resize-handle')
-            .attr('cx', tipX)
-            .attr('cy', tipY)
-            .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
-            .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'move')
-            .style('pointer-events', this.selected ? 'all' : 'none')
-            .style('opacity', this.selected ? 1 : 0)
-            .attr('data-point-index', 0);
-
-        // Handle for bubble position (point 1)
-        const handle1 = this.group.append('circle')
-            .attr('class', 'resize-handle')
-            .attr('cx', bubbleCenterX)
-            .attr('cy', bubbleCenterY)
-            .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
-            .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'move')
-            .style('pointer-events', this.selected ? 'all' : 'none')
-            .style('opacity', this.selected ? 1 : 0)
-            .attr('data-point-index', 1);
+        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        this.group.selectAll('.resize-handle, .resize-handle-hit')
+            .style('cursor', 'move');
 
         return this.group;
     }

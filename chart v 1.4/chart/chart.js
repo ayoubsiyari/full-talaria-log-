@@ -2452,14 +2452,44 @@ class Chart {
         return false;
     }
 
-    /** Timeframe for replay pan-left API calls (use display TF when zoomed out, e.g. 1D not underlying 1m). */
+    /** Timeframe for replay pan-load API calls — always match replay.fullRawData native step, not display TF. */
     _getReplayPanFetchTimeframe() {
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         if (!this.replaySystem?.isActive) return displayTf;
-        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
-        const displayMs = this.parseTimeframe(displayTf) || 60_000;
-        const rawMs = this.parseTimeframe(rawTf) || 60_000;
-        return displayMs >= rawMs ? displayTf : rawTf;
+        const rs = this.replaySystem;
+        if (Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
+            const dt = Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t);
+            if (Number.isFinite(dt) && dt > 0) {
+                const rawTf = String(rs.rawTimeframe || '').toLowerCase().trim();
+                const rawMs = rawTf ? this.parseTimeframe(rawTf) : NaN;
+                if (Number.isFinite(rawMs) && rawMs > 0 && Math.abs(rawMs - dt) <= rawMs * 0.08) {
+                    return rawTf;
+                }
+                const known = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
+                for (let i = 0; i < known.length; i++) {
+                    const tf = known[i];
+                    const ms = this.parseTimeframe(tf);
+                    if (Number.isFinite(ms) && ms > 0 && Math.abs(ms - dt) <= ms * 0.08) return tf;
+                }
+            }
+        }
+        return String(rs.rawTimeframe || displayTf).toLowerCase().trim();
+    }
+
+    /**
+     * During replay TF switch: replace fullRawData only when the destination TF needs finer native bars
+     * than the current master. Coarser display (1m master → 1D view) resamples in place.
+     */
+    _shouldReplaceReplayMasterForTfSwitch(previousTf, newTf, replay) {
+        if (!replay?.isActive || !Array.isArray(replay.fullRawData) || !replay.fullRawData.length) {
+            return true;
+        }
+        const newMs = this.parseTimeframe(newTf);
+        const masterMs = this._getNativeRawStepMs();
+        if (!Number.isFinite(newMs) || newMs <= 0) return true;
+        if (!Number.isFinite(masterMs) || masterMs <= 0) return true;
+        if (newMs < masterMs * 0.92) return true;
+        return false;
     }
 
     _getTfDataCache(fileId, timeframe) {
@@ -3048,19 +3078,32 @@ class Chart {
     /**
      * Non-blocking follow-up after backtest TF hot-swap: playhead window fix, left prefetch, resume play.
      */
+    _replayPlayheadOutsideMasterWindow(playheadMs, replay) {
+        if (!Number.isFinite(playheadMs) || !replay?.fullRawData?.length) return false;
+        const firstT = replay.fullRawData[0].t;
+        const lastIdx = replay.fullRawData.length - 1;
+        const lastBar = replay.fullRawData[lastIdx];
+        if (!Number.isFinite(firstT) || !lastBar || !Number.isFinite(lastBar.t)) return false;
+        const periodMs = this._getNativeRawStepMs() || 60000;
+        const lastEnd = this._getBarPeriodEndMs(lastBar.t, replay.fullRawData, lastIdx, periodMs)
+            || (lastBar.t + periodMs);
+        return playheadMs < firstT || playheadMs >= lastEnd;
+    }
+
     async _deferBacktestTfSwitchFollowUp(timeframe, ctx) {
         const replay = this.replaySystem;
-        if (!replay || !this.currentFileId) return;
+        if (!replay) return;
 
         const normalizedTf = String(timeframe || '1m').toLowerCase().trim();
         let savedReplayTimestamp = ctx.savedReplayTimestamp;
         const wasPlaying = !!ctx.wasPlaying;
         const wasAtSessionEnd = !!ctx.wasAtSessionEnd;
 
-        if (Number.isFinite(savedReplayTimestamp) && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            const firstT = replay.fullRawData[0].t;
-            const lastT = replay.fullRawData[replay.fullRawData.length - 1].t;
-            if (savedReplayTimestamp < firstT || savedReplayTimestamp > lastT) {
+        try {
+            if (!this.currentFileId) return;
+
+            if (Number.isFinite(savedReplayTimestamp)
+                && this._replayPlayheadOutsideMasterWindow(savedReplayTimestamp, replay)) {
                 try {
                     const loaded = await this.ensureGoToWindowContainsTimestamp(
                         savedReplayTimestamp,
@@ -3068,44 +3111,49 @@ class Chart {
                     );
                     if (loaded && typeof replay.goToReplayTimestamp === 'function') {
                         replay.goToReplayTimestamp(savedReplayTimestamp, { preserveVisibleWindow: false });
+                    } else if (typeof replay.syncCurrentIndexFromReplayTimestamp === 'function') {
+                        replay.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+                        if (typeof replay.updateChartData === 'function') {
+                            replay.updateChartData(true);
+                        }
                     }
                 } catch (e) {
                     console.warn('[backtest] playhead window fetch after TF hot-swap failed', e);
                 }
             }
-        }
 
-        const omTf = this.orderManager
-            || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
-        if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function') {
-            const guardTs = Number.isFinite(Number(savedReplayTimestamp))
-                ? Number(savedReplayTimestamp)
-                : (typeof this._getReplayPlayheadMs === 'function' ? this._getReplayPlayheadMs() : null);
-            if (Number.isFinite(guardTs)) {
-                try { omTf._refreshAllGuardsToTimestamp(guardTs, -1); } catch (_e3) { /* ignore */ }
-            }
-        }
-
-        if (replay) replay._timeframeChanging = false;
-
-        const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
-        if (shouldResumePlay && typeof replay.play === 'function') {
-            try { replay.play(); } catch (_e5) { /* ignore */ }
-        }
-
-        try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_r2) { /* ignore */ }
-
-        if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
-            try { omTf.updatePositions(); } catch (_eOm) { /* ignore */ }
-        }
-
-        if (this.isBacktestMode && this.currentFileId) {
-            this._btTfPrefetchScheduled = null;
-            setTimeout(() => {
-                if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
-                    this._scheduleBacktestTimeframePrefetch(this.currentFileId, this.backtestingSession);
+            const omTf = this.orderManager
+                || (typeof window !== 'undefined' && window.chart && window.chart.orderManager);
+            if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function') {
+                const guardTs = Number.isFinite(Number(savedReplayTimestamp))
+                    ? Number(savedReplayTimestamp)
+                    : (typeof this._getReplayPlayheadMs === 'function' ? this._getReplayPlayheadMs() : null);
+                if (Number.isFinite(guardTs)) {
+                    try { omTf._refreshAllGuardsToTimestamp(guardTs, -1); } catch (_e3) { /* ignore */ }
                 }
-            }, 400);
+            }
+
+            const shouldResumePlay = wasPlaying && !wasAtSessionEnd;
+            if (shouldResumePlay && typeof replay.play === 'function') {
+                try { replay.play(); } catch (_e5) { /* ignore */ }
+            }
+
+            try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_r2) { /* ignore */ }
+
+            if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
+                try { omTf.updatePositions(); } catch (_eOm) { /* ignore */ }
+            }
+
+            if (this.isBacktestMode && this.currentFileId) {
+                this._btTfPrefetchScheduled = null;
+                setTimeout(() => {
+                    if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
+                        this._scheduleBacktestTimeframePrefetch(this.currentFileId, this.backtestingSession);
+                    }
+                }, 400);
+            }
+        } finally {
+            if (replay) replay._timeframeChanging = false;
         }
     }
 
@@ -3156,7 +3204,7 @@ class Chart {
         this.manualRange = null;
 
         if (replay.isActive) {
-            // Display TF switch during replay: never replace the 1m master — resample only.
+            // Display TF switch during replay: keep finer native master; resample display only when possible.
             if (ctx.replaceReplayMaster === true) {
                 replay.fullRawData = ctx.fromCache
                     ? this.rawData
@@ -3181,6 +3229,12 @@ class Chart {
                 if (sessionStartMs != null && typeof replay._findLastRawIndexAtOrBefore === 'function') {
                     const floorHit = replay._findLastRawIndexAtOrBefore(replay.fullRawData, sessionStartMs);
                     replay.sessionStartIndex = floorHit >= 0 ? floorHit : 0;
+                }
+            } else {
+                replay._fullRawDataMatchesTF = false;
+                if (Array.isArray(replay.fullRawData) && replay.fullRawData.length >= 2
+                    && typeof replay.detectRawTimeframeFromData === 'function') {
+                    replay.rawTimeframe = replay.detectRawTimeframeFromData(replay.fullRawData);
                 }
             }
         } else if (typeof replay.enterReplayMode === 'function') {
@@ -3226,50 +3280,62 @@ class Chart {
             try { omTf._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
         }
 
+        if (this.isBacktestMode
+            && typeof this._replayPlayheadReachedSessionEnd === 'function'
+            && !this._replayPlayheadReachedSessionEnd()) {
+            if (!this._serverCursors) this._serverCursors = {};
+            this._serverCursors.hasMoreRight = true;
+        }
+
         replay._timeframeChanging = true;
-
-        if (typeof replay.updateChartData === 'function') {
-            try { replay.updateChartData(true); } catch (e) {
-                console.warn('[backtest] updateChartData after TF hot-swap failed', e);
+        try {
+            if (typeof replay.updateChartData === 'function') {
+                try { replay.updateChartData(true); } catch (e) {
+                    console.warn('[backtest] updateChartData after TF hot-swap failed', e);
+                }
             }
-        }
 
-        if (typeof this.recalculateIndicators === 'function') {
-            try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
-        }
-        if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
-            try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
-        }
+            if (typeof this.recalculateIndicators === 'function') {
+                try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
+            }
+            if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
+                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
+            }
 
-        if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
-            replay.currentIndex = replay.fullRawData.length - 1;
-            const endBar = replay.fullRawData[replay.currentIndex];
-            if (endBar && Number.isFinite(endBar.t)) replay.replayTimestamp = endBar.t;
-            try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
-        }
+            if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+                replay.currentIndex = replay.fullRawData.length - 1;
+                const endBar = replay.fullRawData[replay.currentIndex];
+                if (endBar && Number.isFinite(endBar.t)) replay.replayTimestamp = endBar.t;
+                try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
+            }
 
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, {
-                resetPriceScale: true,
-                render: true,
-                centerPlayhead: true,
-            });
-        }
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                replay.syncReplayViewportToPlayhead(this, {
+                    resetPriceScale: true,
+                    render: true,
+                    centerPlayhead: true,
+                });
+            }
 
-        if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
-            this.compareOverlay.refreshForTimeframe(normalizedTf);
-        }
+            if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
+                this.compareOverlay.refreshForTimeframe(normalizedTf);
+            }
 
-        if (typeof this._fireChartDataLoaded === 'function') {
-            try { this._fireChartDataLoaded(); } catch (_e4) { /* ignore */ }
-        }
+            if (typeof this._fireChartDataLoaded === 'function') {
+                try { this._fireChartDataLoaded(); } catch (_e4) { /* ignore */ }
+            }
 
-        if (wasAtSessionEnd) {
-            replay.isPlaying = false;
-            if (typeof replay.syncPlayPauseUI === 'function') replay.syncPlayPauseUI();
-        }
+            if (wasAtSessionEnd) {
+                replay.isPlaying = false;
+                if (typeof replay.syncPlayPauseUI === 'function') replay.syncPlayPauseUI();
+            }
 
-        try { this.resize(); } catch (_r) { /* ignore */ }
+            try { this.resize(); } catch (_r) { /* ignore */ }
+
+            this._syncReplayPanCursorsFromFullRaw();
+        } finally {
+            replay._timeframeChanging = false;
+        }
 
         // Unfreeze immediately after primary bars are painted; secondary fetches run in background.
         this._endTimeframeSwitching();
@@ -3316,15 +3382,20 @@ class Chart {
             }
         }
 
-        this.rawData = entry.rawData;
-        this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
-        this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
-        this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
+        const replaceMaster = this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay);
+        const savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
+
+        if (replaceMaster) {
+            this.rawData = entry.rawData;
+            this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
+            this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
+            this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
+        }
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            fromCache: true,
-            replaceReplayMaster: true,
-            savedReplayTimestamp: this._captureReplayPlayheadMs(replay),
+            fromCache: replaceMaster,
+            replaceReplayMaster: replaceMaster,
+            savedReplayTimestamp,
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
             wasAtSessionEnd: replay.isActive
@@ -14086,6 +14157,12 @@ class Chart {
 
             // 2) Backtest — reuse cached native bars for this TF (fetched once per session).
             if (this.isBacktestMode && this.currentFileId) {
+                const replayForTf = this.replaySystem;
+                if (replayForTf?.isActive
+                    && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
+                    && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
+                    return;
+                }
                 this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
@@ -14808,6 +14885,13 @@ class Chart {
             && Number.isFinite(prevTfMs) && prevTfMs > 0
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
+
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
+            if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
+                return;
+            }
+        }
+
         let coarsePeriodExclusiveEndTs = null;
         if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
             const floorIdx = replay.sessionStartIndex || 0;
@@ -14912,7 +14996,7 @@ class Chart {
         }
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            replaceReplayMaster: true,
+            replaceReplayMaster: this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay),
             savedReplayTimestamp,
             savedCurrentIndex,
             wasPlaying,

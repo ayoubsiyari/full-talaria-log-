@@ -1210,7 +1210,8 @@ class VolumeProfileTool extends BaseDrawing {
                 .style('cursor', 'default');
         }
 
-        // Geometry helper only — pointer-events none so chart pan works through the fill.
+        // Capture pointer over the zone so chart pan does not start through the profile body.
+        // Level lines, boundaries, and labels sit above this layer for their own hit targets.
         this.group.append('rect')
             .attr('class', 'volume-profile-hitbox')
             .attr('x', zoneLeft)
@@ -1218,8 +1219,8 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('width', Math.max(1, zoneWidth))
             .attr('height', Math.max(1, height))
             .attr('fill', 'transparent')
-            .style('pointer-events', 'none')
-            .style('cursor', 'inherit');
+            .style('pointer-events', isAnchoredProxy ? 'none' : 'all')
+            .style('cursor', 'default');
 
         const boundaryHitWidth = Math.max(14, boundaryWidth + 10);
         const anchorBoundaryX = isAnchoredProxy && hasFixedProfileSide ? x1 : left;

@@ -179,7 +179,13 @@ class ReplaySystem {
                 this.currentIndex = Math.min(Math.max(idx, persistMinIdx), this.fullRawData.length - 1);
                 const bar = this.fullRawData[this.currentIndex];
                 if (bar && Number.isFinite(bar.t)) {
-                    this.replayTimestamp = bar.t;
+                    const next = this.fullRawData[this.currentIndex + 1];
+                    const barEnd = next && Number.isFinite(next.t) ? next.t : null;
+                    if (ts !== null && ts >= bar.t && (barEnd == null || ts < barEnd)) {
+                        this.replayTimestamp = ts;
+                    } else {
+                        this.replayTimestamp = bar.t;
+                    }
                 } else if (ts !== null) {
                     this.replayTimestamp = ts;
                 }
@@ -5431,11 +5437,16 @@ class ReplaySystem {
             this._tfChangeRestoreTimer = null;
             if (changeSeq !== this._tfChangeSeq) return;
             try {
-                this.currentIndex = savedCurrentIndex;
-                if (Number.isFinite(savedReplayTimestamp)) {
-                    this.replayTimestamp = savedReplayTimestamp;
-                } else if (this.fullRawData[this.currentIndex]) {
-                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                if (Number.isFinite(savedReplayTimestamp)
+                    && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+                    this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+                } else {
+                    this.currentIndex = savedCurrentIndex;
+                    if (Number.isFinite(savedReplayTimestamp)) {
+                        this.replayTimestamp = savedReplayTimestamp;
+                    } else if (this.fullRawData[this.currentIndex]) {
+                        this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                    }
                 }
                 this.tickProgress = savedTickProgress;
                 this.tickElapsedMs = savedTickElapsedMs;

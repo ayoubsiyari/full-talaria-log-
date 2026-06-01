@@ -2583,6 +2583,17 @@ function v9TxtStylePatchFromDrawing(d) {
   return out;
 }
 
+/** Full txtStyle for a selected annotation — avoids plain Text fields leaking into Callout/Note. */
+function v9BuildFullTxtStyleFromDrawing(d) {
+  if (!d || !d.type) return v9FreshTxtStyleDefaults();
+  const patch = {
+    ...(v9TxtStylePatchFromDrawing(d) || {}),
+    ...(v9CoordPatchFromDrawing(d) || {}),
+    ...(v9VisibilityPatchFromDrawing(d) || {}),
+  };
+  return { ...v9FreshTxtStyleDefaults(), ...patch };
+}
+
 /** Push live string into one chart text drawing (settings panel / explicit flush only). */
 function v9ApplyTxtContentToDrawing(d, content, dm) {
   if (!d) return;
@@ -3034,6 +3045,7 @@ function v9StyleBridgeAppliesToDrawing(d, editingSession) {
   if (!v9IsSameDrawingSession(d, editingSession.drawing)) return false;
   const pg = editingSession.panelGroup;
   if (pg && v9DrawingTypeToPanelGroup(d.type) !== pg) return false;
+  if (pg === "text" && d.type !== editingSession.drawing.type) return false;
   if (pg && V9_EXACT_STYLE_MATCH_GROUPS.has(pg) && d.type !== editingSession.drawing.type) return false;
   return true;
 }
@@ -14387,7 +14399,7 @@ const TalariaV8bLive = () => {
           if (tp && Object.keys(tp).length) {
             suppressTxtForwardBridge.current = true;
             suppressTxtCoordBridge.current = true;
-            flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
+            flushSync(() => setTxtStyle(v9BuildFullTxtStyleFromDrawing(d)));
           }
           v9SyncQuickBarLockFromDrawing(d, null, setTxtLocked);
         }
@@ -14846,7 +14858,7 @@ const TalariaV8bLive = () => {
           if (tp && Object.keys(tp).length) {
             suppressTxtForwardBridge.current = true;
             suppressTxtCoordBridge.current = true;
-            flushSync(() => setTxtStyle((s) => ({ ...s, ...tp })));
+            flushSync(() => setTxtStyle(v9BuildFullTxtStyleFromDrawing(drawingForStyle)));
           }
           setTxtSettPos({ x: px, y: py });
           if (drawing.type === 'price-note') setTxtSettTab('style');
@@ -15069,6 +15081,8 @@ const TalariaV8bLive = () => {
         try {
           const br = v9ToolbarBridgeActRef.current;
           const editRef = br.editingDrawingRef;
+          const prevSelectedType = br.v9LastSelectedDrawingTypeRef?.current ?? null;
+          const selectedTypeChanged = !!(drawing && drawing.type && prevSelectedType !== drawing.type);
           if (editRef?.current && drawing) {
             if (!v9IsSameDrawingSession(drawing, editRef.current.drawing)) {
               br.dismissShapeSettingsForNewSelection?.();
@@ -15167,7 +15181,13 @@ const TalariaV8bLive = () => {
               if (tp && Object.keys(tp).length) {
                 br.suppressTxtForwardBridge.current = true;
                 br.suppressTxtCoordBridge.current = true;
-                flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
+                flushSync(() => {
+                  if (selectedTypeChanged) {
+                    br.setTxtStyle(v9BuildFullTxtStyleFromDrawing(drawing));
+                  } else {
+                    br.setTxtStyle((s) => ({ ...s, ...tp }));
+                  }
+                });
               }
               const coordOnly = {
                 ...v9CoordPatchFromDrawing(drawing),
@@ -15386,6 +15406,8 @@ const TalariaV8bLive = () => {
         } catch (_) {}
         const drawing = live || { type: t };
         const editSess = br.editingDrawingRef?.current;
+        const prevSelectedType = br.v9LastSelectedDrawingTypeRef?.current ?? null;
+        const selectedTypeChanged = !!(live && live.type && prevSelectedType !== live.type);
         if (editSess && live) {
           if (!v9IsSameDrawingSession(live, editSess.drawing)) {
             br.dismissShapeSettingsForNewSelection?.();
@@ -15409,7 +15431,14 @@ const TalariaV8bLive = () => {
           };
           if (tp && Object.keys(tp).length) {
             br.suppressTxtForwardBridge.current = true;
-            flushSync(() => br.setTxtStyle((s) => ({ ...s, ...tp })));
+            br.suppressTxtCoordBridge.current = true;
+            flushSync(() => {
+              if (selectedTypeChanged) {
+                br.setTxtStyle(v9BuildFullTxtStyleFromDrawing(live));
+              } else {
+                br.setTxtStyle((s) => ({ ...s, ...tp }));
+              }
+            });
           }
         }
         if (g && !br.editingDrawingRef?.current) {
@@ -16607,6 +16636,7 @@ const TalariaV8bLive = () => {
       collectV9BridgeTargets().forEach(({ dm, d }) => {
         if (!d || !d.style) return;
         if (drawingTypeToPanelGroupRef.current(d.type) !== "text") return;
+        if (!v9StyleBridgeAppliesToDrawing(d, editSess)) return;
         if (!v9ShouldApplyTxtStylePatch(d, armedLegacy, editSess, dm)) return;
         const isInlineEditing = dm._textInlineEditDrawing === d || d._inlineTextEditing || d._pendingAutoInlineEdit;
         try {

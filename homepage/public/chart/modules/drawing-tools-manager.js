@@ -1332,6 +1332,29 @@ class DrawingToolsManager {
                 }
             }
 
+            const levelLineNode = rawTargetNode && rawTargetNode.closest
+                ? rawTargetNode.closest('.volume-profile-level-line')
+                : null;
+            if (levelLineNode) {
+                const levelDrawingGroup = levelLineNode.closest('.drawing');
+                const levelDrawingId = levelDrawingGroup
+                    ? d3.select(levelDrawingGroup).attr('data-id')
+                    : null;
+                const levelDrawing = levelDrawingId
+                    ? this.drawings.find((d) => d && d.id === levelDrawingId)
+                    : null;
+
+                if (levelDrawing && this.isVolumeProfileToolType(levelDrawing.type) && !levelDrawing.locked) {
+                    if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
+
+                    this.selectDrawing(levelDrawing);
+                    this.editDrawing(levelDrawing, event.pageX, event.pageY);
+                    return true;
+                }
+            }
+
             const valueLabelNode = rawTargetNode && rawTargetNode.closest
                 ? rawTargetNode.closest('.volume-profile-values-label')
                 : null;
@@ -1537,13 +1560,28 @@ class DrawingToolsManager {
                     }
                 }
 
-                // TradingView-like: empty zone fill / chart background passes through to pan.
-                // Only bars, anchor boundary, level lines, and labels capture the pointer.
+                // Zone fill blocks chart pan; level lines / boundaries / labels stay interactive.
                 const hasInteractiveDrawingHit = (drawingsAtPoint || []).some((d) => {
                     if (!d) return false;
                     if (!this.isVolumeProfileToolType(d.type)) return true;
                     return this.isVolumeProfileInteractiveHit(d, mouseX, mouseY);
                 });
+                const volumeProfileZoneFillHit = (drawingsAtPoint || []).find((d) =>
+                    d && this.isVolumeProfileToolType(d.type) && d.type !== 'anchored-volume-profile'
+                    && this.isVolumeProfileZoneFillHit(d, mouseX, mouseY)
+                );
+                if (volumeProfileZoneFillHit && !this.currentTool) {
+                    if (!volumeProfileZoneFillHit.locked) {
+                        this.selectDrawing(volumeProfileZoneFillHit, false);
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
                 if (drawingsAtPoint && drawingsAtPoint.length > 0 && !hasInteractiveDrawingHit) {
                     if (event.detail >= 2) {
                         const openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
@@ -1611,6 +1649,16 @@ class DrawingToolsManager {
                 if (isSecondClick) {
                     this._volumeProfileValueLabelClickState = null;
                     let openedFromDoubleClick = openDrawingSettingsFromDoubleClick(event);
+                    if (!openedFromDoubleClick && isVolumeProfileLevelLineHit) {
+                        const levelDrawing = drawingsAtPoint.find((d) =>
+                            d && !d.locked && this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                        );
+                        if (levelDrawing) {
+                            this.selectDrawing(levelDrawing, false);
+                            this.editDrawing(levelDrawing, event.pageX, event.pageY);
+                            openedFromDoubleClick = true;
+                        }
+                    }
                     if (!openedFromDoubleClick && (isVolumeProfileValuesLabelTarget || isVolumeProfileValuesLabelHit) && isVolumeProfileHit) {
                         const labelDrawing = drawingsAtPoint.find((d) =>
                             d && !d.locked && this.isVolumeProfileValuesLabelHit(d, mouseX, mouseY)
@@ -1693,19 +1741,35 @@ class DrawingToolsManager {
                 }
 
                 if (isVolumeProfileLevelLineHit) {
-                    const best = drawingsAtPoint[0];
+                    const best = drawingsAtPoint.find((d) =>
+                        d && !d.locked && this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)
+                    ) || drawingsAtPoint[0];
                     if (best && !best.locked) {
                         this.selectDrawing(best, false);
-                        this._volumeProfileValueLabelClickState = {
-                            drawingId: best.id,
-                            time: now,
-                            mouseX,
-                            mouseY
-                        };
                     } else {
                         this._volumeProfileValueLabelClickState = null;
                     }
 
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    suppressNextCanvasClick = true;
+                    return;
+                }
+
+                const isVolumeProfileBackgroundOnly = !!(
+                    rawTarget
+                    && rawTarget.closest
+                    && rawTarget.closest('.volume-profile-hitbox, .volume-profile-range')
+                    && !rawTarget.closest('.volume-profile-level-line, .volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group')
+                );
+                if (isVolumeProfileBackgroundOnly && isVolumeProfileHit) {
+                    const best = drawingsAtPoint.find((d) => d && this.isVolumeProfileToolType(d.type)) || drawingsAtPoint[0];
+                    if (best && !best.locked) {
+                        this.selectDrawing(best, false);
+                    }
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -4992,21 +5056,24 @@ class DrawingToolsManager {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                drawing.group.selectAll('.volume-profile-level-line')
+                drawing.group.selectAll('.volume-profile-level-line.shape-border-hit')
                     .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('cursor', 'pointer');
+                drawing.group.selectAll('.volume-profile-level-line:not(.shape-border-hit)')
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
+
+                drawing.group.selectAll('.volume-profile-hitbox, .volume-profile-range')
+                    .style('pointer-events', 'all')
+                    .style('cursor', 'default');
 
                 drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
                     .style('pointer-events', 'all');
 
                 drawing.group.selectAll('.volume-profile-values-label')
                     .style('pointer-events', 'all')
-                    .style('cursor', 'move');
+                    .style('cursor', 'pointer');
             }
-
-            drawing.group.selectAll('.volume-profile-hitbox')
-                .style('pointer-events', 'none')
-                .style('cursor', 'inherit');
         }
         
         // IMPORTANT: Ensure ALL fill elements have pointer-events disabled
@@ -5039,7 +5106,7 @@ class DrawingToolsManager {
             : drawing.type === 'anchored-volume-profile'
                 ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
+                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line.shape-border-hit, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
                 : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
@@ -5302,9 +5369,9 @@ class DrawingToolsManager {
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'ew-resize';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'ew-resize';
                 } else if (isVolumeProfileLevelLineTarget) {
-                    drawing.group.style('cursor', 'move');
-                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'move';
-                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
+                    drawing.group.style('cursor', 'pointer');
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = 'pointer';
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'pointer';
                 } else if (isInlineTextTarget) {
                     const hoverCursor = (textHelpers && typeof textHelpers.resolveTextAnnotationHoverCursor === 'function')
                         ? (textHelpers.resolveTextAnnotationHoverCursor(drawing, rawTargetNode) || 'move')
@@ -5536,6 +5603,14 @@ class DrawingToolsManager {
                     
                     // Block dragging from shape-fill elements completely
                     if (isShapeFill || isUpperFill || isLowerFill) {
+                        return false;
+                    }
+
+                    // Zone background and level lines must not move the whole profile.
+                    if (targetSelection.classed('volume-profile-hitbox') || targetSelection.classed('volume-profile-range')) {
+                        return false;
+                    }
+                    if (targetSelection.classed('volume-profile-level-line')) {
                         return false;
                     }
 
@@ -6074,7 +6149,8 @@ class DrawingToolsManager {
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
             const [startMouseX, startMouseY] = this._eventCanvasLocalXY(event);
             const shouldBlockVolumeProfileTextDirectMove = drawings.some((d) =>
-                this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
+                this.isVolumeProfileZoneFillHit(d, startMouseX, startMouseY)
+                || this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
                 || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
             );
             if (shouldBlockVolumeProfileTextDirectMove) {
@@ -10954,6 +11030,37 @@ class DrawingToolsManager {
         return false;
     }
 
+    /** True when the pointer is inside the VP zone fill but not on bars, boundaries, level lines, or labels. */
+    isVolumeProfileZoneFillHit(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+        if (drawing.type === 'anchored-volume-profile') {
+            return false;
+        }
+
+        const insideRect = (node, pad = 0) => {
+            if (!node) return false;
+            const x = Number(node.getAttribute('x'));
+            const y = Number(node.getAttribute('y'));
+            const width = Number(node.getAttribute('width'));
+            const height = Number(node.getAttribute('height'));
+            if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                return false;
+            }
+            return mouseX >= (x - pad) && mouseX <= (x + width + pad)
+                && mouseY >= (y - pad) && mouseY <= (y + height + pad);
+        };
+
+        const hitbox = drawing.group.select('.volume-profile-hitbox').node();
+        const range = drawing.group.select('.volume-profile-range').node();
+        if (!insideRect(hitbox, 0.75) && !insideRect(range, 0.75)) {
+            return false;
+        }
+
+        return !this.isVolumeProfileInteractiveHit(drawing, mouseX, mouseY);
+    }
+
     /** Bars, boundaries, level lines, and value labels — not empty zone fill. */
     isVolumeProfileInteractiveHit(drawing, mouseX, mouseY) {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type)) return false;
@@ -10979,7 +11086,7 @@ class DrawingToolsManager {
             return false;
         }
 
-        const levelLines = drawing.group.selectAll('.volume-profile-level-line').nodes();
+        const levelLines = drawing.group.selectAll('.volume-profile-level-line.shape-border-hit').nodes();
         if (!Array.isArray(levelLines) || levelLines.length === 0) {
             return false;
         }
