@@ -1,4 +1,4 @@
-﻿/**
+﻿﻿/**
  * Drawing Tools Manager
  * Main coordinator for all drawing tools
  * Handles drawing lifecycle, event management, and persistence
