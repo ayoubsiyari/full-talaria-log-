@@ -371,26 +371,24 @@ class DatePriceRangeTool extends BaseDrawing {
         const neutral = this.style.textColor || '#d1d4dc';
         const statOn = (key) => info[key] === true || (info[key] !== false && info[key] == null);
 
-        const priceParts = [];
-        if (statOn('priceRange')) priceParts.push(priceDiffStr);
-        if (statOn('percentChange')) priceParts.push(`(${pctStr}%)`);
-        if (statOn('changeInPips')) priceParts.push(`${pipsStr}`);
-        const priceLine = priceParts.length > 0 ? priceParts.join(' ') : '';
-
-        const timeParts = [];
-        if (statOn('barsRange')) timeParts.push(`${bars} bars`);
-        if (statOn('dateTimeRange')) timeParts.push(`${duration}`);
-        const timeLine = timeParts.length > 0 ? timeParts.join(', ') : '';
-
         const lines = [];
-        if (mode !== 'time' && priceLine) {
-            lines.push({ text: priceLine, fill: neutral });
+        const pushLine = (key, text, fill) => {
+            if (!text || !statOn(key)) return;
+            lines.push({ text, fill: fill || neutral });
+        };
+
+        // One row per stat (matches settings checkboxes — not grouped onto shared lines).
+        if (mode !== 'time') {
+            pushLine('priceRange', priceDiffStr);
+            pushLine('percentChange', `(${pctStr}%)`);
+            pushLine('changeInPips', `${pipsStr}`);
         }
-        if (mode !== 'price' && timeLine) {
-            lines.push({ text: timeLine, fill: neutral });
+        if (mode !== 'price') {
+            pushLine('barsRange', `${bars} bars`);
+            pushLine('dateTimeRange', duration);
         }
-        if (mode === 'both' && statOn('volume') && volume !== null) {
-            lines.push({ text: `Vol ${this.formatCompactVolume(volume)}`, fill: neutral });
+        if (mode === 'both' && volume !== null) {
+            pushLine('volume', `Vol ${this.formatCompactVolume(volume)}`);
         }
         return lines;
     }

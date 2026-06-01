@@ -3590,61 +3590,54 @@ class DrawingToolsManager {
                 this.resizingPointIndex = null;
                 return;
             }
-            const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
-            let handledByDrawing = false;
-            if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
-                handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
-                    point: currentPoint,
-                    scales: {
-                        xScale: this.chart.xScale,
-                        yScale: this.chart.yScale,
-                        chart: this.chart
-                    }
-                }) === true;
-            }
-
-            if (!handledByDrawing) {
-                this.resizingDrawing.points[this.resizingPointIndex] = this._snapPointXForDrawingType(
-                    currentPoint,
-                    this.resizingDrawing.type
-                );
-                this.resizingDrawing.meta.updatedAt = Date.now();
-            } else {
-                this._snapDrawingPointsX(this.resizingDrawing);
-            }
-            this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
-
-            this.scheduleRenderDrawing(this.resizingDrawing);
-            this._broadcastLiveEditUpdate(this.resizingDrawing);
+            const drawing = this.resizingDrawing;
+            const pointIndex = this.resizingPointIndex;
+            this._applyLiveHandleEditPaint(drawing, event, (src) => {
+                const currentPoint = this.getDataPoint(src, drawing.type);
+                let handledByDrawing = false;
+                if (typeof drawing.onPointHandleDrag === 'function') {
+                    handledByDrawing = drawing.onPointHandleDrag(pointIndex, {
+                        point: currentPoint,
+                        scales: this._getDrawingRenderScales()
+                    }) === true;
+                }
+                if (!handledByDrawing) {
+                    drawing.points[pointIndex] = this._snapPointXForDrawingType(currentPoint, drawing.type);
+                    drawing.meta.updatedAt = Date.now();
+                } else {
+                    this._snapDrawingPointsX(drawing);
+                }
+                this._syncHorizontalAnchorToolPointY(drawing);
+            });
             return;
         }
         
         // Handle custom handle dragging (for special resize handles)
-        if (this.isCustomHandleDragging && this.customHandleDraggingDrawing) {
+        if (this.isCustomHandleDrag && this.customHandleDrawing) {
             if (event.buttons !== undefined && event.buttons === 0) {
-                this.isCustomHandleDragging = false;
-                this.customHandleDraggingDrawing = null;
+                this.isCustomHandleDrag = false;
+                this.customHandleDrawing = null;
                 this.customHandleRole = null;
                 return;
             }
-            const [screenX, screenY] = this._eventCanvasLocalXY(event);
-            const dataPoint = this.getDataPoint(event);
-            
-            const context = {
-                screen: { x: screenX, y: screenY },
-                data: dataPoint
-            };
-            
-            if (typeof this.customHandleDraggingDrawing.handleCustomHandleDrag === 'function') {
-                const handled = this.customHandleDraggingDrawing.handleCustomHandleDrag(
-                    this.customHandleRole,
-                    context
-                );
-                if (handled) {
-                    this.scheduleRenderDrawing(this.customHandleDraggingDrawing);
-                    this._broadcastLiveEditUpdate(this.customHandleDraggingDrawing);
+            const drawing = this.customHandleDrawing;
+            const role = this.customHandleRole;
+            this._applyLiveHandleEditPaint(drawing, event, (src) => {
+                const ctx = this.collectHandleContext({ sourceEvent: src });
+                ctx.pointIndex = this.customHandlePointIndex;
+                if (ctx.shiftKey && this.angleSnapTools.includes(drawing.type)) {
+                    const pointIndex = ctx.pointIndex;
+                    const otherIndex = pointIndex === 0 ? 1 : 0;
+                    if (drawing.points[otherIndex]) {
+                        ctx.dataPoint = this.constrainToAngle(drawing.points[otherIndex], ctx.dataPoint);
+                        ctx.point = ctx.dataPoint;
+                    }
                 }
-            }
+                if (typeof drawing.handleCustomHandleDrag === 'function') {
+                    drawing.handleCustomHandleDrag(role, ctx);
+                }
+                this._snapDrawingPointsX(drawing);
+            });
             return;
         }
 
@@ -6915,7 +6908,7 @@ class DrawingToolsManager {
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
                     self._snapDrawingPointsX(drawing);
-                    self.scheduleRenderDrawing(drawing);
+                    self._applyLiveHandleEditPaint(drawing, event, null);
                     return true;
                 }
             }
@@ -7011,7 +7004,18 @@ class DrawingToolsManager {
                     }
                     
                     if (!applyPointHandleDrag(point, drawing, index)) {
-                        self.handleDrag(event);
+                        self._applyLiveHandleEditPaint(drawing, event, (src) => {
+                            let pt = self.getDataPoint(src, drawing.type);
+                            if (src.shiftKey && self.angleSnapTools.includes(drawing.type)) {
+                                const otherIndex = index === 0 ? 1 : 0;
+                                if (drawing.points[otherIndex]) {
+                                    pt = self.constrainToAngle(drawing.points[otherIndex], pt);
+                                }
+                            }
+                            drawing.points[index] = self._snapPointXForDrawingType(pt, drawing.type);
+                            drawing.meta.updatedAt = Date.now();
+                            self._syncHorizontalAnchorToolPointY(drawing);
+                        });
                     }
                 })
                 .on('end', function(event) {
@@ -7103,33 +7107,26 @@ class DrawingToolsManager {
      */
     handleDrag(event) {
         if (!this.isResizing || !this.resizingDrawing) return;
-        
-        // Use sourceEvent for accurate mouse position
+
         const drawing = this.resizingDrawing;
-        let point = this.getDataPoint(event.sourceEvent, drawing.type);
         const index = this.resizingPointIndex;
-        
-        // Validate index
         if (index === undefined || index === null || isNaN(index)) {
             console.warn('⚠️ Invalid resize point index:', index);
             return;
         }
-        
-        // Apply Shift key angle constraint for supported line tools
-        if (event.sourceEvent.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-            // Get the other anchor point (for 2-point tools)
-            const otherIndex = index === 0 ? 1 : 0;
-            if (drawing.points[otherIndex]) {
-                point = this.constrainToAngle(drawing.points[otherIndex], point);
-            }
-        }
-        
-        // Update point
-        drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
-        drawing.meta.updatedAt = Date.now();
 
-        this.scheduleRenderDrawing(drawing);
-        this._broadcastLiveEditUpdate(drawing);
+        this._applyLiveHandleEditPaint(drawing, event, (src) => {
+            let point = this.getDataPoint(src, drawing.type);
+            if (src.shiftKey && this.angleSnapTools.includes(drawing.type)) {
+                const otherIndex = index === 0 ? 1 : 0;
+                if (drawing.points[otherIndex]) {
+                    point = this.constrainToAngle(drawing.points[otherIndex], point);
+                }
+            }
+            drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
+            drawing.meta.updatedAt = Date.now();
+            this._syncHorizontalAnchorToolPointY(drawing);
+        });
     }
 
     /**
@@ -7163,6 +7160,9 @@ class DrawingToolsManager {
 
         drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
+        }
 
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
@@ -7208,35 +7208,28 @@ class DrawingToolsManager {
 
     handleCustomHandleDrag(event) {
         if (!this.isCustomHandleDrag || !this.customHandleDrawing) return;
-        const context = this.collectHandleContext(event);
         const drawing = this.customHandleDrawing;
         const handleRole = this.customHandleRole;
-        
-        // Add pointIndex to context for arc/curve sensitivity
-        context.pointIndex = this.customHandlePointIndex;
-        
-        // Apply Shift key angle constraint for supported line tools
-        if (context.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-            const pointIndex = context.pointIndex;
-            const otherIndex = pointIndex === 0 ? 1 : 0;
-            if (drawing.points[otherIndex]) {
-                context.dataPoint = this.constrainToAngle(drawing.points[otherIndex], context.dataPoint);
-                context.point = context.dataPoint;
-            }
-        }
-        
-        if (typeof drawing.handleCustomHandleDrag === 'function') {
-            drawing.handleCustomHandleDrag(handleRole, context);
-        }
-        this._snapDrawingPointsX(drawing);
 
-        // Always re-render during drag
-        this.scheduleRenderDrawing(drawing);
-        this._broadcastLiveEditUpdate(drawing);
-        
-        // Dispatch event to sync UI with drawing style changes (e.g., font size during text resize)
-        window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
-            detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
+        this._applyLiveHandleEditPaint(drawing, event, (src) => {
+            const context = this.collectHandleContext({ sourceEvent: src });
+            context.pointIndex = this.customHandlePointIndex;
+            if (context.shiftKey && this.angleSnapTools.includes(drawing.type)) {
+                const pointIndex = context.pointIndex;
+                const otherIndex = pointIndex === 0 ? 1 : 0;
+                if (drawing.points[otherIndex]) {
+                    context.dataPoint = this.constrainToAngle(drawing.points[otherIndex], context.dataPoint);
+                    context.point = context.dataPoint;
+                }
+            }
+            if (typeof drawing.handleCustomHandleDrag === 'function') {
+                drawing.handleCustomHandleDrag(handleRole, context);
+            }
+            this._snapDrawingPointsX(drawing);
+        });
+
+        window.dispatchEvent(new CustomEvent('drawingStyleChanged', {
+            detail: { drawing, property: 'fontSize', value: drawing.style.fontSize }
         }));
     }
 
@@ -7254,6 +7247,9 @@ class DrawingToolsManager {
 
         drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
+        }
 
         // Record modification for undo/redo
         if (this.history && this.customHandleBeforeState) {
