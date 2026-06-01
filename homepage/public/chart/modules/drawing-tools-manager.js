@@ -462,22 +462,63 @@ class DrawingToolsManager {
 
     beginTextInlineEdit(drawing) {
         if (!drawing) return;
-        if (this._textInlineEditDrawing === drawing) return;
-        if (this._textInlineEditDrawing) {
+        if (this._textInlineEditDrawing && this._textInlineEditDrawing !== drawing) {
             this.endTextInlineEdit(this._textInlineEditDrawing);
         }
         this._textInlineEditDrawing = drawing;
         drawing._inlineTextEditing = true;
         this._beginDrawingLiveInteraction();
+        this._attachInlineEditMoveGuard(drawing);
     }
 
     endTextInlineEdit(drawing) {
         if (drawing) drawing._inlineTextEditing = false;
-        if (!this._textInlineEditDrawing) return;
-        if (drawing && this._textInlineEditDrawing !== drawing) return;
+        const active = this._textInlineEditDrawing;
+        if (!active) {
+            this._detachInlineEditMoveGuard();
+            return;
+        }
+        if (drawing && active !== drawing) return;
         this._textInlineEditDrawing = null;
+        this._detachInlineEditMoveGuard();
         this._endDrawingLiveInteraction();
         if (drawing) this.renderDrawing(drawing);
+    }
+
+    _attachInlineEditMoveGuard(drawing) {
+        if (!drawing || typeof document === 'undefined') return;
+        this._detachInlineEditMoveGuard();
+        const self = this;
+        const handler = (event) => {
+            const editing = self._textInlineEditDrawing;
+            const editorEl = document.querySelector('.inline-text-editor--inline');
+            if (!editing && !editorEl) return;
+            const t = event.target;
+            if (!t || !t.closest) return;
+            if (t.closest('.inline-text-editor')) return;
+            const active = editing || drawing;
+            if (!active || !active.group) return;
+            const groupNode = active.group.node();
+            if (!groupNode || (!groupNode.contains(t) && t !== groupNode)) return;
+            self._commitInlineTextEditorBeforeGeometryEdit();
+        };
+        this._inlineEditMoveGuardHandler = handler;
+        this._inlineEditMoveGuardDrawing = drawing;
+        const svgNode = this.svg && typeof this.svg.node === 'function' ? this.svg.node() : null;
+        const canvas = (this.chart && this.chart.canvas) || null;
+        if (svgNode) svgNode.addEventListener('mousedown', handler, true);
+        if (canvas && canvas !== svgNode) canvas.addEventListener('mousedown', handler, true);
+    }
+
+    _detachInlineEditMoveGuard() {
+        const handler = this._inlineEditMoveGuardHandler;
+        if (!handler) return;
+        const svgNode = this.svg && typeof this.svg.node === 'function' ? this.svg.node() : null;
+        const canvas = (this.chart && this.chart.canvas) || null;
+        if (svgNode) svgNode.removeEventListener('mousedown', handler, true);
+        if (canvas && canvas !== svgNode) canvas.removeEventListener('mousedown', handler, true);
+        this._inlineEditMoveGuardHandler = null;
+        this._inlineEditMoveGuardDrawing = null;
     }
 
     _syncInlineTextEditorToDrawing(drawing) {
@@ -491,12 +532,22 @@ class DrawingToolsManager {
 
     /** Save/dismiss the HTML inline editor before move/resize so geometry edits never fight typing. */
     _commitInlineTextEditorBeforeGeometryEdit() {
-        if (!this._textInlineEditDrawing) return;
-        if (this.textEditor && typeof this.textEditor.save === 'function') {
-            this.textEditor.save();
-            return;
+        const hasDomEditor = typeof document !== 'undefined'
+            && !!document.querySelector('.inline-text-editor--inline');
+        const editing = this._textInlineEditDrawing;
+        if (!editing && !hasDomEditor) return;
+
+        if (hasDomEditor && this.textEditor && typeof this.textEditor.save === 'function') {
+            try { this.textEditor.save(); } catch (_) { /* ignore */ }
         }
-        this.endTextInlineEdit(this._textInlineEditDrawing);
+        if (this._textInlineEditDrawing) {
+            this.endTextInlineEdit(this._textInlineEditDrawing);
+        } else if (hasDomEditor) {
+            if (this.textEditor && typeof this.textEditor.hide === 'function') {
+                try { this.textEditor.hide(); } catch (_) { /* ignore */ }
+            }
+            this._detachInlineEditMoveGuard();
+        }
     }
 
     /** Hot-path render options during move/resize (matches scheduleRenderDrawing / movement). */
@@ -4207,9 +4258,22 @@ class DrawingToolsManager {
 
     _hideAnchoredVwapCurvesDuringMove(drawing) {
         if (!drawing || drawing.type !== 'anchored-vwap' || !drawing.group) return;
-        drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-band-fill, .anchored-vwap-line-markers, .anchored-vwap-label')
-            .style('opacity', 0)
-            .style('pointer-events', 'none');
+        drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-band-fill, .anchored-vwap-line-markers, .anchored-vwap-line-point, .anchored-vwap-label')
+            .remove();
+        this._pruneAnchoredVwapMoveDom(drawing);
+        if (typeof drawing.hideAxisHighlights === 'function') {
+            drawing.hideAxisHighlights();
+        }
+    }
+
+    _pruneAnchoredVwapMoveDom(drawing) {
+        if (!drawing?.group) return;
+        ['.anchored-vwap-anchor', '.anchored-vwap-anchor-hit', '.anchored-vwap-anchor-guide'].forEach((selector) => {
+            const nodes = drawing.group.selectAll(selector).nodes();
+            if (nodes.length > 1) {
+                nodes.slice(1).forEach((node) => node.remove());
+            }
+        });
     }
 
     _syncAnchoredVwapAnchorDomDuringMove(drawing) {
@@ -4239,10 +4303,8 @@ class DrawingToolsManager {
         drawing.group.selectAll('.anchored-vwap-anchor-guide')
             .attr('x1', anchorX)
             .attr('x2', anchorX);
+        this._pruneAnchoredVwapMoveDom(drawing);
 
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: true });
-        }
         return true;
     }
 
@@ -5040,6 +5102,12 @@ class DrawingToolsManager {
         }
         drawing = trackedDrawing;
 
+        // Anchor drag uses direct DOM updates — skip SVG rebuild so d3 drag stays bound.
+        if (drawing.type === 'anchored-vwap' && drawing._isActiveMoving) {
+            if (this.chart) this.chart._isRendering = wasRendering;
+            return;
+        }
+
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
@@ -5139,6 +5207,9 @@ class DrawingToolsManager {
         }
         if (this._textInlineEditDrawing === drawing) {
             this._syncInlineTextEditorToDrawing(drawing);
+            if (liveRender && !drawing.locked && drawing.group && !drawing.group.empty()) {
+                try { this.setupDrawingDrag(drawing); } catch (_) { /* ignore */ }
+            }
         }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
@@ -5640,7 +5711,7 @@ class DrawingToolsManager {
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'move';
                 }
                 SVGHelpers.applyHoverEffect(drawing.group, true);
-                if (drawing.type === 'anchored-vwap' && drawing.group) {
+                if (drawing.type === 'anchored-vwap' && drawing.group && !drawing._isActiveMoving) {
                     drawing.group.selectAll('.anchored-vwap-line-markers').style('opacity', 1);
                 }
             } else {
@@ -5674,7 +5745,7 @@ class DrawingToolsManager {
                 if (self.chart.svg?.node()) self.chart.svg.node().style.cursor = cursorStyle;
             }
             SVGHelpers.applyHoverEffect(drawing.group, false);
-            if (drawing.type === 'anchored-vwap' && drawing.group) {
+            if (drawing.type === 'anchored-vwap' && drawing.group && !drawing._isActiveMoving) {
                 drawing.group.selectAll('.anchored-vwap-line-markers').style('opacity', drawing.selected ? 1 : 0);
             }
         };

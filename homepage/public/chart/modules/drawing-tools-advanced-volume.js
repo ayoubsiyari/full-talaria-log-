@@ -416,6 +416,64 @@ class AnchoredVWAPTool extends BaseDrawing {
         });
     }
 
+    /** During anchor drag: vertical guide + single anchor handle only (no VWAP curves/markers). */
+    _appendAnchoredVwapAnchorOnly(anchorX, anchorY, scales) {
+        if (!this.group) return;
+
+        const anchorHandleRadius = 3;
+        const anchorHitRadius = 12;
+        const anchorHandleStroke = '#2962FF';
+        const anchorHandleStrokeWidth = 2;
+
+        if (scales.yScale && typeof scales.yScale.domain === 'function') {
+            const yDomain = scales.yScale.domain();
+            if (Array.isArray(yDomain) && yDomain.length >= 2) {
+                const yLow = Math.min(yDomain[0], yDomain[yDomain.length - 1]);
+                const yHigh = Math.max(yDomain[0], yDomain[yDomain.length - 1]);
+                const topY = scales.yScale(yHigh);
+                const bottomY = scales.yScale(yLow);
+
+                if (Number.isFinite(topY) && Number.isFinite(bottomY)) {
+                    this.group.append('line')
+                        .attr('class', 'anchored-vwap-anchor-guide')
+                        .attr('x1', anchorX)
+                        .attr('y1', topY)
+                        .attr('x2', anchorX)
+                        .attr('y2', bottomY)
+                        .attr('stroke', this.style.stroke)
+                        .attr('stroke-width', 1)
+                        .attr('stroke-dasharray', '3,3')
+                        .attr('opacity', 0.5)
+                        .style('pointer-events', 'none');
+                }
+            }
+        }
+
+        this.group.append('circle')
+            .attr('class', 'anchored-vwap-anchor-hit shape-border-hit')
+            .attr('cx', anchorX)
+            .attr('cy', anchorY)
+            .attr('r', anchorHitRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('pointer-events', 'all')
+            .style('cursor', 'ew-resize');
+
+        this.group.append('circle')
+            .attr('class', 'anchored-vwap-anchor')
+            .attr('cx', anchorX)
+            .attr('cy', anchorY)
+            .attr('r', anchorHandleRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', anchorHandleStroke)
+            .attr('stroke-width', anchorHandleStrokeWidth)
+            .attr('opacity', 1)
+            .style('pointer-events', 'all')
+            .style('cursor', 'ew-resize');
+
+        this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -517,6 +575,17 @@ class AnchoredVWAPTool extends BaseDrawing {
         this.style.vwapBandsCalculationMode = bandsCalculationMode;
 
         const shouldRenderVWAPCurves = this._isActiveMoving !== true;
+
+        if (this._isActiveMoving) {
+            if (chartData.length > 0 && chartData[anchorIndex]) {
+                const close = Number(chartData[anchorIndex].c ?? chartData[anchorIndex].close);
+                if (Number.isFinite(close)) {
+                    anchorY = scales.yScale(close);
+                }
+            }
+            this._appendAnchoredVwapAnchorOnly(anchorX, anchorY, scales);
+            return;
+        }
 
         // If no data, draw a simple horizontal line from anchor point
         if (chartData.length === 0) {
