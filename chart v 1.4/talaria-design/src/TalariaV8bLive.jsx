@@ -13881,11 +13881,17 @@ const TalariaV8bLive = () => {
   // Runs whenever V9's tool / groupSelected changes. Polls briefly because
   // chart.js / drawingManager may not be initialized yet on first mount.
   useEffect(() => {
-    // Close volume-tool settings/toolbars when switching away from their tool
+    // Close volume-tool settings when switching away from their rail sub-tool.
+    // Do not close while the V9 settings panel is editing that drawing — opening
+    // settings forces tool="crosshair", which would otherwise flash-close the panel.
     const brushIcon = groupSelected.brush?.icon ?? "vwap";
-    if (tool !== "brush" || brushIcon !== "vwap") { if (vwapSettOpen) closeVwapSett(); }
-    if (tool !== "brush" || brushIcon !== "volProfile") { if (vpSettOpen) closeVpSett(); }
-    if (tool !== "brush" || brushIcon !== "anchoredVol") { if (avSettOpen) closeAvSett(); }
+    const edType = editingDrawingRef.current?.drawing?.type;
+    const keepVwapSett = vwapSettOpen && edType === "anchored-vwap";
+    const keepVpSett = vpSettOpen && v9IsVolumeProfileDrawingType(edType);
+    const keepAvSett = avSettOpen && edType === "anchored-volume-profile";
+    if (!keepVwapSett && (tool !== "brush" || brushIcon !== "vwap")) { if (vwapSettOpen) closeVwapSett(); }
+    if (!keepVpSett && (tool !== "brush" || brushIcon !== "volProfile")) { if (vpSettOpen) closeVpSett(); }
+    if (!keepAvSett && (tool !== "brush" || brushIcon !== "anchoredVol")) { if (avSettOpen) closeAvSett(); }
     let cancelled = false; let n = 0;
     /** Push tool into the in-process host chart (and poll until drawingManager exists). */
     const applyHostDm = () => {
