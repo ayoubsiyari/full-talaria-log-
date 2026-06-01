@@ -807,7 +807,7 @@ function v9ChartVertToUi(chartVert) {
 }
 
 /** Quick-bar lock icons must follow the selected drawing (undefined locked => unlocked). */
-function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAvLocked, setVpLocked) {
+function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked) {
   const locked = !!(drawing && drawing.locked);
   if (typeof setTlLocked === "function") setTlLocked(locked);
   if (typeof setTxtLocked === "function") setTxtLocked(locked);
@@ -816,6 +816,9 @@ function v9SyncQuickBarLockFromDrawing(drawing, setTlLocked, setTxtLocked, setAv
   }
   if (typeof setVpLocked === "function") {
     setVpLocked(!!(drawing && (drawing.type === "volume-profile" || drawing.type === "fixed-range-volume-profile") && locked));
+  }
+  if (typeof setVwapLocked === "function") {
+    setVwapLocked(!!(drawing && drawing.type === "anchored-vwap" && locked));
   }
 }
 
@@ -2109,6 +2112,48 @@ function v9DeleteSelectedDrawingsOfType(type, editingRefDrawing) {
     }
   }
   return deleted;
+}
+
+/** Lock/unlock selected drawing(s) of a single type on the correct chart tile. */
+function v9SetSelectedDrawingsOfTypeLocked(type, nextLocked, editingRefDrawing) {
+  let changed = false;
+  enumerateV9DrawingManagersActiveFirst().forEach((dm) => {
+    let sel = [];
+    if (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.length) {
+      sel = dm.selectedDrawings.filter((d) => d && d.type === type);
+    } else if (dm.selectedDrawing?.type === type) {
+      sel = [dm.selectedDrawing];
+    }
+    if (!sel.length && dm.toolbar?.currentDrawing?.type === type) {
+      sel = [dm.toolbar.currentDrawing];
+    }
+    if (!sel.length) return;
+    const seen = new Set();
+    sel.forEach((d) => {
+      const live = resolveLiveDrawingInDm(dm, d);
+      if (!live || seen.has(live.id)) return;
+      seen.add(live.id);
+      live.locked = nextLocked;
+      changed = true;
+      try { if (typeof dm.renderDrawing === "function") dm.renderDrawing(live); } catch (_) {}
+    });
+    if (seen.size) {
+      try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
+      if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+    }
+  });
+  if (!changed && editingRefDrawing?.type === type) {
+    const dm = resolveDrawingManagerForDrawing(editingRefDrawing);
+    const live = dm && resolveLiveDrawingInDm(dm, editingRefDrawing);
+    if (live) {
+      live.locked = nextLocked;
+      changed = true;
+      try { dm.renderDrawing(live); } catch (_) {}
+      try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
+      if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+    }
+  }
+  return changed;
 }
 
 const V9_VOLUME_PROFILE_DRAWING_TYPES = new Set(["volume-profile", "fixed-range-volume-profile"]);
@@ -15201,6 +15246,7 @@ const TalariaV8bLive = () => {
     setTxtLocked,
     setAvLocked,
     setVpLocked,
+    setVwapLocked,
     LEGACY_TYPE_TO_V9_ICON,
     suppressForwardBridge,
     suppressTxtForwardBridge,
@@ -15212,6 +15258,7 @@ const TalariaV8bLive = () => {
     setAvStyle,
     setVpBarPos,
     setAvBarPos,
+    setVwapBarPos,
     Z,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
@@ -15333,7 +15380,7 @@ const TalariaV8bLive = () => {
                 }
               }
             }
-            v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked);
+            v9SyncQuickBarLockFromDrawing(drawing, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
           }
           if (drawing && drawing.type && !editRef?.current) {
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
@@ -15427,8 +15474,8 @@ const TalariaV8bLive = () => {
                 ...v9AnchorCoordPatchFromDrawing(drawing),
               }));
             }
-            // Position the dedicated VP/AV toolbar near the drawing
-            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile' || dt === 'anchored-volume-profile') {
+            // Position the dedicated VP/AV/VWAP toolbar near the drawing
+            if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile' || dt === 'anchored-volume-profile' || dt === 'anchored-vwap') {
               try {
                 const gEl = drawing.group && drawing.group.node ? drawing.group.node() : null;
                 const ch2 = window.chart;
@@ -15446,8 +15493,10 @@ const TalariaV8bLive = () => {
                   const ny2 = Math.max(8, by2 - 44);
                   if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
                     br.setVpBarPos({ x: nx, y: ny2 });
-                  } else {
+                  } else if (dt === 'anchored-volume-profile') {
                     br.setAvBarPos({ x: nx, y: ny2 });
+                  } else {
+                    br.setVwapBarPos({ x: nx, y: ny2 });
                   }
                 }
               } catch (_) {}
@@ -15467,7 +15516,7 @@ const TalariaV8bLive = () => {
           const br = v9ToolbarBridgeActRef.current;
           br.setTlBarSelected(false);
           br.setTlBarSelectedType(null);
-          v9SyncQuickBarLockFromDrawing(null, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked);
+          v9SyncQuickBarLockFromDrawing(null, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
         } catch (_) {}
         return origHide ? origHide() : undefined;
       };
@@ -15515,7 +15564,7 @@ const TalariaV8bLive = () => {
     const onClear = () => {
       setTlBarSelected(false);
       setTlBarSelectedType(null);
-      v9SyncQuickBarLockFromDrawing(null, setTlLocked, setTxtLocked, setAvLocked, setVpLocked);
+      v9SyncQuickBarLockFromDrawing(null, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
       v9SelectionToolbarSyncRef.current = false;
     };
     window.addEventListener("talaria:v9-cleared-selection", onClear);
@@ -15621,7 +15670,7 @@ const TalariaV8bLive = () => {
             }
           }
           if (!br.editingDrawingRef?.current) {
-            v9SyncQuickBarLockFromDrawing(live, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked);
+            v9SyncQuickBarLockFromDrawing(live, br.setTlLocked, br.setTxtLocked, br.setAvLocked, br.setVpLocked, br.setVwapLocked);
           }
         }
         // Hydrate volume tool panels from selected drawing
@@ -15713,8 +15762,8 @@ const TalariaV8bLive = () => {
               ...v9AnchorCoordPatchFromDrawing(live),
             }));
           }
-          // Position dedicated VP/AV toolbar near the drawing
-          if (t === 'volume-profile' || t === 'fixed-range-volume-profile' || t === 'anchored-volume-profile') {
+          // Position dedicated VP/AV/VWAP toolbar near the drawing
+          if (t === 'volume-profile' || t === 'fixed-range-volume-profile' || t === 'anchored-volume-profile' || t === 'anchored-vwap') {
             try {
               const gEl = live && live.group && live.group.node ? live.group.node() : null;
               if (gEl) {
@@ -15733,8 +15782,10 @@ const TalariaV8bLive = () => {
                 const ny2 = Math.max(8, by2 - 44);
                 if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
                   br.setVpBarPos({ x: nx, y: ny2 });
-                } else {
+                } else if (t === 'anchored-volume-profile') {
                   br.setAvBarPos({ x: nx, y: ny2 });
+                } else {
+                  br.setVwapBarPos({ x: nx, y: ny2 });
                 }
               }
             } catch (_) {}
@@ -24852,7 +24903,15 @@ const TalariaV8bLive = () => {
           const isH = hov === id;
           const isDel = id === "vb-del";
           return (
-            <div onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)} onClick={onClick}
+            <div
+              onMouseEnter={()=>setHov(id)}
+              onMouseLeave={()=>setHov(null)}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
@@ -24863,9 +24922,29 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
+        const deleteVwapFromBar = (e) => {
+          e.stopPropagation();
+          setVwapBarDrop(null);
+          setColorPicker(null);
+          if (vwapSettOpen || closing.has("vwapsett")) closeVwapSett();
+          v9SuppressNextChartDeselect();
+          let deleted = false;
+          try {
+            deleted = v9DeleteSelectedDrawingsOfType(
+              "anchored-vwap",
+              getSelectedDrawingForTemplate(),
+            );
+          } catch (err) { console.warn("[V9 vwap delete] failed:", err); }
+          if (deleted) {
+            editingDrawingRef.current = null;
+            setVwapLocked(false);
+            setTlBarSelected(false);
+            setTlBarSelectedType(null);
+          }
+        };
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
-          <div data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+          <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
                      boxShadow:`0 4px 20px rgba(0,0,0,0.5), 0 0 14px rgba(74,106,255,0.18)`,
@@ -24917,7 +24996,10 @@ const TalariaV8bLive = () => {
                   {[["solid",undefined,1.5],["dashed","7,4",1.5],["dotted","2,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                     const isA=vwapStyle.vwapLineType===v,isH2=hov===`vb-sty-${v}`;
                     return(
-                      <div key={v} onClick={()=>{setVwapStyle(s=>({...s,vwapLineType:v}));setVwapBarDrop(null);}}
+                      <div key={v}
+                        onPointerDown={(e) => { e.stopPropagation(); setVwapStyle(s=>({...s,vwapLineType:v})); setVwapBarDrop(null); }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                         onMouseEnter={()=>setHov(`vb-sty-${v}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                 background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -24950,7 +25032,10 @@ const TalariaV8bLive = () => {
                   {["1","2","3","4"].map(v=>{
                     const isA=vwapStyle.vwapLineWidth===v,isH2=hov===`vb-thk-${v}`;
                     return(
-                      <div key={v} onClick={()=>{setVwapStyle(s=>({...s,vwapLineWidth:v}));setVwapBarDrop(null);}}
+                      <div key={v}
+                        onPointerDown={(e) => { e.stopPropagation(); setVwapStyle(s=>({...s,vwapLineWidth:v})); setVwapBarDrop(null); }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                         onMouseEnter={()=>setHov(`vb-thk-${v}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                                 background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -24966,17 +25051,24 @@ const TalariaV8bLive = () => {
             </div>
             <VSep/>
             {/* btn: lock */}
-            <VBtn id="vb-lock" isAct={vwapLocked} onClick={e=>{e.stopPropagation();setVwapBarDrop(null);setColorPicker(null);setVwapLocked(v=>!v);}}>
+            <VBtn id="vb-lock" isAct={vwapLocked} onClick={e=>{
+              e.stopPropagation(); setVwapBarDrop(null); setColorPicker(null);
+              v9SuppressNextChartDeselect();
+              const next = !vwapLocked; setVwapLocked(next);
+              try {
+                v9SetSelectedDrawingsOfTypeLocked("anchored-vwap", next, getSelectedDrawingForTemplate());
+              } catch (_) {}
+            }}>
               {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
             </VBtn>
             {/* btn: delete */}
-            <VBtn id="vb-del" isAct={false} onClick={e=>{e.stopPropagation();}}>
+            <VBtn id="vb-del" isAct={false} onClick={deleteVwapFromBar}>
               {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
             </VBtn>
             <VSep/>
             {/* btn: settings */}
             <VBtn id="vb-sett" isAct={vwapSettOpen||closing.has("vwapsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
+              onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VBtn>
             {/* btn: more */}
@@ -25000,7 +25092,10 @@ const TalariaV8bLive = () => {
                   ].map((item,i)=>item===null?(
                     <div key={i} style={{height:1,margin:"3px 0",background:c.brH}}/>
                   ):(
-                    <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setVwapBarDrop(null); }}
+                    <div key={item.lbl}
+                      onPointerDown={(e) => { e.stopPropagation(); v9RunDrawingMoreMenuAction(item.lbl); setVwapBarDrop(null); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
                       onMouseEnter={()=>setHov(`vb-more-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                       style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",cursor:"default",
                               background:hov===`vb-more-${item.lbl}`?c.hv2:"transparent"}}>

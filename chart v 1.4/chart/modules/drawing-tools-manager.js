@@ -98,6 +98,8 @@ class DrawingToolsManager {
         this._directMoveUpHandler = null;
         /** Drawings being moved via canvas geometric drag (not isDragging SVG path). */
         this._directMoveDrawings = null;
+        /** Active d3 body-drag gestures (whole-shape move via setupDrawingDrag). */
+        this._bodyDragDepth = 0;
         this._handleClickTimes = {};
         this._handleMouseDownCaptureHandler = null;
         this._setupHandleMouseDownCapture();
@@ -457,7 +459,17 @@ class DrawingToolsManager {
     _isLiveDrawingInteraction() {
         return !!((this._drawingLiveInteractionDepth || 0) > 0
             || this.isDragging || this.isResizing || this.isCustomHandleDrag
-            || this._textInlineEditDrawing);
+            || this._textInlineEditDrawing
+            || this._isDrawingGeometryMoveActive());
+    }
+
+    /** Whole-shape move in progress (d3 body drag, legacy isDragging, or canvas direct move). */
+    _isDrawingGeometryMoveActive() {
+        return !!(
+            this.isDragging
+            || this._directMoveMoveHandler
+            || (this._bodyDragDepth || 0) > 0
+        );
     }
 
     beginTextInlineEdit(drawing) {
@@ -1621,7 +1633,11 @@ class DrawingToolsManager {
                     return;
                 }
                 if (event.button === 0 && event.ctrlKey && !event.shiftKey && !this.currentTool && !this.isRectSelecting) {
-                    return;
+                    const [ctrlMx, ctrlMy] = this._eventCanvasLocalXY(event);
+                    const ctrlHits = this.findDrawingsAtPoint(ctrlMx, ctrlMy, { includeVolumeProfileBodyHit: true });
+                    if (!ctrlHits || ctrlHits.length === 0) {
+                        return;
+                    }
                 }
 
                 // Make drag-start use the same geometric hover hit zone, even when the
@@ -3864,7 +3880,7 @@ class DrawingToolsManager {
         if (event.metaKey || event.ctrlKey) {
             this.magnetKeyHeld = true;
             // Enable Ctrl+hover to select mode (only Ctrl, not Command on Mac)
-            if (event.ctrlKey && !this.currentTool) {
+            if (event.ctrlKey && !this.currentTool && !this._isDrawingGeometryMoveActive()) {
                 this.ctrlSelectMode = true;
             }
         }
@@ -4141,7 +4157,8 @@ class DrawingToolsManager {
         
         // Apply magnet mode only when explicitly active (not via stuck key flag)
         // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
-        const keyHeld = !options.suppressKeyMagnet && event && (event.metaKey || event.ctrlKey);
+        const suppressMagnet = options.suppressKeyMagnet || this._isDrawingGeometryMoveActive();
+        const keyHeld = !suppressMagnet && event && (event.metaKey || event.ctrlKey);
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
@@ -5653,7 +5670,7 @@ class DrawingToolsManager {
             if (self.currentTool) return;
             
             // Ctrl+hover to select (multi-select mode)
-            if (self.ctrlSelectMode && !drawing.locked) {
+            if (self.ctrlSelectMode && !drawing.locked && !self._isDrawingGeometryMoveActive()) {
                 self.selectDrawing(drawing, true);
             }
             
@@ -5900,8 +5917,10 @@ class DrawingToolsManager {
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
                     const src = event.sourceEvent || event;
+                    // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
                     if (!self.currentTool && src && src.ctrlKey && !src.shiftKey
-                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.includes(drawing)) {
+                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
+                        && self.selectedDrawings.includes(drawing)) {
                         return false;
                     }
                     // Only allow drag if not currently drawing and not clicking on a handle
@@ -6091,6 +6110,7 @@ class DrawingToolsManager {
                 })
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
+                    self._bodyDragDepth = (self._bodyDragDepth || 0) + 1;
                     self._commitInlineTextEditorBeforeGeometryEdit();
 
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
@@ -6201,6 +6221,7 @@ class DrawingToolsManager {
                     }
                 })
                 .on('end', function(event) {
+                    self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
                     }
@@ -7315,6 +7336,9 @@ class DrawingToolsManager {
     selectDrawing(drawing, addToSelection = false, options = {}) {
         const allowWhileArmed = options.allowWhileArmed === true;
         if (!allowWhileArmed && this._isPlacementModeActive()) {
+            return;
+        }
+        if (addToSelection && this._isDrawingGeometryMoveActive()) {
             return;
         }
         // If eraser mode is active, delete the drawing instead of selecting
@@ -9954,7 +9978,8 @@ class DrawingToolsManager {
         const toMove = (this.selectedDrawings || []).filter((d) =>
             d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
         );
-        if (toMove.length === 0) return false;
+        // Single selected shapes use d3 body drag (even with Ctrl held); direct-move is for multi-select.
+        if (toMove.length <= 1) return false;
 
         const [mx, my] = this._eventCanvasLocalXY(event);
         const onSelection = this._getSelectedDrawingsAtPoint(mx, my).length > 0
@@ -11701,7 +11726,7 @@ class DrawingToolsManager {
             return;
         }
 
-        if (this.isDragging || this.isDraggingFirstTwo) {
+        if (this.isDragging || this.isDraggingFirstTwo || this._isDrawingGeometryMoveActive()) {
             canvas.style.cursor = 'move';
             this.svg.style('cursor', 'move');
             this._cursorOverLine = true;

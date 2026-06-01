@@ -20506,6 +20506,18 @@ class Chart {
                 }
             }
 
+            // Ctrl+marquee must not steal mousedown from whole-shape moves on any drawing hit.
+            if (typeof dm.findDrawingsAtPoint === 'function') {
+                const drawingHits = dm.findDrawingsAtPoint(mx, my, { includeVolumeProfileBodyHit: true });
+                if (Array.isArray(drawingHits) && drawingHits.length > 0) {
+                    return false;
+                }
+            }
+
+            if (typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
+                return false;
+            }
+
             this.inertia.active = false;
             this.drag.active = true;
             this.drag.type = 'ctrlMarqueeSelect';
@@ -23074,7 +23086,9 @@ class Chart {
             _dm.isResizing || _dm.isCustomHandleDragging || _dm.isCustomHandleDrag
             || (_dm.drawingState?.isDrawing && _dm.currentTool)
         );
-        const ctrlMagnetSnap = ctrlHeld && (dmDrawToolArmed || dmEditingHandle);
+        const dmBodyMove = _dm && typeof _dm._isDrawingGeometryMoveActive === 'function'
+            && _dm._isDrawingGeometryMoveActive();
+        const ctrlMagnetSnap = ctrlHeld && (dmDrawToolArmed || dmEditingHandle) && !dmBodyMove;
         const shiftHeld = e.shiftKey;
         const shiftPreviewY = (shiftHeld && _dm && typeof _dm.getShiftConstrainedPreviewPrice === 'function')
             ? _dm.getShiftConstrainedPreviewPrice(e)
