@@ -2440,11 +2440,9 @@ class Chart {
         const rawMs = this._getNativeRawTfMs();
         if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(rawMs) || rawMs <= 0) return false;
         // Zoom-out (coarser/equal TF): instant client resample for small steps only.
-        // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
+        // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~3 daily bars.
         if (newMs >= rawMs * 0.92) {
-            if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
-                if (newMs / rawMs > 6) return false;
-            }
+            if (newMs / rawMs > 6) return false;
             return true;
         }
         if (this._isBacktestReplayActive()) return false;
@@ -2531,6 +2529,13 @@ class Chart {
         const fid = String(fileId);
         if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
         const perFile = this._tfDataCache.get(fid);
+        const tfMs = this.parseTimeframe(tf);
+        const nativeMs = this.parseTimeframe(this._nativeRawFetchTf || tf);
+        // Never store a coarser-TF slot using finer native bars (e.g. 1m raw under '1d').
+        if (Number.isFinite(tfMs) && Number.isFinite(nativeMs) && tfMs > 0 && nativeMs > 0
+            && nativeMs < tfMs * 0.92 && tfMs / nativeMs > 6) {
+            return;
+        }
         perFile.set(tf, {
             at: Date.now(),
             rawData: this.rawData.slice(),
@@ -2551,6 +2556,13 @@ class Chart {
     _restoreFromTfDataCache(fileId, normalizedTf) {
         const entry = this._getTfDataCache(fileId, normalizedTf);
         if (!entry) return false;
+        // Reject corrupted entries (e.g. '1d' slot holding 1m rawData from a bad client-resample).
+        const keyMs = this.parseTimeframe(normalizedTf);
+        const nativeMs = this.parseTimeframe(entry.nativeRawFetchTf || normalizedTf);
+        if (Number.isFinite(keyMs) && Number.isFinite(nativeMs) && keyMs > 0 && nativeMs > 0
+            && nativeMs < keyMs * 0.92 && keyMs / nativeMs > 6) {
+            return false;
+        }
         this.rawData = entry.rawData.slice();
         this.data = Array.isArray(entry.data) && entry.data.length
             ? entry.data.slice()
@@ -14145,6 +14157,12 @@ class Chart {
 
         if (this.drawingManager && this.drawings && this.drawings.length > 0) {
             this.drawingManager.saveDrawings();
+        }
+
+        // Snapshot the outgoing TF into cache before we mutate rawData (live only).
+        if (this.currentFileId && !this.isBacktestMode
+            && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            this._saveTfDataCache(this.currentFileId, this.currentTimeframe);
         }
 
         // Begin the visual freeze + loading-dots indicator. Anything that triggers
