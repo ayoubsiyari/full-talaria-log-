@@ -369,15 +369,17 @@ class DatePriceRangeTool extends BaseDrawing {
         const volume = this.getVolumeInRange(p1.x, p2.x, scales);
 
         const neutral = this.style.textColor || '#d1d4dc';
+        const statOn = (key) => info[key] === true || (info[key] !== false && info[key] == null);
+
         const priceParts = [];
-        if (info.priceRange !== false) priceParts.push(priceDiffStr);
-        if (info.percentChange !== false) priceParts.push(`(${pctStr}%)`);
-        if (info.changeInPips !== false) priceParts.push(`${pipsStr}`);
+        if (statOn('priceRange')) priceParts.push(priceDiffStr);
+        if (statOn('percentChange')) priceParts.push(`(${pctStr}%)`);
+        if (statOn('changeInPips')) priceParts.push(`${pipsStr}`);
         const priceLine = priceParts.length > 0 ? priceParts.join(' ') : '';
 
         const timeParts = [];
-        if (info.barsRange !== false) timeParts.push(`${bars} bars`);
-        if (info.dateTimeRange !== false) timeParts.push(`${duration}`);
+        if (statOn('barsRange')) timeParts.push(`${bars} bars`);
+        if (statOn('dateTimeRange')) timeParts.push(`${duration}`);
         const timeLine = timeParts.length > 0 ? timeParts.join(', ') : '';
 
         const lines = [];
@@ -387,10 +389,65 @@ class DatePriceRangeTool extends BaseDrawing {
         if (mode !== 'price' && timeLine) {
             lines.push({ text: timeLine, fill: neutral });
         }
-        if (mode === 'both' && info.volume !== false && volume !== null) {
+        if (mode === 'both' && statOn('volume') && volume !== null) {
             lines.push({ text: `Vol ${this.formatCompactVolume(volume)}`, fill: neutral });
         }
         return lines;
+    }
+
+    /** Shared stats label for price / time / both range modes (respects `infoSettings`). */
+    appendRangeInfoLabel(p1, p2, scales, anchor = {}) {
+        if (!this.style.showLabel) return;
+        const lines = this.buildRangeInfoLines(p1, p2, scales);
+        if (!lines.length) return;
+
+        const x = anchor.x;
+        const y = anchor.y;
+        const weight = anchor.weight || '500';
+        const rx = anchor.rx != null ? anchor.rx : 9;
+
+        const labelGroup = this.group.append('g')
+            .attr('class', 'date-price-range-label')
+            .style('pointer-events', 'none');
+
+        const fontSize = parseInt(this.style.fontSize || 12, 10);
+        const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
+
+        const text = labelGroup.append('text')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', anchor.baseline || 'auto')
+            .attr('fill', this.style.textColor || '#d1d4dc')
+            .attr('font-size', `${fontSize}px`)
+            .attr('font-weight', weight)
+            .attr('font-family', TRENDLINE_INFO_FONT_FAMILY);
+
+        lines.forEach((line, idx) => {
+            text.append('tspan')
+                .attr('x', x)
+                .attr('y', y + (idx * lineHeight))
+                .attr('font-weight', weight)
+                .attr('fill', line.fill || (this.style.textColor || '#d1d4dc'))
+                .text(line.text);
+        });
+
+        const bbox = text.node().getBBox();
+        if (this.style.showLabelBackground) {
+            const horizontalPadding = 8;
+            const verticalPadding = 8;
+            labelGroup.insert('rect', 'text')
+                .attr('class', 'range-info-box')
+                .attr('x', bbox.x - horizontalPadding)
+                .attr('y', bbox.y - verticalPadding)
+                .attr('width', bbox.width + (horizontalPadding * 2))
+                .attr('height', bbox.height + (verticalPadding * 2))
+                .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                .attr('stroke', 'none')
+                .attr('stroke-width', 0)
+                .attr('stroke-dasharray', null)
+                .attr('rx', rx);
+        }
     }
 
     getTickSize(scales) {
@@ -605,53 +662,9 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        if (this.style.showLabel) {
-            const tickSize = this.getTickSize(scales);
-            const decimals = this.getPriceDecimals(scales);
-            const pct = (p1.y !== 0) ? (priceDiff / p1.y * 100) : 0;
-            const ticks = tickSize ? Math.round(priceDiff / tickSize) : 0;
-
-            const priceDiffStr = this.normalizeNegativeZeroString(priceDiff.toFixed(decimals));
-            const pctStr = this.normalizeNegativeZeroString(pct.toFixed(2));
-            const label = `${priceDiffStr} (${pctStr}%) ${ticks}`;
-
-            if (label) {
-                const labelGroup = this.group.append('g').style('pointer-events', 'none');
-                const labelY = isDown ? (bottom + 34) : (top - 12);
-                const text = labelGroup.append('text')
-                    .attr('x', x)
-                    .attr('y', labelY)
-                    .attr('text-anchor', 'middle')
-                    .attr('dominant-baseline', 'auto')
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .attr('font-size', `${this.style.fontSize || 12}px`)
-                    .attr('font-weight', '600')
-                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
-                    .text('');
-
-                text.append('tspan')
-                    .attr('x', x)
-                    .attr('dy', 0)
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .text(label);
-
-                const bbox = text.node().getBBox();
-                if (this.style.showLabelBackground) {
-                    const horizontalPadding = 8;
-                    const verticalPadding = 8;
-                    labelGroup.insert('rect', 'text')
-                        .attr('class', 'range-info-box')
-                        .attr('x', bbox.x - horizontalPadding)
-                        .attr('y', bbox.y - verticalPadding)
-                        .attr('width', bbox.width + (horizontalPadding * 2))
-                        .attr('height', bbox.height + (verticalPadding * 2))
-                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                        .attr('stroke', 'none')
-                        .attr('stroke-width', 0)
-                        .attr('stroke-dasharray', null)
-                        .attr('rx', 8);
-                }
-            }
+        {
+            const labelY = isDown ? (bottom + 34) : (top - 12);
+            this.appendRangeInfoLabel(p1, p2, scales, { x, y: labelY, weight: '600', rx: 8 });
         }
 
         this.setModeVirtualHandlePoints('price');
@@ -740,43 +753,7 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        if (this.style.showLabel) {
-            const bars = Math.abs(Math.round(p2.x) - Math.round(p1.x));
-            const t1 = this.getTimestampAtIndex(Math.round(p1.x), scales);
-            const t2 = this.getTimestampAtIndex(Math.round(p2.x), scales);
-            const duration = this.formatDuration(t2 - t1);
-
-            const label = `${bars} bars, ${duration}`;
-            if (label) {
-                const labelGroup = this.group.append('g').style('pointer-events', 'none');
-                const text = labelGroup.append('text')
-                    .attr('x', midX)
-                    .attr('y', top - 12)
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', this.style.textColor || '#d1d4dc')
-                    .attr('font-size', `${this.style.fontSize || 12}px`)
-                    .attr('font-weight', '600')
-                    .attr('font-family', TRENDLINE_INFO_FONT_FAMILY)
-                    .text(label);
-
-                const bbox = text.node().getBBox();
-                if (this.style.showLabelBackground) {
-                    const horizontalPadding = 8;
-                    const verticalPadding = 8;
-                    labelGroup.insert('rect', 'text')
-                        .attr('class', 'range-info-box')
-                        .attr('x', bbox.x - horizontalPadding)
-                        .attr('y', bbox.y - verticalPadding)
-                        .attr('width', bbox.width + (horizontalPadding * 2))
-                        .attr('height', bbox.height + (verticalPadding * 2))
-                        .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                        .attr('stroke', 'none')
-                        .attr('stroke-width', 0)
-                        .attr('stroke-dasharray', null)
-                        .attr('rx', 8);
-                }
-            }
-        }
+        this.appendRangeInfoLabel(p1, p2, scales, { x: midX, y: top - 12, weight: '600', rx: 8 });
 
         this.setModeVirtualHandlePoints('time');
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -862,62 +839,7 @@ class DatePriceRangeTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        if (this.style.showLabel) {
-            const lines = this.buildRangeInfoLines(p1, p2, scales);
-            if (lines.length === 0) {
-                if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
-                this.updateHandleCursor('both');
-                return this.group;
-            }
-
-            const labelGroup = this.group.append('g')
-                .attr('class', 'date-price-range-label')
-                .style('pointer-events', 'none');
-
-            const fontSize = parseInt(this.style.fontSize || 12);
-            const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
-            const baseY = bottom + 30;
-
-            const text = labelGroup.append('text')
-                .attr('x', midX)
-                .attr('y', baseY)
-                .attr('text-anchor', 'middle')
-                .attr('fill', this.style.textColor || '#d1d4dc')
-                .attr('font-size', `${this.style.fontSize || 12}px`)
-                .attr('font-weight', '500')
-                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY);
-
-            lines.forEach((line, idx) => {
-                text.append('tspan')
-                    .attr('x', midX)
-                    .attr('y', baseY + (idx * lineHeight))
-                    .attr('font-weight', '500')
-                    .attr('fill', line.fill || (this.style.textColor || '#d1d4dc'))
-                    .text(line.text);
-            });
-
-            const bbox = text.node().getBBox();
-            if (this.style.showLabelBackground) {
-                const horizontalPadding = 8;
-                const verticalPadding = 8;
-                const boxX = bbox.x - horizontalPadding;
-                const boxY = bbox.y - verticalPadding;
-                const boxWidth = bbox.width + (horizontalPadding * 2);
-                const boxHeight = bbox.height + (verticalPadding * 2);
-
-                labelGroup.insert('rect', 'text')
-                    .attr('class', 'range-info-box')
-                    .attr('x', boxX)
-                    .attr('y', boxY)
-                    .attr('width', boxWidth)
-                    .attr('height', boxHeight)
-                    .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                    .attr('stroke', 'none')
-                    .attr('stroke-width', 0)
-                    .attr('stroke-dasharray', null)
-                    .attr('rx', 9);
-            }
-        }
+        this.appendRangeInfoLabel(p1, p2, scales, { x: midX, y: bottom + 30, weight: '500', rx: 9 });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         this.updateHandleCursor('both');
