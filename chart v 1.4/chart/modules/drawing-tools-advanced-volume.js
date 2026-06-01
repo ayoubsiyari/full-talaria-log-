@@ -1785,6 +1785,21 @@ class VolumeProfileTool extends BaseDrawing {
             }
         }
 
+        // Match pan-capture / background rects to the full level-line span (incl. extend-right).
+        if (!isAnchoredProxy && shouldRenderProfileBody) {
+            const shieldLeft = Math.min(left, levelLineStartX);
+            const shieldRight = Math.max(right, levelLineEndX);
+            const shieldWidth = Math.max(1, shieldRight - shieldLeft);
+            this.group.select('.volume-profile-hitbox')
+                .attr('x', shieldLeft)
+                .attr('width', shieldWidth);
+            if (showBackground) {
+                this.group.select('.volume-profile-range')
+                    .attr('x', shieldLeft)
+                    .attr('width', shieldWidth);
+            }
+        }
+
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
     }
 

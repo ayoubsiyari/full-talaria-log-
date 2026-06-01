@@ -2422,6 +2422,19 @@ class DrawingToolsManager {
             // Same layout space as Chart (wrapper + __v9Zoom); raw SVG rect alone can mismatch selection vs hit-test.
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
 
+            const volumeProfilePanBlockDrawing = this.findVolumeProfilePanBlockDrawingAtPoint(mouseX, mouseY);
+            if (volumeProfilePanBlockDrawing && this.isVolumeProfileChartPanBlockedAtPoint(mouseX, mouseY)) {
+                if (!volumeProfilePanBlockDrawing.locked) {
+                    this.selectDrawing(volumeProfilePanBlockDrawing, false);
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
+                return;
+            }
+
             if (event.detail >= 2) {
                 const dblClickTarget = (event && event.target) ? event.target : null;
                 const skipGenericDblSettings = this._isTextAnnotationInlineEditTarget(dblClickTarget);
@@ -10845,6 +10858,84 @@ class DrawingToolsManager {
         return this.lastStackedLines || null;
     }
 
+    /** True when pointer is inside a fixed-range volume profile body (anchor box + extensions). */
+    isVolumeProfileBodyInside(drawing, mouseX, mouseY) {
+        if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
+            return false;
+        }
+        if (drawing.type === 'anchored-volume-profile') {
+            return this.isVolumeProfileAnchoredBodyHit(drawing, mouseX, mouseY);
+        }
+
+        try {
+            const insideRect = (rectNode, pad = 0) => {
+                if (!rectNode) return false;
+                const x = Number(rectNode.getAttribute('x'));
+                const y = Number(rectNode.getAttribute('y'));
+                const width = Number(rectNode.getAttribute('width'));
+                const height = Number(rectNode.getAttribute('height'));
+                if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+                    return false;
+                }
+                return mouseX >= (x - pad) && mouseX <= (x + width + pad)
+                    && mouseY >= (y - pad) && mouseY <= (y + height + pad);
+            };
+
+            const hitbox = drawing.group.select('.volume-profile-hitbox').node();
+            const range = drawing.group.select('.volume-profile-range').node();
+            if (insideRect(hitbox, 0.75) || insideRect(range, 0.75)) {
+                return true;
+            }
+
+            const boundaryLines = drawing.group.selectAll('.volume-profile-boundary').nodes();
+            if (Array.isArray(boundaryLines) && boundaryLines.length >= 1) {
+                const xValues = [];
+                let minY = Infinity;
+                let maxY = -Infinity;
+                boundaryLines.forEach((line) => {
+                    if (!line) return;
+                    const x1 = Number(line.getAttribute('x1'));
+                    const x2 = Number(line.getAttribute('x2'));
+                    const y1 = Number(line.getAttribute('y1'));
+                    const y2 = Number(line.getAttribute('y2'));
+                    if ([x1, x2, y1, y2].every(Number.isFinite)) {
+                        xValues.push(x1, x2);
+                        minY = Math.min(minY, y1, y2);
+                        maxY = Math.max(maxY, y1, y2);
+                    }
+                });
+                if (xValues.length >= 1 && Number.isFinite(minY) && Number.isFinite(maxY)) {
+                    const minX = Math.min(...xValues);
+                    const maxX = Math.max(...xValues);
+                    return mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY;
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    findVolumeProfilePanBlockDrawingAtPoint(mouseX, mouseY) {
+        if (!Array.isArray(this.drawings)) return null;
+        for (let i = this.drawings.length - 1; i >= 0; i--) {
+            const drawing = this.drawings[i];
+            if (!drawing || !this.isCandleBoundTool(drawing.type)) continue;
+            if (this.isVolumeProfileBodyInside(drawing, mouseX, mouseY)) {
+                return drawing;
+            }
+        }
+        return null;
+    }
+
+    /** Block chart pan/drag when the pointer is over fixed-range VP background (not level lines). */
+    isVolumeProfileChartPanBlockedAtPoint(mouseX, mouseY) {
+        const drawing = this.findVolumeProfilePanBlockDrawingAtPoint(mouseX, mouseY);
+        if (!drawing) return false;
+        if (this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY)) return false;
+        if (this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return false;
+        if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) return false;
+        return true;
+    }
+
     /** Volume profile bar rects (not zone background). */
     isVolumeProfileBarHit(drawing, mouseX, mouseY) {
         if (!drawing || !this.isVolumeProfileToolType(drawing.type) || !drawing.group) {
@@ -11039,22 +11130,7 @@ class DrawingToolsManager {
             return false;
         }
 
-        const insideRect = (node, pad = 0) => {
-            if (!node) return false;
-            const x = Number(node.getAttribute('x'));
-            const y = Number(node.getAttribute('y'));
-            const width = Number(node.getAttribute('width'));
-            const height = Number(node.getAttribute('height'));
-            if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-                return false;
-            }
-            return mouseX >= (x - pad) && mouseX <= (x + width + pad)
-                && mouseY >= (y - pad) && mouseY <= (y + height + pad);
-        };
-
-        const hitbox = drawing.group.select('.volume-profile-hitbox').node();
-        const range = drawing.group.select('.volume-profile-range').node();
-        if (!insideRect(hitbox, 0.75) && !insideRect(range, 0.75)) {
+        if (!this.isVolumeProfileBodyInside(drawing, mouseX, mouseY)) {
             return false;
         }
 
@@ -11070,7 +11146,6 @@ class DrawingToolsManager {
         if (this.isVolumeProfileBoundaryHit(drawing, mouseX, mouseY)) return true;
         if (this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY)) return true;
         if (this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY)) return true;
-        if (this.isVolumeProfileBarHit(drawing, mouseX, mouseY)) return true;
         return false;
     }
 

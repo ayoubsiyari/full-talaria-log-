@@ -20542,6 +20542,13 @@ class Chart {
                 }
             }
 
+            const dmPanBlock = this.drawingManager;
+            if (dmPanBlock && typeof dmPanBlock.isVolumeProfileChartPanBlockedAtPoint === 'function'
+                && dmPanBlock.isVolumeProfileChartPanBlockedAtPoint(mx, my)) {
+                e.preventDefault();
+                return;
+            }
+
             // Start separate indicator panel resize when dragging a panel separator.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
                 const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
@@ -21696,6 +21703,14 @@ class Chart {
                     this.hideContextMenu();
                     this.scheduleRender();
                 } else {
+                    const dm = this.drawingManager;
+                    if (dm && typeof dm.isVolumeProfileChartPanBlockedAtPoint === 'function'
+                        && dm.isVolumeProfileChartPanBlockedAtPoint(x, y)) {
+                        event.stopPropagation();
+                        event.preventDefault();
+                        return;
+                    }
+
                     // Nothing actionable on SVG — make SVG transparent and
                     // forward this mousedown to canvas so panning/drag works
                     // (subsequent mousemove/mouseup will reach canvas directly)
