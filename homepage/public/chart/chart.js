@@ -2414,6 +2414,8 @@ class Chart {
     _getNativeRawTfMs() {
         const replay = this.replaySystem;
         if (replay && replay.isActive) {
+            const stepMs = this._getNativeRawStepMs();
+            if (Number.isFinite(stepMs) && stepMs > 0) return stepMs;
             const rawTf = replay.rawTimeframe;
             if (typeof rawTf === 'number' && rawTf > 0) return rawTf;
             if (typeof rawTf === 'string' && rawTf) {
@@ -2427,6 +2429,28 @@ class Chart {
         }
         const inferred = this._inferMedianBarPeriodMs(this.rawData);
         return Number.isFinite(inferred) && inferred > 0 ? inferred : NaN;
+    }
+
+    /**
+     * Backtest replay: allow in-place display resample only when the destination TF is
+     * modestly coarser than the measured fullRawData step (1m→5m). Uses bar timestamps,
+     * not replay.rawTimeframe — that label can match display TF and wrongly allow 1m→1D.
+     */
+    _canBacktestReplayInPlaceResample(normalizedTf, replay) {
+        if (!replay?.isActive || !Array.isArray(replay.fullRawData) || replay.fullRawData.length < 2) {
+            return false;
+        }
+        if (this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replay)) {
+            return false;
+        }
+        const newMs = this.parseTimeframe(normalizedTf);
+        const masterMs = this._getNativeRawStepMs();
+        if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(masterMs) || masterMs <= 0) {
+            return false;
+        }
+        if (newMs < masterMs * 0.92) return false;
+        if (newMs / masterMs > 6) return false;
+        return true;
     }
 
     /**
@@ -14176,19 +14200,12 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // 1) Same raw series — resample only (no network, replay index unchanged).
-            if (this._canClientResampleToTimeframe(normalizedTf)) {
-                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                return;
-            }
-
-            // 2) Backtest — reuse cached native bars for this TF (fetched once per session).
+            // Backtest replay FIRST — generic client-resample runs before this and uses
+            // replay.rawTimeframe (often the display TF), which wrongly allows 1m→1D.
             if (this.isBacktestMode && this.currentFileId) {
                 const replayForTf = this.replaySystem;
-                if (replayForTf?.isActive
-                    && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
-                    && this._canClientResampleToTimeframe(normalizedTf)
-                    && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
+                if (replayForTf?.isActive && this._canBacktestReplayInPlaceResample(normalizedTf, replayForTf)) {
+                    this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                     return;
                 }
                 this._applyBacktestTimeframeFromCache(normalizedTf)
@@ -14203,7 +14220,7 @@ class Chart {
                 return;
             }
 
-            // 3) Non-backtest replay — client resample fallback.
+            // Live / non-backtest replay — client resample when raw granularity allows.
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
@@ -14913,13 +14930,6 @@ class Chart {
             && Number.isFinite(prevTfMs) && prevTfMs > 0
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
-
-        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)
-            && this._canClientResampleToTimeframe(timeframe)) {
-            if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
-                return;
-            }
-        }
 
         let coarsePeriodExclusiveEndTs = null;
         if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
