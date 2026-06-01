@@ -12325,6 +12325,14 @@ class Chart {
                     metaKey: e.metaKey,
                     shiftKey: e.shiftKey
                 });
+                const dm = this.drawingManager;
+                if (dm && typeof dm._refreshPlacementPreviewFromLastPointer === 'function') {
+                    dm._refreshPlacementPreviewFromLastPointer({
+                        ctrlKey: e.ctrlKey,
+                        metaKey: e.metaKey,
+                        shiftKey: e.shiftKey
+                    });
+                }
                 if (!this.ctrlPressed) {
                     this.hideTooltip();
                 }

@@ -1542,27 +1542,6 @@ class DrawingToolsManager {
         svg.on('mousemove.drawing', (event) => this.handleMouseMove(event));
         svg.on('mouseup.drawing', (event) => this.handleMouseUp(event));
 
-        // Shift-release: immediately refresh preview to real mouse position
-        document.addEventListener('keyup', (e) => {
-            if (e.key !== 'Shift') return;
-            if (!this.currentTool || !this.drawingState || !this.drawingState.isDrawing) return;
-            if (!this._lastMouseEvent) return;
-            const last = this._lastMouseEvent;
-            const fakeEvent = {
-                clientX: last.clientX,
-                clientY: last.clientY,
-                shiftKey: false,
-                ctrlKey: last.ctrlKey,
-                altKey: last.altKey,
-                metaKey: last.metaKey,
-                buttons: last.buttons,
-                button: last.button,
-                target: last.target,
-                currentTarget: last.currentTarget
-            };
-            this.handleMouseMove(fakeEvent);
-        });
-
         // Double-click anywhere on a drawing (use same geometric hit-test as selection)
         svg.on('dblclick.drawing', (event) => {
             const suppressUntil = Number(this._suppressNextDrawingDblClickUntil || 0);
@@ -3427,9 +3406,39 @@ class DrawingToolsManager {
     /**
      * Handle mouse move event
      */
+    /**
+     * Re-run placement preview (and crosshair) at the last pointer position after a modifier
+     * key changes (Ctrl magnet, Shift angle snap) without requiring mouse movement.
+     */
+    _refreshPlacementPreviewFromLastPointer(keyState = {}) {
+        const active = (typeof window.getActiveChart === 'function') ? window.getActiveChart() : null;
+        if (active && active.drawingManager && active.drawingManager !== this) return;
+
+        const isDrawing = !!(this.currentTool && this.drawingState && this.drawingState.isDrawing);
+        const isEditing = !!(this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag);
+        if (!isDrawing && !isEditing) return;
+        if (!this._lastMouseEvent) return;
+
+        const last = this._lastMouseEvent;
+        const fakeEvent = {
+            clientX: last.clientX,
+            clientY: last.clientY,
+            shiftKey: keyState.shiftKey !== undefined ? !!keyState.shiftKey : !!last.shiftKey,
+            ctrlKey: keyState.ctrlKey !== undefined ? !!keyState.ctrlKey : !!last.ctrlKey,
+            altKey: last.altKey,
+            metaKey: keyState.metaKey !== undefined ? !!keyState.metaKey : !!last.metaKey,
+            buttons: last.buttons,
+            button: last.button,
+            target: last.target,
+            currentTarget: last.currentTarget
+        };
+        this.handleMouseMove(fakeEvent);
+    }
+
     handleMouseMove(event) {
-        // Track last mouse position for Shift-release preview refresh
-        if (this.currentTool && this.drawingState && this.drawingState.isDrawing) {
+        // Track last pointer for modifier-key preview refresh (Ctrl magnet, Shift snap)
+        if ((this.currentTool && this.drawingState && this.drawingState.isDrawing)
+            || this.isResizing || this.isCustomHandleDragging || this.isCustomHandleDrag) {
             this._lastMouseEvent = event;
         }
 
@@ -3952,6 +3961,21 @@ class DrawingToolsManager {
             }
         }
         
+        if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
+            this._refreshPlacementPreviewFromLastPointer({
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                shiftKey: event.shiftKey
+            });
+            if (this.chart && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+                this.chart.refreshCrosshairFromLastPointer({
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    shiftKey: event.shiftKey
+                });
+            }
+        }
+
         // Ctrl+Z - Undo (future feature)
         // Ctrl+Y - Redo (future feature)
     }
@@ -3960,10 +3984,24 @@ class DrawingToolsManager {
      * Handle key up events
      */
     handleKeyUp(event) {
-        // Release Command/Ctrl key - disable temporary magnet and multi-select hover mode
         if (event.key === 'Meta' || event.key === 'Control') {
             this.magnetKeyHeld = false;
             this.ctrlSelectMode = false;
+        }
+
+        if (event.key === 'Control' || event.key === 'Meta' || event.key === 'Shift') {
+            this._refreshPlacementPreviewFromLastPointer({
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                shiftKey: event.shiftKey
+            });
+            if (this.chart && typeof this.chart.refreshCrosshairFromLastPointer === 'function') {
+                this.chart.refreshCrosshairFromLastPointer({
+                    ctrlKey: event.ctrlKey,
+                    metaKey: event.metaKey,
+                    shiftKey: event.shiftKey
+                });
+            }
         }
     }
 
@@ -6577,13 +6615,24 @@ class DrawingToolsManager {
             if (shouldBlockVolumeProfileTextDirectMove) {
                 return;
             }
-            const shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) => {
-                if (d.type === 'gann-box' || d.type === 'gann-square-fixed') {
-                    return this._isPointOnGannLevelAdjustHit(d, startMouseX, startMouseY);
-                }
-                return this._drawingRequiresStrokeOnlyDrag(d.type)
-                    && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY);
-            });
+            // Single selection: stroke-only tools (Elliott, fib, etc.) must be grabbed on a visible stroke.
+            // Multi-selection: move the whole group when any selected drawing is under the pointer —
+            // do not require every selected stroke-only shape to contain the click (they rarely overlap).
+            let shouldBlockStrokeOnlyToolBodyMove = false;
+            if (drawings.length <= 1) {
+                shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) => {
+                    if (d.type === 'gann-box' || d.type === 'gann-square-fixed') {
+                        return this._isPointOnGannLevelAdjustHit(d, startMouseX, startMouseY);
+                    }
+                    return this._drawingRequiresStrokeOnlyDrag(d.type)
+                        && !this._isPointOnDrawingVisibleStroke(d, startMouseX, startMouseY);
+                });
+            } else {
+                shouldBlockStrokeOnlyToolBodyMove = drawings.some((d) =>
+                    (d.type === 'gann-box' || d.type === 'gann-square-fixed')
+                    && this._isPointOnGannLevelAdjustHit(d, startMouseX, startMouseY)
+                );
+            }
             if (shouldBlockStrokeOnlyToolBodyMove) {
                 return;
             }

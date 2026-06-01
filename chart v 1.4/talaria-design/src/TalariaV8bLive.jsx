@@ -1747,6 +1747,37 @@ function v9VisibilityPatchFromDrawing(d) {
   return patch;
 }
 
+/** Read anchored-vwap drawing.style → V9 vwapStyle panel fields. */
+function v9VwapStylePatchFromDrawing(d, prev = {}) {
+  const ds = (d && d.style) || {};
+  const DASH_R2 = { "": "solid", "5,5": "dashed", "2,4": "dotted", "7,4,2,4": "dashdot", "2,2": "dotted" };
+  const SRC_R2 = { close: "Close", open: "Open", high: "High", low: "Low", hl2: "(H+L)/2", hlc3: "(H+L+C)/3", ohlc4: "(O+H+L+C)/4" };
+  const CALC_R2 = { standard_deviation: "Std Deviation", percentage: "Percentage" };
+  const bandPatch = {};
+  [1, 2, 3].forEach((n) => {
+    bandPatch[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+    bandPatch[`band${n}Color`] = ds[`vwapUpperBand${n}Color`] || prev[`band${n}Color`];
+    bandPatch[`band${n}LineType`] = DASH_R2[ds[`vwapUpperBand${n}Type`] || ""] || prev[`band${n}LineType`];
+    bandPatch[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`] ?? prev[`band${n}LineWidth`]);
+    bandPatch[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`];
+    bandPatch[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`] || prev[`bg${n}Color`];
+    bandPatch[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false;
+    bandPatch[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`] ?? prev[`mult${n}Val`]);
+  });
+  return {
+    ...prev,
+    vwapColor: ds.stroke || ds.color || prev.vwapColor,
+    vwapLineWidth: String(ds.strokeWidth ?? prev.vwapLineWidth),
+    vwapLineType: DASH_R2[ds.strokeDasharray || ""] || prev.vwapLineType,
+    source: SRC_R2[ds.source] || prev.source,
+    bandsCalcMode: CALC_R2[ds.vwapBandsCalculationMode] || prev.bandsCalcMode,
+    priceLabels: ds.showPriceLabel !== false,
+    timeLabels: ds.showTimeLabel !== false,
+    ...bandPatch,
+    ...v9AnchorCoordPatchFromDrawing(d),
+  };
+}
+
 /** anchored-volume-profile / anchored-vwap Coordinates tab → drawing.points[0]. */
 function v9AnchorCoordPatchFromDrawing(d) {
   const pts = d && d.points;
@@ -3298,6 +3329,25 @@ function v9FlushVwapStyleToChartTargets(vwapStyle, editingRefDrawing) {
   const targets = collectV9BridgeTargetPairs(editingRefDrawing)
     .filter(({ d }) => d && d.type === "anchored-vwap");
   v9ApplyVwapStyleToDrawingTargets(vwapStyle, targets);
+}
+
+function v9FlushVwapAnchorCoordToChart(vwapStyle, editingRefDrawing) {
+  if (!vwapStyle) return;
+  try {
+    const chartsToRender = new Set();
+    collectV9BridgeTargetPairs(editingRefDrawing).forEach(({ dm, d }) => {
+      if (!d || d.type !== "anchored-vwap") return;
+      if (!v9ApplyAnchorPointsFromAvStyle(d, vwapStyle)) return;
+      const tb = dm.toolbar;
+      try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+      try { dm.renderDrawing?.(d); } catch (_) {}
+      try { dm.saveDrawings?.(); } catch (_) {}
+      if (dm.chart) chartsToRender.add(dm.chart);
+    });
+    chartsToRender.forEach((ch) => ch.scheduleRender && ch.scheduleRender());
+  } catch (err) {
+    console.warn("[V9 vwap coord flush] failed:", err);
+  }
 }
 
 /** Repaint or clear axis price/time labels after style/visibility changes. */
@@ -13264,6 +13314,15 @@ const TalariaV8bLive = () => {
           flushSync(() => toggle());
           vpStyleBridgeFlushRef.current?.();
         })
+      : opts?.vwapImmediate
+      ? modalPointerActivate(() => {
+          const now = Date.now();
+          const last = tlChkLastActRef.current[hKey] || 0;
+          if (now - last < 100) return;
+          tlChkLastActRef.current[hKey] = now;
+          flushSync(() => toggle());
+          vwapStyleBridgeFlushRef.current?.();
+        })
       : opts?.immediate
       ? modalPointerActivate(toggle)
       : modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle));
@@ -15133,13 +15192,9 @@ const TalariaV8bLive = () => {
           });
         } else if (drawing.type === 'anchored-vwap') {
           suppressVwapBridge.current = true;
-          const ds = drawingForStyle.style || drawing.style || {};
-          const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
-          const SRC_R2 = {close:"Close",open:"Open",high:"High",low:"Low",hl2:"(H+L)/2",hlc3:"(H+L+C)/3",ohlc4:"(O+H+L+C)/4"};
-          const CALC_R2 = {standard_deviation:"Std Deviation",percentage:"Percentage"};
-          setVwapStyle(prev => ({...prev, vwapColor: ds.stroke||ds.color||prev.vwapColor, vwapLineWidth: String(ds.strokeWidth??prev.vwapLineWidth), vwapLineType: DASH_R2[ds.strokeDasharray||'']||prev.vwapLineType, source: SRC_R2[ds.source]||prev.source, bandsCalcMode: CALC_R2[ds.vwapBandsCalculationMode]||prev.bandsCalcMode, priceLabels: ds.showPriceLabel !== false, timeLabels: ds.showTimeLabel !== false, ...(() => { const p = {}; [1,2,3].forEach(n => { p[`band${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`band${n}Color`] = ds[`vwapUpperBand${n}Color`]||prev[`band${n}Color`]; p[`band${n}LineType`] = DASH_R2[ds[`vwapUpperBand${n}Type`]||'']||prev[`band${n}LineType`]; p[`band${n}LineWidth`] = String(ds[`vwapUpperBand${n}Width`]??prev[`band${n}LineWidth`]); p[`bg${n}On`] = !!ds[`vwapBand${n}BackgroundEnabled`]; p[`bg${n}Color`] = ds[`vwapBand${n}BackgroundColor`]||prev[`bg${n}Color`]; p[`mult${n}On`] = ds[`vwapBand${n}Enabled`] !== false; p[`mult${n}Val`] = String(ds[`vwapBand${n}Multiplier`]??prev[`mult${n}Val`]); }); return p; })(), ...v9AnchorCoordPatchFromDrawing(drawingForStyle) }));
           v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
+            setVwapStyle((prev) => v9VwapStylePatchFromDrawing(drawingForStyle, prev));
             setVwapSettPos({ x: px, y: py });
             setVwapSettOpen(true);
             setVwapSettTab("style");
@@ -17321,6 +17376,14 @@ const TalariaV8bLive = () => {
       chartsToRender.forEach((ch) => ch.scheduleRender && ch.scheduleRender());
     } catch (err) { console.warn("[V9 av coord bridge] failed:", err); }
   }, [avStyle.anchorPrice, avStyle.anchorBar, avSettOpen]);
+
+  // ─── V9 vwapStyle coordinates → anchored-vwap anchor point ─────────────
+  const vwapCoordBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vwapCoordBridgeReady.current) { vwapCoordBridgeReady.current = true; return; }
+    if (!vwapSettOpen) return;
+    v9FlushVwapAnchorCoordToChart(vwapStyle, editingDrawingRef.current?.drawing ?? null);
+  }, [vwapStyle.anchorPrice, vwapStyle.anchorBar, vwapSettOpen]);
 
   const closeWindows = () => { setDropdown(null); setLogoMenu(false); setSettingsOpen(false); setFaqOpen(false); setNewsOpen(false); setLayoutOpen(false); setIndOpen(false); setIndSearch(""); setIndSelectedId(null); setSDrop(null); setColorPicker(null); setScreenshotOpen(false); setLayersOpen(false); setSettDrop(null); setProfileOpen(false); setClosing(new Set()); };
   closeWindowsRef.current = closeWindows;
@@ -22993,6 +23056,14 @@ const TalariaV8bLive = () => {
       {/* ── Anchored VWAP Settings Window ── */}
       {(vwapSettOpen || closing.has("vwapsett")) && (()=>{
         const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
+        const editDraw = editingDrawingRef.current?.drawing ?? null;
+        const patchVwapStyle = (updater) => cpApplyVwapStyle(updater);
+        const vwapChk = (on, hKey, label, toggle) =>
+          TlChk(on, hKey, label, toggle, { immediate: true });
+        const vwapDropPick = (onPick) => modalPointerActivate(() => {
+          onPick();
+          setVwapStyleDrop(null);
+        });
         const openVCP = (e, key, color) => {
           e.stopPropagation();
           const p=parseColor(color); const hsv=rgbToHsv(p.r,p.g,p.b);
@@ -23002,10 +23073,8 @@ const TalariaV8bLive = () => {
           cpBarAnchorRef.current=null; setColorPicker(key);
         };
         const vSwatch=(key,color,disabled)=>(
-          <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-            onPointerDown={(e)=>{e.stopPropagation();if(!disabled)openVCP(e,key,color);}}
-            onMouseDown={(e)=>e.stopPropagation()}
-            onClick={(e)=>e.stopPropagation()}
+          <div data-v9-color-swatch="1" {...(!disabled ? modalPointerActivate((e) => openVCP(e, key, color)) : {})}
+            onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             style={v9TlColorSwatchBoxStyle(color, {
               active: colorPicker === key,
               hover: swHov === key,
@@ -23016,10 +23085,13 @@ const TalariaV8bLive = () => {
           const dk=`vwap-type-${rowKey}`,isOpen=vwapStyleDrop===dk,isH=hov===dk;
           return (
             <div style={{position:"relative",opacity:disabled?0.35:1}}>
-              <div onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyleDrop(isOpen?null:dk);}}
+              <div
+                onPointerDown={(e)=>{e.stopPropagation();if(disabled)return;setVwapStyleDrop(isOpen?null:dk);}}
+                onMouseDown={(e)=>e.stopPropagation()}
+                onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,width:56,padding:"0 6px",display:"flex",alignItems:"center",justifyContent:"center",gap:3,
-                        cursor:disabled?"default":"default",position:"relative",
+                        cursor:"default",position:"relative",
                         background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",transition:"background 0.12s"}}>
                 <svg width={22} height={10} viewBox="0 0 22 10">
                   <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen?c.acL:c.ts} strokeWidth={1.5} strokeLinecap="round" strokeDasharray={da(val)}/>
@@ -23027,14 +23099,14 @@ const TalariaV8bLive = () => {
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
                 {isOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
               </div>
-              {isOpen&&<div onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              {isOpen&&<div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:20,width:56,
                         background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 {[["solid",undefined,1.5],["dashed","7,4",1.5],["dotted","2,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                   const isA=val===v,isH2=hov===`vwaptype-${rowKey}-${v}`;
                   return(
-                    <div key={v} onClick={()=>{setVwapStyle(s=>({...s,[rowKey+"LineType"]:v}));setVwapStyleDrop(null);}}
+                    <div key={v} {...vwapDropPick(() => patchVwapStyle(s=>({...s,[rowKey+"LineType"]:v})))}
                       onMouseEnter={()=>setHov(`vwaptype-${rowKey}-${v}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -23053,7 +23125,10 @@ const TalariaV8bLive = () => {
           const dk=`vwap-width-${rowKey}`,isOpen=vwapStyleDrop===dk,isH=hov===dk;
           return (
             <div style={{position:"relative",opacity:disabled?0.35:1}}>
-              <div onClick={e=>{e.stopPropagation();if(!disabled)setVwapStyleDrop(isOpen?null:dk);}}
+              <div
+                onPointerDown={(e)=>{e.stopPropagation();if(disabled)return;setVwapStyleDrop(isOpen?null:dk);}}
+                onMouseDown={(e)=>e.stopPropagation()}
+                onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>{if(!disabled)setHov(dk);}} onMouseLeave={()=>setHov(null)}
                 style={{height:26,width:56,padding:"0 6px",display:"flex",alignItems:"center",justifyContent:"center",gap:3,
                         cursor:"default",position:"relative",
@@ -23064,14 +23139,14 @@ const TalariaV8bLive = () => {
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
                 {isOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
               </div>
-              {isOpen&&<div onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              {isOpen&&<div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:20,width:56,
                         background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                 {["1","2","3","4"].map(v=>{
                   const isA=val===v,isH2=hov===`vwapw-${rowKey}-${v}`;
                   return(
-                    <div key={v} onClick={()=>{setVwapStyle(s=>({...s,[rowKey+"LineWidth"]:v}));setVwapStyleDrop(null);}}
+                    <div key={v} {...vwapDropPick(() => patchVwapStyle(s=>({...s,[rowKey+"LineWidth"]:v})))}
                       onMouseEnter={()=>setHov(`vwapw-${rowKey}-${v}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -23090,7 +23165,10 @@ const TalariaV8bLive = () => {
           const isOpen=vwapStyleDrop===dk,isH=hov===dk;
           return(
             <div style={{position:"relative"}}>
-              <div onClick={e=>{e.stopPropagation();setVwapStyleDrop(isOpen?null:dk);}}
+              <div
+                onPointerDown={(e)=>{e.stopPropagation();setVwapStyleDrop(isOpen?null:dk);}}
+                onMouseDown={(e)=>e.stopPropagation()}
+                onClick={(e)=>e.stopPropagation()}
                 onMouseEnter={()=>setHov(dk)} onMouseLeave={()=>setHov(null)}
                 style={{height:26,padding:"0 8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,
                         cursor:"default",position:"relative",
@@ -23100,7 +23178,7 @@ const TalariaV8bLive = () => {
                 <I n="chevDown" s={7} cl={isOpen?c.acL:c.ts}/>
                 {isOpen&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
               </div>
-              {isOpen&&<div onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}
+              {isOpen&&<div onPointerDown={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                 style={{position:"absolute",top:"calc(100% + 4px)",right:0,zIndex:20,minWidth:"100%",
                         background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
                 <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
@@ -23108,7 +23186,7 @@ const TalariaV8bLive = () => {
                   {options.map(v=>{
                     const isA=val===v,isH2=hov===`${dk}-${v}`;
                     return(
-                      <div key={v} onClick={()=>{onPick(v);setVwapStyleDrop(null);}}
+                      <div key={v} {...vwapDropPick(() => onPick(v))}
                         onMouseEnter={()=>setHov(`${dk}-${v}`)} onMouseLeave={()=>setHov(null)}
                         style={{padding:"6px 12px",cursor:"default",position:"relative",
                                 background:isA?c.acD:isH2?c.hv2:"transparent"}}>
@@ -23124,15 +23202,18 @@ const TalariaV8bLive = () => {
         };
         const numSpinner=(valKey,val,disabled)=>(
           <div style={{position:"relative",width:72,opacity:disabled?0.35:1,transition:"opacity 0.15s"}}>
-            <input type="number" value={val} onClick={e=>e.stopPropagation()}
-              onChange={e=>{const v=e.target.value;if(!disabled&&/^[0-9.]*$/.test(v))setVwapStyle(s=>({...s,[valKey]:v}));}}
+            <input type="number" value={val}
+              onPointerDown={e=>e.stopPropagation()}
+              onMouseDown={e=>e.stopPropagation()}
+              onClick={e=>e.stopPropagation()}
+              onChange={e=>{const v=e.target.value;if(!disabled&&/^[0-9.]*$/.test(v))patchVwapStyle(s=>({...s,[valKey]:v}));}}
               className="tlr-nospinner"
               style={{width:"100%",height:26,background:"rgba(140,160,255,0.05)",border:`1px solid rgba(140,160,255,0.2)`,
                       color:c.tx,fontSize:12,fontFamily:F,padding:"0 19px 0 8px",
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} {...modalPointerActivate(() => { if(!disabled)setVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)})); })}
+                <button type="button" key={i} {...modalPointerActivate(() => { if(!disabled)patchVwapStyle(s=>({...s,[valKey]:Math.max(0.1,+(+s[valKey]+delta)).toFixed(1)})); })}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -23215,7 +23296,7 @@ const TalariaV8bLive = () => {
                 const gc="16px 1fr 26px 56px 56px", cg=8;
                 const hdr=txt=><span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textAlign:"center",display:"block"}}>{txt}</span>;
                 const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s"}}>{txt}</span>;
-                const chk=(key,val)=><div style={{display:"flex",alignItems:"center"}}>{TlChk(vwapStyle[key],`vc-${key}`,null,()=>setVwapStyle(s=>({...s,[key]:!s[key]})))}</div>;
+                const chk=(key)=>vwapChk(vwapStyle[key],`vc-${key}`,null,()=>patchVwapStyle(s=>({...s,[key]:!s[key]})));
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{vSwatch(k,color,dis)}</div>;
                 const st=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{typeBtn(k,val,dis)}</div>;
                 const th=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{widthBtn(k,val,dis)}</div>;
@@ -23283,8 +23364,8 @@ const TalariaV8bLive = () => {
                   <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:4}}>
                     <span style={{fontSize:12,color:c.ts}}>Labels</span>
                     <div style={{display:"flex",alignItems:"center",marginLeft:"auto"}}>
-                      <div style={{width:66}}>{TlChk(vwapStyle.priceLabels,"vc-priceLabels","Price",()=>setVwapStyle(s=>({...s,priceLabels:!s.priceLabels})))}</div>
-                      <div style={{width:66}}>{TlChk(vwapStyle.timeLabels,"vc-timeLabels","Time",()=>setVwapStyle(s=>({...s,timeLabels:!s.timeLabels})))}</div>
+                      <div style={{width:66}}>{vwapChk(vwapStyle.priceLabels,"vc-priceLabels","Price",()=>patchVwapStyle(s=>({...s,priceLabels:!s.priceLabels})))}</div>
+                      <div style={{width:66}}>{vwapChk(vwapStyle.timeLabels,"vc-timeLabels","Time",()=>patchVwapStyle(s=>({...s,timeLabels:!s.timeLabels})))}</div>
                     </div>
                   </div>
                 </>);
@@ -23298,17 +23379,17 @@ const TalariaV8bLive = () => {
                   <div style={{display:"flex",flexDirection:"column"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                       <span style={{fontSize:12,color:c.ts}}>Bands Calculation Mode</span>
-                      {vDrop("vwap-calcmode",vwapStyle.bandsCalcMode,CALC_MODES,v=>setVwapStyle(s=>({...s,bandsCalcMode:v})))}
+                      {vDrop("vwap-calcmode",vwapStyle.bandsCalcMode,CALC_MODES,v=>patchVwapStyle(s=>({...s,bandsCalcMode:v})))}
                     </div>
                     {[{ok:"mult1On",vk:"mult1Val",lbl:"Bands Multiplier #1"},{ok:"mult2On",vk:"mult2Val",lbl:"Bands Multiplier #2"},{ok:"mult3On",vk:"mult3Val",lbl:"Bands Multiplier #3"}].map(({ok,vk,lbl})=>(
                       <div key={ok} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
-                        {TlChk(vwapStyle[ok],`vc-${ok}`,lbl,()=>setVwapStyle(s=>({...s,[ok]:!s[ok]})))}
+                        {vwapChk(vwapStyle[ok],`vc-${ok}`,lbl,()=>patchVwapStyle(s=>({...s,[ok]:!s[ok]})))}
                         {numSpinner(vk,vwapStyle[vk],!vwapStyle[ok])}
                       </div>
                     ))}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                       <span style={{fontSize:12,color:c.ts}}>Source</span>
-                      {vDrop("vwap-source",vwapStyle.source,SOURCES,v=>setVwapStyle(s=>({...s,source:v})))}
+                      {vDrop("vwap-source",vwapStyle.source,SOURCES,v=>patchVwapStyle(s=>({...s,source:v})))}
                     </div>
                   </div>
                 );
@@ -23319,10 +23400,16 @@ const TalariaV8bLive = () => {
                 const _dec = v9GetPriceDecimals();
                 const _step = Math.pow(10, -_dec);
                 const _pxStep = v9GetPriceStepPerPixel();
-                const setCoord=(k,v)=>{setVwapStyle(s=>({...s,[k]:v}));setTlStyle(s=>({...s,[k]:v}));};
+                const setCoord=(k,v)=>{
+                  patchVwapStyle(s=>({...s,[k]:v}));
+                  setTlStyle(s=>({...s,[k]:v}));
+                  v9FlushVwapAnchorCoordToChart({ ...vwapStyleLiveRef.current, [k]: v }, editDraw);
+                };
                 const spinInput=(k,type)=>(
                   <div style={{position:"relative",width:"100%"}}>
                     <input type="number" step={type==="price"?String(_step):"1"} value={vwapStyle[k]}
+                      onPointerDown={e=>e.stopPropagation()}
+                      onMouseDown={e=>e.stopPropagation()}
                       onChange={e=>setCoord(k,e.target.value)}
                       onClick={e=>e.stopPropagation()}
                       className="tlr-nospinner"
@@ -23386,19 +23473,22 @@ const TalariaV8bLive = () => {
                         const getVal=cx=>Math.round(1+Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*(hm-1));
                         setHov(isMin?hkMin:hkMax);
                         const onMove=ev=>{const nv=getVal(ev.clientX);
-                          if(isMin)setVwapStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(nv,s[k].max-1))}}));
-                          else setVwapStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(nv,hm))}}));
+                          if(isMin)patchVwapStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(nv,s[k].max-1))}}));
+                          else patchVwapStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(nv,hm))}}));
                         };
                         const onUp=()=>{setHov(null);window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
                         onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
                       };
                       return (
                         <div key={k} style={{display:"grid",gridTemplateColumns:gc,gap:"0 8px",alignItems:"center",padding:"6px 12px"}}>
-                          {TlChk(v.checked,`vc-vis-${k}`,null,()=>setVwapStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})))}
+                          {vwapChk(v.checked,`vc-vis-${k}`,null,()=>patchVwapStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})))}
                           <span style={{fontSize:12,color:v.checked?c.ts:c.tm}}>{lbl}</span>
                           <div style={{display:"flex",justifyContent:"center"}}>
-                            <input type="number" min={1} max={v.max-1} value={v.min} onClick={e=>e.stopPropagation()}
-                              onChange={e=>setVwapStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(parseInt(e.target.value)||1,s[k].max-1))}}))}
+                            <input type="number" min={1} max={v.max-1} value={v.min}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onMouseDown={e=>e.stopPropagation()}
+                              onClick={e=>e.stopPropagation()}
+                              onChange={e=>patchVwapStyle(s=>({...s,[k]:{...s[k],min:Math.max(1,Math.min(parseInt(e.target.value)||1,s[k].max-1))}}))}
                               className="tlr-nospinner"
                               style={{width:38,height:22,textAlign:"center",background:"rgba(140,160,255,0.06)",
                                       border:`1px solid ${c.brL}`,color:c.tx,fontSize:11,fontFamily:F,outline:"none"}}/>
@@ -23431,8 +23521,11 @@ const TalariaV8bLive = () => {
                               style={{position:"absolute",left:`calc(${pctMax}% - 14px)`,top:"calc(50% - 14px)",width:28,height:28,cursor:"default",zIndex:2}}/>
                           </div>
                           <div style={{display:"flex",justifyContent:"center"}}>
-                            <input type="number" min={v.min+1} max={hm} value={v.max} onClick={e=>e.stopPropagation()}
-                              onChange={e=>setVwapStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(parseInt(e.target.value)||1,hm))}}))}
+                            <input type="number" min={v.min+1} max={hm} value={v.max}
+                              onPointerDown={e=>e.stopPropagation()}
+                              onMouseDown={e=>e.stopPropagation()}
+                              onClick={e=>e.stopPropagation()}
+                              onChange={e=>patchVwapStyle(s=>({...s,[k]:{...s[k],max:Math.max(s[k].min+1,Math.min(parseInt(e.target.value)||1,hm))}}))}
                               className="tlr-nospinner"
                               style={{width:38,height:22,textAlign:"center",background:"rgba(140,160,255,0.06)",
                                       border:`1px solid ${c.brL}`,color:c.tx,fontSize:11,fontFamily:F,outline:"none"}}/>
@@ -24997,6 +25090,63 @@ const TalariaV8bLive = () => {
             setTlBarSelectedType(null);
           }
         };
+        const openVwapSettingsFromBar = (e) => {
+          e.stopPropagation();
+          v9SuppressNextChartDeselect();
+          if (dropdown) closeDropdown();
+          setVwapBarDrop(null);
+          setColorPicker(null);
+          if (vwapSettOpen || closing.has("vwapsett")) {
+            closeVwapSett();
+            return;
+          }
+          if (tlSettOpen) closeTlSett();
+          if (txtSettOpen) closeTxtSett();
+          if (vpSettOpen) closeVpSett();
+          if (avSettOpen) closeAvSett();
+          if (indSettOpen) closeIndSett();
+          let d = getSelectedDrawingForTemplate();
+          if (!d) {
+            try { d = getPrimarySelectedDrawingForActiveChart(null); } catch (_) {}
+          }
+          if (!d && typeof window !== "undefined") {
+            try {
+              const dm = (typeof window.getActiveChart === "function" ? window.getActiveChart() : window.chart)?.drawingManager;
+              if (dm?.toolbar?.currentDrawing?.type === "anchored-vwap") {
+                d = dm.toolbar.currentDrawing;
+              }
+            } catch (_) {}
+          }
+          const hook = v9ResolveOpenDrawingSettingsHook();
+          if (d && typeof hook === "function") {
+            const r = e.currentTarget.getBoundingClientRect();
+            try {
+              if (hook(d, r.left + r.width / 2, r.bottom + 8)) return;
+            } catch (err) {
+              console.warn("[V9 vwap settings gear] hook failed:", err);
+            }
+          }
+          if (!d || d.type !== "anchored-vwap") return;
+          const r = e.currentTarget.getBoundingClientRect();
+          const vpW2 = window.innerWidth / Z;
+          const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
+          const y = r.bottom / Z + 8;
+          suppressVwapBridge.current = true;
+          editingDrawingRef.current = {
+            drawing: d,
+            prevTool: tool,
+            prevGroupSelected: groupSelected,
+            panelGroup: "brush",
+            editSnapshot: v9CloneDrawingEditState(d),
+          };
+          v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
+          flushSync(() => {
+            setVwapStyle((prev) => v9VwapStylePatchFromDrawing(d, prev));
+            setVwapSettPos({ x, y });
+            setVwapSettOpen(true);
+            setVwapSettTab("style");
+          });
+        };
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
           <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
@@ -25051,7 +25201,7 @@ const TalariaV8bLive = () => {
             <VSep/>
             {/* btn: settings */}
             <VBtn id="vb-sett" isAct={vwapSettOpen||closing.has("vwapsett")}
-              onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setVwapBarDrop(null);setColorPicker(null);if(vwapSettOpen||closing.has("vwapsett")){closeVwapSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-428));const y=r.bottom/Z+8;setVwapSettPos({x,y});setVwapSettOpen(true);setVwapSettTab("style");}}}>
+              onClick={openVwapSettingsFromBar}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VBtn>
             {/* btn: more */}
