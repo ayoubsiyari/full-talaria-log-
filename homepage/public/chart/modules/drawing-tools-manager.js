@@ -7748,6 +7748,9 @@ class DrawingToolsManager {
         // V9 hook: if TalariaV8bLive has registered an opener, use the V9
         // floating panel instead of the legacy tv-settings-modal. The hook
         // returns true if it handled the drawing, false to fall through.
+        if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
+            this.settingsPanel.hide();
+        }
         const v9Open = resolveV9OpenDrawingSettings();
         if (v9Open && drawing) {
             try {

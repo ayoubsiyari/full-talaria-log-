@@ -10746,6 +10746,49 @@ const TalariaV8bLive = () => {
       });
     }, 155);
   };
+  /** Close every V9 drawing settings window synchronously (no 155ms overlap flash on dblclick). */
+  const v9DismissAllDrawingSettingsImmediate = () => {
+    cpBarAnchorRef.current = null;
+    setColorPicker(null);
+    setTlSettTplDrop(false);
+    setTlSaveAsMode(false);
+    setTlNewTplName("");
+    setTlStyleDrop(null);
+    setTxtSizeOpen(false);
+    setTxtBarSizeOpen(false);
+    setTxtBarDrop(null);
+    setTxtSettTplDrop(false);
+    setTxtSaveAsMode(false);
+    setTxtNewTplName("");
+    setVwapStyleDrop(null);
+    setVpStyleDrop(null);
+    setAvStyleDrop(null);
+    flushSync(() => {
+      setTlSettOpen(false);
+      setTxtSettOpen(false);
+      setVwapSettOpen(false);
+      setVpSettOpen(false);
+      setAvSettOpen(false);
+      setIndSettOpen(false);
+    });
+    tlSettOpenRef.current = false;
+    txtSettOpenRef.current = false;
+    vwapSettOpenRef.current = false;
+    vpSettOpenRef.current = false;
+    avSettOpenRef.current = false;
+    indSettOpenRef.current = false;
+    v9AnyDrawingSettingsOpenRef.current = false;
+    setClosing((s) => {
+      const n = new Set(s);
+      n.delete("tlsett");
+      n.delete("txtsett");
+      n.delete("vwapsett");
+      n.delete("vpsett");
+      n.delete("avsett");
+      n.delete("indsett");
+      return n;
+    });
+  };
   const dismissVwapSettOnChartKeepSelection = () => {
     if (!vwapSettOpenRef.current) return;
     cpBarAnchorRef.current = null;
@@ -14702,6 +14745,8 @@ const TalariaV8bLive = () => {
         const group = drawingTypeToPanelGroupRef.current(drawing.type);
         if (!group) return false; // Unknown type → legacy settings panel
 
+        v9DismissAllDrawingSettingsImmediate();
+
         let drawingForStyle = drawing;
         try {
           const dmStyle =
@@ -14926,8 +14971,6 @@ const TalariaV8bLive = () => {
         if (dropdown) closeDropdown();
         v9SettingsChartDismissLockUntilRef.current = 0;
         if (group === 'text') {
-          closeIndSett();
-          closeTlSett();
           setTlBarSelected(true);
           setTlBarSelectedType(drawing.type);
           const tp = {
@@ -14948,7 +14991,6 @@ const TalariaV8bLive = () => {
             setTxtSettOpen(true);
           });
         } else if (drawing.type === 'anchored-vwap') {
-          closeTlSett(); closeTxtSett(); closeVpSett(); closeAvSett(); closeIndSett();
           suppressVwapBridge.current = true;
           const ds = drawingForStyle.style || drawing.style || {};
           const DASH_R2 = {'':'solid','5,5':'dashed','2,4':'dotted','7,4,2,4':'dashdot','2,2':'dotted'};
@@ -14962,7 +15004,6 @@ const TalariaV8bLive = () => {
             setVwapSettTab("style");
           });
         } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
-          closeTlSett(); closeTxtSett(); closeVwapSett(); closeAvSett(); closeIndSett();
           suppressVpBridge.current = true;
           suppressCoordBridge.current = true;
           const ds = drawingForStyle.style || drawing.style || {};
@@ -15014,7 +15055,6 @@ const TalariaV8bLive = () => {
             setVpSettTab("style");
           });
         } else if (drawing.type === 'anchored-volume-profile') {
-          closeTlSett(); closeTxtSett(); closeVwapSett(); closeVpSett(); closeIndSett();
           suppressAvBridge.current = true;
           const ds = drawingForStyle.style || drawing.style || {};
           const PLC_R3 = {left:"Left",right:"Right"};
@@ -15028,7 +15068,6 @@ const TalariaV8bLive = () => {
             setAvSettTab("style");
           });
         } else {
-          closeIndSett();
           v9SettingsChartDismissLockUntilRef.current = 0;
           flushSync(() => {
             setTlBarSelected(true);
@@ -21337,8 +21376,8 @@ const TalariaV8bLive = () => {
                   <div style={{width:60,height:28,visibility:"hidden"}}/>
                 </div>
               </div>}
-              {/* Color row — flag / signpost (always on; no checkbox) */}
-              {(isFlag || isSignpost) && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+              {/* Color row — flag only (signpost uses Label background below) */}
+              {isFlag && <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
                 <span style={{fontSize:12,color:c.ts}}>Color</span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <TxtSwatch ck="txtBgColor" val={txtStyle.bgColor}/>
