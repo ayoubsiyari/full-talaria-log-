@@ -2285,18 +2285,28 @@ class DrawingToolsManager {
         return drawingType === 'image' || drawingType === 'emoji';
     }
 
-    /** Sync drag translate on main group (+ optional unclipped labels layer). */
+    /** Sync drag translate on main group (+ axis highlight labels + optional unclipped labels layer). */
     _applyDrawingDragTransform(drawing, transform) {
         if (!drawing) return;
         const t = transform || null;
         if (drawing.group) {
             drawing.group.attr('transform', t);
         }
+        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
+            drawing.axisHighlightGroup.attr('transform', t);
+        }
         if (this.labelsGroup && !this.labelsGroup.empty() && drawing.id) {
             const layer = this.labelsGroup.select(`[data-id="${drawing.id}"]`);
             if (!layer.empty()) {
                 layer.attr('transform', t);
             }
+        }
+    }
+
+    /** Keep crosshair price/time labels glued to the pointer during whole-shape moves. */
+    _refreshPointerChromeDuringGeometryDrag(event) {
+        if (this.chart && typeof this.chart.updateCrosshair === 'function' && event) {
+            this.chart.updateCrosshair(event);
         }
     }
 
@@ -3509,6 +3519,7 @@ class DrawingToolsManager {
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
             }
+            this._refreshPointerChromeDuringGeometryDrag(event);
             return;
         }
         
@@ -6266,6 +6277,9 @@ class DrawingToolsManager {
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
                     }
+                    if (event.sourceEvent) {
+                        self._refreshPointerChromeDuringGeometryDrag(event.sourceEvent);
+                    }
                 })
                 .on('end', function(event) {
                     self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
@@ -6677,7 +6691,9 @@ class DrawingToolsManager {
             this._directMovePendingFrame = true;
             requestAnimationFrame(() => {
                 this._directMovePendingFrame = false;
-                applyDirectMoveTransform(this._directMoveLastEvent);
+                const ev = this._directMoveLastEvent;
+                applyDirectMoveTransform(ev);
+                this._refreshPointerChromeDuringGeometryDrag(ev);
             });
         };
 

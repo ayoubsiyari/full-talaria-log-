@@ -17943,6 +17943,10 @@ class Chart {
     drawAxisHighlightZones() {
         // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
         if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
+        const dm = this.drawingManager;
+        if (dm && typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
+            return;
+        }
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
@@ -23196,7 +23200,9 @@ class Chart {
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
         // DON'T show lines for 'dot' or 'arrow' cursor types. Respect chartSettings.showCrosshair (V9 theme panel).
-        const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging));
+        const _geometryMove = _dm && typeof _dm._isDrawingGeometryMoveActive === 'function'
+            && _dm._isDrawingGeometryMoveActive();
+        const _drawingActive = !!(_dm && (_dm.currentTool || _dm.selectedDrawing || _dm.isDrawing || _dm.isDragging || _geometryMove));
         const crosshairSettingOn = this.chartSettings?.showCrosshair !== false;
         const showLines = crosshairSettingOn && (this.cursorType === 'cross' || this.cursorType === 'eraser' || this.tool || _drawingActive) && this.cursorType !== 'dot';
         const crossColor = (this.chartSettings && this.chartSettings.crosshairColor) || 'rgba(120,123,134,0.4)';
