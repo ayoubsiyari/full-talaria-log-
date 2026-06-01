@@ -22309,7 +22309,7 @@ class Chart {
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
-            // Whole-shape move / handle resize: lightweight SVG updates only — full rebuild breaks d3 drag.
+            // Whole-shape move uses per-group CSS translate — rebuilding SVG here snaps shapes back.
             if (typeof this.drawingManager._isDrawingGeometryMoveActive === 'function'
                 && this.drawingManager._isDrawingGeometryMoveActive()) {
                 return;
