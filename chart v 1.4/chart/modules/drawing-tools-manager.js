@@ -1380,19 +1380,38 @@ class DrawingToolsManager {
 
             const domResolvedDrawing = this._resolveDrawingFromDomTarget(rawTargetNode);
             if (domResolvedDrawing && !domResolvedDrawing.locked) {
-                if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
-                if (typeof event.stopPropagation === 'function') event.stopPropagation();
-                if (typeof event.preventDefault === 'function') event.preventDefault();
+                const skipGenericVpBodySettings = this.isVolumeProfileToolType(domResolvedDrawing.type)
+                    && domResolvedDrawing.type !== 'anchored-volume-profile'
+                    && !rawTargetNode?.closest?.('.volume-profile-level-line, .volume-profile-values-label');
+                if (!skipGenericVpBodySettings) {
+                    if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                    if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                    if (typeof event.preventDefault === 'function') event.preventDefault();
 
-                this.selectDrawing(domResolvedDrawing);
-                this.editDrawing(domResolvedDrawing, event.pageX, event.pageY);
-                return true;
+                    this.selectDrawing(domResolvedDrawing);
+                    this.editDrawing(domResolvedDrawing, event.pageX, event.pageY);
+                    return true;
+                }
             }
 
             const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
             if (!svgNode) return false;
 
             const [mouseX, mouseY] = this._eventCanvasLocalXY(event);
+            for (let i = this.drawings.length - 1; i >= 0; i--) {
+                const vpDrawing = this.drawings[i];
+                if (!vpDrawing || !this.isCandleBoundTool(vpDrawing.type) || vpDrawing.locked) continue;
+                if (!this.isVolumeProfileLevelLineHit(vpDrawing, mouseX, mouseY)) continue;
+
+                if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+                if (typeof event.stopPropagation === 'function') event.stopPropagation();
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+
+                this.selectDrawing(vpDrawing);
+                this.editDrawing(vpDrawing, event.pageX, event.pageY);
+                return true;
+            }
+
             const valueLabelDrawing = this.findTopVolumeProfileValuesLabelDrawingAtPoint(mouseX, mouseY);
             const drawingsAtPoint = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true });
 
@@ -1413,6 +1432,14 @@ class DrawingToolsManager {
 
             const drawing = valueLabelDrawing || drawingsAtPoint[0] || fallbackVolumeProfileDrawing;
             if (!drawing || drawing.locked) return false;
+
+            if (this.isVolumeProfileToolType(drawing.type) && drawing.type !== 'anchored-volume-profile') {
+                const onLevelLine = this.isVolumeProfileLevelLineHit(drawing, mouseX, mouseY);
+                const onValueLabel = this.isVolumeProfileValuesLabelHit(drawing, mouseX, mouseY);
+                if (!onLevelLine && !onValueLabel) {
+                    return false;
+                }
+            }
 
             if (this._isTextDrawingType(drawing.type) && this._isTextAnnotationInteractionTarget(rawTargetNode)) {
                 return false;
@@ -2429,9 +2456,51 @@ class DrawingToolsManager {
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                if (typeof event.stopImmediatePropagation === 'function') {
-                    event.stopImmediatePropagation();
+                return;
+            }
+
+            const levelLineDrawingForClick = (() => {
+                if (isVolumeProfileLevelLineTarget && levelLineNode) {
+                    const g = levelLineNode.closest('.drawing');
+                    const id = g ? d3.select(g).attr('data-id') : null;
+                    return id ? this.drawings.find((d) => d && d.id === id) : null;
                 }
+                for (let i = this.drawings.length - 1; i >= 0; i--) {
+                    const d = this.drawings[i];
+                    if (d && this.isCandleBoundTool(d.type) && this.isVolumeProfileLevelLineHit(d, mouseX, mouseY)) {
+                        return d;
+                    }
+                }
+                return null;
+            })();
+            if (levelLineDrawingForClick && !levelLineDrawingForClick.locked && !event.shiftKey && !event.altKey) {
+                const now = Date.now();
+                const prev = this._volumeProfileLevelLineClickState || null;
+                const isFollowupLevelLineClick = !!(
+                    prev
+                    && prev.drawingId === levelLineDrawingForClick.id
+                    && (now - prev.time) <= 700
+                    && Math.abs((prev.mouseX ?? 0) - mouseX) <= 24
+                    && Math.abs((prev.mouseY ?? 0) - mouseY) <= 24
+                );
+                if (isFollowupLevelLineClick || event.detail >= 2) {
+                    this._volumeProfileLevelLineClickState = null;
+                    this.selectDrawing(levelLineDrawingForClick, false);
+                    this.editDrawing(levelLineDrawingForClick, event.pageX, event.pageY);
+                    this._suppressNextDrawingDblClickUntil = Date.now() + 600;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+                this._volumeProfileLevelLineClickState = {
+                    drawingId: levelLineDrawingForClick.id,
+                    time: now,
+                    mouseX,
+                    mouseY
+                };
+                this.selectDrawing(levelLineDrawingForClick, false);
+                event.preventDefault();
+                event.stopPropagation();
                 return;
             }
 
@@ -5066,8 +5135,8 @@ class DrawingToolsManager {
                     .style('cursor', 'ew-resize');
 
                 drawing.group.selectAll('.volume-profile-boundary')
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                    .style('pointer-events', 'none')
+                    .style('cursor', 'default');
 
                 drawing.group.selectAll('.volume-profile-level-line.shape-border-hit')
                     .style('pointer-events', 'stroke')
@@ -5385,6 +5454,22 @@ class DrawingToolsManager {
                     drawing.group.style('cursor', 'pointer');
                     if (self.chart?.canvas) self.chart.canvas.style.cursor = 'pointer';
                     if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = 'pointer';
+                } else if (self.isVolumeProfileToolType(drawing.type)) {
+                    const srcEvent = event && (event.sourceEvent || event);
+                    let panBlockCursor = 'default';
+                    if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                        const [mx, my] = self._eventCanvasLocalXY(srcEvent);
+                        if (self.isVolumeProfileChartPanBlockedAtPoint(mx, my)) {
+                            panBlockCursor = 'default';
+                        } else if (self.isVolumeProfileBoundaryHit(drawing, mx, my)) {
+                            panBlockCursor = 'ew-resize';
+                        } else {
+                            panBlockCursor = 'default';
+                        }
+                    }
+                    drawing.group.style('cursor', panBlockCursor);
+                    if (self.chart?.canvas) self.chart.canvas.style.cursor = panBlockCursor;
+                    if (self.chart?.svg?.node()) self.chart.svg.node().style.cursor = panBlockCursor;
                 } else if (isInlineTextTarget) {
                     const hoverCursor = (textHelpers && typeof textHelpers.resolveTextAnnotationHoverCursor === 'function')
                         ? (textHelpers.resolveTextAnnotationHoverCursor(drawing, rawTargetNode) || 'move')
@@ -5569,7 +5654,7 @@ class DrawingToolsManager {
             : drawing.type === 'anchored-volume-profile'
                 ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
-                ? '.volume-profile-boundary-hit, .volume-profile-boundary, .resize-handle, .resize-handle-hit, .resize-handle-group'
+                ? '.volume-profile-boundary-hit, .resize-handle, .resize-handle-hit, .resize-handle-group'
                 : drawing.type === 'image'
                     ? '.image-content, .image-placeholder'
                     : '.shape-border, line:not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-avg-zone-edge):not(.fib-level-hit), path, polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), text, tspan, .inline-editable-text, .text-body-hit, .note-body-hit, rect:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-primary-entry-drag-hit):not(.rr-extra-drag-hit):not(.rr-primary-leg-drag-hit):not(.rr-mini-badge-drag-hit), circle:not(.shape-fill):not(.upper-fill):not(.lower-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill):not(.upper-fill):not(.lower-fill)';
@@ -5625,6 +5710,16 @@ class DrawingToolsManager {
                     }
                     if (targetSelection.classed('volume-profile-level-line')) {
                         return false;
+                    }
+
+                    if (isVolumeProfileType) {
+                        const srcEvent = event.sourceEvent || event;
+                        if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
+                            const [mx, my] = self._eventCanvasLocalXY(srcEvent);
+                            if (self.isVolumeProfileChartPanBlockedAtPoint(mx, my)) {
+                                return false;
+                            }
+                        }
                     }
 
                     // Selection-only helper zone for docked volume profile.
@@ -6162,7 +6257,8 @@ class DrawingToolsManager {
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
             const [startMouseX, startMouseY] = this._eventCanvasLocalXY(event);
             const shouldBlockVolumeProfileTextDirectMove = drawings.some((d) =>
-                this.isVolumeProfileZoneFillHit(d, startMouseX, startMouseY)
+                this.isVolumeProfileChartPanBlockedAtPoint(startMouseX, startMouseY)
+                || this.isVolumeProfileZoneFillHit(d, startMouseX, startMouseY)
                 || this.isVolumeProfileLevelLineHit(d, startMouseX, startMouseY)
                 || this.isVolumeProfileValuesLabelHit(d, startMouseX, startMouseY)
             );
@@ -11678,9 +11774,139 @@ class DrawingToolsManager {
             };
         }
 
+        const textTypographyBase = {
+            fontFamily: 'Roboto, sans-serif',
+            fontWeight: 'normal',
+            fontStyle: 'normal',
+        };
+
+        if (toolType === 'callout') {
+            const anchorStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                ? DRAWING_TOOL_DEFAULT_STROKE
+                : '#8C8C8C';
+            return {
+                ...textTypographyBase,
+                textColor: '#F23645',
+                fontSize: 14,
+                fontFamily: 'Arial, sans-serif',
+                textAlign: 'left',
+                stroke: anchorStroke,
+                backgroundColor: '#FFFFFF',
+                borderColor: '#B2B5BE',
+                wrapText: false,
+                maxWidth: 280,
+            };
+        }
+
+        if (toolType === 'comment') {
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 14,
+                textAlign: 'center',
+                backgroundColor: '#2962FF',
+                borderColor: 'transparent',
+                wrapText: false,
+                maxWidth: 280,
+            };
+        }
+
+        if (toolType === 'text') {
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 14,
+                textAlign: 'left',
+                fill: 'none',
+                stroke: 'none',
+                wrapText: false,
+                maxWidth: 200,
+                anchored: false,
+            };
+        }
+
+        if (toolType === 'notebox') {
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 12,
+                backgroundColor: 'rgba(41, 98, 255, 0.9)',
+                wrapText: false,
+                maxWidth: 200,
+            };
+        }
+
+        if (toolType === 'anchored-text') {
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 12,
+                backgroundColor: 'rgba(41, 98, 255, 0.9)',
+                borderColor: '#B2B5BE',
+                wrapText: false,
+                maxWidth: 200,
+            };
+        }
+
+        if (toolType === 'pin') {
+            const pinStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                ? DRAWING_TOOL_DEFAULT_STROKE
+                : '#2962ff';
+            return {
+                ...textTypographyBase,
+                textColor: '#d1d4dc',
+                fontSize: 14,
+                fill: pinStroke,
+                stroke: pinStroke,
+                backgroundColor: '#363a45',
+                borderColor: '#555',
+                wrapText: false,
+            };
+        }
+
+        if (toolType === 'signpost-2') {
+            return {
+                ...textTypographyBase,
+                textColor: '#d1d4dc',
+                fontSize: 13,
+                fill: '#2e3238',
+                stroke: '#787b86',
+                borderColor: '#787b86',
+                wrapText: false,
+            };
+        }
+
+        if (toolType === 'price-label') {
+            const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                ? DRAWING_TOOL_DEFAULT_STROKE
+                : '#2962ff';
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 12,
+                stroke: lineStroke,
+                strokeWidth: 1,
+                fill: '#2962ff',
+            };
+        }
+
+        if (toolType === 'price-label-2') {
+            const lineStroke = typeof DRAWING_TOOL_DEFAULT_STROKE !== 'undefined'
+                ? DRAWING_TOOL_DEFAULT_STROKE
+                : '#2962ff';
+            return {
+                ...textTypographyBase,
+                textColor: '#FFFFFF',
+                fontSize: 14,
+                fontWeight: 'bold',
+                stroke: lineStroke,
+                strokeWidth: 1,
+                fill: '#2962ff',
+            };
+        }
+
         const textAnnotationTypes = new Set([
-            'text', 'notebox', 'label', 'anchored-text', 'callout', 'comment',
-            'price-label', 'price-label-2', 'signpost', 'signpost-2', 'flag-mark', 'pin', 'table', 'emoji', 'image',
+            'label', 'signpost', 'flag-mark', 'table', 'emoji', 'image',
         ]);
         if (textAnnotationTypes.has(toolType)) {
             return {

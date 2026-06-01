@@ -1250,7 +1250,7 @@ class VolumeProfileTool extends BaseDrawing {
             .attr('stroke', 'transparent')
             .attr('stroke-width', 14)
             .style('pointer-events', isAnchoredProxy ? 'none' : 'stroke')
-            .style('cursor', isAnchoredProxy ? 'default' : 'pointer');
+            .style('cursor', isAnchoredProxy ? 'default' : 'ew-resize');
         this.group.append('line')
             .attr('class', 'volume-profile-boundary volume-profile-anchor-boundary')
             .attr('x1', anchorBoundaryX)
@@ -1272,7 +1272,7 @@ class VolumeProfileTool extends BaseDrawing {
                 .attr('stroke', 'transparent')
                 .attr('stroke-width', 14)
                 .style('pointer-events', 'stroke')
-                .style('cursor', 'pointer');
+                .style('cursor', 'ew-resize');
             this.group.append('line')
                 .attr('class', 'volume-profile-boundary')
                 .attr('x1', right)

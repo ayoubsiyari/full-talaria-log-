@@ -2492,6 +2492,26 @@ class Chart {
         return false;
     }
 
+    /**
+     * Display-TF candles prepended on backward replay pan-load (not raw master bar count).
+     * When master is 1m and display is 5m, offset must shift by resampled bars, not 1m rows.
+     */
+    _countReplayBackwardDisplayBarsAdded(prevMaster, prevEndIndex, merged, newEndIndex) {
+        if (!Array.isArray(prevMaster) || !prevMaster.length || !Array.isArray(merged) || !merged.length) {
+            return 0;
+        }
+        const displayTf = this.currentTimeframe || '1m';
+        const prevEnd = Math.max(0, Math.min(Math.floor(prevEndIndex), prevMaster.length - 1));
+        const newEnd = Math.max(0, Math.min(Math.floor(newEndIndex), merged.length - 1));
+        try {
+            const prevLen = this.resampleData(prevMaster.slice(0, prevEnd + 1), displayTf).length;
+            const newLen = this.resampleData(merged.slice(0, newEnd + 1), displayTf).length;
+            return Math.max(0, newLen - prevLen);
+        } catch (_e) {
+            return 0;
+        }
+    }
+
     _getTfDataCache(fileId, timeframe) {
         if (!fileId || !timeframe || !this._tfDataCache) return null;
         const perFile = this._tfDataCache.get(String(fileId));
@@ -15335,15 +15355,9 @@ class Chart {
                     this.replaySystem.fullRawData = merged;
                     this.replaySystem.replayStartTimestamp = merged[0]?.t;
                     this.replaySystem.replayEndTimestamp = merged[merged.length - 1]?.t;
-                    if (direction === 'backward' && uniqueNew.length > 0) {
-                        const spacing = typeof this.getCandleSpacing === 'function'
-                            ? this.getCandleSpacing()
-                            : 0;
-                        if (spacing > 0) {
-                            this.offsetX -= uniqueNew.length * spacing;
-                        }
-                    }
+
                     // Keep replay index stable without scanning entire array when possible
+                    const prevReplayIndex = Number.isFinite(replayIndex) ? replayIndex : (masterData.length - 1);
                     if (Number.isFinite(replayIndex)) {
                         if (direction === 'backward') {
                             this.replaySystem.currentIndex = Math.min(
@@ -15364,12 +15378,25 @@ class Chart {
                         if (newIdx >= 0) this.replaySystem.currentIndex = newIdx;
                     }
 
-                    // Avoid expensive re-slice/re-resample in the middle of active playback.
-                    // Playback loop already redraws continuously and will pick up merged data.
-                    if (!this.replaySystem.isPlaying) {
+                    if (direction === 'backward' && uniqueNew.length > 0) {
+                        const spacing = typeof this.getCandleSpacing === 'function'
+                            ? this.getCandleSpacing()
+                            : 0;
+                        if (spacing > 0) {
+                            const displayBarsAdded = this._countReplayBackwardDisplayBarsAdded(
+                                masterData,
+                                prevReplayIndex,
+                                merged,
+                                this.replaySystem.currentIndex
+                            );
+                            const shiftBars = displayBarsAdded > 0 ? displayBarsAdded : uniqueNew.length;
+                            this.offsetX -= shiftBars * spacing;
+                        }
+                    }
+
+                    // Backward history must reslice/resample so the canvas shows new left bars immediately.
+                    if (direction === 'backward' || !this.replaySystem.isPlaying) {
                         this.replaySystem.updateChartData(false);
-                    } else if (direction === 'backward' && uniqueNew.length > 0) {
-                        this._pendingReplayBackwardDataSync = true;
                     }
                     if (this.isBacktestMode && this.viewportData && this._serverCursors) {
                         this.viewportData.hasMoreLeft = !!this._serverCursors.hasMoreLeft;
