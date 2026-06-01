@@ -746,6 +746,43 @@ function v9SanitizeGroupSelected(prev) {
   return next || prev;
 }
 
+function v9IsRangeMeasureChartType(type) {
+  return [
+    "ruler", "short-position", "long-position", "price-range",
+    "date-range", "date-and-price-range", "date-price-range",
+  ].includes(type);
+}
+
+function v9RangeTypeFromRangeMode(mode) {
+  const v = String(mode || "").toLowerCase().trim();
+  if (v === "price") return "Price";
+  if (v === "time" || v === "date") return "Date and time";
+  return "Date & Price";
+}
+
+/** Range tool chart.js uses `textColor` / `fontSize`; V9 UI uses `labelColor` / `labelFontSize`. */
+function v9ApplyRangeMeasureLabelPatch(patch, tlStyle) {
+  if (!patch || !tlStyle) return patch;
+  const labelCol = tlStyle.labelColor || tlStyle.textColor;
+  if (labelCol) {
+    patch.textColor = labelCol;
+    patch.labelColor = labelCol;
+  }
+  const fs = parseInt(tlStyle.labelFontSize, 10) || parseInt(tlStyle.textSize, 10);
+  if (Number.isFinite(fs) && fs > 0) {
+    patch.fontSize = fs;
+    patch.labelFontSize = fs;
+  }
+  if (tlStyle.labelBgColor != null) {
+    patch.labelBackgroundColor = tlStyle.labelBgColor;
+  }
+  if (typeof tlStyle.labelBg === "boolean") {
+    patch.showLabelBackground = tlStyle.labelBg;
+    patch.labelBackground = tlStyle.labelBg;
+  }
+  return patch;
+}
+
 function v9DefaultShowInfoTypesForRangeType(rangeType) {
   if (rangeType === "Price") {
     return ["Price range", "Percent change", "Change in pips"];
@@ -948,7 +985,10 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
     return { textColor: tlStyle.textColor };
   }
   if (pickerKey === "tlLabelColor" && tlStyle.labelColor) {
-    return { labelColor: tlStyle.labelColor };
+    const col = tlStyle.labelColor;
+    return v9IsRangeMeasureChartType(legacyTool)
+      ? { labelColor: col, textColor: col }
+      : { labelColor: col };
   }
   if (pickerKey === "tlLabelBgColor" && tlStyle.labelBgColor) {
     return { labelBackgroundColor: tlStyle.labelBgColor };
@@ -1600,6 +1640,9 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.fill = "none";
     patch.showBackground = false;
     patch.backgroundColor = "transparent";
+  }
+  if (legacyTool && v9IsRangeMeasureChartType(legacyTool)) {
+    v9ApplyRangeMeasureLabelPatch(patch, tlStyle);
   }
   return patch;
 }
@@ -3129,6 +3172,11 @@ function v9ShouldApplyTlStylePatch(d, legacyTool, editingSession, dm) {
     return true;
   }
   const drawingGroup = v9StyleBridgeDrawingGroup(d.type);
+  // Range/measure tools: quick-bar edits must apply while the drawing is selected even if
+  // another rail tool (e.g. Trend Line) is still armed.
+  if (dm && v9IsActiveStyleBridgeTarget(dm, d) && drawingGroup === "measure") {
+    return true;
+  }
   if (dm && v9IsActiveStyleBridgeTarget(dm, d) && drawingGroup && V9_EXACT_STYLE_MATCH_GROUPS.has(drawingGroup)) {
     return true;
   }
@@ -5693,6 +5741,28 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     d.style.textPosition = tv;
     if (tv === "middle") d.style.textOffsetY = 0;
   }
+  if (v9IsRangeMeasureChartType(d.type)) {
+    const labelCol = tlStyle.labelColor || tlStyle.textColor;
+    if (labelCol) {
+      d.style.textColor = labelCol;
+      d.style.labelColor = labelCol;
+    }
+    const fs = parseInt(tlStyle.labelFontSize, 10);
+    if (Number.isFinite(fs) && fs > 0) {
+      d.style.fontSize = fs;
+      d.style.labelFontSize = fs;
+    }
+    if (tlStyle.labelBgColor != null) {
+      d.style.labelBackgroundColor = tlStyle.labelBgColor;
+    }
+    if (typeof tlStyle.labelBg === "boolean") {
+      d.style.showLabelBackground = tlStyle.labelBg;
+      d.style.labelBackground = tlStyle.labelBg;
+    }
+    if (typeof tlStyle.showInfo === "boolean") {
+      d.style.showLabel = tlStyle.showInfo;
+    }
+  }
   if (dm && typeof dm.renderDrawing === "function") {
     try {
       dm.renderDrawing(d);
@@ -5831,6 +5901,22 @@ function v9TlStylePatchFromDrawing(d) {
           return {
             showInfo: show,
             showInfoTypes: types,
+          };
+        })()
+      : {}),
+    ...(v9IsRangeMeasureChartType(d.type)
+      ? (() => {
+          const textCol = s.textColor || s.labelColor;
+          const fs = s.fontSize ?? s.labelFontSize;
+          return {
+            rangeType: v9RangeTypeFromRangeMode(s.rangeMode),
+            ...(textCol ? { labelColor: textCol, textColor: textCol } : {}),
+            ...(fs != null ? { labelFontSize: String(fs) } : {}),
+            ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
+            ...(typeof s.showLabelBackground === "boolean"
+              ? { labelBg: s.showLabelBackground }
+              : {}),
+            ...(stroke ? { lineColor: stroke } : {}),
           };
         })()
       : {}),
@@ -11464,7 +11550,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a15-replay-play-pause-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260531a55-range-quickbar";
   }, []);
 
   useEffect(() => {
@@ -13552,7 +13638,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "tlBgColor") cpApplyTlStyle(s=>v9ApplyTlBgColorToStyle(s, colorVal, tlSubTool.icon, chartPrimarySelectedDrawingType), { colorOnly: true });
     else if(targetKey === "tlMidLineColor") cpApplyTlStyle(s=>({...s, midLineColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlTextColor") cpApplyTlStyle(s=>({...s, textColor: colorVal}), { colorOnly: true });
-    else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal}), { colorOnly: true });
+    else if(targetKey === "tlLabelColor") cpApplyTlStyle(s=>({...s, labelColor: colorVal, textColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlLabelBgColor") cpApplyTlStyle(s=>({...s, labelBgColor: colorVal}), { colorOnly: true });
     else if(targetKey === "tlBorderColor") cpApplyTlStyle(s=>({...s, borderColor: colorVal}), { colorOnly: true });
     else if(targetKey?.startsWith("chLine-")) { const idx=+targetKey.split("-")[1]; cpApplyTlStyle(s=>({...s, chLines: s.chLines.map((l,i)=>i===idx?{...l,color:colorVal}:l)}), { colorOnly: true }); }
@@ -13909,6 +13995,15 @@ const TalariaV8bLive = () => {
     ...modalPointerActivate(() => {
       pickFn();
       setTlStyleDrop(null);
+    }),
+  });
+
+  /** Floating toolbar dropdown item — pointerdown + deselect guard (range font/type, more menu). */
+  const tlBarDropPick = (pickFn) => ({
+    ...modalPointerActivate(() => {
+      v9SuppressNextChartDeselect();
+      pickFn();
+      setTlBarDrop(null);
     }),
   });
 
@@ -15141,8 +15236,8 @@ const TalariaV8bLive = () => {
               showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
             };
           })(),
-          labelColor: sPartial.labelColor || prev.labelColor,
-          labelFontSize: String(sPartial.labelFontSize ?? prev.labelFontSize),
+          labelColor: sPartial.labelColor || sPartial.textColor || prev.labelColor,
+          labelFontSize: String(sPartial.labelFontSize ?? sPartial.fontSize ?? prev.labelFontSize),
           labelBg: typeof sPartial.showLabelBackground === 'boolean' ? sPartial.showLabelBackground : (typeof sPartial.labelBackground === 'boolean' ? sPartial.labelBackground : prev.labelBg),
           labelBgColor: sPartial.labelBackgroundColor || prev.labelBgColor,
           textContent: typeof drawingForStyle.text === 'string' ? drawingForStyle.text : prev.textContent,
@@ -16469,6 +16564,17 @@ const TalariaV8bLive = () => {
   const applyTlRangeType = useCallback((nextRangeType) => {
     flushSync(() => {
       setTlStyle((s) => v9TlStylePatchForRangeType(s, nextRangeType));
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Range / measure label font size — immediate chart sync (quick bar + settings). */
+  const applyTlLabelFontSize = useCallback((labelFontSize) => {
+    flushSync(() => {
+      setTlStyle((s) => ({ ...s, labelFontSize: String(labelFontSize) }));
     });
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
@@ -22931,7 +23037,10 @@ const TalariaV8bLive = () => {
         left = Math.max(mg, left);
         const isClosing = closing.has("tlbardrop") && !tlBarDrop;
         return (
-        <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
+        <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1"
+          onPointerDown={e=>e.stopPropagation()}
+          onMouseDown={e=>e.stopPropagation()}
+          onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top, left, zIndex:10050,
                    width: (key==="style"||key==="width") ? 88 : undefined, minWidth: (key==="style"||key==="width") ? undefined : 148,
                    background:c.sf, border:`1px solid ${c.brH}`, fontFamily:F,
@@ -22989,7 +23098,7 @@ const TalariaV8bLive = () => {
             })}
             {tlBarDrop==="rngFsz" && ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
               const isA=tlStyle.labelFontSize===sz,isH=hov===`tbfsz-${sz}`;
-              return (<div key={sz} onClick={()=>{setTlStyle(s=>({...s,labelFontSize:sz}));setTlBarDrop(null);}}
+              return (<div key={sz} {...tlBarDropPick(() => applyTlLabelFontSize(sz))}
                 onMouseEnter={()=>setHov(`tbfsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0", cursor:"default",
                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -22999,7 +23108,7 @@ const TalariaV8bLive = () => {
             })}
             {tlBarDrop==="rngType" && ["Date & Price","Price","Date and time"].map(v=>{
               const isA=tlStyle.rangeType===v,isH=hov===`tbrng-${v}`;
-              return (<div key={v} onClick={()=>{setTlStyle(s=>({...s,rangeType:v}));setTlBarDrop(null);}}
+              return (<div key={v} {...tlBarDropPick(() => applyTlRangeType(v))}
                 onMouseEnter={()=>setHov(`tbrng-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default",
                          background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -23017,7 +23126,7 @@ const TalariaV8bLive = () => {
             ].map((item,i)=>item===null ? (
               <div key={i} style={{height:1, margin:"3px 0", background:c.brH}}/>
             ) : (
-              <div key={item.lbl} onClick={()=>{ v9RunDrawingMoreMenuAction(item.lbl); setTlBarDrop(null); }}
+              <div key={item.lbl} {...tlBarDropPick(() => v9RunDrawingMoreMenuAction(item.lbl))}
                 onMouseEnter={()=>setHov(`tbmore-${item.lbl}`)} onMouseLeave={()=>setHov(null)}
                 style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px", cursor:"default",
                          background:hov===`tbmore-${item.lbl}`?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -24334,6 +24443,7 @@ const TalariaV8bLive = () => {
               onMouseLeave={()=>{setHov(null);}}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                v9SuppressNextChartDeselect();
                 if (typeof onClick === "function") onClick(e);
               }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -24597,10 +24707,10 @@ const TalariaV8bLive = () => {
                 <div style={{width:12,height:2,background:tlStyle.labelColor,borderRadius:1}}/>
               </div>}
             </TlBtn>
-            {/* range: background color */}
-            <TlBtn id="tl-rng-bg" isAct={colorPicker==="tlBgColor"}
-              onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
-              {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
+            {/* range: background color (label box) */}
+            <TlBtn id="tl-rng-bg" isAct={colorPicker==="tlLabelBgColor"}
+              onClick={e=>{e.stopPropagation();if(colorPicker==="tlLabelBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.labelBgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlLabelBgColor");}}}>
+              {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.labelBgColor}/></svg>}
             </TlBtn>
             {/* range: font size */}
             <TlBtn id="tl-rng-fsz" isAct={tlBarDrop==="rngFsz"} w="auto"
