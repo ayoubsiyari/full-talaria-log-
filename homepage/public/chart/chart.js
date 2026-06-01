@@ -4579,6 +4579,7 @@ class Chart {
     _queuePersistedIndicatorsRestore(list) {
         if (!Array.isArray(list) || list.length === 0) return;
         this._pendingIndicatorsState = list;
+        this._sessionIndicatorsRestoreGuardUntil = Date.now() + 12000;
         this._scheduleApplyPersistedIndicators();
     }
 
@@ -5157,17 +5158,27 @@ class Chart {
     _applyPersistedIndicators() {
         const list = this._pendingIndicatorsState;
         if (!Array.isArray(list) || list.length === 0) return;
-        this._pendingIndicatorsState = null;
+        if (!Array.isArray(this.data) || this.data.length === 0) {
+            this._scheduleApplyPersistedIndicators();
+            return;
+        }
+
+        this._sessionIndicatorsRestoreGuardUntil = Date.now() + 12000;
+        const prevActive = (this.indicators && Array.isArray(this.indicators.active))
+            ? this.indicators.active.slice()
+            : [];
         // Clear current indicators silently before restoring
         if (this.indicators && Array.isArray(this.indicators.active)) {
             this.indicators.active = [];
             this.indicators.data = {};
         }
+        let restored = 0;
         list.forEach(snap => {
             if (!snap.type) return;
             try {
                 const p = Object.assign({}, snap.params || {}, snap.style || {});
                 const ind = this.addIndicator(snap.type, p);
+                if (ind) restored += 1;
                 if (ind && snap.visible === false) ind.visible = false;
                 if (ind && snap.visibility && typeof snap.visibility === 'object') {
                     try {
@@ -5180,6 +5191,14 @@ class Chart {
                 console.warn('⚠️ Could not restore indicator', snap.type, e);
             }
         });
+        if (restored === 0) {
+            if (this.indicators && Array.isArray(this.indicators.active)) {
+                this.indicators.active = prevActive;
+            }
+            this._scheduleApplyPersistedIndicators();
+            return;
+        }
+        this._pendingIndicatorsState = null;
         if (typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
         }
@@ -5188,6 +5207,11 @@ class Chart {
             try { this.replaySystem.updateChartData(false); } catch (_) { /* ignore */ }
         }
         if (typeof this.render === 'function') this.render();
+        try {
+            window.dispatchEvent(new CustomEvent('indicatorsChanged', {
+                detail: { action: 'restore', count: restored },
+            }));
+        } catch (_) { /* ignore */ }
     }
 
     /** Patches that must persist even if GET /state has not finished (race on first load). */

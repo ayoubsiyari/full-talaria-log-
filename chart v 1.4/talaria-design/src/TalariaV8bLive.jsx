@@ -747,6 +747,25 @@ function v9SanitizeGroupSelected(prev) {
   return next || prev;
 }
 
+function v9DefaultShowInfoTypesForRangeType(rangeType) {
+  if (rangeType === "Price") {
+    return ["Price range", "Percent change", "Change in pips"];
+  }
+  if (rangeType === "Date and time") {
+    return ["Bars range", "Date/time range"];
+  }
+  return ["Price range", "Percent change", "Change in pips", "Bars range", "Date/time range", "Volume"];
+}
+
+function v9TlStylePatchForRangeType(prev, nextRangeType) {
+  if (!nextRangeType || prev?.rangeType === nextRangeType) return prev;
+  return {
+    ...prev,
+    rangeType: nextRangeType,
+    showInfoTypes: v9DefaultShowInfoTypesForRangeType(nextRangeType),
+  };
+}
+
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
   const show = !!tlStyle?.showInfo && types.length > 0;
@@ -10177,8 +10196,43 @@ const TalariaV8bLive = () => {
       let panelMap = allMaps.get(focused);
       if (!panelMap) { panelMap = Object.create(null); allMaps.set(focused, panelMap); }
 
+      const syncIndUiFromMultichartFocus = () => {
+        if (cancelled) return;
+        const g = window.__multichartGrid;
+        if (!g || typeof g.getPanelIndicators !== "function") return;
+        const id = g.getFocusedPanelId() || "A";
+        const TYPE_TO_V9 = {};
+        for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) TYPE_TO_V9[t] = v9Id;
+        g.getPanelIndicators(id)
+          .then((items) => {
+            if (cancelled) return;
+            let map = allMaps.get(id);
+            if (!map) { map = Object.create(null); allMaps.set(id, map); }
+            for (const k of Object.keys(map)) delete map[k];
+            const next = [];
+            for (const it of items) {
+              const v9 = it.type ? TYPE_TO_V9[it.type] : null;
+              if (v9 && it.id) {
+                map[v9] = it.id;
+                if (!next.includes(v9)) next.push(v9);
+              }
+            }
+            setIndActive((prev) => {
+              if (prev.length === next.length && prev.every((x, i) => x === next[i])) return prev;
+              return next;
+            });
+          })
+          .catch(() => {});
+      };
+
       const nowSet  = new Set(indActive);
       const prevSet = new Set(Object.keys(panelMap));
+
+      // Same refresh race as single-chart path — mirror panel truth before diffing.
+      if (indActive.length === 0 && prevSet.size > 0) {
+        syncIndUiFromMultichartFocus();
+        return;
+      }
 
       // Remove indicators from focused panel that are no longer in the
       // toolbar's active set.
@@ -10215,43 +10269,6 @@ const TalariaV8bLive = () => {
             });
       }
 
-      // When the user clicks a different multichart panel, mirror that
-      // panel's actual indicator list back into `indActive` so the
-      // toolbar chips reflect the focused panel. Skip if the focused
-      // panel id hasn't changed (no-op for chart-state updates).
-      const syncIndUiFromMultichartFocus = () => {
-        if (cancelled) return;
-        const g = window.__multichartGrid;
-        if (!g || typeof g.getPanelIndicators !== "function") return;
-        const id = g.getFocusedPanelId() || "A";
-        // Reusing the same TYPE_TO_V9 reverse-lookup as legacy.
-        const TYPE_TO_V9 = {};
-        for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) TYPE_TO_V9[t] = v9Id;
-        g.getPanelIndicators(id)
-          .then((items) => {
-            if (cancelled) return;
-            let map = allMaps.get(id);
-            if (!map) { map = Object.create(null); allMaps.set(id, map); }
-            // Wipe the stored map and rebuild from the panel's truth so
-            // we drop stale __pending__ slots and indicators that were
-            // closed via the chart's own UI.
-            for (const k of Object.keys(map)) delete map[k];
-            const next = [];
-            for (const it of items) {
-              const v9 = it.type ? TYPE_TO_V9[it.type] : null;
-              if (v9 && it.id) {
-                map[v9] = it.id;
-                if (!next.includes(v9)) next.push(v9);
-              }
-            }
-            setIndActive((prev) => {
-              if (prev.length === next.length && prev.every((x, i) => x === next[i])) return prev;
-              return next;
-            });
-          })
-          .catch(() => {});
-      };
-
       window.addEventListener("multichartFocusChanged", syncIndUiFromMultichartFocus);
       window.addEventListener("indicatorsChanged", syncIndUiFromMultichartFocus);
       return () => {
@@ -10261,6 +10278,39 @@ const TalariaV8bLive = () => {
       };
     }
     // ─── /Phase 7.2.4 multichart branch ─────────────────────────────────
+
+    const syncIndUiFromFocusedChart = () => {
+      if (cancelled) return;
+      const chart =
+        typeof window.getActiveChart === "function"
+          ? window.getActiveChart()
+          : window.chart;
+      if (!chart || !Array.isArray(chart.indicators?.active)) return;
+      const TYPE_TO_V9 = {};
+      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
+        TYPE_TO_V9[t] = v9Id;
+      }
+      const map = getMapForChart(chart);
+      if (!map) return;
+      for (const k of Object.keys(map)) delete map[k];
+      const next = [];
+      for (const ind of chart.indicators.active) {
+        const v9 = TYPE_TO_V9[ind.type];
+        if (v9 && ind.id) {
+          map[v9] = ind.id;
+          if (!next.includes(v9)) next.push(v9);
+        }
+      }
+      setIndActive((prev) => {
+        if (
+          prev.length === next.length &&
+          prev.every((x, i) => x === next[i])
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
 
     const apply = () => {
       if (cancelled) return;
@@ -10280,6 +10330,16 @@ const TalariaV8bLive = () => {
         return;
       }
       console.log("[V9 ind] chart ready, applying. data.length=", chart.data.length);
+
+      // Session restore can populate chart.js before this toolbar state hydrates.
+      // chartDataLoaded then runs apply() with indActive=[] while the map already
+      // lists restored ids — that diff removes every indicator and persistIndicators([])
+      // wipes server state, so the next refresh is empty too.
+      const restoredOnChart = chart.indicators?.active?.length || 0;
+      if (indActive.length === 0 && restoredOnChart > 0) {
+        syncIndUiFromFocusedChart();
+        return;
+      }
 
       const map = getMapForChart(chart);
       if (!map) return;
@@ -10331,42 +10391,15 @@ const TalariaV8bLive = () => {
 
     const onPanelOrData = () => {
       attempts = 0;
-      apply();
-    };
-
-    // When the focused tile changes, mirror V9's indActive + id-map from that chart's
-    // real indicators (so we don't re-apply the previous tile's list onto the new one).
-    const syncIndUiFromFocusedChart = () => {
-      if (cancelled) return;
       const chart =
         typeof window.getActiveChart === "function"
           ? window.getActiveChart()
           : window.chart;
-      if (!chart || !Array.isArray(chart.indicators?.active)) return;
-      const TYPE_TO_V9 = {};
-      for (const [v9Id, t] of Object.entries(ID_TO_TYPE)) {
-        TYPE_TO_V9[t] = v9Id;
+      if (chart?.indicators?.active?.length > 0 && indActive.length === 0) {
+        syncIndUiFromFocusedChart();
+        return;
       }
-      const map = getMapForChart(chart);
-      if (!map) return;
-      for (const k of Object.keys(map)) delete map[k];
-      const next = [];
-      for (const ind of chart.indicators.active) {
-        const v9 = TYPE_TO_V9[ind.type];
-        if (v9 && ind.id) {
-          map[v9] = ind.id;
-          if (!next.includes(v9)) next.push(v9);
-        }
-      }
-      setIndActive((prev) => {
-        if (
-          prev.length === next.length &&
-          prev.every((x, i) => x === next[i])
-        ) {
-          return prev;
-        }
-        return next;
-      });
+      apply();
     };
 
     apply();
@@ -16023,6 +16056,17 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Range Tool Input → Range Type — apply on pick (TradingView-like), not only on OK. */
+  const applyTlRangeType = useCallback((nextRangeType) => {
+    flushSync(() => {
+      setTlStyle((s) => v9TlStylePatchForRangeType(s, nextRangeType));
+    });
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Line thickness — same-frame chart sync (pattern/Elliott quick bar + settings). */
   const applyTlLineWidth = useCallback((lineWidth) => {
     flushSync(() => setTlStyle((s) => {
@@ -20257,7 +20301,7 @@ const TalariaV8bLive = () => {
                       <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
                       {["Date & Price","Price","Date and time"].map(v=>{
                         const isA=tlStyle.rangeType===v,isH=hov===`rngType-${v}`;
-                        return(<div key={v} onClick={()=>{setTlStyle(s=>({...s,rangeType:v}));setTlStyleDrop(null);}}
+                        return(<div key={v} {...tlStyleDropPick(() => applyTlRangeType(v))}
                           onMouseEnter={()=>setHov(`rngType-${v}`)} onMouseLeave={()=>setHov(null)}
                           style={{ padding:"5px 12px", cursor:"default", display:"flex", alignItems:"center", position:"relative",
                             background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>

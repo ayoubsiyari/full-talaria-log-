@@ -3516,6 +3516,11 @@
             }
             return base;
         });
+        if (snapshot.length === 0
+            && this._sessionIndicatorsRestoreGuardUntil
+            && Date.now() < this._sessionIndicatorsRestoreGuardUntil) {
+            return;
+        }
         if (typeof this.scheduleSessionStateSave === 'function') {
             this.scheduleSessionStateSave({ indicators: snapshot });
         }
@@ -4689,6 +4694,10 @@
     };
     
     Chart.prototype.removeIndicator = function(id) {
+        if (this._sessionIndicatorsRestoreGuardUntil
+            && Date.now() < this._sessionIndicatorsRestoreGuardUntil) {
+            return;
+        }
         const index = this.indicators.active.findIndex(function(ind) {
             return ind.id === id;
         });
