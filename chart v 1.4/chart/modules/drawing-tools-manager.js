@@ -2285,12 +2285,15 @@ class DrawingToolsManager {
         return drawingType === 'image' || drawingType === 'emoji';
     }
 
-    /** Sync drag translate on main group (+ optional unclipped labels layer). */
+    /** Sync drag translate on main group (+ axis highlight labels + optional unclipped labels layer). */
     _applyDrawingDragTransform(drawing, transform) {
         if (!drawing) return;
         const t = transform || null;
         if (drawing.group) {
             drawing.group.attr('transform', t);
+        }
+        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
+            drawing.axisHighlightGroup.attr('transform', t);
         }
         if (this.labelsGroup && !this.labelsGroup.empty() && drawing.id) {
             const layer = this.labelsGroup.select(`[data-id="${drawing.id}"]`);
@@ -2305,38 +2308,6 @@ class DrawingToolsManager {
         if (this.chart && typeof this.chart.updateCrosshair === 'function' && event) {
             this.chart.updateCrosshair(event);
         }
-    }
-
-    /** Chart-pan style: shift existing axis label DOM (fast), not rebuild every frame. */
-    _syncAxisHighlightsPanDelta(pixelDx, pixelDy) {
-        if (!this.chart || typeof this.chart._applyAxisHighlightPanTransform !== 'function') return;
-        if (pixelDx === 0 && pixelDy === 0) {
-            this._clearGeometryDragAxisTransforms();
-            return;
-        }
-        this.chart._applyAxisHighlightPanTransform(pixelDx, pixelDy);
-    }
-
-    _clearGeometryDragAxisTransforms() {
-        if (this.chart && typeof this.chart._clearAxisHighlightPanTransform === 'function') {
-            this.chart._clearAxisHighlightPanTransform();
-        }
-    }
-
-    /** One paint per animation frame during shape drag (same cadence as chart pan). */
-    _scheduleGeometryDragPaint(event, paintFrame) {
-        if (typeof paintFrame !== 'function') return;
-        this._geometryDragLastEvent = event;
-        if (this._geometryDragPaintPending) return;
-        this._geometryDragPaintPending = true;
-        requestAnimationFrame(() => {
-            this._geometryDragPaintPending = false;
-            const ev = this._geometryDragLastEvent;
-            this._geometryDragLastEvent = null;
-            if (!ev) return;
-            paintFrame(ev);
-            this._refreshPointerChromeDuringGeometryDrag(ev);
-        });
     }
 
     _clearDrawingDragTransform(drawing) {
@@ -2440,24 +2411,6 @@ class DrawingToolsManager {
                     type: drawing.type,
                     points: points.map((p) => (p ? { ...p } : p)),
                 },
-            }));
-        } catch (_) { /* ignore */ }
-    }
-
-    /** Tell V9 React to hide the floating quick bar (deselect / arm draw tool / Ctrl magnet). */
-    _dispatchV9SelectionCleared() {
-        if (typeof window === 'undefined') return;
-        try {
-            window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
-        } catch (_) { /* ignore */ }
-    }
-
-    /** Tell V9 React a drawing is primary-selected (toolbar.show bridge backup). */
-    _dispatchV9SelectedDrawing(drawing) {
-        if (typeof window === 'undefined' || !drawing || !drawing.type) return;
-        try {
-            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', {
-                detail: { drawingType: drawing.type },
             }));
         } catch (_) { /* ignore */ }
     }
@@ -3536,39 +3489,37 @@ class DrawingToolsManager {
             }
             const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
             
-            this._scheduleGeometryDragPaint(event, (ev) => {
-                const [cx, cy] = this._eventCanvasLocalXY(ev);
-                const pixelDx = cx - this.dragStartScreen.x;
-                const pixelDy = cy - this.dragStartScreen.y;
-                
-                if (this.draggingMultiple && this.multiDragStartPositions) {
-                    this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
-                        if (drawing.group) {
-                            const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
-                            const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                            this._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                        }
-                        if (Array.isArray(points)) {
-                            const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
-                            this._broadcastLiveEditUpdate(drawing, previewPoints);
-                        }
-                    });
-                } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
-                    const newX = this.dragStartOriginalPos.x + pixelDx;
-                    const newY = this.dragStartOriginalPos.y + pixelDy;
-                    this._applyDrawingDragTransform(this.draggingDrawing, `translate(${newX}, ${newY})`);
-                    if (Array.isArray(this.singleDragStartPoints)) {
-                        const previewPoints = this._translatePointsByPixels(
-                            this.singleDragStartPoints,
-                            pixelDx,
-                            pixelDy,
-                            this.draggingDrawing.type
-                        );
-                        this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
+            // Calculate pixel delta
+            const pixelDx = currentScreenX - this.dragStartScreen.x;
+            const pixelDy = currentScreenY - this.dragStartScreen.y;
+            
+            if (this.draggingMultiple && this.multiDragStartPositions) {
+                this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
+                    if (drawing.group) {
+                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
+                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
+                        this._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                     }
+                    if (Array.isArray(points)) {
+                        const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
+                        this._broadcastLiveEditUpdate(drawing, previewPoints);
+                    }
+                });
+            } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
+                const newX = this.dragStartOriginalPos.x + pixelDx;
+                const newY = this.dragStartOriginalPos.y + pixelDy;
+                this._applyDrawingDragTransform(this.draggingDrawing, `translate(${newX}, ${newY})`);
+                if (Array.isArray(this.singleDragStartPoints)) {
+                    const previewPoints = this._translatePointsByPixels(
+                        this.singleDragStartPoints,
+                        pixelDx,
+                        pixelDy,
+                        this.draggingDrawing.type
+                    );
+                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
-                this._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
-            });
+            }
+            this._refreshPointerChromeDuringGeometryDrag(event);
             return;
         }
         
@@ -4033,18 +3984,6 @@ class DrawingToolsManager {
                     metaKey: event.metaKey,
                     shiftKey: event.shiftKey
                 });
-            }
-        }
-
-        // Armed draw tool + Ctrl (magnet): chart deselects axis labels — sync V9 quick bar off too.
-        if ((event.key === 'Control' || event.key === 'Meta') && this.currentTool) {
-            if (this.selectedDrawings.length > 0) {
-                this.deselectAll({ forSelectionChange: true });
-            } else {
-                this._dispatchV9SelectionCleared();
-                if (this.toolbar && typeof this.toolbar.hide === 'function') {
-                    this.toolbar.hide();
-                }
             }
         }
 
@@ -6298,53 +6237,51 @@ class DrawingToolsManager {
                         return;
                     }
 
-                    if (!dragStartPoints || !bodyDragStartScreen || !event.sourceEvent) return;
+                    if (!dragStartPoints || !bodyDragStartScreen) return;
 
-                    const paintBodyDrag = (srcEvent) => {
-                        if (!dragStartPoints || !bodyDragStartScreen) return;
-                        const [cx, cy] = self._eventCanvasLocalXY(srcEvent);
-                        let pixelDx = cx - bodyDragStartScreen.x;
-                        let pixelDy = cy - bodyDragStartScreen.y;
-                        if (self._isHorizontalAnchorToolType(drawing.type)) {
-                            pixelDy = 0;
-                        }
-                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                            multiDragStartPoints.forEach(item => {
-                                if (!item.drawing || !item.drawing.group) return;
-                                const sx = item.startTransform ? item.startTransform.x : 0;
-                                const sy = item.startTransform ? item.startTransform.y : 0;
-                                self._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                                const previewPoints = self._translatePointsByPixels(
-                                    item.points,
-                                    pixelDx,
-                                    pixelDy,
-                                    item.drawing.type
-                                );
-                                if (previewPoints) {
-                                    self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
-                                }
-                            });
-                        } else if (drawing.group) {
-                            const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
-                            const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
-                            self._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                    const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
+                    let pixelDx = currentScreenX - bodyDragStartScreen.x;
+                    let pixelDy = currentScreenY - bodyDragStartScreen.y;
+                    if (self._isHorizontalAnchorToolType(drawing.type)) {
+                        pixelDy = 0;
+                    }
+
+                    // Smooth drag: CSS transform only — commit to data points once on drag end.
+                    if (multiDragStartPoints && multiDragStartPoints.length > 1) {
+                        multiDragStartPoints.forEach(item => {
+                            if (!item.drawing || !item.drawing.group) return;
+                            const sx = item.startTransform ? item.startTransform.x : 0;
+                            const sy = item.startTransform ? item.startTransform.y : 0;
+                            self._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                             const previewPoints = self._translatePointsByPixels(
-                                dragStartPoints,
+                                item.points,
                                 pixelDx,
                                 pixelDy,
-                                drawing.type
+                                item.drawing.type
                             );
                             if (previewPoints) {
-                                self._notifyV9DrawingGeometryLive(drawing, previewPoints);
+                                self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
                             }
+                        });
+                    } else if (drawing.group) {
+                        const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
+                        const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
+                        self._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                        const previewPoints = self._translatePointsByPixels(
+                            dragStartPoints,
+                            pixelDx,
+                            pixelDy,
+                            drawing.type
+                        );
+                        if (previewPoints) {
+                            self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
-                        self._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
-                    };
-
-                    self._scheduleGeometryDragPaint(event.sourceEvent, paintBodyDrag);
+                    }
+                    if (event.sourceEvent) {
+                        self._refreshPointerChromeDuringGeometryDrag(event.sourceEvent);
+                    }
                 })
                 .on('end', function(event) {
-                    self._clearGeometryDragAxisTransforms();
                     self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -6744,7 +6681,6 @@ class DrawingToolsManager {
                 const sy = item.startTransform ? item.startTransform.y : 0;
                 this._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
             });
-            this._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
         };
 
         this._directMoveMoveHandler = (e) => {
@@ -6767,7 +6703,6 @@ class DrawingToolsManager {
             if (this._directMovePendingFrame && this._directMoveLastEvent) {
                 applyDirectMoveTransform(this._directMoveLastEvent);
             }
-            this._clearGeometryDragAxisTransforms();
             this._stopDirectMoveDrag();
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
@@ -7370,7 +7305,6 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
-        this._clearGeometryDragAxisTransforms();
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -7412,9 +7346,6 @@ class DrawingToolsManager {
                 this._clearDrawingDragTransform(drawing);
                 this._refreshDrawingTimestampAnchors(drawing);
                 this.renderDrawing(drawing);
-                if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                    drawing.showAxisHighlights();
-                }
             });
         } else if (this.draggingDrawing && this.dragStartOriginalPos) {
             // Get final transform position
@@ -7453,9 +7384,6 @@ class DrawingToolsManager {
             this._clearDrawingDragTransform(this.draggingDrawing);
             this._refreshDrawingTimestampAnchors(this.draggingDrawing);
             this.renderDrawing(this.draggingDrawing);
-            if (this.draggingDrawing.selected && typeof this.draggingDrawing.showAxisHighlights === 'function') {
-                this.draggingDrawing.showAxisHighlights();
-            }
         }
         
         this.isDragging = false;
@@ -7526,7 +7454,6 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
                 this.toolbar.show(lastDrawing, x, y);
-                this._dispatchV9SelectedDrawing(lastDrawing);
                 }
             }
         } else {
@@ -7545,7 +7472,6 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                     this.toolbar.show(drawing, x, y);
-                    this._dispatchV9SelectedDrawing(drawing);
                 }
                 return;
             }
@@ -7566,7 +7492,6 @@ class DrawingToolsManager {
                 const y = svgRect.top + bbox.y;
                 if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                 this.toolbar.show(drawing, x, y);
-                this._dispatchV9SelectedDrawing(drawing);
             }
         }
         
@@ -7676,7 +7601,6 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
-        this._dispatchV9SelectionCleared();
         this.redrawAll();
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {

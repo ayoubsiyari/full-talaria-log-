@@ -14188,7 +14188,6 @@ class Chart {
                 const replayForTf = this.replaySystem;
                 if (replayForTf?.isActive
                     && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
-                    && this._canClientResampleToTimeframe(normalizedTf)
                     && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
                     return;
                 }
@@ -14915,8 +14914,7 @@ class Chart {
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
 
-        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)
-            && this._canClientResampleToTimeframe(timeframe)) {
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
             if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
                 return;
             }
@@ -17945,6 +17943,10 @@ class Chart {
     drawAxisHighlightZones() {
         // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
         if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
+        const dm = this.drawingManager;
+        if (dm && typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
+            return;
+        }
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         

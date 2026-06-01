@@ -2440,9 +2440,11 @@ class Chart {
         const rawMs = this._getNativeRawTfMs();
         if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(rawMs) || rawMs <= 0) return false;
         // Zoom-out (coarser/equal TF): instant client resample for small steps only.
-        // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~3 daily bars.
+        // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
         if (newMs >= rawMs * 0.92) {
-            if (newMs / rawMs > 6) return false;
+            if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
+                if (newMs / rawMs > 6) return false;
+            }
             return true;
         }
         if (this._isBacktestReplayActive()) return false;
@@ -2529,13 +2531,6 @@ class Chart {
         const fid = String(fileId);
         if (!this._tfDataCache.has(fid)) this._tfDataCache.set(fid, new Map());
         const perFile = this._tfDataCache.get(fid);
-        const tfMs = this.parseTimeframe(tf);
-        const nativeMs = this.parseTimeframe(this._nativeRawFetchTf || tf);
-        // Never store a coarser-TF slot using finer native bars (e.g. 1m raw under '1d').
-        if (Number.isFinite(tfMs) && Number.isFinite(nativeMs) && tfMs > 0 && nativeMs > 0
-            && nativeMs < tfMs * 0.92 && tfMs / nativeMs > 6) {
-            return;
-        }
         perFile.set(tf, {
             at: Date.now(),
             rawData: this.rawData.slice(),
@@ -2556,13 +2551,6 @@ class Chart {
     _restoreFromTfDataCache(fileId, normalizedTf) {
         const entry = this._getTfDataCache(fileId, normalizedTf);
         if (!entry) return false;
-        // Reject corrupted entries (e.g. '1d' slot holding 1m rawData from a bad client-resample).
-        const keyMs = this.parseTimeframe(normalizedTf);
-        const nativeMs = this.parseTimeframe(entry.nativeRawFetchTf || normalizedTf);
-        if (Number.isFinite(keyMs) && Number.isFinite(nativeMs) && keyMs > 0 && nativeMs > 0
-            && nativeMs < keyMs * 0.92 && keyMs / nativeMs > 6) {
-            return false;
-        }
         this.rawData = entry.rawData.slice();
         this.data = Array.isArray(entry.data) && entry.data.length
             ? entry.data.slice()
@@ -14159,12 +14147,6 @@ class Chart {
             this.drawingManager.saveDrawings();
         }
 
-        // Snapshot the outgoing TF into cache before we mutate rawData (live only).
-        if (this.currentFileId && !this.isBacktestMode
-            && Array.isArray(this.rawData) && this.rawData.length > 0) {
-            this._saveTfDataCache(this.currentFileId, this.currentTimeframe);
-        }
-
         // Begin the visual freeze + loading-dots indicator. Anything that triggers
         // render() between here and _endTimeframeSwitching() short-circuits, so the
         // last good frame stays on the canvas until the new TF's bars are ready.
@@ -14206,7 +14188,6 @@ class Chart {
                 const replayForTf = this.replaySystem;
                 if (replayForTf?.isActive
                     && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
-                    && this._canClientResampleToTimeframe(normalizedTf)
                     && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
                     return;
                 }
@@ -14933,8 +14914,7 @@ class Chart {
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
 
-        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)
-            && this._canClientResampleToTimeframe(timeframe)) {
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
             if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
                 return;
             }
@@ -17963,6 +17943,10 @@ class Chart {
     drawAxisHighlightZones() {
         // Zones are stored in pre-pan pixel coords; skip while CSS-transforming drawings.
         if (this._isChartViewPanning() && this._canPanTransformDrawings()) return;
+        const dm = this.drawingManager;
+        if (dm && typeof dm._isDrawingGeometryMoveActive === 'function' && dm._isDrawingGeometryMoveActive()) {
+            return;
+        }
         // Check if there are any axis highlight zones to draw
         if (!this.axisHighlightZones || this.axisHighlightZones.length === 0) return;
         
