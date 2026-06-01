@@ -396,7 +396,12 @@ class DatePriceRangeTool extends BaseDrawing {
     /** Shared stats label for price / time / both range modes (respects `infoSettings`). */
     appendRangeInfoLabel(p1, p2, scales, anchor = {}) {
         if (!this.style.showLabel) return;
-        const lines = this.buildRangeInfoLines(p1, p2, scales);
+        let lines;
+        try {
+            lines = this.buildRangeInfoLines(p1, p2, scales);
+        } catch (_) {
+            return;
+        }
         if (!lines.length) return;
 
         const x = anchor.x;
@@ -404,47 +409,58 @@ class DatePriceRangeTool extends BaseDrawing {
         const weight = anchor.weight || '500';
         const rx = anchor.rx != null ? anchor.rx : 9;
 
-        const labelGroup = this.group.append('g')
-            .attr('class', 'date-price-range-label')
-            .style('pointer-events', 'none');
+        try {
+            const labelGroup = this.group.append('g')
+                .attr('class', 'date-price-range-label')
+                .style('pointer-events', 'none');
 
-        const fontSize = parseInt(this.style.fontSize || 12, 10);
-        const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
+            const fontSize = parseInt(this.style.fontSize || 12, 10);
+            const lineHeight = Math.max(16, Math.round(fontSize * 1.45));
 
-        const text = labelGroup.append('text')
-            .attr('x', x)
-            .attr('y', y)
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', anchor.baseline || 'auto')
-            .attr('fill', this.style.textColor || '#d1d4dc')
-            .attr('font-size', `${fontSize}px`)
-            .attr('font-weight', weight)
-            .attr('font-family', TRENDLINE_INFO_FONT_FAMILY);
-
-        lines.forEach((line, idx) => {
-            text.append('tspan')
+            const text = labelGroup.append('text')
                 .attr('x', x)
-                .attr('y', y + (idx * lineHeight))
+                .attr('y', y)
+                .attr('text-anchor', 'middle')
+                .attr('dominant-baseline', anchor.baseline || 'hanging')
+                .attr('fill', this.style.textColor || '#d1d4dc')
+                .attr('font-size', `${fontSize}px`)
                 .attr('font-weight', weight)
-                .attr('fill', line.fill || (this.style.textColor || '#d1d4dc'))
-                .text(line.text);
-        });
+                .attr('font-family', TRENDLINE_INFO_FONT_FAMILY);
 
-        const bbox = text.node().getBBox();
-        if (this.style.showLabelBackground) {
-            const horizontalPadding = 8;
-            const verticalPadding = 8;
-            labelGroup.insert('rect', 'text')
-                .attr('class', 'range-info-box')
-                .attr('x', bbox.x - horizontalPadding)
-                .attr('y', bbox.y - verticalPadding)
-                .attr('width', bbox.width + (horizontalPadding * 2))
-                .attr('height', bbox.height + (verticalPadding * 2))
-                .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
-                .attr('stroke', 'none')
-                .attr('stroke-width', 0)
-                .attr('stroke-dasharray', null)
-                .attr('rx', rx);
+            lines.forEach((line, idx) => {
+                text.append('tspan')
+                    .attr('x', x)
+                    .attr('dy', idx === 0 ? 0 : lineHeight)
+                    .attr('font-weight', weight)
+                    .attr('fill', line.fill || (this.style.textColor || '#d1d4dc'))
+                    .text(line.text);
+            });
+
+            if (this.style.showLabelBackground) {
+                const textNode = text.node();
+                if (!textNode) return;
+                let bbox;
+                try {
+                    bbox = textNode.getBBox();
+                } catch (_) {
+                    return;
+                }
+                const horizontalPadding = 8;
+                const verticalPadding = 8;
+                labelGroup.insert('rect', 'text')
+                    .attr('class', 'range-info-box')
+                    .attr('x', bbox.x - horizontalPadding)
+                    .attr('y', bbox.y - verticalPadding)
+                    .attr('width', bbox.width + (horizontalPadding * 2))
+                    .attr('height', bbox.height + (verticalPadding * 2))
+                    .attr('fill', this.style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)')
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0)
+                    .attr('stroke-dasharray', null)
+                    .attr('rx', rx);
+            }
+        } catch (_) {
+            /* Never block range geometry/handles when stats label fails. */
         }
     }
 

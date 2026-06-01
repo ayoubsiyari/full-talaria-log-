@@ -22314,10 +22314,6 @@ class Chart {
                 && this.drawingManager._isDrawingGeometryMoveActive()) {
                 return;
             }
-            if (typeof this.drawingManager._isHandleEditActive === 'function'
-                && this.drawingManager._isHandleEditActive()) {
-                return;
-            }
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
             if (this._isChartViewPanning()) {

@@ -260,14 +260,12 @@ class BaseDrawing {
             if (node && node.parentNode) {
                 const dragTransform = this.group.attr('transform') || null;
                 const dm = this.chart && this.chart.drawingManager;
-                const handleEditActive = dm && typeof dm._isHandleEditActive === 'function' && dm._isHandleEditActive();
-                const geometryMoveActive = !handleEditActive && dm
+                const geometryMoveActive = dm
                     && typeof dm._isDrawingGeometryMoveActive === 'function'
                     && dm._isDrawingGeometryMoveActive();
                 const preserveDragTransform = !!(
-                    !handleEditActive
-                    && (normalized.preserveDragTransform
-                        || (geometryMoveActive && dragTransform && dragTransform !== 'none'))
+                    normalized.preserveDragTransform
+                    || (geometryMoveActive && dragTransform && dragTransform !== 'none')
                 );
                 this._clearGeometryChildren(this.group);
                 const g = this.group

@@ -450,9 +450,7 @@ class DrawingToolsManager {
                 }
             });
 
-            if (this._isLiveDrawingInteraction()
-                && !this._isDrawingGeometryMoveActive()
-                && !this._isHandleEditActive()
+            if (this._isLiveDrawingInteraction() && !this._isDrawingGeometryMoveActive()
                 && this.chart && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
@@ -472,15 +470,6 @@ class DrawingToolsManager {
             this.isDragging
             || this._directMoveMoveHandler
             || (this._bodyDragDepth || 0) > 0
-        );
-    }
-
-    /** Corner/side handle resize or custom-handle edit (must not use shape-drag transform path). */
-    _isHandleEditActive() {
-        return !!(
-            this.isResizing
-            || this.isCustomHandleDragging
-            || this.isCustomHandleDrag
         );
     }
 
@@ -2348,83 +2337,6 @@ class DrawingToolsManager {
         });
     }
 
-    _getDrawingRenderScales() {
-        return {
-            xScale: this.chart.xScale,
-            yScale: this.chart.yScale,
-            chart: this.chart,
-            labelsGroup: this.labelsGroup
-        };
-    }
-
-    /** In-place SVG patch during live resize (same hot path as chart pan). */
-    _tryPatchLiveHandleGeometry(drawing) {
-        if (!drawing || !drawing.group || drawing.group.empty()) return false;
-        if (!this.chart || typeof this.chart.yScale !== 'function') return false;
-        if (typeof drawing.patchPanZoomGeometry !== 'function') return false;
-        try {
-            return drawing.patchPanZoomGeometry(this._getDrawingRenderScales()) === true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    _syncLiveHandleChrome(drawing) {
-        if (!drawing || !drawing.group || drawing.group.empty()) return;
-        const scales = this._getDrawingRenderScales();
-        if (typeof drawing._syncLiveTextChrome === 'function' && drawing.bbox) {
-            drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
-        } else if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox
-            && typeof drawing._shouldCreateHandles === 'function'
-            && drawing._shouldCreateHandles({ skipHandles: false })) {
-            drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
-        } else if (typeof drawing._syncBoxHandlePositions === 'function') {
-            drawing._syncBoxHandlePositions(drawing.group, scales);
-        } else if (typeof drawing.updateHandlePositions === 'function') {
-            drawing.updateHandlePositions(scales);
-        }
-        drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
-            .style('pointer-events', 'all');
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights({ live: true, force: true });
-        }
-    }
-
-    /**
-     * One rAF resize paint: patch geometry in place when possible; else lightweight live render.
-     */
-    _applyLiveHandleEditPaint(drawing, event, applyPointsFn) {
-        if (!drawing) return;
-        const src = (event && event.sourceEvent) ? event.sourceEvent : event;
-        if (typeof this._scheduleGeometryDragPaint !== 'function') {
-            this._paintLiveHandleEditFrame(drawing, src, applyPointsFn);
-            return;
-        }
-        this._scheduleGeometryDragPaint(src, () => {
-            this._paintLiveHandleEditFrame(drawing, src, applyPointsFn);
-        });
-    }
-
-    _paintLiveHandleEditFrame(drawing, src, applyPointsFn) {
-        try {
-            if (typeof applyPointsFn === 'function' && src) {
-                applyPointsFn(src);
-            }
-            if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
-            if (this._tryPatchLiveHandleGeometry(drawing)) {
-                this._syncLiveHandleChrome(drawing);
-            } else {
-                this.renderDrawing(drawing, this._liveRenderDrawingOpts(drawing));
-            }
-            this._broadcastLiveEditUpdate(drawing);
-        } catch (err) {
-            try {
-                if (typeof applyPointsFn === 'function' && src) applyPointsFn(src);
-                this.scheduleRenderDrawing(drawing);
-            } catch (_) { /* ignore */ }
-        }
-    }
-
     _clearDrawingDragTransform(drawing) {
         this._applyDrawingDragTransform(drawing, null);
     }
@@ -3667,54 +3579,61 @@ class DrawingToolsManager {
                 this.resizingPointIndex = null;
                 return;
             }
-            const drawing = this.resizingDrawing;
-            const pointIndex = this.resizingPointIndex;
-            this._applyLiveHandleEditPaint(drawing, event, (src) => {
-                const currentPoint = this.getDataPoint(src, drawing.type);
-                let handledByDrawing = false;
-                if (typeof drawing.onPointHandleDrag === 'function') {
-                    handledByDrawing = drawing.onPointHandleDrag(pointIndex, {
-                        point: currentPoint,
-                        scales: this._getDrawingRenderScales()
-                    }) === true;
-                }
-                if (!handledByDrawing) {
-                    drawing.points[pointIndex] = this._snapPointXForDrawingType(currentPoint, drawing.type);
-                    drawing.meta.updatedAt = Date.now();
-                } else {
-                    this._snapDrawingPointsX(drawing);
-                }
-                this._syncHorizontalAnchorToolPointY(drawing);
-            });
+            const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
+            let handledByDrawing = false;
+            if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
+                handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
+                    point: currentPoint,
+                    scales: {
+                        xScale: this.chart.xScale,
+                        yScale: this.chart.yScale,
+                        chart: this.chart
+                    }
+                }) === true;
+            }
+
+            if (!handledByDrawing) {
+                this.resizingDrawing.points[this.resizingPointIndex] = this._snapPointXForDrawingType(
+                    currentPoint,
+                    this.resizingDrawing.type
+                );
+                this.resizingDrawing.meta.updatedAt = Date.now();
+            } else {
+                this._snapDrawingPointsX(this.resizingDrawing);
+            }
+            this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
+
+            this.scheduleRenderDrawing(this.resizingDrawing);
+            this._broadcastLiveEditUpdate(this.resizingDrawing);
             return;
         }
         
         // Handle custom handle dragging (for special resize handles)
-        if (this.isCustomHandleDrag && this.customHandleDrawing) {
+        if (this.isCustomHandleDragging && this.customHandleDraggingDrawing) {
             if (event.buttons !== undefined && event.buttons === 0) {
-                this.isCustomHandleDrag = false;
-                this.customHandleDrawing = null;
+                this.isCustomHandleDragging = false;
+                this.customHandleDraggingDrawing = null;
                 this.customHandleRole = null;
                 return;
             }
-            const drawing = this.customHandleDrawing;
-            const role = this.customHandleRole;
-            this._applyLiveHandleEditPaint(drawing, event, (src) => {
-                const ctx = this.collectHandleContext({ sourceEvent: src });
-                ctx.pointIndex = this.customHandlePointIndex;
-                if (ctx.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-                    const pointIndex = ctx.pointIndex;
-                    const otherIndex = pointIndex === 0 ? 1 : 0;
-                    if (drawing.points[otherIndex]) {
-                        ctx.dataPoint = this.constrainToAngle(drawing.points[otherIndex], ctx.dataPoint);
-                        ctx.point = ctx.dataPoint;
-                    }
+            const [screenX, screenY] = this._eventCanvasLocalXY(event);
+            const dataPoint = this.getDataPoint(event);
+            
+            const context = {
+                screen: { x: screenX, y: screenY },
+                data: dataPoint
+            };
+            
+            if (typeof this.customHandleDraggingDrawing.handleCustomHandleDrag === 'function') {
+                const handled = this.customHandleDraggingDrawing.handleCustomHandleDrag(
+                    this.customHandleRole,
+                    context
+                );
+                if (handled) {
+                    this.scheduleRenderDrawing(this.customHandleDraggingDrawing);
+                    this._broadcastLiveEditUpdate(this.customHandleDraggingDrawing);
                 }
-                if (typeof drawing.handleCustomHandleDrag === 'function') {
-                    drawing.handleCustomHandleDrag(role, ctx);
-                }
-                this._snapDrawingPointsX(drawing);
-            });
+            }
             return;
         }
 
@@ -5375,10 +5294,6 @@ class DrawingToolsManager {
         }
 
         if (liveRender && drawingRenderOpts && drawingRenderOpts.skipHandles) {
-            if (this._isHandleEditActive() && drawing.group && !drawing.group.empty()) {
-                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
-                    .style('pointer-events', 'all');
-            }
             if (typeof drawing._syncLiveTextChrome === 'function' && drawing.bbox) {
                 drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
             } else if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox
@@ -6985,7 +6900,7 @@ class DrawingToolsManager {
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
                     self._snapDrawingPointsX(drawing);
-                    self._applyLiveHandleEditPaint(drawing, event, null);
+                    self.scheduleRenderDrawing(drawing);
                     return true;
                 }
             }
@@ -7081,18 +6996,7 @@ class DrawingToolsManager {
                     }
                     
                     if (!applyPointHandleDrag(point, drawing, index)) {
-                        self._applyLiveHandleEditPaint(drawing, event, (src) => {
-                            let pt = self.getDataPoint(src, drawing.type);
-                            if (src.shiftKey && self.angleSnapTools.includes(drawing.type)) {
-                                const otherIndex = index === 0 ? 1 : 0;
-                                if (drawing.points[otherIndex]) {
-                                    pt = self.constrainToAngle(drawing.points[otherIndex], pt);
-                                }
-                            }
-                            drawing.points[index] = self._snapPointXForDrawingType(pt, drawing.type);
-                            drawing.meta.updatedAt = Date.now();
-                            self._syncHorizontalAnchorToolPointY(drawing);
-                        });
+                        self.handleDrag(event);
                     }
                 })
                 .on('end', function(event) {
@@ -7158,7 +7062,6 @@ class DrawingToolsManager {
      */
     startHandleDrag(drawing, pointIndex, event) {
         this._commitInlineTextEditorBeforeGeometryEdit();
-        this._clearDrawingDragTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
@@ -7184,26 +7087,33 @@ class DrawingToolsManager {
      */
     handleDrag(event) {
         if (!this.isResizing || !this.resizingDrawing) return;
-
+        
+        // Use sourceEvent for accurate mouse position
         const drawing = this.resizingDrawing;
+        let point = this.getDataPoint(event.sourceEvent, drawing.type);
         const index = this.resizingPointIndex;
+        
+        // Validate index
         if (index === undefined || index === null || isNaN(index)) {
             console.warn('⚠️ Invalid resize point index:', index);
             return;
         }
-
-        this._applyLiveHandleEditPaint(drawing, event, (src) => {
-            let point = this.getDataPoint(src, drawing.type);
-            if (src.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-                const otherIndex = index === 0 ? 1 : 0;
-                if (drawing.points[otherIndex]) {
-                    point = this.constrainToAngle(drawing.points[otherIndex], point);
-                }
+        
+        // Apply Shift key angle constraint for supported line tools
+        if (event.sourceEvent.shiftKey && this.angleSnapTools.includes(drawing.type)) {
+            // Get the other anchor point (for 2-point tools)
+            const otherIndex = index === 0 ? 1 : 0;
+            if (drawing.points[otherIndex]) {
+                point = this.constrainToAngle(drawing.points[otherIndex], point);
             }
-            drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
-            drawing.meta.updatedAt = Date.now();
-            this._syncHorizontalAnchorToolPointY(drawing);
-        });
+        }
+        
+        // Update point
+        drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
+        drawing.meta.updatedAt = Date.now();
+
+        this.scheduleRenderDrawing(drawing);
+        this._broadcastLiveEditUpdate(drawing);
     }
 
     /**
@@ -7237,9 +7147,6 @@ class DrawingToolsManager {
 
         drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
 
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
@@ -7254,7 +7161,6 @@ class DrawingToolsManager {
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
         this._commitInlineTextEditorBeforeGeometryEdit();
-        this._clearDrawingDragTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
@@ -7285,28 +7191,35 @@ class DrawingToolsManager {
 
     handleCustomHandleDrag(event) {
         if (!this.isCustomHandleDrag || !this.customHandleDrawing) return;
+        const context = this.collectHandleContext(event);
         const drawing = this.customHandleDrawing;
         const handleRole = this.customHandleRole;
-
-        this._applyLiveHandleEditPaint(drawing, event, (src) => {
-            const context = this.collectHandleContext({ sourceEvent: src });
-            context.pointIndex = this.customHandlePointIndex;
-            if (context.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-                const pointIndex = context.pointIndex;
-                const otherIndex = pointIndex === 0 ? 1 : 0;
-                if (drawing.points[otherIndex]) {
-                    context.dataPoint = this.constrainToAngle(drawing.points[otherIndex], context.dataPoint);
-                    context.point = context.dataPoint;
-                }
+        
+        // Add pointIndex to context for arc/curve sensitivity
+        context.pointIndex = this.customHandlePointIndex;
+        
+        // Apply Shift key angle constraint for supported line tools
+        if (context.shiftKey && this.angleSnapTools.includes(drawing.type)) {
+            const pointIndex = context.pointIndex;
+            const otherIndex = pointIndex === 0 ? 1 : 0;
+            if (drawing.points[otherIndex]) {
+                context.dataPoint = this.constrainToAngle(drawing.points[otherIndex], context.dataPoint);
+                context.point = context.dataPoint;
             }
-            if (typeof drawing.handleCustomHandleDrag === 'function') {
-                drawing.handleCustomHandleDrag(handleRole, context);
-            }
-            this._snapDrawingPointsX(drawing);
-        });
+        }
+        
+        if (typeof drawing.handleCustomHandleDrag === 'function') {
+            drawing.handleCustomHandleDrag(handleRole, context);
+        }
+        this._snapDrawingPointsX(drawing);
 
-        window.dispatchEvent(new CustomEvent('drawingStyleChanged', {
-            detail: { drawing, property: 'fontSize', value: drawing.style.fontSize }
+        // Always re-render during drag
+        this.scheduleRenderDrawing(drawing);
+        this._broadcastLiveEditUpdate(drawing);
+        
+        // Dispatch event to sync UI with drawing style changes (e.g., font size during text resize)
+        window.dispatchEvent(new CustomEvent('drawingStyleChanged', { 
+            detail: { drawing, property: 'fontSize', value: drawing.style.fontSize } 
         }));
     }
 
@@ -7324,9 +7237,6 @@ class DrawingToolsManager {
 
         drawing.recalculateTimestamps();
         this.renderDrawing(drawing);
-        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-            drawing.showAxisHighlights();
-        }
 
         // Record modification for undo/redo
         if (this.history && this.customHandleBeforeState) {
