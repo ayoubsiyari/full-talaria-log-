@@ -2311,26 +2311,35 @@ class DrawingToolsManager {
         if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
             drawing.axisHighlightGroup.attr('transform', null);
         }
-        const saved = drawing.points;
-        drawing.points = previewPoints;
         try {
-            drawing.showAxisHighlights({ live: true });
+            drawing.showAxisHighlights({ live: true, pointsOverride: previewPoints });
         } catch (_) { /* ignore */ }
-        finally {
-            drawing.points = saved;
-        }
     }
 
     _scheduleAxisHighlightsDuringDrag(drawing, previewPoints) {
         if (!drawing) return;
+        if (!this._axisHighlightDragPending) this._axisHighlightDragPending = new Map();
         if (!this._axisHighlightDragRaf) this._axisHighlightDragRaf = new Map();
         const key = String(drawing.id || drawing.type || 'drag');
+        this._axisHighlightDragPending.set(key, { drawing, previewPoints });
         if (this._axisHighlightDragRaf.has(key)) return;
         const rafId = requestAnimationFrame(() => {
             this._axisHighlightDragRaf.delete(key);
-            this._refreshAxisHighlightsDuringDrag(drawing, previewPoints);
+            const pending = this._axisHighlightDragPending.get(key);
+            if (!pending) return;
+            this._refreshAxisHighlightsDuringDrag(pending.drawing, pending.previewPoints);
         });
         this._axisHighlightDragRaf.set(key, rafId);
+    }
+
+    _clearAxisHighlightDragState() {
+        if (this._axisHighlightDragRaf) {
+            this._axisHighlightDragRaf.forEach((rafId) => cancelAnimationFrame(rafId));
+            this._axisHighlightDragRaf.clear();
+        }
+        if (this._axisHighlightDragPending) {
+            this._axisHighlightDragPending.clear();
+        }
     }
 
     /** Keep crosshair price/time labels glued to the pointer during whole-shape moves. */
@@ -5281,7 +5290,11 @@ class DrawingToolsManager {
         
         if (typeof drawing.showAxisHighlights === 'function') {
             if (drawing.selected) {
-                drawing.showAxisHighlights({ live: liveRender });
+                const hasDragTransform = !!(drawing.group && drawing.group.attr('transform'));
+                const skipAxisDuringMove = this._isDrawingGeometryMoveActive() && hasDragTransform;
+                if (!skipAxisDuringMove) {
+                    drawing.showAxisHighlights({ live: liveRender });
+                }
             } else if (typeof drawing.hideAxisHighlights === 'function') {
                 drawing.hideAxisHighlights();
             }
@@ -6316,6 +6329,7 @@ class DrawingToolsManager {
                     }
                 })
                 .on('end', function(event) {
+                    self._clearAxisHighlightDragState();
                     self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -7348,6 +7362,7 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
+        this._clearAxisHighlightDragState();
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -10065,6 +10080,7 @@ class DrawingToolsManager {
     }
 
     _stopDirectMoveDrag() {
+        this._clearAxisHighlightDragState();
         if (this._directMoveMoveHandler) {
             document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
             this._directMoveMoveHandler = null;

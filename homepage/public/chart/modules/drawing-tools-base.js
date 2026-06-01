@@ -257,12 +257,17 @@ class BaseDrawing {
         if (normalized.reuseGroup && this.group && !this.group.empty()) {
             const node = this.group.node();
             if (node && node.parentNode) {
+                const mgr = this.chart && this.chart.drawingManager;
+                const keepDragTransform = mgr
+                    && typeof mgr._isDrawingGeometryMoveActive === 'function'
+                    && mgr._isDrawingGeometryMoveActive();
+                const dragTransform = keepDragTransform ? this.group.attr('transform') : null;
                 this._clearGeometryChildren(this.group);
                 this.group
                     .attr('class', className)
                     .attr('data-id', this.id)
                     .style('opacity', opacity)
-                    .attr('transform', null);
+                    .attr('transform', dragTransform || null);
                 return true;
             }
         }
@@ -934,7 +939,8 @@ class BaseDrawing {
             this.hideAxisHighlights();
             return;
         }
-        if (!this.chart || !this.points || this.points.length === 0) return;
+        const axisPoints = Array.isArray(opts.pointsOverride) ? opts.pointsOverride : this.points;
+        if (!this.chart || !axisPoints || axisPoints.length === 0) return;
         if (!this.hasVisibleDrawingGeometry()) {
             this.hideAxisHighlights();
             return;
@@ -944,6 +950,13 @@ class BaseDrawing {
         if (!opts.live && mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights()) {
             return;
         }
+
+        const savedPoints = Array.isArray(opts.pointsOverride) ? this.points : null;
+        if (Array.isArray(opts.pointsOverride)) {
+            this.points = opts.pointsOverride;
+        }
+
+        try {
         
         // Remove any existing highlights first
         this.hideAxisHighlights();
@@ -1388,7 +1401,10 @@ class BaseDrawing {
         if (this.selected && this.chart.setAxisHighlightZones && canvasZones.length > 0) {
             this.chart.setAxisHighlightZones(canvasZones);
             this.hasAxisHighlightZones = true;
-            if (this.chart.scheduleRender) {
+            const skipCanvasSchedule = mgr
+                && typeof mgr._isDrawingGeometryMoveActive === 'function'
+                && mgr._isDrawingGeometryMoveActive();
+            if (this.chart.scheduleRender && !skipCanvasSchedule) {
                 if (opts.live) {
                     requestAnimationFrame(() => {
                         if (this.chart && this.chart.scheduleRender) {
@@ -1398,6 +1414,11 @@ class BaseDrawing {
                 } else if (!this.chart._isRendering) {
                     this.chart.scheduleRender();
                 }
+            }
+        }
+        } finally {
+            if (savedPoints) {
+                this.points = savedPoints;
             }
         }
     }
@@ -1426,6 +1447,7 @@ class BaseDrawing {
             this.chart.clearAxisHighlightZones();
             const mgr = this.chart.drawingManager;
             const skipSchedule = this.chart._isRendering
+                || (mgr && typeof mgr._isDrawingGeometryMoveActive === 'function' && mgr._isDrawingGeometryMoveActive())
                 || (mgr && typeof mgr._shouldSkipAxisHighlights === 'function' && mgr._shouldSkipAxisHighlights());
             if (this.chart.scheduleRender && !skipSchedule) {
                 this.chart.scheduleRender();
