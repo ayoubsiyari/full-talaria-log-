@@ -2940,13 +2940,12 @@ function v9IsPatternLabelSyncSubToolIcon(icon) {
   );
 }
 
-/** True when label color should follow line (fresh tool / not customized). */
+/** True when label color should follow line (colors explicitly match). */
 function v9PatternLabelColorCoupled(tlStyle) {
   if (!tlStyle) return true;
   const text = tlStyle.textColor;
   const line = tlStyle.lineColor;
   if (!text) return true;
-  if (text === "#ffffff" || text === "#FFFFFF") return true;
   if (line && text === line) return true;
   return false;
 }
@@ -4920,9 +4919,6 @@ function v9ApplyTlLineColorToStyle(prev, colorVal, subToolIcon) {
       regLines: mapRows(prev.regLines),
     };
   }
-  if (v9IsPatternLabelSyncSubToolIcon(subToolIcon) && v9PatternLabelColorCoupled(prev)) {
-    return { ...prev, lineColor: colorVal, textColor: colorVal };
-  }
   if (v9IsFilledShapeBorderSubIcon(subToolIcon)) {
     return { ...prev, lineColor: colorVal, borderColor: colorVal };
   }
@@ -6192,6 +6188,9 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
       chLines,
     };
   }
+  if (legacy && v9IsPatternChartType(legacy)) {
+    return { textColor: V9_DEFAULT_TL_LINE_COLOR };
+  }
   return {};
 }
 
@@ -6445,7 +6444,7 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
   if (!type) return null;
   const toolDefaults = v9DefaultArmedStyleForLegacyTool(type);
   const fibLevelsDefault = v9DefaultFibLevelsTlForLegacy(type);
-  return v9EnsureTlStyleArrays(
+  const out = v9EnsureTlStyleArrays(
     {
       ...v9FreshTlStyleDefaults(),
       ...toolDefaults,
@@ -6458,6 +6457,11 @@ function v9BuildDefaultTlStyleForDrawingType(type) {
     null,
     type,
   );
+  if (v9IsPatternChartType(type)) {
+    const line = out.lineColor || V9_DEFAULT_TL_LINE_COLOR;
+    out.textColor = line;
+  }
+  return out;
 }
 
 function v9ApplyDefaultDrawingTemplate(drawing) {
