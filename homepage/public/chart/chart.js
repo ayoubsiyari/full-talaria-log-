@@ -2442,9 +2442,7 @@ class Chart {
         // Zoom-out (coarser/equal TF): instant client resample for small steps only.
         // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
         if (newMs >= rawMs * 0.92) {
-            if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
-                if (newMs / rawMs > 6) return false;
-            }
+            if (newMs / rawMs > 6) return false;
             return true;
         }
         if (this._isBacktestReplayActive()) return false;
@@ -3402,19 +3400,20 @@ class Chart {
             }
         }
 
-        const replaceMaster = this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay);
         const savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
 
-        if (replaceMaster) {
-            this.rawData = entry.rawData;
-            this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
-            this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
-            this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
-        }
+        // Cached entry is native bars for `timeframe` — always install as replay master.
+        // Using _shouldReplaceReplayMasterForTfSwitch here incorrectly kept the 1m master
+        // when returning to 1D, so updateChartData advanced 1m steps and daily candles
+        // appeared one-by-one while replay timing broke.
+        this.rawData = entry.rawData;
+        this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
+        this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
+        this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            fromCache: replaceMaster,
-            replaceReplayMaster: replaceMaster,
+            fromCache: true,
+            replaceReplayMaster: true,
             savedReplayTimestamp,
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
@@ -14188,6 +14187,7 @@ class Chart {
                 const replayForTf = this.replaySystem;
                 if (replayForTf?.isActive
                     && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
+                    && this._canClientResampleToTimeframe(normalizedTf)
                     && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
                     return;
                 }
@@ -14914,7 +14914,8 @@ class Chart {
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
 
-        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)
+            && this._canClientResampleToTimeframe(timeframe)) {
             if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
                 return;
             }
@@ -15024,7 +15025,7 @@ class Chart {
         }
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            replaceReplayMaster: this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay),
+            replaceReplayMaster: true,
             savedReplayTimestamp,
             savedCurrentIndex,
             wasPlaying,

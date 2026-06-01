@@ -2285,7 +2285,7 @@ class DrawingToolsManager {
         return drawingType === 'image' || drawingType === 'emoji';
     }
 
-    /** Sync drag translate on main group (+ axis highlight labels + optional unclipped labels layer). */
+    /** Sync drag translate on main group (+ optional unclipped labels layer). Axis price/time chips stay on the scales — never CSS-translate them with the shape. */
     _applyDrawingDragTransform(drawing, transform) {
         if (!drawing) return;
         const t = transform || null;
@@ -2293,7 +2293,7 @@ class DrawingToolsManager {
             drawing.group.attr('transform', t);
         }
         if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
-            drawing.axisHighlightGroup.attr('transform', t);
+            drawing.axisHighlightGroup.attr('transform', null);
         }
         if (this.labelsGroup && !this.labelsGroup.empty() && drawing.id) {
             const layer = this.labelsGroup.select(`[data-id="${drawing.id}"]`);
@@ -2301,6 +2301,36 @@ class DrawingToolsManager {
                 layer.attr('transform', t);
             }
         }
+    }
+
+    /** Repaint axis price/time labels at scale edges for preview point positions while dragging. */
+    _refreshAxisHighlightsDuringDrag(drawing, previewPoints) {
+        if (!drawing || typeof drawing.showAxisHighlights !== 'function') return;
+        if (!drawing.selected) return;
+        if (!Array.isArray(previewPoints) || previewPoints.length === 0) return;
+        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
+            drawing.axisHighlightGroup.attr('transform', null);
+        }
+        const saved = drawing.points;
+        drawing.points = previewPoints;
+        try {
+            drawing.showAxisHighlights({ live: true });
+        } catch (_) { /* ignore */ }
+        finally {
+            drawing.points = saved;
+        }
+    }
+
+    _scheduleAxisHighlightsDuringDrag(drawing, previewPoints) {
+        if (!drawing) return;
+        if (!this._axisHighlightDragRaf) this._axisHighlightDragRaf = new Map();
+        const key = String(drawing.id || drawing.type || 'drag');
+        if (this._axisHighlightDragRaf.has(key)) return;
+        const rafId = requestAnimationFrame(() => {
+            this._axisHighlightDragRaf.delete(key);
+            this._refreshAxisHighlightsDuringDrag(drawing, previewPoints);
+        });
+        this._axisHighlightDragRaf.set(key, rafId);
     }
 
     /** Keep crosshair price/time labels glued to the pointer during whole-shape moves. */
@@ -3502,6 +3532,7 @@ class DrawingToolsManager {
                     }
                     if (Array.isArray(points)) {
                         const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
+                        this._scheduleAxisHighlightsDuringDrag(drawing, previewPoints);
                         this._broadcastLiveEditUpdate(drawing, previewPoints);
                     }
                 });
@@ -3516,6 +3547,7 @@ class DrawingToolsManager {
                         pixelDy,
                         this.draggingDrawing.type
                     );
+                    this._scheduleAxisHighlightsDuringDrag(this.draggingDrawing, previewPoints);
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
             }
@@ -6260,6 +6292,7 @@ class DrawingToolsManager {
                                 item.drawing.type
                             );
                             if (previewPoints) {
+                                self._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
                                 self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
                             }
                         });
@@ -6274,6 +6307,7 @@ class DrawingToolsManager {
                             drawing.type
                         );
                         if (previewPoints) {
+                            self._scheduleAxisHighlightsDuringDrag(drawing, previewPoints);
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
                     }
@@ -6680,6 +6714,15 @@ class DrawingToolsManager {
                 const sx = item.startTransform ? item.startTransform.x : 0;
                 const sy = item.startTransform ? item.startTransform.y : 0;
                 this._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                const previewPoints = this._translatePointsByPixels(
+                    item.points,
+                    pixelDx,
+                    pixelDy,
+                    item.drawing.type
+                );
+                if (previewPoints) {
+                    this._scheduleAxisHighlightsDuringDrag(item.drawing, previewPoints);
+                }
             });
         };
 
