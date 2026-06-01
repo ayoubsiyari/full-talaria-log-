@@ -3236,6 +3236,71 @@ function collectV9BridgeTargetPairs(editingRefDrawing) {
   return targets;
 }
 
+/** Push V9 `vwapStyle` onto anchored-vwap drawing targets and repaint. */
+function v9ApplyVwapStyleToDrawingTargets(vwapStyle, targets) {
+  if (!vwapStyle || !Array.isArray(targets) || !targets.length) return;
+  try {
+    const DASH = { solid: "", dashed: "5,5", dotted: "2,4", dashdot: "7,4,2,4" };
+    const SRC_MAP = {
+      Close: "close", Open: "open", High: "high", Low: "low",
+      "(H+L)/2": "hl2", "(H+L+C)/3": "hlc3", "(O+H+L+C)/4": "ohlc4",
+    };
+    const CALC_MAP = { "Std Deviation": "standard_deviation", Percentage: "percentage" };
+    const chartsToRender = new Set();
+    targets.forEach(({ dm, d }) => {
+      if (!d || !d.style || d.type !== "anchored-vwap") return;
+      const tb = dm.toolbar;
+      try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
+      d.style.stroke = vwapStyle.vwapColor;
+      d.style.color = vwapStyle.vwapColor;
+      d.style.strokeWidth = parseInt(vwapStyle.vwapLineWidth, 10) || 2;
+      d.style.strokeDasharray = DASH[vwapStyle.vwapLineType] ?? "";
+      d.style.source = SRC_MAP[vwapStyle.source] || "hlc3";
+      d.style.vwapBandsCalculationMode = CALC_MAP[vwapStyle.bandsCalcMode] || "standard_deviation";
+      d.style.showPriceLabel = !!vwapStyle.priceLabels;
+      d.style.showTimeLabel = !!vwapStyle.timeLabels;
+      [1, 2, 3].forEach((n) => {
+        const on = vwapStyle[`band${n}On`];
+        const col = vwapStyle[`band${n}Color`];
+        const lt = DASH[vwapStyle[`band${n}LineType`]] ?? "2,2";
+        const lw = parseInt(vwapStyle[`band${n}LineWidth`], 10) || 1;
+        const bgOn = vwapStyle[`bg${n}On`];
+        const bgCol = vwapStyle[`bg${n}Color`];
+        const multOn = vwapStyle[`mult${n}On`];
+        const multVal = parseFloat(vwapStyle[`mult${n}Val`]) || n;
+        d.style[`vwapBand${n}Enabled`] = !!on;
+        d.style[`vwapUpperBand${n}Enabled`] = !!on;
+        d.style[`vwapLowerBand${n}Enabled`] = !!on;
+        d.style[`vwapUpperBand${n}Color`] = col;
+        d.style[`vwapLowerBand${n}Color`] = col;
+        d.style[`vwapUpperBand${n}Type`] = lt;
+        d.style[`vwapLowerBand${n}Type`] = lt;
+        d.style[`vwapUpperBand${n}Width`] = lw;
+        d.style[`vwapLowerBand${n}Width`] = lw;
+        d.style[`vwapBand${n}BackgroundEnabled`] = !!bgOn;
+        d.style[`vwapBand${n}BackgroundColor`] = bgCol;
+        d.style[`vwapBand${n}Multiplier`] = multVal;
+        if (multOn !== undefined) d.style[`vwapBand${n}Enabled`] = !!multOn && !!on;
+      });
+      d._cache = d._cache || {};
+      d._cache.vwapPoints = null;
+      d._cache.bands = null;
+      try { dm.renderDrawing?.(d); } catch (_) {}
+      try { dm.saveDrawings?.(); } catch (_) {}
+      if (dm.chart) chartsToRender.add(dm.chart);
+    });
+    chartsToRender.forEach((ch) => ch.scheduleRender && ch.scheduleRender());
+  } catch (err) {
+    console.warn("[V9 vwapStyle flush] failed:", err);
+  }
+}
+
+function v9FlushVwapStyleToChartTargets(vwapStyle, editingRefDrawing) {
+  const targets = collectV9BridgeTargetPairs(editingRefDrawing)
+    .filter(({ d }) => d && d.type === "anchored-vwap");
+  v9ApplyVwapStyleToDrawingTargets(vwapStyle, targets);
+}
+
 /** Repaint or clear axis price/time labels after style/visibility changes. */
 function v9SyncDrawingAxisHighlights(d) {
   if (!d || typeof d.hideAxisHighlights !== "function" || typeof d.showAxisHighlights !== "function") {
@@ -3394,6 +3459,10 @@ function v9CpPickerKeyFlushesTlStyle(key) {
 
 function v9CpPickerKeyFlushesTxtStyle(key) {
   return ["txtTextColor", "txtBgColor", "txtBorderColor", "txtLineColor", "pinLabelColor"].includes(key);
+}
+
+function v9CpPickerKeyFlushesVwapStyle(key) {
+  return typeof key === "string" && key.startsWith("vwap_");
 }
 
 /** Apply `txtStyle` → selected text drawings immediately (color picker drag / hex). */
@@ -9117,7 +9186,9 @@ const TalariaV8bLive = () => {
   /** Final push of tlStyle when settings OK closes (belt-and-suspenders for fib subtypes). */
   const v9StyleBridgeFlushRef = useRef(null);
   const vpStyleBridgeFlushRef = useRef(null);
+  const vwapStyleBridgeFlushRef = useRef(null);
   const vpStyleLiveRef = useRef(null);
+  const vwapStyleLiveRef = useRef(null);
   const tlSettOpenRef = useRef(false);
   /** Chart click dismissed settings only — keep shape selected + quick bar; skip prevTool restore. */
   const v9DismissSettingsKeepSelectionRef = useRef(false);
@@ -9382,6 +9453,7 @@ const TalariaV8bLive = () => {
   vwapSettOpenRef.current = vwapSettOpen;
   vpSettOpenRef.current = vpSettOpen;
   vpStyleLiveRef.current = vpStyle;
+  vwapStyleLiveRef.current = vwapStyle;
   avSettOpenRef.current = avSettOpen;
   indSettOpenRef.current = indSettOpen;
   v9AnyDrawingSettingsOpenRef.current = !!(
@@ -11331,9 +11403,9 @@ const TalariaV8bLive = () => {
         setColorPicker(null);
       }
     };
-    // TxBtn/TlBtn open the picker on pointerdown with stopPropagation — so bubble never reaches
-    // document. Using mousedown *capture* ran after pointerdown and cleared the picker on the same
-    // gesture (felt like a missed click or two-tap to open).
+    // Settings panels / toolbars stop pointerdown propagation, so bubble-phase dismiss never ran
+    // (color picker stayed open until DONE). Capture runs before those handlers; swatches use
+    // [data-v9-color-swatch] so opening from a swatch is not treated as an outside click.
     const dismissPointerHandler = (e) => {
       const el = eventTargetEl(e);
       dismissColorPickerIfOutside(el);
@@ -11401,12 +11473,12 @@ const TalariaV8bLive = () => {
       if (!isOutsideUiChrome(el)) return;
       setSettDrop(null);
     };
-    document.addEventListener("pointerdown", dismissPointerHandler, false);
+    document.addEventListener("pointerdown", dismissPointerHandler, true);
     document.addEventListener("pointerdown", chartSettingsDismissCapture, true);
     document.addEventListener("mousedown", chromeMouseHandler, false);
     document.addEventListener("wheel", scrollHandler, { passive: true });
     return () => {
-      document.removeEventListener("pointerdown", dismissPointerHandler, false);
+      document.removeEventListener("pointerdown", dismissPointerHandler, true);
       document.removeEventListener("pointerdown", chartSettingsDismissCapture, true);
       document.removeEventListener("mousedown", chromeMouseHandler, false);
       document.removeEventListener("wheel", scrollHandler);
@@ -13313,6 +13385,24 @@ const TalariaV8bLive = () => {
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts(flushOpts));
     syncFreehandArmedAndPreview();
   };
+  const cpApplyVwapStyle = (updater) => {
+    const dragging = !!cpPickerDraggingRef.current;
+    const next =
+      typeof updater === "function" ? updater(vwapStyleLiveRef.current) : updater;
+    vwapStyleLiveRef.current = next;
+    const editDraw = editingDrawingRef.current?.drawing ?? null;
+    const runFlush = () => {
+      v9FlushVwapStyleToChartTargets(vwapStyleLiveRef.current, editDraw);
+    };
+    suppressVwapBridge.current = true;
+    if (dragging) {
+      setVwapStyle(next);
+      v9ScheduleCpChartFlush(runFlush);
+      return;
+    }
+    flushSync(() => setVwapStyle(next));
+    runFlush();
+  };
   const cpApplyTxtStyle = (updater) => {
     const dragging = !!cpPickerDraggingRef.current;
     const next =
@@ -13375,13 +13465,13 @@ const TalariaV8bLive = () => {
     else if(targetKey === "txtBorderColor") cpApplyTxtStyle(s=>({...s, borderColor: colorVal, borderOn: true}));
     else if(targetKey === "txtLineColor") cpApplyTxtStyle(s=>({...s, lineColor: colorVal}));
     else if(targetKey === "pinLabelColor") cpApplyTxtStyle(s=>({...s, pinLabelColor: colorVal}));
-    else if(targetKey === "vwap_vwapColor")  setVwapStyle(s=>({...s, vwapColor:  colorVal}));
-    else if(targetKey === "vwap_band1Color") setVwapStyle(s=>({...s, band1Color: colorVal}));
-    else if(targetKey === "vwap_bg1Color")   setVwapStyle(s=>({...s, bg1Color:   colorVal}));
-    else if(targetKey === "vwap_band2Color") setVwapStyle(s=>({...s, band2Color: colorVal}));
-    else if(targetKey === "vwap_bg2Color")   setVwapStyle(s=>({...s, bg2Color:   colorVal}));
-    else if(targetKey === "vwap_band3Color") setVwapStyle(s=>({...s, band3Color: colorVal}));
-    else if(targetKey === "vwap_bg3Color")   setVwapStyle(s=>({...s, bg3Color:   colorVal}));
+    else if(targetKey === "vwap_vwapColor")  cpApplyVwapStyle(s=>({...s, vwapColor:  colorVal}));
+    else if(targetKey === "vwap_band1Color") cpApplyVwapStyle(s=>({...s, band1Color: colorVal}));
+    else if(targetKey === "vwap_bg1Color")   cpApplyVwapStyle(s=>({...s, bg1Color:   colorVal}));
+    else if(targetKey === "vwap_band2Color") cpApplyVwapStyle(s=>({...s, band2Color: colorVal}));
+    else if(targetKey === "vwap_bg2Color")   cpApplyVwapStyle(s=>({...s, bg2Color:   colorVal}));
+    else if(targetKey === "vwap_band3Color") cpApplyVwapStyle(s=>({...s, band3Color: colorVal}));
+    else if(targetKey === "vwap_bg3Color")   cpApplyVwapStyle(s=>({...s, bg3Color:   colorVal}));
     else if(targetKey === "vp_valuesColor")       setVpStyle(s=>({...s, valuesColor:       colorVal}));
     else if(targetKey === "vp_zoneBgColor")        setVpStyle(s=>({...s, zoneBgColor:        colorVal}));
     else if(targetKey === "vp_upVolColor")         setVpStyle(s=>({...s, upVolColor:         colorVal}));
@@ -13437,6 +13527,8 @@ const TalariaV8bLive = () => {
         armedLegacyTool: txtArmedLegacyRef.current,
         txtStyleOwnerType: v9TxtStyleOwnerTypeRef.current,
       });
+    } else if (key && v9CpPickerKeyFlushesVwapStyle(key)) {
+      v9FlushVwapStyleToChartTargets(vwapStyleLiveRef.current, editDraw);
     }
   }, []);
   const handleCpHexCommit = useCallback((hex) => {
@@ -17024,58 +17116,17 @@ const TalariaV8bLive = () => {
 
   // ─── V9 vwapStyle → selected anchored-vwap drawing ────────────────────
   const vwapBridgeReady = useRef(false);
+  vwapStyleBridgeFlushRef.current = () => {
+    v9FlushVwapStyleToChartTargets(
+      vwapStyleLiveRef.current,
+      editingDrawingRef.current?.drawing ?? null,
+    );
+  };
   useLayoutEffect(() => {
     if (!vwapBridgeReady.current) { vwapBridgeReady.current = true; return; }
     if (suppressVwapBridge.current) { suppressVwapBridge.current = false; return; }
-    try {
-      const DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4' };
-      const SRC_MAP = { "Close":"close","Open":"open","High":"high","Low":"low","(H+L)/2":"hl2","(H+L+C)/3":"hlc3","(O+H+L+C)/4":"ohlc4" };
-      const CALC_MAP = { "Std Deviation":"standard_deviation","Percentage":"percentage" };
-      const chartsToRender = new Set();
-      collectV9BridgeTargets().forEach(({ dm, d }) => {
-        if (!d || !d.style || d.type !== 'anchored-vwap') return;
-        const tb = dm.toolbar;
-        try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        d.style.stroke = vwapStyle.vwapColor;
-        d.style.color = vwapStyle.vwapColor;
-        d.style.strokeWidth = parseInt(vwapStyle.vwapLineWidth, 10) || 2;
-        d.style.strokeDasharray = DASH[vwapStyle.vwapLineType] ?? '';
-        d.style.source = SRC_MAP[vwapStyle.source] || 'hlc3';
-        d.style.vwapBandsCalculationMode = CALC_MAP[vwapStyle.bandsCalcMode] || 'standard_deviation';
-        d.style.showPriceLabel = !!vwapStyle.priceLabels;
-        d.style.showTimeLabel = !!vwapStyle.timeLabels;
-        [1,2,3].forEach(n => {
-          const on = vwapStyle[`band${n}On`];
-          const col = vwapStyle[`band${n}Color`];
-          const lt = DASH[vwapStyle[`band${n}LineType`]] ?? '2,2';
-          const lw = parseInt(vwapStyle[`band${n}LineWidth`], 10) || 1;
-          const bgOn = vwapStyle[`bg${n}On`];
-          const bgCol = vwapStyle[`bg${n}Color`];
-          const multOn = vwapStyle[`mult${n}On`];
-          const multVal = parseFloat(vwapStyle[`mult${n}Val`]) || n;
-          d.style[`vwapBand${n}Enabled`] = !!on;
-          d.style[`vwapUpperBand${n}Enabled`] = !!on;
-          d.style[`vwapLowerBand${n}Enabled`] = !!on;
-          d.style[`vwapUpperBand${n}Color`] = col;
-          d.style[`vwapLowerBand${n}Color`] = col;
-          d.style[`vwapUpperBand${n}Type`] = lt;
-          d.style[`vwapLowerBand${n}Type`] = lt;
-          d.style[`vwapUpperBand${n}Width`] = lw;
-          d.style[`vwapLowerBand${n}Width`] = lw;
-          d.style[`vwapBand${n}BackgroundEnabled`] = !!bgOn;
-          d.style[`vwapBand${n}BackgroundColor`] = bgCol;
-          d.style[`vwapBand${n}Multiplier`] = multVal;
-          if (multOn !== undefined) d.style[`vwapBand${n}Enabled`] = !!multOn && !!on;
-        });
-        d._cache = d._cache || {};
-        d._cache.vwapPoints = null;
-        d._cache.bands = null;
-        try { dm.renderDrawing?.(d); } catch (_) {}
-        try { dm.saveDrawings?.(); } catch (_) {}
-        if (dm.chart) chartsToRender.add(dm.chart);
-      });
-      chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
-    } catch (err) { console.warn("[V9 vwapStyle bridge] failed:", err); }
+    const targets = collectV9BridgeTargets().filter(({ d }) => d && d.type === "anchored-vwap");
+    v9ApplyVwapStyleToDrawingTargets(vwapStyle, targets);
   }, [
     vwapStyle.vwapColor, vwapStyle.vwapLineType, vwapStyle.vwapLineWidth,
     vwapStyle.band1On, vwapStyle.band1Color, vwapStyle.band1LineType, vwapStyle.band1LineWidth,
@@ -18214,7 +18265,7 @@ const TalariaV8bLive = () => {
                   </div>
                 );
                 const colorSwatch = (key, color) => (
-                  <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
+                  <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                     onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
                     style={v9TlColorSwatchBoxStyle(color, {
                       active: colorPicker === key,
@@ -19466,7 +19517,7 @@ const TalariaV8bLive = () => {
                   <span style={{ fontSize:12, color:c.ts }}>Text</span>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     {/* color button — standard design */}
-                    <div onMouseEnter={()=>setSwHov("tlTextColor")} onMouseLeave={()=>setSwHov(null)}
+                    <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov("tlTextColor")} onMouseLeave={()=>setSwHov(null)}
                       onClick={e=>{e.stopPropagation();openCP(e,"tlTextColor",tlStyle.textColor);}}
                       style={v9TlColorSwatchBoxStyle(tlStyle.textColor, {
                         active: colorPicker === "tlTextColor",
@@ -19600,7 +19651,7 @@ const TalariaV8bLive = () => {
                 </div>
               );
               const fibColorSwatch = (key, color) => (
-                <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
+                <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                   onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
                   style={v9TlColorSwatchBoxStyle(color, {
                     active: colorPicker === key,
@@ -20135,7 +20186,7 @@ const TalariaV8bLive = () => {
                 </div>
               );
               const gannColorSwatch = (key, color) => (
-                <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
+                <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                   {...modalPointerActivate((e) => openCP(e, key, color))}
                   style={v9TlColorSwatchBoxStyle(color, {
                     active: colorPicker === key,
@@ -22947,8 +22998,10 @@ const TalariaV8bLive = () => {
           cpBarAnchorRef.current=null; setColorPicker(key);
         };
         const vSwatch=(key,color,disabled)=>(
-          <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-            onClick={e=>{if(!disabled)openVCP(e,key,color);}}
+          <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
+            onPointerDown={(e)=>{e.stopPropagation();if(!disabled)openVCP(e,key,color);}}
+            onMouseDown={(e)=>e.stopPropagation()}
+            onClick={(e)=>e.stopPropagation()}
             style={v9TlColorSwatchBoxStyle(color, {
               active: colorPicker === key,
               hover: swHov === key,
@@ -23409,7 +23462,7 @@ const TalariaV8bLive = () => {
           cpBarAnchorRef.current=null; setColorPicker(key);
         };
         const vpSwatch=(key,color,disabled)=>(
-          <div {...(!disabled ? modalPointerActivate((e) => openVCP(e, key, color)) : {})}
+          <div data-v9-color-swatch="1" {...(!disabled ? modalPointerActivate((e) => openVCP(e, key, color)) : {})}
             onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             style={v9TlColorSwatchBoxStyle(color, {
               active: colorPicker === key,
@@ -23819,7 +23872,7 @@ const TalariaV8bLive = () => {
           cpBarAnchorRef.current=null; setColorPicker(key);
         };
         const avSwatch=(key,color,disabled)=>(
-          <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
+          <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             onClick={e=>{if(!disabled)openAVCP(e,key,color);}}
             style={v9TlColorSwatchBoxStyle(color, {
               active: colorPicker === key,
