@@ -23297,6 +23297,10 @@ const TalariaV8bLive = () => {
                 const hdr=txt=><span style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em",textAlign:"center",display:"block"}}>{txt}</span>;
                 const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s"}}>{txt}</span>;
                 const chk=(key)=>vwapChk(vwapStyle[key],`vc-${key}`,null,()=>patchVwapStyle(s=>({...s,[key]:!s[key]})));
+                const bandChk=(n)=>vwapChk(vwapStyle[`band${n}On`],`vc-band${n}On`,null,()=>patchVwapStyle(s=>{
+                  const nextOn = !s[`band${n}On`];
+                  return { ...s, [`band${n}On`]: nextOn, [`mult${n}On`]: nextOn };
+                }));
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{vSwatch(k,color,dis)}</div>;
                 const st=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{typeBtn(k,val,dis)}</div>;
                 const th=(k,val,dis)=><div style={{display:"flex",justifyContent:"center"}}>{widthBtn(k,val,dis)}</div>;
@@ -23317,7 +23321,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Band #1 */}
                   <div style={R(8)}>
-                    {chk("band1On")}
+                    {bandChk(1)}
                     {lbl("Band #1",vwapStyle.band1On)}
                     {sw("vwap_band1Color",vwapStyle.band1Color,!vwapStyle.band1On)}
                     {st("band1",vwapStyle.band1LineType,!vwapStyle.band1On)}
@@ -23332,7 +23336,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Band #2 */}
                   <div style={R(8)}>
-                    {chk("band2On")}
+                    {bandChk(2)}
                     {lbl("Band #2",vwapStyle.band2On)}
                     {sw("vwap_band2Color",vwapStyle.band2Color,!vwapStyle.band2On)}
                     {st("band2",vwapStyle.band2LineType,!vwapStyle.band2On)}
@@ -23347,7 +23351,7 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Band #3 */}
                   <div style={R(8)}>
-                    {chk("band3On")}
+                    {bandChk(3)}
                     {lbl("Band #3",vwapStyle.band3On)}
                     {sw("vwap_band3Color",vwapStyle.band3Color,!vwapStyle.band3On)}
                     {st("band3",vwapStyle.band3LineType,!vwapStyle.band3On)}

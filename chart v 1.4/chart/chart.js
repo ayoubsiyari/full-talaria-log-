@@ -16758,10 +16758,12 @@ class Chart {
                 }
             }
             this.drawPriceLine(visible);
-            this.drawCurrentPriceLabel(visible);
             if (typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators();
             }
+            // Axes after candles so the price/time strip covers wicks in the margin (normal render order).
+            this.drawAxes();
+            this.drawCurrentPriceLabel(visible);
             // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
             // CSS translate was clipped by #chart-container { overflow: hidden } in V9.
             this._clearPanDrawingsLayerTransform(false);
@@ -16804,6 +16806,7 @@ class Chart {
             }
             this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(true, { lite: true });
+            this.drawAxes();
             this.drawCurrentPriceLabel(visible);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
