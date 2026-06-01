@@ -23170,13 +23170,12 @@ const TalariaV8bLive = () => {
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                   </div>
-                  {/* VWAP */}
+                  {/* VWAP — color only (style/thickness live in band rows or defaults) */}
                   <div style={R()}>
                     <div/>
                     {lbl("VWAP")}
                     {sw("vwap_vwapColor",vwapStyle.vwapColor,false)}
-                    {st("vwap",vwapStyle.vwapLineType,false)}
-                    {th("vwap",vwapStyle.vwapLineWidth,false)}
+                    <div/><div/>
                   </div>
                   {/* Band #1 */}
                   <div style={R(8)}>
