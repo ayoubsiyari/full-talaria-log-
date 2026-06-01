@@ -424,13 +424,6 @@ class AnchoredVWAPTool extends BaseDrawing {
         this._prepareRenderGroup(container, 'drawing drawing-anchored-vwap', renderOpts);
         this._clearDrawingLabels(scales);;
 
-        const anchorIndex = Math.round(this.points[0].x);
-        const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(anchorIndex) : scales.xScale(anchorIndex);
-        const fallbackAnchorY = scales.yScale(this.points[0].y);
-        let anchorY = fallbackAnchorY;
-
-        // Determine data source
         let chartData = [];
         let dataVersion = null;
         if (scales.chart && scales.chart.data) {
@@ -440,7 +433,21 @@ class AnchoredVWAPTool extends BaseDrawing {
             chartData = window.chart.data;
             dataVersion = window.chart.dataVersion || window.chart.data?.length;
         }
-        
+
+        const latestDataIndex = chartData.length > 0 ? chartData.length - 1 : null;
+        let anchorIndex = Math.round(this.points[0].x);
+        if (latestDataIndex != null) {
+            anchorIndex = Math.max(0, Math.min(latestDataIndex, anchorIndex));
+            if (this.points[0].x !== anchorIndex) {
+                this.points[0].x = anchorIndex;
+            }
+        }
+        const anchorX = scales.chart && scales.chart.dataIndexToPixel ? 
+            scales.chart.dataIndexToPixel(anchorIndex) : scales.xScale(anchorIndex);
+        const fallbackAnchorY = scales.yScale(this.points[0].y);
+        let anchorY = fallbackAnchorY;
+
+        // Determine data source
         const chartWidth = scales.chart ? scales.chart.width : 1000;
         const normalizeSourceMode = (value) => {
             const mode = String(value || 'hlc3').toLowerCase();
@@ -929,6 +936,42 @@ class AnchoredVWAPTool extends BaseDrawing {
 
         this.group.selectAll('.anchored-vwap-anchor-hit, .anchored-vwap-anchor').raise();
 
+    }
+
+    onPointHandleDrag(index, context = {}) {
+        if (!Array.isArray(this.points) || index !== 0 || !this.points[0] || !context.point) {
+            return false;
+        }
+
+        let nextX = Number(context.point.x);
+        const chartData = context.scales && context.scales.chart && Array.isArray(context.scales.chart.data)
+            ? context.scales.chart.data
+            : [];
+
+        if (Number.isFinite(nextX) && chartData.length > 0) {
+            nextX = Math.max(0, Math.min(chartData.length - 1, Math.round(nextX)));
+        } else if (Number.isFinite(nextX)) {
+            nextX = Math.round(nextX);
+        } else {
+            return false;
+        }
+
+        const nextPoint = {
+            ...this.points[0],
+            x: nextX
+        };
+
+        const candle = chartData[nextX];
+        if (candle) {
+            const close = Number(candle.c ?? candle.close);
+            if (Number.isFinite(close)) {
+                nextPoint.y = close;
+            }
+        }
+
+        this.points[0] = nextPoint;
+        this.meta.updatedAt = Date.now();
+        return true;
     }
 
     static fromJSON(data) {

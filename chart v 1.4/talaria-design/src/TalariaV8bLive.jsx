@@ -9063,6 +9063,8 @@ const TalariaV8bLive = () => {
   const editingDrawingRef = useRef(null);
   /** Final push of tlStyle when settings OK closes (belt-and-suspenders for fib subtypes). */
   const v9StyleBridgeFlushRef = useRef(null);
+  const vpStyleBridgeFlushRef = useRef(null);
+  const vpStyleLiveRef = useRef(null);
   const tlSettOpenRef = useRef(false);
   /** Chart click dismissed settings only — keep shape selected + quick bar; skip prevTool restore. */
   const v9DismissSettingsKeepSelectionRef = useRef(false);
@@ -9326,6 +9328,7 @@ const TalariaV8bLive = () => {
   txtSettOpenRef.current = txtSettOpen;
   vwapSettOpenRef.current = vwapSettOpen;
   vpSettOpenRef.current = vpSettOpen;
+  vpStyleLiveRef.current = vpStyle;
   avSettOpenRef.current = avSettOpen;
   indSettOpenRef.current = indSettOpen;
   v9AnyDrawingSettingsOpenRef.current = !!(
@@ -13080,7 +13083,16 @@ const TalariaV8bLive = () => {
         </>}
       </svg>
     );
-    const activate = opts?.immediate
+    const activate = opts?.vpImmediate
+      ? modalPointerActivate(() => {
+          const now = Date.now();
+          const last = tlChkLastActRef.current[hKey] || 0;
+          if (now - last < 100) return;
+          tlChkLastActRef.current[hKey] = now;
+          flushSync(() => toggle());
+          vpStyleBridgeFlushRef.current?.();
+        })
+      : opts?.immediate
       ? modalPointerActivate(toggle)
       : modalPointerActivate(() => runTlCheckboxToggle(hKey, toggle));
     return (
@@ -16928,10 +16940,8 @@ const TalariaV8bLive = () => {
   ]);
 
   // ─── V9 vpStyle → selected volume-profile / fixed-range-volume-profile drawing ─
-  const vpBridgeReady = useRef(false);
-  useLayoutEffect(() => {
-    if (!vpBridgeReady.current) { vpBridgeReady.current = true; return; }
-    if (suppressVpBridge.current) { suppressVpBridge.current = false; return; }
+  const applyVpStyleBridgeFromSnapshot = (styleSnap) => {
+    if (!styleSnap) return;
     try {
       const ROW_MAP = { "Number of Rows":"numberOfRows","Ticks per Row":"ticksPerRow" };
       const VOL_MAP = { "Up/Down":"upDown","Total":"total","Delta":"delta" };
@@ -16941,35 +16951,35 @@ const TalariaV8bLive = () => {
         if (!d || !d.style || (d.type !== 'volume-profile' && d.type !== 'fixed-range-volume-profile')) return;
         const tb = dm.toolbar;
         try { tb && tb.onBeforeUpdate && tb.onBeforeUpdate(d); } catch (_) {}
-        d.style.showValues = !!vpStyle.valuesOn;
-        d.style.valuesColor = vpStyle.valuesColor;
-        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(vpStyle.widthPct,10)||30)/100));
-        d.style.profilePlacement = PLC_MAP[vpStyle.placement] || 'left';
-        d.style.showBackground = !!vpStyle.zoneBgOn;
-        d.style.fill = vpStyle.zoneBgColor;
-        d.style.backgroundOpacity = (vpStyle.zoneBgAlpha ?? 85) / 100;
-        d.style.buyColor = vpStyle.upVolColor;
-        d.style.sellColor = vpStyle.downVolColor;
-        d.style.valueAreaBuyColor = vpStyle.valueAreaUpColor;
-        d.style.valueAreaSellColor = vpStyle.valueAreaDownColor;
-        d.style.showPOC = !!vpStyle.pocOn;
-        d.style.pocColor = vpStyle.pocColor;
-        d.style.showVAH = !!vpStyle.vahOn;
-        d.style.VAHColor = vpStyle.vahColor;
-        d.style.showVAL = !!vpStyle.valOn;
-        d.style.VALColor = vpStyle.valColor;
-        d.style.showDevelopingPOC = !!vpStyle.devPocOn;
-        d.style.developingPOCColor = vpStyle.devPocColor;
-        d.style.showDevelopingVA = !!vpStyle.devVAOn;
-        d.style.developingVAColor = vpStyle.devVAColor;
-        d.style.rowsLayout = ROW_MAP[vpStyle.rowsLayout] || 'numberOfRows';
-        d.style.rowSize = parseInt(vpStyle.rowSize,10) || 24;
-        d.style.showVolume = !!vpStyle.volumeOn;
-        d.style.volumeDisplay = VOL_MAP[vpStyle.volumeType] || 'upDown';
-        d.style.valueAreaVolume = parseInt(vpStyle.valueAreaVol,10) || 70;
-        d.style.extendRight = !!vpStyle.extendRight;
-        d.style.showPriceLabel = !!vpStyle.priceLabels;
-        d.style.showTimeLabel = !!vpStyle.timeLabels;
+        d.style.showValues = !!styleSnap.valuesOn;
+        d.style.valuesColor = styleSnap.valuesColor;
+        d.style.profileWidthRatio = Math.max(0.01, Math.min(1, (parseInt(styleSnap.widthPct,10)||30)/100));
+        d.style.profilePlacement = PLC_MAP[styleSnap.placement] || 'left';
+        d.style.showBackground = !!styleSnap.zoneBgOn;
+        d.style.fill = styleSnap.zoneBgColor;
+        d.style.backgroundOpacity = (styleSnap.zoneBgAlpha ?? 85) / 100;
+        d.style.buyColor = styleSnap.upVolColor;
+        d.style.sellColor = styleSnap.downVolColor;
+        d.style.valueAreaBuyColor = styleSnap.valueAreaUpColor;
+        d.style.valueAreaSellColor = styleSnap.valueAreaDownColor;
+        d.style.showPOC = !!styleSnap.pocOn;
+        d.style.pocColor = styleSnap.pocColor;
+        d.style.showVAH = !!styleSnap.vahOn;
+        d.style.VAHColor = styleSnap.vahColor;
+        d.style.showVAL = !!styleSnap.valOn;
+        d.style.VALColor = styleSnap.valColor;
+        d.style.showDevelopingPOC = !!styleSnap.devPocOn;
+        d.style.developingPOCColor = styleSnap.devPocColor;
+        d.style.showDevelopingVA = !!styleSnap.devVAOn;
+        d.style.developingVAColor = styleSnap.devVAColor;
+        d.style.rowsLayout = ROW_MAP[styleSnap.rowsLayout] || 'numberOfRows';
+        d.style.rowSize = parseInt(styleSnap.rowSize,10) || 24;
+        d.style.showVolume = !!styleSnap.volumeOn;
+        d.style.volumeDisplay = VOL_MAP[styleSnap.volumeType] || 'upDown';
+        d.style.valueAreaVolume = parseInt(styleSnap.valueAreaVol,10) || 70;
+        d.style.extendRight = !!styleSnap.extendRight;
+        d.style.showPriceLabel = !!styleSnap.priceLabels;
+        d.style.showTimeLabel = !!styleSnap.timeLabels;
         try { dm.renderDrawing?.(d); } catch (_) {}
         try { dm.saveDrawings?.(); } catch (_) {}
         v9SyncDrawingAxisHighlights(d);
@@ -16977,6 +16987,14 @@ const TalariaV8bLive = () => {
       });
       chartsToRender.forEach(ch => ch.scheduleRender && ch.scheduleRender());
     } catch (err) { console.warn("[V9 vpStyle bridge] failed:", err); }
+  };
+  vpStyleBridgeFlushRef.current = () => applyVpStyleBridgeFromSnapshot(vpStyleLiveRef.current);
+
+  const vpBridgeReady = useRef(false);
+  useLayoutEffect(() => {
+    if (!vpBridgeReady.current) { vpBridgeReady.current = true; return; }
+    if (suppressVpBridge.current) { suppressVpBridge.current = false; return; }
+    applyVpStyleBridgeFromSnapshot(vpStyle);
   }, [
     vpStyle.valuesOn, vpStyle.valuesColor, vpStyle.widthPct, vpStyle.placement,
     vpStyle.zoneBgOn, vpStyle.zoneBgColor, vpStyle.zoneBgAlpha,
@@ -23209,14 +23227,19 @@ const TalariaV8bLive = () => {
           cpBarAnchorRef.current=null; setColorPicker(key);
         };
         const vpSwatch=(key,color,disabled)=>(
-          <div onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-            onClick={e=>{if(!disabled)openVCP(e,key,color);}}
+          <div {...(!disabled ? modalPointerActivate((e) => openVCP(e, key, color)) : {})}
+            onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
             style={v9TlColorSwatchBoxStyle(color, {
               active: colorPicker === key,
               hover: swHov === key,
               disabled,
             })}/>
         );
+        const vpDropPick = (onPick) => modalPointerActivate(() => {
+          onPick();
+          setVpStyleDrop(null);
+          vpStyleBridgeFlushRef.current?.();
+        });
         const vpDrop=(dk,val,options,onPick,disabled,w)=>{
           const isOpen=vpStyleDrop===dk,isH=hov===dk;
           return(
@@ -23237,7 +23260,7 @@ const TalariaV8bLive = () => {
                 {options.map(opt=>{
                   const isA=val===opt,isH2=hov===`vpdrop-${dk}-${opt}`;
                   return(
-                    <div key={opt} onClick={()=>{onPick(opt);setVpStyleDrop(null);}}
+                    <div key={opt} {...vpDropPick(() => onPick(opt))}
                       onMouseEnter={()=>setHov(`vpdrop-${dk}-${opt}`)} onMouseLeave={()=>setHov(null)}
                       style={{padding:"7px 12px",cursor:"default",position:"relative",
                               background:isA?c.acD:isH2?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -23260,7 +23283,10 @@ const TalariaV8bLive = () => {
                       outline:"none",boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}}/>
             <div style={{position:"absolute",right:0,top:0,bottom:0,display:"flex",flexDirection:"column",borderLeft:`1px solid ${c.br}`}}>
               {[[1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                <button type="button" key={i} {...modalPointerActivate(() => setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))})))}
+                <button type="button" key={i} {...modalPointerActivate(() => {
+                  setVpStyle(s=>({...s,[valKey]:String(Math.max(minVal,Math.min(maxVal,+s[valKey]+delta)))}));
+                  vpStyleBridgeFlushRef.current?.();
+                })}
                   onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                   style={{flex:1,width:18,background:"transparent",border:"none",color:c.ts,cursor:"default",
                           display:"flex",alignItems:"center",justifyContent:"center",
@@ -23343,7 +23369,7 @@ const TalariaV8bLive = () => {
                 /* chk | label | swatch | — | — */
                 const gc="16px 1fr 26px 56px 56px", cg=8;
                 const R=()=>({display:"grid",gridTemplateColumns:gc,columnGap:cg,alignItems:"center",height:30});
-                const chk=(key)=><div style={{display:"flex",alignItems:"center"}}>{TlChk(vpStyle[key],`vpc-${key}`,null,()=>setVpStyle(s=>({...s,[key]:!s[key]})),{immediate:true})}</div>;
+                const chk=(key)=><div style={{display:"flex",alignItems:"center"}}>{TlChk(vpStyle[key],`vpc-${key}`,null,()=>setVpStyle(s=>({...s,[key]:!s[key]})),{vpImmediate:true})}</div>;
                 const lbl=(txt,on)=><span style={{fontSize:12,color:on===false?"rgba(160,160,200,0.38)":c.ts,transition:"color 0.15s",flexShrink:0}}>{txt}</span>;
                 const sw=(k,color,dis)=><div style={{display:"flex",justifyContent:"center"}}>{vpSwatch(k,color,dis)}</div>;
                 /* col2 flex helper: label on left, control pushed right */
@@ -23358,7 +23384,11 @@ const TalariaV8bLive = () => {
                   const rect=trackEl.getBoundingClientRect();
                   const getVal=cx=>Math.round(Math.max(0,Math.min(1,(cx-rect.left)/rect.width))*100);
                   const onMove=ev=>setVpStyle(s=>({...s,zoneBgAlpha:getVal(ev.clientX)}));
-                  const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);};
+                  const onUp=()=>{
+                    window.removeEventListener('pointermove',onMove);
+                    window.removeEventListener('pointerup',onUp);
+                    vpStyleBridgeFlushRef.current?.();
+                  };
                   onMove(e); window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
                 };
                 const pct=vpStyle.zoneBgAlpha;
@@ -23418,8 +23448,8 @@ const TalariaV8bLive = () => {
                   <div style={{display:"flex",alignItems:"center",padding:"8px 0",marginTop:4}}>
                     <span style={{fontSize:12,color:c.ts}}>Labels</span>
                     <div style={{display:"flex",alignItems:"center",marginLeft:"auto"}}>
-                      <div style={{width:66}}>{TlChk(vpStyle.priceLabels,"vpc-priceLabels","Price",()=>setVpStyle(s=>({...s,priceLabels:!s.priceLabels})),{immediate:true})}</div>
-                      <div style={{width:66}}>{TlChk(vpStyle.timeLabels,"vpc-timeLabels","Time",()=>setVpStyle(s=>({...s,timeLabels:!s.timeLabels})),{immediate:true})}</div>
+                      <div style={{width:66}}>{TlChk(vpStyle.priceLabels,"vpc-priceLabels","Price",()=>setVpStyle(s=>({...s,priceLabels:!s.priceLabels})),{vpImmediate:true})}</div>
+                      <div style={{width:66}}>{TlChk(vpStyle.timeLabels,"vpc-timeLabels","Time",()=>setVpStyle(s=>({...s,timeLabels:!s.timeLabels})),{vpImmediate:true})}</div>
                     </div>
                   </div>
                 </>);
@@ -23439,13 +23469,13 @@ const TalariaV8bLive = () => {
                     <Row left={lbl("Row Size")} right={vpIntSpinner("rowSize",vpStyle.rowSize,1,500)}/>
                     <Row
                       left={<div style={{display:"flex",alignItems:"center",gap:8}}>
-                        {TlChk(vpStyle.volumeOn,"vpc-volumeOn",null,()=>setVpStyle(s=>({...s,volumeOn:!s.volumeOn})),{immediate:true})}
+                        {TlChk(vpStyle.volumeOn,"vpc-volumeOn",null,()=>setVpStyle(s=>({...s,volumeOn:!s.volumeOn})),{vpImmediate:true})}
                         {lbl("Volume",!vpStyle.volumeOn)}
                       </div>}
                       right={vpDrop("vp-voltype",vpStyle.volumeType,["Up/Down","Total"],v=>setVpStyle(s=>({...s,volumeType:v})),!vpStyle.volumeOn)}/>
                     <Row left={lbl("Value Area Volume %")} right={vpIntSpinner("valueAreaVol",vpStyle.valueAreaVol,0,100)}/>
                     <div style={{display:"flex",alignItems:"center",padding:"8px 0"}}>
-                      {TlChk(vpStyle.extendRight,"vpc-extendRight","Extend Right",()=>setVpStyle(s=>({...s,extendRight:!s.extendRight})),{immediate:true})}
+                      {TlChk(vpStyle.extendRight,"vpc-extendRight","Extend Right",()=>setVpStyle(s=>({...s,extendRight:!s.extendRight})),{vpImmediate:true})}
                     </div>
                   </div>
                 );
@@ -23535,7 +23565,7 @@ const TalariaV8bLive = () => {
                       };
                       return (
                         <div key={k} style={{display:"grid",gridTemplateColumns:gc,gap:"0 8px",alignItems:"center",padding:"6px 12px"}}>
-                          {TlChk(v.checked,`vp-vis-${k}`,null,()=>setVpStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})),{immediate:true})}
+                          {TlChk(v.checked,`vp-vis-${k}`,null,()=>setVpStyle(s=>({...s,[k]:{...s[k],checked:!s[k].checked}})),{vpImmediate:true})}
                           <span style={{fontSize:12,color:v.checked?c.ts:c.tm}}>{lbl}</span>
                           <div style={{display:"flex",justifyContent:"center"}}>
                             <input type="number" min={1} max={v.max-1} value={v.min} onClick={e=>e.stopPropagation()}

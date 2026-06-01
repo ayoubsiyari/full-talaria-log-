@@ -2272,6 +2272,7 @@ class DrawingToolsManager {
             drawing.afterPointsMoveDelta(dx, dy);
         }
         this.clampDrawingPointsToCandleRange(drawing);
+        this._syncHorizontalAnchorToolPointY(drawing);
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         return true;
     }
@@ -3427,6 +3428,7 @@ class DrawingToolsManager {
             } else {
                 this._snapDrawingPointsX(this.resizingDrawing);
             }
+            this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
 
             this.scheduleRenderDrawing(this.resizingDrawing);
             this._broadcastLiveEditUpdate(this.resizingDrawing);
@@ -4092,7 +4094,14 @@ class DrawingToolsManager {
     }
 
     isCandleBoundTool(toolType) {
-        return toolType === 'volume-profile' || toolType === 'fixed-range-volume-profile';
+        return toolType === 'volume-profile'
+            || toolType === 'fixed-range-volume-profile'
+            || toolType === 'anchored-vwap'
+            || toolType === 'anchored-volume-profile';
+    }
+
+    _isHorizontalAnchorToolType(toolType) {
+        return toolType === 'anchored-vwap' || toolType === 'anchored-volume-profile';
     }
 
     clampPointToCandleRange(point, toolType = this.currentTool) {
@@ -4139,6 +4148,22 @@ class DrawingToolsManager {
         }
 
         drawing.points = drawing.points.map(point => this.clampPointToCandleRange(point, drawing.type));
+    }
+
+    /** Keep anchored VWAP / AVP anchor on a real candle close after drag or data shrink. */
+    _syncHorizontalAnchorToolPointY(drawing) {
+        if (!drawing || !this._isHorizontalAnchorToolType(drawing.type)) return;
+        if (!Array.isArray(drawing.points) || !drawing.points[0]) return;
+        const data = this.chart && Array.isArray(this.chart.data) ? this.chart.data : [];
+        if (!data.length) return;
+        const idx = Math.max(0, Math.min(data.length - 1, Math.round(drawing.points[0].x)));
+        drawing.points[0].x = idx;
+        const candle = data[idx];
+        if (!candle) return;
+        const close = Number(candle.c ?? candle.close);
+        if (Number.isFinite(close)) {
+            drawing.points[0].y = close;
+        }
     }
 
     snapPointXToNearestCandle(point) {
@@ -4225,6 +4250,9 @@ class DrawingToolsManager {
     }
 
     getConstrainedDragDelta(drawing, dx, dy) {
+        if (drawing && this._isHorizontalAnchorToolType(drawing.type)) {
+            return { dx, dy: 0 };
+        }
         const mode = this.getRangeToolMode(drawing);
         if (mode === 'price') {
             return { dx: 0, dy };
@@ -5908,8 +5936,11 @@ class DrawingToolsManager {
                     if (!dragStartPoints || !bodyDragStartScreen) return;
 
                     const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
-                    const pixelDx = currentScreenX - bodyDragStartScreen.x;
-                    const pixelDy = currentScreenY - bodyDragStartScreen.y;
+                    let pixelDx = currentScreenX - bodyDragStartScreen.x;
+                    let pixelDy = currentScreenY - bodyDragStartScreen.y;
+                    if (self._isHorizontalAnchorToolType(drawing.type)) {
+                        pixelDy = 0;
+                    }
 
                     // Smooth drag: CSS transform only — commit to data points once on drag end.
                     if (multiDragStartPoints && multiDragStartPoints.length > 1) {
@@ -6694,6 +6725,7 @@ class DrawingToolsManager {
         }
 
         this._snapDrawingPointsX(drawing);
+        this._syncHorizontalAnchorToolPointY(drawing);
 
         const isVolumeProfileResize = !!(drawing && this.isVolumeProfileToolType(drawing.type));
         if (isVolumeProfileResize) {
