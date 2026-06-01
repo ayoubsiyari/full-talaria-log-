@@ -2414,6 +2414,8 @@ class Chart {
     _getNativeRawTfMs() {
         const replay = this.replaySystem;
         if (replay && replay.isActive) {
+            const stepMs = this._getNativeRawStepMs();
+            if (Number.isFinite(stepMs) && stepMs > 0) return stepMs;
             const rawTf = replay.rawTimeframe;
             if (typeof rawTf === 'number' && rawTf > 0) return rawTf;
             if (typeof rawTf === 'string' && rawTf) {
@@ -2442,9 +2444,7 @@ class Chart {
         // Zoom-out (coarser/equal TF): instant client resample for small steps only.
         // 1m→1D (×1440) must refetch/cache — resampling a 1m window yields ~1 daily bar.
         if (newMs >= rawMs * 0.92) {
-            if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
-                if (newMs / rawMs > 6) return false;
-            }
+            if (newMs / rawMs > 6) return false;
             return true;
         }
         if (this._isBacktestReplayActive()) return false;
@@ -2452,28 +2452,14 @@ class Chart {
         return false;
     }
 
-    /** Timeframe for replay pan-load API calls — always match replay.fullRawData native step, not display TF. */
+    /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         if (!this.replaySystem?.isActive) return displayTf;
-        const rs = this.replaySystem;
-        if (Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
-            const dt = Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t);
-            if (Number.isFinite(dt) && dt > 0) {
-                const rawTf = String(rs.rawTimeframe || '').toLowerCase().trim();
-                const rawMs = rawTf ? this.parseTimeframe(rawTf) : NaN;
-                if (Number.isFinite(rawMs) && rawMs > 0 && Math.abs(rawMs - dt) <= rawMs * 0.08) {
-                    return rawTf;
-                }
-                const known = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
-                for (let i = 0; i < known.length; i++) {
-                    const tf = known[i];
-                    const ms = this.parseTimeframe(tf);
-                    if (Number.isFinite(ms) && ms > 0 && Math.abs(ms - dt) <= ms * 0.08) return tf;
-                }
-            }
-        }
-        return String(rs.rawTimeframe || displayTf).toLowerCase().trim();
+        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
+        const displayMs = this.parseTimeframe(displayTf) || 60_000;
+        const rawMs = this.parseTimeframe(rawTf) || 60_000;
+        return displayMs >= rawMs ? displayTf : rawTf;
     }
 
     /**
@@ -2933,6 +2919,25 @@ class Chart {
         }
     }
 
+    _measureRawDataStepMs(rawData) {
+        if (!Array.isArray(rawData) || rawData.length < 2) return NaN;
+        const step = Number(rawData[1].t) - Number(rawData[0].t);
+        return Number.isFinite(step) && step > 0 ? step : NaN;
+    }
+
+    /** True when cached rawData bar period matches the cache slot timeframe (1d slot ≠ 1m bars). */
+    _btTfCacheEntryValidForTimeframe(entry, timeframe) {
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return false;
+        const tf = String(timeframe || '').toLowerCase().trim();
+        const tfMs = this.parseTimeframe(tf);
+        const stepMs = this._measureRawDataStepMs(entry.rawData);
+        if (!Number.isFinite(tfMs) || tfMs <= 0 || !Number.isFinite(stepMs) || stepMs <= 0) return false;
+        const nativeTf = String(entry.nativeRawFetchTf || tf).toLowerCase().trim();
+        const nativeMs = this.parseTimeframe(nativeTf);
+        if (Number.isFinite(nativeMs) && nativeMs > 0 && nativeMs < tfMs * 0.85) return false;
+        return stepMs >= tfMs * 0.85 && stepMs <= tfMs * 1.2;
+    }
+
     _getBtTfDataCache(fileId, timeframe) {
         if (!fileId || !timeframe || !this._btTfDataCache) return null;
         const perFile = this._btTfDataCache.get(String(fileId));
@@ -2944,6 +2949,10 @@ class Chart {
             this._getBacktestSessionEndMs(), null, tf
         );
         if (entry.anchorKey !== anchorKey) return null;
+        if (!this._btTfCacheEntryValidForTimeframe(entry, tf)) {
+            perFile.delete(tf);
+            return null;
+        }
         return entry;
     }
 
@@ -2958,6 +2967,11 @@ class Chart {
         if (!this.isBacktestMode || !fileId || !timeframe) return;
         if (!Array.isArray(rawData) || !rawData.length) return;
         const tf = String(timeframe).toLowerCase().trim();
+        const draft = {
+            rawData,
+            nativeRawFetchTf: meta.nativeRawFetchTf || tf,
+        };
+        if (!this._btTfCacheEntryValidForTimeframe(draft, tf)) return;
         const sessionEndMs = this._getBacktestSessionEndMs();
         if (!this._btTfDataCache) this._btTfDataCache = new Map();
         const fid = String(fileId);
@@ -2965,6 +2979,11 @@ class Chart {
         const perFile = this._btTfDataCache.get(fid);
         const maxCacheBars = 12000;
         const existingEntry = perFile.get(tf);
+        if (existingEntry
+            && this._btTfCacheEntryValidForTimeframe(existingEntry, tf)
+            && existingEntry.rawData.length > rawData.length * 1.2) {
+            return;
+        }
         let storedRaw;
         if (rawData.length > maxCacheBars) {
             storedRaw = rawData.slice(rawData.length - maxCacheBars);
@@ -2997,12 +3016,7 @@ class Chart {
         // During replay, chart.rawData is only the prefix up to the playhead — never cache that.
         if (replay?.isActive && Array.isArray(replay.fullRawData) && replay.fullRawData.length) {
             const replayNative = String(replay.rawTimeframe || nativeTf).toLowerCase().trim();
-            const displayTf = String(this.currentTimeframe || '').toLowerCase().trim();
             if (tf === replayNative || tf === nativeTf) {
-                source = replay.fullRawData;
-            } else if (tf === displayTf) {
-                // Resampled display TF (e.g. 15m while native master is 1m) — cache
-                // fullRawData so 15m→5m→15m can hot-swap without refetch.
                 source = replay.fullRawData;
             }
         }
@@ -3023,6 +3037,8 @@ class Chart {
         const cacheNativeTf = replay?.isActive
             ? String(replay.rawTimeframe || this._nativeRawFetchTf || nativeTf).toLowerCase().trim()
             : String(this._nativeRawFetchTf || timeframe).toLowerCase().trim();
+        const draft = { rawData: source, nativeRawFetchTf: cacheNativeTf || tf };
+        if (!this._btTfCacheEntryValidForTimeframe(draft, tf)) return;
         this._storeBtTfDataCacheEntry(fileId, timeframe, source, {
             totalCandles: this.totalCandles,
             serverCursors: this._serverCursors,
@@ -3066,9 +3082,13 @@ class Chart {
                             ? self._backtestFetchLimitForTimeframe(tf)
                             : (self.BACKTEST_SMART_INITIAL_LIMIT || 800),
                     };
-                    const windowRange = Number.isFinite(playheadMs)
-                        ? self._getBacktestReplayFetchRange(tf, sess, playheadMs)
-                        : self._getBacktestSessionEndFetchRange(sessionEndMs);
+                    const tfMs = self.parseTimeframe(tf) || 60000;
+                    const windowRange = tfMs >= 86400000
+                        ? (self._getBacktestInitialFetchRange(tf, sess)
+                            || self._getBacktestSessionEndFetchRange(sessionEndMs))
+                        : (Number.isFinite(playheadMs)
+                            ? self._getBacktestReplayFetchRange(tf, sess, playheadMs)
+                            : self._getBacktestSessionEndFetchRange(sessionEndMs));
                     return self._fetchSmartWindow(fileId, tf, sess, 'end', windowRange, fetchOpts)
                         .then((result) => {
                             if (!self._smartResponseHasPayload(result)) return;
@@ -3402,19 +3422,16 @@ class Chart {
             }
         }
 
-        const replaceMaster = this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay);
         const savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
 
-        if (replaceMaster) {
-            this.rawData = entry.rawData;
-            this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
-            this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
-            this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
-        }
+        this.rawData = entry.rawData;
+        this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
+        this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
+        this._nativeRawFetchTf = entry.nativeRawFetchTf || timeframe;
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            fromCache: replaceMaster,
-            replaceReplayMaster: replaceMaster,
+            fromCache: true,
+            replaceReplayMaster: true,
             savedReplayTimestamp,
             savedCurrentIndex: typeof replay.currentIndex === 'number' ? replay.currentIndex : null,
             wasPlaying: !!replay.isPlaying,
@@ -3427,7 +3444,11 @@ class Chart {
             sessionEndMs,
             coarsePeriodExclusiveEndTs,
         });
-        this._logTfSwitch('backtest-cache', { to: timeframe });
+        this._logTfSwitch('backtest-cache', {
+            to: timeframe,
+            bars: this.rawData.length,
+            native: entry.nativeRawFetchTf || timeframe,
+        });
         return true;
     }
 
@@ -14177,20 +14198,12 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // 1) Same raw series — resample only (no network, replay index unchanged).
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
             }
 
-            // 2) Backtest — reuse cached native bars for this TF (fetched once per session).
             if (this.isBacktestMode && this.currentFileId) {
-                const replayForTf = this.replaySystem;
-                if (replayForTf?.isActive
-                    && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
-                    && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
-                    return;
-                }
                 this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
@@ -15024,7 +15037,7 @@ class Chart {
         }
 
         await this._hotSwapBacktestReplayTimeframe(timeframe, {
-            replaceReplayMaster: this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay),
+            replaceReplayMaster: true,
             savedReplayTimestamp,
             savedCurrentIndex,
             wasPlaying,
