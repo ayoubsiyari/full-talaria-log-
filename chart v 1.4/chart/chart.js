@@ -22309,9 +22309,13 @@ class Chart {
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
-            // Whole-shape move uses per-group CSS translate — rebuilding SVG here snaps shapes back.
+            // Whole-shape move / handle resize: lightweight SVG updates only — full rebuild breaks d3 drag.
             if (typeof this.drawingManager._isDrawingGeometryMoveActive === 'function'
                 && this.drawingManager._isDrawingGeometryMoveActive()) {
+                return;
+            }
+            if (typeof this.drawingManager._isHandleEditActive === 'function'
+                && this.drawingManager._isHandleEditActive()) {
                 return;
             }
             const wheelActive = typeof this._wheelBurstUntil === 'number'

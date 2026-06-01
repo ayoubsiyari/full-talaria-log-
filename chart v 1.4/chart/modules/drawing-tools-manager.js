@@ -450,7 +450,9 @@ class DrawingToolsManager {
                 }
             });
 
-            if (this._isLiveDrawingInteraction() && !this._isDrawingGeometryMoveActive()
+            if (this._isLiveDrawingInteraction()
+                && !this._isDrawingGeometryMoveActive()
+                && !this._isHandleEditActive()
                 && this.chart && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
@@ -470,6 +472,15 @@ class DrawingToolsManager {
             this.isDragging
             || this._directMoveMoveHandler
             || (this._bodyDragDepth || 0) > 0
+        );
+    }
+
+    /** Corner/side handle resize or custom-handle edit (must not use shape-drag transform path). */
+    _isHandleEditActive() {
+        return !!(
+            this.isResizing
+            || this.isCustomHandleDragging
+            || this.isCustomHandleDrag
         );
     }
 
@@ -5294,6 +5305,10 @@ class DrawingToolsManager {
         }
 
         if (liveRender && drawingRenderOpts && drawingRenderOpts.skipHandles) {
+            if (this._isHandleEditActive() && drawing.group && !drawing.group.empty()) {
+                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+                    .style('pointer-events', 'all');
+            }
             if (typeof drawing._syncLiveTextChrome === 'function' && drawing.bbox) {
                 drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
             } else if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox
@@ -7062,6 +7077,7 @@ class DrawingToolsManager {
      */
     startHandleDrag(drawing, pointIndex, event) {
         this._commitInlineTextEditorBeforeGeometryEdit();
+        this._clearDrawingDragTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
@@ -7161,6 +7177,7 @@ class DrawingToolsManager {
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
         this._commitInlineTextEditorBeforeGeometryEdit();
+        this._clearDrawingDragTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
