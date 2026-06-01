@@ -2474,28 +2474,14 @@ class Chart {
         return false;
     }
 
-    /** Timeframe for replay pan-load API calls — always match replay.fullRawData native step, not display TF. */
+    /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         if (!this.replaySystem?.isActive) return displayTf;
-        const rs = this.replaySystem;
-        if (Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
-            const dt = Number(rs.fullRawData[1].t) - Number(rs.fullRawData[0].t);
-            if (Number.isFinite(dt) && dt > 0) {
-                const rawTf = String(rs.rawTimeframe || '').toLowerCase().trim();
-                const rawMs = rawTf ? this.parseTimeframe(rawTf) : NaN;
-                if (Number.isFinite(rawMs) && rawMs > 0 && Math.abs(rawMs - dt) <= rawMs * 0.08) {
-                    return rawTf;
-                }
-                const known = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1mo'];
-                for (let i = 0; i < known.length; i++) {
-                    const tf = known[i];
-                    const ms = this.parseTimeframe(tf);
-                    if (Number.isFinite(ms) && ms > 0 && Math.abs(ms - dt) <= ms * 0.08) return tf;
-                }
-            }
-        }
-        return String(rs.rawTimeframe || displayTf).toLowerCase().trim();
+        const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
+        const displayMs = this.parseTimeframe(displayTf) || 60_000;
+        const rawMs = this.parseTimeframe(rawTf) || 60_000;
+        return displayMs >= rawMs ? displayTf : rawTf;
     }
 
     /**
@@ -14238,14 +14224,13 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // Backtest replay FIRST — generic client-resample runs before this and uses
-            // replay.rawTimeframe (often the display TF), which wrongly allows 1m→1D.
+            // d3e04c5 order: resample only when safe, then backtest native cache/refetch.
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+                return;
+            }
+
             if (this.isBacktestMode && this.currentFileId) {
-                const replayForTf = this.replaySystem;
-                if (replayForTf?.isActive && this._canBacktestReplayInPlaceResample(normalizedTf, replayForTf)) {
-                    this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                    return;
-                }
                 this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
@@ -14258,7 +14243,7 @@ class Chart {
                 return;
             }
 
-            // Live / non-backtest replay — client resample when raw granularity allows.
+            // Non-backtest replay — client resample fallback.
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
