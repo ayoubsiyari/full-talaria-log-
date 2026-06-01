@@ -14188,6 +14188,7 @@ class Chart {
                 const replayForTf = this.replaySystem;
                 if (replayForTf?.isActive
                     && !this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replayForTf)
+                    && this._canClientResampleToTimeframe(normalizedTf)
                     && this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
                     return;
                 }
@@ -14914,7 +14915,8 @@ class Chart {
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
 
-        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)
+            && this._canClientResampleToTimeframe(timeframe)) {
             if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
                 return;
             }
