@@ -2415,6 +2415,24 @@ class DrawingToolsManager {
         } catch (_) { /* ignore */ }
     }
 
+    /** Tell V9 React to hide the floating quick bar (deselect / arm draw tool / Ctrl magnet). */
+    _dispatchV9SelectionCleared() {
+        if (typeof window === 'undefined') return;
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
+        } catch (_) { /* ignore */ }
+    }
+
+    /** Tell V9 React a drawing is primary-selected (toolbar.show bridge backup). */
+    _dispatchV9SelectedDrawing(drawing) {
+        if (typeof window === 'undefined' || !drawing || !drawing.type) return;
+        try {
+            window.dispatchEvent(new CustomEvent('talaria:v9-selected-drawing', {
+                detail: { drawingType: drawing.type },
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
     _broadcastLiveEditUpdate(drawing, pointsOverride = null) {
         if (!drawing) return;
         this._notifyV9DrawingGeometryLive(drawing, pointsOverride);
@@ -3984,6 +4002,18 @@ class DrawingToolsManager {
                     metaKey: event.metaKey,
                     shiftKey: event.shiftKey
                 });
+            }
+        }
+
+        // Armed draw tool + Ctrl (magnet): chart deselects axis labels — sync V9 quick bar off too.
+        if ((event.key === 'Control' || event.key === 'Meta') && this.currentTool) {
+            if (this.selectedDrawings.length > 0) {
+                this.deselectAll({ forSelectionChange: true });
+            } else {
+                this._dispatchV9SelectionCleared();
+                if (this.toolbar && typeof this.toolbar.hide === 'function') {
+                    this.toolbar.hide();
+                }
             }
         }
 
@@ -7454,6 +7484,7 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(lastDrawing);
                 this.toolbar.show(lastDrawing, x, y);
+                this._dispatchV9SelectedDrawing(lastDrawing);
                 }
             }
         } else {
@@ -7472,6 +7503,7 @@ class DrawingToolsManager {
                     const y = svgRect.top + bbox.y;
                     if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                     this.toolbar.show(drawing, x, y);
+                    this._dispatchV9SelectedDrawing(drawing);
                 }
                 return;
             }
@@ -7492,6 +7524,7 @@ class DrawingToolsManager {
                 const y = svgRect.top + bbox.y;
                 if (typeof this.toolbar.onBeforeUpdate === 'function') this.toolbar.onBeforeUpdate(drawing);
                 this.toolbar.show(drawing, x, y);
+                this._dispatchV9SelectedDrawing(drawing);
             }
         }
         
@@ -7601,6 +7634,7 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
+        this._dispatchV9SelectionCleared();
         this.redrawAll();
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {

@@ -506,17 +506,16 @@ function v9IsPersistentFreehandArmed(dm) {
 
 const V9_FREEHAND_ICON_TO_LEGACY = { draw: "brush", brush: "highlighter" };
 
-function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
-  if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return false;
-  return nextToolId !== currentTool;
+function v9ShouldClearChartSelectionForRailClick(nextToolId) {
+  return V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId);
 }
 
 /** Ctrl+marquee multi-select keeps shapes selected without tlBarSelected — still clear before arming a tool. */
-function v9ClearChartSelectionBeforeRailTool(chartInstance, nextToolId, currentTool, tlBarSelected) {
+function v9ClearChartSelectionBeforeRailTool(chartInstance, nextToolId, _currentTool, tlBarSelected) {
   if (!V9_DRAWING_TOOL_GROUP_IDS.has(nextToolId)) return;
   const dmSel = chartInstance && chartInstance.drawingManager;
   const hasSelected = !!(dmSel && Array.isArray(dmSel.selectedDrawings) && dmSel.selectedDrawings.length > 0);
-  if (!hasSelected && !(tlBarSelected && v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool))) {
+  if (!hasSelected && !(tlBarSelected && v9ShouldClearChartSelectionForRailClick(nextToolId))) {
     return;
   }
   try {
@@ -2199,6 +2198,59 @@ function v9VpCoordVisPatchFromDrawing(d) {
     ...v9CoordPatchFromDrawing(d),
     ...v9VisibilityPatchFromDrawing(d),
   };
+}
+
+/** Read volume-profile drawing.style + live geometry → V9 vpStyle panel fields. */
+function v9VpStylePatchFromDrawing(d, prev = {}) {
+  const ds = (d && d.style) || {};
+  const PLC_R2 = { left: "Left", right: "Right" };
+  const ROW_R2 = { numberOfRows: "Number of Rows", ticksPerRow: "Ticks per Row" };
+  const VOL_R2 = { upDown: "Up/Down", total: "Total", delta: "Delta" };
+  return {
+    ...prev,
+    valuesOn: ds.showValues !== false,
+    valuesColor: ds.valuesColor || prev.valuesColor,
+    widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+    placement: PLC_R2[ds.profilePlacement] || prev.placement,
+    zoneBgOn: ds.showBackground !== false,
+    zoneBgColor: ds.fill || prev.zoneBgColor,
+    zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+    upVolColor: ds.buyColor || prev.upVolColor,
+    downVolColor: ds.sellColor || prev.downVolColor,
+    valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+    valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+    pocOn: ds.showPOC !== false,
+    pocColor: ds.pocColor || prev.pocColor,
+    vahOn: ds.showVAH !== false,
+    vahColor: ds.VAHColor || prev.vahColor,
+    valOn: ds.showVAL !== false,
+    valColor: ds.VALColor || prev.valColor,
+    devPocOn: !!ds.showDevelopingPOC,
+    devPocColor: ds.developingPOCColor || prev.devPocColor,
+    devVAOn: !!ds.showDevelopingVA,
+    devVAColor: ds.developingVAColor || prev.devVAColor,
+    rowsLayout: ROW_R2[ds.rowsLayout] || prev.rowsLayout,
+    rowSize: String(ds.rowSize ?? prev.rowSize),
+    volumeOn: ds.showVolume !== false,
+    volumeType: VOL_R2[ds.volumeDisplay] || prev.volumeType,
+    valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol),
+    extendRight: !!ds.extendRight,
+    priceLabels: ds.showPriceLabel !== false,
+    timeLabels: ds.showTimeLabel !== false,
+    ...v9VpCoordVisPatchFromDrawing(d),
+  };
+}
+
+function v9ResolveLiveDrawingForSettings(drawing) {
+  if (!drawing) return drawing;
+  let live = drawing;
+  try {
+    enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+      const resolved = resolveLiveDrawingInDm(dm, drawing);
+      if (resolved) live = resolved;
+    });
+  } catch (_) {}
+  return live;
 }
 
 /** Delete fixed-range / session volume profile — resolves live drawing refs. */
@@ -14849,6 +14901,7 @@ const TalariaV8bLive = () => {
       if (v9IsVolumeProfileDrawingType(d.type)) {
         const vpPatch = v9VpCoordVisPatchFromDrawing(d);
         if (Object.keys(vpPatch).length > 0) {
+          suppressVpCoordBridge.current = true;
           setVpStyle((s) => {
             let changed = false;
             const next = { ...s };
@@ -15201,49 +15254,11 @@ const TalariaV8bLive = () => {
           });
         } else if (drawing.type === 'volume-profile' || drawing.type === 'fixed-range-volume-profile') {
           suppressVpBridge.current = true;
-          suppressCoordBridge.current = true;
-          const ds = drawingForStyle.style || drawing.style || {};
-          const PLC_R2 = {left:"Left",right:"Right"};
-          const ROW_R2 = {numberOfRows:"Number of Rows",ticksPerRow:"Ticks per Row"};
-          const VOL_R2 = {upDown:"Up/Down",total:"Total",delta:"Delta"};
-          const vpCoordVisPatch = v9VpCoordVisPatchFromDrawing(drawingForStyle);
+          suppressVpCoordBridge.current = true;
           setVpLocked(!!drawingForStyle.locked);
           v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
-            setTlStyle((prev) => ({ ...prev, ...vpCoordVisPatch }));
-            setVpStyle((prev) => ({
-              ...prev,
-              valuesOn: ds.showValues !== false,
-              valuesColor: ds.valuesColor || prev.valuesColor,
-              widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
-              placement: PLC_R2[ds.profilePlacement] || prev.placement,
-              zoneBgOn: ds.showBackground !== false,
-              zoneBgColor: ds.fill || prev.zoneBgColor,
-              zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
-              upVolColor: ds.buyColor || prev.upVolColor,
-              downVolColor: ds.sellColor || prev.downVolColor,
-              valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
-              valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
-              pocOn: ds.showPOC !== false,
-              pocColor: ds.pocColor || prev.pocColor,
-              vahOn: ds.showVAH !== false,
-              vahColor: ds.VAHColor || prev.vahColor,
-              valOn: ds.showVAL !== false,
-              valColor: ds.VALColor || prev.valColor,
-              devPocOn: !!ds.showDevelopingPOC,
-              devPocColor: ds.developingPOCColor || prev.devPocColor,
-              devVAOn: !!ds.showDevelopingVA,
-              devVAColor: ds.developingVAColor || prev.devVAColor,
-              rowsLayout: ROW_R2[ds.rowsLayout] || prev.rowsLayout,
-              rowSize: String(ds.rowSize ?? prev.rowSize),
-              volumeOn: ds.showVolume !== false,
-              volumeType: VOL_R2[ds.volumeDisplay] || prev.volumeType,
-              valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol),
-              extendRight: !!ds.extendRight,
-              priceLabels: ds.showPriceLabel !== false,
-              timeLabels: ds.showTimeLabel !== false,
-              ...vpCoordVisPatch,
-            }));
+            setVpStyle((prev) => v9VpStylePatchFromDrawing(drawingForStyle, prev));
             setTlBarSelected(true);
             setTlBarSelectedType(drawing.type);
             setVpSettPos({ x: px, y: py });
@@ -15583,24 +15598,7 @@ const TalariaV8bLive = () => {
             if (dt === 'volume-profile' || dt === 'fixed-range-volume-profile') {
               suppressVpBridge.current = true;
               br.setVpStyle(prev => ({
-                ...prev, valuesOn: ds.showValues !== false, valuesColor: ds.valuesColor || prev.valuesColor,
-                widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
-                placement: PLC_R[ds.profilePlacement] || prev.placement,
-                zoneBgOn: ds.showBackground !== false, zoneBgColor: ds.fill || prev.zoneBgColor,
-                zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
-                upVolColor: ds.buyColor || prev.upVolColor, downVolColor: ds.sellColor || prev.downVolColor,
-                valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
-                valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
-                pocOn: ds.showPOC !== false, pocColor: ds.pocColor || prev.pocColor,
-                vahOn: ds.showVAH !== false, vahColor: ds.VAHColor || prev.vahColor,
-                valOn: ds.showVAL !== false, valColor: ds.VALColor || prev.valColor,
-                devPocOn: !!ds.showDevelopingPOC, devPocColor: ds.developingPOCColor || prev.devPocColor,
-                devVAOn: !!ds.showDevelopingVA, devVAColor: ds.developingVAColor || prev.devVAColor,
-                rowsLayout: ROW_R[ds.rowsLayout] || prev.rowsLayout, rowSize: String(ds.rowSize ?? prev.rowSize),
-                volumeOn: ds.showVolume !== false, volumeType: VOL_R[ds.volumeDisplay] || prev.volumeType,
-                valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol), extendRight: !!ds.extendRight,
-                priceLabels: ds.showPriceLabel !== false,
-                timeLabels: ds.showTimeLabel !== false,
+                ...v9VpStylePatchFromDrawing(drawing, prev),
               }));
             }
             if (dt === 'anchored-volume-profile') {
@@ -15863,28 +15861,7 @@ const TalariaV8bLive = () => {
           if (t === 'volume-profile' || t === 'fixed-range-volume-profile') {
             suppressVpBridge.current = true;
             br.setVpStyle(prev => ({
-              ...prev,
-              valuesOn: s.showValues !== false, valuesColor: s.valuesColor || prev.valuesColor,
-              widthPct: String(Math.round((s.profileWidthRatio ?? 0.3) * 100)),
-              placement: PLC_REV[s.profilePlacement] || prev.placement,
-              zoneBgOn: s.showBackground !== false, zoneBgColor: s.fill || prev.zoneBgColor,
-              zoneBgAlpha: Math.round((s.backgroundOpacity ?? 0.85) * 100),
-              upVolColor: s.buyColor || prev.upVolColor,
-              downVolColor: s.sellColor || prev.downVolColor,
-              valueAreaUpColor: s.valueAreaBuyColor || prev.valueAreaUpColor,
-              valueAreaDownColor: s.valueAreaSellColor || prev.valueAreaDownColor,
-              pocOn: s.showPOC !== false, pocColor: s.pocColor || prev.pocColor,
-              vahOn: s.showVAH !== false, vahColor: s.VAHColor || prev.vahColor,
-              valOn: s.showVAL !== false, valColor: s.VALColor || prev.valColor,
-              devPocOn: !!s.showDevelopingPOC, devPocColor: s.developingPOCColor || prev.devPocColor,
-              devVAOn: !!s.showDevelopingVA, devVAColor: s.developingVAColor || prev.devVAColor,
-              rowsLayout: ROW_REV[s.rowsLayout] || prev.rowsLayout,
-              rowSize: String(s.rowSize ?? prev.rowSize),
-              volumeOn: s.showVolume !== false, volumeType: VOL_REV[s.volumeDisplay] || prev.volumeType,
-              valueAreaVol: String(s.valueAreaVolume ?? prev.valueAreaVol),
-              extendRight: !!s.extendRight,
-              priceLabels: s.showPriceLabel !== false,
-              timeLabels: s.showTimeLabel !== false,
+              ...v9VpStylePatchFromDrawing(live, prev),
             }));
           }
           if (t === 'anchored-volume-profile') {
@@ -17272,7 +17249,7 @@ const TalariaV8bLive = () => {
   useLayoutEffect(() => {
     if (!vpCoordBridgeReady.current) { vpCoordBridgeReady.current = true; return; }
     if (!vpSettOpen) return;
-    if (suppressCoordBridge.current) { suppressCoordBridge.current = false; return; }
+    if (suppressVpCoordBridge.current) { suppressVpCoordBridge.current = false; return; }
     const editSess = editingDrawingRef.current;
     try {
       const chartsToRender = new Set();
@@ -17652,7 +17629,7 @@ const TalariaV8bLive = () => {
                 setTlBarSelected(false);
                 setTlBarSelectedType(null);
                 v9SelectionToolbarSyncRef.current = false;
-              } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
+              } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id)) {
                 setTlBarSelected(false); setTlBarSelectedType(null);
                 try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll({ forSelectionChange: true }); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
               }
@@ -17670,7 +17647,7 @@ const TalariaV8bLive = () => {
               setTlBarSelected(false);
               setTlBarSelectedType(null);
               v9SelectionToolbarSyncRef.current = false;
-            } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id, tool)) {
+            } else if (tlBarSelected && v9ShouldClearChartSelectionForRailClick(t.id)) {
               setTlBarSelected(false); setTlBarSelectedType(null);
               try { const dmSel = ch && ch.drawingManager; if (dmSel) { if (typeof dmSel.deselectAll === 'function') dmSel.deselectAll({ forSelectionChange: true }); if (dmSel.toolbar && typeof dmSel.toolbar.hide === 'function') dmSel.toolbar.hide(); } } catch (_) {}
             }
@@ -23231,7 +23208,7 @@ const TalariaV8bLive = () => {
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
             onClick={e=>{e.stopPropagation();setVwapStyleDrop(null);}}
-            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:vwapSettPos.x,top:vwapSettPos.y,zIndex:11100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vwapsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -23640,7 +23617,7 @@ const TalariaV8bLive = () => {
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
             onClick={e=>{e.stopPropagation();setVpStyleDrop(null);}}
-            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:vpSettPos.x,top:vpSettPos.y,zIndex:11100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("vpsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -24042,7 +24019,7 @@ const TalariaV8bLive = () => {
             onPointerDown={e=>e.stopPropagation()}
             onMouseDown={e=>e.stopPropagation()}
             onClick={e=>{e.stopPropagation();setAvStyleDrop(null);}}
-            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:10050,width:420,fontFamily:F,
+            style={{position:"fixed",left:avSettPos.x,top:avSettPos.y,zIndex:11100,width:420,fontFamily:F,
                     background:c.sf,border:`1px solid ${c.brH}`,boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                     display:"flex",flexDirection:"column",
                     animation:closing.has("avsett")?"tlrPopOut 0.155s ease both":"tlrPopIn 0.15s ease"}}>
@@ -25310,59 +25287,23 @@ const TalariaV8bLive = () => {
             }
           }
           if (!d || !v9IsVolumeProfileDrawingType(d.type)) return;
+          d = v9ResolveLiveDrawingForSettings(d);
           const r = e.currentTarget.getBoundingClientRect();
           const vpW2 = window.innerWidth / Z;
           const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
           const y = r.bottom / Z + 8;
           suppressVpBridge.current = true;
-          suppressCoordBridge.current = true;
-          const ds = d.style || {};
-          const PLC_R2 = { left: "Left", right: "Right" };
-          const ROW_R2 = { numberOfRows: "Number of Rows", ticksPerRow: "Ticks per Row" };
-          const VOL_R2 = { upDown: "Up/Down", total: "Total", delta: "Delta" };
-          const vpCoordVisPatch = v9VpCoordVisPatchFromDrawing(d);
+          suppressVpCoordBridge.current = true;
           editingDrawingRef.current = {
             drawing: d,
             prevTool: tool,
             prevGroupSelected: groupSelected,
             panelGroup: "brush",
+            editSnapshot: v9CloneDrawingEditState(d),
           };
           v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
           flushSync(() => {
-            setTlStyle((prev) => ({ ...prev, ...vpCoordVisPatch }));
-            setVpStyle((prev) => ({
-              ...prev,
-              valuesOn: ds.showValues !== false,
-              valuesColor: ds.valuesColor || prev.valuesColor,
-              widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
-              placement: PLC_R2[ds.profilePlacement] || prev.placement,
-              zoneBgOn: ds.showBackground !== false,
-              zoneBgColor: ds.fill || prev.zoneBgColor,
-              zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
-              upVolColor: ds.buyColor || prev.upVolColor,
-              downVolColor: ds.sellColor || prev.downVolColor,
-              valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
-              valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
-              pocOn: ds.showPOC !== false,
-              pocColor: ds.pocColor || prev.pocColor,
-              vahOn: ds.showVAH !== false,
-              vahColor: ds.VAHColor || prev.vahColor,
-              valOn: ds.showVAL !== false,
-              valColor: ds.VALColor || prev.valColor,
-              devPocOn: !!ds.showDevelopingPOC,
-              devPocColor: ds.developingPOCColor || prev.devPocColor,
-              devVAOn: !!ds.showDevelopingVA,
-              devVAColor: ds.developingVAColor || prev.devVAColor,
-              rowsLayout: ROW_R2[ds.rowsLayout] || prev.rowsLayout,
-              rowSize: String(ds.rowSize ?? prev.rowSize),
-              volumeOn: ds.showVolume !== false,
-              volumeType: VOL_R2[ds.volumeDisplay] || prev.volumeType,
-              valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol),
-              extendRight: !!ds.extendRight,
-              priceLabels: ds.showPriceLabel !== false,
-              timeLabels: ds.showTimeLabel !== false,
-              ...vpCoordVisPatch,
-            }));
+            setVpStyle((prev) => v9VpStylePatchFromDrawing(d, prev));
             setVpSettPos({ x, y });
             setVpSettOpen(true);
             setVpSettTab("style");
