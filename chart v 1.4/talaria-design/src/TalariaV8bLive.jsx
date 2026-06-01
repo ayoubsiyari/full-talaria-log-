@@ -793,10 +793,6 @@ function v9DefaultShowInfoTypesForRangeType(rangeType) {
   return ["Price range", "Percent change", "Change in pips", "Bars range", "Date/time range", "Volume"];
 }
 
-function v9RangeStatsOptionsForType(rangeType) {
-  return v9DefaultShowInfoTypesForRangeType(rangeType);
-}
-
 function v9TlStylePatchForRangeType(prev, nextRangeType) {
   if (!nextRangeType || prev?.rangeType === nextRangeType) return prev;
   return {
@@ -5766,7 +5762,6 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     if (typeof tlStyle.showInfo === "boolean") {
       d.style.showLabel = tlStyle.showInfo;
     }
-    d.style.infoSettings = v9ChartInfoSettingsFromTlStyle(tlStyle);
   }
   if (dm && typeof dm.renderDrawing === "function") {
     try {
@@ -11555,7 +11550,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260531a57-range-stats";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260531a55-range-quickbar";
   }, []);
 
   useEffect(() => {
@@ -16576,27 +16571,6 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
-  /** Range stats row toggle — immediate chart sync (settings Stats dropdown). */
-  const applyTlShowInfoTypesToggle = useCallback((label) => {
-    flushSync(() => {
-      setTlStyle((s) => {
-        const has = s.showInfoTypes.includes(label);
-        const arr = has
-          ? s.showInfoTypes.filter((x) => x !== label)
-          : [...s.showInfoTypes, label];
-        return {
-          ...s,
-          showInfoTypes: arr,
-          showInfo: arr.length > 0 ? true : s.showInfo,
-        };
-      });
-    });
-    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
-      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
-      resolveLegacyTool,
-    });
-  }, []);
-
   /** Range / measure label font size — immediate chart sync (quick bar + settings). */
   const applyTlLabelFontSize = useCallback((labelFontSize) => {
     flushSync(() => {
@@ -18647,9 +18621,9 @@ const TalariaV8bLive = () => {
                               right:0,width:152,background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)",fontFamily:F,
                               animation:closing.has("tlInfoDrop")?"tlrDropOut 0.13s ease both":"tlrDropIn 0.15s ease"}}>
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                            {v9RangeStatsOptionsForType(tlStyle.rangeType).map(v=>{
+                            {["Price range","Percent change","Change in pips","Bars range","Date/time range","Volume"].map(v=>{
                               const isA=tlStyle.showInfoTypes.includes(v),isH=hov===`tli-${v}`;
-                              return(<div key={v} {...tlStyleDropPick(() => applyTlShowInfoTypesToggle(v))}
+                              return(<div key={v} onClick={()=>setTlStyle(s=>{const arr=s.showInfoTypes.includes(v)?s.showInfoTypes.filter(x=>x!==v):[...s.showInfoTypes,v];return{...s,showInfoTypes:arr};})}
                                 onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"6px 10px",cursor:"default",display:"flex",alignItems:"center",gap:8,position:"relative",
                                   background:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
