@@ -16620,9 +16620,13 @@ class Chart {
         // Fast path while dragging chart: candles + overlays stay visible (60fps loop).
         if (chartViewPanning) {
             const panOpts = { panFast: true };
-            // Vertical under candles; horizontal redrawn after axes so LOD candles do not hide price levels.
+            // Vertical grid first; axes may widen margin — then horizontal grid, then candles once
+            // (double candle pass + grid sandwiched in between made wicks look soft/faded when zoomed out).
             this.drawGrid({ panFast: true, skipHorizontal: true });
             this.drawVolume(visible, panOpts);
+            this.drawAxes();
+            this.calculateScales();
+            this.drawGrid({ panFast: true, skipVertical: true });
             this.drawCandles(visible, panOpts);
             if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
@@ -16634,12 +16638,6 @@ class Chart {
                     console.error('Error drawing overlays:', e);
                 }
             }
-            this.drawAxes();
-            // Margin may widen after axis labels — refresh scales (Y domain stays pan-frozen).
-            this.calculateScales();
-            // Horizontal grid uses post-axis y ticks; redraw candles on top so lines do not paint through bodies.
-            this.drawGrid({ panFast: true, skipVertical: true });
-            this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             this.drawCurrentPriceLabel(visible);
             if (typeof this.renderSeparatePanelIndicators === 'function') {
@@ -16667,6 +16665,9 @@ class Chart {
             }
             this.drawGrid({ panFast: true, skipHorizontal: true });
             this.drawVolume(visible, panOpts);
+            this.drawAxes();
+            this.calculateScales();
+            this.drawGrid({ panFast: true, skipVertical: true });
             this.drawCandles(visible, panOpts);
             if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
@@ -16678,10 +16679,6 @@ class Chart {
                     console.error('Error drawing overlays:', e);
                 }
             }
-            this.drawAxes();
-            this.calculateScales();
-            this.drawGrid({ panFast: true, skipVertical: true });
-            this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             if (typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators();
@@ -19091,6 +19088,9 @@ class Chart {
                 idx: Number.isFinite(d.midIdx) ? d.midIdx : (this.visibleStartIndex || 0) + i,
             }));
 
+        this.ctx.save();
+        this.ctx.globalAlpha = 1;
+
         drawSeries.forEach(({ d, idx }) => {
             // Calculate X position using our helper method
             const x = this.dataIndexToPixel(idx);
@@ -19132,9 +19132,12 @@ class Chart {
                 this.ctx.strokeStyle = wickColor;
                 this.ctx.lineWidth = wickWidth;
                 this.ctx.lineCap = 'butt';
+                const wickX = cx + 0.5;
+                const wickTop = Math.round(Math.min(yh, yl));
+                const wickBot = Math.round(Math.max(yh, yl));
                 this.ctx.beginPath();
-                this.ctx.moveTo(cx, yh);
-                this.ctx.lineTo(cx, yl);
+                this.ctx.moveTo(wickX, wickTop);
+                this.ctx.lineTo(wickX, wickBot);
                 this.ctx.stroke();
             }
 
@@ -19195,6 +19198,8 @@ class Chart {
             }
             drawn++;
         });
+
+        this.ctx.restore();
         
         if (drawn === 0 && drawSeries.length > 0) {
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
