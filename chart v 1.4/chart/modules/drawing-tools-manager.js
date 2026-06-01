@@ -2348,6 +2348,83 @@ class DrawingToolsManager {
         });
     }
 
+    _getDrawingRenderScales() {
+        return {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale,
+            chart: this.chart,
+            labelsGroup: this.labelsGroup
+        };
+    }
+
+    /** In-place SVG patch during live resize (same hot path as chart pan). */
+    _tryPatchLiveHandleGeometry(drawing) {
+        if (!drawing || !drawing.group || drawing.group.empty()) return false;
+        if (!this.chart || typeof this.chart.yScale !== 'function') return false;
+        if (typeof drawing.patchPanZoomGeometry !== 'function') return false;
+        try {
+            return drawing.patchPanZoomGeometry(this._getDrawingRenderScales()) === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _syncLiveHandleChrome(drawing) {
+        if (!drawing || !drawing.group || drawing.group.empty()) return;
+        const scales = this._getDrawingRenderScales();
+        if (typeof drawing._syncLiveTextChrome === 'function' && drawing.bbox) {
+            drawing._syncLiveTextChrome(drawing.group, drawing.bbox);
+        } else if (typeof drawing._syncTextHandlePositions === 'function' && drawing.bbox
+            && typeof drawing._shouldCreateHandles === 'function'
+            && drawing._shouldCreateHandles({ skipHandles: false })) {
+            drawing._syncTextHandlePositions(drawing.group, drawing.bbox);
+        } else if (typeof drawing._syncBoxHandlePositions === 'function') {
+            drawing._syncBoxHandlePositions(drawing.group, scales);
+        } else if (typeof drawing.updateHandlePositions === 'function') {
+            drawing.updateHandlePositions(scales);
+        }
+        drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+            .style('pointer-events', 'all');
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights({ live: true, force: true });
+        }
+    }
+
+    /**
+     * One rAF resize paint: patch geometry in place when possible; else lightweight live render.
+     */
+    _applyLiveHandleEditPaint(drawing, event, applyPointsFn) {
+        if (!drawing) return;
+        const src = (event && event.sourceEvent) ? event.sourceEvent : event;
+        if (typeof this._scheduleGeometryDragPaint !== 'function') {
+            this._paintLiveHandleEditFrame(drawing, src, applyPointsFn);
+            return;
+        }
+        this._scheduleGeometryDragPaint(src, () => {
+            this._paintLiveHandleEditFrame(drawing, src, applyPointsFn);
+        });
+    }
+
+    _paintLiveHandleEditFrame(drawing, src, applyPointsFn) {
+        try {
+            if (typeof applyPointsFn === 'function' && src) {
+                applyPointsFn(src);
+            }
+            if (!this.chart || !this.chart.xScale || !this.chart.yScale) return;
+            if (this._tryPatchLiveHandleGeometry(drawing)) {
+                this._syncLiveHandleChrome(drawing);
+            } else {
+                this.renderDrawing(drawing, this._liveRenderDrawingOpts(drawing));
+            }
+            this._broadcastLiveEditUpdate(drawing);
+        } catch (err) {
+            try {
+                if (typeof applyPointsFn === 'function' && src) applyPointsFn(src);
+                this.scheduleRenderDrawing(drawing);
+            } catch (_) { /* ignore */ }
+        }
+    }
+
     _clearDrawingDragTransform(drawing) {
         this._applyDrawingDragTransform(drawing, null);
     }
