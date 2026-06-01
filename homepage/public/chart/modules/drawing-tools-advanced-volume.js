@@ -644,15 +644,20 @@ class AnchoredVWAPTool extends BaseDrawing {
         }
 
         // Keep the control point centered on the VWAP start point (TradingView-like anchor behavior).
-        if (vwapPoints.length > 0 && Number.isFinite(vwapPoints[0].vwap)) {
+        if (!this._isActiveMoving && vwapPoints.length > 0 && Number.isFinite(vwapPoints[0].vwap)) {
             const vwapAnchorY = scales.yScale(vwapPoints[0].vwap);
             if (Number.isFinite(vwapAnchorY)) {
                 anchorY = vwapAnchorY;
             }
+        } else if (this._isActiveMoving && chartData.length > 0 && chartData[anchorIndex]) {
+            const close = Number(chartData[anchorIndex].c ?? chartData[anchorIndex].close);
+            if (Number.isFinite(close)) {
+                anchorY = scales.yScale(close);
+            }
         }
 
         // Show anchor-time guide while selected/moving.
-        if (this.selected && scales.yScale && typeof scales.yScale.domain === 'function') {
+        if ((this.selected || this._isActiveMoving) && scales.yScale && typeof scales.yScale.domain === 'function') {
             const yDomain = scales.yScale.domain();
             if (Array.isArray(yDomain) && yDomain.length >= 2) {
                 const yLow = Math.min(yDomain[0], yDomain[yDomain.length - 1]);

@@ -479,6 +479,15 @@ class DrawingToolsManager {
         if (drawing) this.renderDrawing(drawing);
     }
 
+    _syncInlineTextEditorToDrawing(drawing) {
+        if (!drawing || this._textInlineEditDrawing !== drawing) return;
+        const helpers = typeof window !== 'undefined' ? window.DrawingTextHelpers : null;
+        if (!helpers || typeof helpers.syncInlineEditorForDrawing !== 'function') return;
+        try {
+            helpers.syncInlineEditorForDrawing(drawing);
+        } catch (_) { /* ignore */ }
+    }
+
     /** Hot-path render options during move/resize (matches scheduleRenderDrawing / movement). */
     _liveRenderDrawingOpts(drawing) {
         const live = this._isLiveDrawingInteraction()
@@ -1831,30 +1840,38 @@ class DrawingToolsManager {
                     return;
                 }
 
+                const best = drawingsAtPoint[0];
+                // Anchored VWAP curves span most of the chart — don't hijack canvas pan unless the anchor handle is hit.
+                if (best && best.type === 'anchored-vwap' && !this._isAnchoredVwapAnchorHit(best, mouseX, mouseY)) {
+                    return;
+                }
+
                 const selectedAtPoint = this._getSelectedDrawingsAtPoint(mouseX, mouseY);
+                const toMove = (this.selectedDrawings || []).filter((d) =>
+                    d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
+                );
 
-                event.preventDefault();
-                event.stopPropagation();
-                if (typeof event.stopImmediatePropagation === 'function') {
-                    event.stopImmediatePropagation();
+                if (selectedAtPoint.length > 0 && toMove.length > 0) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
+                    }
+                    this._startDirectMoveDrag(toMove, event);
+                    suppressNextCanvasClick = true;
+                    return;
                 }
 
-                if (selectedAtPoint.length > 0) {
-                    const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
-                    if (toMove.length > 0) {
-                        this._startDirectMoveDrag(toMove, event);
+                if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (typeof event.stopImmediatePropagation === 'function') {
+                        event.stopImmediatePropagation();
                     }
-                } else {
-                    const best = drawingsAtPoint[0];
-                    if (!best) return;
-
                     this.selectDrawing(best, false);
-                    if (!best.locked) {
-                        this._startDirectMoveDrag(best, event);
-                    }
+                    this._startDirectMoveDrag(best, event);
+                    suppressNextCanvasClick = true;
                 }
-
-                suppressNextCanvasClick = true;
             };
             canvas.addEventListener('mousedown', onMouseDown, true);
             
@@ -2677,13 +2694,13 @@ class DrawingToolsManager {
                     (d.type === 'long-position' || d.type === 'short-position')
                     && this._findRiskRewardInteractiveHandleRole(d, mouseX, mouseY)
                 );
-                if (selectedAtPoint.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
+                const toMove = (this.selectedDrawings || []).filter((d) =>
+                    d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
+                );
+                if (selectedAtPoint.length > 0 && toMove.length > 0 && !event.shiftKey && !shouldBlockSelectedVolumeProfileTextDirectMove && !deferRRSelected) {
                     event.preventDefault();
                     event.stopPropagation();
-                    const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
-                    if (toMove.length > 0) {
-                        this._startDirectMoveDrag(toMove, event);
-                    }
+                    this._startDirectMoveDrag(toMove, event);
                     return;
                 }
             }
@@ -3394,6 +3411,9 @@ class DrawingToolsManager {
                     );
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
+            }
+            if (this._textInlineEditDrawing) {
+                this._syncInlineTextEditorToDrawing(this._textInlineEditDrawing);
             }
             return;
         }
@@ -5063,6 +5083,9 @@ class DrawingToolsManager {
         if (this._isPlacementModeActive()) {
             this._disableDrawingPointerEvents(drawing);
         }
+        if (this._textInlineEditDrawing === drawing) {
+            this._syncInlineTextEditorToDrawing(drawing);
+        }
         // Order panel preview lines are appended to the root SVG after .drawings — they stack on top
         // and steal drags from risk/reward / other tools unless we lift the drawing layers again.
         if (!liveRender) {
@@ -5179,9 +5202,9 @@ class DrawingToolsManager {
 
         // Anchored VWAP: allow selection from curve, but keep drag interaction on anchor handles.
         if (drawing.type === 'anchored-vwap') {
-            drawing.group.selectAll('.anchored-vwap-curve')
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move');
+            drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-band-fill, .anchored-vwap-line-markers')
+                .style('pointer-events', 'none')
+                .style('cursor', 'default');
             drawing.group.selectAll('.anchored-vwap-label')
                 .style('pointer-events', 'none');
             drawing.group.selectAll('.anchored-vwap-anchor, .anchored-vwap-anchor-hit')
@@ -5956,6 +5979,7 @@ class DrawingToolsManager {
                             self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                         }
                         dragStartPoints = drawing.points.map(p => ({ ...p }));
+                        setAnchoredVWAPMovingState(drawing, true);
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
                         }
@@ -5984,12 +6008,8 @@ class DrawingToolsManager {
                             beforeState: self.history ? self.history.captureState(d) : null,
                             startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
-                        multiDragStartPoints.forEach(item => {
-                            setAnchoredVWAPMovingState(item.drawing, true);
-                        });
                     } else {
                         multiDragStartPoints = null;
-                        setAnchoredVWAPMovingState(drawing, true);
                         // Capture state for undo (single drawing)
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
@@ -6048,6 +6068,9 @@ class DrawingToolsManager {
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
                     }
+                    if (self._textInlineEditDrawing) {
+                        self._syncInlineTextEditorToDrawing(self._textInlineEditDrawing);
+                    }
                 })
                 .on('end', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
@@ -6056,6 +6079,7 @@ class DrawingToolsManager {
 
                     if (horizontalAnchorPointDrag) {
                         self._applyHorizontalAnchorPointFromEvent(drawing, event.sourceEvent, 0);
+                        setAnchoredVWAPMovingState(drawing, false);
                         if (self.history && beforeState) {
                             self.history.recordModify(drawing, beforeState);
                         }
@@ -7284,8 +7308,8 @@ class DrawingToolsManager {
                 this.svg.style('pointer-events', 'all');
             } else if (drawingSelected) {
                 this.svg.style('z-index', activeZ);
-                // Must allow pointer events so selected drawings (handles, risk/reward + buttons, borders) work.
-                this.svg.style('pointer-events', 'all');
+                // Per-element pointer-events on strokes/handles — empty plot passes through to canvas pan.
+                this.svg.style('pointer-events', 'none');
             } else if (hoverResizeHandles) {
                 this.svg.style('z-index', activeZ);
                 // Root stays none — strokes/handles use pointer-events; lifts layer above .axis-cursor-zone.
@@ -9679,6 +9703,30 @@ class DrawingToolsManager {
         }
     }
 
+    _isAnchoredVwapAnchorHit(drawing, mouseX, mouseY) {
+        if (!drawing || drawing.type !== 'anchored-vwap') return false;
+        const anchor = Array.isArray(drawing.points) ? drawing.points[0] : null;
+        const chart = this.chart;
+        const yScale = chart && chart.yScale ? chart.yScale : null;
+        if (!anchor || !yScale) return false;
+        const anchorIndex = Math.max(0, Math.round(anchor.x));
+        const anchorX = (chart && typeof chart.dataIndexToPixel === 'function')
+            ? chart.dataIndexToPixel(anchorIndex)
+            : (chart.xScale ? chart.xScale(anchorIndex) : NaN);
+        let anchorYValue = anchor.y;
+        const data = chart && Array.isArray(chart.data) ? chart.data : [];
+        const candle = data[anchorIndex];
+        if (candle) {
+            const close = Number(candle.c ?? candle.close);
+            if (Number.isFinite(close)) anchorYValue = close;
+        }
+        const anchorY = yScale(anchorYValue);
+        if (!Number.isFinite(anchorX) || !Number.isFinite(anchorY)) return false;
+        const dx = mouseX - anchorX;
+        const dy = mouseY - anchorY;
+        return Math.sqrt(dx * dx + dy * dy) <= 20;
+    }
+
     /**
      * Selected drawings under (mx, my): stroke hit first, then bbox for fill/body drags.
      */
@@ -9691,6 +9739,9 @@ class DrawingToolsManager {
         if (strokeSelected.length > 0) return strokeSelected;
 
         return selected.filter((d) => {
+            if (d.type === 'anchored-vwap') {
+                return this._isAnchoredVwapAnchorHit(d, mx, my);
+            }
             if (d.type === 'anchored-volume-profile') {
                 return this.isVolumeProfileAnchorBoundaryHit(d, mx, my);
             }
@@ -9713,6 +9764,12 @@ class DrawingToolsManager {
             : 1;
         const pad = padding * z;
         return selected.some((d) => {
+            if (d.type === 'anchored-vwap') {
+                return this._isAnchoredVwapAnchorHit(d, mx, my);
+            }
+            if (d.type === 'anchored-volume-profile') {
+                return this.isVolumeProfileAnchorBoundaryHit(d, mx, my);
+            }
             if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
                 if (d.type === 'fib-wedge' && this._isPointInFibWedgeBody(d, mx, my)) return true;
                 return this._isPointOnDrawingVisibleStroke(d, mx, my);
@@ -9763,7 +9820,9 @@ class DrawingToolsManager {
         if (!event || event.button !== 0 || !event.ctrlKey || event.shiftKey || this.currentTool || this.isRectSelecting) {
             return false;
         }
-        const toMove = (this.selectedDrawings || []).filter((d) => d && !d.locked);
+        const toMove = (this.selectedDrawings || []).filter((d) =>
+            d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
+        );
         if (toMove.length === 0) return false;
 
         const [mx, my] = this._eventCanvasLocalXY(event);

@@ -144,7 +144,7 @@ function resolveTextAnnotationEditBoxNode(drawing, fallbackNode) {
         notebox: 'rect.note-body-hit',
         comment: 'rect.comment-body-hit',
         callout: 'rect.shape-border-hit',
-        pin: 'path.note-body-hit',
+        pin: 'path.note-body-hit, rect.pin-text-anchor',
         'signpost-2': 'rect.signpost-label-fill',
         text: 'text.inline-editable-text, rect.text-background, rect.text-body-hit'
     };
@@ -193,6 +193,14 @@ function syncInlineEditorToEditBoxRect(editBoxNode) {
     edDiv.style.maxWidth = `${br.width}px`;
     edDiv.style.minHeight = `${br.height}px`;
     edDiv.style.boxSizing = 'border-box';
+}
+
+/** Reposition the open HTML inline editor to match the drawing's current on-chart edit box. */
+function syncInlineEditorForDrawing(drawing) {
+    if (!drawing) return;
+    const measured = measureTextAnnotationEditRect(drawing);
+    if (!measured || !measured.posNode) return;
+    syncInlineEditorToEditBoxRect(measured.posNode);
 }
 
 /** Standard inline editor options for any wrap-capable text annotation. */
@@ -369,6 +377,7 @@ function scheduleTextAnnotationLiveRender(drawing) {
             }
         }
     }
+    syncInlineEditorForDrawing(drawing);
 }
 
 function beginTextAnnotationInlineEdit(drawing) {
@@ -2719,6 +2728,8 @@ class PinTool extends BaseDrawing {
 
         this._prepareRenderGroup(container, 'drawing pin', renderOpts);
         this._clearDrawingLabels(scales);
+        this._lastContainer = container;
+        this._lastScales = scales;
 
         const p = this.points[0];
         const x = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -2941,6 +2952,7 @@ class PinTool extends BaseDrawing {
                         onInput: (newText) => {
                             self.setText((newText || '').replace(/\r\n/g, '\n'));
                             scheduleTextAnnotationLiveRender(self);
+                            requestAnimationFrame(() => syncInlineEditorForDrawing(self));
                         }
                     })
                 );
@@ -4970,6 +4982,7 @@ if (typeof module !== 'undefined' && module.exports) {
         buildTextAnnotationInlineHideSelector,
         measureTextAnnotationEditRect,
         syncInlineEditorToEditBoxRect,
+        syncInlineEditorForDrawing,
         resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
@@ -5005,6 +5018,7 @@ if (typeof window !== 'undefined') {
         buildTextAnnotationInlineHideSelector,
         measureTextAnnotationEditRect,
         syncInlineEditorToEditBoxRect,
+        syncInlineEditorForDrawing,
         resolveTextAnnotationEditBoxNode,
         buildNoteInlineEditorOptions,
         createInlineTextSaveHandler,
