@@ -11555,7 +11555,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260601a61-range-stats-lines";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260531a57-range-stats";
   }, []);
 
   useEffect(() => {
