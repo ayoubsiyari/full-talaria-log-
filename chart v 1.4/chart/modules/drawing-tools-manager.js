@@ -455,7 +455,8 @@ class DrawingToolsManager {
     }
 
     _isLiveDrawingInteraction() {
-        return !!(this.isDragging || this.isResizing || this.isCustomHandleDrag
+        return !!((this._drawingLiveInteractionDepth || 0) > 0
+            || this.isDragging || this.isResizing || this.isCustomHandleDrag
             || this._textInlineEditDrawing);
     }
 
@@ -486,6 +487,16 @@ class DrawingToolsManager {
         try {
             helpers.syncInlineEditorForDrawing(drawing);
         } catch (_) { /* ignore */ }
+    }
+
+    /** Save/dismiss the HTML inline editor before move/resize so geometry edits never fight typing. */
+    _commitInlineTextEditorBeforeGeometryEdit() {
+        if (!this._textInlineEditDrawing) return;
+        if (this.textEditor && typeof this.textEditor.save === 'function') {
+            this.textEditor.save();
+            return;
+        }
+        this.endTextInlineEdit(this._textInlineEditDrawing);
     }
 
     /** Hot-path render options during move/resize (matches scheduleRenderDrawing / movement). */
@@ -3412,9 +3423,6 @@ class DrawingToolsManager {
                     this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                 }
             }
-            if (this._textInlineEditDrawing) {
-                this._syncInlineTextEditorToDrawing(this._textInlineEditDrawing);
-            }
             return;
         }
         
@@ -4197,6 +4205,47 @@ class DrawingToolsManager {
         return false;
     }
 
+    _hideAnchoredVwapCurvesDuringMove(drawing) {
+        if (!drawing || drawing.type !== 'anchored-vwap' || !drawing.group) return;
+        drawing.group.selectAll('.anchored-vwap-curve, .anchored-vwap-band-fill, .anchored-vwap-line-markers, .anchored-vwap-label')
+            .style('opacity', 0)
+            .style('pointer-events', 'none');
+    }
+
+    _syncAnchoredVwapAnchorDomDuringMove(drawing) {
+        if (!drawing || drawing.type !== 'anchored-vwap' || !drawing.group || !this.chart) return false;
+        const chart = this.chart;
+        const anchor = Array.isArray(drawing.points) ? drawing.points[0] : null;
+        const data = Array.isArray(chart.data) ? chart.data : [];
+        if (!anchor || !data.length) return false;
+
+        const anchorIndex = Math.max(0, Math.min(data.length - 1, Math.round(anchor.x)));
+        anchor.x = anchorIndex;
+        const candle = data[anchorIndex];
+        if (candle) {
+            const close = Number(candle.c ?? candle.close);
+            if (Number.isFinite(close)) anchor.y = close;
+        }
+
+        const anchorX = typeof chart.dataIndexToPixel === 'function'
+            ? chart.dataIndexToPixel(anchorIndex)
+            : (chart.xScale ? chart.xScale(anchorIndex) : NaN);
+        const anchorY = chart.yScale && Number.isFinite(anchor.y) ? chart.yScale(anchor.y) : NaN;
+        if (!Number.isFinite(anchorX) || !Number.isFinite(anchorY)) return false;
+
+        drawing.group.selectAll('.anchored-vwap-anchor, .anchored-vwap-anchor-hit')
+            .attr('cx', anchorX)
+            .attr('cy', anchorY);
+        drawing.group.selectAll('.anchored-vwap-anchor-guide')
+            .attr('x1', anchorX)
+            .attr('x2', anchorX);
+
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights({ live: true });
+        }
+        return true;
+    }
+
     /** Snap anchored VWAP / AVP anchor to the bar under the pointer (live drag — no CSS transform). */
     _applyHorizontalAnchorPointFromEvent(drawing, sourceEvent, pointIndex = 0) {
         if (!drawing || !sourceEvent || !Array.isArray(drawing.points)) return false;
@@ -4233,6 +4282,11 @@ class DrawingToolsManager {
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
         if (drawing.type === 'anchored-vwap' && drawing._cache) {
             drawing._cache.anchorIndex = null;
+        }
+        if (drawing.type === 'anchored-vwap' && drawing._isActiveMoving) {
+            this._syncAnchoredVwapAnchorDomDuringMove(drawing);
+            this._broadcastLiveEditUpdate(drawing);
+            return applied;
         }
         this.scheduleRenderDrawing(drawing);
         this._broadcastLiveEditUpdate(drawing);
@@ -5654,7 +5708,9 @@ class DrawingToolsManager {
      * Setup drag behavior for moving entire drawing
      */
     _isAnnotationTextLabelDrawingType(type) {
-        return type === 'note' || type === 'price-note' || type === 'callout' || type === 'comment';
+        return type === 'note' || type === 'price-note' || type === 'callout' || type === 'comment'
+            || type === 'pin' || type === 'signpost-2' || type === 'notebox' || type === 'text'
+            || type === 'anchored-text';
     }
 
     /** Text & labels tools whose body/label DOM is edited via per-tool click handlers. */
@@ -5882,7 +5938,6 @@ class DrawingToolsManager {
 
                     if (self._isAnnotationTextLabelDrawingType(drawing.type)
                         && (isTextElement || isInlineEditable || isTextBodyHit || isNoteBodyHit)) {
-                        if (self._textInlineEditDrawing === drawing) return false;
                         return !self.currentTool && !isResizeHandle && !isCustomHandle && !isAnyHandle;
                     }
 
@@ -5965,6 +6020,7 @@ class DrawingToolsManager {
                 })
                 .on('start', function(event) {
                     event.sourceEvent.stopPropagation();
+                    self._commitInlineTextEditorBeforeGeometryEdit();
 
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -5980,6 +6036,10 @@ class DrawingToolsManager {
                         }
                         dragStartPoints = drawing.points.map(p => ({ ...p }));
                         setAnchoredVWAPMovingState(drawing, true);
+                        if (drawing.type === 'anchored-vwap') {
+                            self._hideAnchoredVwapCurvesDuringMove(drawing);
+                            self._syncAnchoredVwapAnchorDomDuringMove(drawing);
+                        }
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
                         }
@@ -6067,9 +6127,6 @@ class DrawingToolsManager {
                         if (previewPoints) {
                             self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
-                    }
-                    if (self._textInlineEditDrawing) {
-                        self._syncInlineTextEditorToDrawing(self._textInlineEditDrawing);
                     }
                 })
                 .on('end', function(event) {
@@ -6784,6 +6841,7 @@ class DrawingToolsManager {
      * Start handle drag
      */
     startHandleDrag(drawing, pointIndex, event) {
+        this._commitInlineTextEditorBeforeGeometryEdit();
         this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
@@ -6882,6 +6940,7 @@ class DrawingToolsManager {
     }
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
+        this._commitInlineTextEditorBeforeGeometryEdit();
         this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
@@ -7018,9 +7077,7 @@ class DrawingToolsManager {
      */
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
-        if (this._textInlineEditDrawing === drawing && this.textEditor && typeof this.textEditor.save === 'function') {
-            this.textEditor.save();
-        }
+        this._commitInlineTextEditorBeforeGeometryEdit();
         if (this._isTextDrawingType(drawing.type)) {
             this._beginDrawingLiveInteraction();
         }

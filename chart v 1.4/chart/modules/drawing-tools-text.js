@@ -2903,6 +2903,9 @@ class PinTool extends BaseDrawing {
                         clickTimer = null;
                     }
                     cleanupDragListeners();
+                    if (v9StartAnnotationDragFromTextPointer(self, event)) {
+                        downPos = null;
+                    }
                 }
             };
 
