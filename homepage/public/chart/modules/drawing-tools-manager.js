@@ -2307,19 +2307,36 @@ class DrawingToolsManager {
         }
     }
 
-    /**
-     * Repaint axis price/time labels at the dragged geometry (labels stay on the axes, not translated with the SVG group).
-     */
-    _syncAxisHighlightsDuringDrag(drawing, startPoints, pixelDx, pixelDy) {
-        if (!drawing || !drawing.selected) return;
-        if (typeof drawing.showAxisHighlights !== 'function') return;
-        if (!Array.isArray(startPoints) || startPoints.length === 0) return;
-        const preview = this._translatePointsByPixels(startPoints, pixelDx, pixelDy, drawing.type);
-        if (!preview || preview.length === 0) return;
-        if (drawing.axisHighlightGroup && !drawing.axisHighlightGroup.empty()) {
-            drawing.axisHighlightGroup.attr('transform', null);
+    /** Chart-pan style: shift existing axis label DOM (fast), not rebuild every frame. */
+    _syncAxisHighlightsPanDelta(pixelDx, pixelDy) {
+        if (!this.chart || typeof this.chart._applyAxisHighlightPanTransform !== 'function') return;
+        if (pixelDx === 0 && pixelDy === 0) {
+            this._clearGeometryDragAxisTransforms();
+            return;
         }
-        drawing.showAxisHighlights({ live: true, force: true, previewPoints: preview });
+        this.chart._applyAxisHighlightPanTransform(pixelDx, pixelDy);
+    }
+
+    _clearGeometryDragAxisTransforms() {
+        if (this.chart && typeof this.chart._clearAxisHighlightPanTransform === 'function') {
+            this.chart._clearAxisHighlightPanTransform();
+        }
+    }
+
+    /** One paint per animation frame during shape drag (same cadence as chart pan). */
+    _scheduleGeometryDragPaint(event, paintFrame) {
+        if (typeof paintFrame !== 'function') return;
+        this._geometryDragLastEvent = event;
+        if (this._geometryDragPaintPending) return;
+        this._geometryDragPaintPending = true;
+        requestAnimationFrame(() => {
+            this._geometryDragPaintPending = false;
+            const ev = this._geometryDragLastEvent;
+            this._geometryDragLastEvent = null;
+            if (!ev) return;
+            paintFrame(ev);
+            this._refreshPointerChromeDuringGeometryDrag(ev);
+        });
     }
 
     _clearDrawingDragTransform(drawing) {
@@ -3519,44 +3536,39 @@ class DrawingToolsManager {
             }
             const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
             
-            // Calculate pixel delta
-            const pixelDx = currentScreenX - this.dragStartScreen.x;
-            const pixelDy = currentScreenY - this.dragStartScreen.y;
-            
-            if (this.draggingMultiple && this.multiDragStartPositions) {
-                this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
-                    if (drawing.group) {
-                        const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
-                        const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
-                        this._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+            this._scheduleGeometryDragPaint(event, (ev) => {
+                const [cx, cy] = this._eventCanvasLocalXY(ev);
+                const pixelDx = cx - this.dragStartScreen.x;
+                const pixelDy = cy - this.dragStartScreen.y;
+                
+                if (this.draggingMultiple && this.multiDragStartPositions) {
+                    this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
+                        if (drawing.group) {
+                            const sx = (startTransform && Number.isFinite(startTransform.x)) ? startTransform.x : 0;
+                            const sy = (startTransform && Number.isFinite(startTransform.y)) ? startTransform.y : 0;
+                            this._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                        }
+                        if (Array.isArray(points)) {
+                            const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
+                            this._broadcastLiveEditUpdate(drawing, previewPoints);
+                        }
+                    });
+                } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
+                    const newX = this.dragStartOriginalPos.x + pixelDx;
+                    const newY = this.dragStartOriginalPos.y + pixelDy;
+                    this._applyDrawingDragTransform(this.draggingDrawing, `translate(${newX}, ${newY})`);
+                    if (Array.isArray(this.singleDragStartPoints)) {
+                        const previewPoints = this._translatePointsByPixels(
+                            this.singleDragStartPoints,
+                            pixelDx,
+                            pixelDy,
+                            this.draggingDrawing.type
+                        );
+                        this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
                     }
-                    if (Array.isArray(points)) {
-                        const previewPoints = this._translatePointsByPixels(points, pixelDx, pixelDy, drawing.type);
-                        this._broadcastLiveEditUpdate(drawing, previewPoints);
-                        this._syncAxisHighlightsDuringDrag(drawing, points, pixelDx, pixelDy);
-                    }
-                });
-            } else if (this.draggingDrawing.group && this.dragStartOriginalPos) {
-                const newX = this.dragStartOriginalPos.x + pixelDx;
-                const newY = this.dragStartOriginalPos.y + pixelDy;
-                this._applyDrawingDragTransform(this.draggingDrawing, `translate(${newX}, ${newY})`);
-                if (Array.isArray(this.singleDragStartPoints)) {
-                    const previewPoints = this._translatePointsByPixels(
-                        this.singleDragStartPoints,
-                        pixelDx,
-                        pixelDy,
-                        this.draggingDrawing.type
-                    );
-                    this._broadcastLiveEditUpdate(this.draggingDrawing, previewPoints);
-                    this._syncAxisHighlightsDuringDrag(
-                        this.draggingDrawing,
-                        this.singleDragStartPoints,
-                        pixelDx,
-                        pixelDy
-                    );
                 }
-            }
-            this._refreshPointerChromeDuringGeometryDrag(event);
+                this._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
+            });
             return;
         }
         
@@ -6286,53 +6298,53 @@ class DrawingToolsManager {
                         return;
                     }
 
-                    if (!dragStartPoints || !bodyDragStartScreen) return;
+                    if (!dragStartPoints || !bodyDragStartScreen || !event.sourceEvent) return;
 
-                    const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
-                    let pixelDx = currentScreenX - bodyDragStartScreen.x;
-                    let pixelDy = currentScreenY - bodyDragStartScreen.y;
-                    if (self._isHorizontalAnchorToolType(drawing.type)) {
-                        pixelDy = 0;
-                    }
-
-                    // Smooth drag: CSS transform only — commit to data points once on drag end.
-                    if (multiDragStartPoints && multiDragStartPoints.length > 1) {
-                        multiDragStartPoints.forEach(item => {
-                            if (!item.drawing || !item.drawing.group) return;
-                            const sx = item.startTransform ? item.startTransform.x : 0;
-                            const sy = item.startTransform ? item.startTransform.y : 0;
-                            self._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                    const paintBodyDrag = (srcEvent) => {
+                        if (!dragStartPoints || !bodyDragStartScreen) return;
+                        const [cx, cy] = self._eventCanvasLocalXY(srcEvent);
+                        let pixelDx = cx - bodyDragStartScreen.x;
+                        let pixelDy = cy - bodyDragStartScreen.y;
+                        if (self._isHorizontalAnchorToolType(drawing.type)) {
+                            pixelDy = 0;
+                        }
+                        if (multiDragStartPoints && multiDragStartPoints.length > 1) {
+                            multiDragStartPoints.forEach(item => {
+                                if (!item.drawing || !item.drawing.group) return;
+                                const sx = item.startTransform ? item.startTransform.x : 0;
+                                const sy = item.startTransform ? item.startTransform.y : 0;
+                                self._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
+                                const previewPoints = self._translatePointsByPixels(
+                                    item.points,
+                                    pixelDx,
+                                    pixelDy,
+                                    item.drawing.type
+                                );
+                                if (previewPoints) {
+                                    self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
+                                }
+                            });
+                        } else if (drawing.group) {
+                            const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
+                            const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
+                            self._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
                             const previewPoints = self._translatePointsByPixels(
-                                item.points,
+                                dragStartPoints,
                                 pixelDx,
                                 pixelDy,
-                                item.drawing.type
+                                drawing.type
                             );
                             if (previewPoints) {
-                                self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
+                                self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                             }
-                            self._syncAxisHighlightsDuringDrag(item.drawing, item.points, pixelDx, pixelDy);
-                        });
-                    } else if (drawing.group) {
-                        const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
-                        const sy = bodyDragStartTransform ? bodyDragStartTransform.y : 0;
-                        self._applyDrawingDragTransform(drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                        const previewPoints = self._translatePointsByPixels(
-                            dragStartPoints,
-                            pixelDx,
-                            pixelDy,
-                            drawing.type
-                        );
-                        if (previewPoints) {
-                            self._notifyV9DrawingGeometryLive(drawing, previewPoints);
                         }
-                        self._syncAxisHighlightsDuringDrag(drawing, dragStartPoints, pixelDx, pixelDy);
-                    }
-                    if (event.sourceEvent) {
-                        self._refreshPointerChromeDuringGeometryDrag(event.sourceEvent);
-                    }
+                        self._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
+                    };
+
+                    self._scheduleGeometryDragPaint(event.sourceEvent, paintBodyDrag);
                 })
                 .on('end', function(event) {
+                    self._clearGeometryDragAxisTransforms();
                     self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
@@ -6731,8 +6743,8 @@ class DrawingToolsManager {
                 const sx = item.startTransform ? item.startTransform.x : 0;
                 const sy = item.startTransform ? item.startTransform.y : 0;
                 this._applyDrawingDragTransform(item.drawing, `translate(${sx + pixelDx}, ${sy + pixelDy})`);
-                this._syncAxisHighlightsDuringDrag(item.drawing, item.points, pixelDx, pixelDy);
             });
+            this._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
         };
 
         this._directMoveMoveHandler = (e) => {
@@ -6755,6 +6767,7 @@ class DrawingToolsManager {
             if (this._directMovePendingFrame && this._directMoveLastEvent) {
                 applyDirectMoveTransform(this._directMoveLastEvent);
             }
+            this._clearGeometryDragAxisTransforms();
             this._stopDirectMoveDrag();
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
@@ -7357,6 +7370,7 @@ class DrawingToolsManager {
      * End dragging
      */
     endDrag() {
+        this._clearGeometryDragAxisTransforms();
         // Convert final pixel positions back to data coordinates
         if (this.draggingMultiple && this.multiDragStartPositions) {
             const scales = { xScale: this.chart.xScale, yScale: this.chart.yScale, chart: this.chart };
@@ -7398,6 +7412,9 @@ class DrawingToolsManager {
                 this._clearDrawingDragTransform(drawing);
                 this._refreshDrawingTimestampAnchors(drawing);
                 this.renderDrawing(drawing);
+                if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                    drawing.showAxisHighlights();
+                }
             });
         } else if (this.draggingDrawing && this.dragStartOriginalPos) {
             // Get final transform position
@@ -7436,6 +7453,9 @@ class DrawingToolsManager {
             this._clearDrawingDragTransform(this.draggingDrawing);
             this._refreshDrawingTimestampAnchors(this.draggingDrawing);
             this.renderDrawing(this.draggingDrawing);
+            if (this.draggingDrawing.selected && typeof this.draggingDrawing.showAxisHighlights === 'function') {
+                this.draggingDrawing.showAxisHighlights();
+            }
         }
         
         this.isDragging = false;
