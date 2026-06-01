@@ -4166,6 +4166,59 @@ class DrawingToolsManager {
         }
     }
 
+    _isHorizontalAnchorElementTarget(toolType, targetEl) {
+        if (!targetEl || !targetEl.closest) return false;
+        if (toolType === 'anchored-vwap') {
+            return !!targetEl.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit');
+        }
+        if (toolType === 'anchored-volume-profile') {
+            return !!targetEl.closest('.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]');
+        }
+        return false;
+    }
+
+    /** Snap anchored VWAP / AVP anchor to the bar under the pointer (live drag — no CSS transform). */
+    _applyHorizontalAnchorPointFromEvent(drawing, sourceEvent, pointIndex = 0) {
+        if (!drawing || !sourceEvent || !Array.isArray(drawing.points)) return false;
+        let point = this.getDataPoint(sourceEvent, drawing.type);
+        if (this._isHorizontalAnchorToolType(drawing.type)) {
+            const [screenX] = this._eventCanvasLocalXY(sourceEvent);
+            const chart = this.chart;
+            if (chart && typeof chart.pixelToDataIndex === 'function') {
+                let barIdx = Math.round(chart.pixelToDataIndex(screenX));
+                const dataLen = chart.data ? chart.data.length : 0;
+                if (dataLen > 0) {
+                    barIdx = Math.max(0, Math.min(dataLen - 1, barIdx));
+                }
+                point = { ...point, x: barIdx };
+            }
+        }
+        const context = {
+            point,
+            scales: {
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale,
+                chart: this.chart
+            }
+        };
+        let applied = false;
+        if (typeof drawing.onPointHandleDrag === 'function') {
+            applied = drawing.onPointHandleDrag(pointIndex, context) === true;
+        }
+        if (!applied) {
+            drawing.points[pointIndex] = this._snapPointXForDrawingType(point, drawing.type);
+            this._syncHorizontalAnchorToolPointY(drawing);
+            applied = true;
+        }
+        if (drawing.meta) drawing.meta.updatedAt = Date.now();
+        if (drawing.type === 'anchored-vwap' && drawing._cache) {
+            drawing._cache.anchorIndex = null;
+        }
+        this.scheduleRenderDrawing(drawing);
+        this._broadcastLiveEditUpdate(drawing);
+        return applied;
+    }
+
     snapPointXToNearestCandle(point) {
         if (!point || !Number.isFinite(point.x)) return point;
         return {
@@ -5689,6 +5742,7 @@ class DrawingToolsManager {
         const dragElements = drawing.group.selectAll(dragSelector);
         const dragClickDistance = drawing.type === 'anchored-vwap' ? 1 : (drawing.type === 'image' ? 6 : 4);
         let textBodyDragOverflowActive = false;
+        let horizontalAnchorPointDrag = false;
 
         dragElements.on('.drag', null);
 
@@ -5892,6 +5946,22 @@ class DrawingToolsManager {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
                     }
+
+                    const targetEl = event.sourceEvent && event.sourceEvent.target;
+                    horizontalAnchorPointDrag = self._isHorizontalAnchorToolType(drawing.type)
+                        && self._isHorizontalAnchorElementTarget(drawing.type, targetEl);
+
+                    if (horizontalAnchorPointDrag) {
+                        if (!drawing.selected) {
+                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
+                        }
+                        dragStartPoints = drawing.points.map(p => ({ ...p }));
+                        if (self.history) {
+                            beforeState = self.history.captureState(drawing);
+                        }
+                        self._beginDrawingLiveInteraction();
+                        return;
+                    }
                     
                     // Select the drawing when starting to drag (if not already selected)
                     if (!drawing.selected) {
@@ -5933,6 +6003,11 @@ class DrawingToolsManager {
                     }
                 })
                 .on('drag', function(event) {
+                    if (horizontalAnchorPointDrag) {
+                        self._applyHorizontalAnchorPointFromEvent(drawing, event.sourceEvent, 0);
+                        return;
+                    }
+
                     if (!dragStartPoints || !bodyDragStartScreen) return;
 
                     const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
@@ -5977,6 +6052,30 @@ class DrawingToolsManager {
                 .on('end', function(event) {
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
+                    }
+
+                    if (horizontalAnchorPointDrag) {
+                        self._applyHorizontalAnchorPointFromEvent(drawing, event.sourceEvent, 0);
+                        if (self.history && beforeState) {
+                            self.history.recordModify(drawing, beforeState);
+                        }
+                        self._endDrawingLiveInteraction();
+                        if (typeof drawing.recalculateTimestamps === 'function') {
+                            drawing.recalculateTimestamps();
+                        }
+                        self.renderDrawing(drawing);
+                        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+                            drawing.showAxisHighlights();
+                        }
+                        self.saveDrawings();
+                        const idx = self.drawings.indexOf(drawing);
+                        if (self.chart.broadcastDrawingChange && idx > -1) {
+                            self.chart.broadcastDrawingChange('update', drawing, idx);
+                        }
+                        horizontalAnchorPointDrag = false;
+                        dragStartPoints = null;
+                        beforeState = null;
+                        return;
                     }
 
                     // Record modification for undo/redo

@@ -971,6 +971,9 @@ class AnchoredVWAPTool extends BaseDrawing {
 
         this.points[0] = nextPoint;
         this.meta.updatedAt = Date.now();
+        if (this._cache) {
+            this._cache.anchorIndex = null;
+        }
         return true;
     }
 
