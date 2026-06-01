@@ -450,7 +450,8 @@ class DrawingToolsManager {
                 }
             });
 
-            if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
+            if (this._isLiveDrawingInteraction() && !this._isDrawingGeometryMoveActive()
+                && this.chart && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
         });
@@ -2310,10 +2311,7 @@ class DrawingToolsManager {
     /** Chart-pan style: shift existing axis label DOM (fast), not rebuild every frame. */
     _syncAxisHighlightsPanDelta(pixelDx, pixelDy) {
         if (!this.chart || typeof this.chart._applyAxisHighlightPanTransform !== 'function') return;
-        if (pixelDx === 0 && pixelDy === 0) {
-            this._clearGeometryDragAxisTransforms();
-            return;
-        }
+        if (pixelDx === 0 && pixelDy === 0) return;
         this.chart._applyAxisHighlightPanTransform(pixelDx, pixelDy);
     }
 
@@ -2427,7 +2425,8 @@ class DrawingToolsManager {
     _notifyV9DrawingGeometryLive(drawing, pointsOverride = null) {
         if (!drawing || typeof window === 'undefined') return;
         const now = performance.now();
-        if (this._lastV9GeomLiveNotify && (now - this._lastV9GeomLiveNotify) < 16) return;
+        const throttleMs = this._isDrawingGeometryMoveActive() ? 120 : 16;
+        if (this._lastV9GeomLiveNotify && (now - this._lastV9GeomLiveNotify) < throttleMs) return;
         this._lastV9GeomLiveNotify = now;
         const points = Array.isArray(pointsOverride) ? pointsOverride : drawing.points;
         if (!Array.isArray(points) || points.length === 0) return;
@@ -5308,7 +5307,7 @@ class DrawingToolsManager {
             }
         }
         
-        if (typeof drawing.showAxisHighlights === 'function') {
+        if (typeof drawing.showAxisHighlights === 'function' && !this._isDrawingGeometryMoveActive()) {
             if (drawing.selected) {
                 drawing.showAxisHighlights({ live: liveRender });
             } else if (typeof drawing.hideAxisHighlights === 'function') {
@@ -6289,8 +6288,8 @@ class DrawingToolsManager {
                     rrLastByDrawingId = Object.create(null);
                     if (self._isTextDrawingType(drawing.type)) {
                         textBodyDragOverflowActive = true;
-                        self._beginDrawingLiveInteraction();
                     }
+                    self._beginDrawingLiveInteraction();
                 })
                 .on('drag', function(event) {
                     if (horizontalAnchorPointDrag) {
@@ -6320,9 +6319,6 @@ class DrawingToolsManager {
                                     pixelDy,
                                     item.drawing.type
                                 );
-                                if (previewPoints) {
-                                    self._notifyV9DrawingGeometryLive(item.drawing, previewPoints);
-                                }
                             });
                         } else if (drawing.group) {
                             const sx = bodyDragStartTransform ? bodyDragStartTransform.x : 0;
@@ -6334,9 +6330,6 @@ class DrawingToolsManager {
                                 pixelDy,
                                 drawing.type
                             );
-                            if (previewPoints) {
-                                self._notifyV9DrawingGeometryLive(drawing, previewPoints);
-                            }
                         }
                         self._syncAxisHighlightsPanDelta(pixelDx, pixelDy);
                     };
@@ -6422,8 +6415,8 @@ class DrawingToolsManager {
                     bodyDragStartTransform = null;
                     if (textBodyDragOverflowActive) {
                         textBodyDragOverflowActive = false;
-                        self._endDrawingLiveInteraction();
                     }
+                    self._endDrawingLiveInteraction();
                     self.saveDrawings();
                     
                     // Broadcast update to other panels
@@ -6673,12 +6666,7 @@ class DrawingToolsManager {
             .filter(d => d && d.type !== 'anchored-vwap' && d.type !== 'anchored-volume-profile');
         if (!drawings || drawings.length === 0) return;
 
-        drawings.forEach((d) => {
-            if (d?.group?.attr('transform')) {
-                this._clearDrawingDragTransform(d);
-                this.renderDrawing(d);
-            }
-        });
+        this._beginDrawingLiveInteraction();
 
         const svgNode = this.svg && this.svg.node ? this.svg.node() : null;
         if (svgNode && event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
@@ -6769,6 +6757,7 @@ class DrawingToolsManager {
             }
             this._clearGeometryDragAxisTransforms();
             this._stopDirectMoveDrag();
+            this._endDrawingLiveInteraction();
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
                 this.chart.updateCrosshair(e);
@@ -8661,8 +8650,12 @@ class DrawingToolsManager {
     }
 
     _clearDrawingGroupPanTransforms() {
+        if (this._isDrawingGeometryMoveActive()) return;
         if (!this.drawingsGroup || this.drawingsGroup.empty()) return;
         this.drawingsGroup.selectAll('.drawing').attr('transform', null);
+        if (this.labelsGroup && !this.labelsGroup.empty()) {
+            this.labelsGroup.selectAll('[data-id]').attr('transform', null);
+        }
     }
 
     /**

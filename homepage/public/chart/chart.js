@@ -16265,7 +16265,11 @@ class Chart {
         }
         this._clearAxisHighlightPanTransform();
         if (dm && typeof dm._clearDrawingGroupPanTransforms === 'function') {
-            dm._clearDrawingGroupPanTransforms();
+            const geometryMove = typeof dm._isDrawingGeometryMoveActive === 'function'
+                && dm._isDrawingGeometryMoveActive();
+            if (!geometryMove) {
+                dm._clearDrawingGroupPanTransforms();
+            }
         }
         if (dm && typeof dm.setDrawingsClipDuringChartPan === 'function') {
             dm.setDrawingsClipDuringChartPan(false);
@@ -22305,6 +22309,11 @@ class Chart {
     redrawDrawings() {
         // Use new Drawing Tools Manager if available
         if (this.drawingManager && this.xScale && this.yScale) {
+            // Whole-shape move uses per-group CSS translate — rebuilding SVG here snaps shapes back.
+            if (typeof this.drawingManager._isDrawingGeometryMoveActive === 'function'
+                && this.drawingManager._isDrawingGeometryMoveActive()) {
+                return;
+            }
             const wheelActive = typeof this._wheelBurstUntil === 'number'
                 && performance.now() < this._wheelBurstUntil;
             if (this._isChartViewPanning()) {
