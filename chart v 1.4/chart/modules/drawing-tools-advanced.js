@@ -524,7 +524,8 @@ class DatePriceRangeTool extends BaseDrawing {
         return `${minutes}m`;
     }
 
-    renderPriceRangeMode(container, scales) {
+    renderPriceRangeMode(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         if (this.points.length < 2) return;
 
         this._prepareRenderGroup(container, 'drawing date-price-range range-mode-price', renderOpts);
@@ -659,7 +660,8 @@ class DatePriceRangeTool extends BaseDrawing {
         return this.group;
     }
 
-    renderTimeRangeMode(container, scales) {
+    renderTimeRangeMode(container, scales, renderOptsArg = {}) {
+        const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         if (this.points.length < 2) return;
 
         this._prepareRenderGroup(container, 'drawing date-price-range range-mode-time', renderOpts);
@@ -789,10 +791,10 @@ class DatePriceRangeTool extends BaseDrawing {
 
         const mode = this.getRangeMode();
         if (mode === 'price') {
-            return this.renderPriceRangeMode(container, scales);
+            return this.renderPriceRangeMode(container, scales, renderOpts);
         }
         if (mode === 'time') {
-            return this.renderTimeRangeMode(container, scales);
+            return this.renderTimeRangeMode(container, scales, renderOpts);
         }
 
         this.setModeVirtualHandlePoints('both');
