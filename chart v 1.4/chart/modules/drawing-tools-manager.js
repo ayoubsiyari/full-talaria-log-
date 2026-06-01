@@ -450,21 +450,11 @@ class DrawingToolsManager {
                 }
             });
 
-            // Whole-shape move AND handle resize update only the active drawing per frame.
-            // The candles/axes don't change during these gestures, so a full chart re-render
-            // (which also rebuilds every other drawing) is wasted work that causes jank.
-            if (this._isLiveDrawingInteraction()
-                && !this._isDrawingGeometryMoveActive()
-                && !this._isHandleResizeActive()
+            if (this._isLiveDrawingInteraction() && !this._isDrawingGeometryMoveActive()
                 && this.chart && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
         });
-    }
-
-    /** Corner/side handle resize or custom-handle edit in progress. */
-    _isHandleResizeActive() {
-        return !!(this.isResizing || this.isCustomHandleDrag);
     }
 
     _isLiveDrawingInteraction() {
