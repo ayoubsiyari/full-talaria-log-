@@ -189,8 +189,7 @@ class BaseDrawing {
             return {
                 isPreview: !!renderOpts.isPreview,
                 reuseGroup: !!renderOpts.reuseGroup,
-                skipHandles: !!renderOpts.skipHandles,
-                preserveDragTransform: !!renderOpts.preserveDragTransform
+                skipHandles: !!renderOpts.skipHandles
             };
         }
         return { isPreview: false, reuseGroup: false, skipHandles: false };
@@ -258,21 +257,12 @@ class BaseDrawing {
         if (normalized.reuseGroup && this.group && !this.group.empty()) {
             const node = this.group.node();
             if (node && node.parentNode) {
-                const dragTransform = this.group.attr('transform') || null;
-                const dm = this.chart && this.chart.drawingManager;
-                const geometryMoveActive = dm
-                    && typeof dm._isDrawingGeometryMoveActive === 'function'
-                    && dm._isDrawingGeometryMoveActive();
-                const preserveDragTransform = !!(
-                    normalized.preserveDragTransform
-                    || (geometryMoveActive && dragTransform && dragTransform !== 'none')
-                );
                 this._clearGeometryChildren(this.group);
-                const g = this.group
+                this.group
                     .attr('class', className)
                     .attr('data-id', this.id)
-                    .style('opacity', opacity);
-                g.attr('transform', preserveDragTransform ? dragTransform : null);
+                    .style('opacity', opacity)
+                    .attr('transform', null);
                 return true;
             }
         }
