@@ -2432,28 +2432,6 @@ class Chart {
     }
 
     /**
-     * Backtest replay: allow in-place display resample only when the destination TF is
-     * modestly coarser than the measured fullRawData step (1m→5m). Uses bar timestamps,
-     * not replay.rawTimeframe — that label can match display TF and wrongly allow 1m→1D.
-     */
-    _canBacktestReplayInPlaceResample(normalizedTf, replay) {
-        if (!replay?.isActive || !Array.isArray(replay.fullRawData) || replay.fullRawData.length < 2) {
-            return false;
-        }
-        if (this._shouldReplaceReplayMasterForTfSwitch(this.currentTimeframe, normalizedTf, replay)) {
-            return false;
-        }
-        const newMs = this.parseTimeframe(normalizedTf);
-        const masterMs = this._getNativeRawStepMs();
-        if (!Number.isFinite(newMs) || newMs <= 0 || !Number.isFinite(masterMs) || masterMs <= 0) {
-            return false;
-        }
-        if (newMs < masterMs * 0.92) return false;
-        if (newMs / masterMs > 6) return false;
-        return true;
-    }
-
-    /**
      * True when rawData is fine enough to aggregate to normalizedTf without a server refetch.
      * Mirrors compare-overlay needRefetch (refetch only when new TF is materially finer).
      */
@@ -3360,9 +3338,6 @@ class Chart {
             if (typeof this.recalculateIndicators === 'function') {
                 try { this.recalculateIndicators(); } catch (_ind) { /* ignore */ }
             }
-            if (this.drawingManager && typeof this.drawingManager.scheduleRefreshAfterTimeframe === 'function') {
-                try { this.drawingManager.scheduleRefreshAfterTimeframe(); } catch (_dr) { /* ignore */ }
-            }
 
             if (wasAtSessionEnd && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
                 replay.currentIndex = replay.fullRawData.length - 1;
@@ -3446,10 +3421,6 @@ class Chart {
 
         const savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
 
-        // Cached entry is native bars for `timeframe` — always install as replay master.
-        // Using _shouldReplaceReplayMasterForTfSwitch here incorrectly kept the 1m master
-        // when returning to 1D, so updateChartData advanced 1m steps and daily candles
-        // appeared one-by-one while replay timing broke.
         this.rawData = entry.rawData;
         this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
         this._serverCursors = entry.serverCursors ? { ...entry.serverCursors } : this._serverCursors;
@@ -14224,7 +14195,6 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            // d3e04c5 order: resample only when safe, then backtest native cache/refetch.
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
@@ -14243,7 +14213,7 @@ class Chart {
                 return;
             }
 
-            // Non-backtest replay — client resample fallback.
+            // 3) Non-backtest replay — client resample fallback.
             if (this._canClientResampleToTimeframe(normalizedTf)) {
                 this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
@@ -14953,6 +14923,12 @@ class Chart {
             && Number.isFinite(prevTfMs) && prevTfMs > 0
             && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
             && newTfMsForSwitch < prevTfMs;
+
+        if (wasActive && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
+            if (this._applyClientResampleTimeframeSwitch(timeframe, { replayPath: true })) {
+                return;
+            }
+        }
 
         let coarsePeriodExclusiveEndTs = null;
         if (switchingToFiner && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {

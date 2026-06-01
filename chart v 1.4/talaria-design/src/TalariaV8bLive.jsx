@@ -504,6 +504,11 @@ function v9IsPersistentFreehandArmed(dm) {
   return t === "brush" || t === "highlighter";
 }
 
+function v9IsFreehandLegacyTool(legacyTool) {
+  const t = String(legacyTool || "").toLowerCase();
+  return t === "brush" || t === "highlighter";
+}
+
 const V9_FREEHAND_ICON_TO_LEGACY = { draw: "brush", brush: "highlighter" };
 
 function v9ShouldClearChartSelectionForRailClick(nextToolId, currentTool) {
