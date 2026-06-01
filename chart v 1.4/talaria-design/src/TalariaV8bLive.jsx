@@ -11285,7 +11285,12 @@ const TalariaV8bLive = () => {
   // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
   // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
   useEffect(() => {
-    const active = tlSettOpen || closing.has("tlsett");
+    const active =
+      tlSettOpen || closing.has("tlsett")
+      || txtSettOpen || closing.has("txtsett")
+      || vwapSettOpen || closing.has("vwapsett")
+      || vpSettOpen || closing.has("vpsett")
+      || avSettOpen || closing.has("avsett");
     if (!active || typeof document === "undefined") return;
     const svg = document.getElementById("drawingSvg");
     if (!svg) return;
@@ -11303,7 +11308,7 @@ const TalariaV8bLive = () => {
         if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
       } catch (_) {}
     };
-  }, [tlSettOpen, closing]);
+  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, closing]);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="Exo+2"]')) {
@@ -24806,7 +24811,15 @@ const TalariaV8bLive = () => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
           return (
-            <div onMouseEnter={()=>setHov(id)} onMouseLeave={()=>setHov(null)} onClick={onClick}
+            <div
+              onMouseEnter={()=>setHov(id)}
+              onMouseLeave={()=>setHov(null)}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                if (typeof onClick === "function") onClick(e);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
               style={{width:w||32,height:32,display:"flex",alignItems:"center",justifyContent:"center",
                       cursor:"default",position:"relative",flexShrink:0,userSelect:"none",
                       background: isAct ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent",
@@ -24816,6 +24829,125 @@ const TalariaV8bLive = () => {
               {isH && !isAct && <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:isDel?`linear-gradient(90deg,transparent,${c.rd}44,transparent)`:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`}}/>}
             </div>
           );
+        };
+        const openVpSettingsFromBar = (e) => {
+          e.stopPropagation();
+          if (dropdown) closeDropdown();
+          setVpBarDrop(null);
+          setColorPicker(null);
+          if (vpSettOpen || closing.has("vpsett")) {
+            closeVpSett();
+            return;
+          }
+          if (tlSettOpen) closeTlSett();
+          if (txtSettOpen) closeTxtSett();
+          if (vwapSettOpen) closeVwapSett();
+          if (avSettOpen) closeAvSett();
+          if (indSettOpen) closeIndSett();
+          const d = getSelectedDrawingForTemplate();
+          const hook = v9ResolveOpenDrawingSettingsHook();
+          if (d && typeof hook === "function") {
+            const r = e.currentTarget.getBoundingClientRect();
+            v9SuppressNextChartDeselect();
+            try {
+              if (hook(d, r.left + r.width / 2, r.bottom + 8)) return;
+            } catch (err) {
+              console.warn("[V9 vp settings gear] hook failed:", err);
+            }
+          }
+          const r = e.currentTarget.getBoundingClientRect();
+          const vpW2 = window.innerWidth / Z;
+          const x = Math.max(8, Math.min(r.left / Z, vpW2 - 428));
+          const y = r.bottom / Z + 8;
+          if (d && v9IsVolumeProfileDrawingType(d.type)) {
+            suppressVpBridge.current = true;
+            const ds = d.style || {};
+            const PLC_R2 = { left: "Left", right: "Right" };
+            const ROW_R2 = { numberOfRows: "Number of Rows", ticksPerRow: "Ticks per Row" };
+            const VOL_R2 = { upDown: "Up/Down", total: "Total", delta: "Delta" };
+            setVpStyle((prev) => ({
+              ...prev,
+              valuesOn: ds.showValues !== false,
+              valuesColor: ds.valuesColor || prev.valuesColor,
+              widthPct: String(Math.round((ds.profileWidthRatio ?? 0.3) * 100)),
+              placement: PLC_R2[ds.profilePlacement] || prev.placement,
+              zoneBgOn: ds.showBackground !== false,
+              zoneBgColor: ds.fill || prev.zoneBgColor,
+              zoneBgAlpha: Math.round((ds.backgroundOpacity ?? 0.85) * 100),
+              upVolColor: ds.buyColor || prev.upVolColor,
+              downVolColor: ds.sellColor || prev.downVolColor,
+              valueAreaUpColor: ds.valueAreaBuyColor || prev.valueAreaUpColor,
+              valueAreaDownColor: ds.valueAreaSellColor || prev.valueAreaDownColor,
+              pocOn: ds.showPOC !== false,
+              pocColor: ds.pocColor || prev.pocColor,
+              vahOn: ds.showVAH !== false,
+              vahColor: ds.VAHColor || prev.vahColor,
+              valOn: ds.showVAL !== false,
+              valColor: ds.VALColor || prev.valColor,
+              devPocOn: !!ds.showDevelopingPOC,
+              devPocColor: ds.developingPOCColor || prev.devPocColor,
+              devVAOn: !!ds.showDevelopingVA,
+              devVAColor: ds.developingVAColor || prev.devVAColor,
+              rowsLayout: ROW_R2[ds.rowsLayout] || prev.rowsLayout,
+              rowSize: String(ds.rowSize ?? prev.rowSize),
+              volumeOn: ds.showVolume !== false,
+              volumeType: VOL_R2[ds.volumeDisplay] || prev.volumeType,
+              valueAreaVol: String(ds.valueAreaVolume ?? prev.valueAreaVol),
+              extendRight: !!ds.extendRight,
+              priceLabels: ds.showPriceLabel !== false,
+              timeLabels: ds.showTimeLabel !== false,
+              ...v9CoordPatchFromDrawing(d),
+              ...v9VisibilityPatchFromDrawing(d),
+            }));
+            editingDrawingRef.current = {
+              drawing: d,
+              prevTool: tool,
+              prevGroupSelected: groupSelected,
+              panelGroup: "brush",
+            };
+            v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
+          }
+          setVpSettPos({ x, y });
+          setVpSettOpen(true);
+          setVpSettTab("style");
+        };
+        const deleteVpFromBar = (e) => {
+          e.stopPropagation();
+          setVpBarDrop(null);
+          setColorPicker(null);
+          if (vpSettOpen || closing.has("vpsett")) closeVpSett();
+          v9SuppressNextChartDeselect();
+          const selDraw = getSelectedDrawingForTemplate();
+          let deleted = false;
+          try {
+            deleted = v9DeleteSelectedVolumeProfileDrawings(selDraw);
+            if (!deleted) {
+              enumerateV9DrawingManagersFromWindow().forEach((dm) => {
+                const isVp = (d) => d && v9IsVolumeProfileDrawingType(d.type);
+                const hasVp = isVp(dm.selectedDrawing)
+                  || (Array.isArray(dm.selectedDrawings) && dm.selectedDrawings.some(isVp))
+                  || isVp(dm.toolbar?.currentDrawing);
+                if (!hasVp) return;
+                if (typeof dm.deleteSelected === "function") {
+                  dm.deleteSelected();
+                  deleted = true;
+                } else if (selDraw) {
+                  const live = resolveLiveDrawingInDm(dm, selDraw);
+                  if (live) {
+                    try { dm.deleteDrawing(live); deleted = true; } catch (_) {}
+                  }
+                }
+                try { if (typeof dm.saveDrawings === "function") dm.saveDrawings(); } catch (_) {}
+                if (dm.chart?.scheduleRender) dm.chart.scheduleRender();
+              });
+            }
+          } catch (err) { console.warn("[V9 vp delete] failed:", err); }
+          if (deleted) {
+            editingDrawingRef.current = null;
+            setVpLocked(false);
+            setTlBarSelected(false);
+            setTlBarSelectedType(null);
+          }
         };
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
         return (
@@ -24846,31 +24978,22 @@ const TalariaV8bLive = () => {
             {/* btn: lock */}
             <VPBtn id="vpb-lock" isAct={vpLocked} onClick={e=>{
               e.stopPropagation(); setVpBarDrop(null); setColorPicker(null);
+              v9SuppressNextChartDeselect();
               const next = !vpLocked; setVpLocked(next);
-              try { v9SetVolumeProfileLocked(next, editingDrawingRef.current?.drawing); } catch (_) {}
+              try {
+                v9SetVolumeProfileLocked(next, getSelectedDrawingForTemplate());
+              } catch (_) {}
             }}>
               {(_,isAct,col)=><I n="lock" s={16} cl={col}/>}
             </VPBtn>
             {/* btn: delete */}
-            <VPBtn id="vpb-del" isAct={false} onClick={e=>{
-              e.stopPropagation(); setVpBarDrop(null); setColorPicker(null);
-              if (vpSettOpen || closing.has("vpsett")) closeVpSett();
-              let deleted = false;
-              try {
-                deleted = v9DeleteSelectedVolumeProfileDrawings(editingDrawingRef.current?.drawing);
-              } catch (err) { console.warn("[V9 vp delete] failed:", err); }
-              if (deleted) {
-                setVpLocked(false);
-                setTlBarSelected(false);
-                setTlBarSelectedType(null);
-              }
-            }}>
+            <VPBtn id="vpb-del" isAct={false} onClick={deleteVpFromBar}>
               {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
             </VPBtn>
             <VPSep/>
             {/* btn: settings */}
             <VPBtn id="vpb-sett" isAct={vpSettOpen||closing.has("vpsett")}
-              onClick={e=>{e.stopPropagation();if(dropdown)closeDropdown();setVpBarDrop(null);setColorPicker(null);if(vpSettOpen||closing.has("vpsett")){closeVpSett();}else{if(tlSettOpen)closeTlSett();if(txtSettOpen)closeTxtSett();if(vwapSettOpen)closeVwapSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW2=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW2-428));const y=r.bottom/Z+8;setVpSettPos({x,y});setVpSettOpen(true);setVpSettTab("style");}}}>
+              onClick={openVpSettingsFromBar}>
               {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
             </VPBtn>
             {/* btn: more */}
