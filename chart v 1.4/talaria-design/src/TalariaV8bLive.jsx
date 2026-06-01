@@ -24898,7 +24898,6 @@ const TalariaV8bLive = () => {
 
       {/* ── Anchored VWAP floating toolbar ── */}
       {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
-        const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vb-del";
@@ -24977,78 +24976,6 @@ const TalariaV8bLive = () => {
                 <div style={{width:12,height:2,background:vwapStyle.vwapColor,borderRadius:1}}/>
               </div>}
             </VBtn>
-            {/* btn: style */}
-            <div style={{position:"relative",flexShrink:0}}>
-              <VBtn id="vb-sty" isAct={vwapBarDrop==="style"} w="auto"
-                onClick={e=>{e.stopPropagation();if(vwapBarDrop==="style"){setVwapBarDrop(null);return;}setColorPicker(null);cpBarAnchorRef.current=null;setVwapBarDrop("style");}}>
-                {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
-                  <svg width={20} height={8} viewBox="0 0 20 8">
-                    <line x1={0} y1={4} x2={20} y2={4} stroke={col} strokeWidth={2} strokeLinecap="round" strokeDasharray={da(vwapStyle.vwapLineType)}/>
-                  </svg>
-                  <I n="chevDown" s={7} cl={col}/>
-                </div>}
-              </VBtn>
-              {vwapBarDrop==="style" && (
-                <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                  style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:9100,width:56,
-                          background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
-                  <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                  {[["solid",undefined,1.5],["dashed","7,4",1.5],["dotted","2,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
-                    const isA=vwapStyle.vwapLineType===v,isH2=hov===`vb-sty-${v}`;
-                    return(
-                      <div key={v}
-                        onPointerDown={(e) => { e.stopPropagation(); setVwapStyle(s=>({...s,vwapLineType:v})); setVwapBarDrop(null); }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseEnter={()=>setHov(`vb-sty-${v}`)} onMouseLeave={()=>setHov(null)}
-                        style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
-                        {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <svg width={28} height={10} viewBox="0 0 28 10">
-                          <line x1={0} y1={5} x2={28} y2={5} stroke={isA?c.acL:c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr}/>
-                        </svg>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {/* btn: thickness */}
-            <div style={{position:"relative",flexShrink:0}}>
-              <VBtn id="vb-thk" isAct={vwapBarDrop==="thickness"} w="auto"
-                onClick={e=>{e.stopPropagation();if(vwapBarDrop==="thickness"){setVwapBarDrop(null);return;}setColorPicker(null);cpBarAnchorRef.current=null;setVwapBarDrop("thickness");}}>
-                {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
-                  <svg width={20} height={Math.max(8,+vwapStyle.vwapLineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+vwapStyle.vwapLineWidth+3)}`}>
-                    <line x1={0} y1={Math.max(8,+vwapStyle.vwapLineWidth+3)/2} x2={20} y2={Math.max(8,+vwapStyle.vwapLineWidth+3)/2} stroke={col} strokeWidth={+vwapStyle.vwapLineWidth} strokeLinecap="round"/>
-                  </svg>
-                  <I n="chevDown" s={7} cl={col}/>
-                </div>}
-              </VBtn>
-              {vwapBarDrop==="thickness" && (
-                <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
-                  style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:9100,width:56,
-                          background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>
-                  <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
-                  {["1","2","3","4"].map(v=>{
-                    const isA=vwapStyle.vwapLineWidth===v,isH2=hov===`vb-thk-${v}`;
-                    return(
-                      <div key={v}
-                        onPointerDown={(e) => { e.stopPropagation(); setVwapStyle(s=>({...s,vwapLineWidth:v})); setVwapBarDrop(null); }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseEnter={()=>setHov(`vb-thk-${v}`)} onMouseLeave={()=>setHov(null)}
-                        style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
-                                background:isA?c.acD:isH2?c.hv:"transparent",transition:"background 0.1s"}}>
-                        {isA&&<div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
-                        <svg width={28} height={Math.max(8,+v+4)} viewBox={`0 0 28 ${Math.max(8,+v+4)}`}>
-                          <line x1={0} y1={Math.max(8,+v+4)/2} x2={28} y2={Math.max(8,+v+4)/2} stroke={isA?c.acL:c.ts} strokeWidth={+v} strokeLinecap="round"/>
-                        </svg>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
             <VSep/>
             {/* btn: lock */}
             <VBtn id="vb-lock" isAct={vwapLocked} onClick={e=>{

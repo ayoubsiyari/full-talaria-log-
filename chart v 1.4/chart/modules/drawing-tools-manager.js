@@ -472,6 +472,26 @@ class DrawingToolsManager {
         );
     }
 
+    /** Resize / anchor handle drag (Ctrl magnet applies here only). */
+    _isResizeHandleInteractionActive() {
+        return !!(
+            this.isResizing
+            || this.isCustomHandleDrag
+            || this.isCustomHandleDragging
+            || this._directResizeMoveHandler
+            || this._freehandHandleWholeMove
+        );
+    }
+
+    /** Ctrl/Meta → strong OHLC magnet only on resize handles or while placing a new drawing. */
+    _allowCtrlKeyMagnet(options = {}) {
+        if (options.suppressKeyMagnet) return false;
+        if (options.allowCtrlMagnet === true) return true;
+        if (this._isDrawingGeometryMoveActive()) return false;
+        return this._isResizeHandleInteractionActive()
+            || !!(this.currentTool && this.drawingState?.isDrawing);
+    }
+
     beginTextInlineEdit(drawing) {
         if (!drawing) return;
         if (this._textInlineEditDrawing && this._textInlineEditDrawing !== drawing) {
@@ -1929,7 +1949,7 @@ class DrawingToolsManager {
                     d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
                 );
 
-                if (selectedAtPoint.length > 0 && toMove.length > 0) {
+                if (selectedAtPoint.length > 0 && toMove.length > 0 && !(event.ctrlKey || event.metaKey)) {
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -1940,7 +1960,8 @@ class DrawingToolsManager {
                     return;
                 }
 
-                if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)) {
+                if (best && !best.locked && !this._isHorizontalAnchorToolType(best.type)
+                    && !(event.ctrlKey || event.metaKey)) {
                     event.preventDefault();
                     event.stopPropagation();
                     if (typeof event.stopImmediatePropagation === 'function') {
@@ -4155,10 +4176,9 @@ class DrawingToolsManager {
             yScale: this.chart.yScale
         }, this.chart, isContinuousTool);
         
-        // Apply magnet mode only when explicitly active (not via stuck key flag)
-        // Use event.metaKey/ctrlKey directly - never rely on potentially-stuck magnetKeyHeld flag
-        const suppressMagnet = options.suppressKeyMagnet || this._isDrawingGeometryMoveActive();
-        const keyHeld = !suppressMagnet && event && (event.metaKey || event.ctrlKey);
+        // Ctrl/Meta magnet only on resize handles (or new-drawing placement) — never during whole-shape move.
+        const allowCtrlKey = this._allowCtrlKeyMagnet(options);
+        const keyHeld = allowCtrlKey && event && (event.metaKey || event.ctrlKey);
         const effectiveMagnetMode = keyHeld ? 'strong' : this.magnetMode;
         
         // Only snap when cursor is within the loaded candle data range (no snap in empty/future area)
@@ -4328,7 +4348,7 @@ class DrawingToolsManager {
     /** Snap anchored VWAP / AVP anchor to the bar under the pointer (live drag — no CSS transform). */
     _applyHorizontalAnchorPointFromEvent(drawing, sourceEvent, pointIndex = 0) {
         if (!drawing || !sourceEvent || !Array.isArray(drawing.points)) return false;
-        let point = this.getDataPoint(sourceEvent, drawing.type);
+        let point = this.getDataPoint(sourceEvent, drawing.type, { allowCtrlMagnet: true });
         if (this._isHorizontalAnchorToolType(drawing.type)) {
             const [screenX] = this._eventCanvasLocalXY(sourceEvent);
             const chart = this.chart;
@@ -5917,24 +5937,24 @@ class DrawingToolsManager {
                 .clickDistance(dragClickDistance) // Keep anchored-vwap anchor drags responsive while preserving dblclick elsewhere
                 .filter(function(event) {
                     const src = event.sourceEvent || event;
-                    // Multi-select + Ctrl uses canvas direct-move; single selection uses normal d3 body drag.
-                    if (!self.currentTool && src && src.ctrlKey && !src.shiftKey
-                        && Array.isArray(self.selectedDrawings) && self.selectedDrawings.length > 1
-                        && self.selectedDrawings.includes(drawing)) {
-                        return false;
-                    }
-                    // Only allow drag if not currently drawing and not clicking on a handle
                     const targetSelection = d3.select(event.target);
                     const isResizeHandle = targetSelection.classed('resize-handle') || targetSelection.classed('resize-handle-hit');
                     const isCustomHandle = targetSelection.classed('custom-handle');
                     const targetEl = event.target;
+                    const isAnyHandle = !!(targetEl && targetEl.closest && targetEl.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
                     const isAnchoredVwapAnchorTarget = drawing.type === 'anchored-vwap' && !!(targetEl && targetEl.closest && targetEl.closest('.anchored-vwap-anchor, .anchored-vwap-anchor-hit'));
+                    const onVpBoundaryHit = !!(targetEl && targetEl.closest && targetEl.closest('.volume-profile-boundary-hit'));
+                    // Ctrl is for resize-handle snap only — block whole-shape body drag while Ctrl/Meta is held.
+                    if (!self.currentTool && src && (src.ctrlKey || src.metaKey) && !src.shiftKey
+                        && !isAnyHandle && !isAnchoredVwapAnchorTarget && !onVpBoundaryHit) {
+                        return false;
+                    }
+                    // Only allow drag if not currently drawing and not clicking on a handle
 
                     if (isAnchoredVwapAnchorTarget) {
                         return !self.currentTool;
                     }
 
-                    const isAnyHandle = !!(targetEl && targetEl.closest && targetEl.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
                     if (targetEl && targetEl.closest && targetEl.closest('.rr-plus-btn')) {
                         return false;
                     }
@@ -6538,6 +6558,9 @@ class DrawingToolsManager {
     }
 
     _startDirectMoveDrag(drawingOrDrawings, event) {
+        if (event && (event.ctrlKey || event.metaKey)) {
+            return;
+        }
         this._stopDirectMoveDrag();
         this._cancelChartCtrlMarqueeIfActive();
 
@@ -7168,6 +7191,9 @@ class DrawingToolsManager {
      * Start dragging entire drawing (or multiple drawings if multi-selected)
      */
     startDrag(drawing, event) {
+        if (event && (event.ctrlKey || event.metaKey)) {
+            return;
+        }
         this._ensureDrawingId(drawing);
         this._commitInlineTextEditorBeforeGeometryEdit();
         if (this._isTextDrawingType(drawing.type)) {
@@ -9971,28 +9997,9 @@ class DrawingToolsManager {
      * Ctrl+drag on the current selection → move all selected drawings (not marquee).
      * @returns {boolean} true when the gesture was consumed
      */
-    _tryStartCtrlSelectionMove(event) {
-        if (!event || event.button !== 0 || !event.ctrlKey || event.shiftKey || this.currentTool || this.isRectSelecting) {
-            return false;
-        }
-        const toMove = (this.selectedDrawings || []).filter((d) =>
-            d && !d.locked && !this._isHorizontalAnchorToolType(d.type)
-        );
-        // Single selected shapes use d3 body drag (even with Ctrl held); direct-move is for multi-select.
-        if (toMove.length <= 1) return false;
-
-        const [mx, my] = this._eventCanvasLocalXY(event);
-        const onSelection = this._getSelectedDrawingsAtPoint(mx, my).length > 0
-            || this._isPointNearAnySelectedDrawing(mx, my);
-        if (!onSelection) return false;
-
-        event.preventDefault();
-        event.stopPropagation();
-        if (typeof event.stopImmediatePropagation === 'function') {
-            event.stopImmediatePropagation();
-        }
-        this._startDirectMoveDrag(toMove, event);
-        return true;
+    _tryStartCtrlSelectionMove(_event) {
+        // Ctrl is reserved for resize-handle snap and marquee select — not whole-shape move.
+        return false;
     }
 
     /**

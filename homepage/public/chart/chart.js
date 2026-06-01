@@ -23082,13 +23082,13 @@ class Chart {
         const magnetActive = magnetMode === 'weak' || magnetMode === 'strong' || magnetMode === true;
         const ctrlHeld = e.ctrlKey || e.metaKey;
         const dmDrawToolArmed = _dm && (!!_dm.currentTool || !!_dm.eraserMode);
-        const dmEditingHandle = _dm && (
+        const dmResizeHandle = _dm && (
             _dm.isResizing || _dm.isCustomHandleDragging || _dm.isCustomHandleDrag
-            || (_dm.drawingState?.isDrawing && _dm.currentTool)
         );
+        const dmPlacingNewDrawing = _dm && _dm.drawingState?.isDrawing && _dm.currentTool;
         const dmBodyMove = _dm && typeof _dm._isDrawingGeometryMoveActive === 'function'
             && _dm._isDrawingGeometryMoveActive();
-        const ctrlMagnetSnap = ctrlHeld && (dmDrawToolArmed || dmEditingHandle) && !dmBodyMove;
+        const ctrlMagnetSnap = ctrlHeld && (dmDrawToolArmed || dmResizeHandle || dmPlacingNewDrawing) && !dmBodyMove;
         const shiftHeld = e.shiftKey;
         const shiftPreviewY = (shiftHeld && _dm && typeof _dm.getShiftConstrainedPreviewPrice === 'function')
             ? _dm.getShiftConstrainedPreviewPrice(e)
