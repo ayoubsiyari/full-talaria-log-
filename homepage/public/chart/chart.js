@@ -16684,6 +16684,10 @@ class Chart {
         if (typeof this._syncAdaptivePriceAxisMargin === 'function') {
             this._syncAdaptivePriceAxisMargin();
         }
+        // Paint separate-panel backgrounds before candles so OHLC cannot bleed into indicator slots.
+        if (typeof this._paintSeparatePanelStackBackground === 'function') {
+            this._paintSeparatePanelStackBackground();
+        }
 
         // Build time-axis ticks — cache + shift while panning (avoids per-frame rebuild jank)
         this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
@@ -16767,6 +16771,9 @@ class Chart {
             this.drawVolume(visible, panOpts);
             this.drawAxes();
             this.calculateScales();
+            if (typeof this._paintSeparatePanelStackBackground === 'function') {
+                this._paintSeparatePanelStackBackground();
+            }
             this.drawGrid({ panFast: true, skipVertical: true });
             this.drawCandles(visible, panOpts);
             if (typeof this.drawIndicators === 'function') {
@@ -16813,6 +16820,9 @@ class Chart {
             this.drawVolume(visible, panOpts);
             this.drawAxes();
             this.calculateScales();
+            if (typeof this._paintSeparatePanelStackBackground === 'function') {
+                this._paintSeparatePanelStackBackground();
+            }
             this.drawGrid({ panFast: true, skipVertical: true });
             this.drawCandles(visible, panOpts);
             if (typeof this.drawIndicators === 'function') {
@@ -16977,10 +16987,13 @@ class Chart {
         if (!this.chartSettings.showGrid || this.chartSettings.gridStyle === 'None') return;
         
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const priceHeight = ch - volumeAreaHeight;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const ch = plotLayout ? plotLayout.ch : (this.h - m.t - m.b);
+        const volumeAreaHeight = plotLayout ? plotLayout.volumeAreaHeight : (ch * (this.chartSettings.showVolume ? this.volumeHeight : 0));
+        const priceHeight = plotLayout ? plotLayout.plotHeight : (ch - volumeAreaHeight);
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - volumeAreaHeight);
         
         if (!this.xScale || !this.yScale) return;
         
@@ -17031,7 +17044,7 @@ class Chart {
                 if (x >= m.l && x <= this.w - m.r) {
                     this.ctx.beginPath();
                     this.ctx.moveTo(x, m.t);
-                    this.ctx.lineTo(x, this.h - m.b);
+                    this.ctx.lineTo(x, pricePlotBottom);
                     this.ctx.stroke();
                 }
             }
@@ -18787,18 +18800,22 @@ class Chart {
     drawCandles(visible, opts = {}) {
         const m = this.margin;
         const chartType = this.chartSettings.chartType || 'candles';
-        
-        // Calculate chart area bounds (exclude volume area)
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const priceAreaBottom = this.h - m.b - volumeAreaHeight;
-        
-        // Create clipping region for chart body.
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : (function() {
+                const ch = this.h - m.t - m.b;
+                const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+                const volumeAreaHeight = ch * effectiveVolumeHeight;
+                const indPanelH = this.separateIndicatorPanelHeight || 0;
+                const plotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+                return { plotBottom: plotBottom, plotHeight: Math.max(1, plotBottom - m.t) };
+            }).call(this);
+
+        // Create clipping region for chart body (price plot only — not volume or separate panels).
         // Include the right axis zone so the last candle can slide behind it (TradingView-like).
         this.ctx.save();
         this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, this.w - m.l, priceAreaBottom - m.t);
+        this.ctx.rect(m.l, m.t, this.w - m.l, plotLayout.plotHeight);
         this.ctx.clip();
         
         // Transform data for Heikin Ashi if needed

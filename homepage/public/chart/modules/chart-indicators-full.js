@@ -5204,9 +5204,12 @@
 
         ctx.save();
 
-        // Clip to chart area
+        // Clip to main price plot only — exclude volume band and separate indicator panels below.
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : { m: m, plotHeight: this.h - m.t - m.b };
         ctx.beginPath();
-        ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
+        ctx.rect(plotLayout.m.l, plotLayout.m.t, this.w - plotLayout.m.l - plotLayout.m.r, plotLayout.plotHeight);
         ctx.clip();
 
         const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
@@ -5520,6 +5523,50 @@ Chart.prototype._getVolumePanelHeight = function() {
     const ratio = Number.isFinite(this.volumeHeight) ? this.volumeHeight : 0.15;
     const fromRatio = Math.round(ch * Math.max(0.08, Math.min(ratio, 0.35)));
     return Math.max(MIN_SEPARATE_PANEL_HEIGHT, fromRatio || DEFAULT_VOLUME_PANEL_HEIGHT);
+};
+
+/** Main price plot bounds — matches calculateScales yScale range (excludes volume band + separate panels). */
+Chart.prototype._getMainPricePlotLayout = function() {
+    const m = this.margin;
+    const ch = this.h - m.t - m.b;
+    const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
+    const effectiveVolumeHeight = (this.chartSettings && this.chartSettings.showVolume && !volInPanel) ? this.volumeHeight : 0;
+    const volumeAreaHeight = ch * effectiveVolumeHeight;
+    const indPanelH = this.separateIndicatorPanelHeight || 0;
+    const plotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+    const plotHeight = Math.max(1, plotBottom - m.t);
+    return { m: m, ch: ch, volumeAreaHeight: volumeAreaHeight, indPanelH: indPanelH, plotBottom: plotBottom, plotHeight: plotHeight };
+};
+
+/** Opaque fill for the separate-panel stack — call before candles so price series cannot bleed through. */
+Chart.prototype._paintSeparatePanelStackBackground = function() {
+    if (typeof this._getVisibleSeparateIndicators !== 'function') return;
+    const separateIndicators = this._getVisibleSeparateIndicators();
+    const volumeInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
+    if (!separateIndicators.length && !volumeInPanel) return;
+
+    const ctx = this.ctx;
+    const m = this.margin;
+    let panelHeights = this._getSeparatePanelHeights(separateIndicators);
+    if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
+        this._separatePanelResize.activeHeights.length === panelHeights.length) {
+        panelHeights = this._separatePanelResize.activeHeights.slice();
+    }
+    const volumePanelHeight = volumeInPanel ? this._getVolumePanelHeight() : 0;
+    const totalPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + volumePanelHeight;
+    if (totalPanelHeight <= 0) return;
+
+    const panelBottom = this.h - m.b;
+    const panelTop = panelBottom - totalPanelHeight;
+    const panelFullRight = this.w;
+    const panelBackgroundColor =
+        (this.chartSettings && this.chartSettings.backgroundColor) ||
+        (typeof getComputedStyle === 'function'
+            ? (getComputedStyle(document.documentElement).getPropertyValue('--sp-bg') || '').trim()
+            : '') ||
+        '#131722';
+    ctx.fillStyle = panelBackgroundColor;
+    ctx.fillRect(m.l, panelTop, panelFullRight - m.l, totalPanelHeight);
 };
 
 /** Reserve separate-panel height before calculateScales/drawVolume so volume stays in its own band. */

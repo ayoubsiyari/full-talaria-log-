@@ -3241,9 +3241,13 @@ class CompareOverlay {
         const ctx = this.chart.ctx;
         const m = this.chart.margin;
         const chartWidth = this.chart.w - m.l - m.r;
-        const effectiveVolumeHeight = this.chart.chartSettings?.showVolume ? 
-            (this.chart.h - m.t - m.b) * this.chart.volumeHeight : 0;
-        const priceHeight = (this.chart.h - m.t - m.b) - effectiveVolumeHeight;
+        const plotLayout = typeof this.chart._getMainPricePlotLayout === 'function'
+            ? this.chart._getMainPricePlotLayout()
+            : null;
+        const priceHeight = plotLayout
+            ? plotLayout.plotHeight
+            : ((this.chart.h - m.t - m.b) - (this.chart.chartSettings?.showVolume ?
+                (this.chart.h - m.t - m.b) * this.chart.volumeHeight : 0));
         
         // Get main chart's visible range
         const mainData = this.chart.data;
