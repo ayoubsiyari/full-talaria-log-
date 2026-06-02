@@ -954,7 +954,7 @@ function v9BuildColorOnlyPatchFromPickerKey(pickerKey, tlStyle, legacyTool) {
     return { textColor: tlStyle.textColor };
   }
   if (pickerKey === "tlLabelColor" && tlStyle.labelColor) {
-    return { labelColor: tlStyle.labelColor };
+    return { labelColor: tlStyle.labelColor, textColor: tlStyle.labelColor };
   }
   if (pickerKey === "tlLabelBgColor" && tlStyle.labelBgColor) {
     return { labelBackgroundColor: tlStyle.labelBgColor };
@@ -1334,8 +1334,13 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     textColor:
       legacyTool && v9IsPatternChartType(legacyTool)
         ? v9PatternEffectiveLabelColor(tlStyle)
-        : tlStyle.textColor,
-    fontSize: parseInt(String(tlStyle.textSize), 10) || 14,
+        : (legacyTool && v9IsRangeMeasureChartType(legacyTool))
+          ? v9RangeMeasureLabelColorFromTlStyle(tlStyle)
+          : tlStyle.textColor,
+    fontSize:
+      legacyTool && v9IsRangeMeasureChartType(legacyTool)
+        ? v9RangeMeasureLabelFontSizeFromTlStyle(tlStyle)
+        : (parseInt(String(tlStyle.textSize), 10) || 14),
     fontWeight: tlStyle.textBold ? "bold" : "normal",
     fontStyle: tlStyle.textItalic ? "italic" : "normal",
     ...(() => {
@@ -1600,6 +1605,13 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       patch.labelTextColor = labelCol;
       patch.ratioTextColor = labelCol;
     }
+  }
+  if (legacyTool && v9IsRangeMeasureChartType(legacyTool)) {
+    const labelCol = v9RangeMeasureLabelColorFromTlStyle(tlStyle);
+    patch.textColor = labelCol;
+    patch.labelColor = labelCol;
+    patch.fontSize = v9RangeMeasureLabelFontSizeFromTlStyle(tlStyle);
+    patch.labelFontSize = patch.fontSize;
   }
   // Per-level zone fills use `showZones` + `backgroundOpacity`, not shape `fill`.
   if (legacyTool && v9IsClassicFibRetracementType(legacyTool)) {
@@ -2965,6 +2977,22 @@ function v9IsPatternChartType(type) {
     || type === 'triangle-pattern'
     || type === 'three-drives'
     || type === 'cypher-pattern';
+}
+
+/** Range / measure tools — V9 `labelColor` + `labelFontSize` map to chart `textColor` + `fontSize`. */
+function v9IsRangeMeasureChartType(type) {
+  return ['date-price-range', 'price-range', 'date-range', 'date-and-price-range'].includes(type);
+}
+
+function v9RangeMeasureLabelColorFromTlStyle(tlStyle) {
+  return tlStyle?.labelColor || tlStyle?.textColor || '#ffffff';
+}
+
+function v9RangeMeasureLabelFontSizeFromTlStyle(tlStyle) {
+  const fs = parseInt(tlStyle?.labelFontSize, 10);
+  if (Number.isFinite(fs) && fs > 0) return fs;
+  const legacy = parseInt(String(tlStyle?.textSize), 10);
+  return Number.isFinite(legacy) && legacy > 0 ? legacy : 12;
 }
 
 /** Pattern rail icons whose wave labels default to the same color as the line. */
@@ -5771,8 +5799,9 @@ function v9TlStylePatchFromDrawing(d) {
       : {}),
     ...(typeof s.showPriceLabel === 'boolean' ? { priceLabels: s.showPriceLabel } : {}),
     ...(typeof s.showTimeLabel === 'boolean' ? { timeLabels: s.showTimeLabel } : {}),
-    ...(s.labelColor ? { labelColor: s.labelColor } : {}),
-    ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) } : {}),
+    ...(s.labelColor || s.textColor ? { labelColor: s.labelColor || s.textColor } : {}),
+    ...(s.labelFontSize != null ? { labelFontSize: String(s.labelFontSize) }
+      : s.fontSize != null ? { labelFontSize: String(s.fontSize) } : {}),
     ...(typeof s.labelBackground === 'boolean' ? { labelBg: s.labelBackground } : {}),
     ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
     ...(s.infoSettings && typeof s.infoSettings === 'object'
@@ -15093,8 +15122,8 @@ const TalariaV8bLive = () => {
               showInfoTypes: types.length > 0 ? types : (prev.showInfoTypes || ['Price range']),
             };
           })(),
-          labelColor: sPartial.labelColor || prev.labelColor,
-          labelFontSize: String(sPartial.labelFontSize ?? prev.labelFontSize),
+          labelColor: sPartial.labelColor || sPartial.textColor || prev.labelColor,
+          labelFontSize: String(sPartial.labelFontSize ?? sPartial.fontSize ?? prev.labelFontSize),
           labelBg: typeof sPartial.showLabelBackground === 'boolean' ? sPartial.showLabelBackground : (typeof sPartial.labelBackground === 'boolean' ? sPartial.labelBackground : prev.labelBg),
           labelBgColor: sPartial.labelBackgroundColor || prev.labelBgColor,
           textContent: typeof drawingForStyle.text === 'string' ? drawingForStyle.text : prev.textContent,

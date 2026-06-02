@@ -191,8 +191,8 @@ class DatePriceRangeTool extends BaseDrawing {
         this.style.borderDasharray = style.borderDasharray || '';
         this.style.borderWidth = style.borderWidth || 1;
         this.style.showLabel = style.showLabel !== false;
-        this.style.textColor = style.textColor || '#d1d4dc';
-        this.style.fontSize = style.fontSize || 12;
+        this.style.textColor = style.textColor || style.labelColor || '#d1d4dc';
+        this.style.fontSize = style.fontSize || style.labelFontSize || 12;
         this.style.showLabelBackground = style.showLabelBackground !== false;
         this.style.labelBackgroundColor = style.labelBackgroundColor || 'rgba(30, 34, 45, 0.95)';
         this.style.rangeMode = this.normalizeRangeMode(style.rangeMode);
