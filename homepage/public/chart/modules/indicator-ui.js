@@ -101,6 +101,34 @@ function channelBandsStyleParams() {
     return bollingerBandsStyleParams();
 }
 
+/** TradingView-style Aroon Style tab (Up/Down lines + OB/OS/Mid levels + optional panel bg). */
+function aroonStyleParams() {
+    return [
+        { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'upLineStyle', label: 'Aroon Up Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'downLineStyle', label: 'Aroon Down Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'overboughtValue', label: 'Overbought value', type: 'number', default: 70, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'showOverbought', label: 'Show overbought level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'overboughtColor', label: 'Overbought color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'overboughtLineStyle', label: 'Overbought line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'oversoldValue', label: 'Oversold value', type: 'number', default: 30, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'showOversold', label: 'Show oversold level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'oversoldColor', label: 'Oversold color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'oversoldLineStyle', label: 'Oversold line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midValue', label: 'Mid value', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'showMid', label: 'Show mid level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Mid color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midLineStyle', label: 'Mid line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -589,11 +617,8 @@ const INDICATOR_DEFINITIONS = {
         name: 'Aroon',
         type: 'separate',
         params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676' },
-            { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 }
+        ].concat(aroonStyleParams())
     },
     cmf: {
         name: 'Chaikin Money Flow',
@@ -2986,7 +3011,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
-    if (/fill|background|zonebg|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
+    if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
         const d = String(paramDef.default || '');
@@ -3038,6 +3063,10 @@ function v9ColorRow(label, colorId, showId) {
     return { label: label, colorId: colorId, styleId: null, widthId: null, showId: showId || null, colorOnly: true };
 }
 
+function v9LevelRow(valueId, showId, colorId, styleId) {
+    return { valueId: valueId, showId: showId, colorId: colorId, styleId: styleId };
+}
+
 /**
  * TradingView-style Style tab layout: sections of grid rows (chk | label | color | style | thickness).
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
@@ -3065,6 +3094,34 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             }, {
                 title: 'Area Between Bands',
                 rows: [v9ColorRow('Background', 'fillColor', 'showFill')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'aroon') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Aroon Up', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
+                    v9PlotRow('Aroon Down', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown')
+                ]
+            }, {
+                title: 'Overbought Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+            }, {
+                title: 'Oversold Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+            }, {
+                title: 'Mid Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
             }],
             footers: footers
         };

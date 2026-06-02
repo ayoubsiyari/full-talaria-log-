@@ -207,6 +207,33 @@
         }
         return raw;
     }
+
+    function applyAroonStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showUp = params.showUp !== false;
+        indicator.style.upColor = params.upColor || '#00e676';
+        indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
+        indicator.style.upLineStyle = params.upLineStyle || legacyS;
+        indicator.style.showDown = params.showDown !== false;
+        indicator.style.downColor = params.downColor || '#f23645';
+        indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
+        indicator.style.downLineStyle = params.downLineStyle || legacyS;
+        indicator.style.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 70;
+        indicator.style.showOverbought = params.showOverbought !== false;
+        indicator.style.overboughtColor = params.overboughtColor || '#787b86';
+        indicator.style.overboughtLineStyle = params.overboughtLineStyle || 'Dotted';
+        indicator.style.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 30;
+        indicator.style.showOversold = params.showOversold !== false;
+        indicator.style.oversoldColor = params.oversoldColor || '#787b86';
+        indicator.style.oversoldLineStyle = params.oversoldLineStyle || 'Dotted';
+        indicator.style.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.style.showMid = params.showMid !== false;
+        indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
+        indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
     
     // Simple Moving Average
     function calculateSMA(data, period, source) {
@@ -3159,10 +3186,8 @@
                 break;
             case 'aroon':
                 indicator.params.period = params.period || 14;
-                indicator.style.upColor = params.upColor || '#00e676';
-                indicator.style.downColor = params.downColor || '#f23645';
-                indicator.style.lineWidth = params.lineWidth || 2;
                 indicator.overlay = false;
+                applyAroonStyleFromParams(indicator, params);
                 indicator.name = 'Aroon(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateAroon(this.data, indicator.params.period);
                 break;
@@ -3991,6 +4016,10 @@
                     indicator.params[p.id] = raw;
                 });
             }
+        }
+
+        if (indicator.type === 'aroon') {
+            applyAroonStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -7359,11 +7388,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
-    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY, clipTop, clipBottom) {
+    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, lineStyle) {
         if (!values) return;
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth || 2;
-        ctx.setLineDash([]);
+        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(lineStyle || 'Line') : []);
         ctx.beginPath();
         let started = false;
         const useClip = Number.isFinite(clipTop) && Number.isFinite(clipBottom) && clipBottom > clipTop;
@@ -7379,6 +7408,27 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             else { ctx.lineTo(x, y); }
         }
         if (started) ctx.stroke();
+        ctx.setLineDash([]);
+    };
+
+    Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText) {
+        if (value === null || value === undefined || isNaN(value)) return;
+        const y = scaleY(value);
+        if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
+        ctx.strokeStyle = color || '#787b86';
+        ctx.lineWidth = 1;
+        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(lineStyle || 'Dotted') : [3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(m.l, y);
+        ctx.lineTo(this.w, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (labelText != null && labelText !== '') {
+            ctx.fillStyle = color || '#787b86';
+            ctx.font = '9px Roboto';
+            ctx.textAlign = 'right';
+            ctx.fillText(String(labelText), this.w - 6, y - 2);
+        }
     };
 
     // Shared right-axis ticks + grid for separate indicator panels.
@@ -7863,11 +7913,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = lastADX !== null ? lastADX.toFixed(2) : '';
     };
 
-    // ---- Aroon panel: Up / Down 0–100 + 70 reference ----
+    // ---- Aroon panel: Up / Down 0–100 + configurable levels + optional background ----
     Chart.prototype._renderAroonPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data || !data.up || !data.down) return;
         const upArr = data.up;
         const downArr = data.down;
+        const style = indicator.style || {};
         indicator._panelBaseMin = 0;
         indicator._panelBaseMax = 100;
         const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
@@ -7880,32 +7931,39 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
-        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 0);
 
-        const thY = scaleY(70);
-        if (thY !== null && thY > panelTop && thY < panelBottom) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([3, 3]);
-            ctx.beginPath();
-            ctx.moveTo(m.l, thY);
-            ctx.lineTo(this.w, thY);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(255,255,255,0.3)';
-            ctx.font = '9px Roboto';
-            ctx.textAlign = 'right';
-            ctx.fillText('70', this.w - 6, thY - 2);
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
 
-        this._drawPanelLine(ctx, m, upArr, indicator.style.upColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, downArr, indicator.style.downColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 0);
+
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.overboughtValue != null ? style.overboughtValue : 70,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', style.overboughtValue != null ? style.overboughtValue : 70);
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.oversoldValue != null ? style.oversoldValue : 30,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', style.oversoldValue != null ? style.oversoldValue : 30);
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.midValue != null ? style.midValue : 50,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', style.midValue != null ? style.midValue : 50);
+        }
+
+        if (style.showUp !== false) {
+            this._drawPanelLine(ctx, m, upArr, style.upColor || '#00e676', style.upLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.upLineStyle || 'Line');
+        }
+        if (style.showDown !== false) {
+            this._drawPanelLine(ctx, m, downArr, style.downColor || '#f23645', style.downLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.downLineStyle || 'Line');
+        }
 
         let lastU = null, lastD = null;
         for (let i = Math.min(visibleEnd - 1, upArr.length - 1); i >= visibleStart; i--) {
             if (upArr[i] !== null && !isNaN(upArr[i])) { lastU = upArr[i]; lastD = downArr[i]; break; }
         }
-        indicator._displayColor = indicator.style.upColor || '#00e676';
+        indicator._displayColor = style.upColor || '#00e676';
         indicator._displayLabel = lastU !== null ? '↑' + lastU.toFixed(0) + ' ↓' + (lastD != null ? lastD.toFixed(0) : '—') : '';
     };
 

@@ -22797,7 +22797,7 @@ const TalariaV8bLive = () => {
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
             return (
-              <div key={`${row.colorId}-${i}`} style={R(i ? 8 : 0)}>
+              <div key={`${row.colorId || row.label}-${i}`} style={R(i ? 8 : 0)}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {row.showId
                     ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
@@ -22807,6 +22807,22 @@ const TalariaV8bLive = () => {
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
                 {hasStyleCol ? stSel(row.styleId, !on) : <div />}
                 {hasWidthCol ? numW(row.widthId, !on) : <div />}
+              </div>
+            );
+          };
+          const gcLevel = "16px 72px 44px 26px 56px";
+          const RL = (marginTop = 0) => ({ display: "grid", gridTemplateColumns: gcLevel, columnGap: cg, alignItems: "center", height: 30, ...(marginTop ? { marginTop } : {}) });
+          const renderLevelRow = (row, i) => {
+            const on = val(row.showId) !== false;
+            return (
+              <div key={row.valueId} style={RL(i ? 0 : 0)}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
+                </div>
+                {lbl("Value", on)}
+                {numW(row.valueId, !on)}
+                <Swatch pid={row.colorId} disabled={!on} />
+                {stSel(row.styleId, !on)}
               </div>
             );
           };
@@ -22825,7 +22841,16 @@ const TalariaV8bLive = () => {
                     <div>{hdr("THICKNESS")}</div>
                   </div>
                 )}
-                {section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
+                {section.levelHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: gcLevel, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div />
+                    <div>{hdr("VALUE")}</div>
+                    <div>{hdr("COLOR")}</div>
+                    <div>{hdr("STYLE")}</div>
+                  </div>
+                )}
+                {section.rows && section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
+                {section.levelRows && section.levelRows.map((row, ri) => renderLevelRow(row, ri))}
               </div>
             ))}
             {(layout.footers || []).map((f) => {
@@ -22951,6 +22976,12 @@ const TalariaV8bLive = () => {
                 if (row.colorId) ids.add(row.colorId);
                 if (row.styleId) ids.add(row.styleId);
                 if (row.widthId) ids.add(row.widthId);
+              });
+              (sec.levelRows || []).forEach((row) => {
+                if (row.showId) ids.add(row.showId);
+                if (row.valueId) ids.add(row.valueId);
+                if (row.colorId) ids.add(row.colorId);
+                if (row.styleId) ids.add(row.styleId);
               });
             });
             (layout.footers || []).forEach((f) => { if (f.id) ids.add(f.id); });
