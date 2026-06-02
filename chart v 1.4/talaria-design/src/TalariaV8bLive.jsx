@@ -22980,26 +22980,17 @@ const TalariaV8bLive = () => {
               </div>
             );
           };
-          const gcLevel = "16px 72px 44px 26px 56px";
-          const RL = (marginTop = 0) => ({ display: "grid", gridTemplateColumns: gcLevel, columnGap: cg, alignItems: "center", height: 30, ...(marginTop ? { marginTop } : {}) });
-          const levelStyleShift = (() => {
-            const gridW = panelW - 36;
-            const plotFr = gridW - 16 - 26 - 56 - 56 - 4 * cg;
-            return Math.max(0, plotFr - 72 - 44);
-          })();
           const renderLevelRow = (row, i) => {
             const on = val(row.showId) !== false;
             return (
-              <div key={row.valueId} style={RL(i ? 8 : 0)}>
+              <div key={row.valueId} style={R(i ? 8 : 0)}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
                 {lbl("Value", on)}
-                {numW(row.valueId, !on)}
                 <Swatch pid={row.colorId} disabled={!on} />
-                <div style={{ marginLeft: levelStyleShift }}>
-                  {stSel(row.styleId, !on)}
-                </div>
+                {stSel(row.styleId, !on)}
+                {numW(row.valueId, !on)}
               </div>
             );
           };
@@ -23013,17 +23004,16 @@ const TalariaV8bLive = () => {
                 )}
                 {section.header && (
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
-                    <div /><div /><div />
+                    <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                   </div>
                 )}
                 {section.levelHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gcLevel, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
-                    <div /><div />
+                  <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div>{hdr("COLOR")}</div>
+                    <div>{hdr("STYLE")}</div>
                     <div>{hdr("VALUE")}</div>
-                    <div>{hdr("COLOR")}</div>
-                    <div style={{ marginLeft: levelStyleShift }}>{hdr("STYLE")}</div>
                   </div>
                 )}
                 {section.rows && section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
