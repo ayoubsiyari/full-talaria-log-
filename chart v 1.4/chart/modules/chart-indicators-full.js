@@ -4906,6 +4906,13 @@
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             }
+
+            if (indicator.id === this.selectedOverlayIndicatorId && isSelectableOverlayLineIndicator(indicator)) {
+                const selSeries = getOverlayLineSeries(indicator, data);
+                if (selSeries) {
+                    this._drawOverlayLineSelectionHandles(selSeries, startIndex, endIndex, indicator.style);
+                }
+            }
         }
 
         ctx.restore();
@@ -5990,109 +5997,52 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         return this.openOverlayIndicatorSettings(hit.id);
     };
 
-    /** Screen-space handle points glued to a visible overlay line polyline (pan/zoom safe). */
-    function overlayLineHandlePoints(chart, series, startIndex, endIndex, minSpacingPx) {
+    /** First/last on-screen points of an overlay line (TradingView-style: two anchors only). */
+    function visibleOverlayLineEndpoints(chart, series, startIndex, endIndex) {
         const m = chart.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const poly = [];
+        let first = null;
+        let last = null;
         for (let i = startIndex; i < endIndex; i++) {
             if (!Number.isFinite(series[i])) continue;
             const x = chart.dataIndexToPixel(i);
             const y = chart.yScale(series[i]);
-            if (x < m.l - 24 || x > chart.w - m.r + 24) continue;
-            if (y < m.t - 24 || y > chart.h - m.b + 24) continue;
-            poly.push({ x: x, y: y });
+            if (x < m.l || x > chart.w - m.r || y < m.t || y > chart.h - m.b) continue;
+            if (!first) first = { x: x, y: y };
+            last = { x: x, y: y };
         }
-        if (!poly.length) return [];
-        const spacing = Math.max(18, minSpacingPx || 28);
-        const out = [{ x: poly[0].x, y: poly[0].y }];
-        let distSinceLast = 0;
-        for (let j = 1; j < poly.length; j++) {
-            const a = poly[j - 1];
-            const b = poly[j];
-            let ax = a.x;
-            let ay = a.y;
-            let segRem = Math.hypot(b.x - ax, b.y - ay);
-            if (segRem <= 0) continue;
-            while (distSinceLast + segRem >= spacing) {
-                const need = spacing - distSinceLast;
-                const t = need / segRem;
-                const nx = ax + (b.x - ax) * t;
-                const ny = ay + (b.y - ay) * t;
-                out.push({ x: nx, y: ny });
-                ax = nx;
-                ay = ny;
-                segRem = Math.hypot(b.x - ax, b.y - ay);
-                distSinceLast = 0;
-            }
-            distSinceLast += segRem;
-        }
-        const last = poly[poly.length - 1];
-        const prev = out[out.length - 1];
-        if (Math.hypot(last.x - prev.x, last.y - prev.y) > spacing * 0.35) {
-            out.push({ x: last.x, y: last.y });
-        }
-        return out;
+        if (!first) return [];
+        if (!last || (last.x === first.x && last.y === first.y)) return [first];
+        return [first, last];
     }
 
-    Chart.prototype._overlayIndicatorSelectionRange = function() {
-        const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
-        const visibleEnd = Number.isFinite(this.visibleEndIndex)
-            ? this.visibleEndIndex
-            : (this.data ? this.data.length : 0);
-        const buffer = 20;
-        return {
-            startIndex: Math.max(0, visibleStart - buffer),
-            endIndex: Math.min(this.data ? this.data.length : 0, visibleEnd + buffer)
-        };
-    };
+    Chart.prototype._drawOverlayLineSelectionHandles = function(series, startIndex, endIndex, style) {
+        if (!this.ctx || !this.yScale || !series) return;
+        const endpoints = visibleOverlayLineEndpoints(this, series, startIndex, endIndex);
+        if (!endpoints.length) return;
 
-    Chart.prototype.syncOverlayIndicatorSelectionOverlay = function() {
-        if (!this.svg || this.svg.empty()) return;
-
-        let layer = this.svg.select('g.overlay-indicator-selection');
-        if (layer.empty()) {
-            layer = this.svg.append('g')
-                .attr('class', 'overlay-indicator-selection')
-                .style('pointer-events', 'none');
-        }
-        layer.selectAll('*').remove();
-        layer.attr('clip-path', null);
-
-        const id = this.selectedOverlayIndicatorId;
-        if (!id || !this.indicators || !this.yScale) return;
-
-        const indicator = this.indicators.active.find(function(ind) { return ind.id === id; });
-        if (!indicator || !isSelectableOverlayLineIndicator(indicator)) return;
-        if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
-            && !this._indicatorVisibleForCurrentTimeframe(indicator)) return;
-
-        const series = getOverlayLineSeries(indicator, this.indicators.data[id]);
-        if (!series || !series.length) return;
-
-        const range = this._overlayIndicatorSelectionRange();
-        const handles = overlayLineHandlePoints(this, series, range.startIndex, range.endIndex, 28);
-        if (!handles.length) return;
-
-        const color = (indicator.style && indicator.style.color) || '#2962ff';
-        const lw = (indicator.style && indicator.style.lineWidth) || 2;
+        const color = (style && style.color) || '#2962ff';
+        const lw = (style && style.lineWidth) || 2;
         const radius = Math.max(3.5, lw + 2);
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
+        const ctx = this.ctx;
 
-        const dm = this.drawingManager;
-        if (dm && typeof dm._clipUrl === 'function') {
-            const clipUrl = dm._clipUrl();
-            if (clipUrl) layer.attr('clip-path', clipUrl);
-        }
-
-        handles.forEach(function(pt) {
-            layer.append('circle')
-                .attr('cx', pt.x)
-                .attr('cy', pt.y)
-                .attr('r', radius)
-                .attr('fill', bg)
-                .attr('stroke', color)
-                .attr('stroke-width', 1.5);
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = bg;
+        ctx.lineWidth = 1.5;
+        endpoints.forEach(function(pt) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
         });
+        ctx.restore();
+    };
+
+    /** Legacy SVG layer cleanup (handles now draw on canvas with the indicator line). */
+    Chart.prototype.syncOverlayIndicatorSelectionOverlay = function() {
+        if (!this.svg || this.svg.empty()) return;
+        this.svg.select('g.overlay-indicator-selection').selectAll('*').remove();
     };
 
     Chart.prototype.drawOverlayIndicatorSelection = function() {

@@ -95,7 +95,9 @@ if (mode === "live" || mode === "both") {
 
 if (mode === "dist" || mode === "both") {
   let distBuildId = buildIdForDist;
-  if (fs.existsSync(distIndexPath)) {
+  if (process.env.BUILD_ID?.trim()) {
+    distBuildId = process.env.BUILD_ID.trim();
+  } else if (fs.existsSync(distIndexPath)) {
     const distCurrent = readCurrentChartBuildId(fs.readFileSync(distIndexPath, "utf8"));
     // After `vite build`, dist copies live's id — bump dist one step so browsers reload modules.
     distBuildId = distCurrent ? incrementBuildId(distCurrent) : distBuildId;
