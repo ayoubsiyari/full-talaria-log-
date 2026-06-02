@@ -1965,8 +1965,9 @@
         return { upper: upper, lower: lower, middle: middle };
     }
 
-    function calculateKeltner(data, emaPeriod, atrPeriod, mult) {
-        const mid = calculateEMA(data, emaPeriod, 'c');
+    function calculateKeltner(data, emaPeriod, atrPeriod, mult, source) {
+        source = source || 'close';
+        const mid = calculateEMA(data, emaPeriod, source);
         const atr = calculateATR(data, atrPeriod);
         const upper = [], lower = [];
         for (let i = 0; i < data.length; i++) {
@@ -3151,13 +3152,10 @@
                 indicator.params.emaPeriod = params.emaPeriod || 20;
                 indicator.params.atrPeriod = params.atrPeriod || 10;
                 indicator.params.multiplier = params.multiplier != null ? params.multiplier : 2;
-                indicator.style.upperColor = params.upperColor || '#2962ff';
-                indicator.style.middleColor = params.middleColor || '#787b86';
-                indicator.style.lowerColor = params.lowerColor || '#2962ff';
-                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
-                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.params.source = params.source || 'close';
+                applyBollingerStyleFromParams(indicator, params);
                 indicator.name = 'Keltner(' + indicator.params.emaPeriod + ',' + indicator.params.atrPeriod + ')';
-                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier);
+                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source);
                 break;
             case 'aroon':
                 indicator.params.period = params.period || 14;
@@ -4215,7 +4213,7 @@
                 break;
             case 'keltner':
                 indicator.name = 'Keltner(' + indicator.params.emaPeriod + ',' + indicator.params.atrPeriod + ')';
-                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier);
+                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source || 'close');
                 break;
             case 'aroon':
                 indicator.name = 'Aroon(' + indicator.params.period + ')';
@@ -4524,7 +4522,7 @@
                     this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
                     break;
                 case 'keltner':
-                    this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier);
+                    this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source || 'close');
                     break;
                 case 'aroon':
                     this.indicators.data[indicator.id] = calculateAroon(this.data, indicator.params.period);

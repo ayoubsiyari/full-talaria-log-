@@ -96,6 +96,11 @@ function bollingerBandsStyleParams() {
     ];
 }
 
+/** Shared per-band Style params (Bollinger Bands, Keltner Channels, etc.). */
+function channelBandsStyleParams() {
+    return bollingerBandsStyleParams();
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -577,16 +582,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'emaPeriod', label: 'EMA Length', type: 'number', default: 20, min: 1 },
             { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
             { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.05)', tab: 'style' },
-            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+        ].concat(channelBandsStyleParams())
     },
     aroon: {
         name: 'Aroon',
@@ -3056,7 +3053,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         footers.push({ type: 'checkbox', id: 'showLabel', label: p.label || 'Show Label' });
     }
 
-    if (indicatorType === 'bb') {
+    if (indicatorType === 'bb' || indicatorType === 'keltner') {
         return {
             sections: [{
                 header: true,
