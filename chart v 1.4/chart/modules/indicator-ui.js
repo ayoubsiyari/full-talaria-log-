@@ -291,6 +291,16 @@ function dpoStyleParams() {
     ];
 }
 
+/** Standard Deviation Style tab (overlay plot line). */
+function stddevStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show plot line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc', tab: 'style' },
+        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ];
+}
+
 /** Resolve catalog / runtime indicator type to INDICATOR_DEFINITIONS key. */
 function resolveIndicatorDefinitionKey(type) {
     const t = String(type || '').toLowerCase();
@@ -895,9 +905,12 @@ const INDICATOR_DEFINITIONS = {
         ]
     },
     stddev: {
-        name: 'Close volatility (rolling stdev)',
+        name: 'Standard Deviation',
         type: 'overlay',
-        params: overlayOscFullParams(20, '#ab47bc')
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+        ].concat(stddevStyleParams())
     },
     ao: {
         name: 'Awesome Oscillator',
@@ -3364,6 +3377,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             }, {
                 title: 'Background',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'stddev') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Plot Line', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
             }],
             footers: footers
         };

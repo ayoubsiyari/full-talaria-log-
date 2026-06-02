@@ -339,6 +339,16 @@
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
     }
 
+    function applyStddevStyleFromParams(indicator, params) {
+        applyMaLengthSourceFromParams(indicator, params, 20);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#ab47bc';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+    }
+
     function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
         applyMaLengthSourceFromParams(indicator, params, defaultPeriod);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
@@ -3407,8 +3417,7 @@
                 break;
 
             case 'stddev':
-                applyMaLengthSourceFromParams(indicator, params, 20);
-                applyOverlayLineStyleFromParams(indicator, params, '#ab47bc');
+                applyStddevStyleFromParams(indicator, params);
                 indicator.overlay = true;
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source);
@@ -4161,6 +4170,10 @@
             indicator.overlay = false;
             indicator.separatePanel = true;
             applyDpoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'stddev') {
+            indicator.overlay = true;
+            applyStddevStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5207,7 +5220,9 @@
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'stddev') {
-                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+                if (indicator.style.showLine !== false) {
+                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+                }
             } else if (indicator.type === 'sma') {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             } else {
