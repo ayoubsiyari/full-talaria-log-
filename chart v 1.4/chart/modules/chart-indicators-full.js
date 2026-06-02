@@ -150,9 +150,44 @@
 
     function applyOverlayLineStyleFromParams(indicator, params, colorDefault) {
         indicator.style.color = params.color != null ? params.color : (colorDefault || '#2962ff');
-        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+        indicator.style.lineWidth = clampIndicatorLineWidth(params.lineWidth, 2);
         indicator.style.lineStyle = params.lineStyle || 'Line';
         indicator.style.showLabel = params.showLabel !== false;
+    }
+
+    function clampIndicatorLineWidth(w, fallback) {
+        if (typeof window.__v9ClampIndicatorLineWidth === 'function') {
+            return window.__v9ClampIndicatorLineWidth(w, fallback);
+        }
+        fallback = fallback != null ? fallback : 2;
+        const n = Number(w);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(1, Math.min(4, Math.round(n)));
+    }
+
+    function clampIndicatorStyleLineWidths(style) {
+        if (typeof window.__v9ClampIndicatorStyleLineWidths === 'function') {
+            window.__v9ClampIndicatorStyleLineWidths(style);
+            return;
+        }
+        if (!style) return;
+        Object.keys(style).forEach(function (key) {
+            if (/linewidth/i.test(key)) {
+                style[key] = clampIndicatorLineWidth(style[key], style[key]);
+            }
+        });
+    }
+
+    function sanitizeIndicatorRuntimePayload(indicator, params) {
+        const defKey = typeof window.__v9ResolveIndicatorDefinitionKey === 'function'
+            ? window.__v9ResolveIndicatorDefinitionKey(indicator.type)
+            : indicator.type;
+        const def = window.INDICATOR_DEFINITIONS && window.INDICATOR_DEFINITIONS[defKey];
+        if (def && typeof window.__v9SanitizeIndicatorPayloadFromDefinition === 'function') {
+            return window.__v9SanitizeIndicatorPayloadFromDefinition(def, params);
+        }
+        clampIndicatorStyleLineWidths(params);
+        return params;
     }
 
     function applyMaLengthSourceFromParams(indicator, params, defaultPeriod) {
@@ -2924,6 +2959,7 @@
     
     Chart.prototype.addIndicator = function(type, params) {
     params = params || {};
+    params = sanitizeIndicatorRuntimePayload({ type: String(type || '').toLowerCase() }, params);
     
     // Auto-initialize indicators if not done
     if (!this.indicators) {
@@ -3744,6 +3780,7 @@
             this._scheduleCotNetLoad(indicator);
         }
         this._updateIndicatorPanelHeight();
+        clampIndicatorStyleLineWidths(indicator.style);
         
         if (typeof this.render === 'function') {
             this.render();
@@ -3988,6 +4025,9 @@
         if (!indicator) {
             return;
         }
+
+        newParams = newParams || {};
+        newParams = sanitizeIndicatorRuntimePayload(indicator, Object.assign({}, newParams));
         
         if (newParams.visible !== undefined) {
             indicator.visible = newParams.visible !== false;
@@ -4585,6 +4625,8 @@
                 }
                 break;
         }
+
+        clampIndicatorStyleLineWidths(indicator.style);
         
         if (typeof this.render === 'function') {
             this.render();

@@ -23,6 +23,68 @@ const INDICATOR_PLOT_STYLE_OPTIONS = [
     'Columns',
     'Circles'
 ].map(function (v) { return { value: v, label: v }; });
+
+/** Max plot line thickness for all built-in indicators (Style tab numeric width fields). */
+const INDICATOR_MAX_LINE_WIDTH = 4;
+const INDICATOR_MIN_LINE_WIDTH = 1;
+
+function isIndicatorLineWidthParam(param) {
+    if (!param || param.type !== 'number') return false;
+    const id = String(param.id || '').toLowerCase();
+    return /linewidth/.test(id);
+}
+
+function indicatorParamAllowsNegative(param) {
+    const id = String(param.id || '').toLowerCase();
+    if (param.min != null && param.min < 0) return true;
+    if (/^(overbought|oversold|mid|zero)value$/.test(id)) return true;
+    return false;
+}
+
+function clampIndicatorLineWidth(w, fallback) {
+    fallback = fallback != null ? fallback : 2;
+    const n = Number(w);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(INDICATOR_MIN_LINE_WIDTH, Math.min(INDICATOR_MAX_LINE_WIDTH, Math.round(n)));
+}
+
+function sanitizeIndicatorParamValue(param, rawValue) {
+    if (!param) return rawValue;
+    if (param.type === 'checkbox') return !!rawValue;
+    if (param.type !== 'number') return rawValue;
+    let value = parseFloat(rawValue);
+    if (!Number.isFinite(value)) value = param.default;
+    if (isIndicatorLineWidthParam(param)) {
+        return clampIndicatorLineWidth(value, param.default != null ? param.default : 2);
+    }
+    let min = param.min;
+    if (min == null && !indicatorParamAllowsNegative(param)) min = 0;
+    if (min != null) value = Math.max(min, value);
+    if (param.max != null) value = Math.min(param.max, value);
+    return value;
+}
+
+function clampIndicatorStyleLineWidths(style) {
+    if (!style) return;
+    Object.keys(style).forEach(function (key) {
+        if (/linewidth/i.test(key)) {
+            style[key] = clampIndicatorLineWidth(style[key], style[key]);
+        }
+    });
+}
+
+function sanitizeIndicatorPayloadFromDefinition(def, payload) {
+    if (!def || !payload) return payload;
+    const out = Object.assign({}, payload);
+    def.params.forEach(function (param) {
+        if (param.type === 'heading' || param.type === 'divider') return;
+        if (out[param.id] === undefined) return;
+        out[param.id] = sanitizeIndicatorParamValue(param, out[param.id]);
+    });
+    clampIndicatorStyleLineWidths(out);
+    return out;
+}
+
 /** Full plot-style list for indicators; includes legacy dash names for saved layouts + ICT. */
 const OVERLAY_LINE_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS.concat([
     { value: 'Dashed', label: 'Dashed' },
@@ -37,7 +99,7 @@ function overlayMaFullParams(defaultPeriod, defaultColor) {
         { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
         { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
-        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
@@ -47,7 +109,7 @@ function overlayLineStyleParams(defaultColor) {
     return [
         { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
-        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
@@ -59,7 +121,7 @@ function overlayOscFullParams(defaultPeriod, defaultColor) {
         { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
         { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
-        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
@@ -78,17 +140,17 @@ function bollingerBandsStyleParams() {
         { id: 'basisHeading', label: 'Basis (Middle Band)', type: 'heading', tab: 'style' },
         { id: 'showMiddle', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
         { id: 'middleColor', label: 'Color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'middleLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'middleLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'middleLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'upperHeading', label: 'Upper Band', type: 'heading', tab: 'style' },
         { id: 'showUpper', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
         { id: 'upperColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'upperLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'upperLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'upperLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'lowerHeading', label: 'Lower Band', type: 'heading', tab: 'style' },
         { id: 'showLower', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
         { id: 'lowerColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'lowerLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'lowerLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'fillHeading', label: 'Area Between Bands', type: 'heading', tab: 'style' },
         { id: 'showFill', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
@@ -127,11 +189,11 @@ function aroonStyleParams() {
         { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
         { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676', tab: 'style' },
         { id: 'upLineStyle', label: 'Aroon Up Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
         { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645', tab: 'style' },
         { id: 'downLineStyle', label: 'Aroon Down Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ].concat(oscillatorLevelStyleParams());
 }
 
@@ -141,7 +203,7 @@ function rsiStyleParams() {
         { id: 'showLine', label: 'Show RSI line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'RSI color', type: 'color', default: '#9c27b0', tab: 'style' },
         { id: 'lineStyle', label: 'RSI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'RSI thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'lineWidth', label: 'RSI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ].concat(oscillatorLevelStyleParams());
 }
 
@@ -178,11 +240,11 @@ function stochasticStyleParams() {
         { id: 'showK', label: 'Show %K line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff', tab: 'style' },
         { id: 'kLineStyle', label: '%K line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'kLineWidth', label: '%K thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'kLineWidth', label: '%K thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showD', label: 'Show %D line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'dColor', label: '%D color', type: 'color', default: '#f23645', tab: 'style' },
         { id: 'dLineStyle', label: '%D line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'dLineWidth', label: '%D thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'dLineWidth', label: '%D thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ].concat(stochasticLevelStyleParams());
 }
 
@@ -202,7 +264,7 @@ function cciStyleParams() {
         { id: 'showLine', label: 'Show CCI line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'CCI color', type: 'color', default: '#00e676', tab: 'style' },
         { id: 'lineStyle', label: 'CCI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'CCI thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'lineWidth', label: 'CCI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ].concat(stochasticLevelStyleParams());
 }
 
@@ -222,7 +284,7 @@ function willrStyleParams() {
         { id: 'showLine', label: 'Show %R line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: '%R color', type: 'color', default: '#ec407a', tab: 'style' },
         { id: 'lineStyle', label: '%R line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: '%R thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'lineWidth', label: '%R thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ].concat(stochasticLevelStyleParams());
 }
 
@@ -232,11 +294,11 @@ function macdStyleParams() {
         { id: 'showMacd', label: 'Show MACD line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'macdColor', label: 'MACD color', type: 'color', default: '#2962ff', tab: 'style' },
         { id: 'macdLineStyle', label: 'MACD line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'macdLineWidth', label: 'MACD thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'macdLineWidth', label: 'MACD thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showSignal', label: 'Show signal line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645', tab: 'style' },
         { id: 'signalLineStyle', label: 'Signal line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'signalLineWidth', label: 'Signal thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'signalLineWidth', label: 'Signal thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showHist', label: 'Show histogram', type: 'checkbox', default: true, tab: 'style' },
         { id: 'histUpColor', label: 'Histogram up color', type: 'color', default: 'rgba(38,166,154,0.85)', tab: 'style' },
         { id: 'histDownColor', label: 'Histogram down color', type: 'color', default: 'rgba(239,83,80,0.85)', tab: 'style' },
@@ -255,7 +317,7 @@ function oscZeroPanelStyleParams(lineLabel, defaultColor) {
         { id: 'showLine', label: 'Show ' + lineLabel + ' line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: lineLabel + ' color', type: 'color', default: defaultColor, tab: 'style' },
         { id: 'lineStyle', label: lineLabel + ' line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: lineLabel + ' thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'lineWidth', label: lineLabel + ' thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
         { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
@@ -280,11 +342,11 @@ function dpoStyleParams() {
         { id: 'showLine', label: 'Show DPO line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'DPO color', type: 'color', default: '#78909c', tab: 'style' },
         { id: 'lineStyle', label: 'DPO line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'DPO thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'lineWidth', label: 'DPO thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showMid', label: 'Show middle line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'midColor', label: 'Middle color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
         { id: 'midLineStyle', label: 'Middle line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
-        { id: 'midLineWidth', label: 'Middle thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'midValue', label: 'Middle line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
         { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
         { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
@@ -297,7 +359,7 @@ function stddevStyleParams() {
         { id: 'showLine', label: 'Show plot line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc', tab: 'style' },
         { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
 }
 
@@ -526,7 +588,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#2962ff' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
@@ -538,7 +600,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
@@ -595,7 +657,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#ff9800' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
@@ -619,7 +681,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#ff6d00' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     cci: {
@@ -637,7 +699,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'adxColor', label: 'ADX Line Color', type: 'color', default: '#ff00ff' },
             { id: 'plusDIColor', label: '+DI Color', type: 'color', default: '#00e676' },
             { id: 'minusDIColor', label: '-DI Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     adr: {
@@ -646,7 +708,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length (Days)', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#26a69a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     volume: {
@@ -729,7 +791,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
@@ -766,7 +828,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'color', label: 'Line Color', type: 'color', default: '#78909c' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     willr: {
@@ -783,7 +845,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 2 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#5c6bc0' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     donchian: {
@@ -824,7 +886,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#29b6f6' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     trix: {
@@ -833,7 +895,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#8d6e63' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     psar: {
@@ -844,7 +906,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'maxStep', label: 'Max AF', type: 'number', default: 0.2, min: 0.01, step: 0.01 },
             { id: 'bullColor', label: 'Bull Color', type: 'color', default: '#26a69a' },
             { id: 'bearColor', label: 'Bear Color', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 6 }
+            { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 4 }
         ]
     },
     sessionsplus: {
@@ -900,7 +962,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upColor', label: 'Up Trend Color', type: 'color', default: '#26a69a', tab: 'style' },
             { id: 'downColor', label: 'Down Trend Color', type: 'color', default: '#ef5350', tab: 'style' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
@@ -917,7 +979,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'color', label: 'Bar / line color', type: 'color', default: '#26a69a' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     uo: {
@@ -928,7 +990,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period2', label: 'Period 2', type: 'number', default: 14, min: 1 },
             { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1 },
             { id: 'color', label: 'Line color', type: 'color', default: '#7e57c2' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     vortex: {
@@ -938,7 +1000,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
             { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     dpo: {
@@ -966,7 +1028,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'emaPeriod', label: 'EMA length', type: 'number', default: 9, min: 2 },
             { id: 'sumPeriod', label: 'Sum length', type: 'number', default: 25, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     coppock: {
@@ -975,7 +1037,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'wmaPeriod', label: 'WMA length', type: 'number', default: 10, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#8e24aa' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     rvi: {
@@ -984,7 +1046,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Smoothing length', type: 'number', default: 10, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#ffa726' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     elderray: {
@@ -994,7 +1056,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'EMA length', type: 'number', default: 13, min: 2 },
             { id: 'bullColor', label: 'Bull power', type: 'color', default: '#26a69a' },
             { id: 'bearColor', label: 'Bear power', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     seasonality: {
@@ -1010,7 +1072,7 @@ const INDICATOR_DEFINITIONS = {
                 max: 50
             },
             { id: 'color', label: 'Line color', type: 'color', default: '#ff9800' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ].concat(separateLineStyleExtras())
     },
     cotnet: {
@@ -1033,7 +1095,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'showLarge', label: 'Show non-commercial net', type: 'checkbox', default: true },
             { id: 'bullColor', label: 'Commercial (net)', type: 'color', default: '#26a69a' },
             { id: 'bearColor', label: 'Non-commercial (net)', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
         ]
     },
     ictpd: {
@@ -2542,8 +2604,7 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
         if (param.type === 'checkbox') {
             value = !!raw;
         } else if (param.type === 'number') {
-            value = parseFloat(raw);
-            if (isNaN(value)) value = param.default;
+            value = sanitizeIndicatorParamValue(param, raw);
         }
         var pid = String(param.id).toLowerCase();
         var toStyle = param.tab === 'style'
@@ -2560,7 +2621,9 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
             newParams[param.id] = value;
         }
     });
-    return Object.assign({}, baseExisting, newParams, newStyle);
+    const merged = Object.assign({}, baseExisting, newParams, newStyle);
+    clampIndicatorStyleLineWidths(merged);
+    return merged;
 }
 
 function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndicator = null) {
@@ -3013,8 +3076,7 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             }
 
             if (param.type === 'number') {
-                value = parseFloat(value);
-                if (isNaN(value)) value = param.default;
+                value = sanitizeIndicatorParamValue(param, value);
             }
 
             const pid = param.id.toLowerCase();
@@ -3640,6 +3702,11 @@ window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
+window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;
+window.__v9ClampIndicatorLineWidth = clampIndicatorLineWidth;
+window.__v9ClampIndicatorStyleLineWidths = clampIndicatorStyleLineWidths;
+window.__v9SanitizeIndicatorPayloadFromDefinition = sanitizeIndicatorPayloadFromDefinition;
+window.INDICATOR_MAX_LINE_WIDTH = INDICATOR_MAX_LINE_WIDTH;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
 window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
