@@ -15892,11 +15892,15 @@ class Chart {
                 visEnd = Math.min(this.data.length, visStart + maxScaleBars);
             }
         }
-        const visible = this.data.slice(visStart, visEnd);
-        const priceVisible = this._shouldUseDisplayPipeline() ? this.getDisplaySeries() : visible;
+        // Avoid allocating a multi-thousand-element slice every frame when the pipeline already
+        // provides a decimated series — that slice (×2 calls/frame) was a major GC source that
+        // grew with zoom-out and caused the zoomed-out stutter/freeze.
+        const usePipelineScale = this._shouldUseDisplayPipeline();
+        const priceVisible = usePipelineScale ? this.getDisplaySeries() : this.data.slice(visStart, visEnd);
+        const visCount = Math.max(0, visEnd - visStart);
         
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
-        if (priceVisible.length === 0 && visible.length === 0) {
+        if (priceVisible.length === 0 && visCount === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
                 const _indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -15999,7 +16003,7 @@ class Chart {
         // in auto-scale mode or when the right edge has no visible bars.
         // Skip when user is manually zooming/panning so the price axis drag is unconstrained.
         if (this.chartSettings.showPriceLine !== false && this.autoScale) {
-            const linePrice = this.resolveEffectiveCurrentPrice(priceVisible.length ? priceVisible : visible);
+            const linePrice = this.resolveEffectiveCurrentPrice(priceVisible.length ? priceVisible : this.data.slice(visStart, visEnd));
             if (Number.isFinite(linePrice)) {
                 const span = domainMax - domainMin;
                 const pad = Math.max(span * 0.02, Math.abs(linePrice) * 1e-9, 1e-10);
@@ -16019,10 +16023,11 @@ class Chart {
             domainMax = snapMax + priceDy;
         }
 
-        // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized
+        // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized.
+        // Use the true visible bar count (not the decimated series length) so candle X mapping stays correct.
         this.xScale = d3.scaleLinear()
             .domain([Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)), 
-                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visible.length])
+                     Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount])
             .range([m.l, this.w - m.r]);
         
         const indPanelH = this.separateIndicatorPanelHeight || 0;
@@ -16030,7 +16035,13 @@ class Chart {
             .domain([domainMin, domainMax])
             .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
         
-        const maxVolume = Math.max(...visible.map(d => d.v), 1);
+        // Loop for volume max — spreading thousands of args into Math.max (...map) stalled
+        // zoomed-out frames and could exceed the argument limit on large windows.
+        let maxVolume = 1;
+        for (let i = 0; i < priceVisible.length; i++) {
+            const vv = Number(priceVisible[i] && priceVisible[i].v);
+            if (Number.isFinite(vv) && vv > maxVolume) maxVolume = vv;
+        }
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
             .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
