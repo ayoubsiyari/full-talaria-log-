@@ -12,6 +12,48 @@ const OHLC_SOURCE_OPTIONS = [
 ];
 const OVERLAY_LINE_STYLE_OPTIONS = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
 
+/** Full Style + Input params for overlay moving averages (SMA, EMA, WMA, DEMA, TEMA, HMA). */
+function overlayMaFullParams(defaultPeriod, defaultColor) {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: defaultPeriod, min: 1 },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
+/** Style-only overlay line (VWAP, etc.). */
+function overlayLineStyleParams(defaultColor) {
+    return [
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
+/** Overlay oscillator on price chart (ROC, Momentum, StdDev). */
+function overlayOscFullParams(defaultPeriod, defaultColor) {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: defaultPeriod, min: 1 },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
+        { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
+/** Separate-panel single-line oscillator extras (line style + label toggle). */
+function separateLineStyleExtras() {
+    return [
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'showLabel', label: 'Show Label', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -229,11 +271,15 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.5, step: 0.1 },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.1)' }
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
+            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.1)', tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     envelope: {
@@ -241,12 +287,15 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'SMA length', type: 'number', default: 20, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'percent', label: 'Band %', type: 'number', default: 2.5, min: 0.1, step: 0.1 },
-            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41,98,255,0.08)' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86', tab: 'style' },
+            { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41,98,255,0.08)', tab: 'style' },
+            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     rsi: {
@@ -254,9 +303,10 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#9c27b0' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     macd: {
         name: 'Moving Average Convergence Divergence',
@@ -265,10 +315,12 @@ const INDICATOR_DEFINITIONS = {
             { id: 'fast', label: 'Fast Length', type: 'number', default: 12, min: 1 },
             { id: 'slow', label: 'Slow Length', type: 'number', default: 26, min: 1 },
             { id: 'signal', label: 'Signal Length', type: 'number', default: 9, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'macdColor', label: 'MACD Line Color', type: 'color', default: '#2962ff' },
             { id: 'signalColor', label: 'Signal Line Color', type: 'color', default: '#f23645' },
-            { id: 'histogramColor', label: 'Histogram Color', type: 'color', default: '#787b86' }
-        ]
+            { id: 'histogramColor', label: 'Histogram Color', type: 'color', default: '#787b86' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+        ].concat(separateLineStyleExtras())
     },
     wma: {
         name: 'Weighted Moving Average',
@@ -285,10 +337,7 @@ const INDICATOR_DEFINITIONS = {
     vwap: {
         name: 'Volume Weighted Average Price',
         type: 'overlay',
-        params: [
-            { id: 'color', label: 'Color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayLineStyleParams('#00bcd4')
     },
     stoch: {
         name: 'Stochastic Oscillator',
@@ -300,7 +349,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'kColor', label: '%K Color', type: 'color', default: '#2962ff' },
             { id: 'dColor', label: '%D Color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     atr: {
         name: 'Average True Range',
@@ -309,7 +358,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#ff6d00' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     cci: {
         name: 'Commodity Channel Index',
@@ -318,7 +367,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#00e676' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     adx: {
         name: 'Average Directional Index',
@@ -329,7 +378,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'plusDIColor', label: '+DI Color', type: 'color', default: '#00e676' },
             { id: 'minusDIColor', label: '-DI Color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     adr: {
         name: 'Average Daily Range',
@@ -338,7 +387,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length (Days)', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#26a69a' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     volume: {
         name: 'Volume',
@@ -417,45 +466,32 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#00bcd4' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     tema: {
         name: 'Triple EMA (TEMA)',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#ab47bc' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayMaFullParams(20, '#ab47bc')
     },
     hma: {
         name: 'Hull Moving Average',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#26c6da' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayMaFullParams(20, '#26c6da')
     },
     roc: {
         name: 'Rate of Change',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 12, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#ffa726' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayOscFullParams(12, '#ffa726')
     },
     mom: {
         name: 'Momentum',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 10, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#66bb6a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayOscFullParams(10, '#66bb6a')
     },
     obv: {
         name: 'On Balance Volume',
@@ -463,7 +499,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'color', label: 'Line Color', type: 'color', default: '#78909c' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     willr: {
         name: 'Williams %R',
@@ -472,7 +508,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#ec407a' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     mfi: {
         name: 'Money Flow Index',
@@ -481,18 +517,20 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 2 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#5c6bc0' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     donchian: {
         name: 'Donchian Channels',
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.06)' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
+            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.06)', tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     keltner: {
@@ -502,11 +540,14 @@ const INDICATOR_DEFINITIONS = {
             { id: 'emaPeriod', label: 'EMA Length', type: 'number', default: 20, min: 1 },
             { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
             { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4 }
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
+            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)', tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     aroon: {
@@ -517,7 +558,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676' },
             { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     cmf: {
         name: 'Chaikin Money Flow',
@@ -526,7 +567,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#29b6f6' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     trix: {
         name: 'TRIX',
@@ -535,7 +576,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'color', label: 'Line Color', type: 'color', default: '#8d6e63' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     psar: {
         name: 'Parabolic SAR',
@@ -594,21 +635,20 @@ const INDICATOR_DEFINITIONS = {
         name: 'Supertrend',
         type: 'overlay',
         params: [
-            { id: 'period', label: 'ATR length', type: 'number', default: 10, min: 1 },
-            { id: 'multiplier', label: 'ATR multiplier', type: 'number', default: 3, min: 0.1, step: 0.1 },
-            { id: 'upColor', label: 'Bull line color', type: 'color', default: '#26a69a' },
-            { id: 'downColor', label: 'Bear line color', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'period', label: 'ATR Length', type: 'number', default: 10, min: 1 },
+            { id: 'multiplier', label: 'Factor', type: 'number', default: 3, min: 0.1, step: 0.1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'hl2' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'upColor', label: 'Up Trend Color', type: 'color', default: '#26a69a', tab: 'style' },
+            { id: 'downColor', label: 'Down Trend Color', type: 'color', default: '#ef5350', tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     stddev: {
         name: 'Close volatility (rolling stdev)',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        params: overlayOscFullParams(20, '#ab47bc')
     },
     ao: {
         name: 'Awesome Oscillator',
@@ -616,7 +656,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'color', label: 'Bar / line color', type: 'color', default: '#26a69a' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     uo: {
         name: 'Ultimate Oscillator',
@@ -627,7 +667,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1 },
             { id: 'color', label: 'Line color', type: 'color', default: '#7e57c2' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     vortex: {
         name: 'Vortex Indicator',
@@ -637,7 +677,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
             { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     ppo: {
         name: 'Percentage Price Oscillator',
@@ -646,19 +686,21 @@ const INDICATOR_DEFINITIONS = {
             { id: 'fast', label: 'Fast length', type: 'number', default: 12, min: 1 },
             { id: 'slow', label: 'Slow length', type: 'number', default: 26, min: 1 },
             { id: 'signal', label: 'Signal length', type: 'number', default: 9, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'macdColor', label: 'PPO line color', type: 'color', default: '#2962ff' },
             { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645' },
             { id: 'histogramColor', label: 'Histogram color', type: 'color', default: '#787b86' }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     dpo: {
         name: 'Detrended Price Oscillator',
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'color', label: 'Line color', type: 'color', default: '#78909c' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     stochrsi: {
         name: 'Stochastic RSI',
@@ -671,7 +713,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff' },
             { id: 'dColor', label: '%D color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     massindex: {
         name: 'Mass Index',
@@ -681,7 +723,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'sumPeriod', label: 'Sum length', type: 'number', default: 25, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     coppock: {
         name: 'Coppock Curve',
@@ -690,7 +732,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'wmaPeriod', label: 'WMA length', type: 'number', default: 10, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#8e24aa' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     rvi: {
         name: 'Relative Vigor Index',
@@ -699,7 +741,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Smoothing length', type: 'number', default: 10, min: 2 },
             { id: 'color', label: 'Line color', type: 'color', default: '#ffa726' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     elderray: {
         name: 'Elder Ray (Bull / Bear power)',
@@ -709,7 +751,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'bullColor', label: 'Bull power', type: 'color', default: '#26a69a' },
             { id: 'bearColor', label: 'Bear power', type: 'color', default: '#ef5350' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     seasonality: {
         name: 'Seasonality (avg % by calendar date)',
@@ -725,7 +767,7 @@ const INDICATOR_DEFINITIONS = {
             },
             { id: 'color', label: 'Line color', type: 'color', default: '#ff9800' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ]
+        ].concat(separateLineStyleExtras())
     },
     cotnet: {
         name: 'COT — Net commercial vs non-commercial',

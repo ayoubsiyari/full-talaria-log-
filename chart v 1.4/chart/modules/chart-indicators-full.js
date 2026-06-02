@@ -147,6 +147,18 @@
             default: return c;
         }
     }
+
+    function applyOverlayLineStyleFromParams(indicator, params, colorDefault) {
+        indicator.style.color = params.color != null ? params.color : (colorDefault || '#2962ff');
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+        indicator.style.lineStyle = params.lineStyle || 'Solid';
+        indicator.style.showLabel = params.showLabel !== false;
+    }
+
+    function applyMaLengthSourceFromParams(indicator, params, defaultPeriod) {
+        indicator.params.period = params.period != null ? params.period : defaultPeriod;
+        indicator.params.source = params.source || 'close';
+    }
     
     // Simple Moving Average
     function calculateSMA(data, period, source) {
@@ -271,8 +283,9 @@
     }
     
     // Bollinger Bands
-    function calculateBollingerBands(data, period, stdDev) {
-        const middle = calculateSMA(data, period, 'c');
+    function calculateBollingerBands(data, period, stdDev, source) {
+        source = source || 'close';
+        const middle = calculateSMA(data, period, source);
         const upper = [];
         const lower = [];
         
@@ -1719,21 +1732,23 @@
         return result;
     }
 
-    function calculateDEMA(data, period, field) {
-        field = field || 'c';
-        const ema1 = calculateEMA(data, period, field);
+    function calculateDEMA(data, period, source) {
+        source = source || 'close';
+        const ema1 = calculateEMA(data, period, source);
         const pseudo = data.map(function(d, i) {
             const v = ema1[i];
+            const fallback = resolveOhlcSourceValue(d, source);
+            const val = v != null ? v : fallback;
             return {
-                h: v != null ? v : d[field],
-                l: v != null ? v : d[field],
-                c: v != null ? v : d[field],
-                o: v != null ? v : d[field],
+                h: val,
+                l: val,
+                c: val,
+                o: val,
                 v: d.v,
                 t: d.t
             };
         });
-        const ema2 = calculateEMA(pseudo, period, 'c');
+        const ema2 = calculateEMA(pseudo, period, 'close');
         return ema1.map(function(e1, i) {
             const e2 = ema2[i];
             if (e1 == null || e2 == null) return null;
@@ -1741,19 +1756,23 @@
         });
     }
 
-    function calculateTEMA(data, period, field) {
-        field = field || 'c';
-        const e1 = calculateEMA(data, period, field);
+    function calculateTEMA(data, period, source) {
+        source = source || 'close';
+        const e1 = calculateEMA(data, period, source);
         const p2 = data.map(function(d, i) {
             const v = e1[i];
-            return { h: v != null ? v : d[field], l: v != null ? v : d[field], c: v != null ? v : d[field], o: v != null ? v : d[field], v: d.v, t: d.t };
+            const fb = resolveOhlcSourceValue(d, source);
+            const val = v != null ? v : fb;
+            return { h: val, l: val, c: val, o: val, v: d.v, t: d.t };
         });
-        const e2 = calculateEMA(p2, period, 'c');
+        const e2 = calculateEMA(p2, period, 'close');
         const p3 = data.map(function(d, i) {
             const v = e2[i];
-            return { h: v != null ? v : d[field], l: v != null ? v : d[field], c: v != null ? v : d[field], o: v != null ? v : d[field], v: d.v, t: d.t };
+            const fb = resolveOhlcSourceValue(d, source);
+            const val = v != null ? v : fb;
+            return { h: val, l: val, c: val, o: val, v: d.v, t: d.t };
         });
-        const e3 = calculateEMA(p3, period, 'c');
+        const e3 = calculateEMA(p3, period, 'close');
         return e1.map(function(a, i) {
             const b = e2[i], c = e3[i];
             if (a == null || b == null || c == null) return null;
@@ -1761,13 +1780,13 @@
         });
     }
 
-    function calculateHMA(data, period, field) {
-        field = field || 'c';
+    function calculateHMA(data, period, source) {
+        source = source || 'close';
         const n = Math.max(2, Math.floor(period));
         const half = Math.max(1, Math.floor(n / 2));
         const sqrtN = Math.max(1, Math.round(Math.sqrt(n)));
-        const w1 = calculateWMA(data, half, field);
-        const w2 = calculateWMA(data, n, field);
+        const w1 = calculateWMA(data, half, source);
+        const w2 = calculateWMA(data, n, source);
         const raw = data.map(function(_, i) {
             if (w1[i] == null || w2[i] == null) return null;
             return 2 * w1[i] - w2[i];
@@ -1775,13 +1794,14 @@
         let last = null;
         const pseudo = data.map(function(d, i) {
             if (raw[i] != null) last = raw[i];
-            const c = last != null ? last : d[field];
+            const c = last != null ? last : resolveOhlcSourceValue(d, source);
             return { h: c, l: c, c: c, o: c, v: d.v, t: d.t };
         });
         return calculateWMA(pseudo, sqrtN, 'c');
     }
 
-    function calculateROC(data, period) {
+    function calculateROC(data, period, source) {
+        source = source || 'close';
         const out = [];
         const p = Math.max(2, period);
         for (let i = 0; i < data.length; i++) {
@@ -1789,19 +1809,25 @@
                 out.push(null);
                 continue;
             }
-            const prev = data[i - p].c;
-            if (!prev) { out.push(null); continue; }
-            out.push((data[i].c / prev - 1) * 100);
+            const prev = resolveOhlcSourceValue(data[i - p], source);
+            const cur = resolveOhlcSourceValue(data[i], source);
+            if (!Number.isFinite(prev) || !Number.isFinite(cur) || prev === 0) { out.push(null); continue; }
+            out.push((cur / prev - 1) * 100);
         }
         return out;
     }
 
-    function calculateMomentum(data, period) {
+    function calculateMomentum(data, period, source) {
+        source = source || 'close';
         const out = [];
         const p = Math.max(1, period);
         for (let i = 0; i < data.length; i++) {
             if (i < p) out.push(null);
-            else out.push(data[i].c - data[i - p].c);
+            else {
+                const cur = resolveOhlcSourceValue(data[i], source);
+                const prev = resolveOhlcSourceValue(data[i - p], source);
+                out.push(Number.isFinite(cur) && Number.isFinite(prev) ? cur - prev : null);
+            }
         }
         return out;
     }
@@ -2133,9 +2159,10 @@
         return { upper: upper, lower: lower, middle: middle };
     }
 
-    function calculateSupertrend(data, period, multiplier) {
+    function calculateSupertrend(data, period, multiplier, source) {
         const mult = multiplier != null ? multiplier : 3;
         const p = Math.max(1, period || 10);
+        source = source || 'hl2';
         const atr = calculateATR(data, p);
         const n = data.length;
         const finalUpper = new Array(n).fill(null);
@@ -2143,9 +2170,10 @@
         const line = new Array(n).fill(null);
         const direction = new Array(n).fill(1);
         for (let i = 0; i < n; i++) {
-            const hl2 = (data[i].h + data[i].l) / 2;
+            const hl2 = resolveOhlcSourceValue(data[i], source);
+            const close = resolveOhlcSourceValue(data[i], 'close');
             const a = atr[i];
-            if (a == null || isNaN(a)) continue;
+            if (a == null || isNaN(a) || !Number.isFinite(hl2)) continue;
             const basicUpper = hl2 + mult * a;
             const basicLower = hl2 - mult * a;
             if (i === 0) {
@@ -2157,11 +2185,11 @@
             }
             const pU = finalUpper[i - 1];
             const pL = finalLower[i - 1];
-            const pC = data[i - 1].c;
+            const pC = resolveOhlcSourceValue(data[i - 1], 'close');
             finalUpper[i] = (basicUpper < pU || pC > pU) ? basicUpper : pU;
             finalLower[i] = (basicLower > pL || pC < pL) ? basicLower : pL;
             if (direction[i - 1] === 1) {
-                if (data[i].c < finalLower[i - 1]) {
+                if (close < finalLower[i - 1]) {
                     direction[i] = -1;
                     line[i] = finalUpper[i];
                 } else {
@@ -2169,7 +2197,7 @@
                     line[i] = finalLower[i];
                 }
             } else {
-                if (data[i].c > finalUpper[i - 1]) {
+                if (close > finalUpper[i - 1]) {
                     direction[i] = 1;
                     line[i] = finalLower[i];
                 } else {
@@ -2181,7 +2209,8 @@
         return { line: line, direction: direction, upper: finalUpper, lower: finalLower };
     }
 
-    function calculateStdDevLine(data, period) {
+    function calculateStdDevLine(data, period, source) {
+        source = source || 'close';
         const p = Math.max(2, period);
         const out = [];
         for (let i = 0; i < data.length; i++) {
@@ -2191,11 +2220,14 @@
             }
             let sum = 0;
             let sumSq = 0;
+            let ok = true;
             for (let j = 0; j < p; j++) {
-                const c = data[i - j].c;
-                sum += c;
-                sumSq += c * c;
+                const v = resolveOhlcSourceValue(data[i - j], source);
+                if (!Number.isFinite(v)) { ok = false; break; }
+                sum += v;
+                sumSq += v * v;
             }
+            if (!ok) { out.push(null); continue; }
             const mean = sum / p;
             const variance = Math.max(0, sumSq / p - mean * mean);
             out.push(Math.sqrt(variance));
@@ -2674,8 +2706,8 @@
     }
 
     /** SMA envelope — % distance from SMA(close). */
-    function calculateEnvelope(data, period, percent) {
-        const mid = calculateSMA(data, Math.max(1, period), 'c');
+    function calculateEnvelope(data, period, percent, source) {
+        const mid = calculateSMA(data, Math.max(1, period), source || 'close');
         const pct = Math.max(0.01, percent) / 100;
         const upper = [];
         const lower = [];
@@ -2767,33 +2799,38 @@
             case 'bb':
             case 'bollinger':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.params.stdDev = params.stdDev || 2;
                 indicator.style.upperColor = params.upperColor || '#2962ff';
                 indicator.style.middleColor = params.middleColor || '#787b86';
                 indicator.style.lowerColor = params.lowerColor || '#2962ff';
                 indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
-                indicator.style.lineWidth = 1;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
-                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source);
                 break;
 
             case 'envelope':
             case 'smaenvelope':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.params.percent = params.percent != null ? params.percent : 2.5;
                 indicator.style.upperColor = params.upperColor || '#2962ff';
                 indicator.style.middleColor = params.middleColor || '#787b86';
                 indicator.style.lowerColor = params.lowerColor || '#2962ff';
                 indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = true;
                 indicator.name = 'Envelope(' + indicator.params.period + ',' + indicator.params.percent + '%)';
-                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
+                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source);
                 break;
                 
             case 'vwap':
-                indicator.style.color = params.color || '#9c27b0';
-                indicator.style.lineWidth = 2;
+                applyOverlayLineStyleFromParams(indicator, params, '#00bcd4');
                 indicator.name = 'VWAP';
                 this.indicators.data[indicator.id] = calculateVWAP(this.data);
                 break;
@@ -2801,7 +2838,9 @@
             case 'atr':
                 indicator.params.period = params.period || 14;
                 indicator.style.color = params.color || '#ff6d00';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = false;
                 indicator.separatePanel = true;
                 indicator.name = 'ATR(' + indicator.params.period + ')';
@@ -2830,10 +2869,13 @@
 
             case 'rsi':
                 indicator.params.period = params.period || 14;
+                indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#9c27b0';
-                indicator.style.lineWidth = 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'RSI(' + indicator.params.period + ')';
-                indicator.overlay = false; // RSI should be in separate panel
+                indicator.overlay = false;
                 this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
                 break;
                 
@@ -2993,40 +3035,39 @@
 
             case 'dema':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#00bcd4';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'tema':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#ab47bc';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyMaLengthSourceFromParams(indicator, params, 20);
+                applyOverlayLineStyleFromParams(indicator, params, '#ab47bc');
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'hma':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#26c6da';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyMaLengthSourceFromParams(indicator, params, 20);
+                applyOverlayLineStyleFromParams(indicator, params, '#26c6da');
                 indicator.name = 'HMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'roc':
-                indicator.params.period = params.period || 12;
-                indicator.style.color = params.color || '#ffa726';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyMaLengthSourceFromParams(indicator, params, 12);
+                applyOverlayLineStyleFromParams(indicator, params, '#ffa726');
                 indicator.name = 'ROC(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'mom':
             case 'momentum':
                 indicator.type = 'mom';
-                indicator.params.period = params.period || 10;
-                indicator.style.color = params.color || '#66bb6a';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyMaLengthSourceFromParams(indicator, params, 10);
+                applyOverlayLineStyleFromParams(indicator, params, '#66bb6a');
                 indicator.name = 'Mom(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'obv':
                 indicator.style.color = params.color || '#78909c';
@@ -3185,21 +3226,23 @@
             case 'supertrend':
                 indicator.params.period = params.period != null ? params.period : 10;
                 indicator.params.multiplier = params.multiplier != null ? params.multiplier : 3;
+                indicator.params.source = params.source || 'hl2';
                 indicator.style.upColor = params.upColor || '#26a69a';
                 indicator.style.downColor = params.downColor || '#ef5350';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = true;
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source);
                 break;
 
             case 'stddev':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#ab47bc';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyMaLengthSourceFromParams(indicator, params, 20);
+                applyOverlayLineStyleFromParams(indicator, params, '#ab47bc');
                 indicator.overlay = true;
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source);
                 break;
 
             case 'ao':
@@ -3916,12 +3959,12 @@
             case 'bb':
             case 'bollinger':
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
-                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source || 'close');
                 break;
             case 'envelope':
             case 'smaenvelope':
                 indicator.name = 'Envelope(' + indicator.params.period + ',' + indicator.params.percent + '%)';
-                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
+                this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source || 'close');
                 break;
             case 'vwap':
                 this.indicators.data[indicator.id] = calculateVWAP(this.data);
@@ -4083,24 +4126,24 @@
                 break;
             case 'dema':
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'tema':
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'hma':
                 indicator.name = 'HMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'roc':
                 indicator.name = 'ROC(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'mom':
             case 'momentum':
                 indicator.name = 'Mom(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'obv':
                 this.indicators.data[indicator.id] = calculateOBV(this.data);
@@ -4172,11 +4215,11 @@
                 break;
             case 'supertrend':
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source || 'hl2');
                 break;
             case 'stddev':
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'ao':
                 this.indicators.data[indicator.id] = calculateAO(this.data);
@@ -4322,11 +4365,11 @@
                     break;
                 case 'bb':
                 case 'bollinger':
-                    this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev);
+                    this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source || 'close');
                     break;
                 case 'envelope':
                 case 'smaenvelope':
-                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
+                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source || 'close');
                     break;
                 case 'vwap':
                     this.indicators.data[indicator.id] = calculateVWAP(this.data);
@@ -4400,20 +4443,20 @@
                     });
                     break;
                 case 'dema':
-                    this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'tema':
-                    this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'hma':
-                    this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'roc':
-                    this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'mom':
                 case 'momentum':
-                    this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'obv':
                     this.indicators.data[indicator.id] = calculateOBV(this.data);
@@ -4475,10 +4518,10 @@
                     this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
                     break;
                 case 'supertrend':
-                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
+                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source || 'hl2');
                     break;
                 case 'stddev':
-                    this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'ao':
                     this.indicators.data[indicator.id] = calculateAO(this.data);
@@ -4497,7 +4540,7 @@
                     break;
                 case 'envelope':
                 case 'smaenvelope':
-                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent);
+                    this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source || 'close');
                     break;
                 case 'stochrsi':
                     this.indicators.data[indicator.id] = calculateStochRSI(
@@ -4948,6 +4991,7 @@
         const upColor = indicator.style.upColor || '#26a69a';
         const downColor = indicator.style.downColor || '#ef5350';
         const lw = indicator.style.lineWidth || 2;
+        const dash = this._lineDashForStyle(indicator.style.lineStyle);
         let i = startIndex;
         while (i < endIndex && i < data.line.length) {
             if (data.line[i] == null || isNaN(data.line[i])) {
@@ -4957,6 +5001,7 @@
             const dirUp = data.direction[i] >= 0;
             ctx.strokeStyle = dirUp ? upColor : downColor;
             ctx.lineWidth = lw;
+            ctx.setLineDash(dash);
             ctx.beginPath();
             let started = false;
             let j = i;
@@ -4978,6 +5023,7 @@
                 j++;
             }
             if (started) ctx.stroke();
+            ctx.setLineDash([]);
             i = j > i ? j : i + 1;
         }
     };
@@ -5629,6 +5675,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         // Draw the indicator line
         ctx.strokeStyle = color;
         ctx.lineWidth = indicator.style.lineWidth || 2;
+        ctx.setLineDash(this._lineDashForStyle(indicator.style.lineStyle));
         ctx.beginPath();
         
         let started = false;
@@ -5654,6 +5701,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         
         if (started) {
             ctx.stroke();
+            ctx.setLineDash([]);
         }
 
         // Reference lines for oscillators
@@ -5962,7 +6010,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
 };
 
     var OVERLAY_LINE_SELECT_TYPES = {
-        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1
+        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, roc: 1, mom: 1
     };
 
     function distPointToSegment(px, py, x1, y1, x2, y2) {
@@ -6243,9 +6291,9 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     }
     
     // Draw lines
-    this.drawLineIndicator(bands.upper, style.upperColor, style.lineWidth, startIndex, endIndex);
-    this.drawLineIndicator(bands.middle, style.middleColor, style.lineWidth, startIndex, endIndex);
-    this.drawLineIndicator(bands.lower, style.lowerColor, style.lineWidth, startIndex, endIndex);
+    this.drawLineIndicator(bands.upper, style.upperColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
+    this.drawLineIndicator(bands.middle, style.middleColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
+    this.drawLineIndicator(bands.lower, style.lowerColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
 };
 
 /** Parabolic SAR — dots above/below price by trend */
@@ -8107,6 +8155,30 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (indicator.overlay === false || indicator.visible === false) return;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) return;
             if (indicator.style && indicator.style.showLabel === false) return;
+
+            if (indicator.type === 'supertrend') {
+                const stData = this.indicators.data[indicator.id];
+                if (!stData || !Array.isArray(stData.line)) return;
+                let val = null;
+                let dirUp = true;
+                for (let i = stData.line.length - 1; i >= 0; i--) {
+                    if (Number.isFinite(stData.line[i])) {
+                        val = stData.line[i];
+                        dirUp = (stData.direction[i] == null ? 1 : stData.direction[i]) >= 0;
+                        break;
+                    }
+                }
+                if (!Number.isFinite(val)) return;
+                const y = this.yScale(val);
+                if (!Number.isFinite(y) || y < m.t || y > maxY) return;
+                labels.push({
+                    y: y,
+                    val: val,
+                    color: dirUp ? (indicator.style.upColor || '#26a69a') : (indicator.style.downColor || '#ef5350')
+                });
+                return;
+            }
+
             if (!OVERLAY_LINE_SELECT_TYPES[indicator.type]) return;
 
             const data = this.indicators.data[indicator.id];
