@@ -19448,12 +19448,9 @@ class Chart {
                 ? 1
                 : Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
             const halfBodyPx = Math.floor(bodyWidthPx / 2);
-            const pixelSlotMode = Number.isFinite(pixelX);
-            const skipWick = pixelSlotMode || (opts.panFast && bodyWidthPx <= 2);
-            const skipBorder = pixelSlotMode || (opts.panFast && bodyWidthPx <= 2);
 
             // Draw wick (high-low line) - centered and crisp (if enabled)
-            if (!skipWick && this.chartSettings.showCandleWick !== false) {
+            if (this.chartSettings.showCandleWick !== false) {
                 this.ctx.strokeStyle = wickColor;
                 this.ctx.lineWidth = wickWidth;
                 this.ctx.lineCap = 'butt';
@@ -19511,18 +19508,14 @@ class Chart {
                             this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                         }
                     }
-                    if (!skipBorder) {
-                        this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, shouldBeHollow);
-                    }
+                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, shouldBeHollow);
                 } else {
                     // Down candle - filled with body color (if enabled)
                     if (this.chartSettings.showCandleBody !== false) {
                         this.ctx.fillStyle = bodyColor;
                         this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                     }
-                    if (!skipBorder) {
-                        this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, false);
-                    }
+                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, false);
                 }
             }
             drawn++;
