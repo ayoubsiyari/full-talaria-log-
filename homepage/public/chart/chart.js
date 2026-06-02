@@ -15857,7 +15857,7 @@ class Chart {
         const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
         // If volume is hidden, use full height for price chart.
-        // When volume shares the separate-panel stack, it gets its own bottom slot — no main-chart band.
+        // When volume shares the separate-panel stack, it is always the top slot — no main-chart band.
         const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
         const effectiveVolumeHeight = (this.chartSettings.showVolume && !volInPanel) ? this.volumeHeight : 0;
         const priceHeight = ch * (1 - effectiveVolumeHeight);

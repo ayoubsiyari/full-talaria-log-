@@ -5642,14 +5642,35 @@ Chart.prototype.getSeparatePanelResizeHandleAt = function(x, y, tolerance = 10) 
     return null;
 };
 
+Chart.prototype._clampVolumePanelHeight = function(heightPx) {
+    const m = this.margin || { t: 0, b: 0 };
+    const ch = Math.max(0, (this.h || 0) - m.t - m.b);
+    const maxH = Math.round(ch * 0.35);
+    return Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(maxH || MIN_SEPARATE_PANEL_HEIGHT, Math.round(heightPx)));
+};
+
+Chart.prototype._applyVolumePanelHeightPx = function(heightPx) {
+    const nextH = this._clampVolumePanelHeight(heightPx);
+    const m = this.margin || { t: 0, b: 0 };
+    const ch = Math.max(1, (this.h || 0) - m.t - m.b);
+    this.volumeHeight = Math.max(0.08, Math.min(0.35, nextH / ch));
+    return nextH;
+};
+
 Chart.prototype.startSeparatePanelResize = function(handle, startY) {
     if (!handle || !this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.panelHeights)) return false;
+    const usesVolume = !!(handle.isVolume || handle.isVolumePair);
+    const baseVolumeHeight = usesVolume ? this._getVolumePanelHeight() : 0;
     this._separatePanelResize = {
         handleType: handle.type || 'pair',
         handleIndex: handle.index,
+        isVolume: !!handle.isVolume,
+        isVolumePair: !!handle.isVolumePair,
         startY: startY,
         baseHeights: this.separatePanelInfo.panelHeights.slice(),
-        activeHeights: this.separatePanelInfo.panelHeights.slice()
+        activeHeights: this.separatePanelInfo.panelHeights.slice(),
+        baseVolumeHeight: baseVolumeHeight,
+        activeVolumeHeight: baseVolumeHeight
     };
     return true;
 };
@@ -5659,14 +5680,27 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         return false;
     }
     const state = this._separatePanelResize;
-    const heights = state.baseHeights.slice();
+    const heights = state.activeHeights.slice();
     const dy = currentY - state.startY;
+    let activeVolumeHeight = state.activeVolumeHeight || state.baseVolumeHeight || 0;
+
     if (state.handleType === 'top') {
-        const topIdx = state.handleIndex;
-        if (topIdx < 0 || topIdx >= heights.length) return false;
-        let nextTopHeight = heights[topIdx] - dy;
-        nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, nextTopHeight);
-        heights[topIdx] = nextTopHeight;
+        if (state.isVolume) {
+            activeVolumeHeight = this._applyVolumePanelHeightPx(activeVolumeHeight - dy);
+        } else {
+            const topIdx = state.handleIndex;
+            if (topIdx < 0 || topIdx >= heights.length) return false;
+            let nextTopHeight = heights[topIdx] - dy;
+            nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, nextTopHeight);
+            heights[topIdx] = nextTopHeight;
+        }
+    } else if (state.isVolumePair) {
+        if (heights.length === 0) return false;
+        const pairTotal = activeVolumeHeight + heights[0];
+        let nextVolume = activeVolumeHeight - dy;
+        nextVolume = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
+        activeVolumeHeight = this._applyVolumePanelHeightPx(nextVolume);
+        heights[0] = pairTotal - activeVolumeHeight;
     } else {
         const bottomIdx = state.handleIndex;
         const topIdx = state.handleIndex + 1;
@@ -5681,8 +5715,9 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         heights[topIdx] = nextTop;
     }
     state.activeHeights = heights;
+    state.activeVolumeHeight = activeVolumeHeight;
     this._persistSeparatePanelHeights(this.separatePanelInfo.indicators, heights, false);
-    this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0);
+    this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0) + activeVolumeHeight;
     return true;
 };
 
@@ -5727,7 +5762,10 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         panelHeights = this._separatePanelResize.activeHeights.slice();
     }
     const volumeIndicator = this._volumeRendersInSeparatePanel() ? this._getActiveVolumeIndicator() : null;
-    const volumePanelHeight = volumeIndicator ? this._getVolumePanelHeight() : 0;
+    let volumePanelHeight = volumeIndicator ? this._getVolumePanelHeight() : 0;
+    if (this._separatePanelResize && Number.isFinite(this._separatePanelResize.activeVolumeHeight)) {
+        volumePanelHeight = this._separatePanelResize.activeVolumeHeight;
+    }
     let totalPanelHeight = panelHeights.reduce((sum, h) => sum + h, 0) + volumePanelHeight;
 
     // Track total height so calculateScales can reserve the right amount of space
@@ -5811,38 +5849,39 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const visibleEnd = Math.min(this.data.length, Math.ceil(Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : this.data.length));
     
     const panelSlots = [];
-    let slotBottomCursor = panelBottom;
+    let slotTopCursor = panelTop;
     const stackIndicators = [];
 
+    // Volume is always the first panel directly under the main price chart.
     if (volumeIndicator && volumePanelHeight > 0) {
-        const volTop = slotBottomCursor - volumePanelHeight;
         panelSlots.push({
             index: 0,
             indicator: volumeIndicator,
-            top: volTop,
-            bottom: slotBottomCursor,
+            top: slotTopCursor,
+            bottom: slotTopCursor + volumePanelHeight,
             height: volumePanelHeight,
-            isVolumeSlot: true
+            isVolumeSlot: true,
+            isTopBelowMainChart: true
         });
         stackIndicators.push(volumeIndicator);
-        slotBottomCursor = volTop;
+        slotTopCursor += volumePanelHeight;
     }
 
     separateIndicators.forEach(function(indicator, idx) {
         const slotHeight = panelHeights[idx];
-        const slotTop = slotBottomCursor - slotHeight;
         panelSlots.push({
             index: volumeIndicator ? idx + 1 : idx,
             indicator: indicator,
-            top: slotTop,
-            bottom: slotBottomCursor,
-            height: slotHeight
+            top: slotTopCursor,
+            bottom: slotTopCursor + slotHeight,
+            height: slotHeight,
+            isTopBelowMainChart: !volumeIndicator && idx === 0
         });
         stackIndicators.push(indicator);
-        slotBottomCursor = slotTop;
+        slotTopCursor += slotHeight;
     });
 
-    // Draw each indicator in its own slot (bottom slot first)
+    // Draw each indicator in its own slot (top-down: volume first, then oscillators)
     panelSlots.forEach((slot) => {
         const indicator = slot.indicator;
         const idx = slot.index;
@@ -5851,13 +5890,13 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             const indTop = slot.top;
             const panelHeight = slot.height;
             if (idx > 0) {
-                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 2;
+                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
                 ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
                 ctx.lineWidth = 3;
                 ctx.setLineDash([]);
                 ctx.beginPath();
-                ctx.moveTo(m.l, indBottom);
-                ctx.lineTo(panelFullRight, indBottom);
+                ctx.moveTo(m.l, indTop);
+                ctx.lineTo(panelFullRight, indTop);
                 ctx.stroke();
             }
             ctx.fillStyle = axisStripBg;
@@ -5871,30 +5910,30 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         const indTop = slot.top;
         const panelHeight = slot.height;
 
-        // Separator between slots — soft divider
+        // Separator between slots — soft divider at top edge (below previous slot)
         if (idx > 0) {
-            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 2;
+            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
             ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
             ctx.lineWidth = 3;
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.moveTo(m.l, indBottom);
-            ctx.lineTo(panelFullRight, indBottom);
+            ctx.moveTo(m.l, indTop);
+            ctx.lineTo(panelFullRight, indTop);
             ctx.stroke();
             const handleMidX = this.w - m.r - 18;
             ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
             ctx.lineWidth = isHoverSep ? 3 : 2;
             ctx.lineCap = 'round';
             ctx.beginPath();
-            ctx.moveTo(handleMidX - 8, indBottom);
-            ctx.lineTo(handleMidX + 8, indBottom);
+            ctx.moveTo(handleMidX - 8, indTop);
+            ctx.lineTo(handleMidX + 8, indTop);
             ctx.stroke();
             if (isHoverSep) {
                 ctx.strokeStyle = _hoverGlow;
                 ctx.lineWidth = 5;
                 ctx.beginPath();
-                ctx.moveTo(handleMidX - 10, indBottom);
-                ctx.lineTo(handleMidX + 10, indBottom);
+                ctx.moveTo(handleMidX - 10, indTop);
+                ctx.lineTo(handleMidX + 10, indTop);
                 ctx.stroke();
             }
             ctx.lineCap = 'butt';
@@ -6133,10 +6172,26 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         indicators: separateIndicators,
         panelHeights: panelHeights,
         panelSlots: panelSlots,
-        resizeHandles: [
-            { type: 'top', index: panelSlots.length - 1, y: panelTop },
-            ...panelSlots.slice(0, -1).map(slot => ({ type: 'pair', index: slot.index, y: slot.top }))
-        ]
+        resizeHandles: (function() {
+            const handles = [];
+            const firstSlot = panelSlots[0];
+            handles.push({
+                type: 'top',
+                index: 0,
+                y: panelTop,
+                isVolume: !!(firstSlot && firstSlot.isVolumeSlot)
+            });
+            for (let i = 0; i < panelSlots.length - 1; i++) {
+                const slot = panelSlots[i];
+                handles.push({
+                    type: 'pair',
+                    index: slot.isVolumeSlot ? 0 : (volumeIndicator ? slot.index - 1 : slot.index),
+                    y: slot.bottom,
+                    isVolumePair: !!slot.isVolumeSlot
+                });
+            }
+            return handles;
+        })()
     };
     
     // Draw crosshair value if mouse is in the stacked panel area
@@ -8700,7 +8755,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 });
             }
             // Divider between main price-axis region and indicator-axis region.
-            const topSlot = panelSlots[panelSlots.length - 1];
+            const topSlot = panelSlots[0];
             if (topSlot && Number.isFinite(topSlot.top)) {
                 const split = document.createElement('div');
                 split.setAttribute('data-talaria-sp-axis-tick', '1');
@@ -8723,7 +8778,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const slot = slotById[String(indicator.id)];
             // Keep a safety gap under the split line so indicator axis values
             // never overlap with the main price-axis labels.
-            const isTopIndicatorSlot = !!(slot && Array.isArray(panelSlots) && slot.index === panelSlots.length - 1);
+            const isTopIndicatorSlot = !!(slot && slot.isTopBelowMainChart);
             const boundaryGap = isTopIndicatorSlot ? 18 : 8;
             const topBound = slot ? slot.top + boundaryGap : 0;
             const bottomBound = slot ? slot.bottom - 8 : Number.MAX_SAFE_INTEGER;
