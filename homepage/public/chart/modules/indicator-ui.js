@@ -2360,16 +2360,29 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
             wrapper.appendChild(input);
         } else if (param.type === 'select' && Array.isArray(param.options)) {
             input = document.createElement('select');
-            input.className = 'settings-input';
-            input.style.width = '160px';
-            input.style.maxWidth = '160px';
-            input.style.padding = '0 8px';
-            input.style.height = '26px';
-            input.style.borderRadius = '0';
-            input.style.cursor = 'default';
-            input.style.background = 'var(--sp-ui-chrome-bg, #131722)';
-            input.style.color = 'var(--sp-text, #d1d4dc)';
-            input.style.border = '1px solid var(--sp-input-border, rgba(255,255,255,0.14))';
+            input.className = 'settings-input settings-select-input';
+            input.style.cssText = [
+                'width:160px',
+                'max-width:160px',
+                'height:26px',
+                'padding:0 26px 0 8px',
+                'border-radius:0',
+                'cursor:default',
+                'background:var(--sp-ui-chrome-bg, #131722)',
+                'color:var(--sp-text, #d1d4dc)',
+                'border:1px solid var(--sp-input-border, rgba(255,255,255,0.14))',
+                'outline:none',
+                'box-sizing:border-box',
+                '-webkit-appearance:none',
+                'appearance:none',
+                'background-image:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath fill=\'%238d93a1\' d=\'M0 1l5 4 5-4\'/%3E%3C/svg%3E")',
+                'background-repeat:no-repeat',
+                'background-position:right 8px center',
+                'background-size:10px 6px'
+            ].join(';');
+            input.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+            input.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+            input.addEventListener('click', function(e) { e.stopPropagation(); });
             param.options.forEach(opt => {
                 const o = document.createElement('option');
                 o.value = opt.value;

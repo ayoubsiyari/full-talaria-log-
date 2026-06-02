@@ -6741,6 +6741,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 e.stopPropagation();
                 if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
             };
+            settingsBtn.onpointerdown = function(e) {
+                e.stopPropagation();
+                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
+            };
+            settingsBtn.onmousedown = function(e) { e.stopPropagation(); };
             actions.appendChild(settingsBtn);
 
             const openIndSettings = function(e) {
@@ -6748,9 +6753,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
             };
             nameSpan.style.cursor = 'default';
-            nameSpan.onclick = openIndSettings;
+            nameSpan.onpointerdown = openIndSettings;
+            nameSpan.onmousedown = function(e) { e.stopPropagation(); };
+            nameSpan.onclick = function(e) { e.stopPropagation(); };
             valuesSpan.style.cursor = 'default';
-            valuesSpan.onclick = openIndSettings;
+            valuesSpan.onpointerdown = openIndSettings;
+            valuesSpan.onmousedown = function(e) { e.stopPropagation(); };
+            valuesSpan.onclick = function(e) { e.stopPropagation(); };
 
             const removeBtn = document.createElement('span');
             removeBtn.textContent = '×';

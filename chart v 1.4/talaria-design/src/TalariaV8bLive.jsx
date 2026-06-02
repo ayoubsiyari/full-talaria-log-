@@ -11601,7 +11601,8 @@ const TalariaV8bLive = () => {
       || txtSettOpen || closing.has("txtsett")
       || vwapSettOpen || closing.has("vwapsett")
       || vpSettOpen || closing.has("vpsett")
-      || avSettOpen || closing.has("avsett");
+      || avSettOpen || closing.has("avsett")
+      || indSettOpen || closing.has("indsett");
     if (!active || typeof document === "undefined") return;
     const svg = document.getElementById("drawingSvg");
     if (!svg) return;
@@ -11619,7 +11620,7 @@ const TalariaV8bLive = () => {
         if (dm && typeof dm._updateAxisZonePointerEvents === "function") dm._updateAxisZonePointerEvents();
       } catch (_) {}
     };
-  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, closing]);
+  }, [tlSettOpen, txtSettOpen, vwapSettOpen, vpSettOpen, avSettOpen, indSettOpen, closing]);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="Exo+2"]')) {
@@ -22049,13 +22050,16 @@ const TalariaV8bLive = () => {
           const cur = Array.isArray(options) ? options.find((o) => String(o.value) === strVal) : null;
           const disp = cur ? cur.label : (strVal || "—");
           const wst = widthStyle || { width: "100%", minWidth: 0 };
+          const indDropPick = (pickFn) => modalPointerActivate(() => {
+            pickFn();
+            setV9IndSelectMenu(null);
+          });
           return (
             <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
               <button
                 type="button"
-                className="tlr-ind-select"
                 onWheel={(e) => e.stopPropagation()}
-                onClick={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
                   if (open) {
                     setV9IndSelectMenu(null);
@@ -22069,6 +22073,8 @@ const TalariaV8bLive = () => {
                     width: Math.max(r.width, 96),
                   });
                 }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
                 style={{
                   width: "100%",
                   height: 26,
@@ -22076,9 +22082,9 @@ const TalariaV8bLive = () => {
                   fontFamily: F,
                   color: c.tx,
                   boxSizing: "border-box",
-                  backgroundColor: "rgba(140,160,255,0.05)",
-                  border: `1px solid rgba(140,160,255,0.2)`,
-                  padding: "0 8px",
+                  backgroundColor: open ? "rgba(74,106,255,0.08)" : "rgba(140,160,255,0.05)",
+                  border: `1px solid ${open ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.2)"}`,
+                  padding: "0 26px 0 8px",
                   outline: "none",
                   borderRadius: 4,
                   cursor: "default",
@@ -22086,12 +22092,15 @@ const TalariaV8bLive = () => {
                   textAlign: "left",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
+                  justifyContent: "flex-start",
                   gap: 6,
+                  position: "relative",
                 }}
               >
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{disp}</span>
-                <span style={{ flexShrink: 0, opacity: 0.75, fontSize: 9 }}>▾</span>
+                <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", alignItems: "center" }}>
+                  <I n="chevDown" s={8} cl={open ? c.acL : c.ts} />
+                </span>
               </button>
               {open && v9IndSelectMenu && (
                 <div
@@ -22099,6 +22108,8 @@ const TalariaV8bLive = () => {
                   data-v9-ind-select-panel="1"
                   className="tlr-scroll"
                   tabIndex={-1}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                   onWheel={(e) => {
                     e.stopPropagation();
@@ -22128,12 +22139,7 @@ const TalariaV8bLive = () => {
                       <div
                         key={String(opt.value)}
                         role="option"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onPick(opt.value);
-                          setV9IndSelectMenu(null);
-                        }}
+                        {...indDropPick(() => onPick(opt.value))}
                         style={{
                           padding: "7px 10px",
                           fontSize: 12,
@@ -22201,10 +22207,12 @@ const TalariaV8bLive = () => {
             return row(
               <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
                 min={p.min} max={p.max} step={p.step}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center" }} />
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "text" }} />
             );
           }
           if (p.type === "color") {
@@ -22596,7 +22604,10 @@ const TalariaV8bLive = () => {
         };
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
-        <div data-sdrop="1" data-v9-ind-sett="1" onClick={(e) => e.stopPropagation()}
+        <div data-sdrop="1" data-v9-ind-sett="1"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           style={{ position: "fixed", left: indSettPos.x, top: indSettPos.y, zIndex: 11000, width: panelW, maxHeight: "calc(100vh - 24px)", fontFamily: F,
             background: c.sf, border: `1px solid ${c.brH}`, boxShadow: "0 24px 64px rgba(0,0,0,0.85)",
             display: "flex", flexDirection: "column", minHeight: 0,
