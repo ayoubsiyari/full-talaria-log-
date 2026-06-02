@@ -208,16 +208,17 @@
         return raw;
     }
 
-    function applyOscillatorLevelStyleFromParams(indicator, params) {
-        indicator.style.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 70;
+    function applyOscillatorLevelStyleFromParams(indicator, params, levelDefaults) {
+        levelDefaults = levelDefaults || { overbought: 70, oversold: 30, mid: 50 };
+        indicator.style.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : levelDefaults.overbought;
         indicator.style.showOverbought = params.showOverbought !== false;
         indicator.style.overboughtColor = params.overboughtColor || '#787b86';
         indicator.style.overboughtLineStyle = params.overboughtLineStyle || 'Dotted';
-        indicator.style.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 30;
+        indicator.style.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : levelDefaults.oversold;
         indicator.style.showOversold = params.showOversold !== false;
         indicator.style.oversoldColor = params.oversoldColor || '#787b86';
         indicator.style.oversoldLineStyle = params.oversoldLineStyle || 'Dotted';
-        indicator.style.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.style.midValue = params.midValue != null ? Number(params.midValue) : levelDefaults.mid;
         indicator.style.showMid = params.showMid !== false;
         indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
         indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
@@ -247,6 +248,23 @@
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         indicator.style.lineStyle = params.lineStyle || legacyS;
         applyOscillatorLevelStyleFromParams(indicator, params);
+    }
+
+    function applyStochasticStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 80;
+        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 20;
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.style.showK = params.showK !== false;
+        indicator.style.kColor = params.kColor || '#2962ff';
+        indicator.style.kLineWidth = params.kLineWidth != null ? params.kLineWidth : legacyW;
+        indicator.style.kLineStyle = params.kLineStyle || legacyS;
+        indicator.style.showD = params.showD !== false;
+        indicator.style.dColor = params.dColor || '#f23645';
+        indicator.style.dLineWidth = params.dLineWidth != null ? params.dLineWidth : legacyW;
+        indicator.style.dLineStyle = params.dLineStyle || legacyS;
+        applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
     
     // Simple Moving Average
@@ -2984,11 +3002,9 @@
                 indicator.params.period = params.period || 14;
                 indicator.params.smoothK = params.smoothK || 3;
                 indicator.params.smoothD = params.smoothD || 3;
-                indicator.style.kColor = params.kColor || '#2962ff';
-                indicator.style.dColor = params.dColor || '#f23645';
-                indicator.style.lineWidth = 2;
-                indicator.name = 'Stoch(' + indicator.params.period + ')';
                 indicator.overlay = false;
+                applyStochasticStyleFromParams(indicator, params);
+                indicator.name = 'Stoch(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
                 break;
             
@@ -4041,6 +4057,9 @@
         }
         if (indicator.type === 'rsi') {
             applyRsiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
+            applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -7788,10 +7807,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = 'UO';
     };
 
-    // ---- Stochastic panel: %K + %D lines + 80/50/20 reference levels ----
+    // ---- Stochastic panel: %K + %D lines + configurable levels + optional background ----
     Chart.prototype._renderStochPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data.k || !data.d) return;
-        const kArr = data.k, dArr = data.d;
+        const kArr = data.k;
+        const dArr = data.d;
+        const style = indicator.style || {};
+        const levelDefaults = { overbought: 80, oversold: 20, mid: 50 };
         indicator._panelBaseMin = 0;
         indicator._panelBaseMax = 100;
         const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
@@ -7804,28 +7826,39 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
-        [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
-            const ry = scaleY(lvl);
-            if (ry !== null && ry > panelTop && ry < panelBottom) {
-                ctx.strokeStyle = col;
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 3]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w, ry);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = col;
-                ctx.font = '9px Roboto';
-                ctx.textAlign = 'right';
-                ctx.fillText(lvl, this.w - 6, ry - 2);
-            }
-        });
+        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
+        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
 
-        this._drawPanelLine(ctx, m, kArr, indicator.style.kColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, dArr, indicator.style.dColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        }
+
+        const kWidth = style.kLineWidth != null ? style.kLineWidth : (style.lineWidth || 2);
+        const dWidth = style.dLineWidth != null ? style.dLineWidth : (style.lineWidth || 2);
+        if (style.showK !== false) {
+            this._drawPanelLine(ctx, m, kArr, style.kColor || '#2962ff', kWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.kLineStyle || style.lineStyle || 'Line');
+        }
+        if (style.showD !== false) {
+            this._drawPanelLine(ctx, m, dArr, style.dColor || '#f23645', dWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.dLineStyle || style.lineStyle || 'Line');
+        }
 
         let lastK = null, lastD = null;
         for (let i = Math.min(visibleEnd - 1, kArr.length - 1); i >= visibleStart; i--) {
@@ -7834,11 +7867,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const stochTags = [];
         if (lastK !== null && Number.isFinite(lastK)) {
             const yK = scaleY(lastK);
-            if (Number.isFinite(yK)) stochTags.push({ y: yK, text: lastK.toFixed(2), color: indicator.style.kColor || '#2962ff' });
+            if (Number.isFinite(yK)) stochTags.push({ y: yK, text: lastK.toFixed(2), color: style.kColor || '#2962ff' });
         }
         if (lastD !== null && Number.isFinite(lastD)) {
             const yD = scaleY(lastD);
-            if (Number.isFinite(yD)) stochTags.push({ y: yD, text: lastD.toFixed(2), color: indicator.style.dColor || '#f23645' });
+            if (Number.isFinite(yD)) stochTags.push({ y: yD, text: lastD.toFixed(2), color: style.dColor || '#f23645' });
         }
         stochTags.sort(function(a, b) { return a.y - b.y; });
         for (let i = 1; i < stochTags.length; i++) {
@@ -7861,7 +7894,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelText = '';
             indicator._axisLabelColor = '';
         }
-        indicator._displayColor = indicator.style.kColor || '#2962ff';
+        indicator._displayColor = style.kColor || '#2962ff';
         indicator._displayLabel = lastK !== null ? 'K:' + lastK.toFixed(2) + (lastD !== null ? '  D:' + lastD.toFixed(2) : '') : '';
     };
 

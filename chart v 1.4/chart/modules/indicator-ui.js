@@ -145,6 +145,47 @@ function rsiStyleParams() {
     ].concat(oscillatorLevelStyleParams());
 }
 
+/** Stochastic Input tab level defaults (80 / 20 / 50). */
+function stochasticInputLevelParams() {
+    return [
+        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
+        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: 80, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: 20, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Midline', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'input' }
+    ];
+}
+
+/** Stochastic Style tab level appearance (values live on Input tab). */
+function stochasticLevelStyleParams() {
+    return [
+        { id: 'showOverbought', label: 'Show overbought level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'overboughtColor', label: 'Overbought color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'overboughtLineStyle', label: 'Overbought line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'showOversold', label: 'Show oversold level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'oversoldColor', label: 'Oversold color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'oversoldLineStyle', label: 'Oversold line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'showMid', label: 'Show mid level', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Mid color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midLineStyle', label: 'Mid line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
+/** TradingView-style Stochastic Style tab (%K / %D lines + level appearance + optional panel bg). */
+function stochasticStyleParams() {
+    return [
+        { id: 'showK', label: 'Show %K line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'kLineStyle', label: '%K line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'kLineWidth', label: '%K thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showD', label: 'Show %D line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'dColor', label: '%D color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'dLineStyle', label: '%D line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'dLineWidth', label: '%D thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ].concat(stochasticLevelStyleParams());
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -429,11 +470,8 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'K-Period', type: 'number', default: 14, min: 1 },
             { id: 'smoothK', label: 'K-Smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'smoothD', label: 'D-Smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'kColor', label: '%K Color', type: 'color', default: '#2962ff' },
-            { id: 'dColor', label: '%D Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'smoothD', label: 'D-Smoothing', type: 'number', default: 3, min: 1 }
+        ].concat(stochasticInputLevelParams()).concat(stochasticStyleParams())
     },
     atr: {
         name: 'Average True Range',
@@ -3148,6 +3186,34 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('RSI', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }, {
+                title: 'Overbought Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+            }, {
+                title: 'Oversold Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+            }, {
+                title: 'Mid Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'stoch' || indicatorType === 'stochastic') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('%K', 'kColor', 'kLineStyle', 'kLineWidth', 'showK'),
+                    v9PlotRow('%D', 'dColor', 'dLineStyle', 'dLineWidth', 'showD')
                 ]
             }, {
                 title: 'Overbought Level',
