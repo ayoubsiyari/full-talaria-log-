@@ -92,8 +92,7 @@ function bollingerBandsStyleParams() {
         { id: 'lowerLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'fillHeading', label: 'Area Between Bands', type: 'heading', tab: 'style' },
         { id: 'showFill', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'fillColor', label: 'Background Color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'fillOpacity', label: 'Opacity', type: 'number', default: 10, min: 0, max: 100, step: 1, tab: 'style' }
+        { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.1)', tab: 'style' }
     ];
 }
 
