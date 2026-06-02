@@ -1,8 +1,19 @@
 // indicator-ui.js
 
 /** Pine-aligned inputs for ICT Everything (native renderer in chart-indicators-full.js). */
+const OHLC_SOURCE_OPTIONS = [
+    { value: 'open', label: 'Open' },
+    { value: 'high', label: 'High' },
+    { value: 'low', label: 'Low' },
+    { value: 'close', label: 'Close' },
+    { value: 'hl2', label: 'HL2 (High + Low) / 2' },
+    { value: 'hlc3', label: 'HLC3 (High + Low + Close) / 3' },
+    { value: 'ohlc4', label: 'OHLC4 (Open + High + Low + Close) / 4' }
+];
+const OVERLAY_LINE_STYLE_OPTIONS = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
+
 function __ictEverythingParamList() {
-    const lineStyle = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
+    const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
     const labelSize = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'].map(function (v) { return { value: v, label: v }; });
     const terminus = [
@@ -194,8 +205,11 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#2962ff' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#2962ff' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     ema: {
@@ -1902,7 +1916,9 @@ function createIndicatorSelectionMenu(chartInstance) {
             const defaultStyle = {};
             def.params.forEach(param => {
                 if (param.default === undefined) return;
-                if (param.id.toLowerCase().includes('color') || param.id.toLowerCase().includes('width') || param.id.toLowerCase().includes('fill')) {
+                const pid = param.id.toLowerCase();
+                if (pid.includes('color') || pid.includes('width') || pid.includes('fill')
+                    || pid.includes('linestyle') || pid === 'showlabel') {
                     defaultStyle[param.id] = param.default;
                 } else {
                     defaultParams[param.id] = param.default;
@@ -2007,12 +2023,13 @@ function createIndicatorSelectionMenu(chartInstance) {
 
 /** Same tab buckets as drawing tool settings: Style / Input / Visibility */
 function indicatorSettingsTabForParam(param) {
+    if (param.tab === 'style' || param.tab === 'input' || param.tab === 'visibility') return param.tab;
     const id = String(param.id || '').toLowerCase();
     const label = String(param.label || '').toLowerCase();
     if (param.type === 'heading' || param.type === 'divider') return 'input';
     if (param.type === 'checkbox') return 'visibility';
     if (param.type === 'color') return 'style';
-    if (/color|fill|linewidth|linethickness|thickness|transparency|opacity/.test(id)) return 'style';
+    if (/color|fill|linewidth|linethickness|linestyle|thickness|transparency|opacity/.test(id)) return 'style';
     if (param.type === 'text' && (id.includes('fill') || label.includes('fill') || label.includes('rgba'))) return 'style';
     return 'input';
 }
@@ -2043,7 +2060,8 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
             if (isNaN(value)) value = param.default;
         }
         var pid = String(param.id).toLowerCase();
-        if (pid.indexOf('color') >= 0 || pid.indexOf('width') >= 0 || pid.indexOf('fill') >= 0) {
+        if (pid.indexOf('color') >= 0 || pid.indexOf('width') >= 0 || pid.indexOf('fill') >= 0
+            || pid.indexOf('linestyle') >= 0 || pid === 'showlabel') {
             newStyle[param.id] = value;
         } else {
             newParams[param.id] = value;
@@ -2491,8 +2509,9 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
                 if (isNaN(value)) value = param.default;
             }
 
-            // Check if the parameter is a style parameter (heuristic: if it contains 'Color' or 'Width')
-            if (param.id.toLowerCase().includes('color') || param.id.toLowerCase().includes('width') || param.id.toLowerCase().includes('fill')) {
+            const pid = param.id.toLowerCase();
+            if (pid.includes('color') || pid.includes('width') || pid.includes('fill')
+                || pid.includes('linestyle') || pid === 'showlabel') {
                 newStyle[param.id] = value;
             } else {
                 newParams[param.id] = value;

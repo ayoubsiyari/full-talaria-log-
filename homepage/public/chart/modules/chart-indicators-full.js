@@ -129,20 +129,42 @@
     }
     
     // ===== Calculation Functions =====
+
+    function resolveOhlcSourceValue(candle, source) {
+        if (!candle) return NaN;
+        const o = candle.o != null ? candle.o : candle.open;
+        const h = candle.h != null ? candle.h : candle.high;
+        const l = candle.l != null ? candle.l : candle.low;
+        const c = candle.c != null ? candle.c : candle.close;
+        switch (String(source || 'close').toLowerCase()) {
+            case 'open': return o;
+            case 'high': return h;
+            case 'low': return l;
+            case 'close': return c;
+            case 'hl2': return (h + l) / 2;
+            case 'hlc3': return (h + l + c) / 3;
+            case 'ohlc4': return (o + h + l + c) / 4;
+            default: return c;
+        }
+    }
     
     // Simple Moving Average
-    function calculateSMA(data, period, field) {
-        field = field || 'c';
+    function calculateSMA(data, period, source) {
+        period = period || 20;
+        source = source || 'close';
         const result = [];
         for (let i = 0; i < data.length; i++) {
             if (i < period - 1) {
                 result.push(null);
             } else {
                 let sum = 0;
+                let ok = true;
                 for (let j = 0; j < period; j++) {
-                    sum += data[i - j][field];
+                    const v = resolveOhlcSourceValue(data[i - j], source);
+                    if (!Number.isFinite(v)) { ok = false; break; }
+                    sum += v;
                 }
-                result.push(sum / period);
+                result.push(ok ? sum / period : null);
             }
         }
         return result;
@@ -2694,10 +2716,13 @@
         switch (indicator.type) {
             case 'sma':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#2962ff';
-                indicator.style.lineWidth = 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'SMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source);
                 break;
                 
             case 'ema':
@@ -3751,6 +3776,9 @@
         if (newParams.upColor !== undefined) indicator.style.upColor = newParams.upColor;
         if (newParams.downColor !== undefined) indicator.style.downColor = newParams.downColor;
         if (newParams.lineWidth !== undefined) indicator.style.lineWidth = newParams.lineWidth;
+        if (newParams.lineStyle !== undefined) indicator.style.lineStyle = newParams.lineStyle;
+        if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
+        if (newParams.source !== undefined) indicator.params.source = newParams.source;
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.atrPeriod !== undefined) indicator.params.atrPeriod = newParams.atrPeriod;
         if (newParams.multiplier !== undefined) indicator.params.multiplier = newParams.multiplier;
@@ -3852,7 +3880,7 @@
         switch (indicator.type) {
             case 'sma':
                 indicator.name = 'SMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'ema':
                 indicator.name = 'EMA(' + indicator.params.period + ')';
@@ -4261,7 +4289,7 @@
         this.indicators.active.forEach(function(indicator) {
             switch (indicator.type) {
                 case 'sma':
-                    this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'ema':
                     this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
@@ -4869,9 +4897,11 @@
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'stddev') {
-                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex);
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+            } else if (indicator.type === 'sma') {
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             } else {
-                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex);
+                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             }
         }
 
@@ -5817,12 +5847,20 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     return false;
 };
 
-Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex = 0, endIndex = data.length) {
+Chart.prototype._lineDashForStyle = function(lineStyle) {
+    const s = String(lineStyle || 'Solid').toLowerCase();
+    if (s === 'dashed') return [8, 4];
+    if (s === 'dotted') return [2, 3];
+    return [];
+};
+
+Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex = 0, endIndex = data.length, lineStyle) {
     const ctx = this.ctx;
     const m = this.margin;
     
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
+    ctx.setLineDash(this._lineDashForStyle(lineStyle));
     ctx.beginPath();
     
     let started = false;
@@ -5846,6 +5884,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex 
     if (started) {
         ctx.stroke();
     }
+    ctx.setLineDash([]);
 };
 
 Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length) {
@@ -7770,6 +7809,104 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         });
         this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
     };
+
+    Chart.prototype.drawOverlayIndicatorPriceLabels = function(visible) {
+        if (!this.indicators || !this.indicators.active || !this.yScale || !this.ctx) return;
+
+        const m = this.margin;
+        const ch = this.h - m.t - m.b;
+        const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const maxY = this.h - m.b - volumeAreaHeight;
+        const labels = [];
+
+        this.indicators.active.forEach(function(indicator) {
+            if (indicator.overlay === false || indicator.visible === false) return;
+            if (!this._indicatorVisibleForCurrentTimeframe(indicator)) return;
+            if (indicator.style && indicator.style.showLabel === false) return;
+            if (indicator.type !== 'sma') return;
+
+            const data = this.indicators.data[indicator.id];
+            if (!Array.isArray(data)) return;
+
+            let val = null;
+            for (let i = data.length - 1; i >= 0; i--) {
+                if (Number.isFinite(data[i])) {
+                    val = data[i];
+                    break;
+                }
+            }
+            if (!Number.isFinite(val)) return;
+
+            const y = this.yScale(val);
+            if (!Number.isFinite(y) || y < m.t || y > maxY) return;
+
+            labels.push({
+                y: y,
+                val: val,
+                color: indicator.style.color || '#2962ff'
+            });
+        }, this);
+
+        if (!labels.length) return;
+
+        labels.sort(function(a, b) { return a.y - b.y; });
+        const minGap = 22;
+        for (let i = 1; i < labels.length; i++) {
+            if (labels[i].y - labels[i - 1].y < minGap) {
+                labels[i].y = labels[i - 1].y + minGap;
+            }
+        }
+
+        const ctx = this.ctx;
+        const axisLeft = !!this.priceAxisLeft;
+        const axisW = axisLeft ? m.l : m.r;
+        const labelWidth = axisW - 4;
+        const labelX = axisLeft ? 2 : this.w - m.r;
+        const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+        const decimals = typeof this.getPriceDecimals === 'function' ? this.getPriceDecimals(priceRange) : 4;
+        const scaleTextSize = (this.chartSettings && this.chartSettings.scaleTextSize) || 11;
+        const radius = 2;
+
+        labels.forEach(function(lbl) {
+            const bgColor = lbl.color;
+            const priceText = Number(lbl.val).toFixed(decimals);
+            const labelHeight = 20;
+            const labelY = lbl.y - labelHeight / 2;
+            const textColor = (typeof this.isLightColor === 'function' && this.isLightColor(bgColor)) ? '#111111' : '#ffffff';
+
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            ctx.moveTo(labelX + radius, labelY);
+            ctx.lineTo(labelX + labelWidth - radius, labelY);
+            ctx.arcTo(labelX + labelWidth, labelY, labelX + labelWidth, labelY + radius, radius);
+            ctx.lineTo(labelX + labelWidth, labelY + labelHeight - radius);
+            ctx.arcTo(labelX + labelWidth, labelY + labelHeight, labelX + labelWidth - radius, labelY + labelHeight, radius);
+            ctx.lineTo(labelX + radius, labelY + labelHeight);
+            ctx.arcTo(labelX, labelY + labelHeight, labelX, labelY + labelHeight - radius, radius);
+            ctx.lineTo(labelX, labelY + radius);
+            ctx.arcTo(labelX, labelY, labelX + radius, labelY, radius);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = textColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = '500 ' + scaleTextSize + 'px Roboto';
+            ctx.fillText(priceText, labelX + labelWidth / 2, labelY + labelHeight / 2);
+        }, this);
+    };
+
+    if (typeof Chart.prototype.drawCurrentPriceLabel === 'function' && !Chart.prototype._overlayPriceLabelsHooked) {
+        Chart.prototype._overlayPriceLabelsHooked = true;
+        const _origDrawCurrentPriceLabel = Chart.prototype.drawCurrentPriceLabel;
+        Chart.prototype.drawCurrentPriceLabel = function(visible) {
+            _origDrawCurrentPriceLabel.call(this, visible);
+            if (typeof this.drawOverlayIndicatorPriceLabels === 'function') {
+                this.drawOverlayIndicatorPriceLabels(visible);
+            }
+        };
+    }
 
     // Mark as loaded
     window.INDICATORS_MODULE_LOADED = true;

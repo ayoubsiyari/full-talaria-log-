@@ -16518,6 +16518,47 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Range Tool border dash — immediate chart sync (settings Style tab). */
+  const applyTlBorderType = useCallback((borderType) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, borderType })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Range Tool border thickness — immediate chart sync. */
+  const applyTlBorderWidth = useCallback((borderWidth) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, borderWidth })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Range Tool stats label font size — immediate chart sync. */
+  const applyTlLabelFontSize = useCallback((labelFontSize) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, labelFontSize })));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
+  /** Range Tool stats metric toggle — immediate chart sync. */
+  const applyTlShowInfoTypeToggle = useCallback((metric) => {
+    flushSync(() => setTlStyle((s) => {
+      const arr = s.showInfoTypes.includes(metric)
+        ? s.showInfoTypes.filter((x) => x !== metric)
+        : [...s.showInfoTypes, metric];
+      return { ...s, showInfoTypes: arr };
+    }));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Middle-line dash style — immediate repaint (rect / ellipse / circle / parallel channel). */
   const applyTlMidLineType = useCallback((midLineType) => {
     flushSync(() => setTlStyle((s) => {
@@ -18316,7 +18357,10 @@ const TalariaV8bLive = () => {
                 const mkBtn = (key, isOpen, preview, btnW) => {
                   const hk=`tl-btn-${key}`, isH=hov===hk;
                   return (
-                  <div onClick={e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setTlStyleDropUp(r.bottom+110>window.innerHeight);setTlStyleDrop(tlStyleDrop===key?null:key);}}
+                  <div {...tlStyleDropTrigger(key, (e) => {
+                    const r=e.currentTarget.getBoundingClientRect();
+                    setTlStyleDropUp(r.bottom+110>window.innerHeight);
+                  })}
                     onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 6px", display:"flex", alignItems:"center", justifyContent:"center", gap:3, cursor:"default", position:"relative",
                              background:isOpen?"rgba(74,106,255,0.08)":isH?c.hv:"transparent",
@@ -18337,8 +18381,8 @@ const TalariaV8bLive = () => {
                   </div>
                 );
                 const colorSwatch = (key, color) => (
-                  <div data-v9-color-swatch="1" onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
-                    onClick={e=>{e.stopPropagation();openCP(e,key,color);}}
+                  <div data-v9-color-swatch="1" {...modalPointerActivate((e) => openCP(e, key, color))}
+                    onMouseEnter={()=>setSwHov(key)} onMouseLeave={()=>setSwHov(null)}
                     style={v9TlColorSwatchBoxStyle(color, {
                       active: colorPicker === key,
                       hover: swHov === key,
@@ -18441,7 +18485,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="type" && dropShell("type",56,false,
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=tlStyle.lineType===v,isH=hov===`tlt-${v}`;
-                          return(<div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
+                          return(<div key={v} {...tlStyleDropPick(() => applyTlLineType(v))}
                             onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -18461,7 +18505,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="width" && dropShell("width",56,true,
                         ["1","2","3","4"].map(w=>{
                           const isA=tlStyle.lineWidth===w,isH=hov===`tlw-${w}`;
-                          return(<div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
+                          return(<div key={w} {...tlStyleDropPick(() => applyTlLineWidth(w))}
                             onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -18485,7 +18529,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="borderType" && dropShell("borderType",56,false,
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=tlStyle.borderType===v,isH=hov===`tlbt-${v}`;
-                          return(<div key={v} onClick={()=>{setTlStyle(s=>({...s,borderType:v}));setTlStyleDrop(null);}}
+                          return(<div key={v} {...tlStyleDropPick(() => applyTlBorderType(v))}
                             onMouseEnter={()=>setHov(`tlbt-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -18505,7 +18549,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="borderWidth" && dropShell("borderWidth",56,true,
                         ["1","2","3","4"].map(w=>{
                           const isA=tlStyle.borderWidth===w,isH=hov===`tlbw-${w}`;
-                          return(<div key={w} onClick={()=>{setTlStyle(s=>({...s,borderWidth:w}));setTlStyleDrop(null);}}
+                          return(<div key={w} {...tlStyleDropPick(() => applyTlBorderWidth(w))}
                             onMouseEnter={()=>setHov(`tlbw-${w}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"7px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -18525,7 +18569,18 @@ const TalariaV8bLive = () => {
                     <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",()=>setTlStyle(s=>({...s,showInfo:!s.showInfo})))}</div>
                     <div style={{gridColumn:"2 / -1",padding:"8px 0",opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
                       <div style={{position:"relative"}}>
-                        <div onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
+                        <div {...modalPointerActivate((e) => {
+                          if (!tlStyle.showInfo) return;
+                          if (tlStyleDrop==="info"||closing.has("tlInfoDrop")) {
+                            closeTlInfoDrop();
+                            return;
+                          }
+                          const r=e.currentTarget.getBoundingClientRect();
+                          const dropH=210;
+                          const goUp=r.bottom/Z+dropH>window.innerHeight/Z;
+                          setTlInfoDropUp(goUp);
+                          setTlStyleDrop("info");
+                        })}
                           onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
                           style={{height:26,padding:"0 8px",display:"flex",alignItems:"center",gap:5,position:"relative",cursor:"default",
                             background:(tlStyleDrop==="info"||closing.has("tlInfoDrop"))?"rgba(74,106,255,0.08)":hov==="tlInfoBtn"?c.hv:"transparent",
@@ -18545,7 +18600,7 @@ const TalariaV8bLive = () => {
                             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                             {["Price range","Percent change","Change in pips","Bars range","Date/time range","Volume"].map(v=>{
                               const isA=tlStyle.showInfoTypes.includes(v),isH=hov===`tli-${v}`;
-                              return(<div key={v} onClick={()=>setTlStyle(s=>{const arr=s.showInfoTypes.includes(v)?s.showInfoTypes.filter(x=>x!==v):[...s.showInfoTypes,v];return{...s,showInfoTypes:arr};})}
+                              return(<div key={v} {...tlStyleDropPick(() => applyTlShowInfoTypeToggle(v))}
                                 onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
                                 style={{padding:"6px 10px",cursor:"default",display:"flex",alignItems:"center",gap:8,position:"relative",
                                   background:isH?c.hv2:"transparent",transition:"background 0.1s"}}>
@@ -18575,7 +18630,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="labelSize" && dropShell("labelSize",52,true,
                         ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
                           const isA=tlStyle.labelFontSize===sz,isH=hov===`rngFsz-${sz}`;
-                          return(<div key={sz} onClick={()=>{setTlStyle(s=>({...s,labelFontSize:sz}));setTlStyleDrop(null);}}
+                          return(<div key={sz} {...tlStyleDropPick(() => applyTlLabelFontSize(sz))}
                             onMouseEnter={()=>setHov(`rngFsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
@@ -18630,7 +18685,7 @@ const TalariaV8bLive = () => {
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=edgeTypeVal===v; const isH=hov===`tlt-${v}`;
                           return (
-                            <div key={v} onClick={()=>{applyTlLineType(v);setTlStyleDrop(null);}}
+                            <div key={v} {...tlStyleDropPick(() => applyTlLineType(v))}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -18658,7 +18713,7 @@ const TalariaV8bLive = () => {
                         ["8","12","20","32","48","64","80","96"].map(w=>{
                           const isA=tlStyle.lineWidth===w; const isH=hov===`tlw-${w}`;
                           return (
-                            <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
+                            <div key={w} {...tlStyleDropPick(() => applyTlLineWidth(w))}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"5px 12px", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -18680,7 +18735,7 @@ const TalariaV8bLive = () => {
                         ["1","2","3","4"].map(w=>{
                           const isA=edgeWidthVal===w; const isH=hov===`tlw-${w}`;
                           return (
-                            <div key={w} onClick={()=>{applyTlLineWidth(w);setTlStyleDrop(null);}}
+                            <div key={w} {...tlStyleDropPick(() => applyTlLineWidth(w))}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -20733,7 +20788,7 @@ const TalariaV8bLive = () => {
               <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
                 <span style={{ fontSize:12, color:c.ts }}>Range Type</span>
                 <div style={{ position:"relative", marginLeft:"auto" }}>
-                  <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop==="rangeType"?null:"rangeType");}}
+                  <div {...tlStyleDropTrigger("rangeType")}
                     onMouseEnter={()=>setHov("rngTypeBtn")} onMouseLeave={()=>setHov(null)}
                     style={{ height:26, padding:"0 8px", display:"flex", alignItems:"center", gap:4, cursor:"default", position:"relative",
                       background:tlStyleDrop==="rangeType"?"rgba(74,106,255,0.08)":hov==="rngTypeBtn"?c.hv:"transparent",
@@ -23017,7 +23072,7 @@ const TalariaV8bLive = () => {
             })}
             {tlBarDrop==="rngFsz" && ["8","10","11","12","13","14","16","18","20","24"].map(sz=>{
               const isA=tlStyle.labelFontSize===sz,isH=hov===`tbfsz-${sz}`;
-              return (<div key={sz} onClick={()=>{setTlStyle(s=>({...s,labelFontSize:sz}));setTlBarDrop(null);}}
+              return (<div key={sz} {...modalPointerActivate(() => { applyTlLabelFontSize(sz); setTlBarDrop(null); })}
                 onMouseEnter={()=>setHov(`tbfsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0", cursor:"default",
                          background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -23027,7 +23082,7 @@ const TalariaV8bLive = () => {
             })}
             {tlBarDrop==="rngType" && ["Date & Price","Price","Date and time"].map(v=>{
               const isA=tlStyle.rangeType===v,isH=hov===`tbrng-${v}`;
-              return (<div key={v} onClick={()=>{setTlStyle(s=>({...s,rangeType:v}));setTlBarDrop(null);}}
+              return (<div key={v} {...modalPointerActivate(() => { applyTlRangeType(v); setTlBarDrop(null); })}
                 onMouseEnter={()=>setHov(`tbrng-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", padding:"6px 12px", cursor:"default",
                          background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
