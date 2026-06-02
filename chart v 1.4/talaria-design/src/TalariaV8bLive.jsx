@@ -124,6 +124,102 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Mini plot-style icon for indicator Line Style dropdown (TradingView-like). */
+function V9PlotStylePreview({ style, color = "#d1d4dc" }) {
+  const s = String(style || "Line").toLowerCase();
+  const svgProps = { width: 56, height: 18, viewBox: "0 0 56 18", fill: "none", xmlns: "http://www.w3.org/2000/svg" };
+  const stroke = color;
+  const sw = 1.5;
+  if (s === "line with breaks") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 12 L16 8 L28 12" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+        <path d="M38 7 L52 11" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (s === "step line" || s === "step line with breaks") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 13 H14 V9 H24 V11 H34 V6 H52" stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (s === "step line with diamonds") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 13 H14 V9 H24 V11 H34 V6 H52" stroke={stroke} strokeWidth={sw} strokeLinejoin="round" />
+        <path d="M24 11 L26 9 L24 7 L22 9 Z M34 6 L36 4 L34 2 L32 4 Z" fill={stroke} stroke="none" />
+      </svg>
+    );
+  }
+  if (s === "histogram") {
+    return (
+      <svg {...svgProps}>
+        {[8, 18, 28, 38, 48].map((x, i) => (
+          <line key={x} x1={x} y1={16} x2={x} y2={16 - [6, 10, 7, 11, 8][i]} stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+        ))}
+      </svg>
+    );
+  }
+  if (s === "columns") {
+    return (
+      <svg {...svgProps}>
+        {[10, 24, 38].map((x, i) => (
+          <rect key={x} x={x - 3} y={16 - [8, 12, 6][i]} width={6} height={[8, 12, 6][i]} fill={stroke} stroke="none" />
+        ))}
+      </svg>
+    );
+  }
+  if (s === "cross") {
+    return (
+      <svg {...svgProps}>
+        {[12, 28, 44].map((x) => (
+          <g key={x} stroke={stroke} strokeWidth={sw} strokeLinecap="round">
+            <line x1={x - 3} y1={9} x2={x + 3} y2={9} />
+            <line x1={x} y1={6} x2={x} y2={12} />
+          </g>
+        ))}
+      </svg>
+    );
+  }
+  if (s === "circles") {
+    return (
+      <svg {...svgProps}>
+        {[12, 28, 44].map((x) => (
+          <circle key={x} cx={x} cy={9} r={2.5} fill={stroke} stroke="none" />
+        ))}
+      </svg>
+    );
+  }
+  if (s === "area" || s === "area with breaks") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 14 L4 10 L16 7 L28 11 L40 6 L52 9 L52 14 Z" fill={stroke} fillOpacity={0.25} stroke={stroke} strokeWidth={sw} />
+      </svg>
+    );
+  }
+  if (s === "dashed") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 9 H52" stroke={stroke} strokeWidth={sw} strokeDasharray="6 4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (s === "dotted") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 9 H52" stroke={stroke} strokeWidth={sw} strokeDasharray="2 3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...svgProps}>
+      <path d="M4 11 C12 5, 20 14, 28 8 S44 12, 52 7" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Settings color swatch — soft border stays visible when fill is dark or transparent. */
 function v9TlColorSwatchBoxStyle(color, opts = {}) {
   const {
@@ -22177,7 +22273,7 @@ const TalariaV8bLive = () => {
                   boxSizing: "border-box",
                   backgroundColor: open ? "rgba(74,106,255,0.08)" : "rgba(140,160,255,0.05)",
                   border: `1px solid ${open ? "rgba(140,160,255,0.35)" : "rgba(140,160,255,0.2)"}`,
-                  padding: "0 26px 0 8px",
+                  padding: p.id === "lineStyle" ? "0 26px 0 4px" : "0 26px 0 8px",
                   outline: "none",
                   borderRadius: 4,
                   cursor: "default",
@@ -22190,6 +22286,11 @@ const TalariaV8bLive = () => {
                   position: "relative",
                 }}
               >
+                {p.id === "lineStyle" && (
+                  <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.92 }}>
+                    <V9PlotStylePreview style={cur ? cur.value : raw} color={c.tx} />
+                  </span>
+                )}
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{disp}</span>
                 <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", alignItems: "center" }}>
                   <I n="chevDown" s={8} cl={open ? c.acL : c.ts} />
@@ -22908,16 +23009,24 @@ const TalariaV8bLive = () => {
                   onMouseEnter={() => setHov(optKey)}
                   onMouseLeave={() => setHov(null)}
                   style={{
-                    padding: "7px 10px",
+                    padding: menuParam.id === "lineStyle" ? "6px 10px" : "7px 10px",
                     fontSize: 12,
                     cursor: "default",
                     color: sel ? c.acL : hov === optKey ? c.tx : c.ts,
                     background: sel ? "rgba(74,106,255,0.14)" : hov === optKey ? "rgba(255,255,255,0.06)" : "transparent",
                     fontFamily: F,
                     transition: "background 0.1s, color 0.1s",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: menuParam.id === "lineStyle" ? 10 : 0,
                   }}
                 >
-                  {opt.label}
+                  {menuParam.id === "lineStyle" && (
+                    <span style={{ flexShrink: 0, opacity: 0.95, display: "inline-flex" }}>
+                      <V9PlotStylePreview style={opt.value} color={sel ? c.acL : hov === optKey ? c.tx : "#b2b5be"} />
+                    </span>
+                  )}
+                  <span>{opt.label}</span>
                 </div>
               );
             })}

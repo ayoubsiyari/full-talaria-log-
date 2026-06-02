@@ -10,14 +10,32 @@ const OHLC_SOURCE_OPTIONS = [
     { value: 'hlc3', label: 'HLC3 (High + Low + Close) / 3' },
     { value: 'ohlc4', label: 'OHLC4 (Open + High + Low + Close) / 4' }
 ];
-const OVERLAY_LINE_STYLE_OPTIONS = ['Solid', 'Dashed', 'Dotted'].map(function (v) { return { value: v, label: v }; });
+const INDICATOR_PLOT_STYLE_OPTIONS = [
+    'Line',
+    'Line with breaks',
+    'Step line',
+    'Step line with breaks',
+    'Step line with diamonds',
+    'Histogram',
+    'Cross',
+    'Area',
+    'Area with breaks',
+    'Columns',
+    'Circles'
+].map(function (v) { return { value: v, label: v }; });
+/** Full plot-style list for indicators; includes legacy dash names for saved layouts + ICT. */
+const OVERLAY_LINE_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS.concat([
+    { value: 'Dashed', label: 'Dashed' },
+    { value: 'Dotted', label: 'Dotted' },
+    { value: 'Solid', label: 'Solid' }
+]);
 
 /** Full Style + Input params for overlay moving averages (SMA, EMA, WMA, DEMA, TEMA, HMA). */
 function overlayMaFullParams(defaultPeriod, defaultColor) {
     return [
         { id: 'period', label: 'Length', type: 'number', default: defaultPeriod, min: 1 },
         { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
         { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -27,7 +45,7 @@ function overlayMaFullParams(defaultPeriod, defaultColor) {
 /** Style-only overlay line (VWAP, etc.). */
 function overlayLineStyleParams(defaultColor) {
     return [
-        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
         { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -39,7 +57,7 @@ function overlayOscFullParams(defaultPeriod, defaultColor) {
     return [
         { id: 'period', label: 'Length', type: 'number', default: defaultPeriod, min: 1 },
         { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'color', label: 'Line Color', type: 'color', default: defaultColor },
         { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -49,7 +67,7 @@ function overlayOscFullParams(defaultPeriod, defaultColor) {
 /** Separate-panel single-line oscillator extras (line style + label toggle). */
 function separateLineStyleExtras() {
     return [
-        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+        { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
         { id: 'showLabel', label: 'Show Label', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
@@ -248,7 +266,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#2962ff' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -260,7 +278,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -273,7 +291,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.5, step: 0.1 },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
@@ -289,7 +307,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'SMA length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'percent', label: 'Band %', type: 'number', default: 2.5, min: 0.1, step: 0.1 },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff', tab: 'style' },
@@ -328,7 +346,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#ff9800' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -467,7 +485,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
             { id: 'color', label: 'Line Color', type: 'color', default: '#00bcd4' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -524,7 +542,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
@@ -541,7 +559,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
             { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
@@ -638,7 +656,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'period', label: 'ATR Length', type: 'number', default: 10, min: 1 },
             { id: 'multiplier', label: 'Factor', type: 'number', default: 3, min: 0.1, step: 0.1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'hl2' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid', tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
             { id: 'upColor', label: 'Up Trend Color', type: 'color', default: '#26a69a', tab: 'style' },
             { id: 'downColor', label: 'Down Trend Color', type: 'color', default: '#ef5350', tab: 'style' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
@@ -2941,6 +2959,7 @@ function setupIndicatorUI(chartInstance) {
 }
 
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
+window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.setupIndicatorUI = setupIndicatorUI;

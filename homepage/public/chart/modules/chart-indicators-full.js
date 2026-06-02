@@ -151,7 +151,7 @@
     function applyOverlayLineStyleFromParams(indicator, params, colorDefault) {
         indicator.style.color = params.color != null ? params.color : (colorDefault || '#2962ff');
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-        indicator.style.lineStyle = params.lineStyle || 'Solid';
+        indicator.style.lineStyle = params.lineStyle || 'Line';
         indicator.style.showLabel = params.showLabel !== false;
     }
 
@@ -2768,7 +2768,7 @@
                 indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#2962ff';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'SMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source);
@@ -2779,7 +2779,7 @@
                 indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#f23645';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'EMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source);
@@ -2790,7 +2790,7 @@
                 indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#ff9800';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'WMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period, indicator.params.source);
@@ -2806,7 +2806,7 @@
                 indicator.style.lowerColor = params.lowerColor || '#2962ff';
                 indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
                 this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source);
@@ -2822,7 +2822,7 @@
                 indicator.style.lowerColor = params.lowerColor || '#2962ff';
                 indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = true;
                 indicator.name = 'Envelope(' + indicator.params.period + ',' + indicator.params.percent + '%)';
@@ -2839,7 +2839,7 @@
                 indicator.params.period = params.period || 14;
                 indicator.style.color = params.color || '#ff6d00';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = false;
                 indicator.separatePanel = true;
@@ -2872,7 +2872,7 @@
                 indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#9c27b0';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'RSI(' + indicator.params.period + ')';
                 indicator.overlay = false;
@@ -3038,7 +3038,7 @@
                 indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#00bcd4';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source);
@@ -3230,7 +3230,7 @@
                 indicator.style.upColor = params.upColor || '#26a69a';
                 indicator.style.downColor = params.downColor || '#ef5350';
                 indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.lineStyle = params.lineStyle || 'Line';
                 indicator.style.showLabel = params.showLabel !== false;
                 indicator.overlay = true;
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
@@ -5672,37 +5672,11 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
         
-        // Draw the indicator line
-        ctx.strokeStyle = color;
-        ctx.lineWidth = indicator.style.lineWidth || 2;
-        ctx.setLineDash(this._lineDashForStyle(indicator.style.lineStyle));
-        ctx.beginPath();
-        
-        let started = false;
-        let lastValidIndex = visibleStart;
-        
-        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
-            const val = values[i];
-            if (val === null || val === undefined || isNaN(val)) continue;
-            
-            const x = this.dataIndexToPixel(i);
-            const y = scaleY(val);
-            
-            if (y === null) continue;
-            
-            if (!started) {
-                ctx.moveTo(x, y);
-                started = true;
-            } else {
-                ctx.lineTo(x, y);
-            }
-            lastValidIndex = i;
-        }
-        
-        if (started) {
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
+        // Draw the indicator plot (TradingView-style line / step / area / columns / …)
+        this.drawLineIndicator(values, color, indicator.style.lineWidth || 2, visibleStart, visibleEnd, indicator.style.lineStyle, {
+            yScale: scaleY,
+            baselineY: indBottom - 2
+        });
 
         // Reference lines for oscillators
         if (indicator.type === 'rsi') {
@@ -6203,44 +6177,200 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         }
     };
 
+Chart.prototype._normalizePlotStyle = function(lineStyle) {
+    const raw = String(lineStyle || 'Line').trim();
+    const lower = raw.toLowerCase();
+    if (lower === 'solid') return 'Line';
+    if (lower === 'dashed') return 'Dashed';
+    if (lower === 'dotted') return 'Dotted';
+    const names = [
+        'Line', 'Line with breaks', 'Step line', 'Step line with breaks', 'Step line with diamonds',
+        'Histogram', 'Cross', 'Area', 'Area with breaks', 'Columns', 'Circles', 'Dashed', 'Dotted'
+    ];
+    for (let i = 0; i < names.length; i++) {
+        if (names[i].toLowerCase() === lower) return names[i];
+    }
+    return 'Line';
+};
+
 Chart.prototype._lineDashForStyle = function(lineStyle) {
-    const s = String(lineStyle || 'Solid').toLowerCase();
-    if (s === 'dashed') return [8, 4];
-    if (s === 'dotted') return [2, 3];
+    const style = this._normalizePlotStyle(lineStyle);
+    if (style === 'Dashed') return [8, 4];
+    if (style === 'Dotted') return [2, 3];
     return [];
 };
 
-Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex = 0, endIndex = data.length, lineStyle) {
+Chart.prototype._plotBarWidthPx = function(index, lineWidth) {
+    const x0 = this.dataIndexToPixel(index);
+    const x1 = this.dataIndexToPixel(index + 1);
+    const gap = Number.isFinite(x1) && Number.isFinite(x0) ? Math.abs(x1 - x0) : 0;
+    const lw = Number(lineWidth) || 2;
+    if (!Number.isFinite(gap) || gap < 1) return Math.max(2, lw * 2);
+    return Math.max(1, gap * 0.72);
+};
+
+Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex, endIndex, lineStyle, options) {
+    if (!data || !this.ctx) return;
+    options = options || {};
     const ctx = this.ctx;
     const m = this.margin;
-    
+    const style = this._normalizePlotStyle(lineStyle);
+    const lw = Number(lineWidth) || 2;
+    const yAt = typeof options.yScale === 'function' ? options.yScale : function(v) { return this.yScale(v); }.bind(this);
+    const baselineY = Number.isFinite(options.baselineY) ? options.baselineY : (this.h - m.b);
+    const breakOnNull = style === 'Line with breaks' || style === 'Step line with breaks' || style === 'Area with breaks';
+    const inView = function(x) { return x >= m.l - 50 && x <= this.w - m.r + 50; }.bind(this);
+
+    ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth = lineWidth;
-    ctx.setLineDash(this._lineDashForStyle(lineStyle));
-    ctx.beginPath();
-    
-    let started = false;
-    for (let i = startIndex; i < endIndex; i++) {
-        if (data[i] === null || data[i] === undefined) continue;
-        
-        const x = this.dataIndexToPixel(i);
-        const y = this.yScale(data[i]);
-        
-        // Skip if outside visible area
-        if (x < m.l - 50 || x > this.w - m.r + 50) continue;
-        
-        if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
-        } else {
-            ctx.lineTo(x, y);
-        }
-    }
-    
-    if (started) {
+    ctx.fillStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = style === 'Circles' || style === 'Cross' ? 'round' : 'butt';
+    ctx.lineJoin = 'round';
+
+    const flushLine = function() {
         ctx.stroke();
+        ctx.beginPath();
+    };
+
+    if (style === 'Line' || style === 'Dashed' || style === 'Dotted' || style === 'Line with breaks') {
+        ctx.setLineDash(this._lineDashForStyle(style === 'Line with breaks' ? 'Line' : style));
+        let started = false;
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+                if (breakOnNull && started) { flushLine(); started = false; }
+                continue;
+            }
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        if (started) ctx.stroke();
+        ctx.setLineDash([]);
+    } else if (style === 'Step line' || style === 'Step line with breaks' || style === 'Step line with diamonds') {
+        let prev = null;
+        ctx.beginPath();
+        let started = false;
+        const diamonds = [];
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+                if (breakOnNull && started) { flushLine(); started = false; prev = null; }
+                continue;
+            }
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (!prev) {
+                ctx.moveTo(x, y);
+                started = true;
+            } else {
+                ctx.lineTo(x, prev.y);
+                ctx.lineTo(x, y);
+                if (style === 'Step line with diamonds') diamonds.push({ x: x, y: y });
+            }
+            prev = { x: x, y: y };
+        }
+        if (started) ctx.stroke();
+        if (style === 'Step line with diamonds') {
+            const r = Math.max(2, lw * 1.1);
+            ctx.beginPath();
+            diamonds.forEach(function(d) {
+                ctx.moveTo(d.x + r, d.y);
+                ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+            });
+            ctx.fill();
+        }
+    } else if (style === 'Histogram' || style === 'Columns') {
+        const half = function(i) { return this._plotBarWidthPx(i, lw) / 2; }.bind(this);
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            const w = half(i) * 2;
+            const top = Math.min(y, baselineY);
+            const h = Math.abs(baselineY - y);
+            if (style === 'Columns') ctx.fillRect(x - w / 2, top, w, Math.max(1, h));
+            else {
+                ctx.beginPath();
+                ctx.moveTo(x, baselineY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+        }
+    } else if (style === 'Cross') {
+        const r = Math.max(2.5, lw * 1.5);
+        ctx.beginPath();
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            ctx.moveTo(x - r, y);
+            ctx.lineTo(x + r, y);
+            ctx.moveTo(x, y - r);
+            ctx.lineTo(x, y + r);
+        }
+        ctx.stroke();
+    } else if (style === 'Circles') {
+        const r = Math.max(2, lw * 1.1);
+        ctx.beginPath();
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            ctx.moveTo(x + r, y);
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+        }
+        ctx.fill();
+    } else if (style === 'Area' || style === 'Area with breaks') {
+        const fillAlpha = 0.22;
+        const drawAreaSegment = function(seg) {
+            if (seg.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(seg[0].x, seg[0].y);
+            for (let s = 1; s < seg.length; s++) ctx.lineTo(seg[s].x, seg[s].y);
+            ctx.lineTo(seg[seg.length - 1].x, baselineY);
+            ctx.lineTo(seg[0].x, baselineY);
+            ctx.closePath();
+            ctx.globalAlpha = fillAlpha;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.beginPath();
+            ctx.moveTo(seg[0].x, seg[0].y);
+            for (let s = 1; s < seg.length; s++) ctx.lineTo(seg[s].x, seg[s].y);
+            ctx.stroke();
+        };
+        let seg = [];
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
+                if (breakOnNull && seg.length) { drawAreaSegment(seg); seg = []; }
+                continue;
+            }
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            seg.push({ x: x, y: y });
+        }
+        if (seg.length) drawAreaSegment(seg);
+    } else {
+        ctx.setLineDash([]);
+        let started = false;
+        for (let i = startIndex; i < endIndex; i++) {
+            if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = yAt(data[i]);
+            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+        }
+        if (started) ctx.stroke();
     }
-    ctx.setLineDash([]);
+
+    ctx.restore();
 };
 
 Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length) {
