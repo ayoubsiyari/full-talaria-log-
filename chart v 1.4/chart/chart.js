@@ -329,6 +329,8 @@ installChartContextMenuStyles();
 const DEFAULT_CANDLE_WIDTH = 6;
 /** Body width as a fraction of center-to-center bar spacing (TradingView ≈ 0.8). */
 const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
+/** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
+const TV_ZOOMED_OUT_SLOT_PX = 2;
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16119,7 +16121,69 @@ class Chart {
     _getPanLodCap() {
         const m = this.margin || { l: 0, r: 60 };
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        return Math.min(640, Math.max(240, Math.ceil(plotPx * 1.25)));
+        return Math.ceil(plotPx / TV_ZOOMED_OUT_SLOT_PX);
+    }
+
+    /** True when bars are denser than screen pixels — need pixel-slot OHLC merge. */
+    _shouldUsePixelColumnCandleLod(visibleCount, plotPx) {
+        const spacing = this.getCandleSpacing();
+        return spacing < TV_ZOOMED_OUT_SLOT_PX || visibleCount > plotPx;
+    }
+
+    _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
+        if (!visibleCount) return 0;
+        if (this._shouldUsePixelColumnCandleLod(visibleCount, plotPx)) {
+            return Math.ceil(plotPx / TV_ZOOMED_OUT_SLOT_PX);
+        }
+        if (visibleCount <= plotPx) return visibleCount;
+        if (opts.panFast) return Math.min(visibleCount, this._getPanLodCap());
+        return Math.min(visibleCount, Math.max(plotPx, Math.ceil(plotPx * 1.5)));
+    }
+
+    /**
+     * Merge overlapping sub-pixel bars into fixed pixel slots (1px body + 1px gap).
+     * Prevents zoomed-out candles from stacking into a solid line.
+     */
+    _aggregateVisibleOhlcvByPixelColumn(visible, plotPx) {
+        const m = this.margin || { l: 60, r: 60 };
+        const slotPx = TV_ZOOMED_OUT_SLOT_PX;
+        const numSlots = Math.max(1, Math.ceil(plotPx / slotPx));
+        const slots = new Array(numSlots);
+        const base = this.visibleStartIndex || 0;
+        const spacing = this.getCandleSpacing();
+        const offsetX = this.offsetX || 0;
+
+        for (let i = 0; i < visible.length; i++) {
+            const d = visible[i];
+            if (!d) continue;
+            const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
+            const x = m.l + idx * spacing + offsetX;
+            const slot = Math.floor((x - m.l) / slotPx);
+            if (slot < 0 || slot >= numSlots) continue;
+
+            let bucket = slots[slot];
+            if (!bucket) {
+                slots[slot] = {
+                    o: d.o,
+                    h: d.h,
+                    l: d.l,
+                    c: d.c,
+                    vSum: Number(d.v) || 0,
+                    _pixelX: m.l + slot * slotPx + Math.floor(slotPx / 2),
+                };
+            } else {
+                if (d.h > bucket.h) bucket.h = d.h;
+                if (d.l < bucket.l) bucket.l = d.l;
+                bucket.c = d.c;
+                bucket.vSum += Number(d.v) || 0;
+            }
+        }
+
+        const out = [];
+        for (let s = 0; s < numSlots; s++) {
+            if (slots[s]) out.push(slots[s]);
+        }
+        return out.length ? out : null;
     }
 
     /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
@@ -18682,8 +18746,8 @@ class Chart {
         this.ctx.clip();
         
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
-        const maxVolLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPxVol * 2)));
-        const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod);
+        const maxVolLod = this._getCandleRenderMaxBuckets(visible.length, plotPxVol, opts);
+        const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod, plotPxVol);
         let volLodMax = 1;
         if (volLod) {
             for (let vi = 0; vi < volLod.length; vi++) {
@@ -18697,18 +18761,19 @@ class Chart {
                 .range(this.volumeScale.range())
             : null;
 
-        const drawVolBar = (volVal, idx, isGreen) => {
-            const x = this.dataIndexToPixel(idx);
+        const drawVolBar = (volVal, idx, isGreen, pixelX) => {
+            const x = Number.isFinite(pixelX) ? pixelX : this.dataIndexToPixel(idx);
             if (x < m.l - 10 || x > this.w - m.r + 10) return;
             const vs = volScaleLod || this.volumeScale;
             const volumeY = vs(volVal);
             const volumeHeight = Math.max(1, volBandBottom - volumeY);
+            const barW = Number.isFinite(pixelX) ? 1 : this.candleWidth;
             this.ctx.fillStyle = isGreen ? upColor : downColor;
-            this.ctx.fillRect(x - this.candleWidth / 2, volumeY, this.candleWidth, volumeHeight);
+            this.ctx.fillRect(x - barW / 2, volumeY, barW, volumeHeight);
         };
 
         if (volLod) {
-            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b.c >= b.o));
+            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b.c >= b.o, b._pixelX));
         } else {
             visible.forEach((d, i) => {
                 const idx = Number.isFinite(d.midIdx) ? d.midIdx : this.visibleStartIndex + i;
@@ -19227,8 +19292,14 @@ class Chart {
      * Compress to at most `maxBuckets` synthetic OHLC candles (plus summed volume for volume LOD).
      * @returns {null | Array<{o:number,h:number,l:number,c:number,vSum:number,midIdx:number}>}
      */
-    _aggregateVisibleOhlcvBuckets(visible, maxBuckets) {
-        if (!visible || visible.length <= maxBuckets) return null;
+    _aggregateVisibleOhlcvBuckets(visible, maxBuckets, plotPx) {
+        if (!visible || visible.length === 0) return null;
+        const m = this.margin || { l: 60, r: 60 };
+        const plot = Number.isFinite(plotPx) ? plotPx : Math.max(1, (this.w || 0) - m.l - m.r);
+        if (this._shouldUsePixelColumnCandleLod(visible.length, plot)) {
+            return this._aggregateVisibleOhlcvByPixelColumn(visible, plot);
+        }
+        if (visible.length <= maxBuckets) return null;
         const n = visible.length;
         const numBuckets = Math.min(maxBuckets, n);
         const step = n / numBuckets;
@@ -19296,27 +19367,30 @@ class Chart {
         const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
         const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
 
-        // When zoomed out, drawing thousands of bodies still stalls the GPU. Cap LOD buckets
-        // by plot width (~1 bucket per half-pixel max) so zoom/pan stays smooth on 1m ranges.
+        // Zoomed-out LOD: pixel-slot merge (1px body + 1px gap) when bars are sub-pixel dense.
         const plotPx = Math.max(1, this.w - m.l - m.r);
-        const maxLod = opts.panFast ? this._getPanLodCap() : Math.min(1600, Math.max(320, Math.ceil(plotPx * 2)));
-        const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod);
+        const maxLod = this._getCandleRenderMaxBuckets(visible.length, plotPx, opts);
+        const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod, plotPx);
         const drawSeries = lod
-            ? lod.map((b) => ({ d: { o: b.o, h: b.h, l: b.l, c: b.c }, idx: b.midIdx }))
+            ? lod.map((b) => ({
+                d: { o: b.o, h: b.h, l: b.l, c: b.c },
+                idx: b.midIdx,
+                pixelX: b._pixelX,
+            }))
             : visible.map((d, i) => ({
                 d,
                 idx: Number.isFinite(d.midIdx) ? d.midIdx : (this.visibleStartIndex || 0) + i,
+                pixelX: d._pixelX,
             }));
 
         this.ctx.save();
         this.ctx.globalAlpha = 1;
 
-        drawSeries.forEach(({ d, idx }) => {
-            // Calculate X position using our helper method
-            const x = this.dataIndexToPixel(idx);
-            
+        drawSeries.forEach(({ d, idx, pixelX }) => {
+            const x = Number.isFinite(pixelX) ? pixelX : this.dataIndexToPixel(idx);
+
             // Extend visible area to prevent popping on both edges.
-            const extendedMargin = this.candleWidth * 2;
+            const extendedMargin = Number.isFinite(pixelX) ? 2 : this.candleWidth * 2;
             
             // Allow drawing into right-axis zone so candles hide behind the axis instead of disappearing early.
             if (x < m.l - extendedMargin || x > this.w + extendedMargin) {
@@ -19341,10 +19415,12 @@ class Chart {
             // Snap candle center to an integer pixel — both wick and body derive from this.
             const cx = Math.round(x);
 
-            const barSpacing = this.getCandleSpacing();
-            // TradingView: body ≈ 80% of bar slot; wick always 1px at normal zoom.
+            const barSpacing = Number.isFinite(pixelX) ? TV_ZOOMED_OUT_SLOT_PX : this.getCandleSpacing();
+            // TradingView: body ≈ 80% of bar slot at normal zoom; 1px body in pixel-slot mode.
             const wickWidth = 1;
-            const bodyWidthPx = Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
+            const bodyWidthPx = Number.isFinite(pixelX)
+                ? 1
+                : Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
             const halfBodyPx = Math.floor(bodyWidthPx / 2);
 
             // Draw wick (high-low line) - centered and crisp (if enabled)

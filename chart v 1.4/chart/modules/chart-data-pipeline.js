@@ -11,6 +11,8 @@
     const LARGE_SERIES_THRESHOLD = 8000;
     const REPLAY_RAW_CAP = 5000;
     const REPLAY_CONTEXT_BARS = 500;
+    /** Match chart.js TV_ZOOMED_OUT_SLOT_PX — 1px body + 1px gutter per slot. */
+    const ZOOMED_OUT_SLOT_PX = 2;
 
     class ChartDataPipeline {
         constructor(chart) {
@@ -166,7 +168,20 @@
          */
         applyRenderBudget(slice, maxBars, baseIndex) {
             if (!slice || slice.length === 0) return [];
+            const chart = this.chart;
+            const m = chart && chart.margin ? chart.margin : { l: 60, r: 60 };
+            const plotWidth = Math.max(1, (chart && chart.w ? chart.w : 800) - m.l - m.r);
+            const spacing = chart && typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
+            const offsetX = chart && chart.offsetX ? chart.offsetX : 0;
             const maxBuckets = maxBars != null ? maxBars : RENDER_BAR_BUDGET;
+
+            if (slice.length > maxBuckets || spacing < ZOOMED_OUT_SLOT_PX) {
+                const slotBudget = Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX);
+                if (slice.length > slotBudget || spacing < ZOOMED_OUT_SLOT_PX) {
+                    return this._applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex);
+                }
+            }
+
             if (slice.length <= maxBuckets) {
                 const base = baseIndex || 0;
                 return slice.map((d, i) => {
@@ -212,6 +227,52 @@
         }
 
         /**
+         * Pixel-slot OHLC merge for zoomed-out views (1px body + 1px gap per slot).
+         */
+        _applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex) {
+            const slotPx = ZOOMED_OUT_SLOT_PX;
+            const numSlots = Math.max(1, Math.ceil(plotWidth / slotPx));
+            const slots = new Array(numSlots);
+            const base = baseIndex || 0;
+
+            for (let i = 0; i < slice.length; i++) {
+                const d = slice[i];
+                if (!d) continue;
+                const idx = base + i;
+                const x = m.l + idx * spacing + offsetX;
+                const slot = Math.floor((x - m.l) / slotPx);
+                if (slot < 0 || slot >= numSlots) continue;
+
+                let bucket = slots[slot];
+                if (!bucket) {
+                    slots[slot] = {
+                        t: d.t,
+                        o: d.o,
+                        h: d.h,
+                        l: d.l,
+                        c: d.c,
+                        v: Number(d.v) || 0,
+                        midIdx: idx,
+                        _pixelX: m.l + slot * slotPx + Math.floor(slotPx / 2),
+                        _pipelineBucket: true,
+                    };
+                } else {
+                    if (d.h > bucket.h) bucket.h = d.h;
+                    if (d.l < bucket.l) bucket.l = d.l;
+                    bucket.c = d.c;
+                    bucket.v += Number(d.v) || 0;
+                    bucket.midIdx = idx;
+                }
+            }
+
+            const out = [];
+            for (let s = 0; s < numSlots; s++) {
+                if (slots[s]) out.push(slots[s]);
+            }
+            return out;
+        }
+
+        /**
          * Build display series for paint: resample → viewport slice → render budget.
          */
         buildDisplaySeries(options = {}) {
@@ -238,9 +299,12 @@
             const plotWidth = Math.max(1, (chart.w || 800) - m.l - m.r);
             const spacing = typeof chart.getCandleSpacing === 'function' ? chart.getCandleSpacing() : 8;
             const offsetX = chart.offsetX || 0;
-            const maxBudget = chart.isBacktestMode
-                ? RENDER_BAR_BUDGET
-                : Math.min(RENDER_BAR_BUDGET * 2, RENDER_BAR_BUDGET + 400);
+            const pixelLod = spacing < ZOOMED_OUT_SLOT_PX;
+            const maxBudget = pixelLod
+                ? Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX)
+                : (chart.isBacktestMode
+                    ? RENDER_BAR_BUDGET
+                    : Math.min(RENDER_BAR_BUDGET * 2, RENDER_BAR_BUDGET + 400));
 
             const cacheKey = [
                 dv,
@@ -251,6 +315,7 @@
                 chart.candleWidth,
                 plotWidth,
                 maxBudget,
+                pixelLod ? 'px' : 'idx',
             ].join('|');
 
             if (this._displayCache.key === cacheKey && this._displayCache.series) {
@@ -265,7 +330,10 @@
                 spacing,
                 bufferBars: VIEWPORT_BUFFER_BARS,
             });
-            const display = this.applyRenderBudget(sliced, maxBudget, visStart);
+            const effectiveBudget = (pixelLod || sliced.length > plotWidth)
+                ? Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX)
+                : maxBudget;
+            const display = this.applyRenderBudget(sliced, effectiveBudget, visStart);
 
             this._displayCache.key = cacheKey;
             this._displayCache.series = display;
