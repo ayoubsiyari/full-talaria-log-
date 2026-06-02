@@ -321,6 +321,24 @@
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
     }
 
+    function applyDpoStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.period = params.period != null ? Number(params.period) : 20;
+        indicator.params.source = params.source || 'close';
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#78909c';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showMid = params.showMid !== false;
+        indicator.style.midValue = params.midValue != null ? Number(params.midValue) : 0;
+        indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
+        indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
+        indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
+
     function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
         applyMaLengthSourceFromParams(indicator, params, defaultPeriod);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
@@ -2533,17 +2551,19 @@
         return { viPlus: viPlus, viMinus: viMinus };
     }
 
-    function calculateDPO(data, period) {
+    function calculateDPO(data, period, source) {
         const p = Math.max(3, period);
+        source = source || 'close';
         const shift = Math.floor(p / 2) + 1;
-        const sma = calculateSMA(data, p, 'c');
+        const sma = calculateSMA(data, p, source);
         const out = [];
         for (let i = 0; i < data.length; i++) {
             const j = i - shift;
-            if (j < 0 || sma[j] === null) {
+            const src = resolveOhlcSourceValue(data[i], source);
+            if (j < 0 || sma[j] === null || !Number.isFinite(src)) {
                 out.push(null);
             } else {
-                out.push(data[i].c - sma[j]);
+                out.push(src - sma[j]);
             }
         }
         return out;
@@ -3439,12 +3459,11 @@
                 break;
 
             case 'dpo':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#78909c';
-                indicator.style.lineWidth = params.lineWidth || 2;
                 indicator.overlay = false;
+                indicator.separatePanel = true;
+                applyDpoStyleFromParams(indicator, params);
                 indicator.name = 'DPO(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period, indicator.params.source);
                 break;
 
             case 'stochrsi':
@@ -4138,6 +4157,11 @@
             indicator.separatePanel = true;
             applyMacdStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'dpo') {
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyDpoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -4449,7 +4473,7 @@
                 break;
             case 'dpo':
                 indicator.name = 'DPO(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'stochrsi':
                 indicator.name = 'Stoch RSI(' + indicator.params.rsiPeriod + ',' + indicator.params.stochLen + ')';
@@ -4753,7 +4777,7 @@
                     this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
                     break;
                 case 'dpo':
-                    this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'envelope':
                 case 'smaenvelope':
@@ -5821,6 +5845,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             return;
         } else if (indicator.type === 'mfi') {
             this._renderMFIPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'dpo') {
+            this._renderDpoPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'vortex') {
             this._renderVortexPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -7525,12 +7552,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         ctx.setLineDash([]);
     };
 
-    Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText) {
+    Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth) {
         if (value === null || value === undefined || isNaN(value)) return;
         const y = scaleY(value);
         if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
         ctx.strokeStyle = color || '#787b86';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = lineWidth != null ? lineWidth : 1;
         ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(lineStyle || 'Dotted') : [3, 3]);
         ctx.beginPath();
         ctx.moveTo(m.l, y);
@@ -8231,6 +8258,79 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 y: currentY,
                 text: last.toFixed(2),
                 color: style.color || '#00e676'
+            }];
+        }
+    };
+
+    // ---- DPO panel: auto-scaled + middle line + optional background ----
+    Chart.prototype._renderDpoPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const midVal = style.midValue != null ? style.midValue : 0;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (Number.isFinite(midVal)) {
+            min = Math.min(min, midVal);
+            max = Math.max(max, midVal);
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dMin = dom.min;
+        const dMax = dom.max;
+        const dSpan = Math.max(1e-9, dMax - dMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - dMin) / dSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, dMin, dMax, scaleY, 2);
+
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal,
+                style.midLineWidth != null ? style.midLineWidth : 1);
+        }
+
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, style.color || '#78909c', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = style.color || '#78909c';
+        indicator._displayLabel = last !== null ? last.toFixed(5) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(5);
+            indicator._axisLabelColor = style.color || '#78909c';
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(5),
+                color: style.color || '#78909c'
             }];
         }
     };

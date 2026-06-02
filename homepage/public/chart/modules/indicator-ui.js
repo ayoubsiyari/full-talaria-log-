@@ -274,6 +274,23 @@ function rocStyleParams() {
     return oscZeroPanelStyleParams('ROC', '#ffa726');
 }
 
+/** DPO Style tab (DPO line + middle line + optional panel bg). */
+function dpoStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show DPO line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'DPO color', type: 'color', default: '#78909c', tab: 'style' },
+        { id: 'lineStyle', label: 'DPO line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'DPO thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showMid', label: 'Show middle line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Middle color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midLineStyle', label: 'Middle line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'midValue', label: 'Middle line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
 /** Resolve catalog / runtime indicator type to INDICATOR_DEFINITIONS key. */
 function resolveIndicatorDefinitionKey(type) {
     const t = String(type || '').toLowerCase();
@@ -916,10 +933,8 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'color', label: 'Line color', type: 'color', default: '#78909c' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+        ].concat(dpoStyleParams())
     },
     stochrsi: {
         name: 'Stochastic RSI',
@@ -3330,6 +3345,22 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 title: 'Zero Line',
                 levelHeader: true,
                 levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'dpo') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('DPO', 'color', 'lineStyle', 'lineWidth', 'showLine'),
+                    v9PlotRow('Middle Line', 'midColor', 'midLineStyle', 'midLineWidth', 'showMid')
+                ]
             }, {
                 title: 'Background',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
