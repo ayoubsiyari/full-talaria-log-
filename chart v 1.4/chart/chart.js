@@ -15789,21 +15789,13 @@ class Chart {
 
     /**
      * TradingView-style cap: max bar slots on screen for the active timeframe.
+     * Used for zoom-out (min candle width) and scale window clamping — not the render bucket budget.
      */
     _getMaxBarsOnScreen(timeframe) {
-        const m = this.margin || { l: 60, r: 60 };
-        const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
-        const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
-        if (this.isBacktestMode) {
-            const budget = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.RENDER_BAR_BUDGET)
-                || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.RENDER_BAR_BUDGET)
-                || 500;
-            return Math.min(fromWidth, budget);
-        }
         const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
         const oneMinuteBarsPerDay = 24 * 60;
         const limits = {
-            // 1m: allow zoom-out up to 3 calendar days (4320 bars).
+            // 1m: zoom-out cap = 3 calendar days (4320 bars).
             '1m': oneMinuteBarsPerDay * 3, '2m': 3200, '3m': 3000, '5m': 2800,
             '10m': 2600, '15m': 2400, '30m': 2200,
             '45m': 2000, '1h': 1800, '2h': 1600, '3h': 1500, '4h': 1400,
@@ -15811,10 +15803,10 @@ class Chart {
             '1d': 1200, '1w': 900, '1wk': 900,
         };
         const tfCap = limits[tf];
-        if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
+        if (Number.isFinite(tfCap)) return tfCap;
         const mo = tf.match(/^(\d+)mo$/);
-        if (mo) return Math.min(fromWidth, 800);
-        return Math.min(fromWidth, 2400);
+        if (mo) return 800;
+        return 2400;
     }
 
     /**
