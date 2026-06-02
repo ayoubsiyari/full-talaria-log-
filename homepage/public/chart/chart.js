@@ -16411,29 +16411,18 @@ class Chart {
     }
 
     /** Keep SL/TP lines and entry/exit trade markers glued while panning (same scales as candles). */
-    _syncOrderOverlaysDuringPan(panActive, opts = {}) {
+    _syncOrderOverlaysDuringPan(panActive) {
         const om = this.orderManager;
         if (!om) return;
-        const lite = !!opts.lite;
-        if (lite && panActive) {
-            if (this._panOrderOverlayLitePending) return;
-            this._panOrderOverlayLitePending = true;
-            requestAnimationFrame(() => {
-                this._panOrderOverlayLitePending = false;
-                if (!this._isChartViewPanning()) return;
-                if (typeof om.updateOrderLines === 'function') {
-                    om.updateOrderLines(this);
-                }
-            });
-            return;
-        }
+        // Same frame as canvas + redrawDrawings(). Deferred rAF "lite" updates lagged one
+        // frame behind candles and skipped entirely during price/time axis drag (not pan).
         if (typeof om.updateOrderLines === 'function') {
             om.updateOrderLines(this);
         }
+        if (typeof om.updateMfeMaeMarkers === 'function') {
+            om.updateMfeMaeMarkers(this);
+        }
         if (panActive) {
-            if (typeof om.updateMfeMaeMarkers === 'function') {
-                om.updateMfeMaeMarkers(this);
-            }
             return;
         }
         if (typeof om.updatePreviewLinePositions === 'function') {
@@ -16915,7 +16904,7 @@ class Chart {
             if (!(wheelBurstActive && pixelLod)) {
                 this.redrawDrawings();
             }
-            this._syncOrderOverlaysDuringPan(true, { lite: true });
+            this._syncOrderOverlaysDuringPan(true);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
