@@ -11752,7 +11752,8 @@ class Chart {
         const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
             ? this.timeScale.rightOffsetCandles
             : 15;
-        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
+        let rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
+        if (candleSpacing < 1) rightMargin = Math.max(rightMargin, 56);
         
         // Max offset: First candle can go up to right edge minus margin
         const maxOffset = cw - rightMargin;
@@ -15769,9 +15770,8 @@ class Chart {
     _getSpacingForCandleWidth(cw) {
         const w = Number(cw);
         if (!Number.isFinite(w)) return 7;
-        // Sub-pixel spacing for deep zoom-out (1m can show ~3500 bars like TradingView).
-        // w >= 1 keeps the visible gutter between bodies at normal zoom levels.
-        if (w < 1) return Math.max(0.15, w);
+        if (w <= 0.5) return Math.max(0.2, w);
+        if (w < 1) return w;
         const gap = Math.max(1, Math.round(w * 0.167));
         return w + gap;
     }
@@ -15794,8 +15794,8 @@ class Chart {
     _getMaxBarsOnScreen(timeframe) {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
+        const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
         if (this.isBacktestMode) {
-            const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
             const budget = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.RENDER_BAR_BUDGET)
                 || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.RENDER_BAR_BUDGET)
                 || 500;
@@ -15810,11 +15810,11 @@ class Chart {
             '1d': 1200, '1w': 900, '1wk': 900,
         };
         const tfCap = limits[tf];
-        // Use per-TF cap directly — sub-pixel spacing fits thousands of bars on any plot width.
-        if (Number.isFinite(tfCap)) return tfCap;
+        if (tf === '1m') return tfCap;
+        if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
         const mo = tf.match(/^(\d+)mo$/);
-        if (mo) return 800;
-        return 2400;
+        if (mo) return Math.min(fromWidth, 800);
+        return Math.min(fromWidth, 2400);
     }
 
     /**
@@ -19275,7 +19275,7 @@ class Chart {
             
             // Extend visible area to prevent popping on both edges.
             const extendedMargin = this.candleWidth * 2;
-            
+
             // Allow drawing into right-axis zone so candles hide behind the axis instead of disappearing early.
             if (x < m.l - extendedMargin || x > this.w + extendedMargin) {
                 skipped++;
