@@ -315,6 +315,8 @@ class GannBoxTool extends BaseDrawing {
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        // Keep profile visuals above pane overlays/other stale drawing groups.
+        try { this.group && this.group.raise && this.group.raise(); } catch (_) {}
     }
 
     /** Pixel layout for level drag + hit tests (matches `render`). */
@@ -2230,6 +2232,7 @@ class AnchoredVolumeProfileTool extends BaseDrawing {
         this.handles = Array.isArray(proxy.handles)
             ? proxy.handles.filter(h => h && h.index === 0)
             : [];
+        try { this.group && this.group.raise && this.group.raise(); } catch (_) {}
     }
 
     onPointHandleDrag(index, context = {}) {

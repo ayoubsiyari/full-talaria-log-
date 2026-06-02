@@ -9638,6 +9638,60 @@ const TalariaV8bLive = () => {
   const omHeaderRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
   const indSettCtxRef = useRef({ chart: null, indicatorType: "", indicator: null });
+  const flushIndDraftToChartRef = useRef(() => false);
+  const flushIndDraftToChart = useCallback((draftOverride) => {
+    const c2 = indSettCtxRef.current;
+    if (!c2?.chart || !c2?.indicator) return false;
+    const draftNow = draftOverride || indSettDraftRef.current;
+    if (!draftNow) return false;
+    const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
+      ? window.__v9MergeIndicatorDraftForUpdate
+      : null;
+    const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, draftNow) : null;
+    if (!merged) return false;
+    merged.visible = draftNow.visible !== false;
+    merged.visibility = v9IndicatorVisibilityFromDraft(draftNow);
+    const chart = c2.chart;
+    try {
+      if (c2.indicatorType === "custom") {
+        const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
+        if (TC && typeof TC.validateCustomScriptSource === "function") {
+          const check = TC.validateCustomScriptSource(merged.script);
+          if (!check.ok) return false;
+        }
+        if (typeof chart.updateIndicator === "function") {
+          const p = { ...merged };
+          p.customParams = { period: p.period };
+          delete p.period;
+          p.separatePanel = p.placement === "panel";
+          p.overlay = p.placement !== "panel";
+          delete p.placement;
+          chart.updateIndicator(c2.indicator.id, p);
+        }
+      } else if (typeof chart.updateIndicator === "function") {
+        chart.updateIndicator(c2.indicator.id, merged);
+      } else {
+        return false;
+      }
+      const active = chart.indicators?.active;
+      if (Array.isArray(active)) {
+        const updated = active.find((ind) => ind.id === c2.indicator.id);
+        if (updated) indSettCtxRef.current = { ...c2, indicator: updated };
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }, []);
+  flushIndDraftToChartRef.current = flushIndDraftToChart;
+  const patchIndSettDraftLive = useCallback((updater) => {
+    const prev = indSettDraftRef.current || {};
+    const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
+    indSettDraftRef.current = next;
+    setIndSettDraft(next);
+    if (indSettOpenRef.current) flushIndDraftToChartRef.current(next);
+    return next;
+  }, []);
   const rrPushLockRef = useRef(0);
   const OM_PANEL_BRIDGE_LEAD_MS = 750;
   const isOmBridgeLead = (ts) => !!(ts && Date.now() - ts < OM_PANEL_BRIDGE_LEAD_MS);
@@ -11823,6 +11877,10 @@ const TalariaV8bLive = () => {
       : null;
   const tlBarDrawingGroup =
     tlBarDrawingGroupRaw === "brush" ? "brush2" : tlBarDrawingGroupRaw;
+  const tlBarVolumeIcon =
+    tlBarDrawingGroupRaw === "brush"
+      ? (v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, "brush") || (groupSelected.brush?.icon ?? "vwap"))
+      : null;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
     (tlSettOpen || closing.has("tlsett")) &&
@@ -13620,7 +13678,8 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
     else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
       const pid = targetKey.slice(4);
-      patchIndSettDraft((d) => ({ ...d, [pid]: colorVal }));
+      if (indSettOpenRef.current) patchIndSettDraftLive((d) => ({ ...d, [pid]: colorVal }));
+      else patchIndSettDraft((d) => ({ ...d, [pid]: colorVal }));
     }
     else updateSetting(targetKey, colorVal);
   };
@@ -22052,33 +22111,19 @@ const TalariaV8bLive = () => {
         const applyInd = () => {
           const c2 = indSettCtxRef.current;
           if (!c2.chart || !c2.indicator) { closeIndSett(); return; }
-          const draftNow = indSettDraftRef.current || indSettDraft;
-          const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
-            ? window.__v9MergeIndicatorDraftForUpdate
-            : null;
-          const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, draftNow) : null;
-          if (!merged) { closeIndSett(); return; }
-          merged.visible = draftNow.visible !== false;
-          merged.visibility = v9IndicatorVisibilityFromDraft(draftNow);
-          const chart = c2.chart;
           if (c2.indicatorType === "custom") {
+            const draftNow = indSettDraftRef.current || indSettDraft;
+            const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
+              ? window.__v9MergeIndicatorDraftForUpdate
+              : null;
+            const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, draftNow) : null;
             const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
-            if (TC && typeof TC.validateCustomScriptSource === "function") {
+            if (TC && typeof TC.validateCustomScriptSource === "function" && merged) {
               const check = TC.validateCustomScriptSource(merged.script);
               if (!check.ok) { window.alert(check.error || "Invalid script"); return; }
             }
-            if (typeof chart.updateIndicator === "function") {
-              const p = { ...merged };
-              p.customParams = { period: p.period };
-              delete p.period;
-              p.separatePanel = p.placement === "panel";
-              p.overlay = p.placement !== "panel";
-              delete p.placement;
-              chart.updateIndicator(c2.indicator.id, p);
-            }
-          } else if (typeof chart.updateIndicator === "function") {
-            chart.updateIndicator(c2.indicator.id, merged);
           }
+          flushIndDraftToChartRef.current();
           dismissIndicatorMenus();
           closeIndSett();
         };
@@ -22202,7 +22247,7 @@ const TalariaV8bLive = () => {
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
-                onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                   color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "text" }} />
             );
@@ -22222,7 +22267,7 @@ const TalariaV8bLive = () => {
           if (p.type === "checkbox") {
             const chkKey = `ind-chk-${p.id}`;
             return row(
-              TlChk(!!raw, chkKey, null, () => patchIndSettDraft((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })
+              TlChk(!!raw, chkKey, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })
             );
           }
           if (p.type === "select" && Array.isArray(p.options)) {
@@ -22233,7 +22278,7 @@ const TalariaV8bLive = () => {
               <div key={p.id} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
                 <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                   rows={isCustom ? 14 : 8}
                   style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
                     fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
@@ -22244,14 +22289,14 @@ const TalariaV8bLive = () => {
           if (p.type === "time") {
             return row(
               <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
-                onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 118, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                   color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
             );
           }
           return row(
             <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
-              onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+              onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
               style={{ width: 160, maxWidth: "100%", height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                 color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
           );
@@ -22260,8 +22305,8 @@ const TalariaV8bLive = () => {
         const renderIctEverythingSettings = () => {
           const def0 = (id) => def.params.find((x) => x.id === id);
           const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
-          const setv = (id, v) => patchIndSettDraft((d) => ({ ...d, [id]: v }));
-          const flip = (id) => patchIndSettDraft((d) => {
+          const setv = (id, v) => patchIndSettDraftLive((d) => ({ ...d, [id]: v }));
+          const flip = (id) => patchIndSettDraftLive((d) => {
             const p = def0(id);
             const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
             return { ...d, [id]: !cur };
@@ -22703,13 +22748,13 @@ const TalariaV8bLive = () => {
                       return (
                         <div key={k} style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", alignItems: "center", padding: "6px 12px" }}>
                           {TlChk(v.checked, `indchk-${k}`, null, () =>
-                            patchIndSettDraft((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
+                            patchIndSettDraftLive((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
                           )}
                           <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{lbl}</span>
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <input type="number" min={1} max={v.max - 1} value={v.min} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
-                                patchIndSettDraft((s) => ({
+                                patchIndSettDraftLive((s) => ({
                                   ...s,
                                   [k]: { ...s[k], min: Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, s[k].max - 1)) },
                                 }))
@@ -22755,7 +22800,7 @@ const TalariaV8bLive = () => {
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <input type="number" min={v.min + 1} max={hm} value={v.max} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
-                                patchIndSettDraft((s) => ({
+                                patchIndSettDraftLive((s) => ({
                                   ...s,
                                   [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(parseInt(e.target.value, 10) || 1, hm)) },
                                 }))
@@ -22851,7 +22896,7 @@ const TalariaV8bLive = () => {
                   role="option"
                   onClick={(e) => {
                     e.stopPropagation();
-                    patchIndSettDraft((d) => ({ ...d, [menuParam.id]: opt.value }));
+                    patchIndSettDraftLive((d) => ({ ...d, [menuParam.id]: opt.value }));
                     setV9IndSelectMenu(null);
                   }}
                   onMouseEnter={() => setHov(optKey)}
@@ -25194,7 +25239,7 @@ const TalariaV8bLive = () => {
 
 
       {/* ── Anchored VWAP floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "vwap" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "vwap" && (()=>{
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vb-del";
@@ -25392,7 +25437,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "volProfile" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -25634,7 +25679,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && (groupSelected.brush?.icon ?? "vwap") === "anchoredVol" && (()=>{
+      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";
