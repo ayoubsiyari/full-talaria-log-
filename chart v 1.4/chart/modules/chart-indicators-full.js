@@ -280,13 +280,13 @@
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
 
-    function applyMomStyleFromParams(indicator, params) {
-        applyMaLengthSourceFromParams(indicator, params, 10);
+    function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
+        applyMaLengthSourceFromParams(indicator, params, defaultPeriod);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
         indicator.style.showLine = params.showLine !== false;
-        indicator.style.color = params.color || '#66bb6a';
+        indicator.style.color = params.color || defaultColor;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         indicator.style.lineStyle = params.lineStyle || legacyS;
         indicator.style.showZero = params.showZero !== false;
@@ -295,6 +295,14 @@
         indicator.style.zeroLineStyle = params.zeroLineStyle || 'Dotted';
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
+
+    function applyMomStyleFromParams(indicator, params) {
+        applyOscZeroPanelStyleFromParams(indicator, params, 10, '#66bb6a');
+    }
+
+    function applyRocStyleFromParams(indicator, params) {
+        applyOscZeroPanelStyleFromParams(indicator, params, 12, '#ffa726');
     }
     
     // Simple Moving Average
@@ -3189,8 +3197,9 @@
                 this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'roc':
-                applyMaLengthSourceFromParams(indicator, params, 12);
-                applyOverlayLineStyleFromParams(indicator, params, '#ffa726');
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+                applyRocStyleFromParams(indicator, params);
                 indicator.name = 'ROC(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period, indicator.params.source);
                 break;
@@ -4097,6 +4106,11 @@
             indicator.overlay = false;
             indicator.separatePanel = true;
             applyMomStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'roc') {
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyRocStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5755,6 +5769,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'mom' || indicator.type === 'momentum') {
             this._renderMomPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'roc') {
+            this._renderMomPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'willr') {
             this._renderWilliamsRPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -6112,7 +6129,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
 };
 
     var OVERLAY_LINE_SELECT_TYPES = {
-        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, roc: 1, mom: 1
+        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, mom: 1
     };
 
     function distPointToSegment(px, py, x1, y1, x2, y2) {

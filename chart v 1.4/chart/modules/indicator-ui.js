@@ -206,13 +206,13 @@ function cciStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
-/** Momentum Style tab (line + zero line + optional panel bg). */
-function momStyleParams() {
+/** Shared separate-panel oscillator Style (line + zero line + optional bg). */
+function oscZeroPanelStyleParams(lineLabel, defaultColor) {
     return [
-        { id: 'showLine', label: 'Show momentum line', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Momentum color', type: 'color', default: '#66bb6a', tab: 'style' },
-        { id: 'lineStyle', label: 'Momentum line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'Momentum thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showLine', label: 'Show ' + lineLabel + ' line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: lineLabel + ' color', type: 'color', default: defaultColor, tab: 'style' },
+        { id: 'lineStyle', label: lineLabel + ' line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: lineLabel + ' thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
         { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
         { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
@@ -221,11 +221,22 @@ function momStyleParams() {
     ];
 }
 
+/** Momentum Style tab (line + zero line + optional panel bg). */
+function momStyleParams() {
+    return oscZeroPanelStyleParams('Momentum', '#66bb6a');
+}
+
+/** Rate of Change Style tab (line + zero line + optional panel bg). */
+function rocStyleParams() {
+    return oscZeroPanelStyleParams('ROC', '#ffa726');
+}
+
 /** Resolve catalog / runtime indicator type to INDICATOR_DEFINITIONS key. */
 function resolveIndicatorDefinitionKey(type) {
     const t = String(type || '').toLowerCase();
     const aliases = {
         momentum: 'mom',
+        rateofchange: 'roc',
         williams: 'willr',
         williamsr: 'willr',
         stochastic: 'stoch',
@@ -667,8 +678,12 @@ const INDICATOR_DEFINITIONS = {
     },
     roc: {
         name: 'Rate of Change',
-        type: 'overlay',
-        params: overlayOscFullParams(12, '#ffa726')
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 12, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'input' }
+        ].concat(rocStyleParams())
     },
     mom: {
         name: 'Momentum',
@@ -3305,6 +3320,25 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('Momentum', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }, {
+                title: 'Zero Line',
+                levelHeader: true,
+                levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'roc') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('ROC', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }, {
                 title: 'Zero Line',
