@@ -331,6 +331,8 @@ const DEFAULT_CANDLE_WIDTH = 6;
 const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
+/** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
+const CHART_ENGINE_BUILD = '20260602a51';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -26681,6 +26683,9 @@ async function _talariaInitializeChart() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
+    if (typeof CHART_ENGINE_BUILD === 'string') {
+        console.info('[Talaria chart engine]', CHART_ENGINE_BUILD);
+    }
     // drawing-tools-ui.js and other modules use `window.drawingManager` to push property
     // dialog edits to the live chart. `window.chart` is assigned only after `new Chart()`,
     // so the manager must be aliased here (not during Chart construction).
