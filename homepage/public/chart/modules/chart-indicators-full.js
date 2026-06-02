@@ -5128,21 +5128,50 @@
 
 const DEFAULT_SEPARATE_PANEL_HEIGHT = 100;
 const MIN_SEPARATE_PANEL_HEIGHT = 60;
+const DEFAULT_VOLUME_PANEL_HEIGHT = 80;
+
+Chart.prototype._getActiveVolumeIndicator = function() {
+    if (!this.indicators || !this.indicators.active) return null;
+    for (let i = 0; i < this.indicators.active.length; i++) {
+        const ind = this.indicators.active[i];
+        if ((ind.type === 'volume' || ind.isVolume) && ind.visible !== false) {
+            return ind;
+        }
+    }
+    return null;
+};
+
+Chart.prototype._volumeRendersInSeparatePanel = function() {
+    if (!this.chartSettings || this.chartSettings.showVolume !== true) return false;
+    if (!this._getActiveVolumeIndicator()) return false;
+    return this._getVisibleSeparateIndicators().length > 0;
+};
+
+Chart.prototype._getVolumePanelHeight = function() {
+    const m = this.margin || { t: 0, b: 0 };
+    const ch = Math.max(0, (this.h || 0) - m.t - m.b);
+    const ratio = Number.isFinite(this.volumeHeight) ? this.volumeHeight : 0.15;
+    const fromRatio = Math.round(ch * Math.max(0.08, Math.min(ratio, 0.35)));
+    return Math.max(MIN_SEPARATE_PANEL_HEIGHT, fromRatio || DEFAULT_VOLUME_PANEL_HEIGHT);
+};
 
 /** Reserve separate-panel height before calculateScales/drawVolume so volume stays in its own band. */
 Chart.prototype._syncSeparateIndicatorPanelHeightEstimate = function() {
     if (typeof this._getVisibleSeparateIndicators !== 'function') return;
     const separateIndicators = this._getVisibleSeparateIndicators();
-    if (!separateIndicators.length) {
-        this.separateIndicatorPanelHeight = 0;
-        return;
+    let total = 0;
+    if (separateIndicators.length) {
+        let panelHeights = this._getSeparatePanelHeights(separateIndicators);
+        if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
+            this._separatePanelResize.activeHeights.length === panelHeights.length) {
+            panelHeights = this._separatePanelResize.activeHeights.slice();
+        }
+        total = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
     }
-    let panelHeights = this._getSeparatePanelHeights(separateIndicators);
-    if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
-        this._separatePanelResize.activeHeights.length === panelHeights.length) {
-        panelHeights = this._separatePanelResize.activeHeights.slice();
+    if (this._volumeRendersInSeparatePanel()) {
+        total += this._getVolumePanelHeight();
     }
-    this.separateIndicatorPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
+    this.separateIndicatorPanelHeight = total;
 };
 
 Chart.prototype._getVisibleSeparateIndicators = function() {
@@ -5283,7 +5312,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         this._separatePanelResize.activeHeights.length === panelHeights.length) {
         panelHeights = this._separatePanelResize.activeHeights.slice();
     }
-    const totalPanelHeight = panelHeights.reduce((sum, h) => sum + h, 0);
+    const volumeIndicator = this._volumeRendersInSeparatePanel() ? this._getActiveVolumeIndicator() : null;
+    const volumePanelHeight = volumeIndicator ? this._getVolumePanelHeight() : 0;
+    let totalPanelHeight = panelHeights.reduce((sum, h) => sum + h, 0) + volumePanelHeight;
 
     // Track total height so calculateScales can reserve the right amount of space
     this.separateIndicatorPanelHeight = totalPanelHeight;
@@ -5367,25 +5398,59 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     
     const panelSlots = [];
     let slotBottomCursor = panelBottom;
-    separateIndicators.forEach((indicator, idx) => {
+    const stackIndicators = [];
+
+    if (volumeIndicator && volumePanelHeight > 0) {
+        const volTop = slotBottomCursor - volumePanelHeight;
+        panelSlots.push({
+            index: 0,
+            indicator: volumeIndicator,
+            top: volTop,
+            bottom: slotBottomCursor,
+            height: volumePanelHeight,
+            isVolumeSlot: true
+        });
+        stackIndicators.push(volumeIndicator);
+        slotBottomCursor = volTop;
+    }
+
+    separateIndicators.forEach(function(indicator, idx) {
         const slotHeight = panelHeights[idx];
         const slotTop = slotBottomCursor - slotHeight;
         panelSlots.push({
-            index: idx,
+            index: volumeIndicator ? idx + 1 : idx,
             indicator: indicator,
             top: slotTop,
             bottom: slotBottomCursor,
             height: slotHeight
         });
+        stackIndicators.push(indicator);
         slotBottomCursor = slotTop;
     });
 
-    // Draw each indicator in its own slot (idx 0 = bottommost slot)
+    // Draw each indicator in its own slot (bottom slot first)
     panelSlots.forEach((slot) => {
         const indicator = slot.indicator;
         const idx = slot.index;
-        // Skip volume indicator - it has its own dedicated rendering
-        if (indicator.type === 'volume' || indicator.isVolume) return;
+        if (slot.isVolumeSlot || indicator.type === 'volume' || indicator.isVolume) {
+            const indBottom = slot.bottom;
+            const indTop = slot.top;
+            const panelHeight = slot.height;
+            if (idx > 0) {
+                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indBottom) <= 2;
+                ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(m.l, indBottom);
+                ctx.lineTo(panelFullRight, indBottom);
+                ctx.stroke();
+            }
+            ctx.fillStyle = axisStripBg;
+            ctx.fillRect(panelAxisLeft, indTop, panelFullRight - panelAxisLeft, panelHeight);
+            this._renderVolumePanel(ctx, m, indTop, indBottom, panelHeight, indicator, visibleStart, visibleEnd);
+            return;
+        }
 
         // Per-indicator slot boundaries
         const indBottom = slot.bottom;
@@ -5722,7 +5787,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     ctx.restore(); // end indicator-stack clip
 
     // Build TradingView-style HTML label bars
-    this._updateSeparatePanelLabels(panelSlots, separateIndicators, m);
+    this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
 };
 
 // Draw crosshair and value for separate panel indicators
@@ -7048,6 +7113,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     
     // Recompute the total pixel height reserved for separate-panel indicators
     Chart.prototype._updateIndicatorPanelHeight = function() {
+        if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
+            this._syncSeparateIndicatorPanelHeightEstimate();
+            return;
+        }
         const indicators = this._getVisibleSeparateIndicators();
         if (!indicators.length) {
             this.separateIndicatorPanelHeight = 0;
@@ -7055,6 +7124,115 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         const heights = this._getSeparatePanelHeights(indicators);
         this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0);
+    };
+
+    Chart.prototype._renderVolumePanel = function(ctx, m, indTop, indBottom, panelHeight, indicator, visibleStart, visibleEnd) {
+        if (!this.data || !this.data.length || !this.chartSettings || this.chartSettings.showVolume !== true) return;
+        if (!indicator || indicator.visible === false) return;
+
+        let upColor = this.chartSettings.volumeUpColor || 'rgba(8, 153, 129, 0.5)';
+        let downColor = this.chartSettings.volumeDownColor || 'rgba(242, 54, 69, 0.5)';
+        let showMA = false;
+        let maPeriod = 20;
+        let maColor = '#2962ff';
+        if (indicator.style) {
+            upColor = indicator.style.upColor || upColor;
+            downColor = indicator.style.downColor || downColor;
+            maColor = indicator.style.maColor || maColor;
+        }
+        if (indicator.params) {
+            showMA = !!indicator.params.showMA;
+            maPeriod = indicator.params.maPeriod || 20;
+        }
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(m.l, indTop, this.w - m.l - m.r, panelHeight);
+        ctx.clip();
+
+        let maxVol = 1;
+        for (let i = visibleStart; i < visibleEnd && i < this.data.length; i++) {
+            const v = Number(this.data[i] && this.data[i].v);
+            if (Number.isFinite(v) && v > maxVol) maxVol = v;
+        }
+
+        const volBandBottom = indBottom - 3;
+        const volBandTop = indTop + 3;
+        const scaleY = (typeof d3 !== 'undefined' && d3.scaleLinear)
+            ? d3.scaleLinear().domain([0, maxVol]).range([volBandBottom, volBandTop])
+            : function(v) { return volBandBottom - (v / maxVol) * (volBandBottom - volBandTop); };
+
+        const cw = Math.max(1, this.candleWidth || 6);
+        for (let i = visibleStart; i < visibleEnd && i < this.data.length; i++) {
+            const bar = this.data[i];
+            if (!bar) continue;
+            const v = Number(bar.v);
+            if (!Number.isFinite(v)) continue;
+            const x = this.dataIndexToPixel(i);
+            if (x < m.l - 10 || x > this.w - m.r + 10) continue;
+            const volumeY = scaleY(v);
+            const barH = Math.max(1, volBandBottom - volumeY);
+            const isGreen = Number(bar.c) >= Number(bar.o);
+            ctx.fillStyle = isGreen ? upColor : downColor;
+            ctx.fillRect(x - cw / 2, volumeY, cw, barH);
+        }
+
+        if (showMA && this.data.length >= maPeriod && typeof d3 !== 'undefined') {
+            const maKey = String(this.dataVersion || '') + '|' + maPeriod + '|' + this.data.length;
+            let volumeMA = this._volumeMaSeriesCache;
+            if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
+                volumeMA = new Array(this.data.length);
+                for (let i = 0; i < this.data.length; i++) {
+                    if (i < maPeriod - 1) {
+                        volumeMA[i] = null;
+                    } else {
+                        let sum = 0;
+                        for (let j = 0; j < maPeriod; j++) sum += this.data[i - j].v;
+                        volumeMA[i] = sum / maPeriod;
+                    }
+                }
+                this._volumeMaSeriesCache = volumeMA;
+                this._volumeMaSeriesCacheKey = maKey;
+            }
+            ctx.strokeStyle = maColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            let started = false;
+            for (let i = visibleStart; i < visibleEnd && i < volumeMA.length; i++) {
+                const maValue = volumeMA[i];
+                if (maValue === null || maValue === undefined || !Number.isFinite(maValue)) continue;
+                const x = this.dataIndexToPixel(i);
+                if (x < m.l - 10 || x > this.w - m.r + 10) continue;
+                let y = scaleY(maValue);
+                if (!Number.isFinite(y)) continue;
+                y = Math.max(volBandTop, Math.min(volBandBottom, y));
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else { ctx.lineTo(x, y); }
+            }
+            if (started) ctx.stroke();
+        }
+
+        let displayValue = null;
+        let displayColor = upColor;
+        const hoverIdx = Number.isFinite(this.hoverIndex) ? this.hoverIndex : (this.data.length - 1);
+        if (hoverIdx >= 0 && hoverIdx < this.data.length) {
+            const hb = this.data[hoverIdx];
+            const hv = Number(hb && hb.v);
+            if (Number.isFinite(hv)) {
+                displayValue = hv;
+                displayColor = Number(hb.c) >= Number(hb.o) ? upColor : downColor;
+            }
+        }
+        indicator._displayColor = displayColor;
+        indicator._displayLabel = displayValue !== null
+            ? (displayValue >= 1e9 ? (displayValue / 1e9).toFixed(2) + 'B'
+                : displayValue >= 1e6 ? (displayValue / 1e6).toFixed(2) + 'M'
+                : displayValue >= 1e3 ? (displayValue / 1e3).toFixed(1) + 'K'
+                : String(Math.round(displayValue)))
+            : '—';
+        indicator._axisLabelTags = [];
+
+        ctx.restore();
     };
 
     // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
@@ -7733,7 +7911,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             byId[n.getAttribute('data-talaria-sp-val')] = n;
         });
         indicators.forEach(function(ind) {
-            if (ind.type === 'volume' || ind.isVolume) return;
             const el = byId[String(ind.id)];
             if (!el) return;
             this._renderSeparatePanelLegendValue(el, ind);
@@ -7934,12 +8111,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const accentColor = this._cachedAccentColor || '#2962ff';
 
         indicators.forEach(function(indicator, idx) {
-            if (indicator.type === 'volume' || indicator.isVolume) return;
             const slot = panelSlots[idx];
             if (!slot) return;
+            const isVolume = indicator.type === 'volume' || indicator.isVolume;
             const slotTop = slot.top;
             const visible = indicator.visible !== false;
-            const showPlot = indicator.hidePlot !== true;
+            const showPlot = isVolume
+                ? (self.chartSettings.showVolume !== false)
+                : (indicator.hidePlot !== true);
             const showValues = indicator.hideValues !== true;
 
             // Compact-width row (name + value + actions) so crosshair / chart hits pass beside the strip
@@ -7984,7 +8163,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const eyeBtn = document.createElement('span');
             eyeBtn.title = showPlot ? 'Hide indicator' : 'Show indicator';
             const applyPlotEyeState = () => {
-                const on = indicator.hidePlot === true;
+                const on = isVolume
+                    ? (self.chartSettings.showVolume !== false)
+                    : (indicator.hidePlot !== true);
                 eyeBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
             };
             applyPlotEyeState();
@@ -7995,9 +8176,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             eyeBtn.onmouseleave = function() { applyPlotEyeState(); };
             eyeBtn.onclick = function(e) {
                 e.stopPropagation();
-                const nextHidden = !(indicator.hidePlot === true);
-                indicator.hidePlot = nextHidden;
-                indicator.hideValues = nextHidden;
+                if (isVolume) {
+                    const next = !(self.chartSettings.showVolume !== false);
+                    self.chartSettings.showVolume = next;
+                    indicator.visible = next;
+                } else {
+                    const nextHidden = !(indicator.hidePlot === true);
+                    indicator.hidePlot = nextHidden;
+                    indicator.hideValues = nextHidden;
+                }
                 applyPlotEyeState();
                 if (typeof self.render === 'function') self.render();
             };

@@ -15856,8 +15856,10 @@ class Chart {
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
-        // If volume is hidden, use full height for price chart
-        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+        // If volume is hidden, use full height for price chart.
+        // When volume shares the separate-panel stack, it gets its own bottom slot — no main-chart band.
+        const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
+        const effectiveVolumeHeight = (this.chartSettings.showVolume && !volInPanel) ? this.volumeHeight : 0;
         const priceHeight = ch * (1 - effectiveVolumeHeight);
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         
@@ -18591,6 +18593,10 @@ class Chart {
     drawVolume(visible, opts = {}) {
         // Skip if volume is disabled
         if (!this.chartSettings.showVolume) return;
+        // Volume renders in its own bottom panel slot when other separate indicators are active.
+        if (typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel()) {
+            return;
+        }
         
         const m = this.margin;
         
