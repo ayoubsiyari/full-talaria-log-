@@ -5997,43 +5997,22 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         return this.openOverlayIndicatorSettings(hit.id);
     };
 
-    /** Visible points along an overlay line for TradingView-style selection handles (canvas-co-drawn with the line). */
+    /** First/last on-screen points of an overlay line (TradingView: two endpoint anchors only). */
     function visibleOverlayLineSelectionPoints(chart, series, startIndex, endIndex) {
         const m = chart.margin || { l: 0, r: 0, t: 0, b: 0 };
-        const cw = chart.candleWidth || 8;
-        const minSpacing = Math.max(4, Math.min(10, cw * 0.4));
-        const all = [];
-
+        let first = null;
+        let last = null;
         for (let i = startIndex; i < endIndex; i++) {
             if (!Number.isFinite(series[i])) continue;
             const x = chart.dataIndexToPixel(i);
             const y = chart.yScale(series[i]);
-            if (x < m.l || x > chart.w - m.r) continue;
-            if (y < m.t || y > chart.h - m.b) continue;
-            all.push({ x: x, y: y, i: i });
+            if (x < m.l || x > chart.w - m.r || y < m.t || y > chart.h - m.b) continue;
+            if (!first) first = { x: x, y: y };
+            last = { x: x, y: y };
         }
-        if (!all.length) return [];
-
-        const picked = [];
-        let lastX = -Infinity;
-        for (let k = 0; k < all.length; k++) {
-            const pt = all[k];
-            const isLast = k === all.length - 1;
-            if (isLast || pt.x - lastX >= minSpacing) {
-                picked.push(pt);
-                lastX = pt.x;
-            }
-        }
-        const tail = all[all.length - 1];
-        const end = picked[picked.length - 1];
-        if (end.i !== tail.i) {
-            if (tail.x - end.x < minSpacing) {
-                picked[picked.length - 1] = tail;
-            } else {
-                picked.push(tail);
-            }
-        }
-        return picked;
+        if (!first) return [];
+        if (!last || (last.x === first.x && last.y === first.y)) return [first];
+        return [first, last];
     }
 
     Chart.prototype._drawOverlayLineSelectionHandles = function(series, startIndex, endIndex, style) {
