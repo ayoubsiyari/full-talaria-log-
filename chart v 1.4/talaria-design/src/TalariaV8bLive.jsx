@@ -10587,7 +10587,6 @@ const TalariaV8bLive = () => {
     { id:"MOM", type:"mom", name:"Momentum", abbr:"MOM", cat:"momentum", desc:"Raw price change over N periods" },
     { id:"ROC", type:"roc", name:"Rate of Change", abbr:"ROC", cat:"momentum", desc:"Percentage change in price over N periods" },
     { id:"WPR", type:"williams", name:"Williams %R", abbr:"%R", cat:"momentum", desc:"Overbought/oversold oscillator in -100 to 0 range" },
-    { id:"PPO", type:"ppo", name:"Percentage Price Oscillator", abbr:"PPO", cat:"momentum", desc:"MACD expressed as a percentage" },
     { id:"DPO", type:"dpo", name:"Detrended Price Oscillator", abbr:"DPO", cat:"momentum", desc:"Removes trend to isolate cycles" },
     { id:"AO", type:"ao", name:"Awesome Oscillator", abbr:"AO", cat:"momentum", desc:"5/34 period midpoint SMA difference" },
     { id:"UO", type:"uo", name:"Ultimate Oscillator", abbr:"UO", cat:"momentum", desc:"Multi-period momentum oscillator" },

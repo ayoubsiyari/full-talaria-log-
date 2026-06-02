@@ -1424,7 +1424,6 @@ const TalariaV8b = () => {
     {id:"TSI",name:"True Strength Index",abbr:"TSI",cat:"momentum",desc:"Double-smoothed momentum oscillator"},
     {id:"KST",name:"Know Sure Thing",abbr:"KST",cat:"momentum",desc:"Summed & smoothed rate-of-change oscillator"},
     {id:"DPO",name:"Detrended Price Oscillator",abbr:"DPO",cat:"momentum",desc:"Removes trend to isolate cycles"},
-    {id:"PPO",name:"Percentage Price Oscillator",abbr:"PPO",cat:"momentum",desc:"MACD expressed as a percentage"},
     {id:"AO",name:"Awesome Oscillator",abbr:"AO",cat:"momentum",desc:"5/34 period SMA midpoint difference"},
     {id:"STOCHRSI",name:"Stochastic RSI",abbr:"StRSI",cat:"momentum",desc:"Stochastic applied to RSI values for sensitivity"},
     // Volatility

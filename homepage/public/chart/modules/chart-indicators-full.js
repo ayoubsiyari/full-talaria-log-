@@ -295,6 +295,32 @@
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: -20, oversold: -80, mid: -50 });
     }
 
+    function applyMacdStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.fast = params.fast != null ? Number(params.fast) : 12;
+        indicator.params.slow = params.slow != null ? Number(params.slow) : 26;
+        indicator.params.signal = params.signal != null ? Number(params.signal) : 9;
+        indicator.params.source = params.source || 'close';
+        indicator.style.showMacd = params.showMacd !== false;
+        indicator.style.macdColor = params.macdColor || '#2962ff';
+        indicator.style.macdLineStyle = params.macdLineStyle || legacyS;
+        indicator.style.macdLineWidth = params.macdLineWidth != null ? params.macdLineWidth : legacyW;
+        indicator.style.showSignal = params.showSignal !== false;
+        indicator.style.signalColor = params.signalColor || '#f23645';
+        indicator.style.signalLineStyle = params.signalLineStyle || legacyS;
+        indicator.style.signalLineWidth = params.signalLineWidth != null ? params.signalLineWidth : legacyW;
+        indicator.style.showHist = params.showHist !== false;
+        indicator.style.histUpColor = params.histUpColor || 'rgba(38,166,154,0.85)';
+        indicator.style.histDownColor = params.histDownColor || 'rgba(239,83,80,0.85)';
+        indicator.style.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
+        indicator.style.showZero = params.showZero !== false;
+        indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
+        indicator.style.zeroLineStyle = params.zeroLineStyle || 'Line';
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
+
     function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
         applyMaLengthSourceFromParams(indicator, params, defaultPeriod);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
@@ -516,9 +542,10 @@
     }
     
     // MACD
-    function calculateMACD(data, fast, slow, signal) {
-        const fastEMA = calculateEMA(data, fast, 'c');
-        const slowEMA = calculateEMA(data, slow, 'c');
+    function calculateMACD(data, fast, slow, signal, source) {
+        source = source || 'close';
+        const fastEMA = calculateEMA(data, fast, source);
+        const slowEMA = calculateEMA(data, slow, source);
         const macd = [];
         
         for (let i = 0; i < data.length; i++) {
@@ -2506,42 +2533,6 @@
         return { viPlus: viPlus, viMinus: viMinus };
     }
 
-    function calculatePPO(data, fast, slow, signal) {
-        const fastEMA = calculateEMA(data, fast, 'c');
-        const slowEMA = calculateEMA(data, slow, 'c');
-        const macd = [];
-        for (let i = 0; i < data.length; i++) {
-            if (fastEMA[i] !== null && slowEMA[i] !== null && slowEMA[i] !== 0) {
-                macd.push(100 * (fastEMA[i] - slowEMA[i]) / slowEMA[i]);
-            } else {
-                macd.push(null);
-            }
-        }
-        const signalLine = [];
-        const multiplier = 2 / (signal + 1);
-        let ema = null;
-        for (let i = 0; i < macd.length; i++) {
-            if (macd[i] === null) {
-                signalLine.push(null);
-            } else if (ema === null) {
-                ema = macd[i];
-                signalLine.push(ema);
-            } else {
-                ema = (macd[i] - ema) * multiplier + ema;
-                signalLine.push(ema);
-            }
-        }
-        const histogram = [];
-        for (let i = 0; i < macd.length; i++) {
-            if (macd[i] !== null && signalLine[i] !== null) {
-                histogram.push(macd[i] - signalLine[i]);
-            } else {
-                histogram.push(null);
-            }
-        }
-        return { macd: macd, signal: signalLine, histogram: histogram };
-    }
-
     function calculateDPO(data, period) {
         const p = Math.max(3, period);
         const shift = Math.floor(p / 2) + 1;
@@ -3040,15 +3031,19 @@
                 break;
                 
             case 'macd':
-                indicator.params.fast = params.fast || 12;
-                indicator.params.slow = params.slow || 26;
-                indicator.params.signal = params.signal || 9;
-                indicator.style.macdColor = params.macdColor || '#2962ff';
-                indicator.style.signalColor = params.signalColor || '#f23645';
-                indicator.style.histogramColor = params.histogramColor || '#787b86';
+            case 'ppo':
+                indicator.type = 'macd';
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+                applyMacdStyleFromParams(indicator, params);
                 indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
-                indicator.overlay = false; // MACD should be in separate panel
-                this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                this.indicators.data[indicator.id] = calculateMACD(
+                    this.data,
+                    indicator.params.fast,
+                    indicator.params.slow,
+                    indicator.params.signal,
+                    indicator.params.source
+                );
                 break;
                 
             case 'stoch':
@@ -3429,15 +3424,18 @@
                 break;
 
             case 'ppo':
-                indicator.params.fast = params.fast || 12;
-                indicator.params.slow = params.slow || 26;
-                indicator.params.signal = params.signal || 9;
-                indicator.style.macdColor = params.macdColor || '#2962ff';
-                indicator.style.signalColor = params.signalColor || '#f23645';
-                indicator.style.histogramColor = params.histogramColor || '#787b86';
+                indicator.type = 'macd';
                 indicator.overlay = false;
-                indicator.name = 'PPO(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
-                this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                indicator.separatePanel = true;
+                applyMacdStyleFromParams(indicator, params);
+                indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                this.indicators.data[indicator.id] = calculateMACD(
+                    this.data,
+                    indicator.params.fast,
+                    indicator.params.slow,
+                    indicator.params.signal,
+                    indicator.params.source
+                );
                 break;
 
             case 'dpo':
@@ -4134,6 +4132,12 @@
             indicator.separatePanel = true;
             applyWillrStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'macd' || indicator.type === 'ppo') {
+            indicator.type = 'macd';
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyMacdStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -4182,8 +4186,16 @@
                 this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'macd':
+            case 'ppo':
+                indicator.type = 'macd';
                 indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
-                this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                this.indicators.data[indicator.id] = calculateMACD(
+                    this.data,
+                    indicator.params.fast,
+                    indicator.params.slow,
+                    indicator.params.signal,
+                    indicator.params.source || 'close'
+                );
                 break;
             case 'stoch':
             case 'stochastic':
@@ -4425,8 +4437,15 @@
                 this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
                 break;
             case 'ppo':
-                indicator.name = 'PPO(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
-                this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                indicator.type = 'macd';
+                indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
+                this.indicators.data[indicator.id] = calculateMACD(
+                    this.data,
+                    indicator.params.fast,
+                    indicator.params.slow,
+                    indicator.params.signal,
+                    indicator.params.source || 'close'
+                );
                 break;
             case 'dpo':
                 indicator.name = 'DPO(' + indicator.params.period + ')';
@@ -4580,7 +4599,15 @@
                     this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'macd':
-                    this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
+                case 'ppo':
+                    indicator.type = 'macd';
+                    this.indicators.data[indicator.id] = calculateMACD(
+                        this.data,
+                        indicator.params.fast,
+                        indicator.params.slow,
+                        indicator.params.signal,
+                        indicator.params.source || 'close'
+                    );
                     break;
                 case 'stoch':
                 case 'stochastic':
@@ -4724,9 +4751,6 @@
                     break;
                 case 'vortex':
                     this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
-                    break;
-                case 'ppo':
-                    this.indicators.data[indicator.id] = calculatePPO(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
                     break;
                 case 'dpo':
                     this.indicators.data[indicator.id] = calculateDPO(this.data, indicator.params.period);
@@ -5764,10 +5788,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         }
         
         // Type-specific rendering for multi-series indicators
-        if (indicator.type === 'macd') {
-            this._renderMACDPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
-            return;
-        } else if (indicator.type === 'ppo') {
+        if (indicator.type === 'macd' || indicator.type === 'ppo') {
+            indicator.type = 'macd';
             this._renderMACDPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
@@ -7547,13 +7569,19 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     // ---- MACD panel: histogram bars + MACD line + signal line + zero line ----
     Chart.prototype._renderMACDPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data.macd || !data.signal || !data.histogram) return;
+        const style = indicator.style || {};
         const macdArr = data.macd, signalArr = data.signal, histArr = data.histogram;
+        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
 
         let min = Infinity, max = -Infinity;
         for (let i = visibleStart; i < visibleEnd; i++) {
             [macdArr[i], signalArr[i], histArr[i]].forEach(v => {
                 if (v !== null && v !== undefined && !isNaN(v)) { min = Math.min(min, v); max = Math.max(max, v); }
             });
+        }
+        if (Number.isFinite(zeroVal)) {
+            min = Math.min(min, zeroVal);
+            max = Math.max(max, zeroVal);
         }
         if (min === Infinity) return;
         const range = max - min || 1;
@@ -7570,58 +7598,59 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 4);
 
-        // Zero line
-        const zeroY = scaleY(0);
-        if (zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.moveTo(m.l, zeroY);
-            ctx.lineTo(this.w, zeroY);
-            ctx.stroke();
+        const zeroY = scaleY(zeroVal);
+        if (style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
+                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal);
         }
 
-        // Histogram bars
-        const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
-        for (let i = visibleStart; i < visibleEnd && i < histArr.length; i++) {
-            const val = histArr[i];
-            if (val === null || val === undefined || isNaN(val)) continue;
-            const x = this.dataIndexToPixel(i);
-            const y = scaleY(val);
-            const z = (zeroY !== null && !isNaN(zeroY)) ? zeroY : (panelBottom - 5);
-            const prevVal = (i > visibleStart) ? histArr[i - 1] : null;
-            const growing = (prevVal === null || val >= prevVal);
-            ctx.fillStyle = val >= 0
-                ? (growing ? 'rgba(38,166,154,0.85)' : 'rgba(38,166,154,0.4)')
-                : (growing ? 'rgba(239,83,80,0.4)' : 'rgba(239,83,80,0.85)');
-            ctx.fillRect(x - barW / 2, Math.min(y, z), barW, Math.max(1, Math.abs(y - z)));
+        if (style.showHist !== false) {
+            const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
+            const histUp = style.histUpColor || 'rgba(38,166,154,0.85)';
+            const histDown = style.histDownColor || 'rgba(239,83,80,0.85)';
+            for (let i = visibleStart; i < visibleEnd && i < histArr.length; i++) {
+                const val = histArr[i];
+                if (val === null || val === undefined || isNaN(val)) continue;
+                const x = this.dataIndexToPixel(i);
+                const y = scaleY(val);
+                const z = (zeroY !== null && !isNaN(zeroY)) ? zeroY : scaleY(0);
+                if (z === null || y === null) continue;
+                ctx.fillStyle = val >= 0 ? histUp : histDown;
+                ctx.fillRect(x - barW / 2, Math.min(y, z), barW, Math.max(1, Math.abs(y - z)));
+            }
         }
 
-        this._drawPanelLine(ctx, m, macdArr, indicator.style.macdColor || '#2962ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, signalArr, indicator.style.signalColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        if (style.showMacd !== false) {
+            this._drawPanelLine(ctx, m, macdArr, style.macdColor || '#2962ff', style.macdLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.macdLineStyle || 'Line');
+        }
+        if (style.showSignal !== false) {
+            this._drawPanelLine(ctx, m, signalArr, style.signalColor || '#f23645', style.signalLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.signalLineStyle || 'Line');
+        }
 
-        // Label
         let lastM = null, lastS = null;
         for (let i = Math.min(visibleEnd - 1, macdArr.length - 1); i >= visibleStart; i--) {
             if (macdArr[i] !== null && !isNaN(macdArr[i])) { lastM = macdArr[i]; lastS = signalArr[i]; break; }
         }
 
-        // Show latest MACD value tag on the right axis strip
         const macdTags = [];
-        if (lastM !== null && Number.isFinite(lastM)) {
+        if (lastM !== null && Number.isFinite(lastM) && style.showMacd !== false) {
             const yM = scaleY(lastM);
             if (Number.isFinite(yM)) {
-                const mColor = indicator.style.macdColor || '#2962ff';
+                const mColor = style.macdColor || '#2962ff';
                 macdTags.push({ y: yM, text: lastM.toFixed(4), color: mColor });
             }
         }
-        if (lastS !== null && Number.isFinite(lastS)) {
+        if (lastS !== null && Number.isFinite(lastS) && style.showSignal !== false) {
             const yS = scaleY(lastS);
             if (Number.isFinite(yS)) {
-                const sColor = indicator.style.signalColor || '#f23645';
+                const sColor = style.signalColor || '#f23645';
                 macdTags.push({ y: yS, text: lastS.toFixed(4), color: sColor });
             }
         }
@@ -7653,7 +7682,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.fillText(tag.text, this.w - m.r + 2 + labelWidth / 2, tag.y + 4);
         });
 
-        indicator._displayColor = indicator.style.macdColor || '#2962ff';
+        indicator._displayColor = style.macdColor || '#2962ff';
         indicator._displayLabel = lastM !== null ? 'M:' + lastM.toFixed(5) + (lastS !== null ? '  S:' + lastS.toFixed(5) : '') : '';
     };
 

@@ -226,6 +226,29 @@ function willrStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
+/** MACD Style tab (MACD / signal lines, histogram colors, zero line, optional panel bg). */
+function macdStyleParams() {
+    return [
+        { id: 'showMacd', label: 'Show MACD line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'macdColor', label: 'MACD color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'macdLineStyle', label: 'MACD line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'macdLineWidth', label: 'MACD thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showSignal', label: 'Show signal line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'signalLineStyle', label: 'Signal line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'signalLineWidth', label: 'Signal thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showHist', label: 'Show histogram', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'histUpColor', label: 'Histogram up color', type: 'color', default: 'rgba(38,166,154,0.85)', tab: 'style' },
+        { id: 'histDownColor', label: 'Histogram down color', type: 'color', default: 'rgba(239,83,80,0.85)', tab: 'style' },
+        { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
+        { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
 /** Shared separate-panel oscillator Style (line + zero line + optional bg). */
 function oscZeroPanelStyleParams(lineLabel, defaultColor) {
     return [
@@ -257,6 +280,7 @@ function resolveIndicatorDefinitionKey(type) {
     const aliases = {
         momentum: 'mom',
         rateofchange: 'roc',
+        ppo: 'macd',
         williams: 'willr',
         williamsr: 'willr',
         stochastic: 'stoch',
@@ -532,13 +556,9 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'fast', label: 'Fast Length', type: 'number', default: 12, min: 1 },
             { id: 'slow', label: 'Slow Length', type: 'number', default: 26, min: 1 },
-            { id: 'signal', label: 'Signal Length', type: 'number', default: 9, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'macdColor', label: 'MACD Line Color', type: 'color', default: '#2962ff' },
-            { id: 'signalColor', label: 'Signal Line Color', type: 'color', default: '#f23645' },
-            { id: 'histogramColor', label: 'Histogram Color', type: 'color', default: '#787b86' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'signal', label: 'Signal Smoothing', type: 'number', default: 9, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+        ].concat(macdStyleParams())
     },
     wma: {
         name: 'Weighted Moving Average',
@@ -889,19 +909,6 @@ const INDICATOR_DEFINITIONS = {
             { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
             { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
-    },
-    ppo: {
-        name: 'Percentage Price Oscillator',
-        type: 'separate',
-        params: [
-            { id: 'fast', label: 'Fast length', type: 'number', default: 12, min: 1 },
-            { id: 'slow', label: 'Slow length', type: 'number', default: 26, min: 1 },
-            { id: 'signal', label: 'Signal length', type: 'number', default: 9, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'macdColor', label: 'PPO line color', type: 'color', default: '#2962ff' },
-            { id: 'signalColor', label: 'Signal color', type: 'color', default: '#f23645' },
-            { id: 'histogramColor', label: 'Histogram color', type: 'color', default: '#787b86' }
         ].concat(separateLineStyleExtras())
     },
     dpo: {
@@ -2063,7 +2070,7 @@ function createIndicatorSelectionMenu(chartInstance) {
             indicators: [
                 'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
-                'rsi', 'macd', 'ppo', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
+                'rsi', 'macd', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
                 'massindex', 'coppock', 'rvi', 'elderray', 'seasonality', 'cotnet',
                 'obv', 'adr', 'volume'
             ]
@@ -3297,6 +3304,32 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 title: 'Mid Level',
                 levelHeader: true,
                 levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'macd') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('MACD', 'macdColor', 'macdLineStyle', 'macdLineWidth', 'showMacd'),
+                    v9PlotRow('Signal', 'signalColor', 'signalLineStyle', 'signalLineWidth', 'showSignal')
+                ]
+            }, {
+                title: 'Histogram',
+                rows: [
+                    v9ColorRow('Up Color', 'histUpColor', 'showHist'),
+                    v9ColorRow('Down Color', 'histDownColor', 'showHist')
+                ]
+            }, {
+                title: 'Zero Line',
+                levelHeader: true,
+                levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
             }, {
                 title: 'Background',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
