@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a56';
+const CHART_ENGINE_BUILD = '20260602a57';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16885,6 +16885,7 @@ class Chart {
 
         // Build time-axis ticks — cache while panning; skip rebuild during wheel / axis-drag bursts.
         const interactionLightPaint = this._isInteractionLightPaint();
+        const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
         if (interactionLightPaint) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
@@ -16980,9 +16981,9 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid/volume/drawings during wheel burst and axis-drag zoom bursts.
+            // Skip grid/volume/drawings during wheel burst only — axis drag keeps overlays visible.
             this.drawGrid({ panFast: true, skipAll: true });
-            if (!interactionLightPaint) {
+            if (!wheelBurstLight) {
                 this.drawVolume(visible, panOpts);
             }
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
@@ -16990,8 +16991,7 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            // Overlay + separate-panel indicators during chart pan (wheel/axis bursts still skip for speed).
-            if (!interactionLightPaint) {
+            if (!wheelBurstLight) {
                 if (typeof this.drawIndicators === 'function') {
                     this.drawIndicators();
                 }
@@ -17004,9 +17004,9 @@ class Chart {
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (!interactionLightPaint) {
+            if (!wheelBurstLight) {
                 this.redrawDrawings();
-                this._syncOrderOverlaysDuringPan(true, { lite: true });
+                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging, { lite: true });
                 if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                     this.syncOverlayIndicatorSelectionOverlay();
                 }
