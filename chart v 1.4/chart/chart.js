@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a57';
+const CHART_ENGINE_BUILD = '20260602a59';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16981,35 +16981,30 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid/volume/drawings during wheel burst only — axis drag keeps overlays visible.
+            // Skip grid during wheel burst; keep volume/indicators/drawings visible while scrolling.
             this.drawGrid({ panFast: true, skipAll: true });
-            if (!wheelBurstLight) {
-                this.drawVolume(visible, panOpts);
-            }
+            this.drawVolume(visible, panOpts);
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
                 this._paintSeparatePanelStackBackground();
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (!wheelBurstLight) {
-                if (typeof this.drawIndicators === 'function') {
-                    this.drawIndicators();
-                }
-                if (typeof this.renderSeparatePanelIndicators === 'function') {
-                    this.renderSeparatePanelIndicators();
-                }
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
             }
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (!wheelBurstLight) {
-                this.redrawDrawings();
-                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging, { lite: true });
-                if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
-                    this.syncOverlayIndicatorSelectionOverlay();
-                }
+            // Drawings must track every interaction frame — wheel burst used to skip them and they snapped on release.
+            this.redrawDrawings();
+            this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
+            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+                this.syncOverlayIndicatorSelectionOverlay();
             }
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -20707,6 +20702,14 @@ class Chart {
                 const d = this.yScale.domain();
                 this._wheelSnapYDomain = [Number(d[0]), Number(d[1])];
                 this._wheelSnapPriceOffset = this.priceOffset;
+            }
+            if (!burstWasActive && this.drawingManager?.drawings?.length) {
+                const dm = this.drawingManager;
+                dm.drawings.forEach((drawing) => {
+                    if (drawing && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+                        dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                    }
+                });
             }
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
