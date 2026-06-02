@@ -208,17 +208,7 @@
         return raw;
     }
 
-    function applyAroonStyleFromParams(indicator, params) {
-        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
-        const legacyS = params.lineStyle || 'Line';
-        indicator.style.showUp = params.showUp !== false;
-        indicator.style.upColor = params.upColor || '#00e676';
-        indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
-        indicator.style.upLineStyle = params.upLineStyle || legacyS;
-        indicator.style.showDown = params.showDown !== false;
-        indicator.style.downColor = params.downColor || '#f23645';
-        indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
-        indicator.style.downLineStyle = params.downLineStyle || legacyS;
+    function applyOscillatorLevelStyleFromParams(indicator, params) {
         indicator.style.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 70;
         indicator.style.showOverbought = params.showOverbought !== false;
         indicator.style.overboughtColor = params.overboughtColor || '#787b86';
@@ -233,6 +223,30 @@
         indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
+
+    function applyAroonStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showUp = params.showUp !== false;
+        indicator.style.upColor = params.upColor || '#00e676';
+        indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
+        indicator.style.upLineStyle = params.upLineStyle || legacyS;
+        indicator.style.showDown = params.showDown !== false;
+        indicator.style.downColor = params.downColor || '#f23645';
+        indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
+        indicator.style.downLineStyle = params.downLineStyle || legacyS;
+        applyOscillatorLevelStyleFromParams(indicator, params);
+    }
+
+    function applyRsiStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#9c27b0';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyOscillatorLevelStyleFromParams(indicator, params);
     }
     
     // Simple Moving Average
@@ -385,21 +399,28 @@
     }
     
     // RSI (Relative Strength Index)
-    function calculateRSI(data, period) {
+    function calculateRSI(data, period, source) {
+        period = period || 14;
+        source = source || 'close';
         const result = [];
         const gains = [];
         const losses = [];
-        
-        // Calculate price changes
+
         for (let i = 1; i < data.length; i++) {
-            const change = data[i].c - data[i - 1].c;
+            const cur = resolveOhlcSourceValue(data[i], source);
+            const prev = resolveOhlcSourceValue(data[i - 1], source);
+            if (!Number.isFinite(cur) || !Number.isFinite(prev)) {
+                gains.push(0);
+                losses.push(0);
+                continue;
+            }
+            const change = cur - prev;
             gains.push(change > 0 ? change : 0);
             losses.push(change < 0 ? Math.abs(change) : 0);
         }
-        
-        result.push(null); // First candle has no RSI
-        
-        // Calculate initial average gain/loss
+
+        result.push(null);
+
         let avgGain = 0, avgLoss = 0;
         for (let i = 0; i < period && i < gains.length; i++) {
             avgGain += gains[i];
@@ -407,8 +428,7 @@
         }
         avgGain /= period;
         avgLoss /= period;
-        
-        // Calculate RSI
+
         for (let i = 0; i < gains.length; i++) {
             if (i < period) {
                 result.push(null);
@@ -420,7 +440,7 @@
                 result.push(rsi);
             }
         }
-        
+
         return result;
     }
     
@@ -2940,13 +2960,11 @@
             case 'rsi':
                 indicator.params.period = params.period || 14;
                 indicator.params.source = params.source || 'close';
-                indicator.style.color = params.color || '#9c27b0';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
-                indicator.name = 'RSI(' + indicator.params.period + ')';
+                indicator.params.divergenceEnabled = params.divergenceEnabled === true;
                 indicator.overlay = false;
-                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                applyRsiStyleFromParams(indicator, params);
+                indicator.name = 'RSI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source);
                 break;
                 
             case 'macd':
@@ -4021,6 +4039,9 @@
         if (indicator.type === 'aroon') {
             applyAroonStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'rsi') {
+            applyRsiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -4066,7 +4087,7 @@
 
             case 'rsi':
                 indicator.name = 'RSI(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'macd':
                 indicator.name = 'MACD(' + indicator.params.fast + ',' + indicator.params.slow + ',' + indicator.params.signal + ')';
@@ -4464,7 +4485,7 @@
                     this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
                     break;
                 case 'rsi':
-                    this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'macd':
                     this.indicators.data[indicator.id] = calculateMACD(this.data, indicator.params.fast, indicator.params.slow, indicator.params.signal);
@@ -5669,6 +5690,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'aroon') {
             this._renderAroonPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'rsi') {
+            this._renderRsiPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'willr') {
             this._renderWilliamsRPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -5759,26 +5783,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         });
 
         // Reference lines for oscillators
-        if (indicator.type === 'rsi') {
-            [[70, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.35)'], [30, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
-                const ry = scaleY(lvl);
-                if (ry > indTop && ry < indBottom) {
-                    ctx.strokeStyle = col;
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(m.l, ry);
-                    ctx.lineTo(this.w, ry);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.fillStyle = col;
-                    ctx.font = '9px Roboto';
-                    ctx.textAlign = 'right';
-                    ctx.fillText(lvl, this.w - 6, ry - 2);
-                }
-            });
-            ctx.textAlign = 'left';
-        } else if (indicator.type === 'cci') {
+        if (indicator.type === 'cci') {
             [[-100, 'rgba(38,166,154,0.5)'], [0, 'rgba(120,123,134,0.35)'], [100, 'rgba(239,83,80,0.5)']].forEach(([lvl, col]) => {
                 const ry = scaleY(lvl);
                 if (ry > indTop && ry < indBottom) {
@@ -7965,6 +7970,55 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         indicator._displayColor = style.upColor || '#00e676';
         indicator._displayLabel = lastU !== null ? '↑' + lastU.toFixed(0) + ' ↓' + (lastD != null ? lastD.toFixed(0) : '—') : '';
+    };
+
+    // ---- RSI panel: 0–100 + configurable levels + optional background ----
+    Chart.prototype._renderRsiPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        indicator._panelBaseMin = 0;
+        indicator._panelBaseMax = 100;
+        const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const rMin = dom.min;
+        const rMax = dom.max;
+        const rSpan = Math.max(1e-9, rMax - rMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - rMin) / rSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 0);
+
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.overboughtValue != null ? style.overboughtValue : 70,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', style.overboughtValue != null ? style.overboughtValue : 70);
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.oversoldValue != null ? style.oversoldValue : 30,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', style.oversoldValue != null ? style.oversoldValue : 30);
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.midValue != null ? style.midValue : 50,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', style.midValue != null ? style.midValue : 50);
+        }
+
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, style.color || '#9c27b0', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = style.color || '#9c27b0';
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
     };
 
     // ---- Williams %R: fixed −100 … 0, ref −20 / −80 ----

@@ -101,17 +101,9 @@ function channelBandsStyleParams() {
     return bollingerBandsStyleParams();
 }
 
-/** TradingView-style Aroon Style tab (Up/Down lines + OB/OS/Mid levels + optional panel bg). */
-function aroonStyleParams() {
+/** Shared OB/OS/Mid levels + optional panel background (RSI, Aroon, etc.). */
+function oscillatorLevelStyleParams() {
     return [
-        { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676', tab: 'style' },
-        { id: 'upLineStyle', label: 'Aroon Up Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
-        { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645', tab: 'style' },
-        { id: 'downLineStyle', label: 'Aroon Down Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
         { id: 'overboughtValue', label: 'Overbought value', type: 'number', default: 70, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'showOverbought', label: 'Show overbought level', type: 'checkbox', default: true, tab: 'style' },
         { id: 'overboughtColor', label: 'Overbought color', type: 'color', default: '#787b86', tab: 'style' },
@@ -127,6 +119,30 @@ function aroonStyleParams() {
         { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
         { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
     ];
+}
+
+/** TradingView-style Aroon Style tab (Up/Down lines + OB/OS/Mid levels + optional panel bg). */
+function aroonStyleParams() {
+    return [
+        { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'upLineStyle', label: 'Aroon Up Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'downLineStyle', label: 'Aroon Down Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ].concat(oscillatorLevelStyleParams());
+}
+
+/** TradingView-style RSI Style tab (RSI line + OB/OS/Mid levels + optional panel bg). */
+function rsiStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show RSI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'RSI color', type: 'color', default: '#9c27b0', tab: 'style' },
+        { id: 'lineStyle', label: 'RSI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'RSI thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ].concat(oscillatorLevelStyleParams());
 }
 
 function __ictEverythingParamList() {
@@ -373,9 +389,8 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#9c27b0' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'divergenceEnabled', label: 'Divergence', type: 'checkbox', default: false }
+        ].concat(rsiStyleParams())
     },
     macd: {
         name: 'Moving Average Convergence Divergence',
@@ -3106,6 +3121,33 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 rows: [
                     v9PlotRow('Aroon Up', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
                     v9PlotRow('Aroon Down', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown')
+                ]
+            }, {
+                title: 'Overbought Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+            }, {
+                title: 'Oversold Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+            }, {
+                title: 'Mid Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'rsi') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('RSI', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }, {
                 title: 'Overbought Level',
