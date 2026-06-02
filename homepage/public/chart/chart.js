@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a52';
+const CHART_ENGINE_BUILD = '20260602a53';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -15859,6 +15859,33 @@ class Chart {
             this._syncSeparateIndicatorPanelHeightEstimate();
         }
         const m = this.margin;
+
+        // Price-axis drag only changes Y zoom/offset — skip pipeline + OHLC scan (same idea as wheel burst).
+        if (this._isPriceAxisZoomDragging() && this.xScale && this.yScale && this.volumeScale) {
+            if (this.manualCenterPrice == null || this.manualRange == null) {
+                const cur = this.yScale.domain();
+                this.manualCenterPrice = (cur[0] + cur[1]) / 2;
+                this.manualRange = cur[1] - cur[0];
+            }
+            const ch = this.h - m.t - m.b;
+            const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
+            const effectiveVolumeHeight = (this.chartSettings.showVolume && !volInPanel) ? this.volumeHeight : 0;
+            const volumeAreaHeight = ch * effectiveVolumeHeight;
+            const indPanelH = this.separateIndicatorPanelHeight || 0;
+            const halfRange = this.manualRange / (2 * this.priceZoom);
+            const domainMin = this.manualCenterPrice - halfRange + this.priceOffset;
+            const domainMax = this.manualCenterPrice + halfRange + this.priceOffset;
+            this.yScale = d3.scaleLinear()
+                .domain([domainMin, domainMax])
+                .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
+            this.scales = {
+                yScale: this.yScale,
+                xScale: this.xScale,
+                volumeScale: this.volumeScale,
+            };
+            return;
+        }
+
         const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
         // If volume is hidden, use full height for price chart.
@@ -16127,6 +16154,23 @@ class Chart {
         if (!this.drag || !this.drag.active) return false;
         const t = this.drag.type;
         return t === 'priceAxis' || t === 'timeAxis' || t === 'separatePanelAxis';
+    }
+
+    _isPriceAxisZoomDragging() {
+        return !!(this.drag && this.drag.active && this.drag.type === 'priceAxis');
+    }
+
+    _isTimeAxisZoomDragging() {
+        return !!(this.drag && this.drag.active && this.drag.type === 'timeAxis');
+    }
+
+    /** Wheel burst or axis-drag — skip heavy overlays until interaction settles. */
+    _isInteractionLightPaint() {
+        if (this._wheelBurstFinalPass || this._axisZoomFinalizePass) return false;
+        if (this._isWheelZoomBurst()) return true;
+        if (this._isPriceAxisZoomDragging()) return true;
+        if (this._isTimeAxisZoomDragging()) return true;
+        return false;
     }
 
     /** One chart paint per frame while axis zoom math runs on every mousemove. */
@@ -16811,14 +16855,13 @@ class Chart {
             this._paintSeparatePanelStackBackground();
         }
 
-        // Build time-axis ticks — cache + shift only while chart-body panning (offset-only motion).
-        // Skip label rebuild during wheel burst (spacing changes every tick — expensive and invisible while scrolling).
-        const wheelBurstPaint = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-        if (wheelBurstPaint) {
-            this._timeTicks = this._wheelBurstTimeTicks || [];
+        // Build time-axis ticks — cache while panning; skip rebuild during wheel / axis-drag bursts.
+        const interactionLightPaint = this._isInteractionLightPaint();
+        if (interactionLightPaint) {
+            this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
             this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
-            this._wheelBurstTimeTicks = this._timeTicks;
+            this._cachedInteractionTimeTicks = this._timeTicks;
         }
 
         // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
@@ -16903,9 +16946,9 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid/volume/extra work during wheel burst — candles + price line only.
+            // Skip grid/volume/drawings during wheel burst and axis-drag zoom bursts.
             this.drawGrid({ panFast: true, skipAll: true });
-            if (!wheelBurstPaint) {
+            if (!interactionLightPaint) {
                 this.drawVolume(visible, panOpts);
             }
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
@@ -16918,7 +16961,7 @@ class Chart {
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            if (!wheelBurstPaint) {
+            if (!interactionLightPaint) {
                 this.redrawDrawings();
                 this._syncOrderOverlaysDuringPan(true, { lite: true });
             }
@@ -20998,11 +21041,17 @@ class Chart {
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
                 this.isZooming = true;
-                // Ensure cursor is correct
+                if (this.yScale) {
+                    const d = this.yScale.domain();
+                    this.manualCenterPrice = (d[0] + d[1]) / 2;
+                    this.manualRange = d[1] - d[0];
+                }
+                this._cachedInteractionTimeTicks = this._timeTicks;
                 this.canvas.style.cursor = 'ns-resize';
             } else if (mode === 'timeAxis') {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
+                this._cachedInteractionTimeTicks = this._timeTicks;
             } else if (mode === 'chart') {
                 this.drag.type = 'pan';
                 this._snapshotPanDrawingsLayer();
@@ -21120,8 +21169,7 @@ class Chart {
                     
                     // Keep same candle at right edge
                     this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
-                    
-                    this.constrainOffset();
+
                     this._scheduleAxisZoomRender();
                 }
                 // ─── Price Axis Drag Zoom ───
@@ -21452,6 +21500,9 @@ class Chart {
                 wasDragging
                 && (dragType === 'priceAxis' || dragType === 'timeAxis' || dragType === 'separatePanelAxis')
             ) {
+                if (dragType === 'timeAxis') {
+                    try { this.constrainOffset(); } catch (_e) {}
+                }
                 this._finishAxisZoomInteraction();
                 if (dragType === 'timeAxis') {
                     this.dispatchScrollSync(true);
