@@ -159,6 +159,54 @@
         indicator.params.period = params.period != null ? params.period : defaultPeriod;
         indicator.params.source = params.source || 'close';
     }
+
+    function applyBollingerStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 1;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showMiddle = params.showMiddle !== false;
+        indicator.style.middleColor = params.middleColor || '#787b86';
+        indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
+        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
+        indicator.style.showUpper = params.showUpper !== false;
+        indicator.style.upperColor = params.upperColor || '#2962ff';
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
+        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
+        indicator.style.showLower = params.showLower !== false;
+        indicator.style.lowerColor = params.lowerColor || '#2962ff';
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
+        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
+        indicator.style.showFill = params.showFill !== false;
+        if (params.fillColor && String(params.fillColor).indexOf('rgba') >= 0 && params.fillOpacity == null) {
+            indicator.style.fillColor = params.fillColor;
+            indicator.style.fillOpacity = null;
+        } else {
+            indicator.style.fillColor = params.fillColor || '#2962ff';
+            indicator.style.fillOpacity = params.fillOpacity != null ? params.fillOpacity : 10;
+        }
+    }
+
+    function bollingerFillRgba(style) {
+        if (!style || style.showFill === false) return null;
+        const raw = style.fillColor || '#2962ff';
+        if (style.fillOpacity == null && String(raw).indexOf('rgba') >= 0) return raw;
+        let op = style.fillOpacity != null ? Number(style.fillOpacity) : 10;
+        if (!Number.isFinite(op)) op = 10;
+        op = Math.max(0, Math.min(100, op)) / 100;
+        const s = String(raw).trim();
+        if (s.charAt(0) === '#') {
+            let h = s.slice(1);
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            if (h.length === 6) {
+                const r = parseInt(h.slice(0, 2), 16);
+                const g = parseInt(h.slice(2, 4), 16);
+                const b = parseInt(h.slice(4, 6), 16);
+                if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                    return 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
+                }
+            }
+        }
+        return raw;
+    }
     
     // Simple Moving Average
     function calculateSMA(data, period, source) {
@@ -2801,13 +2849,7 @@
                 indicator.params.period = params.period || 20;
                 indicator.params.source = params.source || 'close';
                 indicator.params.stdDev = params.stdDev || 2;
-                indicator.style.upperColor = params.upperColor || '#2962ff';
-                indicator.style.middleColor = params.middleColor || '#787b86';
-                indicator.style.lowerColor = params.lowerColor || '#2962ff';
-                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.05)';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 1;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
+                applyBollingerStyleFromParams(indicator, params);
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
                 this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source);
                 break;
@@ -3834,6 +3876,17 @@
         if (newParams.middleColor !== undefined) indicator.style.middleColor = newParams.middleColor;
         if (newParams.lowerColor !== undefined) indicator.style.lowerColor = newParams.lowerColor;
         if (newParams.fillColor !== undefined) indicator.style.fillColor = newParams.fillColor;
+        if (newParams.fillOpacity !== undefined) indicator.style.fillOpacity = newParams.fillOpacity;
+        if (newParams.showMiddle !== undefined) indicator.style.showMiddle = newParams.showMiddle !== false;
+        if (newParams.showUpper !== undefined) indicator.style.showUpper = newParams.showUpper !== false;
+        if (newParams.showLower !== undefined) indicator.style.showLower = newParams.showLower !== false;
+        if (newParams.showFill !== undefined) indicator.style.showFill = newParams.showFill !== false;
+        if (newParams.middleLineWidth !== undefined) indicator.style.middleLineWidth = newParams.middleLineWidth;
+        if (newParams.upperLineWidth !== undefined) indicator.style.upperLineWidth = newParams.upperLineWidth;
+        if (newParams.lowerLineWidth !== undefined) indicator.style.lowerLineWidth = newParams.lowerLineWidth;
+        if (newParams.middleLineStyle !== undefined) indicator.style.middleLineStyle = newParams.middleLineStyle;
+        if (newParams.upperLineStyle !== undefined) indicator.style.upperLineStyle = newParams.upperLineStyle;
+        if (newParams.lowerLineStyle !== undefined) indicator.style.lowerLineStyle = newParams.lowerLineStyle;
         if (newParams.macdColor !== undefined) indicator.style.macdColor = newParams.macdColor;
         if (newParams.signalColor !== undefined) indicator.style.signalColor = newParams.signalColor;
         if (newParams.histogramColor !== undefined) indicator.style.histogramColor = newParams.histogramColor;
@@ -6376,23 +6429,22 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
 Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length) {
     const ctx = this.ctx;
     const m = this.margin;
-    
-    // Draw fill first
-    if (style.fillColor) {
-        ctx.fillStyle = style.fillColor;
+    style = style || {};
+
+    const fillRgba = bollingerFillRgba(style);
+    if (fillRgba) {
+        ctx.fillStyle = fillRgba;
         ctx.beginPath();
-        
-        // Upper band
+
         let pathStarted = false;
         for (let i = startIndex; i < endIndex; i++) {
             if (bands.upper[i] === null) continue;
-            
+
             const x = this.dataIndexToPixel(i);
             const y = this.yScale(bands.upper[i]);
 
-            // Skip if outside visible area
             if (x < m.l - 50 || x > this.w - m.r + 50) continue;
-            
+
             if (!pathStarted) {
                 ctx.moveTo(x, y);
                 pathStarted = true;
@@ -6400,17 +6452,16 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
                 ctx.lineTo(x, y);
             }
         }
-        
-        // Lower band (reverse)
+
         for (let i = Math.min(endIndex - 1, bands.lower.length - 1); i >= startIndex; i--) {
             if (bands.lower[i] === null) continue;
             if (!pathStarted) continue;
-            
+
             const x = this.dataIndexToPixel(i);
             const y = this.yScale(bands.lower[i]);
 
             if (x < m.l - 50 || x > this.w - m.r + 50) continue;
-            
+
             ctx.lineTo(x, y);
         }
 
@@ -6419,11 +6470,40 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
             ctx.fill();
         }
     }
-    
-    // Draw lines
-    this.drawLineIndicator(bands.upper, style.upperColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
-    this.drawLineIndicator(bands.middle, style.middleColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
-    this.drawLineIndicator(bands.lower, style.lowerColor, style.lineWidth, startIndex, endIndex, style.lineStyle);
+
+    const legacyW = style.lineWidth != null ? style.lineWidth : 1;
+    const legacyS = style.lineStyle || 'Line';
+
+    if (style.showUpper !== false) {
+        this.drawLineIndicator(
+            bands.upper,
+            style.upperColor,
+            style.upperLineWidth != null ? style.upperLineWidth : legacyW,
+            startIndex,
+            endIndex,
+            style.upperLineStyle || legacyS
+        );
+    }
+    if (style.showMiddle !== false) {
+        this.drawLineIndicator(
+            bands.middle,
+            style.middleColor,
+            style.middleLineWidth != null ? style.middleLineWidth : legacyW,
+            startIndex,
+            endIndex,
+            style.middleLineStyle || legacyS
+        );
+    }
+    if (style.showLower !== false) {
+        this.drawLineIndicator(
+            bands.lower,
+            style.lowerColor,
+            style.lowerLineWidth != null ? style.lowerLineWidth : legacyW,
+            startIndex,
+            endIndex,
+            style.lowerLineStyle || legacyS
+        );
+    }
 };
 
 /** Parabolic SAR — dots above/below price by trend */

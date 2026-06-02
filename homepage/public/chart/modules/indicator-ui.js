@@ -72,6 +72,31 @@ function separateLineStyleExtras() {
     ];
 }
 
+/** TradingView-style Bollinger Bands Style tab (per-band show/color/thickness/style + fill). */
+function bollingerBandsStyleParams() {
+    return [
+        { id: 'basisHeading', label: 'Basis (Middle Band)', type: 'heading', tab: 'style' },
+        { id: 'showMiddle', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'middleColor', label: 'Color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'middleLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'middleLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperHeading', label: 'Upper Band', type: 'heading', tab: 'style' },
+        { id: 'showUpper', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'upperLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerHeading', label: 'Lower Band', type: 'heading', tab: 'style' },
+        { id: 'showLower', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'fillHeading', label: 'Area Between Bands', type: 'heading', tab: 'style' },
+        { id: 'showFill', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'fillColor', label: 'Background Color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'fillOpacity', label: 'Opacity', type: 'number', default: 10, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -290,15 +315,8 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.5, step: 0.1 },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.1)', tab: 'style' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 5, tab: 'style' },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+            { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.5, step: 0.1 }
+        ].concat(bollingerBandsStyleParams())
     },
     envelope: {
         name: 'SMA Envelope',
@@ -2320,8 +2338,15 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
             if (isNaN(value)) value = param.default;
         }
         var pid = String(param.id).toLowerCase();
-        if (pid.indexOf('color') >= 0 || pid.indexOf('width') >= 0 || pid.indexOf('fill') >= 0
-            || pid.indexOf('linestyle') >= 0 || pid === 'showlabel') {
+        var toStyle = param.tab === 'style'
+            || pid.indexOf('color') >= 0
+            || pid.indexOf('width') >= 0
+            || pid.indexOf('fill') >= 0
+            || pid.indexOf('linestyle') >= 0
+            || pid.indexOf('opacity') >= 0
+            || pid === 'showlabel'
+            || /^show(middle|upper|lower|fill)$/.test(pid);
+        if (toStyle) {
             newStyle[param.id] = value;
         } else {
             newParams[param.id] = value;
