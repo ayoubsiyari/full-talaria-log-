@@ -11592,7 +11592,10 @@ const TalariaV8bLive = () => {
     if (v9IndSelectMenu == null) return;
     const onDoc = (ev) => {
       const t = ev && ev.target;
-      if (t && typeof t.closest === "function" && t.closest("[data-v9-ind-select-root='1']")) return;
+      if (t && typeof t.closest === "function") {
+        if (t.closest("[data-v9-ind-select-root='1']")) return;
+        if (t.closest("[data-v9-ind-select-trigger='1']")) return;
+      }
       setV9IndSelectMenu(null);
     };
     const onKey = (ev) => {
@@ -22090,22 +22093,25 @@ const TalariaV8bLive = () => {
             });
           });
           return (
-            <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
+            <div style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
               <button
                 type="button"
+                data-v9-ind-select-trigger="1"
                 onWheel={(e) => e.stopPropagation()}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   if (open) {
-                    setV9IndSelectMenu(null);
+                    flushSync(() => setV9IndSelectMenu(null));
                     return;
                   }
                   const r = e.currentTarget.getBoundingClientRect();
-                  setV9IndSelectMenu({
-                    key: k,
-                    top: r.bottom + 2,
-                    left: r.left,
-                    width: Math.max(r.width, 96),
+                  flushSync(() => {
+                    setV9IndSelectMenu({
+                      key: k,
+                      top: r.bottom + 2,
+                      left: r.left,
+                      width: Math.max(r.width, 96),
+                    });
                   });
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -22137,7 +22143,7 @@ const TalariaV8bLive = () => {
                   <I n="chevDown" s={8} cl={open ? c.acL : c.ts} />
                 </span>
               </button>
-              {open && v9IndSelectMenu && (
+              {open && v9IndSelectMenu && typeof document !== "undefined" && createPortal(
                 <div
                   data-v9-ind-select-root="1"
                   data-v9-ind-select-panel="1"
@@ -22146,15 +22152,13 @@ const TalariaV8bLive = () => {
                   onPointerDown={(e) => e.stopPropagation()}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
-                  onWheel={(e) => {
-                    e.stopPropagation();
-                  }}
+                  onWheel={(e) => e.stopPropagation()}
                   style={{
                     position: "fixed",
                     top: v9IndSelectMenu.top,
                     left: v9IndSelectMenu.left,
                     minWidth: v9IndSelectMenu.width,
-                    zIndex: 12050,
+                    zIndex: 12100,
                     maxHeight: typeof window !== "undefined"
                       ? Math.max(120, window.innerHeight - v9IndSelectMenu.top - 12)
                       : 260,
@@ -22166,6 +22170,7 @@ const TalariaV8bLive = () => {
                     border: `1px solid ${c.brH}`,
                     boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
                     borderRadius: 4,
+                    pointerEvents: "auto",
                   }}
                 >
                   {options.map((opt) => {
@@ -22188,7 +22193,8 @@ const TalariaV8bLive = () => {
                       </div>
                     );
                   })}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           );
