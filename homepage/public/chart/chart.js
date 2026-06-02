@@ -15769,8 +15769,9 @@ class Chart {
     _getSpacingForCandleWidth(cw) {
         const w = Number(cw);
         if (!Number.isFinite(w)) return 7;
-        if (w <= 0.5) return Math.max(0.2, w);
-        // TradingView-like gutter: ~1px at default zoom, scales up slightly on wide bars.
+        // Sub-pixel spacing for deep zoom-out (1m can show ~3500 bars like TradingView).
+        // w >= 1 keeps the visible gutter between bodies at normal zoom levels.
+        if (w < 1) return Math.max(0.15, w);
         const gap = Math.max(1, Math.round(w * 0.167));
         return w + gap;
     }
@@ -15793,8 +15794,8 @@ class Chart {
     _getMaxBarsOnScreen(timeframe) {
         const m = this.margin || { l: 60, r: 60 };
         const plotPx = Math.max(320, (this.w || 800) - m.l - m.r);
-        const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
         if (this.isBacktestMode) {
+            const fromWidth = Math.max(320, Math.ceil(plotPx * 1.25));
             const budget = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.RENDER_BAR_BUDGET)
                 || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.RENDER_BAR_BUDGET)
                 || 500;
@@ -15809,10 +15810,11 @@ class Chart {
             '1d': 1200, '1w': 900, '1wk': 900,
         };
         const tfCap = limits[tf];
-        if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
+        // Use per-TF cap directly — sub-pixel spacing fits thousands of bars on any plot width.
+        if (Number.isFinite(tfCap)) return tfCap;
         const mo = tf.match(/^(\d+)mo$/);
-        if (mo) return Math.min(fromWidth, 800);
-        return Math.min(fromWidth, 2400);
+        if (mo) return 800;
+        return 2400;
     }
 
     /**
