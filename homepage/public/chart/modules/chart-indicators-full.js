@@ -4741,6 +4741,9 @@
             
             this.indicators.active.splice(index, 1);
             delete this.indicators.data[id];
+            if (this.selectedOverlayIndicatorId === id) {
+                this.selectedOverlayIndicatorId = null;
+            }
             this._updateIndicatorPanelHeight();
             
             if (typeof this.render === 'function') {
@@ -4903,6 +4906,10 @@
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             }
+        }
+
+        if (typeof this.drawOverlayIndicatorSelection === 'function') {
+            this.drawOverlayIndicatorSelection(startIndex, endIndex);
         }
 
         ctx.restore();
@@ -5846,6 +5853,185 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     }
     return false;
 };
+
+    var OVERLAY_LINE_SELECT_TYPES = {
+        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1
+    };
+
+    function distPointToSegment(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+        const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+        return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    }
+
+    function getOverlayLineSeries(indicator, data) {
+        if (!indicator || !data) return null;
+        if (Array.isArray(data)) return data;
+        if (indicator.type === 'custom' && Array.isArray(data.plots)) {
+            for (let pi = 0; pi < data.plots.length; pi++) {
+                const plot = data.plots[pi];
+                if (!plot || plot.type === 'histogram') continue;
+                if (Array.isArray(plot.values)) return plot.values;
+                if (Array.isArray(plot.data)) return plot.data;
+            }
+            return null;
+        }
+        if (Array.isArray(data.line)) return data.line;
+        return null;
+    }
+
+    function isSelectableOverlayLineIndicator(indicator) {
+        if (!indicator || indicator.overlay === false || indicator.visible === false) return false;
+        if (indicator.separatePanel) return false;
+        if (indicator.type === 'custom') return true;
+        return !!OVERLAY_LINE_SELECT_TYPES[indicator.type];
+    }
+
+    Chart.prototype._getOverlayLineHitTolerance = function(indicator) {
+        const lw = indicator && indicator.style && indicator.style.lineWidth != null
+            ? Number(indicator.style.lineWidth) : 2;
+        return Math.max(7, (Number.isFinite(lw) ? lw : 2) + 6);
+    };
+
+    Chart.prototype.findOverlayIndicatorAtPoint = function(mx, my, options) {
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return null;
+        if (!Number.isFinite(mx) || !Number.isFinite(my) || !this.yScale) return null;
+        const m = this.margin;
+        if (mx < m.l || mx > this.w - m.r || my < m.t || my > this.h - m.b) return null;
+
+        const opts = options || {};
+        const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
+        const visibleEnd = Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : (this.data ? this.data.length : 0);
+        const buffer = 20;
+        const startIndex = Math.max(0, visibleStart - buffer);
+        const endIndex = Math.min(this.data ? this.data.length : 0, visibleEnd + buffer);
+
+        for (let ai = this.indicators.active.length - 1; ai >= 0; ai--) {
+            const indicator = this.indicators.active[ai];
+            if (!isSelectableOverlayLineIndicator(indicator)) continue;
+            if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
+                && !this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
+
+            const series = getOverlayLineSeries(indicator, this.indicators.data[indicator.id]);
+            if (!series || !series.length) continue;
+
+            const tol = opts.tolerance != null ? opts.tolerance : this._getOverlayLineHitTolerance(indicator);
+            let prevX = null;
+            let prevY = null;
+            let prevOk = false;
+
+            for (let i = startIndex; i < endIndex; i++) {
+                const val = series[i];
+                if (!Number.isFinite(val)) {
+                    prevOk = false;
+                    continue;
+                }
+                const x = this.dataIndexToPixel(i);
+                const y = this.yScale(val);
+                if (x < m.l - 50 || x > this.w - m.r + 50) {
+                    prevOk = false;
+                    continue;
+                }
+                if (Math.hypot(mx - x, my - y) <= tol) return indicator;
+                if (prevOk && prevX != null && prevY != null) {
+                    if (distPointToSegment(mx, my, prevX, prevY, x, y) <= tol) return indicator;
+                }
+                prevX = x;
+                prevY = y;
+                prevOk = true;
+            }
+        }
+        return null;
+    };
+
+    Chart.prototype.selectOverlayIndicator = function(id) {
+        const nextId = id || null;
+        if (this.selectedOverlayIndicatorId === nextId) return;
+        this.selectedOverlayIndicatorId = nextId;
+        if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        else if (typeof this.render === 'function') this.render();
+    };
+
+    Chart.prototype.clearOverlayIndicatorSelection = function() {
+        if (!this.selectedOverlayIndicatorId) return;
+        this.selectedOverlayIndicatorId = null;
+        if (typeof this.scheduleRender === 'function') this.scheduleRender();
+        else if (typeof this.render === 'function') this.render();
+    };
+
+    Chart.prototype.openOverlayIndicatorSettings = function(id) {
+        const targetId = id || this.selectedOverlayIndicatorId;
+        if (!targetId) return false;
+        if (typeof this.showIndicatorSettings === 'function') {
+            this.showIndicatorSettings(targetId);
+            return true;
+        }
+        return false;
+    };
+
+    Chart.prototype.handleOverlayIndicatorChartClick = function(mx, my) {
+        const hit = this.findOverlayIndicatorAtPoint(mx, my);
+        if (hit) {
+            this.selectOverlayIndicator(hit.id);
+            const dm = this.drawingManager;
+            if (dm && typeof dm.deselectAll === 'function') {
+                dm.deselectAll({ fromCanvasBackground: true });
+            }
+            return true;
+        }
+        if (this.selectedOverlayIndicatorId) {
+            this.clearOverlayIndicatorSelection();
+        }
+        return false;
+    };
+
+    Chart.prototype.handleOverlayIndicatorChartDoubleClick = function(mx, my) {
+        const hit = this.findOverlayIndicatorAtPoint(mx, my);
+        if (!hit) return false;
+        this.selectOverlayIndicator(hit.id);
+        return this.openOverlayIndicatorSettings(hit.id);
+    };
+
+    Chart.prototype.drawOverlayIndicatorSelection = function(startIndex, endIndex) {
+        const id = this.selectedOverlayIndicatorId;
+        if (!id || !this.indicators || !this.ctx || !this.yScale) return;
+
+        const indicator = this.indicators.active.find(function(ind) { return ind.id === id; });
+        if (!indicator || !isSelectableOverlayLineIndicator(indicator)) return;
+        if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
+            && !this._indicatorVisibleForCurrentTimeframe(indicator)) return;
+
+        const series = getOverlayLineSeries(indicator, this.indicators.data[id]);
+        if (!series || !series.length) return;
+
+        const ctx = this.ctx;
+        const m = this.margin;
+        const color = (indicator.style && indicator.style.color) || '#2962ff';
+        const lw = (indicator.style && indicator.style.lineWidth) || 2;
+        const radius = Math.max(3.5, lw + 2);
+        const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
+        const span = Math.max(1, endIndex - startIndex);
+        const step = span > 48 ? Math.ceil(span / 48) : 1;
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = bg;
+        ctx.lineWidth = 1.5;
+
+        for (let i = startIndex; i < endIndex; i += step) {
+            if (!Number.isFinite(series[i])) continue;
+            const x = this.dataIndexToPixel(i);
+            const y = this.yScale(series[i]);
+            if (x < m.l - 20 || x > this.w - m.r + 20) continue;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+        ctx.restore();
+    };
 
 Chart.prototype._lineDashForStyle = function(lineStyle) {
     const s = String(lineStyle || 'Solid').toLowerCase();

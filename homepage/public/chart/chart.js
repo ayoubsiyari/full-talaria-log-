@@ -20925,7 +20925,15 @@ class Chart {
                             this.svg.node().style.cursor = 'text';
                         }
                     } else if (!isHoveringShape) {
-                        this.canvas.style.cursor = this.getCurrentCursorStyle();
+                        let cursorStyle = this.getCurrentCursorStyle();
+                        if (mode === 'chart' && typeof this.findOverlayIndicatorAtPoint === 'function') {
+                            const indHit = this.findOverlayIndicatorAtPoint(mx, my);
+                            if (indHit) cursorStyle = 'pointer';
+                        }
+                        this.canvas.style.cursor = cursorStyle;
+                        if (this.svg && this.svg.node()) {
+                            this.svg.node().style.cursor = cursorStyle;
+                        }
                     }
                 }
             }
@@ -21078,6 +21086,13 @@ class Chart {
                         const top = hits && hits.length ? hits[0] : null;
                         if (top && !top.locked && this.drawingManager.isVolumeProfileToolType(top.type)) {
                             this.drawingManager.selectDrawing(top, false);
+                            vpHandled = true;
+                        }
+                    }
+                    if (!vpHandled && typeof this.handleOverlayIndicatorChartClick === 'function') {
+                        const [mouseX, mouseY] = this._eventCanvasLocalXY(e);
+                        const mode = detectCursorMode(mouseX, mouseY);
+                        if (mode === 'chart' && this.handleOverlayIndicatorChartClick(mouseX, mouseY)) {
                             vpHandled = true;
                         }
                     }
@@ -21348,6 +21363,14 @@ class Chart {
         this.canvas.addEventListener('dblclick', e => {
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = this.cursor.mode || detectCursorMode(mx, my);
+
+            if (mode === 'chart'
+                && typeof this.handleOverlayIndicatorChartDoubleClick === 'function'
+                && this.handleOverlayIndicatorChartDoubleClick(mx, my)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             
             if (mode === 'separatePanelAxis' && this.cursor.separatePanelSlot &&
                 this.cursor.separatePanelSlot.indicator) {
