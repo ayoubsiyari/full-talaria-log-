@@ -15801,8 +15801,10 @@ class Chart {
             return Math.min(fromWidth, budget);
         }
         const tf = String(timeframe || this.currentTimeframe || '1m').toLowerCase().trim();
+        const oneMinuteBarsPerDay = 24 * 60;
         const limits = {
-            '1m': 3500, '2m': 3200, '3m': 3000, '5m': 2800,
+            // 1m: allow zoom-out up to 3 calendar days (4320 bars).
+            '1m': oneMinuteBarsPerDay * 3, '2m': 3200, '3m': 3000, '5m': 2800,
             '10m': 2600, '15m': 2400, '30m': 2200,
             '45m': 2000, '1h': 1800, '2h': 1600, '3h': 1500, '4h': 1400,
             '6h': 1300, '8h': 1200, '12h': 1100,
