@@ -16523,7 +16523,6 @@ class Chart {
             const ev = this._pendingCrosshairMoveEvent;
             this._pendingCrosshairMoveEvent = null;
             if (!ev) return;
-            if (this.drag && this.drag.active && (this.drag.type === 'pan' || this._isAxisZoomDragging())) return;
             if (typeof this.updateCrosshair === 'function') this.updateCrosshair(ev);
             if (typeof this.updateTooltip === 'function') this.updateTooltip(ev);
         });
@@ -21026,10 +21025,8 @@ class Chart {
                 }
             }
             
-            // Crosshair + tooltip: heavy DOM work — coalesce to one update per frame (skip during pan/axis zoom).
-            if (!(this.drag.active && (this.drag.type === 'pan' || this._isAxisZoomDragging()))) {
-                this._scheduleCrosshairTooltipFromEvent(e);
-            }
+            // Crosshair + tooltip: coalesce to one update per frame (DOM-only — safe during pan/zoom drag).
+            this._scheduleCrosshairTooltipFromEvent(e);
         });
 
         // ═══════════════════════════════════════════════════════════════════
