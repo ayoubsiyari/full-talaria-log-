@@ -9299,6 +9299,7 @@ const TalariaV8bLive = () => {
     profitColor:"rgba(0,180,100,0.25)", lossColor:"rgba(220,50,50,0.25)", entryColor:"rgba(180,180,180,0.9)",
     labelFontSize:"11", labelColor:"#ffffff", showPriceLabels:true, showTimeLabels:false,
   });
+  const rrHydratedStyleRef = useRef(null);
   const [rrInputs, setRrInputs] = useState({ riskAmount:"100", qty:"1" });
   const [vwapLocked, setVwapLocked] = useState(false);
   const [vpLocked, setVpLocked] = useState(false);
@@ -15437,6 +15438,7 @@ const TalariaV8bLive = () => {
     suppressForwardBridge,
     suppressTxtForwardBridge,
     suppressRrForwardBridge,
+    rrHydratedStyleRef,
     setTxtStyle,
     setRrStyle,
     setVwapStyle,
@@ -15572,16 +15574,20 @@ const TalariaV8bLive = () => {
             if (drawing.type === 'long-position' || drawing.type === 'short-position') {
               const rs = drawing.style || {};
               br.suppressRrForwardBridge.current = true;
-              br.setRrStyle(prev => ({
-                ...prev,
-                profitColor: rs.rewardColor || prev.profitColor,
-                lossColor: rs.riskColor || prev.lossColor,
-                entryColor: rs.entryColor || prev.entryColor,
-                labelFontSize: String(rs.labelFontSize ?? rs.fontSize ?? prev.labelFontSize),
-                labelColor: rs.labelTextColor || rs.textColor || prev.labelColor,
-                showPriceLabels: typeof rs.showPriceLabels === 'boolean' ? rs.showPriceLabels : prev.showPriceLabels,
-                showTimeLabels: typeof rs.showTimeLabels === 'boolean' ? rs.showTimeLabels : prev.showTimeLabels,
-              }));
+              br.setRrStyle(prev => {
+                const next = {
+                  ...prev,
+                  profitColor: rs.rewardColor || prev.profitColor,
+                  lossColor: rs.riskColor || prev.lossColor,
+                  entryColor: rs.entryColor || prev.entryColor,
+                  labelFontSize: String(rs.labelFontSize ?? rs.fontSize ?? prev.labelFontSize),
+                  labelColor: rs.labelTextColor || rs.textColor || prev.labelColor,
+                  showPriceLabels: typeof rs.showPriceLabels === 'boolean' ? rs.showPriceLabels : prev.showPriceLabels,
+                  showTimeLabels: typeof rs.showTimeLabels === 'boolean' ? rs.showTimeLabels : prev.showTimeLabels,
+                };
+                br.rrHydratedStyleRef.current = next;
+                return next;
+              });
             }
             // Volume tools hydration via tb.show
             const dt = drawing.type;
@@ -17215,7 +17221,19 @@ const TalariaV8bLive = () => {
   const rrStyleBridgeReady = useRef(false);
   useLayoutEffect(() => {
     if (!rrStyleBridgeReady.current) { rrStyleBridgeReady.current = true; return; }
-    if (suppressRrForwardBridge.current) { suppressRrForwardBridge.current = false; return; }
+    if (suppressRrForwardBridge.current) {
+      const h = rrHydratedStyleRef.current;
+      const isHydratedEcho = !!h
+        && rrStyle.profitColor === h.profitColor
+        && rrStyle.lossColor === h.lossColor
+        && rrStyle.entryColor === h.entryColor
+        && rrStyle.labelFontSize === h.labelFontSize
+        && rrStyle.labelColor === h.labelColor
+        && rrStyle.showPriceLabels === h.showPriceLabels
+        && rrStyle.showTimeLabels === h.showTimeLabels;
+      suppressRrForwardBridge.current = false;
+      if (isHydratedEcho) return;
+    }
     try {
       const chartsToRender = new Set();
       collectV9BridgeTargets().forEach(({ dm, d }) => {
@@ -18470,7 +18488,7 @@ const TalariaV8bLive = () => {
                       {tlStyleDrop==="rrFsz" && dropShell("rrFsz",44,true,
                         ["8","9","10","11","12","13","14","16","18"].map(sz=>{
                           const isA=rrStyle.labelFontSize===sz,isH=hov===`rrfsz-${sz}`;
-                          return(<div key={sz} onClick={()=>{setRrStyle(s=>({...s,labelFontSize:sz}));setTlStyleDrop(null);}}
+                          return(<div key={sz} {...tlStyleDropPick(() => setRrStyle(s=>({...s,labelFontSize:sz})))}
                             onMouseEnter={()=>setHov(`rrfsz-${sz}`)} onMouseLeave={()=>setHov(null)}
                             style={{padding:"5px 0",cursor:"default",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",
                               background:isA?c.acD:isH?c.hv:"transparent",transition:"background 0.1s"}}>
