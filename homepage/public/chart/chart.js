@@ -19412,6 +19412,103 @@ class Chart {
         this.ctx.save();
         this.ctx.globalAlpha = 1;
 
+        // ── TradingView-style batched draw (filled candles) ──
+        // Collapses per-candle fillStyle/strokeStyle/stroke() churn into a few grouped passes.
+        // Produces identical pixels to the per-candle loop; used for the common filled-candle case.
+        if (!isHollow && this.chartSettings.showCandleBody !== false) {
+            const wickUp = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.wickUpColor;
+            const wickDown = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.wickDownColor;
+            const bodyUp = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.bodyUpColor;
+            const bodyDown = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.bodyDownColor;
+            const borderUp = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.borderUpColor;
+            const borderDown = useUnifiedBarColor ? unifiedBarColor : this.chartSettings.borderDownColor;
+            const showWick = this.chartSettings.showCandleWick !== false;
+            const spacingNow = this.getCandleSpacing();
+
+            const geom = [];
+            for (let gi = 0; gi < drawSeries.length; gi++) {
+                const it = drawSeries[gi];
+                const px = it.pixelX;
+                const x = Number.isFinite(px) ? px : this.dataIndexToPixel(it.idx);
+                const extendedMargin = Number.isFinite(px) ? 2 : this.candleWidth * 2;
+                if (x < m.l - extendedMargin || x > this.w + extendedMargin) { skipped++; continue; }
+
+                const d = it.d;
+                const yo = this.yScale(d.o);
+                const yc = this.yScale(d.c);
+                const yh = this.yScale(d.h);
+                const yl = this.yScale(d.l);
+                const isUp = d.c >= d.o;
+                const cx = Math.round(x);
+                const barSpacing = Number.isFinite(px) ? TV_ZOOMED_OUT_SLOT_PX : spacingNow;
+                const bodyWidthPx = Number.isFinite(px)
+                    ? 1
+                    : Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
+                const halfBodyPx = Math.floor(bodyWidthPx / 2);
+                const roundedOpen = Math.round(yo);
+                const roundedClose = Math.round(yc);
+                const isDoji = Math.abs(yc - yo) < 1;
+                const bTop = isDoji ? roundedOpen : (isUp ? roundedClose : roundedOpen);
+                const bH = isDoji ? 1 : Math.max(1, Math.abs(roundedOpen - roundedClose));
+                geom.push({
+                    cx, isUp, isDoji,
+                    bodyLeft: cx - halfBodyPx,
+                    bodyWidthPx, bTop, bH,
+                    wickTop: Math.round(Math.min(yh, yl)),
+                    wickBot: Math.round(Math.max(yh, yl)),
+                });
+                drawn++;
+            }
+
+            // Wicks — two batched paths (up / down), one stroke() each.
+            if (showWick) {
+                this.ctx.lineWidth = 1;
+                this.ctx.lineCap = 'butt';
+                for (let pass = 0; pass < 2; pass++) {
+                    const wantUp = pass === 0;
+                    this.ctx.strokeStyle = wantUp ? wickUp : wickDown;
+                    this.ctx.beginPath();
+                    for (let gi = 0; gi < geom.length; gi++) {
+                        const g = geom[gi];
+                        if (g.isUp !== wantUp) continue;
+                        const wx = g.cx + 0.5;
+                        this.ctx.moveTo(wx, g.wickTop);
+                        this.ctx.lineTo(wx, g.wickBot);
+                    }
+                    this.ctx.stroke();
+                }
+            }
+
+            // Bodies — grouped by color (fillStyle set once per direction).
+            for (let pass = 0; pass < 2; pass++) {
+                const wantUp = pass === 0;
+                this.ctx.fillStyle = wantUp ? bodyUp : bodyDown;
+                for (let gi = 0; gi < geom.length; gi++) {
+                    const g = geom[gi];
+                    if (g.isUp !== wantUp) continue;
+                    this.ctx.fillRect(g.bodyLeft, g.bTop, g.bodyWidthPx, g.bH);
+                }
+            }
+
+            // Borders — guarded; _strokeCandleBodyBorder skips when too thin (zoomed-out hot path).
+            for (let gi = 0; gi < geom.length; gi++) {
+                const g = geom[gi];
+                if (g.isDoji) continue;
+                this._strokeCandleBodyBorder(
+                    g.bodyLeft, g.bTop, g.bodyWidthPx, g.bH,
+                    g.isUp ? borderUp : borderDown,
+                    g.isUp ? bodyUp : bodyDown,
+                    false
+                );
+            }
+
+            this.ctx.restore();
+            if (drawn === 0 && drawSeries.length > 0) {
+                console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
+            }
+            return;
+        }
+
         drawSeries.forEach(({ d, idx, pixelX }) => {
             const x = Number.isFinite(pixelX) ? pixelX : this.dataIndexToPixel(idx);
 
