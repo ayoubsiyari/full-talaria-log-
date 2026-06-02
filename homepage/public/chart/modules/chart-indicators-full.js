@@ -171,26 +171,39 @@
     }
     
     // Exponential Moving Average
-    function calculateEMA(data, period, field) {
-        field = field || 'c';
+    function calculateEMA(data, period, source) {
+        period = period || 20;
+        source = source || 'close';
         const result = [];
         const multiplier = 2 / (period + 1);
         let ema = null;
-        
+
         for (let i = 0; i < data.length; i++) {
             if (i < period - 1) {
                 result.push(null);
             } else if (i === period - 1) {
-                // First EMA is SMA
                 let sum = 0;
+                let ok = true;
                 for (let j = 0; j < period; j++) {
-                    sum += data[i - j][field];
+                    const v = resolveOhlcSourceValue(data[i - j], source);
+                    if (!Number.isFinite(v)) { ok = false; break; }
+                    sum += v;
                 }
-                ema = sum / period;
-                result.push(ema);
+                if (!ok) {
+                    result.push(null);
+                    ema = null;
+                } else {
+                    ema = sum / period;
+                    result.push(ema);
+                }
             } else {
-                ema = (data[i][field] - ema) * multiplier + ema;
-                result.push(ema);
+                const v = resolveOhlcSourceValue(data[i], source);
+                if (!Number.isFinite(v) || ema == null) {
+                    result.push(null);
+                } else {
+                    ema = (v - ema) * multiplier + ema;
+                    result.push(ema);
+                }
             }
         }
         return result;
@@ -2727,10 +2740,13 @@
                 
             case 'ema':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#f23645';
-                indicator.style.lineWidth = 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'EMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
                 
             case 'wma':
@@ -3884,7 +3900,7 @@
                 break;
             case 'ema':
                 indicator.name = 'EMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'wma':
                 indicator.name = 'WMA(' + indicator.params.period + ')';
@@ -4292,7 +4308,7 @@
                     this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'ema':
-                    this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'wma':
                     this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
@@ -8084,7 +8100,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (indicator.overlay === false || indicator.visible === false) return;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) return;
             if (indicator.style && indicator.style.showLabel === false) return;
-            if (indicator.type !== 'sma') return;
+            if (!OVERLAY_LINE_SELECT_TYPES[indicator.type]) return;
 
             const data = this.indicators.data[indicator.id];
             if (!Array.isArray(data)) return;

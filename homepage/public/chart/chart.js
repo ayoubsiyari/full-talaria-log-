@@ -11752,8 +11752,7 @@ class Chart {
         const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
             ? this.timeScale.rightOffsetCandles
             : 15;
-        let rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
-        if (candleSpacing < 1) rightMargin = Math.max(rightMargin, 56);
+        const rightMargin = Math.max(0, rightMarginCandles) * candleSpacing;
         
         // Max offset: First candle can go up to right edge minus margin
         const maxOffset = cw - rightMargin;
@@ -15771,7 +15770,7 @@ class Chart {
         const w = Number(cw);
         if (!Number.isFinite(w)) return 7;
         if (w <= 0.5) return Math.max(0.2, w);
-        if (w < 1) return w;
+        // TradingView-like gutter: ~1px at default zoom, scales up slightly on wide bars.
         const gap = Math.max(1, Math.round(w * 0.167));
         return w + gap;
     }
@@ -15810,7 +15809,6 @@ class Chart {
             '1d': 1200, '1w': 900, '1wk': 900,
         };
         const tfCap = limits[tf];
-        if (tf === '1m') return tfCap;
         if (Number.isFinite(tfCap)) return Math.min(fromWidth, tfCap);
         const mo = tf.match(/^(\d+)mo$/);
         if (mo) return Math.min(fromWidth, 800);
@@ -19275,7 +19273,7 @@ class Chart {
             
             // Extend visible area to prevent popping on both edges.
             const extendedMargin = this.candleWidth * 2;
-
+            
             // Allow drawing into right-axis zone so candles hide behind the axis instead of disappearing early.
             if (x < m.l - extendedMargin || x > this.w + extendedMargin) {
                 skipped++;
