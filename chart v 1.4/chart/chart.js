@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a59';
+const CHART_ENGINE_BUILD = '20260602a60';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -19446,11 +19446,14 @@ class Chart {
         for (let i = 0; i < buckets.length; i++) {
             const b = buckets[i];
             if (!b || b.c < b.o) continue;
+            if (!this._isOhlcVerticallyInPlot(b)) continue;
             const x = Math.round(b._pixelX);
             if (x < m.l - 1 || x > plotRight) continue;
             const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
             const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
-            const h = Math.max(1, yBot - yTop);
+            if (!Number.isFinite(yTop) || !Number.isFinite(yBot)) continue;
+            const h = yBot - yTop;
+            if (h < 1) continue;
             if (isHollow && b.c >= b.o) {
                 this.ctx.strokeStyle = upColor;
                 this.ctx.lineWidth = 1;
@@ -19467,11 +19470,14 @@ class Chart {
         for (let i = 0; i < buckets.length; i++) {
             const b = buckets[i];
             if (!b || b.c >= b.o) continue;
+            if (!this._isOhlcVerticallyInPlot(b)) continue;
             const x = Math.round(b._pixelX);
             if (x < m.l - 1 || x > plotRight) continue;
             const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
             const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
-            const h = Math.max(1, yBot - yTop);
+            if (!Number.isFinite(yTop) || !Number.isFinite(yBot)) continue;
+            const h = yBot - yTop;
+            if (h < 1) continue;
             this.ctx.fillRect(x, yTop, 1, h);
         }
     }
@@ -19537,6 +19543,7 @@ class Chart {
                 if (x < m.l - extendedMargin || x > this.w + extendedMargin) { skipped++; continue; }
 
                 const d = it.d;
+                if (!this._isOhlcVerticallyInPlot(d)) { skipped++; continue; }
                 const yo = this.yScale(d.o);
                 const yc = this.yScale(d.c);
                 const yh = this.yScale(d.h);
@@ -19574,6 +19581,7 @@ class Chart {
                     for (let gi = 0; gi < geom.length; gi++) {
                         const g = geom[gi];
                         if (g.isUp !== wantUp) continue;
+                        if (g.wickBot - g.wickTop < 1) continue;
                         const wx = g.cx + 0.5;
                         this.ctx.moveTo(wx, g.wickTop);
                         this.ctx.lineTo(wx, g.wickBot);
@@ -19623,6 +19631,10 @@ class Chart {
                 skipped++;
                 return;
             }
+            if (!this._isOhlcVerticallyInPlot(d)) {
+                skipped++;
+                return;
+            }
 
             const [yo, yc, yh, yl] = [this.yScale(d.o), this.yScale(d.c), this.yScale(d.h), this.yScale(d.l)];
             const isUp = d.c >= d.o;
@@ -19657,10 +19669,12 @@ class Chart {
                 const wickX = cx + 0.5;
                 const wickTop = Math.round(Math.min(yh, yl));
                 const wickBot = Math.round(Math.max(yh, yl));
-                this.ctx.beginPath();
-                this.ctx.moveTo(wickX, wickTop);
-                this.ctx.lineTo(wickX, wickBot);
-                this.ctx.stroke();
+                if (wickBot - wickTop >= 1) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(wickX, wickTop);
+                    this.ctx.lineTo(wickX, wickBot);
+                    this.ctx.stroke();
+                }
             }
 
             // Body geometry — always centered on the same cx as the wick.
@@ -19950,6 +19964,19 @@ class Chart {
         // Use same calculation as pixelToDataIndex but inverted
         const candleSpacing = this.getCandleSpacing();
         return this.margin.l + (dataIdx * candleSpacing) + this.offsetX;
+    }
+
+    /** True when candle OHLC overlaps the current Y domain (avoids extrapolated 1px dots while panning/zooming). */
+    _isOhlcVerticallyInPlot(ohlc) {
+        if (!ohlc || !this.yScale) return false;
+        const lo = Number(ohlc.l);
+        const hi = Number(ohlc.h);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi)) return false;
+        const domain = this.yScale.domain();
+        if (!domain || domain.length < 2) return true;
+        const d0 = Math.min(domain[0], domain[1]);
+        const d1 = Math.max(domain[0], domain[1]);
+        return hi >= d0 && lo <= d1;
     }
 
     /**

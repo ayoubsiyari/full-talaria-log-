@@ -6525,6 +6525,11 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         const lw = (style && style.lineWidth) || 2;
         const radius = Math.max(3, Math.min(4.5, lw + 1.5));
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : { m: this.margin || { t: 0 }, plotHeight: this.h - (this.margin?.t || 0) - (this.margin?.b || 0) };
+        const plotYMin = plotLayout.m.t;
+        const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
         const ctx = this.ctx;
 
         ctx.save();
@@ -6532,6 +6537,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         ctx.fillStyle = bg;
         ctx.lineWidth = 1.5;
         points.forEach(function(pt) {
+            if (!Number.isFinite(pt.y) || pt.y < plotYMin || pt.y > plotYMax) return;
             ctx.beginPath();
             ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
             ctx.fill();
@@ -6597,6 +6603,12 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const baselineY = Number.isFinite(options.baselineY) ? options.baselineY : (this.h - m.b);
     const breakOnNull = style === 'Line with breaks' || style === 'Step line with breaks' || style === 'Area with breaks';
     const inView = function(x) { return x >= m.l - 50 && x <= this.w - m.r + 50; }.bind(this);
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : { m: m, plotHeight: this.h - m.t - m.b };
+    const plotYMin = plotLayout.m.t;
+    const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
+    const inPlotY = function(y) { return Number.isFinite(y) && y >= plotYMin && y <= plotYMax; };
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -6620,7 +6632,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             }
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
             else ctx.lineTo(x, y);
         }
@@ -6638,7 +6650,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             }
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!prev) {
                 ctx.moveTo(x, y);
                 started = true;
@@ -6665,7 +6677,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             const w = half(i) * 2;
             const top = Math.min(y, baselineY);
             const h = Math.abs(baselineY - y);
@@ -6684,7 +6696,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             ctx.moveTo(x - r, y);
             ctx.lineTo(x + r, y);
             ctx.moveTo(x, y - r);
@@ -6698,7 +6710,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             ctx.moveTo(x + r, y);
             ctx.arc(x, y, r, 0, Math.PI * 2);
         }
@@ -6729,7 +6741,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             }
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             seg.push({ x: x, y: y });
         }
         if (seg.length) drawAreaSegment(seg);
@@ -6740,7 +6752,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
-            if (y == null || !Number.isFinite(y) || !inView(x)) continue;
+            if (y == null || !Number.isFinite(y) || !inView(x) || !inPlotY(y)) continue;
             if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; }
             else ctx.lineTo(x, y);
         }
@@ -6835,6 +6847,11 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
     if (!sar || !this.data || !this.data.length) return;
     const ctx = this.ctx;
     const m = this.margin;
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : { m: m, plotHeight: this.h - m.t - m.b };
+    const plotYMin = plotLayout.m.t;
+    const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
     const n = Math.min(sar.length, this.data.length);
     endIndex = endIndex == null ? n : Math.min(endIndex, n);
     const bull = (style && style.bullColor) || (style && style.color) || '#26a69a';
@@ -6848,6 +6865,7 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
         const x = this.dataIndexToPixel(i);
         const y = this.yScale(sar[i]);
         if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+        if (!Number.isFinite(y) || y < plotYMin || y > plotYMax) continue;
         const long = bar.c >= sar[i];
         ctx.fillStyle = long ? bull : bear;
         ctx.beginPath();
