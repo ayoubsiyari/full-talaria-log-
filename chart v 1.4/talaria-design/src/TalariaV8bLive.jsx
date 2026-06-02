@@ -11281,27 +11281,8 @@ const TalariaV8bLive = () => {
         if (p.type === "heading" || p.type === "divider") return;
         draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
       });
-      if (indicatorType === "bb") {
-        const fo = allParams.fillOpacity;
-        const fc = draft.fillColor;
-        if (fo != null && fc != null && String(fc).indexOf("rgba") < 0) {
-          let op = Number(fo);
-          if (!Number.isFinite(op)) op = 10;
-          op = Math.max(0, Math.min(100, op)) / 100;
-          const s = String(fc).trim();
-          if (s.charAt(0) === "#") {
-            let h = s.slice(1);
-            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-            if (h.length === 6) {
-              const r = parseInt(h.slice(0, 2), 16);
-              const g = parseInt(h.slice(2, 4), 16);
-              const b = parseInt(h.slice(4, 6), 16);
-              if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
-                draft.fillColor = `rgba(${r},${g},${b},${op})`;
-              }
-            }
-          }
-        }
+      if (typeof window.__v9MigrateIndicatorDraftColors === "function") {
+        window.__v9MigrateIndicatorDraftColors(indicatorType, draft, allParams);
       }
       draft.visible = existingIndicator.visible !== false;
       Object.assign(draft, v9IndicatorVisibilityDraftFromIndicator(existingIndicator));
@@ -22745,7 +22726,12 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
-        const renderBollingerStyleSettings = () => {
+        const renderIndicatorStyleGrid = () => {
+          const buildFn = typeof window.__v9BuildIndicatorStyleLayout === "function"
+            ? window.__v9BuildIndicatorStyleLayout
+            : null;
+          const layout = buildFn ? buildFn(ctx.indicatorType) : null;
+          if (!layout || !layout.sections || !layout.sections.length) return null;
           const def0 = (id) => def.params.find((x) => x.id === id);
           const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
           const flip = (id) => patchIndSettDraftLive((d) => {
@@ -22806,42 +22792,172 @@ const TalariaV8bLive = () => {
               </div>
             );
           };
-          const bands = [
-            { label: "Basis", show: "showMiddle", color: "middleColor", width: "middleLineWidth", style: "middleLineStyle" },
-            { label: "Upper Band", show: "showUpper", color: "upperColor", width: "upperLineWidth", style: "upperLineStyle" },
-            { label: "Lower Band", show: "showLower", color: "lowerColor", width: "lowerLineWidth", style: "lowerLineStyle" },
-          ];
+          const renderPlotRow = (row, i, section) => {
+            const on = row.showId ? val(row.showId) !== false : true;
+            const hasStyleCol = section.header && row.styleId;
+            const hasWidthCol = section.header && row.widthId;
+            return (
+              <div key={`${row.colorId}-${i}`} style={R(i ? 8 : 0)}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {row.showId
+                    ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
+                    : <div style={{ width: 16 }} />}
+                </div>
+                {lbl(row.label, on)}
+                {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
+                {hasStyleCol ? stSel(row.styleId, !on) : <div />}
+                {hasWidthCol ? numW(row.widthId, !on) : <div />}
+              </div>
+            );
+          };
           return (<>
-            <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
-              <div /><div /><div />
-              <div>{hdr("STYLE")}</div>
-              <div>{hdr("THICKNESS")}</div>
-            </div>
-            {bands.map((b, i) => {
-              const on = val(b.show) !== false;
-              return (
-                <div key={b.show} style={R(i ? 8 : 0)}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    {TlChk(!!on, `ind-bb-${b.show}`, null, () => flip(b.show), { vpImmediate: true })}
+            {layout.sections.map((section, si) => (
+              <div key={`ind-sec-${si}`}>
+                {section.title && (
+                  <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginTop: si ? 14 : 0, marginBottom: 4 }}>
+                    {section.title}
                   </div>
-                  {lbl(b.label, on)}
-                  <Swatch pid={b.color} disabled={!on} />
-                  {stSel(b.style, !on)}
-                  {numW(b.width, !on)}
+                )}
+                {section.header && (
+                  <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div />
+                    <div>{hdr("STYLE")}</div>
+                    <div>{hdr("THICKNESS")}</div>
+                  </div>
+                )}
+                {section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
+              </div>
+            ))}
+            {(layout.footers || []).map((f) => {
+              if (f.type !== "checkbox") return null;
+              return (
+                <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid ${c.br}` }}>
+                  <span style={{ fontSize: 12, color: c.ts }}>{f.label}</span>
+                  {TlChk(!!val(f.id), `ind-${f.id}`, null, () => flip(f.id), { vpImmediate: true })}
                 </div>
               );
             })}
-            <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginTop: 14, marginBottom: 4 }}>Area Between Bands</div>
-            <div style={R()}>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                {TlChk(!!val("showFill"), "ind-bb-showFill", null, () => flip("showFill"), { vpImmediate: true })}
-              </div>
-              {lbl("Background", val("showFill") !== false)}
-              <Swatch pid="fillColor" disabled={val("showFill") === false} />
-              <div /><div />
-            </div>
           </>);
         };
+        const renderIndicatorFlexSettings = (paramsList) => {
+          if (!paramsList || !paramsList.length) return null;
+          const inpBase = {
+            height: 26,
+            fontSize: 12,
+            fontFamily: F,
+            color: c.tx,
+            boxSizing: "border-box",
+            backgroundColor: "rgba(140,160,255,0.05)",
+            border: "1px solid rgba(140,160,255,0.2)",
+            borderRadius: 4,
+            outline: "none",
+            cursor: "default",
+          };
+          return paramsList.map((p) => {
+            const raw = indSettDraft[p.id] !== undefined ? indSettDraft[p.id] : p.default;
+            if (p.type === "heading") {
+              return (
+                <div key={p.id} style={{
+                  fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em",
+                  marginTop: 14, marginBottom: 6, paddingTop: 6, borderTop: `1px solid ${c.br}`,
+                }}>{p.label}</div>
+              );
+            }
+            if (p.type === "checkbox") {
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0" }}>
+                  <span style={{ fontSize: 12, color: c.ts }}>{p.label}</span>
+                  {TlChk(!!raw, `ind-flex-${p.id}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })}
+                </div>
+              );
+            }
+            if (p.type === "number") {
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
+                    min={p.min} max={p.max} step={p.step}
+                    onPointerDown={(e) => { e.stopPropagation(); try { e.currentTarget.focus({ preventScroll: true }); } catch (_) { e.currentTarget.focus(); } }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
+                    style={{ ...inpBase, width: 72, textAlign: "center", fontVariantNumeric: "tabular-nums", cursor: "text" }} />
+                </div>
+              );
+            }
+            if (p.type === "select" && Array.isArray(p.options)) {
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  {renderIndParamSelect(p, raw, { width: 150, minWidth: 120 })}
+                </div>
+              );
+            }
+            if (p.type === "color") {
+              const ck = "ind-" + p.id;
+              const colStr = String(raw || "#2962ff");
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <div data-v9-color-swatch="1"
+                    onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
+                    {...modalPointerActivate((e) => openIndCP(e, p.id, colStr))}
+                    style={v9TlColorSwatchBoxStyle(colStr, { active: colorPicker === ck, hover: hov === ck })} />
+                </div>
+              );
+            }
+            if (p.type === "time") {
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                  <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
+                    style={{ ...inpBase, width: 118, padding: "0 6px", fontVariantNumeric: "tabular-nums" }} />
+                </div>
+              );
+            }
+            if (p.type === "textarea") {
+              return (
+                <div key={p.id} style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
+                  <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
+                    rows={isCustom ? 14 : 8}
+                    style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
+                      fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
+                      background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)", color: c.tx, outline: "none", borderRadius: 4 }} />
+                </div>
+              );
+            }
+            return (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
+                <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
+                <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
+                  style={{ ...inpBase, width: 160, maxWidth: "100%", padding: "0 8px", cursor: "text" }} />
+              </div>
+            );
+          });
+        };
+        const styleGrid = indSettTab === "style" ? renderIndicatorStyleGrid() : null;
+        const styleLayoutIds = (() => {
+          const buildFn = typeof window.__v9BuildIndicatorStyleLayout === "function" ? window.__v9BuildIndicatorStyleLayout : null;
+          const layout = buildFn ? buildFn(ctx.indicatorType) : null;
+          const ids = new Set();
+          if (layout && layout.sections) {
+            layout.sections.forEach((sec) => {
+              (sec.rows || []).forEach((row) => {
+                if (row.showId) ids.add(row.showId);
+                if (row.colorId) ids.add(row.colorId);
+                if (row.styleId) ids.add(row.styleId);
+                if (row.widthId) ids.add(row.widthId);
+              });
+            });
+            (layout.footers || []).forEach((f) => { if (f.id) ids.add(f.id); });
+          }
+          return ids;
+        })();
+        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && !styleLayoutIds.has(p.id));
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1"
@@ -23042,24 +23158,31 @@ const TalariaV8bLive = () => {
                   {inTab.length > 0 && (
                     <>
                       <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", margin: "18px 0 10px" }}>OPTIONS</div>
-                      <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
-                        {inTab.map((p) => renderParam(p))}
+                      <div style={{ width: "100%", boxSizing: "border-box" }}>
+                        {renderIndicatorFlexSettings(inTab)}
                       </div>
                     </>
                   )}
                 </>
               );
-            })(            ) : isIctEverything && indSettTab === "input" ? (
+            })() : isIctEverything && indSettTab === "input" ? (
               <div style={{ width: "100%", boxSizing: "border-box" }}>{renderIctEverythingSettings()}</div>
-            ) : ctx.indicatorType === "bb" && indSettTab === "style" ? (
-              <div style={{ width: "100%", boxSizing: "border-box" }}>{renderBollingerStyleSettings()}</div>
+            ) : indSettTab === "style" && styleGrid ? (
+              <div style={{ width: "100%", boxSizing: "border-box" }}>
+                {styleGrid}
+                {styleFlexParams.length > 0 && renderIndicatorFlexSettings(styleFlexParams)}
+              </div>
+            ) : indSettTab === "input" && inTab.length > 0 ? (
+              <div style={{ width: "100%", boxSizing: "border-box" }}>
+                {renderIndicatorFlexSettings(inTab)}
+              </div>
             ) : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>
                 {`No ${emptyLabel} options for this indicator.`}
               </div>
             ) : (
-              <div style={{ width: "100%", maxWidth: 340, margin: "0 auto", boxSizing: "border-box" }}>
-                {inTab.map((p) => renderParam(p))}
+              <div style={{ width: "100%", boxSizing: "border-box" }}>
+                {renderIndicatorFlexSettings(inTab)}
               </div>
             )}
           </div>
@@ -32581,7 +32704,7 @@ const TalariaV8bLive = () => {
           onHexCommit={handleCpHexCommit}
           onClose={closeCP}
           onDragActiveChange={handleCpDragActive}
-          hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker==="pfMedianColor"||colorPicker==="pfBgColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||(colorPicker?.startsWith("ind-")&&colorPicker!=="ind-fillColor")}
+          hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker==="pfMedianColor"||colorPicker==="pfBgColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||(colorPicker?.startsWith("ind-")&&!(typeof window.__v9IndicatorColorSupportsAlpha==="function"&&window.__v9IndicatorColorSupportsAlpha(colorPicker.slice(4),null)))}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
         />
       , document.body)}

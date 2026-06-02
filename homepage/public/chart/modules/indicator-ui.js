@@ -328,7 +328,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'upperColor', label: 'Upper band', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle (SMA)', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower band', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41,98,255,0.08)', tab: 'style' },
+            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.08)', tab: 'style' },
+            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
@@ -563,7 +564,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.06)', tab: 'style' },
+            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.06)', tab: 'style' },
+            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
@@ -580,7 +582,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
             { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
             { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Fill Color (RGBA)', type: 'text', default: 'rgba(41,98,255,0.05)', tab: 'style' },
+            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.05)', tab: 'style' },
+            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
             { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
             { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
@@ -662,7 +665,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'upperColor', label: 'High band color', type: 'color', default: '#2962ff' },
             { id: 'middleColor', label: 'Midline color', type: 'color', default: '#787b86' },
             { id: 'lowerColor', label: 'Low band color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Fill (RGBA)', type: 'text', default: 'rgba(41, 98, 255, 0.06)' },
+            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.06)', tab: 'style' },
+            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
             { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
         ]
     },
@@ -2982,10 +2986,222 @@ function setupIndicatorUI(chartInstance) {
     };
 }
 
+/** Whether indicator color picker should expose alpha (fill / volume / session tints). */
+function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
+    const id = String(paramId || '').toLowerCase();
+    if (/fill|background|zonebg|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
+    if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
+    if (paramDef && paramDef.type === 'color') {
+        const d = String(paramDef.default || '');
+        if (d.indexOf('rgba') >= 0) return true;
+    }
+    return false;
+}
+
+/** Merge legacy hex fillColor + fillOpacity into rgba on draft open. */
+function v9MigrateIndicatorDraftColors(indicatorType, draft, allParams) {
+    if (!draft || !allParams) return;
+    const fo = allParams.fillOpacity;
+    const fc = draft.fillColor;
+    if (fo != null && fc != null && String(fc).indexOf('rgba') < 0) {
+        let op = Number(fo);
+        if (!Number.isFinite(op)) op = 10;
+        op = Math.max(0, Math.min(100, op)) / 100;
+        const s = String(fc).trim();
+        if (s.charAt(0) === '#') {
+            let h = s.slice(1);
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            if (h.length === 6) {
+                const r = parseInt(h.slice(0, 2), 16);
+                const g = parseInt(h.slice(2, 4), 16);
+                const b = parseInt(h.slice(4, 6), 16);
+                if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                    draft.fillColor = 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
+                }
+            }
+        }
+    }
+}
+
+function v9ParamById(params, id) {
+    return params.find(function (p) { return p.id === id; });
+}
+
+function v9StyleTabParams(params) {
+    return params.filter(function (p) {
+        return p.type !== 'heading' && p.type !== 'divider' && indicatorSettingsTabForParam(p) === 'style';
+    });
+}
+
+function v9PlotRow(label, colorId, styleId, widthId, showId) {
+    return { label: label, colorId: colorId, styleId: styleId || null, widthId: widthId || null, showId: showId || null };
+}
+
+function v9ColorRow(label, colorId, showId) {
+    return { label: label, colorId: colorId, styleId: null, widthId: null, showId: showId || null, colorOnly: true };
+}
+
+/**
+ * TradingView-style Style tab layout: sections of grid rows (chk | label | color | style | thickness).
+ * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
+ */
+function v9BuildIndicatorStyleLayout(indicatorType) {
+    const def = INDICATOR_DEFINITIONS[indicatorType];
+    if (!def || indicatorType === 'icteverything' || indicatorType === 'custom') return null;
+    const params = def.params;
+    const has = function (id) { return !!v9ParamById(params, id); };
+    const footers = [];
+    if (has('showLabel')) {
+        const p = v9ParamById(params, 'showLabel');
+        footers.push({ type: 'checkbox', id: 'showLabel', label: p.label || 'Show Label' });
+    }
+
+    if (indicatorType === 'bb') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Basis', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
+                    v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
+                    v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
+                ]
+            }, {
+                title: 'Area Between Bands',
+                rows: [v9ColorRow('Background', 'fillColor', 'showFill')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'volume') {
+        return {
+            sections: [{
+                title: 'Bars',
+                rows: [
+                    v9ColorRow('Up Color', 'upColor'),
+                    v9ColorRow('Down Color', 'downColor')
+                ]
+            }, {
+                title: 'Moving Average',
+                rows: [v9ColorRow('MA Color', 'maColor')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (has('upperColor') && has('middleColor') && has('lowerColor')) {
+        const styleId = has('lineStyle') ? 'lineStyle' : null;
+        const widthId = has('lineWidth') ? 'lineWidth' : null;
+        const rows = [
+            v9PlotRow(v9ParamById(params, 'upperColor').label || 'Upper', 'upperColor', styleId, widthId),
+            v9PlotRow(v9ParamById(params, 'middleColor').label || 'Middle', 'middleColor', null, null),
+            v9PlotRow(v9ParamById(params, 'lowerColor').label || 'Lower', 'lowerColor', null, null)
+        ];
+        const sections = [{ header: !!(styleId || widthId), rows: rows }];
+        if (has('fillColor')) {
+            sections.push({
+                title: 'Fill',
+                rows: [v9ColorRow('Background', 'fillColor', has('showFill') ? 'showFill' : null)]
+            });
+        }
+        return { sections: sections, footers: footers };
+    }
+
+    if (has('upColor') && has('downColor') && !has('color')) {
+        const styleId = has('lineStyle') ? 'lineStyle' : null;
+        const widthId = has('lineWidth') ? 'lineWidth' : null;
+        return {
+            sections: [{
+                header: !!(styleId || widthId),
+                rows: [
+                    v9PlotRow(v9ParamById(params, 'upColor').label || 'Up', 'upColor', styleId, widthId),
+                    v9PlotRow(v9ParamById(params, 'downColor').label || 'Down', 'downColor', null, null)
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (has('bullColor') && has('bearColor')) {
+        const widthId = has('lineWidth') ? 'lineWidth' : null;
+        return {
+            sections: [{
+                header: !!widthId,
+                rows: [
+                    v9PlotRow(v9ParamById(params, 'bullColor').label || 'Bull', 'bullColor', null, widthId),
+                    v9PlotRow(v9ParamById(params, 'bearColor').label || 'Bear', 'bearColor', null, null)
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    const styleColors = v9StyleTabParams(params).filter(function (p) { return p.type === 'color'; });
+    const styleId = has('lineStyle') ? 'lineStyle' : null;
+    const widthId = has('lineWidth') ? 'lineWidth' : null;
+
+    if (styleColors.length > 1) {
+        const rows = [];
+        let sharedApplied = false;
+        styleColors.forEach(function (p) {
+            const isHist = /histogram/i.test(p.id) || /histogram/i.test(p.label || '');
+            const shortLabel = String(p.label || p.id).replace(/\s*color\s*$/i, '').trim() || p.label;
+            if (isHist) {
+                rows.push(v9ColorRow(shortLabel, p.id));
+                return;
+            }
+            if (!sharedApplied && (styleId || widthId)) {
+                rows.push(v9PlotRow(shortLabel, p.id, styleId, widthId));
+                sharedApplied = true;
+            } else {
+                rows.push(v9ColorRow(shortLabel, p.id));
+            }
+        });
+        return { sections: [{ header: !!(styleId || widthId), rows: rows }], footers: footers };
+    }
+
+    if (has('color') && (styleId || widthId)) {
+        const p = v9ParamById(params, 'color');
+        return {
+            sections: [{
+                header: true,
+                rows: [v9PlotRow(p.label || 'Line', 'color', styleId, widthId)]
+            }],
+            footers: footers
+        };
+    }
+
+    if (has('color') && styleColors.length === 1) {
+        const p = v9ParamById(params, 'color');
+        return {
+            sections: [{
+                rows: [v9ColorRow(p.label || 'Line', 'color')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (styleColors.length >= 1) {
+        return {
+            sections: [{
+                rows: styleColors.map(function (p) {
+                    return v9ColorRow(p.label || p.id, p.id);
+                })
+            }],
+            footers: footers
+        };
+    }
+
+    return null;
+}
+
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
+window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
+window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
+window.__v9MigrateIndicatorDraftColors = v9MigrateIndicatorDraftColors;
 window.setupIndicatorUI = setupIndicatorUI;
 
 // Auto-initialize: retry until a chart instance is available (handles async chart init)
