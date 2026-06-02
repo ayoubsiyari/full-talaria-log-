@@ -823,11 +823,8 @@ const INDICATOR_DEFINITIONS = {
             { id: 'rsiPeriod', label: 'RSI length', type: 'number', default: 14, min: 2 },
             { id: 'stochLen', label: 'Stoch lookback', type: 'number', default: 14, min: 2 },
             { id: 'smoothK', label: '%K smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'smoothD', label: '%D smoothing', type: 'number', default: 3, min: 1 },
-            { id: 'kColor', label: '%K color', type: 'color', default: '#2962ff' },
-            { id: 'dColor', label: '%D color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'smoothD', label: '%D smoothing', type: 'number', default: 3, min: 1 }
+        ].concat(stochasticInputLevelParams()).concat(stochasticStyleParams())
     },
     massindex: {
         name: 'Mass Index',
@@ -3207,7 +3204,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
-    if (indicatorType === 'stoch' || indicatorType === 'stochastic') {
+    if (indicatorType === 'stoch' || indicatorType === 'stochastic' || indicatorType === 'stochrsi') {
         return {
             sections: [{
                 header: true,

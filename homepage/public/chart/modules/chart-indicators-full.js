@@ -3399,10 +3399,8 @@
                 indicator.params.stochLen = params.stochLen != null ? params.stochLen : 14;
                 indicator.params.smoothK = params.smoothK != null ? params.smoothK : 3;
                 indicator.params.smoothD = params.smoothD != null ? params.smoothD : 3;
-                indicator.style.kColor = params.kColor || '#2962ff';
-                indicator.style.dColor = params.dColor || '#f23645';
-                indicator.style.lineWidth = params.lineWidth || 2;
                 indicator.overlay = false;
+                applyStochasticStyleFromParams(indicator, params);
                 indicator.name = 'Stoch RSI(' + indicator.params.rsiPeriod + ',' + indicator.params.stochLen + ')';
                 this.indicators.data[indicator.id] = calculateStochRSI(
                     this.data,
@@ -4058,7 +4056,7 @@
         if (indicator.type === 'rsi') {
             applyRsiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
-        if (indicator.type === 'stoch' || indicator.type === 'stochastic') {
+        if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
