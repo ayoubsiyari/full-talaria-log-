@@ -356,6 +356,26 @@
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
     }
 
+    function applyAdxStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        const legacyPeriod = params.period != null ? Number(params.period) : 14;
+        indicator.params.diLength = params.diLength != null ? Number(params.diLength) : legacyPeriod;
+        indicator.params.adxSmoothing = params.adxSmoothing != null ? Number(params.adxSmoothing) : legacyPeriod;
+        indicator.style.showAdx = params.showAdx !== false;
+        indicator.style.adxColor = params.adxColor || '#ff00ff';
+        indicator.style.adxLineStyle = params.adxLineStyle || legacyS;
+        indicator.style.adxLineWidth = params.adxLineWidth != null ? params.adxLineWidth : legacyW;
+        indicator.style.showPlusDI = params.showPlusDI !== false;
+        indicator.style.plusDIColor = params.plusDIColor || '#00e676';
+        indicator.style.plusDILineStyle = params.plusDILineStyle || legacyS;
+        indicator.style.plusDILineWidth = params.plusDILineWidth != null ? params.plusDILineWidth : legacyW;
+        indicator.style.showMinusDI = params.showMinusDI !== false;
+        indicator.style.minusDIColor = params.minusDIColor || '#f23645';
+        indicator.style.minusDILineStyle = params.minusDILineStyle || legacyS;
+        indicator.style.minusDILineWidth = params.minusDILineWidth != null ? params.minusDILineWidth : legacyW;
+    }
+
     function applyDpoStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -746,7 +766,12 @@
     }
     
     // ADX (Average Directional Index)
-    function calculateADX(data, period) {
+    function calculateADX(data, diLength, adxSmoothing) {
+        if (adxSmoothing === undefined) {
+            adxSmoothing = diLength;
+        }
+        diLength = Math.max(1, parseInt(diLength, 10) || 14);
+        adxSmoothing = Math.max(1, parseInt(adxSmoothing, 10) || diLength);
         const trs = [];
         const plusDM = [];
         const minusDM = [];
@@ -806,9 +831,9 @@
             return smoothed;
         };
         
-        const smoothedTR = wildersSmoothing(trs, period);
-        const smoothedPlusDM = wildersSmoothing(plusDM, period);
-        const smoothedMinusDM = wildersSmoothing(minusDM, period);
+        const smoothedTR = wildersSmoothing(trs, diLength);
+        const smoothedPlusDM = wildersSmoothing(plusDM, diLength);
+        const smoothedMinusDM = wildersSmoothing(minusDM, diLength);
         
         const plusDI = [];
         const minusDI = [];
@@ -816,6 +841,8 @@
         const ADX = [];
         
         let currentADX = 0;
+        const firstDxIdx = diLength - 1;
+        const adxFirstIdx = firstDxIdx + adxSmoothing - 1;
         
         for (let i = 0; i < data.length; i++) {
             if (smoothedTR[i] === null || smoothedTR[i] === 0) {
@@ -829,21 +856,21 @@
                 plusDI.push(pDI);
                 minusDI.push(mDI);
                 
-                const DXValue = (Math.abs(pDI - mDI) / (pDI + mDI)) * 100;
+                const sumDI = pDI + mDI;
+                const DXValue = sumDI === 0 ? 0 : (Math.abs(pDI - mDI) / sumDI) * 100;
                 DX.push(DXValue);
                 
-                // Calculate ADX (Wilders Smoothing of DX)
-                if (i < (period * 2) - 2) { // ADX needs 2 * period - 1 data points to start
+                if (i < adxFirstIdx) {
                     ADX.push(null);
-                } else if (i === (period * 2) - 2) {
+                } else if (i === adxFirstIdx) {
                     let sumDX = 0;
-                    for (let j = period - 1; j < (period * 2) - 1; j++) {
+                    for (let j = firstDxIdx; j <= adxFirstIdx; j++) {
                         sumDX += DX[j];
                     }
-                    currentADX = sumDX / period;
+                    currentADX = sumDX / adxSmoothing;
                     ADX.push(currentADX);
                 } else {
-                    currentADX = (currentADX * (period - 1) + DX[i]) / period;
+                    currentADX = (currentADX * (adxSmoothing - 1) + DX[i]) / adxSmoothing;
                     ADX.push(currentADX);
                 }
             }
@@ -3076,14 +3103,11 @@
                 break;
 
             case 'adx':
-                indicator.params.period = params.period || 14;
-                indicator.style.adxColor = params.adxColor || '#ff00ff';
-                indicator.style.plusDIColor = params.plusDIColor || '#00e676';
-                indicator.style.minusDIColor = params.minusDIColor || '#f23645';
-                indicator.style.lineWidth = 2;
+                applyAdxStyleFromParams(indicator, params);
                 indicator.overlay = false;
-                indicator.name = 'ADX(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                indicator.separatePanel = true;
+                indicator.name = 'ADX(' + indicator.params.diLength + ',' + indicator.params.adxSmoothing + ')';
+                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.diLength, indicator.params.adxSmoothing);
                 break;
 
             case 'rsi':
@@ -4206,6 +4230,11 @@
             indicator.separatePanel = true;
             applyMacdStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'adx') {
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyAdxStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
         if (indicator.type === 'dpo') {
             indicator.overlay = false;
             indicator.separatePanel = true;
@@ -4254,8 +4283,8 @@
                 break;
 
             case 'adx':
-                indicator.name = 'ADX(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                indicator.name = 'ADX(' + indicator.params.diLength + ',' + indicator.params.adxSmoothing + ')';
+                this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.diLength, indicator.params.adxSmoothing);
                 break;
 
             case 'rsi':
@@ -4672,7 +4701,8 @@
                     this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
                     break;
                 case 'adx':
-                    this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.period);
+                    indicator.name = 'ADX(' + indicator.params.diLength + ',' + indicator.params.adxSmoothing + ')';
+                    this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.diLength, indicator.params.adxSmoothing);
                     break;
                 case 'rsi':
                     this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -8205,6 +8235,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     Chart.prototype._renderADXPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data.adx || !data.plusDI || !data.minusDI) return;
         const adxArr = data.adx, plusArr = data.plusDI, minusArr = data.minusDI;
+        const style = indicator.style || {};
+        const legacyW = style.lineWidth || 2;
+        const legacyS = style.lineStyle || 'Line';
 
         let max = 0;
         for (let i = visibleStart; i < visibleEnd; i++) {
@@ -8242,15 +8275,21 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.fillText('25', this.w - 6, thY - 2);
         }
 
-        this._drawPanelLine(ctx, m, plusArr, indicator.style.plusDIColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, minusArr, indicator.style.minusDIColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, adxArr, indicator.style.adxColor || '#ff00ff', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        if (style.showPlusDI !== false) {
+            this._drawPanelLine(ctx, m, plusArr, style.plusDIColor || '#00e676', style.plusDILineWidth != null ? style.plusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.plusDILineStyle || legacyS);
+        }
+        if (style.showMinusDI !== false) {
+            this._drawPanelLine(ctx, m, minusArr, style.minusDIColor || '#f23645', style.minusDILineWidth != null ? style.minusDILineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.minusDILineStyle || legacyS);
+        }
+        if (style.showAdx !== false) {
+            this._drawPanelLine(ctx, m, adxArr, style.adxColor || '#ff00ff', style.adxLineWidth != null ? style.adxLineWidth : legacyW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.adxLineStyle || legacyS);
+        }
 
         let lastADX = null;
         for (let i = Math.min(visibleEnd - 1, adxArr.length - 1); i >= visibleStart; i--) {
             if (adxArr[i] !== null && !isNaN(adxArr[i])) { lastADX = adxArr[i]; break; }
         }
-        indicator._displayColor = indicator.style.adxColor || '#ff00ff';
+        indicator._displayColor = style.adxColor || '#ff00ff';
         indicator._displayLabel = lastADX !== null ? lastADX.toFixed(2) : '';
     };
 

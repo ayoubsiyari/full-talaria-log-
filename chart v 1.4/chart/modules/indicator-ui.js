@@ -235,6 +235,32 @@ function stochasticLevelStyleParams() {
     ];
 }
 
+/** ADX Input tab (DI length + ADX smoothing). */
+function adxInputParams() {
+    return [
+        { id: 'diLength', label: 'DI length', type: 'number', default: 14, min: 1, tab: 'input' },
+        { id: 'adxSmoothing', label: 'ADX Smoothing', type: 'number', default: 14, min: 1, tab: 'input' }
+    ];
+}
+
+/** TradingView-style ADX Style tab (ADX / +DI / -DI lines). */
+function adxStyleParams() {
+    return [
+        { id: 'showAdx', label: 'Show ADX line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'adxColor', label: 'ADX color', type: 'color', default: '#ff00ff', tab: 'style' },
+        { id: 'adxLineStyle', label: 'ADX line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'adxLineWidth', label: 'ADX thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showPlusDI', label: 'Show +DI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'plusDIColor', label: '+DI color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'plusDILineStyle', label: '+DI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'plusDILineWidth', label: '+DI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showMinusDI', label: 'Show -DI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'minusDIColor', label: '-DI color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'minusDILineStyle', label: '-DI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'minusDILineWidth', label: '-DI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
 /** TradingView-style Stochastic Style tab (%K / %D lines + level appearance + optional panel bg). */
 function stochasticStyleParams() {
     return [
@@ -695,13 +721,7 @@ const INDICATOR_DEFINITIONS = {
     adx: {
         name: 'Average Directional Index',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'adxColor', label: 'ADX Line Color', type: 'color', default: '#ff00ff' },
-            { id: 'plusDIColor', label: '+DI Color', type: 'color', default: '#00e676' },
-            { id: 'minusDIColor', label: '-DI Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: adxInputParams().concat(adxStyleParams())
     },
     adr: {
         name: 'Average Daily Range',
@@ -3457,6 +3477,20 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
+    if (indicatorType === 'adx') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('ADX', 'adxColor', 'adxLineStyle', 'adxLineWidth', 'showAdx'),
+                    v9PlotRow('+DI', 'plusDIColor', 'plusDILineStyle', 'plusDILineWidth', 'showPlusDI'),
+                    v9PlotRow('-DI', 'minusDIColor', 'minusDILineStyle', 'minusDILineWidth', 'showMinusDI')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
     if (indicatorType === 'stoch' || indicatorType === 'stochastic' || indicatorType === 'stochrsi') {
         return {
             sections: [{
@@ -3804,7 +3838,7 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
                 indicator.name = 'CCI(' + indicator.params.period + ')';
                 break;
             case 'adx':
-                indicator.name = 'ADX(' + indicator.params.period + ')';
+                indicator.name = 'ADX(' + (indicator.params.diLength || indicator.params.period || 14) + ',' + (indicator.params.adxSmoothing || indicator.params.period || 14) + ')';
                 break;
         }
         
@@ -3841,11 +3875,11 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
                 }
                 break;
             case 'adx':
-                // Average Directional Index
-                const adxPeriod = indicator.params.period;
+                const adxDiLen = indicator.params.diLength || indicator.params.period || 14;
+                const adxSmooth = indicator.params.adxSmoothing || indicator.params.period || 14;
                 if (typeof calculateADX === 'function') {
-                    this.indicators.data[id] = calculateADX(this.data, adxPeriod);
-                    console.log('✅ ADX recalculated with period:', adxPeriod);
+                    this.indicators.data[id] = calculateADX(this.data, adxDiLen, adxSmooth);
+                    console.log('✅ ADX recalculated with DI length:', adxDiLen, 'ADX smoothing:', adxSmooth);
                 } else {
                     console.error('❌ calculateADX function not found. Cannot recalculate ADX.');
                 }
