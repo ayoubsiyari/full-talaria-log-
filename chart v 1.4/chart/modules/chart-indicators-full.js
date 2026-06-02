@@ -280,6 +280,21 @@
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
 
+    function applyWillrStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.period = params.period != null ? Number(params.period) : 14;
+        indicator.params.source = params.source || 'close';
+        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : -20;
+        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : -80;
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : -50;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#ec407a';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyOscillatorLevelStyleFromParams(indicator, params, { overbought: -20, oversold: -80, mid: -50 });
+    }
+
     function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
         applyMaLengthSourceFromParams(indicator, params, defaultPeriod);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
@@ -2000,8 +2015,9 @@
         return out;
     }
 
-    function calculateWilliamsR(data, period) {
+    function calculateWilliamsR(data, period, source) {
         const p = Math.max(1, period);
+        source = source || 'close';
         const out = [];
         for (let i = 0; i < data.length; i++) {
             if (i < p - 1) {
@@ -2015,8 +2031,9 @@
                 ll = Math.min(ll, bar.l);
             }
             const range = hh - ll;
-            if (!range) out.push(null);
-            else out.push(-100 * (hh - data[i].c) / range);
+            const src = resolveOhlcSourceValue(data[i], source);
+            if (!range || !Number.isFinite(src)) out.push(null);
+            else out.push(-100 * (hh - src) / range);
         }
         return out;
     }
@@ -3223,12 +3240,11 @@
             case 'willr':
             case 'williams':
                 indicator.type = 'willr';
-                indicator.params.period = params.period || 14;
-                indicator.style.color = params.color || '#ec407a';
-                indicator.style.lineWidth = params.lineWidth || 2;
                 indicator.overlay = false;
+                indicator.separatePanel = true;
+                applyWillrStyleFromParams(indicator, params);
                 indicator.name = 'Williams %R(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'mfi':
                 indicator.params.period = params.period || 14;
@@ -4112,6 +4128,12 @@
             indicator.separatePanel = true;
             applyRocStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'willr' || indicator.type === 'williams') {
+            indicator.type = 'willr';
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyWillrStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -4321,7 +4343,7 @@
                 break;
             case 'willr':
                 indicator.name = 'Williams %R(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'mfi':
                 indicator.name = 'MFI(' + indicator.params.period + ')';
@@ -4633,7 +4655,7 @@
                     this.indicators.data[indicator.id] = calculateOBV(this.data);
                     break;
                 case 'willr':
-                    this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'mfi':
                     this.indicators.data[indicator.id] = calculateMFI(this.data, indicator.params.period);
@@ -8256,9 +8278,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
     };
 
-    // ---- Williams %R: fixed −100 … 0, ref −20 / −80 ----
+    // ---- Williams %R: fixed −100 … 0, configurable levels + optional background ----
     Chart.prototype._renderWilliamsRPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
         if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const obVal = style.overboughtValue != null ? style.overboughtValue : -20;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : -80;
+        const midVal = style.midValue != null ? style.midValue : -50;
+
         indicator._panelBaseMin = -100;
         indicator._panelBaseMax = 0;
         const dom = this._applyIndicatorPanelDomain(-100, 0, indicator);
@@ -8271,34 +8298,48 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
         this._drawPanelAxisTicks(ctx, m, wMin, wMax, scaleY, 0);
 
-        [[-20, 'rgba(239,83,80,0.45)'], [-50, 'rgba(120,123,134,0.25)'], [-80, 'rgba(38,166,154,0.45)']].forEach(([lvl, col]) => {
-            const ry = scaleY(lvl);
-            if (ry !== null && ry > panelTop && ry < panelBottom) {
-                ctx.strokeStyle = col;
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 3]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w, ry);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = col;
-                ctx.font = '9px Roboto';
-                ctx.textAlign = 'right';
-                ctx.fillText(String(lvl), this.w - 6, ry - 2);
-            }
-        });
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        }
 
-        this._drawPanelLine(ctx, m, values, indicator.style.color || '#ec407a', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, style.color || '#ec407a', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+        }
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
             if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
         }
-        indicator._displayColor = indicator.style.color || '#ec407a';
+        indicator._displayColor = style.color || '#ec407a';
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = style.color || '#ec407a';
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(2),
+                color: style.color || '#ec407a'
+            }];
+        }
     };
 
     // ---- MFI: 0–100 with 80/50/20 bands (same idea as Stoch) ----

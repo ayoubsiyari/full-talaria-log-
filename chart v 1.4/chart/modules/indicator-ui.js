@@ -206,6 +206,26 @@ function cciStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
+/** Williams %R Input tab level defaults (−20 / −80 / −50). */
+function willrInputLevelParams() {
+    return [
+        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
+        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: -20, step: 1, tab: 'input' },
+        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: -80, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Midline', type: 'number', default: -50, step: 1, tab: 'input' }
+    ];
+}
+
+/** Williams %R Style tab (%R line + level appearance + optional panel bg). */
+function willrStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show %R line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: '%R color', type: 'color', default: '#ec407a', tab: 'style' },
+        { id: 'lineStyle', label: '%R line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: '%R thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ].concat(stochasticLevelStyleParams());
+}
+
 /** Shared separate-panel oscillator Style (line + zero line + optional bg). */
 function oscZeroPanelStyleParams(lineLabel, defaultColor) {
     return [
@@ -707,9 +727,8 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#ec407a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+        ].concat(willrInputLevelParams()).concat(willrStyleParams())
     },
     mfi: {
         name: 'Money Flow Index',
@@ -3358,6 +3377,33 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('CCI', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }, {
+                title: 'Overbought Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+            }, {
+                title: 'Oversold Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+            }, {
+                title: 'Mid Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'willr') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('%R', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }, {
                 title: 'Overbought Level',
