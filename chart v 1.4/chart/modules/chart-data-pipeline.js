@@ -253,7 +253,7 @@
                         c: d.c,
                         v: Number(d.v) || 0,
                         midIdx: idx,
-                        _pixelX: m.l + slot * slotPx + Math.floor(slotPx / 2),
+                        _pixelX: m.l + slot * slotPx,
                         _pipelineBucket: true,
                     };
                 } else {
@@ -289,7 +289,8 @@
 
             const usePipeline = chart.isBacktestMode
                 || source.length > LARGE_SERIES_THRESHOLD
-                || (chart.totalCandles && chart.totalCandles > LARGE_SERIES_THRESHOLD);
+                || (chart.totalCandles && chart.totalCandles > LARGE_SERIES_THRESHOLD)
+                || (typeof chart._shouldUseDisplayPipeline === 'function' && chart._shouldUseDisplayPipeline());
 
             if (!usePipeline) {
                 return source;

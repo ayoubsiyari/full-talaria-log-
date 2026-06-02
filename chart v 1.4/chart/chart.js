@@ -15608,7 +15608,12 @@ class Chart {
         const threshold = (typeof ChartDataPipeline !== 'undefined' && ChartDataPipeline.LARGE_SERIES_THRESHOLD)
             || (typeof window !== 'undefined' && window.ChartDataPipeline && window.ChartDataPipeline.LARGE_SERIES_THRESHOLD)
             || 8000;
-        return len > threshold || total > threshold;
+        if (len > threshold || total > threshold) return true;
+        // Zoomed-out live view: bucket to screen pixels before paint (e.g. 3 days of 1m).
+        const m = this.margin || { l: 60, r: 60 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 8;
+        return spacing < TV_ZOOMED_OUT_SLOT_PX && len > plotPx;
     }
 
     getDisplaySeries() {
@@ -16177,7 +16182,8 @@ class Chart {
                     l: d.l,
                     c: d.c,
                     vSum: Number(d.v) || 0,
-                    _pixelX: m.l + slot * slotPx + Math.floor(slotPx / 2),
+                    midIdx: idx,
+                    _pixelX: m.l + slot * slotPx,
                 };
             } else {
                 if (d.h > bucket.h) bucket.h = d.h;
@@ -16892,7 +16898,10 @@ class Chart {
                 // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
                 this._clearPanDrawingsLayerTransform(false);
             }
-            this.redrawDrawings();
+            const wheelBurstActive = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
+            if (!(wheelBurstActive && pixelLod)) {
+                this.redrawDrawings();
+            }
             this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -19247,6 +19256,9 @@ class Chart {
      */
     _aggregateVisibleOhlcvBuckets(visible, maxBuckets, plotPx) {
         if (!visible || visible.length === 0) return null;
+        if (visible.length > 0 && Number.isFinite(visible[0]._pixelX)) {
+            return visible;
+        }
         const m = this.margin || { l: 60, r: 60 };
         const plot = Number.isFinite(plotPx) ? plotPx : Math.max(1, (this.w || 0) - m.l - m.r);
         if (this._shouldUsePixelColumnCandleLod(visible.length, plot)) {
@@ -19311,6 +19323,57 @@ class Chart {
     }
 
     /**
+     * TradingView zoomed-out candles: 1px vertical bar from H to L per screen slot (1px gap between slots).
+     * Batched by color for smooth pan/zoom with thousands of underlying bars.
+     */
+    _drawPixelSlotCandlesticks(buckets, isHollow = false) {
+        if (!buckets || buckets.length === 0 || !this.yScale) return;
+        const m = this.margin;
+        const useUnifiedBarColor = !!this.chartSettings.unifiedBarColorEnabled;
+        const unifiedBarColor = this.chartSettings.unifiedBarColor || this.chartSettings.bodyUpColor || '#089981';
+        const upColor = useUnifiedBarColor
+            ? unifiedBarColor
+            : (this.chartSettings.bodyUpColor || '#089981');
+        const downColor = useUnifiedBarColor
+            ? unifiedBarColor
+            : (this.chartSettings.bodyDownColor || '#f23645');
+        const plotRight = this.w - m.r + 2;
+
+        this.ctx.fillStyle = upColor;
+        for (let i = 0; i < buckets.length; i++) {
+            const b = buckets[i];
+            if (!b || b.c < b.o) continue;
+            const x = Math.round(b._pixelX);
+            if (x < m.l - 1 || x > plotRight) continue;
+            const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
+            const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
+            const h = Math.max(1, yBot - yTop);
+            if (isHollow && b.c >= b.o) {
+                this.ctx.strokeStyle = upColor;
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + 0.5, yTop);
+                this.ctx.lineTo(x + 0.5, yTop + h);
+                this.ctx.stroke();
+            } else {
+                this.ctx.fillRect(x, yTop, 1, h);
+            }
+        }
+
+        this.ctx.fillStyle = downColor;
+        for (let i = 0; i < buckets.length; i++) {
+            const b = buckets[i];
+            if (!b || b.c >= b.o) continue;
+            const x = Math.round(b._pixelX);
+            if (x < m.l - 1 || x > plotRight) continue;
+            const yTop = Math.round(Math.min(this.yScale(b.h), this.yScale(b.l)));
+            const yBot = Math.round(Math.max(this.yScale(b.h), this.yScale(b.l)));
+            const h = Math.max(1, yBot - yTop);
+            this.ctx.fillRect(x, yTop, 1, h);
+        }
+    }
+
+    /**
      * Draw Candlesticks (regular or hollow)
      */
     drawCandlesticks(visible, isHollow = false, opts = {}) {
@@ -19324,6 +19387,16 @@ class Chart {
         const plotPx = Math.max(1, this.w - m.l - m.r);
         const maxLod = this._getCandleRenderMaxBuckets(visible.length, plotPx, opts);
         const lod = this._aggregateVisibleOhlcvBuckets(visible, maxLod, plotPx);
+
+        // Fast path: pre-bucketed pixel slots — draw H-L wicks like TradingView, not O-C bodies.
+        if (lod && lod.length > 0 && Number.isFinite(lod[0]._pixelX)) {
+            this.ctx.save();
+            this.ctx.globalAlpha = 1;
+            this._drawPixelSlotCandlesticks(lod, isHollow);
+            this.ctx.restore();
+            return;
+        }
+
         const drawSeries = lod
             ? lod.map((b) => ({
                 d: { o: b.o, h: b.h, l: b.l, c: b.c },
