@@ -210,20 +210,24 @@
     }
     
     // Weighted Moving Average
-    function calculateWMA(data, period, field) {
-        field = field || 'c';
+    function calculateWMA(data, period, source) {
+        period = period || 20;
+        source = source || 'close';
         const result = [];
         const denominator = (period * (period + 1)) / 2;
-        
+
         for (let i = 0; i < data.length; i++) {
             if (i < period - 1) {
                 result.push(null);
             } else {
                 let sum = 0;
+                let ok = true;
                 for (let j = 0; j < period; j++) {
-                    sum += data[i - j][field] * (period - j);
+                    const v = resolveOhlcSourceValue(data[i - j], source);
+                    if (!Number.isFinite(v)) { ok = false; break; }
+                    sum += v * (period - j);
                 }
-                result.push(sum / denominator);
+                result.push(ok ? sum / denominator : null);
             }
         }
         return result;
@@ -2751,10 +2755,13 @@
                 
             case 'wma':
                 indicator.params.period = params.period || 20;
+                indicator.params.source = params.source || 'close';
                 indicator.style.color = params.color || '#ff9800';
-                indicator.style.lineWidth = 2;
+                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+                indicator.style.lineStyle = params.lineStyle || 'Solid';
+                indicator.style.showLabel = params.showLabel !== false;
                 indicator.name = 'WMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period, indicator.params.source);
                 break;
                 
             case 'bb':
@@ -3904,7 +3911,7 @@
                 break;
             case 'wma':
                 indicator.name = 'WMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'bb':
             case 'bollinger':
@@ -4311,7 +4318,7 @@
                     this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'wma':
-                    this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateWMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'bb':
                 case 'bollinger':

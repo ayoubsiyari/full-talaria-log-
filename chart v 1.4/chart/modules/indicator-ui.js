@@ -275,8 +275,11 @@ const INDICATOR_DEFINITIONS = {
         type: 'overlay',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Color', type: 'color', default: '#ff9800' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Solid' },
+            { id: 'color', label: 'Line Color', type: 'color', default: '#ff9800' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 },
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
         ]
     },
     vwap: {
