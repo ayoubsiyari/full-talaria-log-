@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a62';
+const CHART_ENGINE_BUILD = '20260602a63';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -617,6 +617,9 @@ class Chart {
         this._lastScrollSyncAt = 0;
         /** Coalesce price/time axis zoom paints to one render per animation frame. */
         this._axisZoomRenderRaf = null;
+        /** Coalesce separate-panel height resize to one render per animation frame. */
+        this._separatePanelResizeRenderRaf = null;
+        this._separatePanelResizeFinalizePass = false;
         this.chunkSize = 5000; // Load data in chunks
         this.bufferSize = 1000; // Buffer size for smooth scrolling
         this.isLoadingChunk = false;
@@ -16126,11 +16129,12 @@ class Chart {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
     }
 
-    /** Pan, inertia, wheel burst, or axis drag — use lightweight paint until interaction settles. */
+    /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
         if (this._isChartViewPanning()) return true;
         if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
         if (this._isAxisZoomDragging() && !this._axisZoomFinalizePass) return true;
+        if (this._isSeparatePanelResizing() && !this._separatePanelResizeFinalizePass) return true;
         return false;
     }
 
@@ -16167,6 +16171,11 @@ class Chart {
         if (!this.drag || !this.drag.active) return false;
         const t = this.drag.type;
         return t === 'priceAxis' || t === 'timeAxis' || t === 'separatePanelAxis';
+    }
+
+    /** True while dragging a separator between separate indicator panels. */
+    _isSeparatePanelResizing() {
+        return !!(this.drag && this.drag.active && this.drag.type === 'separatePanelResize');
     }
 
     _isPriceAxisZoomDragging() {
@@ -16213,6 +16222,32 @@ class Chart {
         this.renderPending = false;
         this.render();
         this._axisZoomFinalizePass = false;
+    }
+
+    /** One chart paint per frame while separate panel heights change. */
+    _scheduleSeparatePanelResizeRender() {
+        if (this._separatePanelResizeRenderRaf != null) return;
+        this._separatePanelResizeRenderRaf = requestAnimationFrame(() => {
+            this._separatePanelResizeRenderRaf = null;
+            if (!this._isSeparatePanelResizing()) return;
+            this.renderPending = false;
+            this.render();
+        });
+    }
+
+    _cancelSeparatePanelResizeRender() {
+        if (this._separatePanelResizeRenderRaf != null) {
+            cancelAnimationFrame(this._separatePanelResizeRenderRaf);
+            this._separatePanelResizeRenderRaf = null;
+        }
+    }
+
+    _finishSeparatePanelResizeInteraction() {
+        this._cancelSeparatePanelResizeRender();
+        this._separatePanelResizeFinalizePass = true;
+        this.renderPending = false;
+        this.render();
+        this._separatePanelResizeFinalizePass = false;
     }
 
     /** Lower draw budget while the chart view is moving (pan / inertia). */
@@ -16658,6 +16693,10 @@ class Chart {
     scheduleRender() {
         if (this._isAxisZoomDragging()) {
             this._scheduleAxisZoomRender();
+            return;
+        }
+        if (this._isSeparatePanelResizing()) {
+            this._scheduleSeparatePanelResizeRender();
             return;
         }
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
@@ -21170,11 +21209,7 @@ class Chart {
             this.mouseX = mx;
             this.mouseY = my;
             
-            // Separate indicator panel: full chart render on hover is expensive; during any drag
-            // the drag branch already schedules render — avoid double work per mousemove.
-            if (this.separatePanelInfo && !this.drag.active) {
-                this.scheduleRender();
-            }
+            // Resize-handle hover is handled below; avoid full chart paints on every mousemove over panels.
             
             if (this.drag.active) {
                 const dm = this.drawingManager;
@@ -21579,7 +21614,7 @@ class Chart {
                 if (typeof this.finishSeparatePanelResize === 'function') {
                     this.finishSeparatePanelResize();
                 }
-                this.scheduleRender();
+                this._finishSeparatePanelResizeInteraction();
             }
             else if (
                 wasDragging

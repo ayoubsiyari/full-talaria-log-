@@ -5845,7 +5845,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.30)' : 'rgba(150, 170, 210, 0.55)';
     const _hoverColor = _isLightBg ? 'rgba(41,98,255,0.60)' : 'rgba(106,138,255,0.72)';
     const _hoverGlow = _isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
-    const hoverHandleY = this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
+    const panelResizeActive = !!(this._separatePanelResize);
+    const hoverHandleY = !panelResizeActive && this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
         ? this._separatePanelHoverHandle.y
         : null;
     ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2 ? _hoverColor : _sepColorStrong;
@@ -6236,8 +6237,12 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
 
     ctx.restore(); // end indicator-stack clip
 
-    // Build TradingView-style HTML label bars
-    this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
+    // During panel resize only move existing legend DOM — rebuilding overlay every frame is very expensive.
+    if (panelResizeActive) {
+        this._repositionSeparatePanelOverlay(panelSlots, m);
+    } else {
+        this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
+    }
 };
 
 // Draw crosshair and value for separate panel indicators
@@ -8773,6 +8778,23 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!el) return;
             this._renderSeparatePanelLegendValue(el, ind);
         }, this);
+    };
+
+    /** Move existing separate-panel legend rows during height resize (no DOM rebuild). */
+    Chart.prototype._repositionSeparatePanelOverlay = function(panelSlots, m) {
+        const canvas = this.ctx && this.ctx.canvas;
+        const wrapper = canvas ? canvas.parentElement : null;
+        if (!wrapper || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
+        const overlay = wrapper.querySelector('#separatePanelsOverlay');
+        if (!overlay) return;
+        const bars = overlay.querySelectorAll('.talaria-ind-legend-row');
+        panelSlots.forEach(function(slot, idx) {
+            const bar = bars[idx];
+            if (!bar || !slot) return;
+            bar.style.top = (slot.top + 2) + 'px';
+        });
+        overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
+        overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
     };
 
     /** Keep persistent right-axis tags in sync during replay/crosshair updates. */
