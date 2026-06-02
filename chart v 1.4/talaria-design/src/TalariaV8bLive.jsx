@@ -11590,7 +11590,10 @@ const TalariaV8bLive = () => {
 
   useEffect(() => {
     if (v9IndSelectMenu == null) return;
+    let armed = false;
+    const armId = requestAnimationFrame(() => { armed = true; });
     const onDoc = (ev) => {
+      if (!armed) return;
       const t = ev && ev.target;
       if (t && typeof t.closest === "function") {
         if (t.closest("[data-v9-ind-select-root='1']")) return;
@@ -11605,6 +11608,7 @@ const TalariaV8bLive = () => {
     document.addEventListener("mousedown", onDoc, true);
     window.addEventListener("keydown", onKey, true);
     return () => {
+      cancelAnimationFrame(armId);
       document.removeEventListener("pointerdown", onDoc, true);
       document.removeEventListener("mousedown", onDoc, true);
       window.removeEventListener("keydown", onKey, true);
@@ -22079,43 +22083,40 @@ const TalariaV8bLive = () => {
           closeIndSett();
         };
         const indSelectKeyV9 = (paramId) => `${ctx.indicator && ctx.indicator.id != null ? ctx.indicator.id : "na"}:${paramId}`;
-        const V9IndSettingDropdown = ({ paramId, options, value, onPick, widthStyle }) => {
+        const toggleIndParamDrop = (e, paramId) => {
+          e.stopPropagation();
           const k = indSelectKeyV9(paramId);
-          const open = v9IndSelectMenu && v9IndSelectMenu.key === k;
-          const strVal = value != null ? String(value) : "";
-          const cur = Array.isArray(options) ? options.find((o) => String(o.value) === strVal) : null;
-          const disp = cur ? cur.label : (strVal || "—");
-          const wst = widthStyle || { width: "100%", minWidth: 0 };
-          const indDropPick = (pickFn) => modalPointerActivate(() => {
-            flushSync(() => {
-              pickFn();
-              setV9IndSelectMenu(null);
-            });
+          if (v9IndSelectMenu && v9IndSelectMenu.key === k) {
+            setV9IndSelectMenu(null);
+            return;
+          }
+          const r = e.currentTarget.getBoundingClientRect();
+          setV9IndSelectMenu({
+            key: k,
+            paramId,
+            top: r.bottom + 2,
+            left: r.left,
+            width: Math.max(r.width, 96),
           });
+        };
+        const renderIndParamSelect = (p, raw, widthStyle) => {
+          if (!p || p.type !== "select" || !Array.isArray(p.options)) return null;
+          const k = indSelectKeyV9(p.id);
+          const open = v9IndSelectMenu && v9IndSelectMenu.key === k;
+          const strVal = raw != null ? String(raw) : "";
+          const cur = p.options.find((o) => String(o.value) === strVal);
+          const disp = cur ? cur.label : (strVal || "—");
+          const wst = widthStyle || { width: 130, minWidth: 0 };
           return (
-            <div style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
+            <div data-sdrop="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
               <button
                 type="button"
+                data-sdrop="1"
                 data-v9-ind-select-trigger="1"
                 onWheel={(e) => e.stopPropagation()}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  if (open) {
-                    flushSync(() => setV9IndSelectMenu(null));
-                    return;
-                  }
-                  const r = e.currentTarget.getBoundingClientRect();
-                  flushSync(() => {
-                    setV9IndSelectMenu({
-                      key: k,
-                      top: r.bottom + 2,
-                      left: r.left,
-                      width: Math.max(r.width, 96),
-                    });
-                  });
-                }}
+                onPointerDown={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => toggleIndParamDrop(e, p.id)}
                 style={{
                   width: "100%",
                   height: 26,
@@ -22143,59 +22144,6 @@ const TalariaV8bLive = () => {
                   <I n="chevDown" s={8} cl={open ? c.acL : c.ts} />
                 </span>
               </button>
-              {open && v9IndSelectMenu && typeof document !== "undefined" && createPortal(
-                <div
-                  data-v9-ind-select-root="1"
-                  data-v9-ind-select-panel="1"
-                  className="tlr-scroll"
-                  tabIndex={-1}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  onWheel={(e) => e.stopPropagation()}
-                  style={{
-                    position: "fixed",
-                    top: v9IndSelectMenu.top,
-                    left: v9IndSelectMenu.left,
-                    minWidth: v9IndSelectMenu.width,
-                    zIndex: 12100,
-                    maxHeight: typeof window !== "undefined"
-                      ? Math.max(120, window.innerHeight - v9IndSelectMenu.top - 12)
-                      : 260,
-                    overflowY: "auto",
-                    overscrollBehavior: "contain",
-                    WebkitOverflowScrolling: "touch",
-                    touchAction: "pan-y",
-                    background: c.sf,
-                    border: `1px solid ${c.brH}`,
-                    boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
-                    borderRadius: 4,
-                    pointerEvents: "auto",
-                  }}
-                >
-                  {options.map((opt) => {
-                    const sel = String(opt.value) === strVal;
-                    return (
-                      <div
-                        key={String(opt.value)}
-                        role="option"
-                        {...indDropPick(() => onPick(opt.value))}
-                        style={{
-                          padding: "7px 10px",
-                          fontSize: 12,
-                          cursor: "default",
-                          color: sel ? c.acL : c.tx,
-                          background: sel ? "rgba(74,106,255,0.14)" : "transparent",
-                          fontFamily: F,
-                        }}
-                      >
-                        {opt.label}
-                      </div>
-                    );
-                  })}
-                </div>,
-                document.body
-              )}
             </div>
           );
         };
@@ -22278,15 +22226,7 @@ const TalariaV8bLive = () => {
             );
           }
           if (p.type === "select" && Array.isArray(p.options)) {
-            return row(
-              <V9IndSettingDropdown
-                paramId={p.id}
-                options={p.options}
-                value={raw}
-                onPick={(v) => patchIndSettDraft((d) => ({ ...d, [p.id]: v }))}
-                widthStyle={{ width: 130, minWidth: 0 }}
-              />
-            );
+            return row(renderIndParamSelect(p, raw, { width: 130, minWidth: 0 }));
           }
           if (p.type === "textarea") {
             return (
@@ -22388,16 +22328,7 @@ const TalariaV8bLive = () => {
           const Sel = ({ pid, w }) => {
             const p = def0(pid);
             if (!p || p.type !== "select" || !p.options) return null;
-            const raw = val(pid);
-            return (
-              <V9IndSettingDropdown
-                paramId={pid}
-                options={p.options}
-                value={raw}
-                onPick={(v) => setv(pid, v)}
-                widthStyle={w != null ? { width: w, minWidth: 0 } : { width: "100%", minWidth: 0 }}
-              />
-            );
+            return renderIndParamSelect(p, val(pid), w != null ? { width: w, minWidth: 0 } : { width: "100%", minWidth: 0 });
           };
           const chkCell = (children) => (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 26, minHeight: 26 }}>{children}</div>
@@ -22865,6 +22796,81 @@ const TalariaV8bLive = () => {
             <B primary hk="ind-apply" fireOnPointerDown onClick={applyInd}>Apply Changes</B>
           </div>
         </div>
+        );
+      })(), document.body)}
+
+      {/* Indicator settings select menu (portaled — panel animation/overflow clip inline lists) */}
+      {v9IndSelectMenu && (indSettOpen || closing.has("indsett")) && typeof document !== "undefined" && createPortal((() => {
+        const menuCtx = indSettCtxRef.current;
+        const menuDef = typeof window !== "undefined" && window.INDICATOR_DEFINITIONS && menuCtx.indicatorType
+          ? window.INDICATOR_DEFINITIONS[menuCtx.indicatorType] : null;
+        const menuParam = menuDef && v9IndSelectMenu.paramId
+          ? menuDef.params.find((x) => x.id === v9IndSelectMenu.paramId) : null;
+        const menuOptions = menuParam && Array.isArray(menuParam.options) ? menuParam.options : [];
+        if (!menuOptions.length) return null;
+        const rawVal = indSettDraft[menuParam.id] !== undefined ? indSettDraft[menuParam.id] : menuParam.default;
+        const strVal = rawVal != null ? String(rawVal) : "";
+        const menuTop = v9IndSelectMenu.top;
+        const menuMaxH = typeof window !== "undefined" ? Math.max(120, window.innerHeight - menuTop - 12) : 260;
+        return (
+          <div
+            data-sdrop="1"
+            data-v9-ind-select-root="1"
+            data-v9-ind-select-panel="1"
+            className="tlr-scroll"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: menuTop,
+              left: v9IndSelectMenu.left,
+              minWidth: v9IndSelectMenu.width,
+              zIndex: 13000,
+              maxHeight: menuMaxH,
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
+              background: c.sf,
+              border: `1px solid ${c.brH}`,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
+              borderRadius: 4,
+              pointerEvents: "auto",
+              fontFamily: F,
+              animation: "tlrDropIn 0.12s ease",
+            }}
+          >
+            {menuOptions.map((opt) => {
+              const sel = String(opt.value) === strVal;
+              const optKey = `ind-opt-${menuParam.id}-${String(opt.value)}`;
+              return (
+                <div
+                  key={String(opt.value)}
+                  role="option"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    patchIndSettDraft((d) => ({ ...d, [menuParam.id]: opt.value }));
+                    setV9IndSelectMenu(null);
+                  }}
+                  onMouseEnter={() => setHov(optKey)}
+                  onMouseLeave={() => setHov(null)}
+                  style={{
+                    padding: "7px 10px",
+                    fontSize: 12,
+                    cursor: "default",
+                    color: sel ? c.acL : hov === optKey ? c.tx : c.ts,
+                    background: sel ? "rgba(74,106,255,0.14)" : hov === optKey ? "rgba(255,255,255,0.06)" : "transparent",
+                    fontFamily: F,
+                    transition: "background 0.1s, color 0.1s",
+                  }}
+                >
+                  {opt.label}
+                </div>
+              );
+            })}
+          </div>
         );
       })(), document.body)}
 
