@@ -1266,10 +1266,19 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
 }
 
 function talariaRebuildOhlcIndicatorLegend(chart, div) {
-    if (!div || !chart || !chart.indicators || !chart.indicators.active || chart.indicators.active.length === 0) {
+    if (!div || !chart) return;
+
+    div.innerHTML = '';
+
+    if (!chart.indicators || !chart.indicators.active || chart.indicators.active.length === 0) {
+        if (chart.chartSettings && chart.chartSettings.showIndicatorTitles === false) {
+            div.style.display = 'none';
+        } else {
+            div.style.display = '';
+        }
         return;
     }
-    div.innerHTML = '';
+
     chart.indicators.active.forEach(function(indicator) {
         const isVolume = indicator.type === 'volume' || indicator.isVolume;
         const isOverlay = indicator.overlay !== false && !isVolume;

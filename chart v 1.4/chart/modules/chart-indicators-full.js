@@ -6871,202 +6871,46 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 };
     
     Chart.prototype.updateOHLCIndicators = function() {
-        // Main chart (panel 0 or single-chart) uses unsuffixed DOM ids; see chart.js updateChartOHLCSymbol / crosshair OHLC.
+        if (typeof ensureTalariaIndLegendHoverCss === 'function') {
+            ensureTalariaIndLegendHoverCss();
+        }
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const div = document.getElementById('ohlcIndicators' + idSuffix);
-        
+
         if (!div) return;
-        
-        // Don't update if modal is open (prevents destroying DOM while editing)
+
         if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) return;
-        
-        div.innerHTML = '';
-        
-        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
+
+        if (typeof talariaRebuildOhlcIndicatorLegend === 'function') {
+            talariaRebuildOhlcIndicatorLegend(this, div);
             return;
         }
-        
-        // Show overlay indicators in OHLC panel (volume has its own dedicated line)
+
+        div.innerHTML = '';
+
+        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
+            if (this.chartSettings && this.chartSettings.showIndicatorTitles === false) {
+                div.style.display = 'none';
+            } else {
+                div.style.display = '';
+            }
+            return;
+        }
+
+        // Legacy fallback when indicator-ui.js has not loaded yet.
         const overlayIndicators = this.indicators.active.filter(function(ind) {
-            // Exclude volume - it has its own dedicated UI element
             if (ind.type === 'volume' || ind.isVolume) return false;
             return ind.overlay !== false;
         });
-        
-        const formatOverlayValues = function(indicator, valuesStore) {
-            if (!valuesStore) return [];
-            const out = [];
-            const pushToken = function(val, color, decimals) {
-                if (!Number.isFinite(val)) return;
-                out.push({
-                    text: Number(val).toFixed(decimals),
-                    color: color || '#9ca3af'
-                });
-            };
-            if (Array.isArray(valuesStore)) {
-                for (let i = valuesStore.length - 1; i >= 0; i--) {
-                    if (Number.isFinite(valuesStore[i])) {
-                        pushToken(valuesStore[i], indicator.style && indicator.style.color, 4);
-                        break;
-                    }
-                }
-                return out;
-            }
-            if (typeof valuesStore === 'object') {
-                const keys = ['upper', 'middle', 'lower', 'ema1', 'ema2', 'ema3', 'fast', 'slow'];
-                keys.forEach(function(k) {
-                    const arr = valuesStore[k];
-                    if (!Array.isArray(arr)) return;
-                    for (let i = arr.length - 1; i >= 0; i--) {
-                        if (Number.isFinite(arr[i])) {
-                            const colorKey = k + 'Color';
-                            pushToken(arr[i], indicator.style && indicator.style[colorKey], 4);
-                            break;
-                        }
-                    }
-                });
-                if (out.length > 0) return out;
-            }
-            return out;
-        };
 
         for (let i = 0; i < overlayIndicators.length; i++) {
             const indicator = overlayIndicators[i];
             const item = document.createElement('div');
             item.className = 'talaria-ind-legend-row';
-            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = '- ' + indicator.name;
-            nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
-            nameSpan.title = indicator.name;
-            item.appendChild(nameSpan);
-
-            const valuesSpan = document.createElement('span');
-            valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
-            const valueTokens = formatOverlayValues(indicator, this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : null);
-            if (valueTokens.length === 0) {
-                const dash = document.createElement('span');
-                dash.textContent = '—';
-                dash.style.cssText = 'color:#9ca3af;';
-                valuesSpan.appendChild(dash);
-            } else {
-                valueTokens.forEach(function(tok) {
-                    const t = document.createElement('span');
-                    t.textContent = tok.text;
-                    t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
-                    valuesSpan.appendChild(t);
-                });
-            }
-            item.appendChild(valuesSpan);
-
-            const actions = document.createElement('span');
-            actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
-
-            const self = this;
-            const id = indicator.id;
-
-            const baseActionStyle = getTalariaActionBtnStyle();
-
-            const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            const applyEyeState = () => {
-                const on = indicator.visible !== false;
-                visibilityBtn.style.cssText = baseActionStyle + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
-            };
-            applyEyeState();
-            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
-            visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            visibilityBtn.onmouseleave = function() {
-                applyEyeState();
-            };
-            visibilityBtn.onclick = function(e) {
-                e.stopPropagation();
-                indicator.visible = indicator.visible === false ? true : false;
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-                applyEyeState();
-                if (!indicator.visible) {
-                    if (indicator.data) {
-                        indicator._hiddenData = indicator.data;
-                        indicator.data = [];
-                    }
-                    if (self.indicators && self.indicators.data && self.indicators.data[id]) {
-                        indicator._hiddenDataStore = self.indicators.data[id];
-                        self.indicators.data[id] = [];
-                    }
-                } else {
-                    if (indicator._hiddenData) {
-                        indicator.data = indicator._hiddenData;
-                        delete indicator._hiddenData;
-                    }
-                    if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
-                        self.indicators.data[id] = indicator._hiddenDataStore;
-                        delete indicator._hiddenDataStore;
-                    }
-                }
-                if (typeof self.render === 'function') self.render();
-            };
-            actions.appendChild(visibilityBtn);
-
-            const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.23.6.62.6 1s.24.77.6 1a1.65 1.65 0 0 0 1 .33H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.36.23-.6.62-.6 1z"/></svg>';
-            settingsBtn.style.cssText = baseActionStyle + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
-            settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#d1d4dc';
-                settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
-                settingsBtn.style.background = 'transparent';
-            };
-            settingsBtn.onclick = function(e) {
-                e.stopPropagation();
-                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
-            };
-            settingsBtn.onpointerdown = function(e) {
-                e.stopPropagation();
-                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
-            };
-            settingsBtn.onmousedown = function(e) { e.stopPropagation(); };
-            actions.appendChild(settingsBtn);
-
-            const openIndSettings = function(e) {
-                e.stopPropagation();
-                if (typeof self.showIndicatorSettings === 'function') self.showIndicatorSettings(id);
-            };
-            nameSpan.style.cursor = 'default';
-            nameSpan.onpointerdown = openIndSettings;
-            nameSpan.onmousedown = function(e) { e.stopPropagation(); };
-            nameSpan.onclick = function(e) { e.stopPropagation(); };
-            valuesSpan.style.cursor = 'default';
-            valuesSpan.onpointerdown = openIndSettings;
-            valuesSpan.onmousedown = function(e) { e.stopPropagation(); };
-            valuesSpan.onclick = function(e) { e.stopPropagation(); };
-
-            const removeBtn = document.createElement('span');
-            removeBtn.textContent = '×';
-            removeBtn.style.cssText = baseActionStyle + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
-            removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
-            };
-            removeBtn.onmouseleave = function() {
-                removeBtn.style.color = '#f23645';
-                removeBtn.style.background = 'transparent';
-            };
-            removeBtn.onclick = function(e) {
-                e.stopPropagation();
-                self.removeIndicator(id);
-            };
-            actions.appendChild(removeBtn);
-
-            item.appendChild(actions);
+            item.textContent = '- ' + indicator.name;
             div.appendChild(item);
         }
 
-        // Re-apply showIndicatorTitles visibility flag after rebuilding
         if (this.chartSettings && this.chartSettings.showIndicatorTitles === false) {
             div.style.display = 'none';
         } else {
