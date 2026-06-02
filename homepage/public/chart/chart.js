@@ -621,6 +621,8 @@ class Chart {
         /** Coalesce crosshair + tooltip to one paint per rAF during hover (reduces INP on chartCanvas). */
         this._crosshairTooltipRaf = null;
         this._pendingCrosshairMoveEvent = null;
+        this._wheelBurstRenderRaf = null;
+        this._wheelBurstFinalPass = false;
         
         // Performance metrics
         this.lastFrameTime = performance.now();
@@ -16037,14 +16039,44 @@ class Chart {
 
     /**
      * Schedule a render using requestAnimationFrame for throttling (see animate()).
-     * Immediate render only when overlays must stay glued: replay playback, inertia, and wheel bursts.
-     * Chart pan and axis zoom are coalesced to one paint per frame to avoid jank.
+     * Immediate render for replay playback and inertia. Wheel zoom and axis zoom coalesce to one paint per frame.
      */
     _isChartViewPanning() {
         return !!(
             (this.drag && this.drag.active && this.drag.type === 'pan') ||
             (this.inertia && this.inertia.active)
         );
+    }
+
+    /** True while a wheel-zoom burst is active (coalesced fast paints). */
+    _isWheelZoomBurst() {
+        return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
+    }
+
+    _cancelWheelBurstRender() {
+        if (this._wheelBurstRenderRaf != null) {
+            cancelAnimationFrame(this._wheelBurstRenderRaf);
+            this._wheelBurstRenderRaf = null;
+        }
+    }
+
+    /** One chart paint per frame while wheel zoom runs — avoids full-quality stalls when zoomed out. */
+    _scheduleWheelBurstRender() {
+        if (this._wheelBurstRenderRaf != null) return;
+        this._wheelBurstRenderRaf = requestAnimationFrame(() => {
+            this._wheelBurstRenderRaf = null;
+            if (!this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return;
+            this.renderPending = false;
+            this.render();
+        });
+    }
+
+    _finishWheelBurstInteraction() {
+        this._cancelWheelBurstRender();
+        this._wheelBurstFinalPass = true;
+        this.renderPending = false;
+        this.render();
+        this._wheelBurstFinalPass = false;
     }
 
     /** True while dragging the price or time axis to zoom (not chart-body pan). */
@@ -16463,17 +16495,18 @@ class Chart {
         }
         const replayPlaying = this.replaySystem && this.replaySystem.isPlaying;
         const inertialPan = this.inertia && this.inertia.active;
-        const wheelBurst =
-            typeof this._wheelBurstUntil === 'number' &&
-            performance.now() < this._wheelBurstUntil;
-
+        const wheelBurst = this._isWheelZoomBurst();
         const panSyncBurst =
             typeof this._panSyncBurstUntil === 'number' &&
             performance.now() < this._panSyncBurstUntil;
 
-        if (replayPlaying || inertialPan || wheelBurst || panSyncBurst) {
+        if (replayPlaying || inertialPan || panSyncBurst) {
             this.renderPending = false;
             this.render();
+            return;
+        }
+        if (wheelBurst) {
+            this._scheduleWheelBurstRender();
             return;
         }
         this.renderPending = true;
@@ -16662,6 +16695,7 @@ class Chart {
         
         const chartViewPanning = this._isChartViewPanning();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
+        const wheelBurstFast = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -16756,8 +16790,8 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart: candles + overlays stay visible (60fps loop).
-        if (chartViewPanning) {
+        // Fast path while dragging chart or wheel-zooming: LOD candles + lighter overlays (60fps).
+        if (chartViewPanning || wheelBurstFast) {
             const panOpts = { panFast: true };
             // Vertical grid first; axes may widen margin — then horizontal grid, then candles once
             // (double candle pass + grid sandwiched in between made wicks look soft/faded when zoomed out).
@@ -20376,6 +20410,9 @@ class Chart {
                         try { this.constrainOffset(); } catch (_e) {}
                     }
                 }
+                if (typeof this._finishWheelBurstInteraction === 'function') {
+                    this._finishWheelBurstInteraction();
+                }
                 if (typeof this._finishPanDrawingRedraw === 'function') {
                     this._finishPanDrawingRedraw();
                 }
@@ -21371,7 +21408,11 @@ class Chart {
                 }
             }
 
-            if (typeof this.updateCrosshair === 'function') this.updateCrosshair(e);
+            if (typeof this._scheduleCrosshairTooltipFromEvent === 'function') {
+                this._scheduleCrosshairTooltipFromEvent(e);
+            } else if (typeof this.updateCrosshair === 'function') {
+                this.updateCrosshair(e);
+            }
 
             if (this.canvas && !this.isPanel) {
                 const rect = this._pointerLayoutRect();
