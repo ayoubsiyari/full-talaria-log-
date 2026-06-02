@@ -9550,6 +9550,15 @@ const TalariaV8bLive = () => {
   );
   const [indSettTab, setIndSettTab] = useState("style");
   const [indSettDraft, setIndSettDraft] = useState({});
+  /** Latest indicator settings draft — updated synchronously so Apply / pointerdown picks never read stale React state. */
+  const indSettDraftRef = useRef({});
+  const patchIndSettDraft = useCallback((updater) => {
+    setIndSettDraft((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : { ...prev, ...updater };
+      indSettDraftRef.current = next;
+      return next;
+    });
+  }, []);
   /** Open V9 indicator settings dropdown + viewport anchor (fixed layer avoids overflow clipping). */
   const [v9IndSelectMenu, setV9IndSelectMenu] = useState(null);
   const [screenshotFlash, setScreenshotFlash] = useState(false);
@@ -11128,13 +11137,18 @@ const TalariaV8bLive = () => {
       else if (counts.style) first = "style";
       else if (counts.input) first = "input";
       indSettCtxRef.current = { chart: chartInstance, indicatorType, indicator: existingIndicator };
-      setIndSettDraft(draft);
-      setIndSettTab(first);
+      indSettDraftRef.current = draft;
+      v9SettingsChartDismissLockUntilRef.current = Date.now() + 700;
+      v9SuppressNextChartDeselect();
       const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
       const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
       const halfW = indicatorType === "custom" ? 270 : indicatorType === "icteverything" ? 260 : 210;
       setIndSettPos({ x: Math.max(8, vw / zForPos / 2 - halfW), y: 72 });
-      setIndSettOpen(true);
+      flushSync(() => {
+        setIndSettDraft(draft);
+        setIndSettTab(first);
+        setIndSettOpen(true);
+      });
       return true;
     };
     if (typeof window !== "undefined") window.__v9OpenIndicatorSettings = openInd;
@@ -13599,7 +13613,7 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
     else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
       const pid = targetKey.slice(4);
-      setIndSettDraft(d => ({ ...d, [pid]: colorVal }));
+      patchIndSettDraft((d) => ({ ...d, [pid]: colorVal }));
     }
     else updateSetting(targetKey, colorVal);
   };
@@ -22031,13 +22045,14 @@ const TalariaV8bLive = () => {
         const applyInd = () => {
           const c2 = indSettCtxRef.current;
           if (!c2.chart || !c2.indicator) { closeIndSett(); return; }
+          const draftNow = indSettDraftRef.current || indSettDraft;
           const mergeFn = typeof window.__v9MergeIndicatorDraftForUpdate === "function"
             ? window.__v9MergeIndicatorDraftForUpdate
             : null;
-          const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, indSettDraft) : null;
+          const merged = mergeFn ? mergeFn(c2.indicatorType, c2.indicator, draftNow) : null;
           if (!merged) { closeIndSett(); return; }
-          merged.visible = indSettDraft.visible !== false;
-          merged.visibility = v9IndicatorVisibilityFromDraft(indSettDraft);
+          merged.visible = draftNow.visible !== false;
+          merged.visibility = v9IndicatorVisibilityFromDraft(draftNow);
           const chart = c2.chart;
           if (c2.indicatorType === "custom") {
             const TC = typeof window !== "undefined" ? window.TalariaCustomIndicators : null;
@@ -22069,8 +22084,10 @@ const TalariaV8bLive = () => {
           const disp = cur ? cur.label : (strVal || "—");
           const wst = widthStyle || { width: "100%", minWidth: 0 };
           const indDropPick = (pickFn) => modalPointerActivate(() => {
-            pickFn();
-            setV9IndSelectMenu(null);
+            flushSync(() => {
+              pickFn();
+              setV9IndSelectMenu(null);
+            });
           });
           return (
             <div data-v9-ind-select-root="1" style={{ position: "relative", ...wst, touchAction: "manipulation" }}>
@@ -22225,10 +22242,13 @@ const TalariaV8bLive = () => {
             return row(
               <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
                 min={p.min} max={p.max} step={p.step}
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  try { e.currentTarget.focus({ preventScroll: true }); } catch (_) { e.currentTarget.focus(); }
+                }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                   color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "text" }} />
             );
@@ -22239,19 +22259,16 @@ const TalariaV8bLive = () => {
             const isH = hov === ck;
             const colStr = String(raw || "#2962ff");
             return row(
-              <div onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
-                onClick={(e) => { e.stopPropagation(); openIndCP(e, p.id, colStr); }}
+              <div data-v9-color-swatch="1"
+                onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
+                {...modalPointerActivate((e) => openIndCP(e, p.id, colStr))}
                 style={v9TlColorSwatchBoxStyle(colStr, { active: isAct, hover: isH })} />
             );
           }
           if (p.type === "checkbox") {
+            const chkKey = `ind-chk-${p.id}`;
             return row(
-              <input type="checkbox" checked={!!raw}
-                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.checked }))}
-                onPointerDown={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                style={{ width: 16, height: 16, accentColor: c.ac, cursor: "default" }} />
+              TlChk(!!raw, chkKey, null, () => patchIndSettDraft((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })
             );
           }
           if (p.type === "select" && Array.isArray(p.options)) {
@@ -22260,7 +22277,7 @@ const TalariaV8bLive = () => {
                 paramId={p.id}
                 options={p.options}
                 value={raw}
-                onPick={(v) => setIndSettDraft((d) => ({ ...d, [p.id]: v }))}
+                onPick={(v) => patchIndSettDraft((d) => ({ ...d, [p.id]: v }))}
                 widthStyle={{ width: 130, minWidth: 0 }}
               />
             );
@@ -22270,7 +22287,7 @@ const TalariaV8bLive = () => {
               <div key={p.id} style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: c.ts, marginBottom: 6 }}>{p.label}</div>
                 <textarea value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                  onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                   rows={isCustom ? 14 : 8}
                   style={{ width: "100%", boxSizing: "border-box", resize: "vertical", minHeight: isCustom ? 200 : 100,
                     fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 11, lineHeight: 1.35, padding: 10,
@@ -22281,14 +22298,14 @@ const TalariaV8bLive = () => {
           if (p.type === "time") {
             return row(
               <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                 style={{ width: 118, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                   color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
             );
           }
           return row(
             <input type="text" value={raw != null ? String(raw) : ""} onClick={(e) => e.stopPropagation()}
-              onChange={(e) => setIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+              onChange={(e) => patchIndSettDraft((d) => ({ ...d, [p.id]: e.target.value }))}
               style={{ width: 160, maxWidth: "100%", height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
                 color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
           );
@@ -22297,8 +22314,8 @@ const TalariaV8bLive = () => {
         const renderIctEverythingSettings = () => {
           const def0 = (id) => def.params.find((x) => x.id === id);
           const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
-          const setv = (id, v) => setIndSettDraft((d) => ({ ...d, [id]: v }));
-          const flip = (id) => setIndSettDraft((d) => {
+          const setv = (id, v) => patchIndSettDraft((d) => ({ ...d, [id]: v }));
+          const flip = (id) => patchIndSettDraft((d) => {
             const p = def0(id);
             const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
             return { ...d, [id]: !cur };
@@ -22350,13 +22367,10 @@ const TalariaV8bLive = () => {
             const isAct = colorPicker === ck;
             const isH = hov === ck;
             return (
-              <div
+              <div data-v9-color-swatch="1"
                 onMouseEnter={() => setHov(ck)}
                 onMouseLeave={() => setHov(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openIndCP(e, pid, colStr);
-                }}
+                {...modalPointerActivate((e) => openIndCP(e, pid, colStr))}
                 style={v9TlColorSwatchBoxStyle(colStr, {
                   active: isAct,
                   hover: isH,
@@ -22729,12 +22743,12 @@ const TalariaV8bLive = () => {
                         const onMove = (ev) => {
                           const nv = getVal(ev.clientX);
                           if (isMin) {
-                            setIndSettDraft((s) => ({
+                            patchIndSettDraft((s) => ({
                               ...s,
                               [k]: { ...s[k], min: Math.max(1, Math.min(nv, s[k].max - 1)) },
                             }));
                           } else {
-                            setIndSettDraft((s) => ({
+                            patchIndSettDraft((s) => ({
                               ...s,
                               [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(nv, hm)) },
                             }));
@@ -22752,13 +22766,13 @@ const TalariaV8bLive = () => {
                       return (
                         <div key={k} style={{ display: "grid", gridTemplateColumns: gc, gap: "0 8px", alignItems: "center", padding: "6px 12px" }}>
                           {TlChk(v.checked, `indchk-${k}`, null, () =>
-                            setIndSettDraft((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
+                            patchIndSettDraft((s) => ({ ...s, [k]: { ...(s[k] || v), checked: !((s[k] || v).checked) } }))
                           )}
                           <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{lbl}</span>
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <input type="number" min={1} max={v.max - 1} value={v.min} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
-                                setIndSettDraft((s) => ({
+                                patchIndSettDraft((s) => ({
                                   ...s,
                                   [k]: { ...s[k], min: Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, s[k].max - 1)) },
                                 }))
@@ -22804,7 +22818,7 @@ const TalariaV8bLive = () => {
                           <div style={{ display: "flex", justifyContent: "center" }}>
                             <input type="number" min={v.min + 1} max={hm} value={v.max} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
-                                setIndSettDraft((s) => ({
+                                patchIndSettDraft((s) => ({
                                   ...s,
                                   [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(parseInt(e.target.value, 10) || 1, hm)) },
                                 }))

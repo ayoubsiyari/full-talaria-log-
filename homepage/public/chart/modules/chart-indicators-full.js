@@ -5997,32 +5997,53 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         return this.openOverlayIndicatorSettings(hit.id);
     };
 
-    /** First/last on-screen points of an overlay line (TradingView-style: two anchors only). */
-    function visibleOverlayLineEndpoints(chart, series, startIndex, endIndex) {
+    /** Visible points along an overlay line for TradingView-style selection handles (canvas-co-drawn with the line). */
+    function visibleOverlayLineSelectionPoints(chart, series, startIndex, endIndex) {
         const m = chart.margin || { l: 0, r: 0, t: 0, b: 0 };
-        let first = null;
-        let last = null;
+        const cw = chart.candleWidth || 8;
+        const minSpacing = Math.max(4, Math.min(10, cw * 0.4));
+        const all = [];
+
         for (let i = startIndex; i < endIndex; i++) {
             if (!Number.isFinite(series[i])) continue;
             const x = chart.dataIndexToPixel(i);
             const y = chart.yScale(series[i]);
-            if (x < m.l || x > chart.w - m.r || y < m.t || y > chart.h - m.b) continue;
-            if (!first) first = { x: x, y: y };
-            last = { x: x, y: y };
+            if (x < m.l || x > chart.w - m.r) continue;
+            if (y < m.t || y > chart.h - m.b) continue;
+            all.push({ x: x, y: y, i: i });
         }
-        if (!first) return [];
-        if (!last || (last.x === first.x && last.y === first.y)) return [first];
-        return [first, last];
+        if (!all.length) return [];
+
+        const picked = [];
+        let lastX = -Infinity;
+        for (let k = 0; k < all.length; k++) {
+            const pt = all[k];
+            const isLast = k === all.length - 1;
+            if (isLast || pt.x - lastX >= minSpacing) {
+                picked.push(pt);
+                lastX = pt.x;
+            }
+        }
+        const tail = all[all.length - 1];
+        const end = picked[picked.length - 1];
+        if (end.i !== tail.i) {
+            if (tail.x - end.x < minSpacing) {
+                picked[picked.length - 1] = tail;
+            } else {
+                picked.push(tail);
+            }
+        }
+        return picked;
     }
 
     Chart.prototype._drawOverlayLineSelectionHandles = function(series, startIndex, endIndex, style) {
         if (!this.ctx || !this.yScale || !series) return;
-        const endpoints = visibleOverlayLineEndpoints(this, series, startIndex, endIndex);
-        if (!endpoints.length) return;
+        const points = visibleOverlayLineSelectionPoints(this, series, startIndex, endIndex);
+        if (!points.length) return;
 
         const color = (style && style.color) || '#2962ff';
         const lw = (style && style.lineWidth) || 2;
-        const radius = Math.max(3.5, lw + 2);
+        const radius = Math.max(3, Math.min(4.5, lw + 1.5));
         const bg = (this.chartSettings && this.chartSettings.backgroundColor) || '#131722';
         const ctx = this.ctx;
 
@@ -6030,7 +6051,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         ctx.strokeStyle = color;
         ctx.fillStyle = bg;
         ctx.lineWidth = 1.5;
-        endpoints.forEach(function(pt) {
+        points.forEach(function(pt) {
             ctx.beginPath();
             ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
             ctx.fill();
