@@ -266,6 +266,19 @@
         indicator.style.dLineStyle = params.dLineStyle || legacyS;
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
+
+    function applyCciStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 80;
+        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 20;
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#00e676';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
+    }
     
     // Simple Moving Average
     function calculateSMA(data, period, source) {
@@ -2957,9 +2970,8 @@
 
             case 'cci':
                 indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#00e676';
-                indicator.style.lineWidth = 2;
                 indicator.overlay = false;
+                applyCciStyleFromParams(indicator, params);
                 indicator.name = 'CCI(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
                 break;
@@ -4058,6 +4070,9 @@
         }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'cci') {
+            applyCciStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5710,6 +5725,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'rsi') {
             this._renderRsiPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'cci') {
+            this._renderCciPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'willr') {
             this._renderWilliamsRPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -5800,26 +5818,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         });
 
         // Reference lines for oscillators
-        if (indicator.type === 'cci') {
-            [[-100, 'rgba(38,166,154,0.5)'], [0, 'rgba(120,123,134,0.35)'], [100, 'rgba(239,83,80,0.5)']].forEach(([lvl, col]) => {
-                const ry = scaleY(lvl);
-                if (ry > indTop && ry < indBottom) {
-                    ctx.strokeStyle = col;
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(m.l, ry);
-                    ctx.lineTo(this.w, ry);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.fillStyle = col;
-                    ctx.font = '9px Roboto';
-                    ctx.textAlign = 'right';
-                    ctx.fillText(lvl, this.w - 6, ry - 2);
-                }
-            });
-            ctx.textAlign = 'left';
-        } else if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
+        if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -8050,6 +8049,90 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         indicator._displayColor = style.color || '#9c27b0';
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+    };
+
+    // ---- CCI panel: auto-scaled + configurable levels + optional background ----
+    Chart.prototype._renderCciPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const obVal = style.overboughtValue != null ? style.overboughtValue : 80;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : 20;
+        const midVal = style.midValue != null ? style.midValue : 50;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        [obVal, osVal, midVal].forEach(function(v) {
+            if (Number.isFinite(v)) {
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        });
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const cMin = dom.min;
+        const cMax = dom.max;
+        const cSpan = Math.max(1e-9, cMax - cMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - cMin) / cSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
+
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        }
+
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, style.color || '#00e676', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = style.color || '#00e676';
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = style.color || '#00e676';
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(2),
+                color: style.color || '#00e676'
+            }];
+        }
     };
 
     // ---- Williams %R: fixed −100 … 0, ref −20 / −80 ----

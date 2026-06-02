@@ -186,6 +186,26 @@ function stochasticStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
+/** CCI Input tab level defaults (80 / 20 / 50). */
+function cciInputLevelParams() {
+    return [
+        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
+        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: 80, step: 1, tab: 'input' },
+        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: 20, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Midline', type: 'number', default: 50, step: 1, tab: 'input' }
+    ];
+}
+
+/** TradingView-style CCI Style tab (CCI line + level appearance + optional panel bg). */
+function cciStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show CCI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'CCI color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'lineStyle', label: 'CCI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'CCI thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' }
+    ].concat(stochasticLevelStyleParams());
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -486,10 +506,8 @@ const INDICATOR_DEFINITIONS = {
         name: 'Commodity Channel Index',
         type: 'separate',
         params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#00e676' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 5 }
-        ].concat(separateLineStyleExtras())
+            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 }
+        ].concat(cciInputLevelParams()).concat(cciStyleParams())
     },
     adx: {
         name: 'Average Directional Index',
@@ -3211,6 +3229,33 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 rows: [
                     v9PlotRow('%K', 'kColor', 'kLineStyle', 'kLineWidth', 'showK'),
                     v9PlotRow('%D', 'dColor', 'dLineStyle', 'dLineWidth', 'showD')
+                ]
+            }, {
+                title: 'Overbought Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+            }, {
+                title: 'Oversold Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+            }, {
+                title: 'Mid Level',
+                levelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'cci') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('CCI', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }, {
                 title: 'Overbought Level',
