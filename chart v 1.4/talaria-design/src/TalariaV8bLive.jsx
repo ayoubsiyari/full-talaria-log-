@@ -8443,6 +8443,8 @@ const TalariaV8bLive = () => {
   // identify them by their stable panel id, not a JS object reference.
   // Map<panelId, Record<v9Id, chartId | "__pending__">>
   const panelIndicatorMapsRef = useRef(null);
+  // Set when user clears Active via menu X or Clear all (not hydration from chart restore).
+  const indUserDismissRef = useRef(false);
 
   const chartTfToV9 = (cTf) => {
     if (!cTf) return null;
@@ -10620,10 +10622,12 @@ const TalariaV8bLive = () => {
       const prevSet = new Set(Object.keys(panelMap));
 
       // Same refresh race as single-chart path — mirror panel truth before diffing.
-      if (indActive.length === 0 && prevSet.size > 0) {
+      const userDismiss = indUserDismissRef.current;
+      if (indActive.length === 0 && prevSet.size > 0 && !userDismiss) {
         syncIndUiFromMultichartFocus();
         return;
       }
+      if (userDismiss) indUserDismissRef.current = false;
 
       // Remove indicators from focused panel that are no longer in the
       // toolbar's active set.
@@ -10727,10 +10731,12 @@ const TalariaV8bLive = () => {
       // lists restored ids — that diff removes every indicator and persistIndicators([])
       // wipes server state, so the next refresh is empty too.
       const restoredOnChart = chart.indicators?.active?.length || 0;
-      if (indActive.length === 0 && restoredOnChart > 0) {
+      const userDismiss = indUserDismissRef.current;
+      if (indActive.length === 0 && restoredOnChart > 0 && !userDismiss) {
         syncIndUiFromFocusedChart();
         return;
       }
+      if (userDismiss) indUserDismissRef.current = false;
 
       const map = getMapForChart(chart);
       if (!map) return;
@@ -25943,7 +25949,7 @@ const TalariaV8bLive = () => {
                   <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
                   <div style={{padding:"4px 0"}}>
                     {[["Save current",()=>{setIndTplSaveMode(true);setIndTplName("");}],
-              ["Clear all",()=>{setIndActive([]);setIndTplOpen(false);}]
+              ["Clear all",()=>{indUserDismissRef.current=true;setIndActive([]);setIndTplOpen(false);}]
                     ].map(([lbl,action])=>{
                       const isH=swHov===`ind-tpl-act-${lbl}`, isAct=lbl==="Save current"&&indTplSaveMode;
                       return (
@@ -26064,7 +26070,12 @@ const TalariaV8bLive = () => {
                 }
                 return [...prev, id];
               });
-              const toggleIndActive=()=>isAct?setIndActive(prev=>prev.filter(x=>x!==ind.id)):addIndActive(ind.id);
+              const toggleIndActive=()=>{
+                if (isAct) {
+                  indUserDismissRef.current=true;
+                  setIndActive(prev=>prev.filter(x=>x!==ind.id));
+                } else addIndActive(ind.id);
+              };
               const onIndicatorRowClick=()=>{
                 if (!isSel) { setIndSelectedId(ind.id); return; }
                 if (!isAct) addIndActive(ind.id);
