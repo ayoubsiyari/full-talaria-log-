@@ -279,6 +279,23 @@
         indicator.style.lineStyle = params.lineStyle || legacyS;
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
+
+    function applyMomStyleFromParams(indicator, params) {
+        applyMaLengthSourceFromParams(indicator, params, 10);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#66bb6a';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showZero = params.showZero !== false;
+        indicator.style.zeroValue = indicator.params.zeroValue;
+        indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
+        indicator.style.zeroLineStyle = params.zeroLineStyle || 'Dotted';
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+    }
     
     // Simple Moving Average
     function calculateSMA(data, period, source) {
@@ -3180,8 +3197,9 @@
             case 'mom':
             case 'momentum':
                 indicator.type = 'mom';
-                applyMaLengthSourceFromParams(indicator, params, 10);
-                applyOverlayLineStyleFromParams(indicator, params, '#66bb6a');
+                indicator.overlay = false;
+                indicator.separatePanel = true;
+                applyMomStyleFromParams(indicator, params);
                 indicator.name = 'Mom(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source);
                 break;
@@ -4073,6 +4091,12 @@
         }
         if (indicator.type === 'cci') {
             applyCciStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'mom' || indicator.type === 'momentum') {
+            indicator.type = 'mom';
+            indicator.overlay = false;
+            indicator.separatePanel = true;
+            applyMomStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5728,6 +5752,9 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         } else if (indicator.type === 'cci') {
             this._renderCciPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'mom' || indicator.type === 'momentum') {
+            this._renderMomPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'willr') {
             this._renderWilliamsRPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -7258,9 +7285,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 return;
             }
 
+            const resolveKey = typeof window.__v9ResolveIndicatorDefinitionKey === 'function'
+                ? window.__v9ResolveIndicatorDefinitionKey
+                : function(t) { return t; };
+            const settingsType = resolveKey(indicator.type);
+
             // Single UI path: indicator-ui.js (must load after this file — see dist-v9/index.html).
             if (typeof window.createIndicatorSettingsPanel === 'function') {
-                window.createIndicatorSettingsPanel(this, indicator.type, indicator);
+                window.createIndicatorSettingsPanel(this, settingsType, indicator);
                 return;
             }
 
@@ -8131,6 +8163,78 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 y: currentY,
                 text: last.toFixed(2),
                 color: style.color || '#00e676'
+            }];
+        }
+    };
+
+    // ---- Momentum panel: auto-scaled + zero line + optional background ----
+    Chart.prototype._renderMomPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (Number.isFinite(zeroVal)) {
+            min = Math.min(min, zeroVal);
+            max = Math.max(max, zeroVal);
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const mMin = dom.min;
+        const mMax = dom.max;
+        const mSpan = Math.max(1e-9, mMax - mMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
+
+        if (style.showZero !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
+                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Dotted', zeroVal);
+        }
+
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, style.color || '#66bb6a', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = style.color || '#66bb6a';
+        indicator._displayLabel = last !== null ? last.toFixed(5) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(5);
+            indicator._axisLabelColor = style.color || '#66bb6a';
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(5),
+                color: style.color || '#66bb6a'
             }];
         }
     };

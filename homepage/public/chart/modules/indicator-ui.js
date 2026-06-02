@@ -206,6 +206,48 @@ function cciStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
+/** Momentum Style tab (line + zero line + optional panel bg). */
+function momStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show momentum line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Momentum color', type: 'color', default: '#66bb6a', tab: 'style' },
+        { id: 'lineStyle', label: 'Momentum line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Momentum thickness', type: 'number', default: 2, min: 1, max: 5, tab: 'style' },
+        { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
+/** Resolve catalog / runtime indicator type to INDICATOR_DEFINITIONS key. */
+function resolveIndicatorDefinitionKey(type) {
+    const t = String(type || '').toLowerCase();
+    const aliases = {
+        momentum: 'mom',
+        williams: 'willr',
+        williamsr: 'willr',
+        stochastic: 'stoch',
+        bollinger: 'bb',
+        bollingerbands: 'bb'
+    };
+    return aliases[t] || t;
+}
+
+function getV9OpenIndicatorSettingsFn() {
+    if (typeof window.__v9OpenIndicatorSettings === 'function') return window.__v9OpenIndicatorSettings;
+    try {
+        if (window.parent && window.parent !== window && typeof window.parent.__v9OpenIndicatorSettings === 'function') {
+            return window.parent.__v9OpenIndicatorSettings;
+        }
+    } catch (_) { /* cross-origin */ }
+    try {
+        if (window.top && typeof window.top.__v9OpenIndicatorSettings === 'function') return window.top.__v9OpenIndicatorSettings;
+    } catch (_) { /* cross-origin */ }
+    return null;
+}
+
 function __ictEverythingParamList() {
     const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
@@ -630,8 +672,12 @@ const INDICATOR_DEFINITIONS = {
     },
     mom: {
         name: 'Momentum',
-        type: 'overlay',
-        params: overlayOscFullParams(10, '#66bb6a')
+        type: 'separate',
+        params: [
+            { id: 'period', label: 'Length', type: 'number', default: 10, min: 1 },
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
+            { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'input' }
+        ].concat(momStyleParams())
     },
     obv: {
         name: 'On Balance Volume',
@@ -2449,9 +2495,11 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
 }
 
 function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndicator = null) {
-    if (existingIndicator && typeof window.__v9OpenIndicatorSettings === 'function') {
+    indicatorType = resolveIndicatorDefinitionKey(indicatorType);
+    const v9Open = getV9OpenIndicatorSettingsFn();
+    if (existingIndicator && v9Open) {
         try {
-            if (window.__v9OpenIndicatorSettings(chartInstance, indicatorType, existingIndicator) === true) {
+            if (v9Open(chartInstance, indicatorType, existingIndicator) === true) {
                 return;
             }
         } catch (err) {
@@ -3140,6 +3188,7 @@ function v9LevelRow(valueId, showId, colorId, styleId) {
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
  */
 function v9BuildIndicatorStyleLayout(indicatorType) {
+    indicatorType = resolveIndicatorDefinitionKey(indicatorType);
     const def = INDICATOR_DEFINITIONS[indicatorType];
     if (!def || indicatorType === 'icteverything' || indicatorType === 'custom') return null;
     const params = def.params;
@@ -3242,6 +3291,25 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 title: 'Mid Level',
                 levelHeader: true,
                 levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'mom' || indicatorType === 'momentum') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Momentum', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }, {
+                title: 'Zero Line',
+                levelHeader: true,
+                levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
             }, {
                 title: 'Background',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
@@ -3404,6 +3472,7 @@ window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
+window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
 window.__v9MigrateIndicatorDraftColors = v9MigrateIndicatorDraftColors;
 window.setupIndicatorUI = setupIndicatorUI;

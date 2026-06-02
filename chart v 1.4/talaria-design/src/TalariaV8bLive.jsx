@@ -11255,6 +11255,10 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const openInd = (chartInstance, indicatorType, existingIndicator) => {
       if (!existingIndicator || !chartInstance || !indicatorType) return false;
+      const resolveKey = typeof window.__v9ResolveIndicatorDefinitionKey === "function"
+        ? window.__v9ResolveIndicatorDefinitionKey
+        : (t) => String(t || "").toLowerCase();
+      indicatorType = resolveKey(indicatorType);
       const defs = typeof window !== "undefined" ? window.INDICATOR_DEFINITIONS : null;
       const def = defs && defs[indicatorType];
       if (!def) return false;
