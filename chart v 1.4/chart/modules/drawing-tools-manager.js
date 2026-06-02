@@ -8636,7 +8636,16 @@ class DrawingToolsManager {
             && !this.drawingsGroup.empty()
             && !this.drawingsGroup.selectAll('.drawing').empty();
         if (!hasDom && this.drawings.length > 0) {
-            this.redrawAll({ forceFull: true });
+            const chart = this.chart;
+            requestAnimationFrame(() => {
+                if (!chart?.drag?.active || chart.drag.type !== 'pan') return;
+                const stillMissing = this.drawingsGroup
+                    && (this.drawingsGroup.empty()
+                        || this.drawingsGroup.selectAll('.drawing').empty());
+                if (stillMissing) {
+                    this.redrawAll({ forceFull: true });
+                }
+            });
         }
     }
 

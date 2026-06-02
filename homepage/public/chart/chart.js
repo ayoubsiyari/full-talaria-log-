@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a53';
+const CHART_ENGINE_BUILD = '20260602a54';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -15866,6 +15866,8 @@ class Chart {
                 const cur = this.yScale.domain();
                 this.manualCenterPrice = (cur[0] + cur[1]) / 2;
                 this.manualRange = cur[1] - cur[0];
+                this.priceOffset = 0;
+                if (!Number.isFinite(this.priceZoom) || this.priceZoom <= 0) this.priceZoom = 1;
             }
             const ch = this.h - m.t - m.b;
             const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
@@ -16343,13 +16345,18 @@ class Chart {
     _snapshotPanDrawingsLayer() {
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
-        this._panTimeTickCache = null;
         if (this.yScale) {
             const d = this.yScale.domain();
             this._panSnapYDomain = [Number(d[0]), Number(d[1])];
         } else {
             this._panSnapYDomain = null;
         }
+        // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
+        const panTicks = this._buildTimeTicks();
+        this._panTimeTickCache = {
+            baseOffsetX: this.offsetX,
+            ticks: panTicks.map((t) => ({ ...t })),
+        };
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
@@ -21038,13 +21045,18 @@ class Chart {
                 if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
             } else if (mode === 'priceAxis') {
                 this.drag.type = 'priceAxis';
+                const wasAutoScale = this.autoScale;
                 this.autoScale = false;
                 this.priceScale.autoScale = false;
                 this.isZooming = true;
-                if (this.yScale) {
+                // Only convert auto-fit → manual once; never re-snapshot domain while manual
+                // (that bakes priceOffset into manualCenterPrice and causes Y-axis snapping).
+                if (wasAutoScale && this.yScale) {
                     const d = this.yScale.domain();
                     this.manualCenterPrice = (d[0] + d[1]) / 2;
                     this.manualRange = d[1] - d[0];
+                    this.priceOffset = 0;
+                    this.priceZoom = 1;
                 }
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this.canvas.style.cursor = 'ns-resize';
@@ -21070,6 +21082,10 @@ class Chart {
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
+                // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
+                this._scheduleChartPanRender();
+                this.renderPending = false;
+                this.render();
             }
         });
 
