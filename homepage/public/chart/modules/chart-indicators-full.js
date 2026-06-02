@@ -6456,9 +6456,10 @@ Chart.prototype._normalizePlotStyle = function(lineStyle) {
     if (lower === 'solid') return 'Line';
     if (lower === 'dashed') return 'Dashed';
     if (lower === 'dotted') return 'Dotted';
+    if (lower === 'dashdot') return 'Dashdot';
     const names = [
         'Line', 'Line with breaks', 'Step line', 'Step line with breaks', 'Step line with diamonds',
-        'Histogram', 'Cross', 'Area', 'Area with breaks', 'Columns', 'Circles', 'Dashed', 'Dotted'
+        'Histogram', 'Cross', 'Area', 'Area with breaks', 'Columns', 'Circles', 'Dashed', 'Dotted', 'Dashdot'
     ];
     for (let i = 0; i < names.length; i++) {
         if (names[i].toLowerCase() === lower) return names[i];
@@ -6470,6 +6471,7 @@ Chart.prototype._lineDashForStyle = function(lineStyle) {
     const style = this._normalizePlotStyle(lineStyle);
     if (style === 'Dashed') return [8, 4];
     if (style === 'Dotted') return [2, 3];
+    if (style === 'Dashdot') return [8, 4, 2, 4];
     return [];
 };
 
@@ -6506,7 +6508,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         ctx.beginPath();
     };
 
-    if (style === 'Line' || style === 'Dashed' || style === 'Dotted' || style === 'Line with breaks') {
+    if (style === 'Line' || style === 'Dashed' || style === 'Dotted' || style === 'Dashdot' || style === 'Line with breaks') {
         ctx.setLineDash(this._lineDashForStyle(style === 'Line with breaks' ? 'Line' : style));
         let started = false;
         for (let i = startIndex; i < endIndex; i++) {

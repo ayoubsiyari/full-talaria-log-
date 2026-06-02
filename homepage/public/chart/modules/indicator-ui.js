@@ -89,6 +89,7 @@ function sanitizeIndicatorPayloadFromDefinition(def, payload) {
 const OVERLAY_LINE_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS.concat([
     { value: 'Dashed', label: 'Dashed' },
     { value: 'Dotted', label: 'Dotted' },
+    { value: 'Dashdot', label: 'Dash-dot' },
     { value: 'Solid', label: 'Solid' }
 ]);
 
