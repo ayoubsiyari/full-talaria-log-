@@ -16675,6 +16675,10 @@ class Chart {
 
         // IMPORTANT: Calculate scales FIRST before drawing anything
         this.calculateScales();
+        // Keep plot margins stable before candles/indicators so X mapping matches axis + pan.
+        if (typeof this._syncAdaptivePriceAxisMargin === 'function') {
+            this._syncAdaptivePriceAxisMargin();
+        }
 
         // Build time-axis ticks — cache + shift while panning (avoids per-frame rebuild jank)
         this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
@@ -16738,6 +16742,9 @@ class Chart {
             // Redraw drawings even when no candles are visible
             this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(chartViewPanning);
+            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+                this.syncOverlayIndicatorSelectionOverlay();
+            }
             return;
         }
         
@@ -16785,6 +16792,9 @@ class Chart {
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
             }
+            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+                this.syncOverlayIndicatorSelectionOverlay();
+            }
             return;
         }
 
@@ -16823,6 +16833,9 @@ class Chart {
             }
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
+            }
+            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+                this.syncOverlayIndicatorSelectionOverlay();
             }
             return;
         }
@@ -16929,6 +16942,10 @@ class Chart {
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
         if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
             window.__economicCalendarNotifyChartRender(this);
+        }
+
+        if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+            this.syncOverlayIndicatorSelectionOverlay();
         }
     }
     

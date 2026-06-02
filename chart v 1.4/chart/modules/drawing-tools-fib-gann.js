@@ -2260,6 +2260,12 @@ class PitchforkTool extends BaseDrawing {
         const medianSlopeDenom = (medianTargetX - pivotX);
         const medianSlope = Math.abs(medianSlopeDenom) < 1e-9 ? 0 : (medianTargetY - pivotY) / medianSlopeDenom;
         const yAtRight = (x0, y0) => safeY(y0 + medianSlope * (rightEdge - x0));
+        const yOnLineAtX = (x0, y0, x1, y1, x) => {
+            const dx = x1 - x0;
+            if (Math.abs(dx) < 1e-9) return safeY(y0);
+            const m = (y1 - y0) / dx;
+            return safeY(y0 + m * (x - x0));
+        };
 
         // Calculate all level lines first (both upper and lower)
         const levelLines = [];
@@ -2559,14 +2565,16 @@ class PitchforkTool extends BaseDrawing {
             }
             
             // Draw the median line
-            // For Original style: from midBC to right edge
-            // For other styles: from pivot to right edge
+            // For Original style: anchor at midBC; for other styles anchor at pivot.
+            // Draw extended across the full fork width so the line covers all sections.
             const medianStartX = (this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle) ? midX : pivotX;
             const medianStartY = (this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle) ? midY : pivotY;
+            const medianLeftY = yOnLineAtX(medianStartX, medianStartY, medianEnd.x, medianEnd.y, leftEdge);
+            const medianRightY = yOnLineAtX(medianStartX, medianStartY, medianEnd.x, medianEnd.y, rightEdge);
             
             this.group.append('line')
-                .attr('x1', medianStartX).attr('y1', medianStartY)
-                .attr('x2', medianEnd.x).attr('y2', medianEnd.y)
+                .attr('x1', leftEdge).attr('y1', medianLeftY)
+                .attr('x2', rightEdge).attr('y2', medianRightY)
                 .attr('stroke', this.style.medianColor)
                 .attr('stroke-width', medianStrokeWidth)
                 .attr('stroke-dasharray', medianStrokeDasharray)
@@ -2576,10 +2584,12 @@ class PitchforkTool extends BaseDrawing {
         // Draw all level lines
         levelLines.forEach(line => {
             if (line.isMedian) return; // Skip median, already drawn
+            const leftY = yOnLineAtX(line.startX, line.startY, line.endX, line.endY, leftEdge);
+            const rightY = yOnLineAtX(line.startX, line.startY, line.endX, line.endY, rightEdge);
             
             this.group.append('line')
-                .attr('x1', line.startX).attr('y1', line.startY)
-                .attr('x2', line.endX).attr('y2', line.endY)
+                .attr('x1', leftEdge).attr('y1', leftY)
+                .attr('x2', rightEdge).attr('y2', rightY)
                 .attr('stroke', line.color)
                 .attr('stroke-width', line.strokeWidth || 1)
                 .style('cursor', 'move');
