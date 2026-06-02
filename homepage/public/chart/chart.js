@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a51';
+const CHART_ENGINE_BUILD = '20260602a52';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -15900,6 +15900,9 @@ class Chart {
         const usePipelineScale = this._shouldUseDisplayPipeline();
         const priceVisible = usePipelineScale ? this.getDisplaySeries() : this.data.slice(visStart, visEnd);
         const visCount = Math.max(0, visEnd - visStart);
+        this._cachedPriceVisible = priceVisible;
+        this._cachedVisStart = visStart;
+        this._cachedVisEnd = visEnd;
         
         // FIX: If no visible candles, maintain last valid scales to prevent drawings from disappearing
         if (priceVisible.length === 0 && visCount === 0) {
@@ -16023,6 +16026,16 @@ class Chart {
             const priceDy = this.priceOffset - snapPo;
             domainMin = snapMin + priceDy;
             domainMax = snapMax + priceDy;
+        } else if (
+            this._isWheelZoomBurst() && !this._wheelBurstFinalPass
+            && this._wheelSnapYDomain && this._wheelSnapYDomain.length === 2
+        ) {
+            const snapMin = this._wheelSnapYDomain[0];
+            const snapMax = this._wheelSnapYDomain[1];
+            const snapPo = Number.isFinite(this._wheelSnapPriceOffset) ? this._wheelSnapPriceOffset : this.priceOffset;
+            const priceDy = this.priceOffset - snapPo;
+            domainMin = snapMin + priceDy;
+            domainMax = snapMax + priceDy;
         }
 
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized.
@@ -16101,6 +16114,8 @@ class Chart {
 
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
+        this._wheelSnapYDomain = null;
+        this._wheelSnapPriceOffset = null;
         this._wheelBurstFinalPass = true;
         this.renderPending = false;
         this.render();
@@ -16797,8 +16812,14 @@ class Chart {
         }
 
         // Build time-axis ticks — cache + shift only while chart-body panning (offset-only motion).
-        // Wheel/axis zoom change bar spacing; rebuilding ticks is required there.
-        this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
+        // Skip label rebuild during wheel burst (spacing changes every tick — expensive and invisible while scrolling).
+        const wheelBurstPaint = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
+        if (wheelBurstPaint) {
+            this._timeTicks = this._wheelBurstTimeTicks || [];
+        } else {
+            this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
+            this._wheelBurstTimeTicks = this._timeTicks;
+        }
 
         // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
         // Using full canvas width for bar count was too wide vs the drawable area and caused
@@ -16815,24 +16836,28 @@ class Chart {
         
         let visible;
         if (this._shouldUseDisplayPipeline()) {
-            const disp = this.getDisplaySeries();
-            visible = [];
-            let minMid = startIdx;
-            let maxMid = endIdx;
-            for (let di = 0; di < disp.length; di++) {
-                const d = disp[di];
-                const idx = Number.isFinite(d.midIdx) ? d.midIdx : (startIdx + di);
-                if (idx < startIdx - edgeBuf || idx > endIdx + edgeBuf) continue;
-                visible.push(d);
-                if (idx < minMid) minMid = idx;
-                if (idx > maxMid) maxMid = idx;
-            }
-            if (visible.length > 0) {
-                this.visibleStartIndex = Math.max(0, minMid);
-                this.visibleEndIndex = Math.min(this.data.length, maxMid + 1);
+            const disp = this._cachedPriceVisible || this.getDisplaySeries();
+            if (Array.isArray(disp) && disp.length > 0 && Number.isFinite(disp[0]._pixelX)) {
+                visible = disp;
+            } else {
+                visible = [];
+                let minMid = startIdx;
+                let maxMid = endIdx;
+                for (let di = 0; di < disp.length; di++) {
+                    const d = disp[di];
+                    const idx = Number.isFinite(d.midIdx) ? d.midIdx : (startIdx + di);
+                    if (idx < startIdx - edgeBuf || idx > endIdx + edgeBuf) continue;
+                    visible.push(d);
+                    if (idx < minMid) minMid = idx;
+                    if (idx > maxMid) maxMid = idx;
+                }
+                if (visible.length > 0) {
+                    this.visibleStartIndex = Math.max(0, minMid);
+                    this.visibleEndIndex = Math.min(this.data.length, maxMid + 1);
+                }
             }
         } else {
-            visible = this.data.slice(startIdx, endIdx);
+            visible = this._cachedPriceVisible || this.data.slice(startIdx, endIdx);
         }
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
@@ -16873,38 +16898,30 @@ class Chart {
         // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
         if (interactionFast) {
             const panOpts = { panFast: true };
-            const mFast = this.margin || { l: 60, r: 60 };
-            const plotPxFast = Math.max(1, this.w - mFast.l - mFast.r);
-            const pixelLod = this._shouldUsePixelColumnCandleLod(visible.length, plotPxFast);
 
             if (axisZoomDragging && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid lines during motion — only volume separator when needed (TradingView-style).
+            // Skip grid/volume/extra work during wheel burst — candles + price line only.
             this.drawGrid({ panFast: true, skipAll: true });
-            if (!pixelLod) {
+            if (!wheelBurstPaint) {
                 this.drawVolume(visible, panOpts);
             }
-            this.drawAxes();
-            this.calculateScales();
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
                 this._paintSeparatePanelStackBackground();
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            // Axes after candles so the price/time strip covers wicks in the margin (normal render order).
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
-                // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
                 this._clearPanDrawingsLayerTransform(false);
             }
-            const wheelBurstActive = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-            if (!(wheelBurstActive && pixelLod)) {
+            if (!wheelBurstPaint) {
                 this.redrawDrawings();
+                this._syncOrderOverlaysDuringPan(true, { lite: true });
             }
-            this._syncOrderOverlaysDuringPan(true);
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
             }
@@ -20594,11 +20611,14 @@ class Chart {
         const handleWheel = (e) => {
             e.preventDefault();
             // 200ms so back-to-back wheel ticks stay inside a single burst.
-            // While the burst flag is on, scheduleRender() forces synchronous render() and
-            // constrainOffset() skips the proactive pan-load fetch — together those make
-            // zoom-out feel smooth instead of network-stalled.
+            const burstWasActive = this._isWheelZoomBurst();
             this._wheelBurstUntil = performance.now() + 200;
             this._clearPanTimeTickCache();
+            if (!burstWasActive && this.yScale) {
+                const d = this.yScale.domain();
+                this._wheelSnapYDomain = [Number(d[0]), Number(d[1])];
+                this._wheelSnapPriceOffset = this.priceOffset;
+            }
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
@@ -20610,6 +20630,9 @@ class Chart {
                     } else {
                         try { this.constrainOffset(); } catch (_e) {}
                     }
+                }
+                if (typeof this.dispatchScrollSync === 'function') {
+                    try { this.dispatchScrollSync(true); } catch (_e) {}
                 }
                 if (typeof this._finishWheelBurstInteraction === 'function') {
                     this._finishWheelBurstInteraction();
@@ -20730,9 +20753,7 @@ class Chart {
                 this.zoomLevel.candleWidthIndex = nearestIdx;
 
                 this._lastWheelZoomDirection = zoomDirection;
-                this.constrainOffset();
                 this.scheduleRender();
-                this.dispatchScrollSync();
                 return;
             }
 

@@ -228,18 +228,21 @@
 
         /**
          * Pixel-slot OHLC merge for zoomed-out views (1px body + 1px gap per slot).
+         * Iterates source index range directly — avoids allocating a viewport slice array
+         * on every wheel frame (major GC + CPU win when zoomed out).
          */
-        _applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex) {
+        _pixelSlotAggregateFromRange(source, visStart, visEnd, plotWidth, m, offsetX, spacing, sliceMode = false) {
             const slotPx = ZOOMED_OUT_SLOT_PX;
             const numSlots = Math.max(1, Math.ceil(plotWidth / slotPx));
             const slots = new Array(numSlots);
-            const base = baseIndex || 0;
+            const i0 = Math.max(0, visStart | 0);
+            const i1 = sliceMode ? Math.min(source.length, visEnd | 0) : Math.min(source.length, visEnd | 0);
 
-            for (let i = 0; i < slice.length; i++) {
-                const d = slice[i];
+            for (let idx = i0; idx < i1; idx++) {
+                const d = sliceMode ? source[idx - i0] : source[idx];
                 if (!d) continue;
-                const idx = base + i;
-                const x = m.l + idx * spacing + offsetX;
+                const dataIdx = sliceMode ? (visStart + (idx - i0)) : idx;
+                const x = m.l + dataIdx * spacing + offsetX;
                 const slot = Math.floor((x - m.l) / slotPx);
                 if (slot < 0 || slot >= numSlots) continue;
 
@@ -252,7 +255,7 @@
                         l: d.l,
                         c: d.c,
                         v: Number(d.v) || 0,
-                        midIdx: idx,
+                        midIdx: dataIdx,
                         _pixelX: m.l + slot * slotPx,
                         _pipelineBucket: true,
                     };
@@ -261,7 +264,7 @@
                     if (d.l < bucket.l) bucket.l = d.l;
                     bucket.c = d.c;
                     bucket.v += Number(d.v) || 0;
-                    bucket.midIdx = idx;
+                    bucket.midIdx = dataIdx;
                 }
             }
 
@@ -270,6 +273,11 @@
                 if (slots[s]) out.push(slots[s]);
             }
             return out;
+        }
+
+        _applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex) {
+            const base = baseIndex || 0;
+            return this._pixelSlotAggregateFromRange(slice, base, base + slice.length, plotWidth, m, offsetX, spacing, true);
         }
 
         /**
@@ -325,16 +333,31 @@
 
             const resampled = this.getResampledSeries(source, tf, dv);
             const visStart = Math.max(0, -Math.floor(offsetX / spacing) - VIEWPORT_BUFFER_BARS);
-            const sliced = this.sliceByViewport(resampled, {
-                offsetX,
-                plotWidth,
-                spacing,
-                bufferBars: VIEWPORT_BUFFER_BARS,
-            });
-            const effectiveBudget = (pixelLod || sliced.length > plotWidth)
-                ? Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX)
-                : maxBudget;
-            const display = this.applyRenderBudget(sliced, effectiveBudget, visStart);
+            const visEnd = Math.min(
+                resampled.length,
+                -Math.floor(offsetX / spacing) + Math.ceil(plotWidth / spacing) + VIEWPORT_BUFFER_BARS
+            );
+
+            let display;
+            if (visEnd <= visStart) {
+                display = [];
+            } else if (pixelLod || (visEnd - visStart) > plotWidth) {
+                display = this._pixelSlotAggregateFromRange(resampled, visStart, visEnd, plotWidth, m, offsetX, spacing);
+            } else if (visEnd - visStart <= maxBudget) {
+                display = new Array(visEnd - visStart);
+                for (let i = visStart; i < visEnd; i++) {
+                    const d = resampled[i];
+                    display[i - visStart] = (d && Number.isFinite(d.midIdx))
+                        ? d
+                        : Object.assign({}, d, { midIdx: i });
+                }
+            } else {
+                display = this.applyRenderBudget(
+                    resampled.slice(visStart, visEnd),
+                    maxBudget,
+                    visStart
+                );
+            }
 
             this._displayCache.key = cacheKey;
             this._displayCache.series = display;
