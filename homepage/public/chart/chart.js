@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a54';
+const CHART_ENGINE_BUILD = '20260602a56';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -14341,6 +14341,17 @@ class Chart {
      *    3-dot loading indicator next to the symbol becomes visible.
      */
     _beginTimeframeSwitching(fromTf, toTf) {
+        // Drop any in-flight pan snap/transform — stale offsets make drawings snap after TF switch.
+        if (this.drag) {
+            this.drag.active = false;
+            this.drag.type = null;
+        }
+        this._stopChartPanRenderLoop();
+        this._cancelChartPanFrame();
+        this._clearPanTimeTickCache();
+        if (typeof this._clearPanDrawingsLayerTransform === 'function') {
+            this._clearPanDrawingsLayerTransform();
+        }
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
@@ -16360,6 +16371,16 @@ class Chart {
         // Drop stale CSS translate; keep snap offsets for the pan loop.
         this._clearPanDrawingsLayerTransform(false);
         const dm = this.drawingManager;
+        // Re-resolve timestamp anchors once at pan start (e.g. after 1D→1m→1D) then freeze
+        // indices for the drag — per-frame resolve during pan caused shapes to snap/jump.
+        if (dm && dm.drawings && dm.drawings.length > 0
+            && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+            dm.drawings.forEach((drawing) => {
+                if (drawing) {
+                    dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                }
+            });
+        }
         if (dm && typeof dm.prepareDrawingsForChartPan === 'function') {
             dm.prepareDrawingsForChartPan();
         }
@@ -16926,6 +16947,12 @@ class Chart {
             this.drawGrid();
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
+            if (typeof this.drawIndicators === 'function') {
+                this.drawIndicators();
+            }
+            if (typeof this.renderSeparatePanelIndicators === 'function') {
+                this.renderSeparatePanelIndicators();
+            }
             this.drawAxes();
             this.drawEconomicCalendarAxisMarkers({ panFast: chartViewPanning });
             
@@ -16963,6 +16990,15 @@ class Chart {
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
+            // Overlay + separate-panel indicators during chart pan (wheel/axis bursts still skip for speed).
+            if (!interactionLightPaint) {
+                if (typeof this.drawIndicators === 'function') {
+                    this.drawIndicators();
+                }
+                if (typeof this.renderSeparatePanelIndicators === 'function') {
+                    this.renderSeparatePanelIndicators();
+                }
+            }
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
@@ -16971,6 +17007,9 @@ class Chart {
             if (!interactionLightPaint) {
                 this.redrawDrawings();
                 this._syncOrderOverlaysDuringPan(true, { lite: true });
+                if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
+                    this.syncOverlayIndicatorSelectionOverlay();
+                }
             }
             if (this.boxZoom && this.boxZoom.active) {
                 this.drawBoxZoom();
@@ -22711,10 +22750,19 @@ class Chart {
 
     _finishPanDrawingRedraw() {
         if (this.drawingManager && this.xScale && this.yScale) {
-            if (typeof this.drawingManager.finalizeDrawingsAfterChartPan === 'function') {
-                this.drawingManager.finalizeDrawingsAfterChartPan();
+            const dm = this.drawingManager;
+            if (dm.drawings && dm.drawings.length > 0
+                && typeof dm._syncDrawingPointsFromTimestamps === 'function') {
+                dm.drawings.forEach((drawing) => {
+                    if (drawing) {
+                        dm._syncDrawingPointsFromTimestamps(drawing, { tfRefresh: true });
+                    }
+                });
             }
-            this.drawingManager.redrawAll({ forceFull: true });
+            if (typeof dm.finalizeDrawingsAfterChartPan === 'function') {
+                dm.finalizeDrawingsAfterChartPan();
+            }
+            dm.redrawAll({ forceFull: true });
         }
     }
 

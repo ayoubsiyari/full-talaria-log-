@@ -5270,7 +5270,9 @@ class DrawingToolsManager {
             }
         }
 
-        this._syncDrawingPointsFromTimestamps(drawing);
+        if (!opts.skipTimestampSync) {
+            this._syncDrawingPointsFromTimestamps(drawing);
+        }
 
         const scales = {
             xScale: this.chart.xScale,
@@ -8839,6 +8841,20 @@ class DrawingToolsManager {
     _syncDrawingPointsFromTimestamps(drawing, options = {}) {
         if (!drawing || !this.chart) return;
         if (this._isDrawingLiveEditing(drawing)) return;
+        if (!options.tfRefresh) {
+            const chart = this.chart;
+            if (typeof chart._isChartViewPanning === 'function' && chart._isChartViewPanning()) {
+                return;
+            }
+            if (typeof chart._isWheelZoomBurst === 'function' && chart._isWheelZoomBurst()) {
+                return;
+            }
+            if (typeof chart._isAxisZoomDragging === 'function'
+                && chart._isAxisZoomDragging()
+                && !chart._axisZoomFinalizePass) {
+                return;
+            }
+        }
         if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) return;
         if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.resolveDrawingPoints !== 'function') {
             return;
@@ -9633,7 +9649,13 @@ class DrawingToolsManager {
             drawing.chart = this.chart;
 
             if (!drawing.timestampPoints || drawing.timestampPoints.length === 0) {
-                this._captureDrawingTimestampAnchors(drawing);
+                const lastIdx = this.chart.data.length - 1;
+                const pointsNative = Array.isArray(drawing.points) && drawing.points.length > 0
+                    && drawing.points.every((p) => p && Number.isFinite(p.x)
+                        && p.x >= -1 && p.x <= lastIdx + 1);
+                if (pointsNative) {
+                    this._captureDrawingTimestampAnchors(drawing);
+                }
             }
 
             if (drawing.timestampPoints && drawing.timestampPoints.length > 0) {
@@ -9645,8 +9667,12 @@ class DrawingToolsManager {
                 drawing.group = null;
             }
 
-            this.renderDrawing(drawing);
+            this.renderDrawing(drawing, { skipTimestampSync: true });
         });
+
+        if (this.chart && typeof this.chart._clearPanDrawingsLayerTransform === 'function') {
+            this.chart._clearPanDrawingsLayerTransform();
+        }
 
         if (this.objectTreeManager) {
             this.objectTreeManager.refresh();
