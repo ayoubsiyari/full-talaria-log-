@@ -5129,6 +5129,22 @@
 const DEFAULT_SEPARATE_PANEL_HEIGHT = 100;
 const MIN_SEPARATE_PANEL_HEIGHT = 60;
 
+/** Reserve separate-panel height before calculateScales/drawVolume so volume stays in its own band. */
+Chart.prototype._syncSeparateIndicatorPanelHeightEstimate = function() {
+    if (typeof this._getVisibleSeparateIndicators !== 'function') return;
+    const separateIndicators = this._getVisibleSeparateIndicators();
+    if (!separateIndicators.length) {
+        this.separateIndicatorPanelHeight = 0;
+        return;
+    }
+    let panelHeights = this._getSeparatePanelHeights(separateIndicators);
+    if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
+        this._separatePanelResize.activeHeights.length === panelHeights.length) {
+        panelHeights = this._separatePanelResize.activeHeights.slice();
+    }
+    this.separateIndicatorPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
+};
+
 Chart.prototype._getVisibleSeparateIndicators = function() {
     if (!this.indicators || !this.indicators.active) return [];
     return this.indicators.active.filter(ind => {

@@ -15850,6 +15850,9 @@ class Chart {
      * Calculate scales for chart rendering
      */
     calculateScales() {
+        if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
+            this._syncSeparateIndicatorPanelHeightEstimate();
+        }
         const m = this.margin;
         const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
@@ -17034,12 +17037,13 @@ class Chart {
         
         // Volume section separator (only show if volume is visible)
         if (this.chartSettings.showVolume && volumeAreaHeight > 0) {
+            const indPanelH = this.separateIndicatorPanelHeight || 0;
             this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
             this.ctx.lineWidth = 1;
             this.ctx.setLineDash([]);
             this.ctx.beginPath();
-            this.ctx.moveTo(m.l, this.h - m.b - volumeAreaHeight);
-            this.ctx.lineTo(this.w - m.r, this.h - m.b - volumeAreaHeight);
+            this.ctx.moveTo(m.l, this.h - m.b - indPanelH - volumeAreaHeight);
+            this.ctx.lineTo(this.w - m.r, this.h - m.b - indPanelH - volumeAreaHeight);
             this.ctx.stroke();
         }
         this.ctx.setLineDash([]);
@@ -18612,10 +18616,23 @@ class Chart {
             }
         }
         
-        // Create clipping region to prevent drawing outside chart area (before price axis)
+        // Clip to the volume band only — bars must not extend into separate indicator panels below.
         this.ctx.save();
+        const ch = this.h - m.t - m.b;
+        const effectiveVolumeHeight = this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const indPanelH = this.separateIndicatorPanelHeight || 0;
+        let volBandTop = this.h - m.b - indPanelH - volumeAreaHeight;
+        let volBandBottom = this.h - m.b - indPanelH;
+        if (this.volumeScale && typeof this.volumeScale.range === 'function') {
+            const volRange = this.volumeScale.range();
+            if (volRange && volRange.length >= 2) {
+                volBandTop = Math.min(volRange[0], volRange[1]);
+                volBandBottom = Math.max(volRange[0], volRange[1]);
+            }
+        }
         this.ctx.beginPath();
-        this.ctx.rect(m.l, m.t, this.w - m.l - m.r, this.h - m.t - m.b);
+        this.ctx.rect(m.l, volBandTop, this.w - m.l - m.r, Math.max(1, volBandBottom - volBandTop));
         this.ctx.clip();
         
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
@@ -18639,7 +18656,7 @@ class Chart {
             if (x < m.l - 10 || x > this.w - m.r + 10) return;
             const vs = volScaleLod || this.volumeScale;
             const volumeY = vs(volVal);
-            const volumeHeight = (this.h - m.b) - volumeY;
+            const volumeHeight = Math.max(1, volBandBottom - volumeY);
             this.ctx.fillStyle = isGreen ? upColor : downColor;
             this.ctx.fillRect(x - this.candleWidth / 2, volumeY, this.candleWidth, volumeHeight);
         };
