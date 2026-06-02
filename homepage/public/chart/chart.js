@@ -16055,6 +16055,14 @@ class Chart {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
     }
 
+    /** Pan, inertia, wheel burst, or axis drag — use lightweight paint until interaction settles. */
+    _isInteractionFastRender() {
+        if (this._isChartViewPanning()) return true;
+        if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
+        if (this._isAxisZoomDragging() && !this._axisZoomFinalizePass) return true;
+        return false;
+    }
+
     _cancelWheelBurstRender() {
         if (this._wheelBurstRenderRaf != null) {
             cancelAnimationFrame(this._wheelBurstRenderRaf);
@@ -16758,7 +16766,7 @@ class Chart {
         
         const chartViewPanning = this._isChartViewPanning();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
-        const wheelBurstFast = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
+        const interactionFast = this._isInteractionFastRender();
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -16780,7 +16788,8 @@ class Chart {
             this._paintSeparatePanelStackBackground();
         }
 
-        // Build time-axis ticks — cache + shift while panning (avoids per-frame rebuild jank)
+        // Build time-axis ticks — cache + shift only while chart-body panning (offset-only motion).
+        // Wheel/axis zoom change bar spacing; rebuilding ticks is required there.
         this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
 
         // Visible bar indices: derive from plot edges (matches dataIndexToPixel / panning).
@@ -16853,40 +16862,36 @@ class Chart {
             this.hasRenderedData = true;
         }
 
-        // Fast path while dragging chart or wheel-zooming: LOD candles + lighter overlays (60fps).
-        if (chartViewPanning || wheelBurstFast) {
+        // Fast path while panning, wheel-zooming, or axis-dragging: LOD candles + skip heavy overlays.
+        if (interactionFast) {
             const panOpts = { panFast: true };
-            // Vertical grid first; axes may widen margin — then horizontal grid, then candles once
-            // (double candle pass + grid sandwiched in between made wicks look soft/faded when zoomed out).
-            this.drawGrid({ panFast: true, skipHorizontal: true });
-            this.drawVolume(visible, panOpts);
+            const mFast = this.margin || { l: 60, r: 60 };
+            const plotPxFast = Math.max(1, this.w - mFast.l - mFast.r);
+            const pixelLod = this._shouldUsePixelColumnCandleLod(visible.length, plotPxFast);
+
+            if (axisZoomDragging && this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+                this.compareOverlay.updateLeftMargin();
+            }
+
+            // Skip grid lines during motion — only volume separator when needed (TradingView-style).
+            this.drawGrid({ panFast: true, skipAll: true });
+            if (!pixelLod) {
+                this.drawVolume(visible, panOpts);
+            }
             this.drawAxes();
             this.calculateScales();
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
                 this._paintSeparatePanelStackBackground();
             }
-            this.drawGrid({ panFast: true, skipVertical: true });
             this.drawCandles(visible, panOpts);
-            if (typeof this.drawIndicators === 'function') {
-                this.drawIndicators();
-            }
-            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
-                try {
-                    this.compareOverlay.drawOverlays();
-                } catch (e) {
-                    console.error('Error drawing overlays:', e);
-                }
-            }
             this.drawPriceLine(visible);
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
-            }
             // Axes after candles so the price/time strip covers wicks in the margin (normal render order).
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
-            // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
-            // CSS translate was clipped by #chart-container { overflow: hidden } in V9.
-            this._clearPanDrawingsLayerTransform(false);
+            if (chartViewPanning) {
+                // Rebuild drawing SVG each pan frame (extended L/R uses live plot bounds).
+                this._clearPanDrawingsLayerTransform(false);
+            }
             this.redrawDrawings();
             this._syncOrderOverlaysDuringPan(true, { lite: true });
             if (this.boxZoom && this.boxZoom.active) {
@@ -16894,54 +16899,6 @@ class Chart {
             }
             if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
                 this.drawCtrlMarqueeSelect();
-            }
-            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
-                this.syncOverlayIndicatorSelectionOverlay();
-            }
-            return;
-        }
-
-        // Fast path while dragging price/time axis: same zoom math, lighter paint (LOD candles + panFast drawings).
-        if (axisZoomDragging) {
-            const panOpts = { panFast: true };
-            if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
-                this.compareOverlay.updateLeftMargin();
-            }
-            this.drawGrid({ panFast: true, skipHorizontal: true });
-            this.drawVolume(visible, panOpts);
-            this.drawAxes();
-            this.calculateScales();
-            if (typeof this._paintSeparatePanelStackBackground === 'function') {
-                this._paintSeparatePanelStackBackground();
-            }
-            this.drawGrid({ panFast: true, skipVertical: true });
-            this.drawCandles(visible, panOpts);
-            if (typeof this.drawIndicators === 'function') {
-                this.drawIndicators();
-            }
-            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
-                try {
-                    this.compareOverlay.drawOverlays();
-                } catch (e) {
-                    console.error('Error drawing overlays:', e);
-                }
-            }
-            this.drawPriceLine(visible);
-            if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
-            }
-            this.redrawDrawings();
-            this._syncOrderOverlaysDuringPan(true, { lite: true });
-            this.drawAxes();
-            this.drawCurrentPriceLabel(visible);
-            if (this.boxZoom && this.boxZoom.active) {
-                this.drawBoxZoom();
-            }
-            if (this.ctrlMarqueeSelect && this.ctrlMarqueeSelect.active) {
-                this.drawCtrlMarqueeSelect();
-            }
-            if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
-                this.syncOverlayIndicatorSelectionOverlay();
             }
             return;
         }
@@ -17092,6 +17049,7 @@ class Chart {
         const showVertical = this.chartSettings.gridStyle === 'Vert and horz' || this.chartSettings.gridStyle === 'Vertical';
         const skipHorizontal = !!opts.skipHorizontal;
         const skipVertical = !!opts.skipVertical;
+        const skipAll = !!opts.skipAll;
 
         const gridLW = Math.max(1, parseInt(this.chartSettings.gridLineWidth, 10) || 1);
         const gridPat = this.chartSettings.gridPattern || 'solid';
@@ -17103,7 +17061,7 @@ class Chart {
         };
         
         // Horizontal grid lines (price levels) - aligned with y-axis labels
-        if (showHorizontal && !skipHorizontal) {
+        if (!skipAll && showHorizontal && !skipHorizontal) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = gridLW;
             applyGridDash();
@@ -17126,7 +17084,7 @@ class Chart {
         }
         
         // Vertical grid lines – use same tick positions as time-axis labels for perfect sync
-        if (showVertical && !skipVertical && this._timeTicks && this._timeTicks.length > 0) {
+        if (!skipAll && showVertical && !skipVertical && this._timeTicks && this._timeTicks.length > 0) {
             this.ctx.strokeStyle = this.chartSettings.gridColor;
             this.ctx.lineWidth = gridLW;
             applyGridDash();
@@ -18918,19 +18876,14 @@ class Chart {
                 this._haCache = this.calculateHeikinAshi(this.data);
                 this._haCacheVersion = this.dataVersion;
             }
-            // Map visible candles to their HA equivalents from the cache
             const startIdx = this.visibleStartIndex || 0;
-            chartData = [];
-            for (let i = 0; i < visible.length; i++) {
-                const dataIdx = startIdx + i;
-                if (this._haCache && dataIdx < this._haCache.length) {
-                    chartData.push(this._haCache[dataIdx]);
-                } else {
-                    chartData.push(visible[i]); // Fallback to raw candle
-                }
-            }
-            // If cache didn't work, recalculate from visible
-            if (chartData.length === 0 || !chartData[0]) {
+            const endIdx = Math.min(
+                this._haCache ? this._haCache.length : 0,
+                Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : startIdx + visible.length
+            );
+            if (this._haCache && endIdx > startIdx) {
+                chartData = this._haCache.slice(startIdx, endIdx);
+            } else {
                 chartData = this.calculateHeikinAshi(visible);
             }
         }
@@ -19422,9 +19375,12 @@ class Chart {
                 ? 1
                 : Math.max(1, Math.round(barSpacing * TV_CANDLE_BODY_SLOT_RATIO));
             const halfBodyPx = Math.floor(bodyWidthPx / 2);
+            const pixelSlotMode = Number.isFinite(pixelX);
+            const skipWick = pixelSlotMode || (opts.panFast && bodyWidthPx <= 2);
+            const skipBorder = pixelSlotMode || (opts.panFast && bodyWidthPx <= 2);
 
             // Draw wick (high-low line) - centered and crisp (if enabled)
-            if (this.chartSettings.showCandleWick !== false) {
+            if (!skipWick && this.chartSettings.showCandleWick !== false) {
                 this.ctx.strokeStyle = wickColor;
                 this.ctx.lineWidth = wickWidth;
                 this.ctx.lineCap = 'butt';
@@ -19482,14 +19438,18 @@ class Chart {
                             this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                         }
                     }
-                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, shouldBeHollow);
+                    if (!skipBorder) {
+                        this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, shouldBeHollow);
+                    }
                 } else {
                     // Down candle - filled with body color (if enabled)
                     if (this.chartSettings.showCandleBody !== false) {
                         this.ctx.fillStyle = bodyColor;
                         this.ctx.fillRect(bodyLeft, bTop, bodyWidthPx, bH);
                     }
-                    this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, false);
+                    if (!skipBorder) {
+                        this._strokeCandleBodyBorder(bodyLeft, bTop, bodyWidthPx, bH, borderColor, bodyColor, false);
+                    }
                 }
             }
             drawn++;
@@ -20473,6 +20433,7 @@ class Chart {
             // constrainOffset() skips the proactive pan-load fetch — together those make
             // zoom-out feel smooth instead of network-stalled.
             this._wheelBurstUntil = performance.now() + 200;
+            this._clearPanTimeTickCache();
 
             // After the burst ends, run constrainOffset() exactly once to pick up any
             // genuinely-needed historical data fetch that we suppressed during the wheel.
