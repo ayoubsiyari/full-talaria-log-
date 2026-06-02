@@ -109,6 +109,13 @@ if (mode === "dist" || mode === "both") {
     required: mode === "dist" || mode === "both",
     buildId: distBuildId,
   });
+  // Keep live/index.html on the same final id as dist (vite copies live → dist, then dist bumps).
+  if (distBuildId && fs.existsSync(liveIndexPath)) {
+    touched += bumpChartScriptsInHtml(liveIndexPath, {
+      required: false,
+      buildId: distBuildId,
+    });
+  }
 }
 
 if (touched === 0 && (mode === "dist" || mode === "both")) {
