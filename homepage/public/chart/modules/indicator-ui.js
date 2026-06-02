@@ -338,11 +338,13 @@ const INDICATOR_DEFINITIONS = {
         name: 'Volume',
         type: 'separate',
         params: [
-            { id: 'upColor', label: 'Up Volume Color', type: 'color', default: 'rgba(8, 153, 129, 0.5)' },
-            { id: 'downColor', label: 'Down Volume Color', type: 'color', default: 'rgba(242, 54, 69, 0.5)' },
-            { id: 'showMA', label: 'Show Moving Average', type: 'checkbox', default: false },
-            { id: 'maPeriod', label: 'MA Period', type: 'number', default: 20, min: 1 },
-            { id: 'maColor', label: 'MA Color', type: 'color', default: '#2962ff' }
+            { id: 'volBarsHeading', label: 'BARS', type: 'heading', tab: 'style' },
+            { id: 'upColor', label: 'Up Color', type: 'color', default: 'rgba(8, 153, 129, 0.5)', tab: 'style' },
+            { id: 'downColor', label: 'Down Color', type: 'color', default: 'rgba(242, 54, 69, 0.5)', tab: 'style' },
+            { id: 'maColor', label: 'MA Color', type: 'color', default: '#2962ff', tab: 'style' },
+            { id: 'volMaHeading', label: 'MOVING AVERAGE', type: 'heading', tab: 'input' },
+            { id: 'showMA', label: 'Show MA', type: 'checkbox', default: false, tab: 'input' },
+            { id: 'maPeriod', label: 'MA Length', type: 'number', default: 20, min: 1, max: 500, tab: 'input' }
         ]
     },
     sessions: {
@@ -1097,6 +1099,189 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
         if (out.length > 0) return out;
     }
     return out;
+}
+
+function talariaFormatVolumeIndicatorValueTokens(chart, indicator) {
+    if (!chart || !chart.data || !chart.data.length) return [];
+    let idx = chart.data.length - 1;
+    if (Number.isFinite(chart.hoverIndex) && chart.hoverIndex >= 0 && chart.hoverIndex < chart.data.length) {
+        idx = chart.hoverIndex;
+    }
+    const bar = chart.data[idx];
+    const v = bar && Number(bar.v);
+    if (!Number.isFinite(v)) return [];
+    const up = Number(bar.c) >= Number(bar.o);
+    const color = up
+        ? (indicator.style && indicator.style.upColor) || 'rgba(8, 153, 129, 0.85)'
+        : (indicator.style && indicator.style.downColor) || 'rgba(242, 54, 69, 0.85)';
+    let text;
+    if (v >= 1e9) text = (v / 1e9).toFixed(2) + 'B';
+    else if (v >= 1e6) text = (v / 1e6).toFixed(2) + 'M';
+    else if (v >= 1e3) text = (v / 1e3).toFixed(1) + 'K';
+    else text = String(Math.round(v));
+    return [{ text: text, color: color }];
+}
+
+function talariaVolumeLegendLabel(indicator) {
+    if (indicator.params && indicator.params.showMA) {
+        return 'Volume MA(' + (indicator.params.maPeriod || 20) + ')';
+    }
+    return indicator.name || 'Volume';
+}
+
+function talariaAppendIndicatorLegendRow(chart, div, indicator) {
+    const isVolume = indicator.type === 'volume' || indicator.isVolume;
+    const item = document.createElement('div');
+    item.className = 'talaria-ind-legend-row';
+    item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
+
+    const nameSpan = document.createElement('span');
+    const legendName = isVolume ? talariaVolumeLegendLabel(indicator) : indicator.name;
+    nameSpan.textContent = '- ' + legendName;
+    nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
+    nameSpan.title = legendName;
+    item.appendChild(nameSpan);
+
+    const valuesSpan = document.createElement('span');
+    valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
+    const valueTokens = isVolume
+        ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
+        : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
+    if (valueTokens.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = '—';
+        dash.style.cssText = 'color:#9ca3af;';
+        valuesSpan.appendChild(dash);
+    } else {
+        valueTokens.forEach(function(tok) {
+            const t = document.createElement('span');
+            t.textContent = tok.text;
+            t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
+            valuesSpan.appendChild(t);
+        });
+    }
+    item.appendChild(valuesSpan);
+
+    const actions = document.createElement('span');
+    actions.className = 'talaria-ind-actions';
+    actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
+
+    const self = chart;
+    const id = indicator.id;
+    const type = indicator.type;
+
+    const visibilityBtn = document.createElement('span');
+    visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+    const applyEyeState = function() {
+        const on = indicator.visible !== false;
+        visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
+    };
+    applyEyeState();
+    visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
+    visibilityBtn.onmouseenter = function() {
+        visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+    };
+    visibilityBtn.onmouseleave = function() {
+        applyEyeState();
+    };
+    visibilityBtn.onclick = function(e) {
+        e.stopPropagation();
+        indicator.visible = indicator.visible === false ? true : false;
+        if (isVolume) {
+            self.chartSettings.showVolume = indicator.visible !== false;
+        }
+        visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+        applyEyeState();
+        nameSpan.style.opacity = indicator.visible ? '1' : '0.55';
+        visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
+        if (!isVolume) {
+            if (!indicator.visible) {
+                if (indicator.data) {
+                    indicator._hiddenData = indicator.data;
+                    indicator.data = [];
+                }
+                if (self.indicators && self.indicators.data && self.indicators.data[id]) {
+                    indicator._hiddenDataStore = self.indicators.data[id];
+                    self.indicators.data[id] = [];
+                }
+            } else {
+                if (indicator._hiddenData) {
+                    indicator.data = indicator._hiddenData;
+                    delete indicator._hiddenData;
+                }
+                if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
+                    self.indicators.data[id] = indicator._hiddenDataStore;
+                    delete indicator._hiddenDataStore;
+                }
+            }
+        }
+        if (typeof self.render === 'function') self.render();
+    };
+    actions.appendChild(visibilityBtn);
+
+    const settingsBtn = document.createElement('span');
+    settingsBtn.innerHTML = TALARIA_IND_SETTINGS_GEAR_SVG;
+    settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
+    settingsBtn.onmouseenter = function() {
+        settingsBtn.style.color = '#d1d4dc';
+        settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
+    };
+    settingsBtn.onmouseleave = function() {
+        settingsBtn.style.color = '#787b86';
+        settingsBtn.style.background = 'transparent';
+    };
+    settingsBtn.onclick = function(e) {
+        e.stopPropagation();
+        talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
+    };
+    actions.appendChild(settingsBtn);
+
+    const openIndSettings = function(e) {
+        e.stopPropagation();
+        talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
+    };
+    nameSpan.style.cursor = 'default';
+    nameSpan.onclick = openIndSettings;
+    valuesSpan.style.cursor = 'default';
+    valuesSpan.onclick = openIndSettings;
+
+    const removeBtn = document.createElement('span');
+    removeBtn.textContent = '×';
+    removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
+    removeBtn.onmouseenter = function() {
+        removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
+    };
+    removeBtn.onmouseleave = function() {
+        removeBtn.style.color = '#f23645';
+        removeBtn.style.background = 'transparent';
+    };
+    removeBtn.onclick = function(e) {
+        e.stopPropagation();
+        self.removeIndicator(id);
+    };
+    actions.appendChild(removeBtn);
+
+    item.appendChild(actions);
+    div.appendChild(item);
+}
+
+function talariaRebuildOhlcIndicatorLegend(chart, div) {
+    if (!div || !chart || !chart.indicators || !chart.indicators.active || chart.indicators.active.length === 0) {
+        return;
+    }
+    div.innerHTML = '';
+    chart.indicators.active.forEach(function(indicator) {
+        const isVolume = indicator.type === 'volume' || indicator.isVolume;
+        const isOverlay = indicator.overlay !== false && !isVolume;
+        if (isVolume || isOverlay) {
+            talariaAppendIndicatorLegendRow(chart, div, indicator);
+        }
+    });
+    if (chart.chartSettings && chart.chartSettings.showIndicatorTitles === false) {
+        div.style.display = 'none';
+    } else {
+        div.style.display = '';
+    }
 }
 
 function talariaOpenIndicatorSettingsFromLegend(chart, indicatorId, indicatorType, indicator) {
@@ -2694,144 +2879,7 @@ function setupIndicatorUI(chartInstance) {
         if (!div) return;
         if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) return;
 
-        div.innerHTML = '';
-
-        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
-            return;
-        }
-
-        const overlayIndicators = this.indicators.active.filter(function(ind) {
-            if (ind.type === 'volume' || ind.isVolume) return false;
-            return ind.overlay !== false;
-        });
-
-        for (let i = 0; i < overlayIndicators.length; i++) {
-            const indicator = overlayIndicators[i];
-            const item = document.createElement('div');
-            item.className = 'talaria-ind-legend-row';
-            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = '- ' + indicator.name;
-            nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
-            nameSpan.title = indicator.name;
-            item.appendChild(nameSpan);
-
-            const valuesSpan = document.createElement('span');
-            valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
-            const valueTokens = talariaFormatOverlayIndicatorValueTokens(this, indicator);
-            if (valueTokens.length === 0) {
-                const dash = document.createElement('span');
-                dash.textContent = '—';
-                dash.style.cssText = 'color:#9ca3af;';
-                valuesSpan.appendChild(dash);
-            } else {
-                valueTokens.forEach(function(tok) {
-                    const t = document.createElement('span');
-                    t.textContent = tok.text;
-                    t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
-                    valuesSpan.appendChild(t);
-                });
-            }
-            item.appendChild(valuesSpan);
-
-            const actions = document.createElement('span');
-            actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
-
-            const self = this;
-            const id = indicator.id;
-            const type = indicator.type;
-
-            const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            const applyEyeState = function() {
-                const on = indicator.visible !== false;
-                visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
-            };
-            applyEyeState();
-            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
-            visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            visibilityBtn.onmouseleave = function() {
-                applyEyeState();
-            };
-            visibilityBtn.onclick = function(e) {
-                e.stopPropagation();
-                indicator.visible = indicator.visible === false ? true : false;
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-                applyEyeState();
-                nameSpan.style.opacity = indicator.visible ? '1' : '0.55';
-                visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
-                if (!indicator.visible) {
-                    if (indicator.data) {
-                        indicator._hiddenData = indicator.data;
-                        indicator.data = [];
-                    }
-                    if (self.indicators && self.indicators.data && self.indicators.data[id]) {
-                        indicator._hiddenDataStore = self.indicators.data[id];
-                        self.indicators.data[id] = [];
-                    }
-                } else {
-                    if (indicator._hiddenData) {
-                        indicator.data = indicator._hiddenData;
-                        delete indicator._hiddenData;
-                    }
-                    if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
-                        self.indicators.data[id] = indicator._hiddenDataStore;
-                        delete indicator._hiddenDataStore;
-                    }
-                }
-                if (typeof self.render === 'function') self.render();
-            };
-            actions.appendChild(visibilityBtn);
-
-            const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = TALARIA_IND_SETTINGS_GEAR_SVG;
-            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
-            settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#d1d4dc';
-                settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
-                settingsBtn.style.background = 'transparent';
-            };
-            settingsBtn.onclick = function(e) {
-                e.stopPropagation();
-                talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
-            };
-            actions.appendChild(settingsBtn);
-
-            const openIndSettings = function(e) {
-                e.stopPropagation();
-                talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
-            };
-            nameSpan.style.cursor = 'default';
-            nameSpan.onclick = openIndSettings;
-            valuesSpan.style.cursor = 'default';
-            valuesSpan.onclick = openIndSettings;
-
-            const removeBtn = document.createElement('span');
-            removeBtn.textContent = '×';
-            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
-            removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
-            };
-            removeBtn.onmouseleave = function() {
-                removeBtn.style.color = '#f23645';
-                removeBtn.style.background = 'transparent';
-            };
-            removeBtn.onclick = function(e) {
-                e.stopPropagation();
-                self.removeIndicator(id);
-            };
-            actions.appendChild(removeBtn);
-
-            item.appendChild(actions);
-            div.appendChild(item);
-        }
+        talariaRebuildOhlcIndicatorLegend(this, div);
     };
 }
 
@@ -3094,144 +3142,7 @@ if (typeof Chart !== 'undefined') {
         if (!div) return;
         if (document.getElementById('indicator-settings-modal') || document.querySelector('[data-v9-ind-sett="1"]')) return;
 
-        div.innerHTML = '';
-
-        if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
-            return;
-        }
-
-        const overlayIndicators = this.indicators.active.filter(function(ind) {
-            if (ind.type === 'volume' || ind.isVolume) return false;
-            return ind.overlay !== false;
-        });
-
-        for (let i = 0; i < overlayIndicators.length; i++) {
-            const indicator = overlayIndicators[i];
-            const item = document.createElement('div');
-            item.className = 'talaria-ind-legend-row';
-            item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = '- ' + indicator.name;
-            nameSpan.style.cssText = 'color:#d1d4dc;font-size:11px;font-weight:500;user-select:none;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;max-width:40%;';
-            nameSpan.title = indicator.name;
-            item.appendChild(nameSpan);
-
-            const valuesSpan = document.createElement('span');
-            valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
-            const valueTokens = talariaFormatOverlayIndicatorValueTokens(this, indicator);
-            if (valueTokens.length === 0) {
-                const dash = document.createElement('span');
-                dash.textContent = '—';
-                dash.style.cssText = 'color:#9ca3af;';
-                valuesSpan.appendChild(dash);
-            } else {
-                valueTokens.forEach(function(tok) {
-                    const t = document.createElement('span');
-                    t.textContent = tok.text;
-                    t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
-                    valuesSpan.appendChild(t);
-                });
-            }
-            item.appendChild(valuesSpan);
-
-            const actions = document.createElement('span');
-            actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex-shrink:0;padding:0;background:transparent;border:none;box-shadow:none;';
-
-            const self = this;
-            const id = indicator.id;
-            const type = indicator.type;
-
-            const visibilityBtn = document.createElement('span');
-            visibilityBtn.innerHTML = indicator.visible !== false ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-            const applyEyeState = function() {
-                const on = indicator.visible !== false;
-                visibilityBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:' + (on ? '#d1d4dc' : '#787b86') + ';background:transparent;opacity:1;';
-            };
-            applyEyeState();
-            visibilityBtn.title = indicator.visible !== false ? 'Click to hide' : 'Click to show';
-            visibilityBtn.onmouseenter = function() {
-                visibilityBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            visibilityBtn.onmouseleave = function() {
-                applyEyeState();
-            };
-            visibilityBtn.onclick = function(e) {
-                e.stopPropagation();
-                indicator.visible = indicator.visible === false ? true : false;
-                visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
-                applyEyeState();
-                nameSpan.style.opacity = indicator.visible ? '1' : '0.55';
-                visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
-                if (!indicator.visible) {
-                    if (indicator.data) {
-                        indicator._hiddenData = indicator.data;
-                        indicator.data = [];
-                    }
-                    if (self.indicators && self.indicators.data && self.indicators.data[id]) {
-                        indicator._hiddenDataStore = self.indicators.data[id];
-                        self.indicators.data[id] = [];
-                    }
-                } else {
-                    if (indicator._hiddenData) {
-                        indicator.data = indicator._hiddenData;
-                        delete indicator._hiddenData;
-                    }
-                    if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
-                        self.indicators.data[id] = indicator._hiddenDataStore;
-                        delete indicator._hiddenDataStore;
-                    }
-                }
-                if (typeof self.render === 'function') self.render();
-            };
-            actions.appendChild(visibilityBtn);
-
-            const settingsBtn = document.createElement('span');
-            settingsBtn.innerHTML = TALARIA_IND_SETTINGS_GEAR_SVG;
-            settingsBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#787b86;background:transparent;border:none;box-shadow:none;';
-            settingsBtn.onmouseenter = function() {
-                settingsBtn.style.color = '#d1d4dc';
-                settingsBtn.style.background = 'rgba(255, 255, 255, 0.08)';
-            };
-            settingsBtn.onmouseleave = function() {
-                settingsBtn.style.color = '#787b86';
-                settingsBtn.style.background = 'transparent';
-            };
-            settingsBtn.onclick = function(e) {
-                e.stopPropagation();
-                talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
-            };
-            actions.appendChild(settingsBtn);
-
-            const openIndSettings = function(e) {
-                e.stopPropagation();
-                talariaOpenIndicatorSettingsFromLegend(self, id, type, indicator);
-            };
-            nameSpan.style.cursor = 'default';
-            nameSpan.onclick = openIndSettings;
-            valuesSpan.style.cursor = 'default';
-            valuesSpan.onclick = openIndSettings;
-
-            const removeBtn = document.createElement('span');
-            removeBtn.textContent = '×';
-            removeBtn.style.cssText = TALARIA_IND_ACTION_BTN + 'color:#f23645;font-size:14px;font-weight:600;line-height:1;background:transparent;';
-            removeBtn.onmouseenter = function() {
-                removeBtn.style.background = 'rgba(242, 54, 69, 0.2)';
-            };
-            removeBtn.onmouseleave = function() {
-                removeBtn.style.color = '#f23645';
-                removeBtn.style.background = 'transparent';
-            };
-            removeBtn.onclick = function(e) {
-                e.stopPropagation();
-                self.removeIndicator(id);
-            };
-            actions.appendChild(removeBtn);
-
-            item.appendChild(actions);
-            div.appendChild(item);
-        }
+        talariaRebuildOhlcIndicatorLegend(this, div);
     };
     console.log('✅ Chart.prototype.updateOHLCIndicators overridden with edit buttons');
 }
