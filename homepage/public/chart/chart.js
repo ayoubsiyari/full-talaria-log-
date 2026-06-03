@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a80';
+const CHART_ENGINE_BUILD = '20260602a81';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16083,18 +16083,6 @@ class Chart {
             const priceDy = this.priceOffset - snapPo;
             domainMin = snapMin + priceDy;
             domainMax = snapMax + priceDy;
-        } else if (
-            this._isWheelZoomBurst() && !this._wheelBurstFinalPass
-            && this._wheelSnapYDomain && this._wheelSnapYDomain.length === 2
-        ) {
-            const snapMin = this._wheelSnapYDomain[0];
-            const snapMax = this._wheelSnapYDomain[1];
-            const snapPo = Number.isFinite(this._wheelSnapPriceOffset) ? this._wheelSnapPriceOffset : this.priceOffset;
-            const priceDy = this.priceOffset - snapPo;
-            domainMin = snapMin + priceDy;
-            domainMax = snapMax + priceDy;
-        }
-
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized.
         // Use the true visible bar count (not the decimated series length) so candle X mapping stays correct.
         this.xScale = d3.scaleLinear()
@@ -16174,8 +16162,6 @@ class Chart {
 
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
-        this._wheelSnapYDomain = null;
-        this._wheelSnapPriceOffset = null;
         this._wheelBurstFinalPass = true;
         this.renderPending = false;
         this.render();
@@ -17006,13 +16992,22 @@ class Chart {
             this._paintSeparatePanelStackBackground();
         }
 
-        // Build time-axis ticks — cache while panning; skip rebuild during wheel / axis-drag bursts.
+        // Build time-axis ticks — pan shifts cached ticks; wheel/time-axis zoom rebuilds every frame
+        // so vertical grid lines stay aligned with candles (cached ticks looked "stuck" until release).
         const interactionLightPaint = this._isInteractionLightPaint();
         const wheelBurstLight = this._isWheelZoomBurst() && !this._wheelBurstFinalPass;
-        if (interactionLightPaint) {
+        const timeAxisZoomDragging = this._isTimeAxisZoomDragging() && !this._axisZoomFinalizePass;
+        const priceAxisZoomDragging = this._isPriceAxisZoomDragging() && !this._axisZoomFinalizePass;
+        if (chartViewPanning) {
+            this._timeTicks = this._buildPanTimeTicks();
+            this._cachedInteractionTimeTicks = this._timeTicks;
+        } else if (wheelBurstLight || timeAxisZoomDragging) {
+            this._timeTicks = this._buildTimeTicks();
+            this._cachedInteractionTimeTicks = this._timeTicks;
+        } else if (interactionLightPaint && priceAxisZoomDragging) {
             this._timeTicks = this._cachedInteractionTimeTicks || this._timeTicks || [];
         } else {
-            this._timeTicks = chartViewPanning ? this._buildPanTimeTicks() : this._buildTimeTicks();
+            this._timeTicks = this._buildTimeTicks();
             this._cachedInteractionTimeTicks = this._timeTicks;
         }
 
@@ -20822,11 +20817,7 @@ class Chart {
             const burstWasActive = this._isWheelZoomBurst();
             this._wheelBurstUntil = performance.now() + 200;
             this._clearPanTimeTickCache();
-            if (!burstWasActive && this.yScale) {
-                const d = this.yScale.domain();
-                this._wheelSnapYDomain = [Number(d[0]), Number(d[1])];
-                this._wheelSnapPriceOffset = this.priceOffset;
-            }
+            this._cachedInteractionTimeTicks = null;
             if (!burstWasActive && this.drawingManager?.drawings?.length) {
                 const dm = this.drawingManager;
                 dm.drawings.forEach((drawing) => {
