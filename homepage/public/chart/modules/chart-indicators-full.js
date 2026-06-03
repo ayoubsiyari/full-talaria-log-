@@ -170,6 +170,21 @@
         ]);
     }
 
+    function applyTemaStyleFromParams(indicator, params) {
+        indicator.params.period = params.period != null ? params.period : 20;
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#ab47bc';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS]
+        ]);
+    }
+
     function clampIndicatorLineWidth(w, fallback) {
         if (typeof window.__v9ClampIndicatorLineWidth === 'function') {
             return window.__v9ClampIndicatorLineWidth(w, fallback);
@@ -2508,8 +2523,8 @@
         });
     }
 
-    function calculateTEMA(data, period, source) {
-        source = source || 'close';
+    function calculateTEMA(data, period) {
+        const source = 'close';
         const e1 = calculateEMA(data, period, source);
         const p2 = data.map(function(d, i) {
             const v = e1[i];
@@ -3872,10 +3887,9 @@
                 this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'tema':
-                applyMaLengthSourceFromParams(indicator, params, 20);
-                applyOverlayLineStyleFromParams(indicator, params, '#ab47bc');
+                applyTemaStyleFromParams(indicator, params);
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
                 break;
             case 'hma':
                 applyHmaStyleFromParams(indicator, params);
@@ -4850,6 +4864,9 @@
         if (indicator.type === 'hma') {
             applyHmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'tema') {
+            applyTemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -5052,7 +5069,7 @@
                 break;
             case 'tema':
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
                 break;
             case 'hma':
                 indicator.name = 'HMA(' + indicator.params.period + ')';
@@ -5399,7 +5416,7 @@
                     this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'tema':
-                    this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                    this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
                     break;
                 case 'hma':
                     this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -5929,6 +5946,10 @@
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
             } else if (indicator.type === 'hma') {
+                if (indicator.style.showLine !== false) {
+                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
+                }
+            } else if (indicator.type === 'tema') {
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }

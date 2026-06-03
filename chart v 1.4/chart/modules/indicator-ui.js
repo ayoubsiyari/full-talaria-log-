@@ -581,6 +581,24 @@ function dpoStyleParams() {
     ];
 }
 
+/** Triple EMA (TEMA) Input tab. */
+function temaInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' }
+    ];
+}
+
+/** Triple EMA (TEMA) Style tab. */
+function temaStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show TEMA line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc', tab: 'style' },
+        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 /** Hull Moving Average Input tab. */
 function hmaInputParams() {
     return [
@@ -1031,7 +1049,7 @@ const INDICATOR_DEFINITIONS = {
     tema: {
         name: 'Triple EMA (TEMA)',
         type: 'overlay',
-        params: overlayMaFullParams(20, '#ab47bc')
+        params: temaInputParams().concat(temaStyleParams())
     },
     hma: {
         name: 'Hull Moving Average',
@@ -3717,6 +3735,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('HMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'tema') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('TEMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }],
             footers: footers
