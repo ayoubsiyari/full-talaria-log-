@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a64';
+const CHART_ENGINE_BUILD = '20260602a65';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21847,6 +21847,14 @@ class Chart {
         this.canvas.addEventListener('dblclick', e => {
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = this.cursor.mode || detectCursorMode(mx, my);
+
+            if (mode === 'chart'
+                && typeof this.handleSeparatePanelIndicatorDoubleClick === 'function'
+                && this.handleSeparatePanelIndicatorDoubleClick(mx, my)) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
 
             if (mode === 'chart'
                 && typeof this.handleOverlayIndicatorChartDoubleClick === 'function'

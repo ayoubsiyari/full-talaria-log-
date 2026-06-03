@@ -6394,8 +6394,149 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
 };
 
     var OVERLAY_LINE_SELECT_TYPES = {
-        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, mom: 1
+        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, mom: 1,
+        supertrend: 1,
+        psar: 1,
+        bb: 1, bollinger: 1,
+        envelope: 1, smaenvelope: 1,
+        donchian: 1, keltner: 1
     };
+
+    function getOverlayHitTestSeries(indicator, data) {
+        if (!indicator || !data) return [];
+        if (Array.isArray(data)) return [data];
+        if (indicator.type === 'custom' && Array.isArray(data.plots)) {
+            const out = [];
+            for (let pi = 0; pi < data.plots.length; pi++) {
+                const plot = data.plots[pi];
+                if (!plot || plot.type === 'histogram') continue;
+                if (Array.isArray(plot.values)) out.push(plot.values);
+                else if (Array.isArray(plot.data)) out.push(plot.data);
+            }
+            return out;
+        }
+        if (indicator.type === 'supertrend' && Array.isArray(data.line)) return [data.line];
+        if (Array.isArray(data.upper) || Array.isArray(data.middle) || Array.isArray(data.lower)) {
+            const bands = [];
+            if (Array.isArray(data.upper)) bands.push(data.upper);
+            if (Array.isArray(data.middle)) bands.push(data.middle);
+            if (Array.isArray(data.lower)) bands.push(data.lower);
+            return bands;
+        }
+        if (Array.isArray(data.line)) return [data.line];
+        return [];
+    }
+
+    function hitTestLineSeriesAtPoint(chart, series, mx, my, startIndex, endIndex, tol) {
+        if (!series || !series.length || !chart.yScale) return false;
+        const m = chart.margin;
+        let prevX = null;
+        let prevY = null;
+        let prevOk = false;
+        for (let i = startIndex; i < endIndex; i++) {
+            const val = series[i];
+            if (!Number.isFinite(val)) {
+                prevOk = false;
+                continue;
+            }
+            const x = chart.dataIndexToPixel(i);
+            const y = chart.yScale(val);
+            if (x < m.l - 50 || x > chart.w - m.r + 50) {
+                prevOk = false;
+                continue;
+            }
+            if (Math.hypot(mx - x, my - y) <= tol) return true;
+            if (prevOk && prevX != null && prevY != null) {
+                if (distPointToSegment(mx, my, prevX, prevY, x, y) <= tol) return true;
+            }
+            prevX = x;
+            prevY = y;
+            prevOk = true;
+        }
+        return false;
+    }
+
+    function getSeparatePanelHitTestSeries(indicator, data) {
+        if (!indicator || !data) return [];
+        if (Array.isArray(data)) return [data];
+        if (indicator.type === 'macd' || indicator.type === 'ppo') {
+            const out = [];
+            const st = indicator.style || {};
+            if (st.showMacd !== false && Array.isArray(data.macd)) out.push(data.macd);
+            if (st.showSignal !== false && Array.isArray(data.signal)) out.push(data.signal);
+            return out;
+        }
+        if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
+            const out = [];
+            const st = indicator.style || {};
+            if (st.showK !== false && Array.isArray(data.k)) out.push(data.k);
+            if (st.showD !== false && Array.isArray(data.d)) out.push(data.d);
+            return out;
+        }
+        if (indicator.type === 'adx') {
+            const out = [];
+            const st = indicator.style || {};
+            if (st.showPlusDI !== false && Array.isArray(data.plusDI)) out.push(data.plusDI);
+            if (st.showMinusDI !== false && Array.isArray(data.minusDI)) out.push(data.minusDI);
+            if (st.showAdx !== false && Array.isArray(data.adx)) out.push(data.adx);
+            return out;
+        }
+        if (indicator.type === 'aroon' && data.up && data.down) {
+            const out = [];
+            const st = indicator.style || {};
+            if (st.showUp !== false) out.push(data.up);
+            if (st.showDown !== false) out.push(data.down);
+            return out;
+        }
+        if (indicator.type === 'custom' && Array.isArray(data.plots)) {
+            return getOverlayHitTestSeries(indicator, data);
+        }
+        if (Array.isArray(data.line)) return [data.line];
+        return [];
+    }
+
+    function hitTestLineSeriesInPanelSlot(chart, series, indicator, slot, mx, my, startIndex, endIndex, tol) {
+        if (!series || !series.length || !slot) return false;
+        const b0 = indicator._panelBaseMin;
+        const b1 = indicator._panelBaseMax;
+        if (b0 == null || b1 == null || !Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return false;
+        const dom = chart._applyIndicatorPanelDomain(b0, b1, indicator);
+        const aMin = dom.min;
+        const aMax = dom.max;
+        const aSpan = Math.max(1e-9, aMax - aMin);
+        const panelHeight = slot.bottom - slot.top;
+        const scaleY = function(v) {
+            if (v == null || !Number.isFinite(v)) return null;
+            let y = slot.bottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(slot.top + 2, Math.min(slot.bottom - 2, y));
+        };
+        let prevX = null;
+        let prevY = null;
+        let prevOk = false;
+        const m = chart.margin;
+        for (let i = startIndex; i < endIndex; i++) {
+            const val = series[i];
+            if (!Number.isFinite(val)) {
+                prevOk = false;
+                continue;
+            }
+            const x = chart.dataIndexToPixel(i);
+            const y = scaleY(val);
+            if (x < m.l - 50 || x > chart.w - m.r + 50 || y == null) {
+                prevOk = false;
+                continue;
+            }
+            if (Math.hypot(mx - x, my - y) <= tol) return true;
+            if (prevOk && prevX != null && prevY != null) {
+                if (distPointToSegment(mx, my, prevX, prevY, x, y) <= tol) return true;
+            }
+            prevX = x;
+            prevY = y;
+            prevOk = true;
+        }
+        return false;
+    }
 
     function distPointToSegment(px, py, x1, y1, x2, y2) {
         const dx = x2 - x1;
@@ -6406,19 +6547,8 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
     }
 
     function getOverlayLineSeries(indicator, data) {
-        if (!indicator || !data) return null;
-        if (Array.isArray(data)) return data;
-        if (indicator.type === 'custom' && Array.isArray(data.plots)) {
-            for (let pi = 0; pi < data.plots.length; pi++) {
-                const plot = data.plots[pi];
-                if (!plot || plot.type === 'histogram') continue;
-                if (Array.isArray(plot.values)) return plot.values;
-                if (Array.isArray(plot.data)) return plot.data;
-            }
-            return null;
-        }
-        if (Array.isArray(data.line)) return data.line;
-        return null;
+        const list = getOverlayHitTestSeries(indicator, data);
+        return list.length ? list[0] : null;
     }
 
     function isSelectableOverlayLineIndicator(indicator) {
@@ -6453,36 +6583,66 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
             if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
                 && !this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
 
-            const series = getOverlayLineSeries(indicator, this.indicators.data[indicator.id]);
-            if (!series || !series.length) continue;
+            const data = this.indicators.data[indicator.id];
+            const seriesList = getOverlayHitTestSeries(indicator, data);
+            if (!seriesList.length) continue;
 
             const tol = opts.tolerance != null ? opts.tolerance : this._getOverlayLineHitTolerance(indicator);
-            let prevX = null;
-            let prevY = null;
-            let prevOk = false;
+            let hit = false;
+            for (let si = 0; si < seriesList.length; si++) {
+                if (hitTestLineSeriesAtPoint(this, seriesList[si], mx, my, startIndex, endIndex, tol)) {
+                    hit = true;
+                    break;
+                }
+            }
+            if (hit) return indicator;
+        }
+        return null;
+    };
 
-            for (let i = startIndex; i < endIndex; i++) {
-                const val = series[i];
-                if (!Number.isFinite(val)) {
-                    prevOk = false;
-                    continue;
-                }
-                const x = this.dataIndexToPixel(i);
-                const y = this.yScale(val);
-                if (x < m.l - 50 || x > this.w - m.r + 50) {
-                    prevOk = false;
-                    continue;
-                }
-                if (Math.hypot(mx - x, my - y) <= tol) return indicator;
-                if (prevOk && prevX != null && prevY != null) {
-                    if (distPointToSegment(mx, my, prevX, prevY, x, y) <= tol) return indicator;
-                }
-                prevX = x;
-                prevY = y;
-                prevOk = true;
+    Chart.prototype.findSeparatePanelIndicatorAtPoint = function(mx, my, options) {
+        if (!this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.panelSlots)) return null;
+        if (!Number.isFinite(mx) || !Number.isFinite(my)) return null;
+        const m = this.margin;
+        if (mx < m.l || mx > this.w - m.r) return null;
+
+        const slot = this.separatePanelInfo.panelSlots.find(function(s) {
+            return my >= s.top && my <= s.bottom;
+        });
+        if (!slot || !slot.indicator) return null;
+
+        const indicator = slot.indicator;
+        if (indicator.visible === false || indicator.hidePlot === true) return null;
+        if (indicator.type === 'volume' || indicator.isVolume) return null;
+        const isSeparatePane = indicator.separatePanel === true || indicator.overlay === false;
+        if (!isSeparatePane) return null;
+        if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
+            && !this._indicatorVisibleForCurrentTimeframe(indicator)) return null;
+
+        const data = this.indicators.data[indicator.id];
+        const seriesList = getSeparatePanelHitTestSeries(indicator, data);
+        if (!seriesList.length) return null;
+
+        const opts = options || {};
+        const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
+        const visibleEnd = Number.isFinite(this.visibleEndIndex) ? this.visibleEndIndex : (this.data ? this.data.length : 0);
+        const buffer = 20;
+        const startIndex = Math.max(0, visibleStart - buffer);
+        const endIndex = Math.min(this.data ? this.data.length : 0, visibleEnd + buffer);
+        const tol = opts.tolerance != null ? opts.tolerance : this._getOverlayLineHitTolerance(indicator);
+
+        for (let si = 0; si < seriesList.length; si++) {
+            if (hitTestLineSeriesInPanelSlot(this, seriesList[si], indicator, slot, mx, my, startIndex, endIndex, tol)) {
+                return indicator;
             }
         }
         return null;
+    };
+
+    Chart.prototype.handleSeparatePanelIndicatorDoubleClick = function(mx, my) {
+        const hit = this.findSeparatePanelIndicatorAtPoint(mx, my);
+        if (!hit) return false;
+        return this.openOverlayIndicatorSettings(hit.id);
     };
 
     Chart.prototype.selectOverlayIndicator = function(id) {
