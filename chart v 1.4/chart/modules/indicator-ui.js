@@ -3769,8 +3769,49 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
     return null;
 }
 
+/** Dash-only line styles (solid / dashed / dotted) — separate from plot type (Line, Step, Histogram…). */
+const INDICATOR_DASH_STYLE_OPTIONS = [
+    { value: 'Solid', label: 'Solid' },
+    { value: 'Dashed', label: 'Dashed' },
+    { value: 'Dotted', label: 'Dotted' },
+    { value: 'Dashdot', label: 'Dash-dot' }
+];
+
+function v9IndDashStyleParamId(styleParamId) {
+    if (!styleParamId) return null;
+    if (styleParamId === 'lineStyle') return 'lineDashStyle';
+    if (/LineStyle$/.test(styleParamId)) return styleParamId.replace(/LineStyle$/, 'LineDashStyle');
+    return null;
+}
+
+function v9EnsureIndicatorDashStyleParams(def) {
+    if (!def || !Array.isArray(def.params)) return;
+    const existing = new Set(def.params.map(function (p) { return p.id; }));
+    def.params.forEach(function (param) {
+        const dashId = v9IndDashStyleParamId(param.id);
+        if (!dashId || existing.has(dashId)) return;
+        if (param.type !== 'select') return;
+        if (!/LineStyle$/.test(param.id) && param.id !== 'lineStyle') return;
+        def.params.push({
+            id: dashId,
+            label: (param.label || 'Line').replace(/style/i, 'Dash'),
+            type: 'select',
+            options: INDICATOR_DASH_STYLE_OPTIONS,
+            default: 'Solid',
+            tab: param.tab || 'style'
+        });
+        existing.add(dashId);
+    });
+}
+
+Object.keys(INDICATOR_DEFINITIONS).forEach(function (k) {
+    v9EnsureIndicatorDashStyleParams(INDICATOR_DEFINITIONS[k]);
+});
+
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
+window.INDICATOR_DASH_STYLE_OPTIONS = INDICATOR_DASH_STYLE_OPTIONS;
+window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;

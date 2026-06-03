@@ -243,25 +243,52 @@
         return raw;
     }
 
+    function resolveIndPlotDashFromParams(params, plotKey, dashKey, fallbackPlot) {
+        fallbackPlot = fallbackPlot || 'Line';
+        var rawPlot = params[plotKey] != null ? params[plotKey] : fallbackPlot;
+        var rawDash = params[dashKey];
+        var plot = String(rawPlot || 'Line');
+        var dash = rawDash != null ? String(rawDash) : null;
+        if (plot === 'Dashed' || plot === 'Dotted' || plot === 'Dashdot') {
+            if (!dash) dash = plot;
+            plot = 'Line';
+        } else if (plot === 'Solid') {
+            plot = 'Line';
+            if (!dash) dash = 'Solid';
+        }
+        if (!dash) dash = 'Solid';
+        return { plot: plot, dash: dash };
+    }
+
+    function applyPlotDashFieldsFromParams(style, params, pairs) {
+        pairs.forEach(function (pair) {
+            var resolved = resolveIndPlotDashFromParams(params, pair[0], pair[1], pair[2]);
+            style[pair[0]] = resolved.plot;
+            style[pair[1]] = resolved.dash;
+        });
+    }
+
     function applyOscillatorLevelStyleFromParams(indicator, params, levelDefaults) {
         levelDefaults = levelDefaults || { overbought: 70, oversold: 30, mid: 50 };
         indicator.style.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : levelDefaults.overbought;
         indicator.style.showOverbought = params.showOverbought !== false;
         indicator.style.overboughtColor = params.overboughtColor || '#787b86';
-        indicator.style.overboughtLineStyle = params.overboughtLineStyle || 'Dotted';
         indicator.style.overboughtLineWidth = params.overboughtLineWidth != null ? params.overboughtLineWidth : 1;
         indicator.style.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : levelDefaults.oversold;
         indicator.style.showOversold = params.showOversold !== false;
         indicator.style.oversoldColor = params.oversoldColor || '#787b86';
-        indicator.style.oversoldLineStyle = params.oversoldLineStyle || 'Dotted';
         indicator.style.oversoldLineWidth = params.oversoldLineWidth != null ? params.oversoldLineWidth : 1;
         indicator.style.midValue = params.midValue != null ? Number(params.midValue) : levelDefaults.mid;
         indicator.style.showMid = params.showMid !== false;
         indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
-        indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
         indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['overboughtLineStyle', 'overboughtLineDashStyle', 'Dotted'],
+            ['oversoldLineStyle', 'oversoldLineDashStyle', 'Dotted'],
+            ['midLineStyle', 'midLineDashStyle', 'Dotted']
+        ]);
     }
 
     function applyAroonStyleFromParams(indicator, params) {
@@ -270,11 +297,13 @@
         indicator.style.showUp = params.showUp !== false;
         indicator.style.upColor = params.upColor || '#00e676';
         indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
-        indicator.style.upLineStyle = params.upLineStyle || legacyS;
         indicator.style.showDown = params.showDown !== false;
         indicator.style.downColor = params.downColor || '#f23645';
         indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
-        indicator.style.downLineStyle = params.downLineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['upLineStyle', 'upLineDashStyle', legacyS],
+            ['downLineStyle', 'downLineDashStyle', legacyS]
+        ]);
         applyOscillatorLevelStyleFromParams(indicator, params);
     }
 
@@ -284,7 +313,7 @@
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#9c27b0';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
         applyOscillatorLevelStyleFromParams(indicator, params);
     }
 
@@ -297,11 +326,13 @@
         indicator.style.showK = params.showK !== false;
         indicator.style.kColor = params.kColor || '#2962ff';
         indicator.style.kLineWidth = params.kLineWidth != null ? params.kLineWidth : legacyW;
-        indicator.style.kLineStyle = params.kLineStyle || legacyS;
         indicator.style.showD = params.showD !== false;
         indicator.style.dColor = params.dColor || '#f23645';
         indicator.style.dLineWidth = params.dLineWidth != null ? params.dLineWidth : legacyW;
-        indicator.style.dLineStyle = params.dLineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['kLineStyle', 'kLineDashStyle', legacyS],
+            ['dLineStyle', 'dLineDashStyle', legacyS]
+        ]);
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
 
@@ -314,7 +345,7 @@
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#00e676';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
 
@@ -329,7 +360,7 @@
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#ec407a';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: -20, oversold: -80, mid: -50 });
     }
 
@@ -344,11 +375,9 @@
         indicator.params.signalMaType = params.signalMaType || 'EMA';
         indicator.style.showMacd = params.showMacd !== false;
         indicator.style.macdColor = params.macdColor || '#2962ff';
-        indicator.style.macdLineStyle = params.macdLineStyle || legacyS;
         indicator.style.macdLineWidth = params.macdLineWidth != null ? params.macdLineWidth : legacyW;
         indicator.style.showSignal = params.showSignal !== false;
         indicator.style.signalColor = params.signalColor || '#f23645';
-        indicator.style.signalLineStyle = params.signalLineStyle || legacyS;
         indicator.style.signalLineWidth = params.signalLineWidth != null ? params.signalLineWidth : legacyW;
         indicator.style.showHist = params.showHist !== false;
         const upLegacy = params.histUpColor || 'rgba(38,166,154,0.85)';
@@ -357,10 +386,6 @@
         indicator.style.histColor1 = params.histColor1 || 'rgba(38,166,154,0.45)';
         indicator.style.histColor2 = params.histColor2 || 'rgba(239,83,80,0.45)';
         indicator.style.histColor3 = params.histColor3 || downLegacy;
-        indicator.style.histColor0LineStyle = params.histColor0LineStyle || 'Line';
-        indicator.style.histColor1LineStyle = params.histColor1LineStyle || 'Line';
-        indicator.style.histColor2LineStyle = params.histColor2LineStyle || 'Line';
-        indicator.style.histColor3LineStyle = params.histColor3LineStyle || 'Line';
         indicator.style.histColor0LineWidth = params.histColor0LineWidth != null ? params.histColor0LineWidth : 1;
         indicator.style.histColor1LineWidth = params.histColor1LineWidth != null ? params.histColor1LineWidth : 1;
         indicator.style.histColor2LineWidth = params.histColor2LineWidth != null ? params.histColor2LineWidth : 1;
@@ -370,10 +395,18 @@
         indicator.style.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
         indicator.style.showZero = params.showZero !== false;
         indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
-        indicator.style.zeroLineStyle = params.zeroLineStyle || 'Line';
         indicator.style.zeroLineWidth = params.zeroLineWidth != null ? params.zeroLineWidth : 1;
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['macdLineStyle', 'macdLineDashStyle', legacyS],
+            ['signalLineStyle', 'signalLineDashStyle', legacyS],
+            ['histColor0LineStyle', 'histColor0LineDashStyle', 'Line'],
+            ['histColor1LineStyle', 'histColor1LineDashStyle', 'Line'],
+            ['histColor2LineStyle', 'histColor2LineDashStyle', 'Line'],
+            ['histColor3LineStyle', 'histColor3LineDashStyle', 'Line'],
+            ['zeroLineStyle', 'zeroLineDashStyle', 'Line']
+        ]);
     }
 
     function applyAdxStyleFromParams(indicator, params) {
@@ -384,16 +417,18 @@
         indicator.params.adxSmoothing = params.adxSmoothing != null ? Number(params.adxSmoothing) : legacyPeriod;
         indicator.style.showAdx = params.showAdx !== false;
         indicator.style.adxColor = params.adxColor || '#ff00ff';
-        indicator.style.adxLineStyle = params.adxLineStyle || legacyS;
         indicator.style.adxLineWidth = params.adxLineWidth != null ? params.adxLineWidth : legacyW;
         indicator.style.showPlusDI = params.showPlusDI !== false;
         indicator.style.plusDIColor = params.plusDIColor || '#00e676';
-        indicator.style.plusDILineStyle = params.plusDILineStyle || legacyS;
         indicator.style.plusDILineWidth = params.plusDILineWidth != null ? params.plusDILineWidth : legacyW;
         indicator.style.showMinusDI = params.showMinusDI !== false;
         indicator.style.minusDIColor = params.minusDIColor || '#f23645';
-        indicator.style.minusDILineStyle = params.minusDILineStyle || legacyS;
         indicator.style.minusDILineWidth = params.minusDILineWidth != null ? params.minusDILineWidth : legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['adxLineStyle', 'adxLineDashStyle', legacyS],
+            ['plusDILineStyle', 'plusDILineDashStyle', legacyS],
+            ['minusDILineStyle', 'minusDILineDashStyle', legacyS]
+        ]);
     }
 
     function applyDpoStyleFromParams(indicator, params) {
@@ -404,14 +439,16 @@
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#78909c';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        indicator.style.lineStyle = params.lineStyle || legacyS;
         indicator.style.showMid = params.showMid !== false;
         indicator.style.midValue = params.midValue != null ? Number(params.midValue) : 0;
         indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
-        indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
         indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['midLineStyle', 'midLineDashStyle', 'Dotted']
+        ]);
     }
 
     function applyStddevStyleFromParams(indicator, params) {
@@ -7027,6 +7064,12 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const m = this.margin;
     const style = this._normalizePlotStyle(lineStyle);
     const lw = Number(lineWidth) || 2;
+    const dashStyleOpt = options.dashStyle;
+    const dashForLine = function (plotStyle) {
+        if (plotStyle === 'Dashed' || plotStyle === 'Dotted' || plotStyle === 'Dashdot') return plotStyle;
+        if (dashStyleOpt) return dashStyleOpt === 'Solid' ? 'Line' : dashStyleOpt;
+        return plotStyle;
+    };
     const yAt = typeof options.yScale === 'function' ? options.yScale : function(v) { return this.yScale(v); }.bind(this);
     const baselineY = Number.isFinite(options.baselineY) ? options.baselineY : (this.h - m.b);
     const breakOnNull = style === 'Line with breaks' || style === 'Step line with breaks' || style === 'Area with breaks';
@@ -7051,7 +7094,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     };
 
     if (style === 'Line' || style === 'Dashed' || style === 'Dotted' || style === 'Dashdot' || style === 'Line with breaks') {
-        ctx.setLineDash(this._lineDashForStyle(style === 'Line with breaks' ? 'Line' : style));
+        ctx.setLineDash(this._lineDashForStyle(dashForLine(style === 'Line with breaks' ? 'Line' : style)));
         let started = false;
         for (let i = startIndex; i < endIndex; i++) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
@@ -8163,11 +8206,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     // ---- Helper: draw a single line in a sub-panel using a pre-computed scaleY ----
-    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, lineStyle) {
+    Chart.prototype._drawPanelLine = function(ctx, m, values, color, lineWidth, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, lineStyle, dashStyle) {
         if (!values) return;
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth || 2;
-        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(lineStyle || 'Line') : []);
+        var dash = dashStyle;
+        if (!dash && (lineStyle === 'Dashed' || lineStyle === 'Dotted' || lineStyle === 'Dashdot')) dash = lineStyle;
+        if (!dash) dash = 'Solid';
+        var dashKey = dash === 'Solid' ? 'Line' : dash;
+        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(dashKey) : []);
         ctx.beginPath();
         let started = false;
         const useClip = Number.isFinite(clipTop) && Number.isFinite(clipBottom) && clipBottom > clipTop;
@@ -8186,13 +8233,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         ctx.setLineDash([]);
     };
 
-    Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth) {
+    Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth, dashStyle) {
         if (value === null || value === undefined || isNaN(value)) return;
         const y = scaleY(value);
         if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
         ctx.strokeStyle = color || '#787b86';
         ctx.lineWidth = lineWidth != null ? lineWidth : 1;
-        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(lineStyle || 'Dotted') : [3, 3]);
+        var dash = dashStyle;
+        if (!dash && (lineStyle === 'Dashed' || lineStyle === 'Dotted' || lineStyle === 'Dashdot')) dash = lineStyle;
+        if (!dash) dash = lineStyle || 'Dotted';
+        var dashKey = dash === 'Solid' ? 'Line' : dash;
+        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle(dashKey) : [3, 3]);
         ctx.beginPath();
         ctx.moveTo(m.l, y);
         ctx.lineTo(this.w, y);
@@ -8290,10 +8341,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
 
         if (style.showMacd !== false) {
-            this._drawPanelLine(ctx, m, macdArr, style.macdColor || '#2962ff', style.macdLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.macdLineStyle || 'Line');
+            this._drawPanelLine(ctx, m, macdArr, style.macdColor || '#2962ff', style.macdLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.macdLineStyle || 'Line', style.macdLineDashStyle || 'Solid');
         }
         if (style.showSignal !== false) {
-            this._drawPanelLine(ctx, m, signalArr, style.signalColor || '#f23645', style.signalLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.signalLineStyle || 'Line');
+            this._drawPanelLine(ctx, m, signalArr, style.signalColor || '#f23645', style.signalLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.signalLineStyle || 'Line', style.signalLineDashStyle || 'Solid');
         }
 
         let lastM = null, lastS = null;
@@ -8611,25 +8662,25 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (this._panelRenderFast !== true) {
         if (style.showOverbought !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal, obW);
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
         }
         if (style.showOversold !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal, osW);
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
         }
         if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal, midW);
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
         }
 
         const kWidth = style.kLineWidth != null ? style.kLineWidth : (style.lineWidth || 2);
         const dWidth = style.dLineWidth != null ? style.dLineWidth : (style.lineWidth || 2);
         if (style.showK !== false) {
-            this._drawPanelLine(ctx, m, kArr, style.kColor || '#2962ff', kWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.kLineStyle || style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, kArr, style.kColor || '#2962ff', kWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.kLineStyle || style.lineStyle || 'Line', style.kLineDashStyle || 'Solid');
         }
         if (style.showD !== false) {
-            this._drawPanelLine(ctx, m, dArr, style.dColor || '#f23645', dWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.dLineStyle || style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, dArr, style.dColor || '#f23645', dWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.dLineStyle || style.lineStyle || 'Line', style.dLineDashStyle || 'Solid');
         }
 
         let lastK = null, lastD = null;

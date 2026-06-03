@@ -283,6 +283,50 @@ function v9IndPlotStyleMatches(stored, option) {
   return false;
 }
 
+function v9IndDashStyleParamId(styleId) {
+  if (typeof window !== "undefined" && typeof window.__v9IndDashStyleParamId === "function") {
+    return window.__v9IndDashStyleParamId(styleId);
+  }
+  if (!styleId) return null;
+  if (styleId === "lineStyle") return "lineDashStyle";
+  if (/LineStyle$/.test(styleId)) return styleId.replace(/LineStyle$/, "LineDashStyle");
+  return null;
+}
+
+function v9ShapeTypeToIndDashStyle(shape) {
+  if (shape === "dashed") return "Dashed";
+  if (shape === "dotted") return "Dotted";
+  if (shape === "dashdot") return "Dashdot";
+  return "Solid";
+}
+
+function v9IndDashStyleToShapeType(dash) {
+  const s = String(dash || "Solid").toLowerCase();
+  if (s === "dashed") return "dashed";
+  if (s === "dotted") return "dotted";
+  if (s === "dashdot") return "dashdot";
+  return "bold";
+}
+
+function v9GetIndDashStyle(draft, styleId, defLookup) {
+  const dashId = v9IndDashStyleParamId(styleId);
+  if (!dashId) return "Solid";
+  if (draft[dashId] !== undefined) return draft[dashId];
+  const p = defLookup ? defLookup(dashId) : null;
+  if (p && p.default != null) return p.default;
+  const plotVal = draft[styleId] !== undefined ? draft[styleId] : (defLookup ? defLookup(styleId)?.default : null);
+  const s = String(plotVal || "Line");
+  if (s === "Dashed" || s === "Dotted" || s === "Dashdot") return s;
+  return "Solid";
+}
+
+function v9GetIndPlotStyle(draft, styleId, defLookup) {
+  const plotVal = draft[styleId] !== undefined ? draft[styleId] : (defLookup ? defLookup(styleId)?.default : null);
+  const s = String(plotVal || "Line");
+  if (s === "Dashed" || s === "Dotted" || s === "Dashdot" || s === "Solid") return "Line";
+  return plotVal || "Line";
+}
+
 function v9ClampIndLineWidthStr(w, fallback) {
   fallback = fallback != null ? fallback : 2;
   const n = Number(w);
@@ -14201,24 +14245,51 @@ const TalariaV8bLive = () => {
     setIndStyleDrop(dropKey);
   };
 
-  const renderIndPlotStyleDrop = (pid, getVal, disabled) => {
-    const dropKey = `ind-st-${pid}`;
-    const plotStyle = getVal();
+  const renderIndPlotStyleDrop = (styleId, getPlotVal, disabled) => {
+    const dropKey = `ind-ps-${styleId}`;
+    const plotStyle = getPlotVal();
     const plotOpts = v9IndPlotStyleOptions();
     const isOpen = indStyleDrop === dropKey;
-    const hk = `ind-st-btn-${pid}`;
+    const hk = `ind-ps-btn-${styleId}`;
     const isH = hov === hk;
-    const dropH = Math.min(plotOpts.length * 32 + 10, typeof window !== "undefined" ? window.innerHeight - 48 : 360);
+    const dropH = Math.min(plotOpts.length * 28 + 8, typeof window !== "undefined" ? window.innerHeight - 48 : 320);
     return (
       <div style={{ display: "flex", justifyContent: "center", opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? "none" : "auto" }}>
-        <div {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH, 220))}
+        <div {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH, 56))}
           onMouseEnter={() => !disabled && setHov(hk)}
           onMouseLeave={() => setHov(null)}
-          style={{ height: 26, width: 56, padding: "0 4px", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, cursor: "default", position: "relative",
+          title="Plot style"
+          style={{ height: 26, width: 28, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", cursor: "default", position: "relative",
             background: isOpen ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent", transition: "background 0.12s" }}>
-          <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.95, transform: "scale(0.72)", transformOrigin: "center" }}>
+          <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.95, transform: "scale(0.48)", transformOrigin: "center" }}>
             <V9PlotStylePreview style={plotStyle} color={isOpen ? c.acL : c.ts} />
           </span>
+          {isOpen && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none" }} />}
+        </div>
+      </div>
+    );
+  };
+
+  const renderIndShapeStyleDrop = (styleId, getDashVal, disabled) => {
+    const dashId = v9IndDashStyleParamId(styleId) || styleId;
+    const dropKey = `ind-sh-${dashId}`;
+    const shapeType = v9IndDashStyleToShapeType(getDashVal());
+    const isOpen = indStyleDrop === dropKey;
+    const hk = `ind-sh-btn-${dashId}`;
+    const isH = hov === hk;
+    const dropH = V9_IND_SHAPE_STYLE_OPTS.length * 24 + 6;
+    return (
+      <div style={{ display: "flex", justifyContent: "center", opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? "none" : "auto" }}>
+        <div {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH))}
+          onMouseEnter={() => !disabled && setHov(hk)}
+          onMouseLeave={() => setHov(null)}
+          style={{ height: 26, width: 56, padding: "0 6px", display: "flex", alignItems: "center", justifyContent: "center", gap: 3, cursor: "default", position: "relative",
+            background: isOpen ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent", transition: "background 0.12s" }}>
+          <svg width={22} height={10} viewBox="0 0 22 10">
+            <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen ? c.acL : c.ts}
+              strokeWidth={shapeType === "bold" ? 2.5 : 1.5} strokeLinecap="round"
+              strokeDasharray={v9IndDashArray(shapeType)} />
+          </svg>
           <I n="chevDown" s={7} cl={isOpen ? c.acL : c.ts} />
           {isOpen && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none" }} />}
         </div>
@@ -22552,7 +22623,12 @@ const TalariaV8bLive = () => {
             );
           }
           if (p.type === "select" && v9IsIndPlotStyleParamId(p.id)) {
-            return row(renderIndPlotStyleDrop(p.id, () => raw, false));
+            return row(
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                {renderIndShapeStyleDrop(p.id, () => v9GetIndDashStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
+                {renderIndPlotStyleDrop(p.id, () => v9GetIndPlotStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
+              </div>
+            );
           }
           if (p.type === "select" && Array.isArray(p.options)) {
             return row(renderIndParamSelect(p, raw, { width: 130, minWidth: 0 }));
@@ -22913,8 +22989,8 @@ const TalariaV8bLive = () => {
             const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
             return { ...d, [id]: !cur };
           });
-          const gc = "16px 1fr 26px 56px 56px";
-          const gcBand = "16px 1fr 26px 56px 44px 44px";
+          const gc = "16px 1fr 26px 56px 28px 56px";
+          const gcBand = "16px 1fr 26px 56px 28px 44px 44px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
@@ -22965,7 +23041,12 @@ const TalariaV8bLive = () => {
           const stSel = (pid, disabled) => {
             const p = def0(pid);
             if (!p) return <div />;
-            return renderIndPlotStyleDrop(pid, () => val(pid), disabled);
+            return renderIndShapeStyleDrop(pid, () => v9GetIndDashStyle(indSettDraft, pid, def0), disabled);
+          };
+          const psSel = (pid, disabled) => {
+            const p = def0(pid);
+            if (!p) return <div />;
+            return renderIndPlotStyleDrop(pid, () => v9GetIndPlotStyle(indSettDraft, pid, def0), disabled);
           };
           const renderPlotRow = (row, i, section) => {
             const histOff = section && section.histSection && val("showHist") === false;
@@ -22982,6 +23063,7 @@ const TalariaV8bLive = () => {
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
                 {hasStyleCol ? stSel(row.styleId, !on) : <div />}
+                {hasStyleCol ? psSel(row.styleId, !on) : <div />}
                 {hasWidthCol ? numW(row.widthId, !on) : <div />}
               </div>
             );
@@ -22999,6 +23081,7 @@ const TalariaV8bLive = () => {
                 {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
                 {stSel(row.styleId, !on)}
+                {psSel(row.styleId, !on)}
                 {extended ? numW(row.widthId, !on) : numW(row.valueId, !on)}
                 {extended ? numW(row.valueId, !on) : null}
               </div>
@@ -23016,6 +23099,7 @@ const TalariaV8bLive = () => {
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
+                    <div />
                     <div>{hdr("THICKNESS")}</div>
                   </div>
                 )}
@@ -23023,6 +23107,7 @@ const TalariaV8bLive = () => {
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
+                    <div />
                     <div>{hdr("VALUE")}</div>
                   </div>
                 )}
@@ -23030,6 +23115,7 @@ const TalariaV8bLive = () => {
                   <div style={{ display: "grid", gridTemplateColumns: gcBand, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
+                    <div />
                     <div>{hdr("THICKNESS")}</div>
                     <div>{hdr("VALUE")}</div>
                   </div>
@@ -23121,7 +23207,10 @@ const TalariaV8bLive = () => {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
                   <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
-                  {renderIndPlotStyleDrop(p.id, () => raw, false)}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    {renderIndShapeStyleDrop(p.id, () => v9GetIndDashStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
+                    {renderIndPlotStyleDrop(p.id, () => v9GetIndPlotStyle(indSettDraft, p.id, (id) => def.params.find((x) => x.id === id)), false)}
+                  </div>
                 </div>
               );
             }
@@ -23191,6 +23280,10 @@ const TalariaV8bLive = () => {
                 if (row.showId) ids.add(row.showId);
                 if (row.colorId) ids.add(row.colorId);
                 if (row.styleId) ids.add(row.styleId);
+                if (row.styleId) {
+                  const dashId = v9IndDashStyleParamId(row.styleId);
+                  if (dashId) ids.add(dashId);
+                }
                 if (row.widthId) ids.add(row.widthId);
               });
               (sec.levelRows || []).forEach((row) => {
@@ -23198,6 +23291,10 @@ const TalariaV8bLive = () => {
                 if (row.valueId) ids.add(row.valueId);
                 if (row.colorId) ids.add(row.colorId);
                 if (row.styleId) ids.add(row.styleId);
+                if (row.styleId) {
+                  const dashId = v9IndDashStyleParamId(row.styleId);
+                  if (dashId) ids.add(dashId);
+                }
                 if (row.widthId) ids.add(row.widthId);
               });
             });
@@ -23451,16 +23548,62 @@ const TalariaV8bLive = () => {
       {/* Indicator style/thickness dropdown (portaled — scroll area + footer clip inline menus) */}
       {indStyleDrop && indStyleDropAnchor && (indSettOpen || closing.has("indsett")) && typeof document !== "undefined" && createPortal((() => {
         const a = indStyleDropAnchor;
-        const isStyle = String(indStyleDrop).startsWith("ind-st-");
-        const pid = String(indStyleDrop).replace(/^ind-st-|^ind-w-/, "");
+        const isDash = String(indStyleDrop).startsWith("ind-sh-");
+        const isPlot = String(indStyleDrop).startsWith("ind-ps-");
+        const pid = String(indStyleDrop).replace(/^ind-sh-|^ind-ps-|^ind-w-/, "");
         const indCtx = indSettCtxRef.current;
         const dropDef = typeof window !== "undefined" && window.INDICATOR_DEFINITIONS && indCtx.indicatorType
           ? window.INDICATOR_DEFINITIONS[indCtx.indicatorType] : null;
         const dropParam = dropDef ? dropDef.params.find((x) => x.id === pid) : null;
-        const rawVal = indSettDraft[pid] !== undefined ? indSettDraft[pid] : dropParam?.default;
-        if (isStyle) {
+        const plotStyleId = isPlot ? pid : (isDash ? (() => {
+          const all = dropDef ? dropDef.params : [];
+          const hit = all.find((p) => v9IndDashStyleParamId(p.id) === pid);
+          return hit ? hit.id : pid.replace(/DashStyle$/, "LineStyle").replace(/^lineDashStyle$/, "lineStyle");
+        })() : pid);
+        const dashParam = dropDef ? dropDef.params.find((x) => x.id === pid) : null;
+        const plotParam = dropDef ? dropDef.params.find((x) => x.id === plotStyleId) : null;
+        if (isDash) {
+          const rawVal = indSettDraft[pid] !== undefined ? indSettDraft[pid] : dashParam?.default;
+          const shapeType = v9IndDashStyleToShapeType(rawVal);
+          return (
+            <div data-sdrop="1" data-ind-style-drop="1"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "fixed",
+                top: a.top,
+                left: a.left,
+                width: a.width,
+                zIndex: 13000,
+                background: c.sf,
+                border: "1px solid rgba(140,160,255,0.22)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+                pointerEvents: "auto",
+                fontFamily: F,
+                animation: "tlrDropIn 0.12s ease",
+              }}>
+              <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
+              {V9_IND_SHAPE_STYLE_OPTS.map(([v, dArr, sw]) => {
+                const isA = shapeType === v;
+                const optH = hov === `ind-sh-${pid}-${v}`;
+                return (
+                  <div key={v} {...indStyleDropPick(() => patchIndSettDraftLive((d) => ({ ...d, [pid]: v9ShapeTypeToIndDashStyle(v) })))}
+                    onMouseEnter={() => setHov(`ind-sh-${pid}-${v}`)} onMouseLeave={() => setHov(null)}
+                    style={{ padding: "7px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", position: "relative",
+                      background: isA ? c.acD : optH ? c.hv : "transparent", transition: "background 0.1s" }}>
+                    {isA && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
+                    <svg width={28} height={10} viewBox="0 0 28 10"><line x1={0} y1={5} x2={28} y2={5} stroke={isA ? c.acL : c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr} /></svg>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+        if (isPlot) {
+          const rawVal = v9GetIndPlotStyle(indSettDraft, plotStyleId, (id) => dropDef?.params.find((x) => x.id === id));
           const plotOpts = v9IndPlotStyleOptions();
-          const menuMaxH = typeof window !== "undefined" ? Math.max(120, window.innerHeight - a.top - 12) : 360;
+          const menuMaxH = typeof window !== "undefined" ? Math.max(120, window.innerHeight - a.top - 12) : 320;
           return (
             <div data-sdrop="1" data-ind-style-drop="1" className="tlr-scroll"
               onPointerDown={(e) => e.stopPropagation()}
@@ -23471,7 +23614,7 @@ const TalariaV8bLive = () => {
                 position: "fixed",
                 top: a.top,
                 left: a.left,
-                width: Math.max(a.width, 220),
+                width: Math.max(a.width, 56),
                 zIndex: 13000,
                 maxHeight: menuMaxH,
                 overflowY: "auto",
@@ -23489,24 +23632,24 @@ const TalariaV8bLive = () => {
               <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
               {plotOpts.map((opt) => {
                 const isA = v9IndPlotStyleMatches(rawVal, opt.value);
-                const optKey = `ind-st-${pid}-${String(opt.value)}`;
+                const optKey = `ind-ps-${plotStyleId}-${String(opt.value)}`;
                 const optH = hov === optKey;
                 return (
-                  <div key={String(opt.value)} {...indStyleDropPick(() => patchIndSettDraftLive((d) => ({ ...d, [pid]: opt.value })))}
+                  <div key={String(opt.value)} {...indStyleDropPick(() => patchIndSettDraftLive((d) => ({ ...d, [plotStyleId]: opt.value })))}
                     onMouseEnter={() => setHov(optKey)} onMouseLeave={() => setHov(null)}
-                    style={{ padding: "6px 10px", cursor: "default", display: "flex", alignItems: "center", gap: 10, position: "relative",
+                    style={{ padding: "5px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", position: "relative",
                       background: isA ? "rgba(74,106,255,0.14)" : optH ? c.hv : "transparent", transition: "background 0.1s" }}>
                     {isA && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
-                    <span style={{ flexShrink: 0, width: 56, display: "inline-flex", justifyContent: "center", opacity: 0.95 }}>
+                    <span style={{ display: "inline-flex", transform: "scale(0.55)", transformOrigin: "center", opacity: 0.95 }}>
                       <V9PlotStylePreview style={opt.value} color={isA ? c.acL : optH ? c.tx : c.ts} />
                     </span>
-                    <span style={{ fontSize: 12, color: isA ? c.acL : optH ? c.tx : c.ts, lineHeight: 1.2 }}>{opt.label || opt.value}</span>
                   </div>
                 );
               })}
             </div>
           );
         }
+        const rawVal = indSettDraft[pid] !== undefined ? indSettDraft[pid] : dropParam?.default;
         const wStr = v9ClampIndLineWidthStr(rawVal, 2);
         return (
           <div data-sdrop="1" data-ind-style-drop="1"
