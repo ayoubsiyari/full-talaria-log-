@@ -5792,7 +5792,7 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     }
     const state = this._separatePanelResize;
     const baseHeights = state.baseHeights || state.activeHeights || [];
-    const heights = baseHeights.slice();
+    let heights = baseHeights.slice();
     const dy = currentY - state.startY;
     const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
     let activeVolumeHeight = baseVolumeHeight;
