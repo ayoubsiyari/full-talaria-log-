@@ -5716,35 +5716,36 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
     let activeVolumeHeight = baseVolumeHeight;
 
+    // Canvas Y grows downward: drag up (dy < 0) shrinks the panel above the handle, grows the one below.
     if (state.handleType === 'top') {
         if (state.isVolume) {
-            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight - dy);
+            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight + dy);
         } else {
             const topIdx = state.handleIndex;
             if (topIdx < 0 || topIdx >= heights.length) return false;
-            let nextTopHeight = baseHeights[topIdx] - dy;
+            let nextTopHeight = baseHeights[topIdx] + dy;
             nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, nextTopHeight);
             heights[topIdx] = nextTopHeight;
         }
     } else if (state.isVolumePair) {
         if (heights.length === 0) return false;
         const pairTotal = baseVolumeHeight + baseHeights[0];
-        let nextVolume = baseVolumeHeight - dy;
+        let nextVolume = baseVolumeHeight + dy;
         nextVolume = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
         activeVolumeHeight = this._applyVolumePanelHeightPx(nextVolume);
         heights[0] = pairTotal - activeVolumeHeight;
     } else {
-        const bottomIdx = state.handleIndex;
-        const topIdx = state.handleIndex + 1;
-        if (bottomIdx < 0 || topIdx >= heights.length) return false;
+        const upperIdx = state.handleIndex;
+        const lowerIdx = state.handleIndex + 1;
+        if (upperIdx < 0 || lowerIdx >= heights.length) return false;
 
-        const pairTotal = baseHeights[bottomIdx] + baseHeights[topIdx];
-        let nextBottom = baseHeights[bottomIdx] - dy;
-        nextBottom = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextBottom));
-        const nextTop = pairTotal - nextBottom;
+        const pairTotal = baseHeights[upperIdx] + baseHeights[lowerIdx];
+        let nextUpper = baseHeights[upperIdx] + dy;
+        nextUpper = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextUpper));
+        const nextLower = pairTotal - nextUpper;
 
-        heights[bottomIdx] = nextBottom;
-        heights[topIdx] = nextTop;
+        heights[upperIdx] = nextUpper;
+        heights[lowerIdx] = nextLower;
     }
     state.activeHeights = heights;
     state.activeVolumeHeight = activeVolumeHeight;
