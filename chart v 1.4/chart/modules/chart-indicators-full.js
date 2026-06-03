@@ -155,6 +155,21 @@
         indicator.style.showLabel = params.showLabel !== false;
     }
 
+    function applyHmaStyleFromParams(indicator, params) {
+        applyMaLengthSourceFromParams(indicator, params, 20);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#26c6da';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS]
+        ]);
+    }
+
     function clampIndicatorLineWidth(w, fallback) {
         if (typeof window.__v9ClampIndicatorLineWidth === 'function') {
             return window.__v9ClampIndicatorLineWidth(w, fallback);
@@ -3863,8 +3878,8 @@
                 this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'hma':
-                applyMaLengthSourceFromParams(indicator, params, 20);
-                applyOverlayLineStyleFromParams(indicator, params, '#26c6da');
+                applyHmaStyleFromParams(indicator, params);
+                indicator.overlay = true;
                 indicator.name = 'HMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source);
                 break;
@@ -4658,6 +4673,7 @@
         if (newParams.downColor !== undefined) indicator.style.downColor = newParams.downColor;
         if (newParams.lineWidth !== undefined) indicator.style.lineWidth = newParams.lineWidth;
         if (newParams.lineStyle !== undefined) indicator.style.lineStyle = newParams.lineStyle;
+        if (newParams.showLine !== undefined) indicator.style.showLine = newParams.showLine !== false;
         if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
         if (newParams.source !== undefined) indicator.params.source = newParams.source;
         if (newParams.length !== undefined) indicator.params.length = newParams.length;
@@ -4830,6 +4846,9 @@
         }
         if (indicator.type === 'supertrend') {
             applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'hma') {
+            applyHmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5907,7 +5926,11 @@
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'stddev') {
                 if (indicator.style.showLine !== false) {
-                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
+                }
+            } else if (indicator.type === 'hma') {
+                if (indicator.style.showLine !== false) {
+                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
             } else if (indicator.type === 'sma') {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
@@ -10320,6 +10343,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (indicator.overlay === false || indicator.visible === false) return;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) return;
             if (indicator.style && indicator.style.showLabel === false) return;
+            if (indicator.style && indicator.style.showLine === false) return;
 
             if (indicator.type === 'supertrend') {
                 const stData = this.indicators.data[indicator.id];
