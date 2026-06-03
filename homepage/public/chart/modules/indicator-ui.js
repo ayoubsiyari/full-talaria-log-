@@ -3309,7 +3309,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
-    if (/^(overbought|oversold|mid|bg|histcolor[0-3]|zero|macd|signal)color$/i.test(id)) return true;
+    if (/^(overbought|oversold|mid|bg|histcolor[0-3]|zero|macd|signal|k|d)color$/i.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
