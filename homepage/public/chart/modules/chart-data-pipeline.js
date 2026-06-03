@@ -332,11 +332,18 @@
             }
 
             const resampled = this.getResampledSeries(source, tf, dv);
-            const visStart = Math.max(0, -Math.floor(offsetX / spacing) - VIEWPORT_BUFFER_BARS);
-            const visEnd = Math.min(
+            let visStart = Math.max(0, -Math.floor(offsetX / spacing) - VIEWPORT_BUFFER_BARS);
+            let visEnd = Math.min(
                 resampled.length,
                 -Math.floor(offsetX / spacing) + Math.ceil(plotWidth / spacing) + VIEWPORT_BUFFER_BARS
             );
+            if (typeof chart._normalizeViewportBarRange === 'function') {
+                const norm = chart._normalizeViewportBarRange(visStart, visEnd, resampled.length, plotWidth, spacing, VIEWPORT_BUFFER_BARS);
+                visStart = norm.visStart;
+                visEnd = norm.visEnd;
+            } else if (visEnd <= visStart && resampled.length > 0) {
+                visEnd = Math.min(resampled.length, visStart + Math.max(2, Math.ceil(plotWidth / Math.max(spacing, 1e-6)) + VIEWPORT_BUFFER_BARS));
+            }
 
             let display;
             if (visEnd <= visStart) {

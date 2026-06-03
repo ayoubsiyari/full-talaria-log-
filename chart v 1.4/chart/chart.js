@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a73';
+const CHART_ENGINE_BUILD = '20260602a74';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -15922,6 +15922,9 @@ class Chart {
             this.data.length,
             -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cw / candleAndSpacing) + bufferCandles
         );
+        const normVis = this._normalizeViewportBarRange(visStart, visEnd, this.data.length, cw, candleAndSpacing, bufferCandles);
+        visStart = normVis.visStart;
+        visEnd = normVis.visEnd;
         const maxScaleBars = (typeof this._getMaxBarsOnScreen === 'function')
             ? this._getMaxBarsOnScreen() + 48
             : 800;
@@ -16178,6 +16181,62 @@ class Chart {
         return !!(this.drag && this.drag.active && this.drag.type === 'separatePanelResize');
     }
 
+    /**
+     * Guarantee a non-empty bar index window when data exists (zoomed-out pan can briefly
+     * push offsetX past the rubber band so visEnd <= visStart and candles disappear).
+     */
+    _normalizeViewportBarRange(visStart, visEnd, dataLen, plotWidth, spacing, bufferBars) {
+        let vs = Math.max(0, visStart | 0);
+        let ve = Math.min(dataLen, visEnd | 0);
+        if (dataLen <= 0) return { visStart: 0, visEnd: 0 };
+        if (ve > vs) return { visStart: vs, visEnd: ve };
+        const buf = bufferBars != null ? bufferBars : 48;
+        const span = Math.max(2, Math.ceil(plotWidth / Math.max(spacing, 1e-6)) + buf);
+        vs = Math.max(0, Math.min(dataLen - 1, vs));
+        ve = Math.min(dataLen, vs + span);
+        if (ve <= vs) ve = Math.min(dataLen, vs + 1);
+        return { visStart: vs, visEnd: ve };
+    }
+
+    /** Resolve OHLC series for paint — never return [] while chart.data has bars unless truly off-screen. */
+    _resolveVisibleBarsForPaint(plotStartIdx, plotEndIdx) {
+        if (!this.data || this.data.length === 0) return [];
+        const edgeBuf = 6;
+        const m = this.margin || { l: 0, r: 0 };
+        const plotPx = Math.max(1, this.w - m.l - m.r);
+        const spacing = this.getCandleSpacing();
+        let vs = Math.max(0, Math.floor(plotStartIdx) - edgeBuf);
+        let ve = Math.min(this.data.length, Math.ceil(plotEndIdx) + edgeBuf);
+        const norm = this._normalizeViewportBarRange(vs, ve, this.data.length, plotPx, spacing, edgeBuf);
+        vs = norm.visStart;
+        ve = norm.visEnd;
+        this.visibleStartIndex = vs;
+        this.visibleEndIndex = ve;
+
+        if (this._shouldUseDisplayPipeline()) {
+            if (this.dataPipeline && this.dataPipeline._displayCache) {
+                this.dataPipeline._displayCache.key = '';
+            }
+            const disp = this.getDisplaySeries();
+            if (Array.isArray(disp) && disp.length > 0) {
+                if (Number.isFinite(disp[0]._pixelX)) {
+                    return disp;
+                }
+                const filtered = [];
+                for (let di = 0; di < disp.length; di++) {
+                    const d = disp[di];
+                    const idx = Number.isFinite(d.midIdx) ? d.midIdx : vs + di;
+                    if (idx >= vs && idx < ve) filtered.push(d);
+                }
+                if (filtered.length > 0) return filtered;
+                return disp;
+            }
+            if (ve > vs) return this.data.slice(vs, ve);
+            return [];
+        }
+        return ve > vs ? this.data.slice(vs, ve) : [];
+    }
+
     _isPriceAxisZoomDragging() {
         return !!(this.drag && this.drag.active && this.drag.type === 'priceAxis');
     }
@@ -16385,6 +16444,18 @@ class Chart {
         } else if (this.offsetX < minOffset) {
             const overshoot = minOffset - this.offsetX;
             this.offsetX = minOffset - overshoot * 0.35;
+        }
+        // Zoomed-out: snap offset if rubber-band left the X viewport with zero bars (blank chart flash).
+        if (candleSpacing < TV_ZOOMED_OUT_SLOT_PX) {
+            let vs = Math.max(0, -Math.floor(this.offsetX / candleSpacing));
+            let ve = Math.min(
+                this.data.length,
+                -Math.floor(this.offsetX / candleSpacing) + Math.ceil(cw / candleSpacing)
+            );
+            if (ve <= vs) {
+                if (this.offsetX > maxOffset) this.offsetX = maxOffset;
+                else if (this.offsetX < minOffset) this.offsetX = minOffset;
+            }
         }
     }
 
@@ -16941,35 +17012,9 @@ class Chart {
         const startIdx = Math.max(0, Math.floor(this.pixelToDataIndex(mVis.l)) - edgeBuf);
         const endIdx = Math.min(this.data.length, Math.ceil(this.pixelToDataIndex(plotRight)) + edgeBuf);
         
-        // Expose current visible range for indicator rendering
-        this.visibleStartIndex = startIdx;
-        this.visibleEndIndex = endIdx;
-        
-        let visible;
-        if (this._shouldUseDisplayPipeline()) {
-            const disp = this._cachedPriceVisible || this.getDisplaySeries();
-            if (Array.isArray(disp) && disp.length > 0 && Number.isFinite(disp[0]._pixelX)) {
-                visible = disp;
-            } else {
-                visible = [];
-                let minMid = startIdx;
-                let maxMid = endIdx;
-                for (let di = 0; di < disp.length; di++) {
-                    const d = disp[di];
-                    const idx = Number.isFinite(d.midIdx) ? d.midIdx : (startIdx + di);
-                    if (idx < startIdx - edgeBuf || idx > endIdx + edgeBuf) continue;
-                    visible.push(d);
-                    if (idx < minMid) minMid = idx;
-                    if (idx > maxMid) maxMid = idx;
-                }
-                if (visible.length > 0) {
-                    this.visibleStartIndex = Math.max(0, minMid);
-                    this.visibleEndIndex = Math.min(this.data.length, maxMid + 1);
-                }
-            }
-        } else {
-            visible = this._cachedPriceVisible || this.data.slice(startIdx, endIdx);
-        }
+        let visible = typeof this._resolveVisibleBarsForPaint === 'function'
+            ? this._resolveVisibleBarsForPaint(startIdx, endIdx)
+            : this.data.slice(startIdx, endIdx);
         
         // Better check: Only show "no data" if we truly have no data, not if the chart is just very small
         if (visible.length === 0 && this.data.length === 0) {
