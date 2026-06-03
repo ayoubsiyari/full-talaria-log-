@@ -5710,24 +5710,26 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         return false;
     }
     const state = this._separatePanelResize;
-    const heights = state.activeHeights.slice();
+    const baseHeights = state.baseHeights || state.activeHeights || [];
+    const heights = baseHeights.slice();
     const dy = currentY - state.startY;
-    let activeVolumeHeight = state.activeVolumeHeight || state.baseVolumeHeight || 0;
+    const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
+    let activeVolumeHeight = baseVolumeHeight;
 
     if (state.handleType === 'top') {
         if (state.isVolume) {
-            activeVolumeHeight = this._applyVolumePanelHeightPx(activeVolumeHeight - dy);
+            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight - dy);
         } else {
             const topIdx = state.handleIndex;
             if (topIdx < 0 || topIdx >= heights.length) return false;
-            let nextTopHeight = heights[topIdx] - dy;
+            let nextTopHeight = baseHeights[topIdx] - dy;
             nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, nextTopHeight);
             heights[topIdx] = nextTopHeight;
         }
     } else if (state.isVolumePair) {
         if (heights.length === 0) return false;
-        const pairTotal = activeVolumeHeight + heights[0];
-        let nextVolume = activeVolumeHeight - dy;
+        const pairTotal = baseVolumeHeight + baseHeights[0];
+        let nextVolume = baseVolumeHeight - dy;
         nextVolume = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
         activeVolumeHeight = this._applyVolumePanelHeightPx(nextVolume);
         heights[0] = pairTotal - activeVolumeHeight;
@@ -5736,8 +5738,8 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         const topIdx = state.handleIndex + 1;
         if (bottomIdx < 0 || topIdx >= heights.length) return false;
 
-        const pairTotal = heights[bottomIdx] + heights[topIdx];
-        let nextBottom = heights[bottomIdx] - dy;
+        const pairTotal = baseHeights[bottomIdx] + baseHeights[topIdx];
+        let nextBottom = baseHeights[bottomIdx] - dy;
         nextBottom = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextBottom));
         const nextTop = pairTotal - nextBottom;
 
@@ -6271,12 +6273,10 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
 
     ctx.restore(); // end indicator-stack clip
 
-    if (!panFast) {
-        if (panelResizeActive) {
-            this._repositionSeparatePanelOverlay(panelSlots, m);
-        } else {
-            this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
-        }
+    if (panelResizeActive) {
+        this._repositionSeparatePanelOverlay(panelSlots, m);
+    } else if (!panFast) {
+        this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
     }
     } finally {
         this._panelRenderFast = false;
