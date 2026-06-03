@@ -5789,14 +5789,15 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
     let activeVolumeHeight = baseVolumeHeight;
 
-    // Canvas Y grows downward: drag up (dy < 0) shrinks panel above handle, grows panel below.
+    // Stack pair dividers: drag up shrinks panel above, grows panel below (+dy).
+    // Top stack border (price↔panels / volume↔first ind): opposite anchor (-dy).
     if (state.handleType === 'top') {
         if (state.isVolume) {
             activeVolumeHeight = Math.max(
                 MIN_SEPARATE_PANEL_HEIGHT,
                 Math.min(
                     Math.round(this._getMaxSeparatePanelStackHeight() * 0.35),
-                    baseVolumeHeight + dy
+                    baseVolumeHeight - dy
                 )
             );
         } else {
@@ -5806,14 +5807,14 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
                 return i === topIdx ? s : s + h;
             }, 0) + activeVolumeHeight;
             const maxTop = Math.max(MIN_SEPARATE_PANEL_HEIGHT, this._getMaxSeparatePanelStackHeight() - otherSum);
-            let nextTopHeight = baseHeights[topIdx] + dy;
+            let nextTopHeight = baseHeights[topIdx] - dy;
             nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(maxTop, nextTopHeight));
             heights[topIdx] = nextTopHeight;
         }
     } else if (state.isVolumePair) {
         if (heights.length === 0) return false;
         const pairTotal = baseVolumeHeight + baseHeights[0];
-        let nextVolume = baseVolumeHeight + dy;
+        let nextVolume = baseVolumeHeight - dy;
         nextVolume = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
         activeVolumeHeight = nextVolume;
         heights[0] = pairTotal - activeVolumeHeight;
