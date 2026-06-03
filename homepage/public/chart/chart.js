@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a82';
+const CHART_ENGINE_BUILD = '20260602a84';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -5319,6 +5319,9 @@ class Chart {
         this._pendingIndicatorsState = null;
         if (typeof this._syncVolumeDisplayFromIndicators === 'function') {
             this._syncVolumeDisplayFromIndicators();
+        }
+        if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+            this._normalizeVolumeIndicatorLayout();
         }
         if (typeof this.recalculateIndicators === 'function') {
             try { this.recalculateIndicators(); } catch (_) { /* ignore */ }
@@ -15883,6 +15886,9 @@ class Chart {
         if (typeof this._syncSeparateIndicatorPanelHeightEstimate === 'function') {
             this._syncSeparateIndicatorPanelHeightEstimate();
         }
+        if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+            this._normalizeVolumeIndicatorLayout();
+        }
         const m = this.margin;
 
         // Price-axis drag only changes Y zoom/offset — skip pipeline + OHLC scan (same idea as wheel burst).
@@ -15895,16 +15901,19 @@ class Chart {
                 if (!Number.isFinite(this.priceZoom) || this.priceZoom <= 0) this.priceZoom = 1;
             }
             const ch = this.h - m.t - m.b;
-            const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
-            const effectiveVolumeHeight = ((typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) && !volInPanel) ? this.volumeHeight : 0;
-            const volumeAreaHeight = ch * effectiveVolumeHeight;
+            const overlayRatio = typeof this._getVolumeOverlayRatio === 'function' ? this._getVolumeOverlayRatio() : 0;
+            const volumeOverlayHeight = ch * overlayRatio;
             const indPanelH = this.separateIndicatorPanelHeight || 0;
+            const plotBottom = this.h - m.b - indPanelH;
             const halfRange = this.manualRange / (2 * this.priceZoom);
             const domainMin = this.manualCenterPrice - halfRange + this.priceOffset;
             const domainMax = this.manualCenterPrice + halfRange + this.priceOffset;
             this.yScale = d3.scaleLinear()
                 .domain([domainMin, domainMax])
-                .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
+                .range([plotBottom, m.t]);
+            this.volumeScale = d3.scaleLinear()
+                .domain(this.volumeScale.domain())
+                .range([plotBottom, plotBottom - volumeOverlayHeight]);
             this.scales = {
                 yScale: this.yScale,
                 xScale: this.xScale,
@@ -15915,12 +15924,10 @@ class Chart {
 
         const cw = this.w - m.l - m.r;
         const ch = this.h - m.t - m.b;
-        // If volume is hidden, use full height for price chart.
-        // When volume shares the separate-panel stack, it is always the top slot — no main-chart band.
-        const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
-        const effectiveVolumeHeight = ((typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) && !volInPanel) ? this.volumeHeight : 0;
-        const priceHeight = ch * (1 - effectiveVolumeHeight);
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const indPanelH = this.separateIndicatorPanelHeight || 0;
+        const plotBottom = this.h - m.b - indPanelH;
+        const overlayRatio = typeof this._getVolumeOverlayRatio === 'function' ? this._getVolumeOverlayRatio() : 0;
+        const volumeOverlayHeight = ch * overlayRatio;
         
         // Add buffer for smoother scrolling
         const bufferCandles = 20; // Number of extra candles to render on each side
@@ -15965,10 +15972,9 @@ class Chart {
         if (priceVisible.length === 0 && visCount === 0) {
             // Only set default scales if we've never had valid data before
             if (!this.xScale || !this.yScale) {
-                const _indPanelH = this.separateIndicatorPanelHeight || 0;
                 this.xScale = d3.scaleLinear().domain([0, 1]).range([m.l, this.w - m.r]);
-                this.yScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - volumeAreaHeight - _indPanelH, m.t]);
-                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([this.h - m.b - _indPanelH, this.h - m.b - volumeAreaHeight - _indPanelH]);
+                this.yScale = d3.scaleLinear().domain([0, 1]).range([plotBottom, m.t]);
+                this.volumeScale = d3.scaleLinear().domain([0, 1]).range([plotBottom, plotBottom - volumeOverlayHeight]);
             }
             // Otherwise, keep the existing scales so drawings remain visible
             return;
@@ -15992,8 +15998,8 @@ class Chart {
         }
         const priceRange = maxPrice - minPrice || maxPrice * 0.01;
         
-        // Calculate chart height for price area
-        const priceChartHeight = ch - volumeAreaHeight;
+        // Calculate chart height for price area (volume overlays bottom strip — does not shrink plot).
+        const priceChartHeight = Math.max(1, plotBottom - m.t);
         
         // Dynamically calculate padding - smaller padding for better fit
         // Use 5% of price range as padding, but limit to reasonable visual space
@@ -16092,10 +16098,9 @@ class Chart {
                      Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount])
             .range([m.l, this.w - m.r]);
         
-        const indPanelH = this.separateIndicatorPanelHeight || 0;
         this.yScale = d3.scaleLinear()
             .domain([domainMin, domainMax])
-            .range([this.h - m.b - volumeAreaHeight - indPanelH, m.t]);
+            .range([plotBottom, m.t]);
         
         // Loop for volume max — spreading thousands of args into Math.max (...map) stalled
         // zoomed-out frames and could exceed the argument limit on large windows.
@@ -16106,7 +16111,7 @@ class Chart {
         }
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
-            .range([this.h - m.b - indPanelH, this.h - m.b - volumeAreaHeight - indPanelH]);
+            .range([plotBottom, plotBottom - volumeOverlayHeight]);
         
         // Create scales object for order manager compatibility
         this.scales = {
@@ -17240,9 +17245,9 @@ class Chart {
             ? this._getMainPricePlotLayout()
             : null;
         const ch = plotLayout ? plotLayout.ch : (this.h - m.t - m.b);
-        const volumeAreaHeight = plotLayout ? plotLayout.volumeAreaHeight : (ch * ((typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0));
-        const priceHeight = plotLayout ? plotLayout.plotHeight : (ch - volumeAreaHeight);
-        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - volumeAreaHeight);
+        const volumeAreaHeight = plotLayout ? plotLayout.volumeAreaHeight : 0;
+        const priceHeight = plotLayout ? plotLayout.plotHeight : ch;
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
         
         if (!this.xScale || !this.yScale) return;
         
@@ -17300,17 +17305,6 @@ class Chart {
             }
         }
         
-        // Volume section separator (only show if volume is visible)
-        if ((typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) && volumeAreaHeight > 0) {
-            const indPanelH = this.separateIndicatorPanelHeight || 0;
-            this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
-            this.ctx.lineWidth = 1;
-            this.ctx.setLineDash([]);
-            this.ctx.beginPath();
-            this.ctx.moveTo(m.l, this.h - m.b - indPanelH - volumeAreaHeight);
-            this.ctx.lineTo(this.w - m.r, this.h - m.b - indPanelH - volumeAreaHeight);
-            this.ctx.stroke();
-        }
         this.ctx.setLineDash([]);
     }
     
@@ -17323,9 +17317,11 @@ class Chart {
         this._syncAdaptivePriceAxisMargin();
 
         const m = this.margin;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
         const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
 
         const axisLeft = !!this.priceAxisLeft;
         const axisW = axisLeft ? m.l : m.r;
@@ -17390,7 +17386,7 @@ class Chart {
         
         yTicks.forEach(price => {
             const y = this.yScale(price);
-            if (y > m.t + 8 && y < this.h - m.b - volumeAreaHeight - 8) {
+            if (y > m.t + 8 && y < pricePlotBottom - 8) {
                 const text = price.toFixed(decimals);
                 this.ctx.fillStyle = axisTextColor;
                 this.ctx.fillText(text, axisMidX, y + 4);
@@ -18024,10 +18020,12 @@ class Chart {
     _syncAdaptivePriceAxisMargin() {
         if (!this.yScale || !this.ctx) return;
         const axisLeft = !!this.priceAxisLeft;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - this.margin.b);
         const ch = this.h - this.margin.t - this.margin.b;
         if (ch <= 0) return;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
         const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
         const decimals = this.getPriceDecimals(Math.abs(priceRange));
         const numYTicks = Math.max(8, Math.min(15, Math.floor(ch / 60)));
@@ -18046,7 +18044,7 @@ class Chart {
         const mTick = measure(false);
         yTicks.forEach((price) => {
             const y = this.yScale(price);
-            if (y > this.margin.t + 8 && y < this.h - this.margin.b - volumeAreaHeight - 8) {
+            if (y > this.margin.t + 8 && y < pricePlotBottom - 8) {
                 mTick(price);
             }
         });
@@ -18357,9 +18355,10 @@ class Chart {
         if (!this.yScale) return;
 
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
         
         // Find the last candle index that is actually visible (not in price axis area)
         let lastVisibleIdx = -1;
@@ -18394,8 +18393,8 @@ class Chart {
         if (!Number.isFinite(currentPrice)) return;
         const y = this.yScale(currentPrice);
 
-        // Only draw if within price chart area (not in volume area)
-        if (y < m.t || y > this.h - m.b - volumeAreaHeight) return;
+        // Only draw if within price chart area
+        if (y < m.t || y > pricePlotBottom) return;
 
         // Match the price line color so label and line are always the same color
         const bgColor = this.chartSettings.priceLineColor || '#787B86';
@@ -18858,8 +18857,12 @@ class Chart {
         if (!(typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume)) return;
         
         const m = this.margin;
-        
-        // Get volume indicator colors and MA settings if available
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const plotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
+        let volBandTop = plotBottom - (plotLayout ? plotLayout.volumeAreaHeight : 0);
+        let volBandBottom = plotBottom;
         let upColor = this.chartSettings.volumeUpColor;
         let downColor = this.chartSettings.volumeDownColor;
         let showMA = false;
@@ -18881,14 +18884,8 @@ class Chart {
             }
         }
         
-        // Clip to the volume band only — bars must not extend into separate indicator panels below.
+        // Clip to the bottom overlay band — volumeScale range matches calculateScales().
         this.ctx.save();
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const indPanelH = this.separateIndicatorPanelHeight || 0;
-        let volBandTop = this.h - m.b - indPanelH - volumeAreaHeight;
-        let volBandBottom = this.h - m.b - indPanelH;
         if (this.volumeScale && typeof this.volumeScale.range === 'function') {
             const volRange = this.volumeScale.range();
             if (volRange && volRange.length >= 2) {
@@ -19000,10 +18997,10 @@ class Chart {
         if (!supportedTypes.has(chartType)) return;
 
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
 
         const minSpacing = 8;
         const step = Math.max(1, Math.ceil(minSpacing / Math.max(1, this.candleWidth)));
@@ -19051,10 +19048,8 @@ class Chart {
             ? this._getMainPricePlotLayout()
             : (function() {
                 const ch = this.h - m.t - m.b;
-                const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-                const volumeAreaHeight = ch * effectiveVolumeHeight;
                 const indPanelH = this.separateIndicatorPanelHeight || 0;
-                const plotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+                const plotBottom = this.h - m.b - indPanelH;
                 return { plotBottom: plotBottom, plotHeight: Math.max(1, plotBottom - m.t) };
             }).call(this);
 
@@ -19194,10 +19189,12 @@ class Chart {
         if (!visible || visible.length === 0) return;
         
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const bottomY = this.h - m.b - volumeAreaHeight;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const bottomY = plotLayout
+            ? plotLayout.plotBottom
+            : (this.yScale && typeof this.yScale.range === 'function' ? this.yScale.range()[0] : (this.h - m.b));
         
         // Draw fill
         this.ctx.beginPath();
@@ -19360,11 +19357,10 @@ class Chart {
         if (!Number.isFinite(price)) return;
         const y = this.yScale(price);
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const indPanelH = this.separateIndicatorPanelHeight || 0;
-        const yPlotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const yPlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
         if (!isFinite(y) || y < m.t || y > yPlotBottom) return;
 
         const color = this.chartSettings.priceLineColor || '#2962ff';

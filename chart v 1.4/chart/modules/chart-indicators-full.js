@@ -3171,6 +3171,9 @@
                 this.indicators.data[indicator.id] = { active: true };
                 // Enable volume display in chart settings
                 this.chartSettings.showVolume = true;
+                if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+                    this._normalizeVolumeIndicatorLayout();
+                }
                 // Show and setup volume indicator line in OHLC area
                 this.setupVolumeIndicatorLine(indicator);
                 break;
@@ -5602,12 +5605,39 @@ Chart.prototype._isVolumeDisplayEnabled = function() {
 /** Keep persisted showVolume aligned with whether a Volume indicator is on the chart. */
 Chart.prototype._syncVolumeDisplayFromIndicators = function() {
     if (!this.chartSettings) this.chartSettings = {};
+    if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
+        this._normalizeVolumeIndicatorLayout();
+    }
     this.chartSettings.showVolume = !!this._getActiveVolumeIndicator();
 };
 
 /** Volume always renders in the main chart band (TradingView-style), never as a separate panel slot. */
 Chart.prototype._volumeRendersInSeparatePanel = function() {
     return false;
+};
+
+/** Bottom overlay strip ratio — volume does not shrink the price plot. */
+Chart.prototype._getVolumeOverlayRatio = function() {
+    if (!this._isVolumeDisplayEnabled()) return 0;
+    if (typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel()) {
+        return 0;
+    }
+    const r = Number.isFinite(this.volumeHeight) ? this.volumeHeight : 0.15;
+    return Math.max(0.08, Math.min(0.22, r));
+};
+
+/** Force volume indicators out of the separate-panel stack and clamp overlay height. */
+Chart.prototype._normalizeVolumeIndicatorLayout = function() {
+    if (this.indicators && Array.isArray(this.indicators.active)) {
+        this.indicators.active.forEach(function(ind) {
+            if (ind.type !== 'volume' && !ind.isVolume) return;
+            ind.separatePanel = false;
+            ind.isVolume = true;
+        });
+    }
+    if (Number.isFinite(this.volumeHeight) && this.volumeHeight > 0.22) {
+        this.volumeHeight = 0.15;
+    }
 };
 
 Chart.prototype._getVolumePanelHeight = function() {
@@ -5618,16 +5648,15 @@ Chart.prototype._getVolumePanelHeight = function() {
     return Math.max(MIN_SEPARATE_PANEL_HEIGHT, fromRatio || DEFAULT_VOLUME_PANEL_HEIGHT);
 };
 
-/** Main price plot bounds — matches calculateScales yScale range (excludes volume band + separate panels). */
+/** Main price plot bounds — full pane height; volume overlays the bottom strip only. */
 Chart.prototype._getMainPricePlotLayout = function() {
     const m = this.margin;
     const ch = this.h - m.t - m.b;
-    const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
-    const effectiveVolumeHeight = (this._isVolumeDisplayEnabled() && !volInPanel) ? this.volumeHeight : 0;
-    const volumeAreaHeight = ch * effectiveVolumeHeight;
     const indPanelH = this.separateIndicatorPanelHeight || 0;
-    const plotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
+    const plotBottom = this.h - m.b - indPanelH;
     const plotHeight = Math.max(1, plotBottom - m.t);
+    const overlayRatio = typeof this._getVolumeOverlayRatio === 'function' ? this._getVolumeOverlayRatio() : 0;
+    const volumeAreaHeight = ch * overlayRatio;
     return { m: m, ch: ch, volumeAreaHeight: volumeAreaHeight, indPanelH: indPanelH, plotBottom: plotBottom, plotHeight: plotHeight };
 };
 
@@ -7326,10 +7355,10 @@ Chart.prototype.drawATRBands = function(data, style, startIndex = 0, endIndex) {
 Chart.prototype.drawSessions = function(data, style, startIndex = 0, endIndex = data.length) {
     const ctx = this.ctx;
     const m = this.margin;
-    const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
-    const volumeAreaHeight = ch * effectiveVolumeHeight;
-    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
     
     // Draw session backgrounds
     for (let i = startIndex; i < endIndex && i < data.length; i++) {
@@ -7361,10 +7390,10 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     
     const ctx = this.ctx;
     const m = this.margin;
-    const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
-    const volumeAreaHeight = ch * effectiveVolumeHeight;
-    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
     
     const transparency = data.boxTransparency !== undefined ? data.boxTransparency : 88;
     const baseFillAlpha = Math.min(0.22, Math.max(0.04, (100 - transparency) / 100));
@@ -7603,10 +7632,10 @@ Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endInd
     if (!data || !data.dom) return;
     const ctx = this.ctx;
     const m = this.margin;
-    const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
-    const volumeAreaHeight = ch * effectiveVolumeHeight;
-    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
     const n = this.data ? this.data.length : 0;
     endIndex = endIndex == null ? n : Math.min(endIndex, n);
     const self = this;
@@ -7799,10 +7828,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     if (!data || !data.segments || data.segments.length === 0) return;
     const ctx = this.ctx;
     const m = this.margin;
-    const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
-    const volumeAreaHeight = ch * effectiveVolumeHeight;
-    const priceAreaBottom = this.h - m.b - volumeAreaHeight;
+    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+        ? this._getMainPricePlotLayout()
+        : null;
+    const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
     const hiCol = style.highColor || '#f23645';
     const loCol = style.lowColor || '#2962ff';
     const lw = style.lineWidth != null ? style.lineWidth : 1;
@@ -9442,10 +9471,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!this.indicators || !this.indicators.active || !this.yScale || !this.ctx) return;
 
         const m = this.margin;
-        const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
-        const volumeAreaHeight = ch * effectiveVolumeHeight;
-        const maxY = this.h - m.b - volumeAreaHeight;
+        const plotLayout = typeof this._getMainPricePlotLayout === 'function'
+            ? this._getMainPricePlotLayout()
+            : null;
+        const maxY = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
         const labels = [];
 
         this.indicators.active.forEach(function(indicator) {
