@@ -184,18 +184,18 @@ function oscillatorLevelStyleParams() {
     ];
 }
 
-/** TradingView-style Aroon Style tab (Up/Down lines + OB/OS/Mid levels + optional panel bg). */
+/** TradingView-style Aroon Style tab (Up/Down lines only). */
 function aroonStyleParams() {
     return [
         { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'upColor', label: 'Aroon Up Color', type: 'color', default: '#00e676', tab: 'style' },
-        { id: 'upLineStyle', label: 'Aroon Up Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'upLineWidth', label: 'Aroon Up Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'upColor', label: 'Aroon Up color', type: 'color', default: '#fb8c00', tab: 'style' },
+        { id: 'upLineStyle', label: 'Aroon Up line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upLineWidth', label: 'Aroon Up thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'downColor', label: 'Aroon Down Color', type: 'color', default: '#f23645', tab: 'style' },
-        { id: 'downLineStyle', label: 'Aroon Down Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'downLineWidth', label: 'Aroon Down Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
-    ].concat(oscillatorLevelStyleParams());
+        { id: 'downColor', label: 'Aroon Down color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'downLineStyle', label: 'Aroon Down line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'downLineWidth', label: 'Aroon Down thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
 }
 
 /** TradingView-style RSI Style tab (RSI line + OB/OS/Mid levels + optional panel bg). */
@@ -1002,7 +1002,7 @@ const INDICATOR_DEFINITIONS = {
         name: 'Aroon',
         type: 'separate',
         params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 }
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' }
         ].concat(aroonStyleParams())
     },
     cmf: {
@@ -3476,21 +3476,6 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('Aroon Up', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
                     v9PlotRow('Aroon Down', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown')
                 ]
-            }, {
-                title: 'Overbought Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
-            }, {
-                title: 'Oversold Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
-            }, {
-                title: 'Mid Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
             }],
             footers: footers
         };

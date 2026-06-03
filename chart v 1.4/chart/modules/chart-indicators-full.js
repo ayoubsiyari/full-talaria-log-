@@ -295,16 +295,15 @@
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.style.showUp = params.showUp !== false;
-        indicator.style.upColor = params.upColor || '#00e676';
+        indicator.style.upColor = params.upColor || '#fb8c00';
         indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
         indicator.style.showDown = params.showDown !== false;
-        indicator.style.downColor = params.downColor || '#f23645';
+        indicator.style.downColor = params.downColor || '#2962ff';
         indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [
             ['upLineStyle', 'upLineDashStyle', legacyS],
             ['downLineStyle', 'downLineDashStyle', legacyS]
         ]);
-        applyOscillatorLevelStyleFromParams(indicator, params);
     }
 
     function resolvePsarCalcParams(params) {
@@ -8543,9 +8542,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     // Shared right-axis ticks + grid for separate indicator panels.
-    Chart.prototype._drawPanelAxisTicks = function(ctx, m, min, max, scaleY, decimals) {
+    Chart.prototype._drawPanelAxisTicks = function(ctx, m, min, max, scaleY, decimals, suffix) {
         const fast = this._panelRenderFast === true;
         const d = Number.isFinite(decimals) ? decimals : 2;
+        const sfx = suffix != null ? String(suffix) : '';
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
         ctx.fillStyle = '#787b86';
@@ -8560,7 +8560,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.moveTo(m.l, tickY);
             ctx.lineTo(this.w, tickY);
             ctx.stroke();
-            if (!fast) ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
+            if (!fast) ctx.fillText(tickVal.toFixed(d) + sfx, this.w - 6, tickY + 3);
         }
     };
 
@@ -9068,58 +9068,76 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = lastADX !== null ? lastADX.toFixed(2) : '';
     };
 
-    // ---- Aroon panel: Up / Down 0–100 + configurable levels + optional background ----
+    // ---- Aroon panel: Up / Down fixed 0–100% scale with edge padding ----
     Chart.prototype._renderAroonPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data || !data.up || !data.down) return;
         const upArr = data.up;
         const downArr = data.down;
         const style = indicator.style || {};
+        const padY = 8;
+        const clipTop = panelTop + padY;
+        const clipBottom = panelBottom - padY;
         indicator._panelBaseMin = 0;
         indicator._panelBaseMax = 100;
         const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
         const aMin = dom.min;
         const aMax = dom.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
+        const plotH = Math.max(1, panelHeight - padY * 2);
         const scaleY = v => {
             if (v === null || v === undefined) return null;
-            let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            const y = panelBottom - padY - ((v - aMin) / aSpan) * plotH;
             if (!Number.isFinite(y)) return null;
-            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+            return Math.max(clipTop, Math.min(clipBottom, y));
         };
 
-        if (style.showBg) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
-        }
-
-        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 0);
-
-        if (style.showOverbought !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.overboughtValue != null ? style.overboughtValue : 70,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', style.overboughtValue != null ? style.overboughtValue : 70);
-        }
-        if (style.showOversold !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.oversoldValue != null ? style.oversoldValue : 30,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', style.oversoldValue != null ? style.oversoldValue : 30);
-        }
-        if (style.showMid !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.midValue != null ? style.midValue : 50,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', style.midValue != null ? style.midValue : 50);
-        }
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2, '%');
 
         if (style.showUp !== false) {
-            this._drawPanelLine(ctx, m, upArr, style.upColor || '#00e676', style.upLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.upLineStyle || 'Line');
+            this._drawPanelLine(ctx, m, upArr, style.upColor || '#fb8c00', style.upLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.upLineStyle || 'Line', style.upLineDashStyle || 'Solid');
         }
         if (style.showDown !== false) {
-            this._drawPanelLine(ctx, m, downArr, style.downColor || '#f23645', style.downLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.downLineStyle || 'Line');
+            this._drawPanelLine(ctx, m, downArr, style.downColor || '#2962ff', style.downLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.downLineStyle || 'Line', style.downLineDashStyle || 'Solid');
         }
 
         let lastU = null, lastD = null;
         for (let i = Math.min(visibleEnd - 1, upArr.length - 1); i >= visibleStart; i--) {
             if (upArr[i] !== null && !isNaN(upArr[i])) { lastU = upArr[i]; lastD = downArr[i]; break; }
         }
-        indicator._displayColor = style.upColor || '#00e676';
-        indicator._displayLabel = lastU !== null ? '↑' + lastU.toFixed(0) + ' ↓' + (lastD != null ? lastD.toFixed(0) : '—') : '';
+        const aroonTags = [];
+        if (lastU !== null && Number.isFinite(lastU)) {
+            const yU = scaleY(lastU);
+            if (Number.isFinite(yU)) aroonTags.push({ y: yU, text: lastU.toFixed(2) + '%', color: style.upColor || '#fb8c00' });
+        }
+        if (lastD !== null && Number.isFinite(lastD)) {
+            const yD = scaleY(lastD);
+            if (Number.isFinite(yD)) aroonTags.push({ y: yD, text: lastD.toFixed(2) + '%', color: style.downColor || '#2962ff' });
+        }
+        aroonTags.sort(function(a, b) { return a.y - b.y; });
+        for (let i = 1; i < aroonTags.length; i++) {
+            if (aroonTags[i].y - aroonTags[i - 1].y < 18) aroonTags[i].y = aroonTags[i - 1].y + 18;
+        }
+        for (let i = aroonTags.length - 2; i >= 0; i--) {
+            if (aroonTags[i + 1].y > clipBottom) {
+                aroonTags[i + 1].y = clipBottom;
+                if (aroonTags[i + 1].y - aroonTags[i].y < 18) aroonTags[i].y = aroonTags[i + 1].y - 18;
+            }
+            if (aroonTags[i].y < clipTop) aroonTags[i].y = clipTop;
+        }
+        indicator._axisLabelTags = aroonTags;
+        if (aroonTags.length > 0) {
+            indicator._axisLabelY = aroonTags[0].y;
+            indicator._axisLabelText = aroonTags[0].text;
+            indicator._axisLabelColor = aroonTags[0].color;
+        } else {
+            indicator._axisLabelY = null;
+            indicator._axisLabelText = '';
+            indicator._axisLabelColor = '';
+        }
+        indicator._displayColor = style.upColor || '#fb8c00';
+        indicator._displayLabel = lastU !== null
+            ? lastU.toFixed(2) + '%' + (lastD != null ? ' ' + lastD.toFixed(2) + '%' : '')
+            : '';
     };
 
     // ---- RSI panel: 0–100 + bands + MA + gradient fills ----
