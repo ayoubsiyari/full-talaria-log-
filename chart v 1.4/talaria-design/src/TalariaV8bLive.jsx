@@ -22989,8 +22989,8 @@ const TalariaV8bLive = () => {
             const cur = d[id] !== undefined ? !!d[id] : !!p?.default;
             return { ...d, [id]: !cur };
           });
-          const gc = "16px 1fr 26px 56px 28px 56px";
-          const gcBand = "16px 1fr 26px 56px 28px 44px 44px";
+          const gc = "16px 1fr 26px 56px 56px 28px";
+          const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
@@ -23063,8 +23063,8 @@ const TalariaV8bLive = () => {
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
                 {hasStyleCol ? stSel(row.styleId, !on) : <div />}
-                {hasStyleCol ? psSel(row.styleId, !on) : <div />}
                 {hasWidthCol ? numW(row.widthId, !on) : <div />}
+                {hasStyleCol ? psSel(row.styleId, !on) : <div />}
               </div>
             );
           };
@@ -23081,9 +23081,9 @@ const TalariaV8bLive = () => {
                 {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
                 {stSel(row.styleId, !on)}
-                {psSel(row.styleId, !on)}
                 {extended ? numW(row.widthId, !on) : numW(row.valueId, !on)}
                 {extended ? numW(row.valueId, !on) : null}
+                {psSel(row.styleId, !on)}
               </div>
             );
           };
@@ -23099,25 +23099,25 @@ const TalariaV8bLive = () => {
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
-                    <div />
                     <div>{hdr("THICKNESS")}</div>
+                    <div />
                   </div>
                 )}
                 {section.levelHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
-                    <div />
                     <div>{hdr("VALUE")}</div>
+                    <div />
                   </div>
                 )}
                 {section.bandLevelHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: gcBand, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
-                    <div />
                     <div>{hdr("THICKNESS")}</div>
                     <div>{hdr("VALUE")}</div>
+                    <div />
                   </div>
                 )}
                 {section.zeroLevelHeader && (
@@ -23126,6 +23126,7 @@ const TalariaV8bLive = () => {
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div>{hdr("ZERO")}</div>
+                    <div />
                   </div>
                 )}
                 {section.checkboxRow && (
