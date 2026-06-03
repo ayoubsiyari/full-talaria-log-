@@ -5797,10 +5797,10 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
     let activeVolumeHeight = baseVolumeHeight;
 
-    // Canvas Y grows downward: drag up (dy < 0) shrinks the panel above the handle, grows the one below.
+    // Canvas Y grows downward: drag up (dy < 0) moves the handle up — grow panel above, shrink panel below.
     if (state.handleType === 'top') {
         if (state.isVolume) {
-            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight + dy);
+            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight - dy);
         } else {
             const topIdx = state.handleIndex;
             if (topIdx < 0 || topIdx >= heights.length) return false;
@@ -5808,7 +5808,7 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
                 return i === topIdx ? s : s + h;
             }, 0) + activeVolumeHeight;
             const maxTop = Math.max(MIN_SEPARATE_PANEL_HEIGHT, this._getMaxSeparatePanelStackHeight() - otherSum);
-            let nextTopHeight = baseHeights[topIdx] + dy;
+            let nextTopHeight = baseHeights[topIdx] - dy;
             nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(maxTop, nextTopHeight));
             heights[topIdx] = nextTopHeight;
         }
@@ -5816,7 +5816,7 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         if (heights.length === 0) return false;
         const volMin = this._getVolumePanelPreserveMin();
         const pairTotal = baseVolumeHeight + baseHeights[0];
-        let nextVolume = baseVolumeHeight + dy;
+        let nextVolume = baseVolumeHeight - dy;
         nextVolume = Math.max(volMin, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
         activeVolumeHeight = this._applyVolumePanelHeightPx(nextVolume);
         heights[0] = pairTotal - activeVolumeHeight;
@@ -5826,7 +5826,7 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         if (upperIdx < 0 || lowerIdx >= heights.length) return false;
 
         const pairTotal = baseHeights[upperIdx] + baseHeights[lowerIdx];
-        let nextUpper = baseHeights[upperIdx] + dy;
+        let nextUpper = baseHeights[upperIdx] - dy;
         nextUpper = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextUpper));
         const nextLower = pairTotal - nextUpper;
 
