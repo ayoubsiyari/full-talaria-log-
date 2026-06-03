@@ -267,6 +267,38 @@
             indicator.style.fillColor = params.fillColor || '#2962ff';
             indicator.style.fillOpacity = params.fillOpacity != null ? params.fillOpacity : 10;
         }
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['middleLineStyle', 'middleLineDashStyle', legacyS],
+            ['upperLineStyle', 'upperLineDashStyle', legacyS],
+            ['lowerLineStyle', 'lowerLineDashStyle', legacyS]
+        ]);
+    }
+
+    function resolveBbCalcParams(params) {
+        params = params || {};
+        const periodRaw = params.period != null ? Number(params.period) : 20;
+        const stdDevRaw = params.stdDev != null ? Number(params.stdDev) : 2;
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        let maType = params.maType || 'SMA';
+        if (maType === 'SMMA') maType = 'RMA';
+        return {
+            period: Number.isFinite(periodRaw) ? periodRaw : 20,
+            source: params.source || 'close',
+            stdDev: Number.isFinite(stdDevRaw) ? stdDevRaw : 2,
+            offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
+            maType: maType
+        };
+    }
+
+    function applyBbCalcParams(indicator, params) {
+        const calc = resolveBbCalcParams(params);
+        indicator.params.period = calc.period;
+        indicator.params.source = calc.source;
+        indicator.params.stdDev = calc.stdDev;
+        indicator.params.offset = calc.offset;
+        indicator.params.maType = calc.maType;
+        return calc;
     }
 
     function bollingerFillRgba(style) {
@@ -865,31 +897,97 @@
         return { rsi: rsi, ma: ma, bbUpper: bbUpper, bbLower: bbLower };
     }
     
-    // Bollinger Bands
-    function calculateBollingerBands(data, period, stdDev, source) {
+    function rollingVwmaOnData(data, period, source) {
+        const p = Math.max(1, period | 0);
         source = source || 'close';
-        const middle = calculateSMA(data, period, source);
+        const out = data.map(function () { return null; });
+        for (let i = 0; i < data.length; i++) {
+            if (i < p - 1) continue;
+            let wSum = 0;
+            let vSum = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const bar = data[i - j];
+                const val = resolveOhlcSourceValue(bar, source);
+                const volRaw = bar && (bar.v != null ? bar.v : bar.volume);
+                const vol = volRaw != null ? Number(volRaw) : NaN;
+                if (!Number.isFinite(val) || !Number.isFinite(vol) || vol <= 0) {
+                    ok = false;
+                    break;
+                }
+                wSum += val * vol;
+                vSum += vol;
+            }
+            if (ok && vSum > 0) out[i] = wSum / vSum;
+        }
+        return out;
+    }
+
+    // Bollinger Bands
+    function calculateBollingerBands(data, calcOrPeriod, stdDev, source) {
+        let calc;
+        if (typeof calcOrPeriod === 'object' && calcOrPeriod !== null && !Array.isArray(calcOrPeriod)) {
+            calc = resolveBbCalcParams(calcOrPeriod);
+        } else {
+            calc = resolveBbCalcParams({
+                period: calcOrPeriod,
+                stdDev: stdDev,
+                source: source
+            });
+        }
+        const p = Math.max(1, calc.period | 0);
+        const sd = calc.stdDev;
+        const src = calc.source;
+        const maType = calc.maType;
+        const srcArr = data.map(function (bar) {
+            const v = resolveOhlcSourceValue(bar, src);
+            return Number.isFinite(v) ? v : null;
+        });
+
+        let middle;
+        if (maType === 'EMA') {
+            middle = rollingEmaNullable(srcArr, p);
+        } else if (maType === 'RMA') {
+            middle = rollingRmaNullable(srcArr, p);
+        } else if (maType === 'WMA') {
+            middle = rollingWmaNullable(srcArr, p);
+        } else if (maType === 'VWMA') {
+            middle = rollingVwmaOnData(data, p, src);
+        } else {
+            middle = rollingSmaNullable(srcArr, p);
+        }
+
         const upper = [];
         const lower = [];
-        
         for (let i = 0; i < data.length; i++) {
-            if (middle[i] === null) {
+            if (middle[i] == null || isNaN(middle[i])) {
+                upper.push(null);
+                lower.push(null);
+                continue;
+            }
+            let sum = 0;
+            let sumSq = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const idx = i - j;
+                if (idx < 0) { ok = false; break; }
+                const v = srcArr[idx];
+                if (v == null || isNaN(v)) { ok = false; break; }
+                sum += v;
+                sumSq += v * v;
+            }
+            if (!ok) {
                 upper.push(null);
                 lower.push(null);
             } else {
-                // Calculate standard deviation
-                let sum = 0;
-                for (let j = 0; j < period; j++) {
-                    const diff = data[i - j].c - middle[i];
-                    sum += diff * diff;
-                }
-                const std = Math.sqrt(sum / period);
-                upper.push(middle[i] + (stdDev * std));
-                lower.push(middle[i] - (stdDev * std));
+                const mean = sum / p;
+                const stdev = Math.sqrt(Math.max(0, sumSq / p - mean * mean));
+                upper.push(middle[i] + sd * stdev);
+                lower.push(middle[i] - sd * stdev);
             }
         }
-        
-        return { upper: upper, middle: middle, lower: lower };
+
+        return shiftBandSeries({ upper: upper, middle: middle, lower: lower }, calc.offset);
     }
     
     // RSI (Relative Strength Index)
@@ -3493,12 +3591,10 @@
                 
             case 'bb':
             case 'bollinger':
-                indicator.params.period = params.period || 20;
-                indicator.params.source = params.source || 'close';
-                indicator.params.stdDev = params.stdDev || 2;
+                applyBbCalcParams(indicator, params);
                 applyBollingerStyleFromParams(indicator, params);
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
-                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params);
                 break;
 
             case 'envelope':
@@ -4508,6 +4604,8 @@
         // Update parameters
         if (newParams.period !== undefined) indicator.params.period = newParams.period;
         if (newParams.stdDev !== undefined) indicator.params.stdDev = newParams.stdDev;
+        if (newParams.offset !== undefined) indicator.params.offset = Number(newParams.offset) || 0;
+        if (newParams.maType !== undefined) indicator.params.maType = newParams.maType;
         if (newParams.fast !== undefined) indicator.params.fast = newParams.fast;
         if (newParams.slow !== undefined) indicator.params.slow = newParams.slow;
         if (newParams.signal !== undefined) indicator.params.signal = newParams.signal;
@@ -4663,6 +4761,10 @@
         if (indicator.type === 'donchian') {
             applyDonchianStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'bb' || indicator.type === 'bollinger') {
+            applyBbCalcParams(indicator, Object.assign({}, indicator.params, newParams));
+            applyBollingerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
@@ -4723,8 +4825,9 @@
                 break;
             case 'bb':
             case 'bollinger':
+                applyBbCalcParams(indicator, indicator.params);
                 indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
-                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params);
                 break;
             case 'envelope':
             case 'smaenvelope':
@@ -5160,7 +5263,7 @@
                     break;
                 case 'bb':
                 case 'bollinger':
-                    this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params.period, indicator.params.stdDev, indicator.params.source || 'close');
+                    this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params);
                     break;
                 case 'envelope':
                 case 'smaenvelope':

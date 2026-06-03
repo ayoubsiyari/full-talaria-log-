@@ -135,27 +135,43 @@ function separateLineStyleExtras() {
     ];
 }
 
+const BB_MA_TYPE_OPTIONS = [
+    { value: 'SMA', label: 'SMA' },
+    { value: 'EMA', label: 'EMA' },
+    { value: 'RMA', label: 'SMMA(RMA)' },
+    { value: 'WMA', label: 'WMA' },
+    { value: 'VWMA', label: 'VWMA' }
+];
+
+/** TradingView-style Bollinger Bands Input tab. */
+function bbInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' },
+        { id: 'maType', label: 'MA Type', type: 'select', tab: 'input', default: 'SMA', options: BB_MA_TYPE_OPTIONS }
+    ];
+}
+
 /** TradingView-style Bollinger Bands Style tab (per-band show/color/thickness/style + fill). */
 function bollingerBandsStyleParams() {
     return [
-        { id: 'basisHeading', label: 'Basis (Middle Band)', type: 'heading', tab: 'style' },
-        { id: 'showMiddle', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'middleColor', label: 'Color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'middleLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'middleLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'upperHeading', label: 'Upper Band', type: 'heading', tab: 'style' },
-        { id: 'showUpper', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'upperColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'upperLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'upperLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lowerHeading', label: 'Lower Band', type: 'heading', tab: 'style' },
-        { id: 'showLower', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'lowerColor', label: 'Color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'lowerLineWidth', label: 'Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'lowerLineStyle', label: 'Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'fillHeading', label: 'Area Between Bands', type: 'heading', tab: 'style' },
-        { id: 'showFill', label: 'Show', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.1)', tab: 'style' }
+        { id: 'showMiddle', label: 'Show basis', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'middleColor', label: 'Basis color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'middleLineStyle', label: 'Basis line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'middleLineWidth', label: 'Basis thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showUpper', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.1)', tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
 
@@ -788,11 +804,7 @@ const INDICATOR_DEFINITIONS = {
     bb: {
         name: 'Bollinger Bands',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'stdDev', label: 'Std Dev', type: 'number', default: 2, min: 0.5, step: 0.1 }
-        ].concat(bollingerBandsStyleParams())
+        params: bbInputParams().concat(bollingerBandsStyleParams())
     },
     envelope: {
         name: 'SMA Envelope',
@@ -3482,7 +3494,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         footers.push({ type: 'checkbox', id: 'showLabel', label: p.label || 'Show Label' });
     }
 
-    if (indicatorType === 'bb' || indicatorType === 'keltner') {
+    if (indicatorType === 'bb') {
         return {
             sections: [{
                 header: true,
@@ -3494,6 +3506,20 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             }, {
                 title: 'Area Between Bands',
                 rows: [v9ColorRow('Background', 'fillColor', 'showFill')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'keltner') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
+                    v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
+                    v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
+                ]
             }],
             footers: footers
         };
