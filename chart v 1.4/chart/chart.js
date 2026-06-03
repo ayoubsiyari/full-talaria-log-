@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a82';
+const CHART_ENGINE_BUILD = '20260602a83';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -17075,9 +17075,7 @@ class Chart {
             }
 
             this.drawGrid();
-            if (!this._volumeRendersInSeparatePanel || !this._volumeRendersInSeparatePanel()) {
-                this.drawVolume(visible, panOpts);
-            }
+            this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
             if (typeof this.drawIndicators === 'function') {
@@ -18858,10 +18856,6 @@ class Chart {
     drawVolume(visible, opts = {}) {
         // Skip if volume is disabled
         if (!(typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume)) return;
-        // Volume renders in its own bottom panel slot when other separate indicators are active.
-        if (typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel()) {
-            return;
-        }
         
         const m = this.margin;
         

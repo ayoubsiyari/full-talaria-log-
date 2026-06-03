@@ -3164,6 +3164,7 @@
                 indicator.params.maPeriod = params.maPeriod || 20;
                 indicator.style.maColor = params.maColor || '#2962ff';
                 indicator.overlay = false;
+                indicator.separatePanel = false;
                 indicator.isVolume = true;
                 indicator.name = 'Volume';
                 // Volume data is already in the candle data, we just need to mark it as active
@@ -5604,9 +5605,9 @@ Chart.prototype._syncVolumeDisplayFromIndicators = function() {
     this.chartSettings.showVolume = !!this._getActiveVolumeIndicator();
 };
 
+/** Volume always renders in the main chart band (TradingView-style), never as a separate panel slot. */
 Chart.prototype._volumeRendersInSeparatePanel = function() {
-    if (!this._isVolumeDisplayEnabled()) return false;
-    return this._getVisibleSeparateIndicators().length > 0;
+    return false;
 };
 
 Chart.prototype._getVolumePanelHeight = function() {
