@@ -325,7 +325,9 @@
         indicator.params.increment = calc.increment;
         indicator.params.maxStep = calc.maxStep;
         indicator.style.showLine = params.showLine !== false;
-        indicator.style.color = params.color || params.bullColor || '#2962ff';
+        indicator.style.bullColor = params.bullColor || params.color || '#26a69a';
+        indicator.style.bearColor = params.bearColor || '#ef5350';
+        indicator.style.color = indicator.style.bullColor;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
         applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', 'Circles']]);
     }
@@ -7521,16 +7523,73 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     }
 };
 
-/** Parabolic SAR — dots or plot-style markers on price chart */
+/** Parabolic SAR — dots or plot-style markers; up/down colors by trend */
 Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex) {
     if (!sar || !this.data || !this.data.length || !style || style.showLine === false) return;
     const plotStyle = this._normalizePlotStyle(style.lineStyle || 'Circles');
-    const color = style.color || '#2962ff';
+    const bull = style.bullColor || style.color || '#26a69a';
+    const bear = style.bearColor || '#ef5350';
     const lw = style.lineWidth || 2;
     const dashStyle = style.lineDashStyle || 'Solid';
     const scatterStyles = { Circles: 1, Cross: 1 };
+    const n = Math.min(sar.length, this.data.length);
+    endIndex = endIndex == null ? n : Math.min(endIndex, n);
+    const colorAt = (i) => {
+        const bar = this.data[i];
+        if (!bar || sar[i] == null || isNaN(sar[i])) return bull;
+        return bar.c >= sar[i] ? bull : bear;
+    };
     if (!scatterStyles[plotStyle]) {
-        this.drawLineIndicator(sar, color, lw, startIndex, endIndex, plotStyle, { dashStyle: dashStyle });
+        const ctx = this.ctx;
+        const m = this.margin;
+        const dash = this._lineDashForStyle(dashStyle === 'Solid' ? 'Line' : dashStyle);
+        ctx.save();
+        ctx.lineWidth = lw;
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'round';
+        ctx.setLineDash(dash);
+        let segStarted = false;
+        let segColor = null;
+        let prevX = null;
+        let prevY = null;
+        const flushSeg = function () {
+            if (segStarted) ctx.stroke();
+            ctx.beginPath();
+            segStarted = false;
+        };
+        for (let i = startIndex; i < endIndex && i < sar.length; i++) {
+            if (sar[i] == null || isNaN(sar[i])) {
+                flushSeg();
+                prevX = null;
+                continue;
+            }
+            const x = this.dataIndexToPixel(i);
+            const y = this.yScale(sar[i]);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                flushSeg();
+                prevX = null;
+                continue;
+            }
+            const c = colorAt(i);
+            if (segColor !== c) {
+                flushSeg();
+                segColor = c;
+                ctx.strokeStyle = c;
+            }
+            if (!segStarted) {
+                ctx.moveTo(x, y);
+                segStarted = true;
+            } else if (plotStyle.indexOf('Step') === 0 && prevX != null) {
+                ctx.lineTo(x, prevY);
+                ctx.lineTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+            prevX = x;
+            prevY = y;
+        }
+        flushSeg();
+        ctx.restore();
         return;
     }
     const ctx = this.ctx;
@@ -7540,13 +7599,9 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
         : { m: m, plotHeight: this.h - m.t - m.b };
     const plotYMin = plotLayout.m.t;
     const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
-    const n = Math.min(sar.length, this.data.length);
-    endIndex = endIndex == null ? n : Math.min(endIndex, n);
     const r = Math.max(1.2, lw * 0.65);
     const cross = plotStyle === 'Cross';
     ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
     ctx.lineWidth = Math.max(1, lw * 0.75);
     ctx.lineCap = 'round';
     for (let i = startIndex; i < endIndex; i++) {
@@ -7555,6 +7610,9 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
         const y = this.yScale(sar[i]);
         if (x < m.l - 50 || x > this.w - m.r + 50) continue;
         if (!Number.isFinite(y) || y < plotYMin || y > plotYMax) continue;
+        const col = colorAt(i);
+        ctx.strokeStyle = col;
+        ctx.fillStyle = col;
         if (cross) {
             const s = r + 1;
             ctx.beginPath();

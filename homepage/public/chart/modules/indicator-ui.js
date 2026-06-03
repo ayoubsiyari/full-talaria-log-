@@ -263,11 +263,12 @@ function psarInputParams() {
     ];
 }
 
-/** Parabolic SAR Style tab (single series color + plot style). */
+/** Parabolic SAR Style tab (up/down colors + shared plot style). */
 function psarStyleParams() {
     return [
         { id: 'showLine', label: 'Show Parabolic SAR', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Parabolic SAR color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'bullColor', label: 'Up color', type: 'color', default: '#26a69a', tab: 'style' },
+        { id: 'bearColor', label: 'Down color', type: 'color', default: '#ef5350', tab: 'style' },
         { id: 'lineStyle', label: 'Parabolic SAR line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Circles', tab: 'style' },
         { id: 'lineWidth', label: 'Parabolic SAR thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
@@ -3377,7 +3378,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
-    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma)color$/i.test(id)) return true;
+    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear)color$/i.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
@@ -3732,7 +3733,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('Parabolic SAR', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                    v9PlotRow('Up', 'bullColor', 'lineStyle', 'lineWidth', 'showLine'),
+                    v9PlotRow('Down', 'bearColor', null, null, null)
                 ]
             }],
             footers: footers
