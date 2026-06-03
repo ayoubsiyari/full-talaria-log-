@@ -254,6 +254,33 @@ function rsiBackgroundStyleParams() {
     ];
 }
 
+/** TradingView-style Donchian Channels Input tab. */
+function donchianInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' }
+    ];
+}
+
+/** TradingView-style Donchian Channels Style tab. */
+function donchianStyleParams() {
+    return [
+        { id: 'showUpper', label: 'Show Upper Band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper Band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'showMiddle', label: 'Show Middle Band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'middleColor', label: 'Middle Band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'middleOpacity', label: 'Middle Band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'middleLineStyle', label: 'Middle Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'middleLineWidth', label: 'Middle Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower', label: 'Show Lower Band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower Band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerOpacity', label: 'Lower Band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 /** TradingView-style Keltner Channels Input tab. */
 function keltnerInputParams() {
     return [
@@ -995,17 +1022,7 @@ const INDICATOR_DEFINITIONS = {
     donchian: {
         name: 'Donchian Channels',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-            { id: 'upperColor', label: 'Upper Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'middleColor', label: 'Middle Band Color', type: 'color', default: '#787b86', tab: 'style' },
-            { id: 'lowerColor', label: 'Lower Band Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.06)', tab: 'style' },
-            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: donchianInputParams().concat(donchianStyleParams())
     },
     keltner: {
         name: 'Keltner Channels',
@@ -3477,6 +3494,21 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             }, {
                 title: 'Area Between Bands',
                 rows: [v9ColorRow('Background', 'fillColor', 'showFill')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'donchian') {
+        return {
+            sections: [{
+                opacityHeader: true,
+                header: true,
+                rows: [
+                    Object.assign(v9ColorRow('Upper Band', 'upperColor', 'showUpper'), { opacityId: null }),
+                    Object.assign(v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'), { opacityId: 'middleOpacity' }),
+                    Object.assign(v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower'), { opacityId: 'lowerOpacity' })
+                ]
             }],
             footers: footers
         };

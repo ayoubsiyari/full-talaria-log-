@@ -195,6 +195,57 @@
         indicator.params.source = params.source || 'close';
     }
 
+    function applyDonchianStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 1;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showUpper = params.showUpper !== false;
+        indicator.style.upperColor = params.upperColor || '#2962ff';
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
+        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
+        indicator.style.showMiddle = params.showMiddle !== false;
+        indicator.style.middleColor = params.middleColor || '#787b86';
+        indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
+        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
+        indicator.style.middleOpacity = params.middleOpacity != null ? Number(params.middleOpacity) : 100;
+        indicator.style.showLower = params.showLower !== false;
+        indicator.style.lowerColor = params.lowerColor || '#2962ff';
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
+        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
+        indicator.style.lowerOpacity = params.lowerOpacity != null ? Number(params.lowerOpacity) : 100;
+        indicator.style.showFill = false;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['upperLineStyle', 'upperLineDashStyle', legacyS],
+            ['middleLineStyle', 'middleLineDashStyle', legacyS],
+            ['lowerLineStyle', 'lowerLineDashStyle', legacyS]
+        ]);
+    }
+
+    function resolveBandLineColor(color, opacityPct) {
+        if (!color) return color;
+        let op = opacityPct != null ? Number(opacityPct) : 100;
+        if (!Number.isFinite(op) || op >= 100) return color;
+        op = Math.max(0, Math.min(100, op)) / 100;
+        const s = String(color).trim();
+        const rgbaMatch = s.match(/^rgba\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+        if (rgbaMatch) {
+            return 'rgba(' + rgbaMatch[1] + ',' + rgbaMatch[2] + ',' + rgbaMatch[3] + ',' + (parseFloat(rgbaMatch[4]) * op) + ')';
+        }
+        if (s.charAt(0) === '#') {
+            let h = s.slice(1);
+            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            if (h.length === 6) {
+                const r = parseInt(h.slice(0, 2), 16);
+                const g = parseInt(h.slice(2, 4), 16);
+                const b = parseInt(h.slice(4, 6), 16);
+                if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                    return 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
+                }
+            }
+        }
+        return color;
+    }
+
     function applyBollingerStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 1;
         const legacyS = params.lineStyle || 'Line';
@@ -2465,8 +2516,28 @@
         return out;
     }
 
-    function calculateDonchian(data, period) {
-        const p = Math.max(1, period);
+    function shiftBandSeries(bands, offset) {
+        offset = offset | 0;
+        if (!offset) return bands;
+        const n = bands.upper.length;
+        const shiftArr = function(arr) {
+            const out = new Array(n);
+            for (let i = 0; i < n; i++) out[i] = null;
+            for (let i = 0; i < n; i++) {
+                const src = i - offset;
+                if (src >= 0 && src < n) out[i] = arr[src];
+            }
+            return out;
+        };
+        return {
+            upper: shiftArr(bands.upper),
+            lower: shiftArr(bands.lower),
+            middle: shiftArr(bands.middle)
+        };
+    }
+
+    function calculateDonchian(data, period, offset) {
+        const p = Math.max(1, period | 0);
         const upper = [], lower = [], middle = [];
         for (let i = 0; i < data.length; i++) {
             if (i < p - 1) {
@@ -2482,7 +2553,7 @@
             lower.push(ll);
             middle.push((hh + ll) / 2);
         }
-        return { upper: upper, lower: lower, middle: middle };
+        return shiftBandSeries({ upper: upper, lower: lower, middle: middle }, offset);
     }
 
     function calculateTrueRangeSeries(data) {
@@ -3721,13 +3792,10 @@
                 break;
             case 'donchian':
                 indicator.params.period = params.period || 20;
-                indicator.style.upperColor = params.upperColor || '#2962ff';
-                indicator.style.middleColor = params.middleColor || '#787b86';
-                indicator.style.lowerColor = params.lowerColor || '#2962ff';
-                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.06)';
-                indicator.style.lineWidth = params.lineWidth || 1;
+                indicator.params.offset = params.offset != null ? Number(params.offset) : 0;
+                applyDonchianStyleFromParams(indicator, params);
                 indicator.name = 'Donchian(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period, indicator.params.offset);
                 break;
             case 'keltner':
                 applyKeltnerCalcParams(indicator, params);
@@ -4482,7 +4550,9 @@
         if (newParams.bandsStyle !== undefined) indicator.params.bandsStyle = newParams.bandsStyle;
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.atrPeriod !== undefined) indicator.params.atrPeriod = newParams.atrPeriod;
-        if (newParams.multiplier !== undefined) indicator.params.multiplier = newParams.multiplier;
+        if (newParams.offset !== undefined) indicator.params.offset = Number(newParams.offset) || 0;
+        if (newParams.middleOpacity !== undefined) indicator.style.middleOpacity = Number(newParams.middleOpacity);
+        if (newParams.lowerOpacity !== undefined) indicator.style.lowerOpacity = Number(newParams.lowerOpacity);
         if (newParams.start !== undefined) indicator.params.start = newParams.start;
         if (newParams.increment !== undefined) indicator.params.increment = newParams.increment;
         if (newParams.maxStep !== undefined) indicator.params.maxStep = newParams.maxStep;
@@ -4593,6 +4663,9 @@
         if (indicator.type === 'keltner') {
             applyKeltnerCalcParams(indicator, Object.assign({}, indicator.params, newParams));
             applyBollingerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'donchian') {
+            applyDonchianStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -4865,8 +4938,11 @@
                 this.indicators.data[indicator.id] = calculateMFI(this.data, indicator.params.period);
                 break;
             case 'donchian':
+                indicator.params.period = indicator.params.period || 20;
+                indicator.params.offset = indicator.params.offset != null ? Number(indicator.params.offset) : 0;
+                applyDonchianStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
                 indicator.name = 'Donchian(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period, indicator.params.offset);
                 break;
             case 'keltner':
                 applyKeltnerCalcParams(indicator, indicator.params);
@@ -5204,7 +5280,11 @@
                     this.indicators.data[indicator.id] = calculateMFI(this.data, indicator.params.period);
                     break;
                 case 'donchian':
-                    this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateDonchian(
+                        this.data,
+                        indicator.params.period,
+                        indicator.params.offset != null ? indicator.params.offset : 0
+                    );
                     break;
                 case 'keltner':
                     applyKeltnerCalcParams(indicator, indicator.params);
@@ -7584,35 +7664,41 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
 
     const legacyW = style.lineWidth != null ? style.lineWidth : 1;
     const legacyS = style.lineStyle || 'Line';
+    const upperColor = style.upperColor;
+    const middleColor = resolveBandLineColor(style.middleColor, style.middleOpacity);
+    const lowerColor = resolveBandLineColor(style.lowerColor, style.lowerOpacity);
 
     if (style.showUpper !== false) {
         this.drawLineIndicator(
             bands.upper,
-            style.upperColor,
+            upperColor,
             style.upperLineWidth != null ? style.upperLineWidth : legacyW,
             startIndex,
             endIndex,
-            style.upperLineStyle || legacyS
+            style.upperLineStyle || legacyS,
+            { dashStyle: style.upperLineDashStyle || 'Solid' }
         );
     }
     if (style.showMiddle !== false) {
         this.drawLineIndicator(
             bands.middle,
-            style.middleColor,
+            middleColor,
             style.middleLineWidth != null ? style.middleLineWidth : legacyW,
             startIndex,
             endIndex,
-            style.middleLineStyle || legacyS
+            style.middleLineStyle || legacyS,
+            { dashStyle: style.middleLineDashStyle || 'Solid' }
         );
     }
     if (style.showLower !== false) {
         this.drawLineIndicator(
             bands.lower,
-            style.lowerColor,
+            lowerColor,
             style.lowerLineWidth != null ? style.lowerLineWidth : legacyW,
             startIndex,
             endIndex,
-            style.lowerLineStyle || legacyS
+            style.lowerLineStyle || legacyS,
+            { dashStyle: style.lowerLineDashStyle || 'Solid' }
         );
     }
 };
@@ -10079,6 +10165,28 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                     val: val,
                     color: dirUp ? (indicator.style.upColor || '#26a69a') : (indicator.style.downColor || '#ef5350')
                 });
+                return;
+            }
+
+            const bandData = this.indicators.data[indicator.id];
+            if (bandData && (Array.isArray(bandData.upper) || Array.isArray(bandData.middle) || Array.isArray(bandData.lower))) {
+                const st = indicator.style || {};
+                const bandDefs = [
+                    { arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
+                    { arr: bandData.middle, show: st.showMiddle !== false, color: resolveBandLineColor(st.middleColor || '#787b86', st.middleOpacity) },
+                    { arr: bandData.lower, show: st.showLower !== false, color: resolveBandLineColor(st.lowerColor || '#2962ff', st.lowerOpacity) }
+                ];
+                bandDefs.forEach(function(b) {
+                    if (!b.show || !b.arr) return;
+                    let val = null;
+                    for (let i = b.arr.length - 1; i >= 0; i--) {
+                        if (Number.isFinite(b.arr[i])) { val = b.arr[i]; break; }
+                    }
+                    if (!Number.isFinite(val)) return;
+                    const y = this.yScale(val);
+                    if (!Number.isFinite(y) || y < m.t || y > maxY) return;
+                    labels.push({ y: y, val: val, color: b.color || '#2962ff' });
+                }, this);
                 return;
             }
 
