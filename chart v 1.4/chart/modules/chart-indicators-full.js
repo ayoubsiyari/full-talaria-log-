@@ -5466,24 +5466,21 @@
             return Math.max(indTop + 2, Math.min(indBottom - 2, y));
         };
 
-        const panelFast = this._panelRenderFast === true;
-        const numGridLines = panelFast ? 0 : 4;
-        if (numGridLines > 0) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.lineWidth = 1;
-            for (let g = 0; g <= numGridLines; g++) {
-                const val = min + (max - min) * (g / numGridLines);
-                const y = scaleY(val);
-                if (y === null) continue;
-                ctx.beginPath();
-                ctx.moveTo(m.l, y);
-                ctx.lineTo(this.w, y);
-                ctx.stroke();
-                ctx.fillStyle = '#787b86';
-                ctx.font = '10px Roboto';
-                ctx.textAlign = 'right';
-                ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
-            }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        const numGridLines = 4;
+        for (let g = 0; g <= numGridLines; g++) {
+            const val = min + (max - min) * (g / numGridLines);
+            const y = scaleY(val);
+            if (y === null) continue;
+            ctx.beginPath();
+            ctx.moveTo(m.l, y);
+            ctx.lineTo(this.w, y);
+            ctx.stroke();
+            ctx.fillStyle = '#787b86';
+            ctx.font = '10px Roboto';
+            ctx.textAlign = 'right';
+            ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
 
         plots.forEach(function(plot) {
@@ -5775,9 +5772,6 @@ Chart.prototype._applyVolumePanelHeightPx = function(heightPx) {
 
 Chart.prototype.startSeparatePanelResize = function(handle, startY) {
     if (!handle || !this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.panelHeights)) return false;
-    if (typeof this._markChartDecorHidden === 'function') {
-        this._markChartDecorHidden(400);
-    }
     const usesVolume = !!(handle.isVolume || handle.isVolumePair);
     const baseVolumeHeight = usesVolume ? this._getVolumePanelHeight() : 0;
     this._separatePanelResize = {
@@ -5871,13 +5865,8 @@ Chart.prototype.finishSeparatePanelResize = function() {
 // Render separate panel indicators (like ATR, ADR) in a sub-panel below price chart
 Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     opts = opts || {};
-    const panFast = opts.panFast === true
-        || (typeof this._shouldHideChartDecorDuringInteraction === 'function'
-            && this._shouldHideChartDecorDuringInteraction());
+    const panFast = opts.panFast === true;
     this._panelRenderFast = panFast;
-    if (panFast && typeof this._clearSeparatePanelAxisOverlayDecor === 'function') {
-        this._clearSeparatePanelAxisOverlayDecor();
-    }
     try {
     if (!this.indicators || !this.indicators.active) {
         return;
@@ -6231,8 +6220,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         ctx.fillStyle = _isLightBg ? '#5f6b80' : '#9ca7be';
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
-        const numGridLines = panFast ? 0 : 4;
-        if (numGridLines > 0) {
+        const numGridLines = panFast ? 2 : 4;
         for (let i = 0; i <= numGridLines; i++) {
             const val = min + (max - min) * (i / numGridLines);
             const y = scaleY(val);
@@ -6248,7 +6236,6 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             ctx.fillStyle = '#787b86';
             ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
         }
-        }
         
         // Draw the indicator plot (TradingView-style line / step / area / columns / …)
         this.drawLineIndicator(values, color, indicator.style.lineWidth || 2, visibleStart, visibleEnd, indicator.style.lineStyle, {
@@ -6257,7 +6244,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         });
 
         // Reference lines for oscillators
-        if (this._panelRenderFast !== true && (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality')) {
+        if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -6321,7 +6308,6 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
                 color: color
             }];
             
-            if (this._panelRenderFast !== true) {
             // Dashed line at current value
             ctx.strokeStyle = color;
             ctx.lineWidth = 1;
@@ -6331,7 +6317,6 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             ctx.lineTo(this.w, currentY);
             ctx.stroke();
             ctx.setLineDash([]);
-            }
             
             // Value label box on right
             const labelWidth = 50;
@@ -8108,7 +8093,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth) {
-        if (this._panelRenderFast === true) return;
         if (value === null || value === undefined || isNaN(value)) return;
         const y = scaleY(value);
         if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
@@ -8135,20 +8119,18 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
         ctx.fillStyle = '#787b86';
-        const numGridLines = fast ? 0 : 4;
-        if (numGridLines > 0) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= numGridLines; i++) {
-                const tickVal = min + (max - min) * (i / numGridLines);
-                const tickY = scaleY(tickVal);
-                if (!Number.isFinite(tickY)) continue;
-                ctx.beginPath();
-                ctx.moveTo(m.l, tickY);
-                ctx.lineTo(this.w, tickY);
-                ctx.stroke();
-                ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
-            }
+        const numGridLines = fast ? 2 : 4;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= numGridLines; i++) {
+            const tickVal = min + (max - min) * (i / numGridLines);
+            const tickY = scaleY(tickVal);
+            if (!Number.isFinite(tickY)) continue;
+            ctx.beginPath();
+            ctx.moveTo(m.l, tickY);
+            ctx.lineTo(this.w, tickY);
+            ctx.stroke();
+            if (!fast) ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
         }
     };
 
@@ -9151,10 +9133,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay || !Array.isArray(indicators)) return;
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
         overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
-        if (typeof this._shouldHideChartDecorDuringInteraction === 'function'
-            && this._shouldHideChartDecorDuringInteraction()) {
-            return;
-        }
         const m = this.margin || { r: 56 };
         const axisLeft = this.w - m.r;
         const axisWidth = Math.max(30, m.r - 4);
