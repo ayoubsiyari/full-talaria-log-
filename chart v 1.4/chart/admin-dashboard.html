@@ -2185,6 +2185,10 @@ select { cursor:default; }
 .support-stats-focus-card.bug { border-color: rgba(239, 68, 68, 0.28); }
 .support-stats-focus-card.error { border-color: rgba(249, 115, 22, 0.28); }
 .support-stats-focus-card.resolve { border-color: rgba(52, 211, 153, 0.28); }
+.support-stats-focus-card.modifications { border-color: rgba(234, 179, 8, 0.32); }
+.support-stats-focus-card.feature { border-color: rgba(34, 197, 94, 0.32); }
+.support-stats-focus-card.suggestions { border-color: rgba(168, 85, 247, 0.32); }
+.support-stats-focus-card.total-resolve { border-color: rgba(56, 189, 248, 0.32); }
 .support-stats-focus-card.verdict-yes { border-color: rgba(34, 197, 94, 0.35); }
 .support-stats-focus-card.verdict-no { border-color: rgba(239, 68, 68, 0.35); }
 .support-stats-focus-top {
@@ -2263,6 +2267,10 @@ select { cursor:default; }
 .support-stats-focus-card.bug .focus-value { color: #fca5a5; }
 .support-stats-focus-card.error .focus-value { color: #fdba74; }
 .support-stats-focus-card.resolve .focus-value { color: var(--ok); }
+.support-stats-focus-card.modifications .focus-value { color: #fde047; }
+.support-stats-focus-card.feature .focus-value { color: #86efac; }
+.support-stats-focus-card.suggestions .focus-value { color: #d8b4fe; }
+.support-stats-focus-card.total-resolve .focus-value { color: #7dd3fc; }
 .support-stats-focus-top .focus-meta {
   font-size: 10px;
   color: var(--text-muted);
@@ -2284,6 +2292,22 @@ select { cursor:default; }
 .support-stats-bar.bug > span { background: linear-gradient(90deg, #ef4444, #f87171); }
 .support-stats-bar.error > span { background: linear-gradient(90deg, #f97316, #fdba74); }
 .support-stats-bar.resolve > span { background: linear-gradient(90deg, #10b981, #34d399); }
+.support-stats-bar.modifications > span { background: linear-gradient(90deg, #ca8a04, #fde047); }
+.support-stats-bar.feature > span { background: linear-gradient(90deg, #16a34a, #86efac); }
+.support-stats-bar.suggestions > span { background: linear-gradient(90deg, #9333ea, #d8b4fe); }
+.support-stats-bar.total-resolve > span { background: linear-gradient(90deg, #0284c7, #7dd3fc); }
+.support-stats-resolve-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+@media (max-width: 1200px) {
+  .support-stats-resolve-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .support-stats-resolve-grid { grid-template-columns: 1fr; }
+}
 .support-stats-cat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
@@ -4876,6 +4900,18 @@ async function loadSupportTicketStats() {
     const resolvePct = s.resolve_pct != null ? s.resolve_pct : 0;
     const bugErrorResolved = s.bug_error_resolved || 0;
     const bugErrorTotal = s.bug_error_total || 0;
+    const modificationsResolved = s.modifications_resolved || 0;
+    const modificationsTotal = s.modifications_total || 0;
+    const modificationsResolvePct = s.modifications_resolve_pct != null ? s.modifications_resolve_pct : 0;
+    const featureResolved = s.feature_resolved || 0;
+    const featureTotal = s.feature_total || 0;
+    const featureResolvePct = s.feature_resolve_pct != null ? s.feature_resolve_pct : 0;
+    const suggestionsResolved = s.suggestions_resolved || 0;
+    const suggestionsTotal = s.suggestions_total || 0;
+    const suggestionsResolvePct = s.suggestions_resolve_pct != null ? s.suggestions_resolve_pct : 0;
+    const combinedResolved = s.combined_resolve_resolved || 0;
+    const combinedTotal = s.combined_resolve_total || 0;
+    const combinedResolvePct = s.combined_resolve_pct != null ? s.combined_resolve_pct : 0;
     const byCat = s.by_category || {};
     const byCatPct = s.by_category_pct || {};
     const bugCount = byCat.bug || 0;
@@ -4889,6 +4925,23 @@ async function loadSupportTicketStats() {
     function supportStatsBar(kind, pct) {
       const width = Math.max(0, Math.min(100, pct || 0));
       return '<div class="support-stats-bar ' + kind + '"><span style="width:' + width + '%"></span></div>';
+    }
+
+    function supportResolveFocusCard(title, tone, pct, resolved, total, requesterScoped) {
+      const meta = total
+        ? (requesterScoped
+          ? resolved + ' of ' + total + ' closed for this user'
+          : resolved + ' of ' + total + ' closed')
+        : 'No tickets yet';
+      return [
+        '<div class="support-stats-focus-card ' + tone + '">',
+        '  <div class="support-stats-focus-top">',
+        '    <div><div class="focus-title">' + esc(title) + '</div><div class="focus-meta">' + meta + '</div></div>',
+        '    <div class="focus-value">' + (pct || 0) + '%</div>',
+        '  </div>',
+        supportStatsBar(tone === 'resolve' ? 'resolve' : tone, pct),
+        '</div>'
+      ].join('');
     }
 
     function supportStatsKpi(label, value, tone, sub) {
@@ -4911,9 +4964,6 @@ async function loadSupportTicketStats() {
     const metricsHdr = requesterScope
       ? 'Ticket metrics · ' + requesterScope
       : 'Ticket metrics';
-    const resolveMeta = requesterScope
-      ? bugErrorResolved + ' of ' + bugErrorTotal + ' closed for this user'
-      : bugErrorResolved + ' of ' + bugErrorTotal + ' closed';
 
     const yesCount = s.admin_yes_no_yes || 0;
     const noCount = s.admin_yes_no_no || 0;
@@ -4927,7 +4977,10 @@ async function loadSupportTicketStats() {
 
     const quickSummary = $('supportStatsQuickSummary');
     if (quickSummary) {
-      const parts = ['<span style="color:var(--text-secondary)">Resolve ' + resolvePct + '%</span>'];
+      const parts = [
+        '<span style="color:var(--text-secondary)">Total resolve ' + combinedResolvePct + '%</span>',
+        '<span style="color:var(--ok)">Bug/Error ' + resolvePct + '%</span>'
+      ];
       if (ratedCount) {
         parts.push('<span class="verdict-yes">Yes ' + yesPct + '%</span>');
         parts.push('<span class="verdict-no">No ' + noPct + '%</span>');
@@ -4935,14 +4988,15 @@ async function loadSupportTicketStats() {
       quickSummary.innerHTML = parts.join('');
     }
 
+    const resolveMetricsCards = [
+      supportResolveFocusCard('Bug / Error resolve', 'resolve', resolvePct, bugErrorResolved, bugErrorTotal, !!requesterScope),
+      supportResolveFocusCard('Modifications resolve', 'modifications', modificationsResolvePct, modificationsResolved, modificationsTotal, !!requesterScope),
+      supportResolveFocusCard('Feature request resolve', 'feature', featureResolvePct, featureResolved, featureTotal, !!requesterScope),
+      supportResolveFocusCard('Suggestions resolve', 'suggestions', suggestionsResolvePct, suggestionsResolved, suggestionsTotal, !!requesterScope),
+      supportResolveFocusCard('Total resolve (all 4)', 'total-resolve', combinedResolvePct, combinedResolved, combinedTotal, !!requesterScope)
+    ].join('');
+
     const topMetricsCards = [
-      '<div class="support-stats-focus-card resolve">',
-      '  <div class="support-stats-focus-top">',
-      '    <div><div class="focus-title">Bug / Error resolve</div><div class="focus-meta">' + resolveMeta + '</div></div>',
-      '    <div class="focus-value">' + resolvePct + '%</div>',
-      '  </div>',
-      supportStatsBar('resolve', resolvePct),
-      '</div>',
       '<div class="support-stats-focus-card verdict-yes">',
       '  <div class="support-stats-focus-top">',
       '    <div><div class="focus-title">Admin Yes</div><div class="focus-meta">' + yesCount + ' ticket' + (yesCount === 1 ? '' : 's') + '</div></div>',
@@ -5009,6 +5063,8 @@ async function loadSupportTicketStats() {
       '<div class="support-stats-panel">' +
         '<div class="support-stats-section focus">' +
           '<div class="support-stats-section-hdr">' + metricsHdr + '</div>' +
+          '<div class="support-stats-section-hdr" style="margin-top:0;margin-bottom:8px;font-size:10px;color:var(--text-muted)">Resolve rates</div>' +
+          '<div class="support-stats-resolve-grid">' + resolveMetricsCards + '</div>' +
           '<div class="support-stats-focus-grid">' + topMetricsCards + '</div>' +
         '</div>' +
         '<div class="support-stats-section">' +

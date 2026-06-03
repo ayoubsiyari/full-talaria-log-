@@ -11678,21 +11678,33 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             .count()
         )
         total_active = open_n + pending_n
+        resolved_statuses = ("resolved", "closed")
         bug_error_cats = ("bug", "error")
-        bug_error_total = (
-            base_q()
-            .filter(SupportThread.category.in_(bug_error_cats))
-            .count()
-        )
-        bug_error_resolved = (
-            base_q()
-            .filter(
-                SupportThread.category.in_(bug_error_cats),
-                SupportThread.status.in_(("resolved", "closed")),
+        product_resolve_cats = bug_error_cats + ("modifications", "feature", "suggestions")
+
+        def category_resolve_stats(*categories: str) -> dict:
+            cats = tuple(categories)
+            total = base_q().filter(SupportThread.category.in_(cats)).count()
+            resolved = (
+                base_q()
+                .filter(
+                    SupportThread.category.in_(cats),
+                    SupportThread.status.in_(resolved_statuses),
+                )
+                .count()
             )
-            .count()
-        )
-        resolve_pct = round(bug_error_resolved / bug_error_total * 100) if bug_error_total else 0
+            pct = round(resolved / total * 100) if total else 0
+            return {"total": total, "resolved": resolved, "pct": pct}
+
+        bug_error_stats = category_resolve_stats(*bug_error_cats)
+        modifications_stats = category_resolve_stats("modifications")
+        feature_stats = category_resolve_stats("feature")
+        suggestions_stats = category_resolve_stats("suggestions")
+        combined_stats = category_resolve_stats(*product_resolve_cats)
+
+        bug_error_total = bug_error_stats["total"]
+        bug_error_resolved = bug_error_stats["resolved"]
+        resolve_pct = bug_error_stats["pct"]
         yes_n = base_q().filter(SupportThread.admin_yes_no == "yes").count()
         no_n = base_q().filter(SupportThread.admin_yes_no == "no").count()
         unset_n = base_q().filter(
@@ -11729,6 +11741,25 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             "bug_error_total": bug_error_total,
             "bug_error_resolved": bug_error_resolved,
             "resolve_pct": resolve_pct,
+            "modifications_total": modifications_stats["total"],
+            "modifications_resolved": modifications_stats["resolved"],
+            "modifications_resolve_pct": modifications_stats["pct"],
+            "feature_total": feature_stats["total"],
+            "feature_resolved": feature_stats["resolved"],
+            "feature_resolve_pct": feature_stats["pct"],
+            "suggestions_total": suggestions_stats["total"],
+            "suggestions_resolved": suggestions_stats["resolved"],
+            "suggestions_resolve_pct": suggestions_stats["pct"],
+            "combined_resolve_total": combined_stats["total"],
+            "combined_resolve_resolved": combined_stats["resolved"],
+            "combined_resolve_pct": combined_stats["pct"],
+            "category_resolve": {
+                "bug_error": bug_error_stats,
+                "modifications": modifications_stats,
+                "feature": feature_stats,
+                "suggestions": suggestions_stats,
+                "combined": combined_stats,
+            },
             "admin_yes_no_yes": yes_n,
             "admin_yes_no_no": no_n,
             "admin_yes_no_unset": unset_n,
