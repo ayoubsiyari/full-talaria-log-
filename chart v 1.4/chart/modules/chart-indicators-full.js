@@ -5681,20 +5681,19 @@ Chart.prototype._paintSeparatePanelStackBackground = function() {
 Chart.prototype._syncSeparateIndicatorPanelHeightEstimate = function() {
     if (typeof this._getVisibleSeparateIndicators !== 'function') return;
     const separateIndicators = this._getVisibleSeparateIndicators();
-    let total = 0;
+    let panelHeights = [];
     if (separateIndicators.length) {
-        let panelHeights = this._getSeparatePanelHeights(separateIndicators);
+        panelHeights = this._getSeparatePanelHeights(separateIndicators);
         if (this._separatePanelResize && Array.isArray(this._separatePanelResize.activeHeights) &&
             this._separatePanelResize.activeHeights.length === panelHeights.length) {
             panelHeights = this._separatePanelResize.activeHeights.slice();
         }
-        total = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
     }
+    let total = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
     if (this._volumeRendersInSeparatePanel()) {
         const volH = this._getVolumePanelHeightForLayout();
         const clamped = this._clampSeparatePanelLayout(panelHeights, volH);
-        panelHeights = clamped.panelHeights;
-        total = panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + clamped.volumePanelHeight;
+        total = clamped.panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + clamped.volumePanelHeight;
     }
     this.separateIndicatorPanelHeight = total;
 };
