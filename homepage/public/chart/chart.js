@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a65';
+const CHART_ENGINE_BUILD = '20260602a66';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -17023,9 +17023,8 @@ class Chart {
             // Skip grid only during wheel / axis-drag bursts (cached ticks stale). Keep grid while chart panning.
             const skipGridDuringInteraction = wheelBurstLight || axisZoomDragging;
             this.drawGrid({ panFast: true, skipAll: skipGridDuringInteraction });
-            this.drawVolume(visible, panOpts);
-            if (typeof this._paintSeparatePanelStackBackground === 'function') {
-                this._paintSeparatePanelStackBackground();
+            if (!this._volumeRendersInSeparatePanel || !this._volumeRendersInSeparatePanel()) {
+                this.drawVolume(visible, panOpts);
             }
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
@@ -17033,7 +17032,7 @@ class Chart {
                 this.drawIndicators();
             }
             if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
+                this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);

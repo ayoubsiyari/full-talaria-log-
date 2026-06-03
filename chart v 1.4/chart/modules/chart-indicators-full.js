@@ -5759,7 +5759,12 @@ Chart.prototype.finishSeparatePanelResize = function() {
 };
 
 // Render separate panel indicators (like ATR, ADR) in a sub-panel below price chart
-Chart.prototype.renderSeparatePanelIndicators = function() {
+Chart.prototype.renderSeparatePanelIndicators = function(opts) {
+    opts = opts || {};
+    const panFast = opts.panFast === true
+        || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender());
+    this._panelRenderFast = panFast;
+    try {
     if (!this.indicators || !this.indicators.active) {
         return;
     }
@@ -5846,9 +5851,10 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     const _hoverColor = _isLightBg ? 'rgba(41,98,255,0.60)' : 'rgba(106,138,255,0.72)';
     const _hoverGlow = _isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
     const panelResizeActive = !!(this._separatePanelResize);
-    const hoverHandleY = !panelResizeActive && this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
+    const hoverHandleY = !panFast && !panelResizeActive && this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
         ? this._separatePanelHoverHandle.y
         : null;
+    if (!panFast) {
     ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2 ? _hoverColor : _sepColorStrong;
     ctx.lineWidth = 3;
     ctx.setLineDash([]);
@@ -5874,6 +5880,14 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         ctx.stroke();
     }
     ctx.lineCap = 'butt';
+    } else {
+        ctx.strokeStyle = _sepColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(m.l, panelTop);
+        ctx.lineTo(panelFullRight, panelTop);
+        ctx.stroke();
+    }
     
     // Visible indices (set in render() from plot left/right); keep in sync with overlay drawIndicators.
     const visibleStart = Math.max(0, Math.floor(Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0));
@@ -5921,14 +5935,23 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             const indTop = slot.top;
             const panelHeight = slot.height;
             if (idx > 0) {
-                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
-                ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
-                ctx.lineWidth = 3;
-                ctx.setLineDash([]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, indTop);
-                ctx.lineTo(panelFullRight, indTop);
-                ctx.stroke();
+                if (panFast) {
+                    ctx.strokeStyle = _sepColor;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(m.l, indTop);
+                    ctx.lineTo(panelFullRight, indTop);
+                    ctx.stroke();
+                } else {
+                    const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
+                    ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.moveTo(m.l, indTop);
+                    ctx.lineTo(panelFullRight, indTop);
+                    ctx.stroke();
+                }
             }
             ctx.fillStyle = axisStripBg;
             ctx.fillRect(panelAxisLeft, indTop, panelFullRight - panelAxisLeft, panelHeight);
@@ -5943,31 +5966,40 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
 
         // Separator between slots — soft divider at top edge (below previous slot)
         if (idx > 0) {
-            const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
-            ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
-            ctx.lineWidth = 3;
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.moveTo(m.l, indTop);
-            ctx.lineTo(panelFullRight, indTop);
-            ctx.stroke();
-            const handleMidX = this.w - m.r - 18;
-            ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
-            ctx.lineWidth = isHoverSep ? 3 : 2;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(handleMidX - 8, indTop);
-            ctx.lineTo(handleMidX + 8, indTop);
-            ctx.stroke();
-            if (isHoverSep) {
-                ctx.strokeStyle = _hoverGlow;
-                ctx.lineWidth = 5;
+            if (panFast) {
+                ctx.strokeStyle = _sepColor;
+                ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(handleMidX - 10, indTop);
-                ctx.lineTo(handleMidX + 10, indTop);
+                ctx.moveTo(m.l, indTop);
+                ctx.lineTo(panelFullRight, indTop);
                 ctx.stroke();
+            } else {
+                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
+                ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(m.l, indTop);
+                ctx.lineTo(panelFullRight, indTop);
+                ctx.stroke();
+                const handleMidX = this.w - m.r - 18;
+                ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
+                ctx.lineWidth = isHoverSep ? 3 : 2;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(handleMidX - 8, indTop);
+                ctx.lineTo(handleMidX + 8, indTop);
+                ctx.stroke();
+                if (isHoverSep) {
+                    ctx.strokeStyle = _hoverGlow;
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.moveTo(handleMidX - 10, indTop);
+                    ctx.lineTo(handleMidX + 10, indTop);
+                    ctx.stroke();
+                }
+                ctx.lineCap = 'butt';
             }
-            ctx.lineCap = 'butt';
         }
 
         // Give every separate pane its own visible right axis background block.
@@ -6083,7 +6115,8 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
         ctx.fillStyle = _isLightBg ? '#5f6b80' : '#9ca7be';
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
-        const numGridLines = 4;
+        const numGridLines = panFast ? 0 : 4;
+        if (numGridLines > 0) {
         for (let i = 0; i <= numGridLines; i++) {
             const val = min + (max - min) * (i / numGridLines);
             const y = scaleY(val);
@@ -6098,6 +6131,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
             // Y-axis label
             ctx.fillStyle = '#787b86';
             ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
+        }
         }
         
         // Draw the indicator plot (TradingView-style line / step / area / columns / …)
@@ -6226,7 +6260,7 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
     };
     
     // Draw crosshair value if mouse is in the stacked panel area
-    if (this.mouseY >= panelTop && this.mouseY <= panelBottom && this.mouseX >= m.l && this.mouseX <= this.w - m.r) {
+    if (!panFast && this.mouseY >= panelTop && this.mouseY <= panelBottom && this.mouseX >= m.l && this.mouseX <= this.w - m.r) {
         const activeSlot = panelSlots.find(slot => this.mouseY >= slot.top && this.mouseY <= slot.bottom);
         if (activeSlot) {
             this.drawSeparatePanelCrosshair(ctx, m, activeSlot.top, activeSlot.bottom, activeSlot.height, [activeSlot.indicator], 0, 100);
@@ -6237,11 +6271,15 @@ Chart.prototype.renderSeparatePanelIndicators = function() {
 
     ctx.restore(); // end indicator-stack clip
 
-    // During panel resize only move existing legend DOM — rebuilding overlay every frame is very expensive.
-    if (panelResizeActive) {
-        this._repositionSeparatePanelOverlay(panelSlots, m);
-    } else {
-        this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
+    if (!panFast) {
+        if (panelResizeActive) {
+            this._repositionSeparatePanelOverlay(panelSlots, m);
+        } else {
+            this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
+        }
+    }
+    } finally {
+        this._panelRenderFast = false;
     }
 };
 
@@ -7830,6 +7868,32 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             : function(v) { return volBandBottom - (v / maxVol) * (volBandBottom - volBandTop); };
 
         const cw = Math.max(1, this.candleWidth || 6);
+        const fast = this._panelRenderFast === true;
+        const plotPxVol = Math.max(1, this.w - m.l - m.r);
+        let drewLod = false;
+        if (fast && typeof this._aggregateVisibleOhlcvBuckets === 'function' && typeof this._getCandleRenderMaxBuckets === 'function') {
+            const visSlice = [];
+            for (let i = visibleStart; i < visibleEnd && i < this.data.length; i++) {
+                const bar = this.data[i];
+                if (bar) visSlice.push(bar);
+            }
+            const maxBuckets = this._getCandleRenderMaxBuckets(visSlice.length, plotPxVol, { panFast: true });
+            const volLod = this._aggregateVisibleOhlcvBuckets(visSlice, maxBuckets, plotPxVol);
+            if (volLod && volLod.length) {
+                drewLod = true;
+                volLod.forEach(function(b) {
+                    const v = Number(b.vSum) || 0;
+                    const x = Number.isFinite(b._pixelX) ? b._pixelX : this.dataIndexToPixel(b.midIdx);
+                    if (x < m.l - 10 || x > this.w - m.r + 10) return;
+                    const volumeY = scaleY(v);
+                    const barH = Math.max(1, volBandBottom - volumeY);
+                    const isGreen = Number(b.c) >= Number(b.o);
+                    ctx.fillStyle = isGreen ? upColor : downColor;
+                    ctx.fillRect(x - (Number.isFinite(b._pixelX) ? 0.5 : cw / 2), volumeY, Number.isFinite(b._pixelX) ? 1 : cw, barH);
+                }, this);
+            }
+        }
+        if (!drewLod) {
         for (let i = visibleStart; i < visibleEnd && i < this.data.length; i++) {
             const bar = this.data[i];
             if (!bar) continue;
@@ -7843,8 +7907,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.fillStyle = isGreen ? upColor : downColor;
             ctx.fillRect(x - cw / 2, volumeY, cw, barH);
         }
+        }
 
-        if (showMA && this.data.length >= maPeriod && typeof d3 !== 'undefined') {
+        if (!fast && showMA && this.data.length >= maPeriod && typeof d3 !== 'undefined') {
             const maKey = String(this.dataVersion || '') + '|' + maPeriod + '|' + this.data.length;
             let volumeMA = this._volumeMaSeriesCache;
             if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
@@ -7948,13 +8013,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
     // Shared right-axis ticks + grid for separate indicator panels.
     Chart.prototype._drawPanelAxisTicks = function(ctx, m, min, max, scaleY, decimals) {
+        const fast = this._panelRenderFast === true;
         const d = Number.isFinite(decimals) ? decimals : 2;
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
         ctx.fillStyle = '#787b86';
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
         ctx.lineWidth = 1;
-        const numGridLines = 4;
+        const numGridLines = fast ? 2 : 4;
         for (let i = 0; i <= numGridLines; i++) {
             const tickVal = min + (max - min) * (i / numGridLines);
             const tickY = scaleY(tickVal);
@@ -7963,7 +8029,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ctx.moveTo(m.l, tickY);
             ctx.lineTo(this.w, tickY);
             ctx.stroke();
-            ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
+            if (!fast) ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
         }
     };
 
@@ -7999,7 +8065,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg) {
+        if (style.showBg && this._panelRenderFast !== true) {
             ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
             ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
@@ -8007,12 +8073,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 4);
 
         const zeroY = scaleY(zeroVal);
-        if (style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
+        if (this._panelRenderFast !== true && style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal);
         }
 
-        if (style.showHist !== false) {
+        if (style.showHist !== false && this._panelRenderFast !== true) {
             const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
             const histUp = style.histUpColor || 'rgba(38,166,154,0.85)';
             const histDown = style.histDownColor || 'rgba(239,83,80,0.85)';
@@ -8529,13 +8595,14 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg) {
+        if (style.showBg && this._panelRenderFast !== true) {
             ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
             ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
 
         this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 0);
 
+        if (this._panelRenderFast !== true) {
         if (style.showOverbought !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.overboughtValue != null ? style.overboughtValue : 70,
                 style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', style.overboughtValue != null ? style.overboughtValue : 70);
@@ -8547,6 +8614,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.midValue != null ? style.midValue : 50,
                 style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', style.midValue != null ? style.midValue : 50);
+        }
         }
 
         if (style.showLine !== false) {
