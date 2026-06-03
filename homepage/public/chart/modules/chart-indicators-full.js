@@ -206,12 +206,10 @@
         indicator.style.middleColor = params.middleColor || '#787b86';
         indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
         indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
-        indicator.style.middleOpacity = params.middleOpacity != null ? Number(params.middleOpacity) : 100;
         indicator.style.showLower = params.showLower !== false;
         indicator.style.lowerColor = params.lowerColor || '#2962ff';
         indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
         indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
-        indicator.style.lowerOpacity = params.lowerOpacity != null ? Number(params.lowerOpacity) : 100;
         indicator.style.showFill = false;
         indicator.style.showLabel = params.showLabel !== false;
         applyPlotDashFieldsFromParams(indicator.style, params, [
@@ -4551,8 +4549,6 @@
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.atrPeriod !== undefined) indicator.params.atrPeriod = newParams.atrPeriod;
         if (newParams.offset !== undefined) indicator.params.offset = Number(newParams.offset) || 0;
-        if (newParams.middleOpacity !== undefined) indicator.style.middleOpacity = Number(newParams.middleOpacity);
-        if (newParams.lowerOpacity !== undefined) indicator.style.lowerOpacity = Number(newParams.lowerOpacity);
         if (newParams.start !== undefined) indicator.params.start = newParams.start;
         if (newParams.increment !== undefined) indicator.params.increment = newParams.increment;
         if (newParams.maxStep !== undefined) indicator.params.maxStep = newParams.maxStep;
@@ -7665,8 +7661,8 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     const legacyW = style.lineWidth != null ? style.lineWidth : 1;
     const legacyS = style.lineStyle || 'Line';
     const upperColor = style.upperColor;
-    const middleColor = resolveBandLineColor(style.middleColor, style.middleOpacity);
-    const lowerColor = resolveBandLineColor(style.lowerColor, style.lowerOpacity);
+    const middleColor = style.middleColor;
+    const lowerColor = style.lowerColor;
 
     if (style.showUpper !== false) {
         this.drawLineIndicator(
@@ -10173,8 +10169,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 const st = indicator.style || {};
                 const bandDefs = [
                     { arr: bandData.upper, show: st.showUpper !== false, color: st.upperColor || '#2962ff' },
-                    { arr: bandData.middle, show: st.showMiddle !== false, color: resolveBandLineColor(st.middleColor || '#787b86', st.middleOpacity) },
-                    { arr: bandData.lower, show: st.showLower !== false, color: resolveBandLineColor(st.lowerColor || '#2962ff', st.lowerOpacity) }
+                    { arr: bandData.middle, show: st.showMiddle !== false, color: st.middleColor || '#787b86' },
+                    { arr: bandData.lower, show: st.showLower !== false, color: st.lowerColor || '#2962ff' }
                 ];
                 bandDefs.forEach(function(b) {
                     if (!b.show || !b.arr) return;

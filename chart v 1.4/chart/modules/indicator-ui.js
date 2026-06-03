@@ -269,12 +269,10 @@ function donchianStyleParams() {
         { id: 'upperColor', label: 'Upper Band color', type: 'color', default: '#2962ff', tab: 'style' },
         { id: 'showMiddle', label: 'Show Middle Band', type: 'checkbox', default: true, tab: 'style' },
         { id: 'middleColor', label: 'Middle Band color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'middleOpacity', label: 'Middle Band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'middleLineStyle', label: 'Middle Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'middleLineWidth', label: 'Middle Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'showLower', label: 'Show Lower Band', type: 'checkbox', default: true, tab: 'style' },
         { id: 'lowerColor', label: 'Lower Band color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'lowerOpacity', label: 'Lower Band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'lowerLineStyle', label: 'Lower Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'lowerLineWidth', label: 'Lower Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
@@ -3409,7 +3407,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
-    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear)color$/i.test(id)) return true;
+    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear|upper|middle|lower)color$/i.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
@@ -3502,12 +3500,11 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
     if (indicatorType === 'donchian') {
         return {
             sections: [{
-                opacityHeader: true,
                 header: true,
                 rows: [
-                    Object.assign(v9ColorRow('Upper Band', 'upperColor', 'showUpper'), { opacityId: null }),
-                    Object.assign(v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'), { opacityId: 'middleOpacity' }),
-                    Object.assign(v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower'), { opacityId: 'lowerOpacity' })
+                    v9ColorRow('Upper Band', 'upperColor', 'showUpper'),
+                    v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
+                    v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
                 ]
             }],
             footers: footers

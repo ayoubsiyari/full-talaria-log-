@@ -22990,13 +22990,11 @@ const TalariaV8bLive = () => {
             return { ...d, [id]: !cur };
           });
           const gc = "16px 1fr 26px 56px 56px 28px";
-          const gcOpacity = "16px 1fr 26px 44px 56px 56px 28px";
           const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
-          const rowGrid = (section) => (section && section.opacityHeader ? gcOpacity : gc);
-          const R = (marginTop = 0, section) => ({ display: "grid", gridTemplateColumns: rowGrid(section), columnGap: cg, alignItems: "center", height: 30, ...(marginTop ? { marginTop } : {}) });
+          const R = (marginTop = 0) => ({ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 30, ...(marginTop ? { marginTop } : {}) });
           const Swatch = ({ pid, disabled }) => {
             const raw = val(pid);
             const ck = "ind-" + pid;
@@ -23053,11 +23051,10 @@ const TalariaV8bLive = () => {
           const renderPlotRow = (row, i, section) => {
             const histOff = section && section.histSection && val("showHist") === false;
             const on = row.showId ? val(row.showId) !== false : !histOff;
-            const useOpacity = !!(section && section.opacityHeader);
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
             return (
-              <div key={`${row.colorId || row.label}-${i}`} style={R(i ? 8 : 0, section)}>
+              <div key={`${row.colorId || row.label}-${i}`} style={R(i ? 8 : 0)}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {row.showId
                     ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
@@ -23065,7 +23062,6 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
-                {useOpacity ? (row.opacityId ? numW(row.opacityId, !on) : <div />) : null}
                 {hasStyleCol ? stSel(row.styleId, !on) : <div />}
                 {hasWidthCol ? numW(row.widthId, !on) : <div />}
                 {hasStyleCol ? psSel(row.styleId, !on) : <div />}
@@ -23099,18 +23095,9 @@ const TalariaV8bLive = () => {
                     {section.title}
                   </div>
                 )}
-                {section.header && !section.opacityHeader && (
+                {section.header && (
                   <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("STYLE")}</div>
-                    <div>{hdr("THICKNESS")}</div>
-                    <div />
-                  </div>
-                )}
-                {section.opacityHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gcOpacity, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
-                    <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("OPACITY")}</div>
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div />
