@@ -254,6 +254,25 @@ function rsiBackgroundStyleParams() {
     ];
 }
 
+/** TradingView-style Keltner Channels Input tab. */
+function keltnerInputParams() {
+    return [
+        { id: 'length', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'multiplier', label: 'Multiplier', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'source', label: 'Source', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'useExponentialMa', label: 'Use Exponential MA', type: 'checkbox', default: true, tab: 'input' },
+        {
+            id: 'bandsStyle', label: 'Bands Style', type: 'select', tab: 'input', default: 'Average True Range',
+            options: [
+                { value: 'Average True Range', label: 'Average True Range' },
+                { value: 'True Range', label: 'True Range' },
+                { value: 'Range', label: 'Range' }
+            ]
+        },
+        { id: 'atrLength', label: 'ATR Length', type: 'number', default: 10, min: 1, tab: 'input' }
+    ];
+}
+
 /** Parabolic SAR Input tab (start / increment / max). */
 function psarInputParams() {
     return [
@@ -991,12 +1010,7 @@ const INDICATOR_DEFINITIONS = {
     keltner: {
         name: 'Keltner Channels',
         type: 'overlay',
-        params: [
-            { id: 'emaPeriod', label: 'EMA Length', type: 'number', default: 20, min: 1 },
-            { id: 'atrPeriod', label: 'ATR Length', type: 'number', default: 10, min: 1 },
-            { id: 'multiplier', label: 'ATR Multiplier', type: 'number', default: 2, min: 0.1, step: 0.1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
-        ].concat(channelBandsStyleParams())
+        params: keltnerInputParams().concat(channelBandsStyleParams())
     },
     aroon: {
         name: 'Aroon',

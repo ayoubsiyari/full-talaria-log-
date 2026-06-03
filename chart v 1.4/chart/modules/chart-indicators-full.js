@@ -2485,17 +2485,105 @@
         return { upper: upper, lower: lower, middle: middle };
     }
 
-    function calculateKeltner(data, emaPeriod, atrPeriod, mult, source) {
-        source = source || 'close';
-        const mid = calculateEMA(data, emaPeriod, source);
-        const atr = calculateATR(data, atrPeriod);
-        const upper = [], lower = [];
+    function calculateTrueRangeSeries(data) {
+        const trs = [];
         for (let i = 0; i < data.length; i++) {
-            if (mid[i] == null || atr[i] == null) {
-                upper.push(null); lower.push(null);
+            let tr;
+            if (i === 0) {
+                tr = data[i].h - data[i].l;
             } else {
-                upper.push(mid[i] + mult * atr[i]);
-                lower.push(mid[i] - mult * atr[i]);
+                const highLow = data[i].h - data[i].l;
+                const highPrevClose = Math.abs(data[i].h - data[i - 1].c);
+                const lowPrevClose = Math.abs(data[i].l - data[i - 1].c);
+                tr = Math.max(highLow, highPrevClose, lowPrevClose);
+            }
+            trs.push(tr);
+        }
+        return trs;
+    }
+
+    function calculateHighLowRange(data, period) {
+        period = Math.max(1, period);
+        const out = [];
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                out.push(null);
+                continue;
+            }
+            let hh = -Infinity;
+            let ll = Infinity;
+            for (let j = 0; j < period; j++) {
+                const bar = data[i - j];
+                if (bar.h > hh) hh = bar.h;
+                if (bar.l < ll) ll = bar.l;
+            }
+            out.push(hh - ll);
+        }
+        return out;
+    }
+
+    function resolveKeltnerCalcParams(params) {
+        params = params || {};
+        const lengthRaw = params.length != null ? Number(params.length) : (params.emaPeriod != null ? Number(params.emaPeriod) : 20);
+        const atrLengthRaw = params.atrLength != null ? Number(params.atrLength) : (params.atrPeriod != null ? Number(params.atrPeriod) : 10);
+        const multiplierRaw = params.multiplier != null ? Number(params.multiplier) : 2;
+        let bandsStyle = params.bandsStyle || 'Average True Range';
+        if (bandsStyle === 'ATR' || bandsStyle === 'atr') bandsStyle = 'Average True Range';
+        return {
+            length: Number.isFinite(lengthRaw) ? lengthRaw : 20,
+            atrLength: Number.isFinite(atrLengthRaw) ? atrLengthRaw : 10,
+            multiplier: Number.isFinite(multiplierRaw) ? multiplierRaw : 2,
+            source: params.source || 'close',
+            useExponentialMa: params.useExponentialMa !== false,
+            bandsStyle: bandsStyle
+        };
+    }
+
+    function applyKeltnerCalcParams(indicator, params) {
+        const calc = resolveKeltnerCalcParams(params);
+        indicator.params.length = calc.length;
+        indicator.params.atrLength = calc.atrLength;
+        indicator.params.multiplier = calc.multiplier;
+        indicator.params.source = calc.source;
+        indicator.params.useExponentialMa = calc.useExponentialMa;
+        indicator.params.bandsStyle = calc.bandsStyle;
+        indicator.params.emaPeriod = calc.length;
+        indicator.params.atrPeriod = calc.atrLength;
+        return calc;
+    }
+
+    function calculateKeltner(data, calcOrEmaPeriod, atrPeriod, mult, source) {
+        let calc;
+        if (typeof calcOrEmaPeriod === 'object' && calcOrEmaPeriod !== null && !Array.isArray(calcOrEmaPeriod)) {
+            calc = resolveKeltnerCalcParams(calcOrEmaPeriod);
+        } else {
+            calc = resolveKeltnerCalcParams({
+                emaPeriod: calcOrEmaPeriod,
+                atrPeriod: atrPeriod,
+                multiplier: mult,
+                source: source
+            });
+        }
+        const mid = calc.useExponentialMa
+            ? calculateEMA(data, calc.length, calc.source)
+            : calculateSMA(data, calc.length, calc.source);
+        let bandWidth;
+        if (calc.bandsStyle === 'True Range') {
+            bandWidth = calculateTrueRangeSeries(data);
+        } else if (calc.bandsStyle === 'Range') {
+            bandWidth = calculateHighLowRange(data, calc.length);
+        } else {
+            bandWidth = calculateATR(data, calc.atrLength);
+        }
+        const upper = [];
+        const lower = [];
+        for (let i = 0; i < data.length; i++) {
+            if (mid[i] == null || bandWidth[i] == null) {
+                upper.push(null);
+                lower.push(null);
+            } else {
+                upper.push(mid[i] + calc.multiplier * bandWidth[i]);
+                lower.push(mid[i] - calc.multiplier * bandWidth[i]);
             }
         }
         return { upper: upper, middle: mid, lower: lower };
@@ -3642,13 +3730,10 @@
                 this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
                 break;
             case 'keltner':
-                indicator.params.emaPeriod = params.emaPeriod || 20;
-                indicator.params.atrPeriod = params.atrPeriod || 10;
-                indicator.params.multiplier = params.multiplier != null ? params.multiplier : 2;
-                indicator.params.source = params.source || 'close';
+                applyKeltnerCalcParams(indicator, params);
                 applyBollingerStyleFromParams(indicator, params);
-                indicator.name = 'Keltner(' + indicator.params.emaPeriod + ',' + indicator.params.atrPeriod + ')';
-                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source);
+                indicator.name = 'Keltner(' + indicator.params.length + ')';
+                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params);
                 break;
             case 'aroon':
                 indicator.params.period = params.period || 14;
@@ -4391,6 +4476,10 @@
         if (newParams.lineStyle !== undefined) indicator.style.lineStyle = newParams.lineStyle;
         if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
         if (newParams.source !== undefined) indicator.params.source = newParams.source;
+        if (newParams.length !== undefined) indicator.params.length = newParams.length;
+        if (newParams.atrLength !== undefined) indicator.params.atrLength = newParams.atrLength;
+        if (newParams.useExponentialMa !== undefined) indicator.params.useExponentialMa = newParams.useExponentialMa !== false;
+        if (newParams.bandsStyle !== undefined) indicator.params.bandsStyle = newParams.bandsStyle;
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.atrPeriod !== undefined) indicator.params.atrPeriod = newParams.atrPeriod;
         if (newParams.multiplier !== undefined) indicator.params.multiplier = newParams.multiplier;
@@ -4500,6 +4589,10 @@
         }
         if (indicator.type === 'psar') {
             applyPsarStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'keltner') {
+            applyKeltnerCalcParams(indicator, Object.assign({}, indicator.params, newParams));
+            applyBollingerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -4776,8 +4869,9 @@
                 this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
                 break;
             case 'keltner':
-                indicator.name = 'Keltner(' + indicator.params.emaPeriod + ',' + indicator.params.atrPeriod + ')';
-                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source || 'close');
+                applyKeltnerCalcParams(indicator, indicator.params);
+                indicator.name = 'Keltner(' + indicator.params.length + ')';
+                this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params);
                 break;
             case 'aroon':
                 indicator.name = 'Aroon(' + indicator.params.period + ')';
@@ -5113,7 +5207,8 @@
                     this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period);
                     break;
                 case 'keltner':
-                    this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params.emaPeriod, indicator.params.atrPeriod, indicator.params.multiplier, indicator.params.source || 'close');
+                    applyKeltnerCalcParams(indicator, indicator.params);
+                    this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params);
                     break;
                 case 'aroon':
                     this.indicators.data[indicator.id] = calculateAroon(this.data, indicator.params.period);
