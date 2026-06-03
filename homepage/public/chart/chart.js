@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a81';
+const CHART_ENGINE_BUILD = '20260602a82';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16083,6 +16083,8 @@ class Chart {
             const priceDy = this.priceOffset - snapPo;
             domainMin = snapMin + priceDy;
             domainMax = snapMax + priceDy;
+        }
+
         // ✅ FIX: Use same candleAndSpacing for xScale domain to keep X-axis synchronized.
         // Use the true visible bar count (not the decimated series length) so candle X mapping stays correct.
         this.xScale = d3.scaleLinear()
