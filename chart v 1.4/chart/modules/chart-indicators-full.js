@@ -185,6 +185,21 @@
         ]);
     }
 
+    function applyDemaStyleFromParams(indicator, params) {
+        applyMaLengthSourceFromParams(indicator, params, 20);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#00bcd4';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS]
+        ]);
+    }
+
     function clampIndicatorLineWidth(w, fallback) {
         if (typeof window.__v9ClampIndicatorLineWidth === 'function') {
             return window.__v9ClampIndicatorLineWidth(w, fallback);
@@ -3877,12 +3892,7 @@
                 break;
 
             case 'dema':
-                indicator.params.period = params.period || 20;
-                indicator.params.source = params.source || 'close';
-                indicator.style.color = params.color || '#00bcd4';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
+                applyDemaStyleFromParams(indicator, params);
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source);
                 break;
@@ -4866,6 +4876,9 @@
         }
         if (indicator.type === 'tema') {
             applyTemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'dema') {
+            applyDemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
 
         // Recalculate data
@@ -5950,6 +5963,10 @@
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
             } else if (indicator.type === 'tema') {
+                if (indicator.style.showLine !== false) {
+                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
+                }
+            } else if (indicator.type === 'dema') {
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
