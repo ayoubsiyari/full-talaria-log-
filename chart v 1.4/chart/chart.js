@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a63';
+const CHART_ENGINE_BUILD = '20260602a64';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -17020,8 +17020,9 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid during wheel burst; keep volume/indicators/drawings visible while scrolling.
-            this.drawGrid({ panFast: true, skipAll: true });
+            // Skip grid only during wheel / axis-drag bursts (cached ticks stale). Keep grid while chart panning.
+            const skipGridDuringInteraction = wheelBurstLight || axisZoomDragging;
+            this.drawGrid({ panFast: true, skipAll: skipGridDuringInteraction });
             this.drawVolume(visible, panOpts);
             if (typeof this._paintSeparatePanelStackBackground === 'function') {
                 this._paintSeparatePanelStackBackground();
