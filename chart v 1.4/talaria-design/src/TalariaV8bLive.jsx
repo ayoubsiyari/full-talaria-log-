@@ -22942,7 +22942,8 @@ const TalariaV8bLive = () => {
             return renderIndShapeStyleDrop(pid, () => val(pid), disabled);
           };
           const renderPlotRow = (row, i, section) => {
-            const on = row.showId ? val(row.showId) !== false : true;
+            const histOff = section && section.histSection && val("showHist") === false;
+            const on = row.showId ? val(row.showId) !== false : !histOff;
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
             return (
@@ -22961,18 +22962,19 @@ const TalariaV8bLive = () => {
           };
           const renderLevelRow = (row, i, section) => {
             const on = val(row.showId) !== false;
-            const band = !!(section && section.bandLevelHeader);
-            const cols = band ? gcBand : gc;
+            const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
+            const cols = extended ? gcBand : gc;
+            const rowLabel = section && section.zeroLevelHeader ? "Zero" : "Value";
             return (
               <div key={row.valueId} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
-                {lbl("Value", on)}
+                {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
                 {stSel(row.styleId, !on)}
-                {band ? numW(row.widthId, !on) : numW(row.valueId, !on)}
-                {band ? numW(row.valueId, !on) : null}
+                {extended ? numW(row.widthId, !on) : numW(row.valueId, !on)}
+                {extended ? numW(row.valueId, !on) : null}
               </div>
             );
           };
@@ -23004,6 +23006,20 @@ const TalariaV8bLive = () => {
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div>{hdr("VALUE")}</div>
+                  </div>
+                )}
+                {section.zeroLevelHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: gcBand, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div>{hdr("COLOR")}</div>
+                    <div>{hdr("STYLE")}</div>
+                    <div>{hdr("THICKNESS")}</div>
+                    <div>{hdr("ZERO")}</div>
+                  </div>
+                )}
+                {section.checkboxRow && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, height: 28 }}>
+                    {TlChk(val(section.checkboxRow.showId) !== false, `ind-${ctx.indicatorType}-${section.checkboxRow.showId}`, null, () => flip(section.checkboxRow.showId), { vpImmediate: true })}
+                    {lbl(section.checkboxRow.label, val(section.checkboxRow.showId) !== false)}
                   </div>
                 )}
                 {section.rows && section.rows.map((row, ri) => renderPlotRow(row, ri, section))}

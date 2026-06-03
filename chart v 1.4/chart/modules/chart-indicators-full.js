@@ -340,6 +340,8 @@
         indicator.params.slow = params.slow != null ? Number(params.slow) : 26;
         indicator.params.signal = params.signal != null ? Number(params.signal) : 9;
         indicator.params.source = params.source || 'close';
+        indicator.params.oscillatorMaType = params.oscillatorMaType || 'EMA';
+        indicator.params.signalMaType = params.signalMaType || 'EMA';
         indicator.style.showMacd = params.showMacd !== false;
         indicator.style.macdColor = params.macdColor || '#2962ff';
         indicator.style.macdLineStyle = params.macdLineStyle || legacyS;
@@ -349,12 +351,27 @@
         indicator.style.signalLineStyle = params.signalLineStyle || legacyS;
         indicator.style.signalLineWidth = params.signalLineWidth != null ? params.signalLineWidth : legacyW;
         indicator.style.showHist = params.showHist !== false;
-        indicator.style.histUpColor = params.histUpColor || 'rgba(38,166,154,0.85)';
-        indicator.style.histDownColor = params.histDownColor || 'rgba(239,83,80,0.85)';
+        const upLegacy = params.histUpColor || 'rgba(38,166,154,0.85)';
+        const downLegacy = params.histDownColor || 'rgba(239,83,80,0.85)';
+        indicator.style.histColor0 = params.histColor0 || upLegacy;
+        indicator.style.histColor1 = params.histColor1 || 'rgba(38,166,154,0.45)';
+        indicator.style.histColor2 = params.histColor2 || 'rgba(239,83,80,0.45)';
+        indicator.style.histColor3 = params.histColor3 || downLegacy;
+        indicator.style.histColor0LineStyle = params.histColor0LineStyle || 'Line';
+        indicator.style.histColor1LineStyle = params.histColor1LineStyle || 'Line';
+        indicator.style.histColor2LineStyle = params.histColor2LineStyle || 'Line';
+        indicator.style.histColor3LineStyle = params.histColor3LineStyle || 'Line';
+        indicator.style.histColor0LineWidth = params.histColor0LineWidth != null ? params.histColor0LineWidth : 1;
+        indicator.style.histColor1LineWidth = params.histColor1LineWidth != null ? params.histColor1LineWidth : 1;
+        indicator.style.histColor2LineWidth = params.histColor2LineWidth != null ? params.histColor2LineWidth : 1;
+        indicator.style.histColor3LineWidth = params.histColor3LineWidth != null ? params.histColor3LineWidth : 1;
+        indicator.style.histUpColor = indicator.style.histColor0;
+        indicator.style.histDownColor = indicator.style.histColor3;
         indicator.style.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
         indicator.style.showZero = params.showZero !== false;
         indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
         indicator.style.zeroLineStyle = params.zeroLineStyle || 'Line';
+        indicator.style.zeroLineWidth = params.zeroLineWidth != null ? params.zeroLineWidth : 1;
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
     }
@@ -627,39 +644,45 @@
         return result;
     }
     
-    // MACD
-    function calculateMACD(data, fast, slow, signal, source) {
+    // MACD — oscillator MA type (EMA/SMA) + signal MA type (EMA/SMA)
+    function calculateMACD(data, fast, slow, signal, source, opts) {
+        opts = opts || {};
         source = source || 'close';
-        const fastEMA = calculateEMA(data, fast, source);
-        const slowEMA = calculateEMA(data, slow, source);
+        const oscType = String(opts.oscillatorMaType || 'EMA').toUpperCase();
+        const sigType = String(opts.signalMaType || 'EMA').toUpperCase();
+        const calcOscMa = oscType === 'SMA' ? calculateSMA : calculateEMA;
+        const fastMA = calcOscMa(data, fast, source);
+        const slowMA = calcOscMa(data, slow, source);
         const macd = [];
         
         for (let i = 0; i < data.length; i++) {
-            if (fastEMA[i] !== null && slowEMA[i] !== null) {
-                macd.push(fastEMA[i] - slowEMA[i]);
+            if (fastMA[i] !== null && slowMA[i] !== null) {
+                macd.push(fastMA[i] - slowMA[i]);
             } else {
                 macd.push(null);
             }
         }
         
-        // Signal line is EMA of MACD
-        const signalLine = [];
-        const multiplier = 2 / (signal + 1);
-        let ema = null;
-        
-        for (let i = 0; i < macd.length; i++) {
-            if (macd[i] === null) {
-                signalLine.push(null);
-            } else if (ema === null) {
-                ema = macd[i];
-                signalLine.push(ema);
-            } else {
-                ema = (macd[i] - ema) * multiplier + ema;
-                signalLine.push(ema);
+        let signalLine;
+        if (sigType === 'SMA') {
+            signalLine = rollingSmaNullable(macd, Math.max(1, signal | 0));
+        } else {
+            signalLine = [];
+            const multiplier = 2 / (signal + 1);
+            let ema = null;
+            for (let i = 0; i < macd.length; i++) {
+                if (macd[i] === null) {
+                    signalLine.push(null);
+                } else if (ema === null) {
+                    ema = macd[i];
+                    signalLine.push(ema);
+                } else {
+                    ema = (macd[i] - ema) * multiplier + ema;
+                    signalLine.push(ema);
+                }
             }
         }
         
-        // Histogram
         const histogram = [];
         for (let i = 0; i < macd.length; i++) {
             if (macd[i] !== null && signalLine[i] !== null) {
@@ -670,6 +693,18 @@
         }
         
         return { macd: macd, signal: signalLine, histogram: histogram };
+    }
+
+    function macdHistogramBarColor(val, prevVal, style) {
+        const c0 = style.histColor0 || style.histUpColor || 'rgba(38,166,154,0.85)';
+        const c1 = style.histColor1 || 'rgba(38,166,154,0.45)';
+        const c2 = style.histColor2 || 'rgba(239,83,80,0.45)';
+        const c3 = style.histColor3 || style.histDownColor || 'rgba(239,83,80,0.85)';
+        if (prevVal === null || prevVal === undefined || isNaN(prevVal)) {
+            return val >= 0 ? c0 : c3;
+        }
+        if (val >= 0) return val >= prevVal ? c0 : c1;
+        return val >= prevVal ? c2 : c3;
     }
     
     // VWAP (Volume Weighted Average Price)
@@ -3135,7 +3170,11 @@
                     indicator.params.fast,
                     indicator.params.slow,
                     indicator.params.signal,
-                    indicator.params.source
+                    indicator.params.source,
+                    {
+                        oscillatorMaType: indicator.params.oscillatorMaType,
+                        signalMaType: indicator.params.signalMaType
+                    }
                 );
                 break;
                 
@@ -3530,7 +3569,11 @@
                     indicator.params.fast,
                     indicator.params.slow,
                     indicator.params.signal,
-                    indicator.params.source
+                    indicator.params.source,
+                    {
+                        oscillatorMaType: indicator.params.oscillatorMaType,
+                        signalMaType: indicator.params.signalMaType
+                    }
                 );
                 break;
 
@@ -4124,6 +4167,8 @@
         if (newParams.period3 !== undefined) indicator.params.period3 = newParams.period3;
         if (newParams.rsiPeriod !== undefined) indicator.params.rsiPeriod = newParams.rsiPeriod;
         if (newParams.stochLen !== undefined) indicator.params.stochLen = newParams.stochLen;
+        if (newParams.oscillatorMaType !== undefined) indicator.params.oscillatorMaType = newParams.oscillatorMaType;
+        if (newParams.signalMaType !== undefined) indicator.params.signalMaType = newParams.signalMaType;
         if (newParams.percent !== undefined) indicator.params.percent = newParams.percent;
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.sumPeriod !== undefined) indicator.params.sumPeriod = newParams.sumPeriod;
@@ -4309,7 +4354,11 @@
                     indicator.params.fast,
                     indicator.params.slow,
                     indicator.params.signal,
-                    indicator.params.source || 'close'
+                    indicator.params.source || 'close',
+                    {
+                        oscillatorMaType: indicator.params.oscillatorMaType,
+                        signalMaType: indicator.params.signalMaType
+                    }
                 );
                 break;
             case 'stoch':
@@ -4559,7 +4608,11 @@
                     indicator.params.fast,
                     indicator.params.slow,
                     indicator.params.signal,
-                    indicator.params.source || 'close'
+                    indicator.params.source || 'close',
+                    {
+                        oscillatorMaType: indicator.params.oscillatorMaType,
+                        signalMaType: indicator.params.signalMaType
+                    }
                 );
                 break;
             case 'dpo':
@@ -4725,7 +4778,11 @@
                         indicator.params.fast,
                         indicator.params.slow,
                         indicator.params.signal,
-                        indicator.params.source || 'close'
+                        indicator.params.source || 'close',
+                        {
+                            oscillatorMaType: indicator.params.oscillatorMaType,
+                            signalMaType: indicator.params.signalMaType
+                        }
                     );
                     break;
                 case 'stoch':
@@ -8177,6 +8234,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const style = indicator.style || {};
         const macdArr = data.macd, signalArr = data.signal, histArr = data.histogram;
         const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+        const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
 
         let min = Infinity, max = -Infinity;
         for (let i = visibleStart; i < visibleEnd; i++) {
@@ -8213,21 +8271,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const zeroY = scaleY(zeroVal);
         if (this._panelRenderFast !== true && style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
-                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal);
+                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal, zeroW);
         }
 
         if (style.showHist !== false && this._panelRenderFast !== true) {
             const barW = Math.max(1, (this.candleWidth || 8) * 0.8);
-            const histUp = style.histUpColor || 'rgba(38,166,154,0.85)';
-            const histDown = style.histDownColor || 'rgba(239,83,80,0.85)';
             for (let i = visibleStart; i < visibleEnd && i < histArr.length; i++) {
                 const val = histArr[i];
                 if (val === null || val === undefined || isNaN(val)) continue;
+                const prevVal = i > 0 ? histArr[i - 1] : null;
                 const x = this.dataIndexToPixel(i);
                 const y = scaleY(val);
                 const z = (zeroY !== null && !isNaN(zeroY)) ? zeroY : scaleY(0);
                 if (z === null || y === null) continue;
-                ctx.fillStyle = val >= 0 ? histUp : histDown;
+                ctx.fillStyle = macdHistogramBarColor(val, prevVal, style);
                 ctx.fillRect(x - barW / 2, Math.min(y, z), barW, Math.max(1, Math.abs(y - z)));
             }
         }
