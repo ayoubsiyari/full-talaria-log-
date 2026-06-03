@@ -254,6 +254,25 @@ function rsiBackgroundStyleParams() {
     ];
 }
 
+/** Parabolic SAR Input tab (start / increment / max). */
+function psarInputParams() {
+    return [
+        { id: 'start', label: 'Start', type: 'number', default: 0.02, min: 0.001, step: 0.001, tab: 'input' },
+        { id: 'increment', label: 'Increment', type: 'number', default: 0.02, min: 0.001, step: 0.001, tab: 'input' },
+        { id: 'maxStep', label: 'Max value', type: 'number', default: 0.2, min: 0.01, step: 0.01, tab: 'input' }
+    ];
+}
+
+/** Parabolic SAR Style tab (single series color + plot style). */
+function psarStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show Parabolic SAR', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Parabolic SAR color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lineStyle', label: 'Parabolic SAR line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Circles', tab: 'style' },
+        { id: 'lineWidth', label: 'Parabolic SAR thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
 function rsiStyleParams() {
     return [
         { id: 'showLine', label: 'Show RSI line', type: 'checkbox', default: true, tab: 'style' },
@@ -1006,13 +1025,7 @@ const INDICATOR_DEFINITIONS = {
     psar: {
         name: 'Parabolic SAR',
         type: 'overlay',
-        params: [
-            { id: 'step', label: 'Start AF (step)', type: 'number', default: 0.02, min: 0.001, step: 0.001 },
-            { id: 'maxStep', label: 'Max AF', type: 'number', default: 0.2, min: 0.01, step: 0.01 },
-            { id: 'bullColor', label: 'Bull Color', type: 'color', default: '#26a69a' },
-            { id: 'bearColor', label: 'Bear Color', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Dot Size (rel.)', type: 'number', default: 2, min: 1, max: 4 }
-        ]
+        params: psarInputParams().concat(psarStyleParams())
     },
     sessionsplus: {
         name: 'Sessions+ (multi-session, UTC)',
@@ -3709,6 +3722,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             }, {
                 title: 'Background',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'psar') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Parabolic SAR', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
             }],
             footers: footers
         };

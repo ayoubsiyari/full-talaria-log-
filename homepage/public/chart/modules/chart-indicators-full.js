@@ -307,6 +307,29 @@
         applyOscillatorLevelStyleFromParams(indicator, params);
     }
 
+    function resolvePsarCalcParams(params) {
+        params = params || {};
+        const start = params.start != null ? Number(params.start) : (params.step != null ? Number(params.step) : 0.02);
+        const increment = params.increment != null ? Number(params.increment) : start;
+        const maxStep = params.maxStep != null ? Number(params.maxStep) : 0.2;
+        return {
+            start: Number.isFinite(start) ? start : 0.02,
+            increment: Number.isFinite(increment) ? increment : 0.02,
+            maxStep: Number.isFinite(maxStep) ? maxStep : 0.2
+        };
+    }
+
+    function applyPsarStyleFromParams(indicator, params) {
+        const calc = resolvePsarCalcParams(params);
+        indicator.params.start = calc.start;
+        indicator.params.increment = calc.increment;
+        indicator.params.maxStep = calc.maxStep;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || params.bullColor || '#2962ff';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', 'Circles']]);
+    }
+
     function applyRsiStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -2540,15 +2563,17 @@
         return out;
     }
 
-    function calculatePSAR(data, step, maxStep) {
-        step = step == null ? 0.02 : step;
-        maxStep = maxStep == null ? 0.2 : maxStep;
+    function calculatePSAR(data, params) {
+        const resolved = resolvePsarCalcParams(params);
+        const start = resolved.start;
+        const increment = resolved.increment;
+        const maxStep = resolved.maxStep;
         const n = data.length;
         const sar = new Array(n).fill(null);
         if (n < 2) return sar;
 
         let isLong = data[1].c >= data[0].c;
-        let af = step;
+        let af = start;
         let ep = isLong ? data[0].h : data[0].l;
         let sarVal = isLong ? data[0].l : data[0].h;
         sar[0] = sarVal;
@@ -2564,11 +2589,11 @@
                     isLong = false;
                     sarVal = ep;
                     ep = l;
-                    af = step;
+                    af = start;
                 } else {
                     if (h > ep) {
                         ep = h;
-                        af = Math.min(af + step, maxStep);
+                        af = Math.min(af + increment, maxStep);
                     }
                 }
             } else {
@@ -2577,11 +2602,11 @@
                     isLong = true;
                     sarVal = ep;
                     ep = h;
-                    af = step;
+                    af = start;
                 } else {
                     if (l < ep) {
                         ep = l;
-                        af = Math.min(af + step, maxStep);
+                        af = Math.min(af + increment, maxStep);
                     }
                 }
             }
@@ -3648,14 +3673,9 @@
                 this.indicators.data[indicator.id] = calculateTRIX(this.data, indicator.params.period);
                 break;
             case 'psar':
-                indicator.params.step = params.step != null ? params.step : 0.02;
-                indicator.params.maxStep = params.maxStep != null ? params.maxStep : 0.2;
-                indicator.style.color = params.color || '#ffeb3b';
-                indicator.style.bullColor = params.bullColor || params.color || '#26a69a';
-                indicator.style.bearColor = params.bearColor || '#ef5350';
-                indicator.style.lineWidth = params.lineWidth || 2;
+                applyPsarStyleFromParams(indicator, params);
                 indicator.name = 'PSAR';
-                this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
+                this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params);
                 break;
 
             case 'sessionsplus':
@@ -4373,8 +4393,10 @@
         if (newParams.emaPeriod !== undefined) indicator.params.emaPeriod = newParams.emaPeriod;
         if (newParams.atrPeriod !== undefined) indicator.params.atrPeriod = newParams.atrPeriod;
         if (newParams.multiplier !== undefined) indicator.params.multiplier = newParams.multiplier;
-        if (newParams.step !== undefined) indicator.params.step = newParams.step;
+        if (newParams.start !== undefined) indicator.params.start = newParams.start;
+        if (newParams.increment !== undefined) indicator.params.increment = newParams.increment;
         if (newParams.maxStep !== undefined) indicator.params.maxStep = newParams.maxStep;
+        if (newParams.step !== undefined) indicator.params.start = newParams.step;
         if (newParams.bullColor !== undefined) indicator.style.bullColor = newParams.bullColor;
         if (newParams.bearColor !== undefined) indicator.style.bearColor = newParams.bearColor;
         if (newParams.plusColor !== undefined) indicator.style.plusColor = newParams.plusColor;
@@ -4474,6 +4496,9 @@
         }
         if (indicator.type === 'rsi') {
             applyRsiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'psar') {
+            applyPsarStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -4766,7 +4791,7 @@
                 this.indicators.data[indicator.id] = calculateTRIX(this.data, indicator.params.period);
                 break;
             case 'psar':
-                this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
+                this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params);
                 break;
             case 'sessionsplus':
                 indicator.name = 'Sessions+';
@@ -5099,7 +5124,7 @@
                     this.indicators.data[indicator.id] = calculateTRIX(this.data, indicator.params.period);
                     break;
                 case 'psar':
-                    this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params.step, indicator.params.maxStep);
+                    this.indicators.data[indicator.id] = calculatePSAR(this.data, indicator.params);
                     break;
                 case 'sessionsplus':
                     this.indicators.data[indicator.id] = calculateSessionsPlus(this.data, {
@@ -7496,9 +7521,18 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     }
 };
 
-/** Parabolic SAR — dots above/below price by trend */
+/** Parabolic SAR — dots or plot-style markers on price chart */
 Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex) {
-    if (!sar || !this.data || !this.data.length) return;
+    if (!sar || !this.data || !this.data.length || !style || style.showLine === false) return;
+    const plotStyle = this._normalizePlotStyle(style.lineStyle || 'Circles');
+    const color = style.color || '#2962ff';
+    const lw = style.lineWidth || 2;
+    const dashStyle = style.lineDashStyle || 'Solid';
+    const scatterStyles = { Circles: 1, Cross: 1 };
+    if (!scatterStyles[plotStyle]) {
+        this.drawLineIndicator(sar, color, lw, startIndex, endIndex, plotStyle, { dashStyle: dashStyle });
+        return;
+    }
     const ctx = this.ctx;
     const m = this.margin;
     const plotLayout = typeof this._getMainPricePlotLayout === 'function'
@@ -7508,24 +7542,34 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
     const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
     const n = Math.min(sar.length, this.data.length);
     endIndex = endIndex == null ? n : Math.min(endIndex, n);
-    const bull = (style && style.bullColor) || (style && style.color) || '#26a69a';
-    const bear = (style && style.bearColor) || '#ef5350';
-    const lw = (style && style.lineWidth) || 2;
     const r = Math.max(1.2, lw * 0.65);
+    const cross = plotStyle === 'Cross';
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, lw * 0.75);
+    ctx.lineCap = 'round';
     for (let i = startIndex; i < endIndex; i++) {
         if (sar[i] === null || sar[i] === undefined || isNaN(sar[i])) continue;
-        const bar = this.data[i];
-        if (!bar) continue;
         const x = this.dataIndexToPixel(i);
         const y = this.yScale(sar[i]);
         if (x < m.l - 50 || x > this.w - m.r + 50) continue;
         if (!Number.isFinite(y) || y < plotYMin || y > plotYMax) continue;
-        const long = bar.c >= sar[i];
-        ctx.fillStyle = long ? bull : bear;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
+        if (cross) {
+            const s = r + 1;
+            ctx.beginPath();
+            ctx.moveTo(x - s, y);
+            ctx.lineTo(x + s, y);
+            ctx.moveTo(x, y - s);
+            ctx.lineTo(x, y + s);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
+    ctx.restore();
 };
 
 // Draw ADR Bands - upper and lower bands based on Average Daily Range
