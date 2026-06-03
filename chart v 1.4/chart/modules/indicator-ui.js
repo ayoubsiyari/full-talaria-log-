@@ -267,6 +267,8 @@ function donchianStyleParams() {
     return [
         { id: 'showUpper', label: 'Show Upper Band', type: 'checkbox', default: true, tab: 'style' },
         { id: 'upperColor', label: 'Upper Band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
         { id: 'showMiddle', label: 'Show Middle Band', type: 'checkbox', default: true, tab: 'style' },
         { id: 'middleColor', label: 'Middle Band color', type: 'color', default: '#787b86', tab: 'style' },
         { id: 'middleLineStyle', label: 'Middle Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
@@ -3502,7 +3504,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9ColorRow('Upper Band', 'upperColor', 'showUpper'),
+                    v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
                     v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
                     v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
                 ]
