@@ -259,6 +259,30 @@ function v9IsSimpleIndLineStyleParam(p) {
   return p.options.every((o) => V9_IND_SIMPLE_LINE_STYLES.has(String(o.value)));
 }
 
+function v9IndPlotStyleOptions() {
+  const opts = typeof window !== "undefined" && window.INDICATOR_PLOT_STYLE_OPTIONS;
+  if (Array.isArray(opts) && opts.length) return opts;
+  return [
+    "Line", "Line with breaks", "Step line", "Step line with breaks",
+    "Step line with diamonds", "Histogram", "Cross", "Area",
+    "Area with breaks", "Columns", "Circles",
+  ].map((v) => ({ value: v, label: v }));
+}
+
+function v9IsIndPlotStyleParamId(id) {
+  const s = String(id || "");
+  return s === "lineStyle" || /linestyle$/i.test(s);
+}
+
+function v9IndPlotStyleMatches(stored, option) {
+  const s = String(stored || "Line").toLowerCase();
+  const o = String(option || "Line").toLowerCase();
+  if (s === o) return true;
+  if ((s === "dashed" || s === "dotted" || s === "dashdot") && o === "line with breaks") return true;
+  if (s === "solid" && o === "line") return true;
+  return false;
+}
+
 function v9ClampIndLineWidthStr(w, fallback) {
   fallback = fallback != null ? fallback : 2;
   const n = Number(w);
@@ -14158,7 +14182,7 @@ const TalariaV8bLive = () => {
     }),
   });
 
-  const openIndShapeDropAnchor = (e, dropKey, dropH) => {
+  const openIndShapeDropAnchor = (e, dropKey, dropH, minWidth) => {
     const btn = e.currentTarget;
     const r = btn.getBoundingClientRect();
     const panelEl = typeof btn.closest === "function" ? btn.closest("[data-v9-ind-sett]") : null;
@@ -14171,31 +14195,30 @@ const TalariaV8bLive = () => {
     setIndStyleDropAnchor({
       top: openUp ? r.top - dropH - 4 : r.bottom + 4,
       left: r.left,
-      width: Math.max(r.width, 56),
+      width: Math.max(r.width, minWidth || 56),
       openUp,
     });
     setIndStyleDrop(dropKey);
   };
 
-  const renderIndShapeStyleDrop = (pid, getVal, disabled) => {
+  const renderIndPlotStyleDrop = (pid, getVal, disabled) => {
     const dropKey = `ind-st-${pid}`;
-    const shapeType = v9IndPlotStyleToShapeType(getVal());
+    const plotStyle = getVal();
+    const plotOpts = v9IndPlotStyleOptions();
     const isOpen = indStyleDrop === dropKey;
     const hk = `ind-st-btn-${pid}`;
     const isH = hov === hk;
-    const dropH = V9_IND_SHAPE_STYLE_OPTS.length * 24 + 6;
+    const dropH = Math.min(plotOpts.length * 32 + 10, typeof window !== "undefined" ? window.innerHeight - 48 : 360);
     return (
       <div style={{ display: "flex", justifyContent: "center", opacity: disabled ? 0.45 : 1, pointerEvents: disabled ? "none" : "auto" }}>
-        <div {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH))}
+        <div {...indStyleDropTrigger(dropKey, (e) => openIndShapeDropAnchor(e, dropKey, dropH, 220))}
           onMouseEnter={() => !disabled && setHov(hk)}
           onMouseLeave={() => setHov(null)}
-          style={{ height: 26, width: 56, padding: "0 6px", display: "flex", alignItems: "center", justifyContent: "center", gap: 3, cursor: "default", position: "relative",
+          style={{ height: 26, width: 56, padding: "0 4px", display: "flex", alignItems: "center", justifyContent: "center", gap: 2, cursor: "default", position: "relative",
             background: isOpen ? "rgba(74,106,255,0.08)" : isH ? c.hv : "transparent", transition: "background 0.12s" }}>
-          <svg width={22} height={10} viewBox="0 0 22 10">
-            <line x1={0} y1={5} x2={22} y2={5} stroke={isOpen ? c.acL : c.ts}
-              strokeWidth={shapeType === "bold" ? 2.5 : 1.5} strokeLinecap="round"
-              strokeDasharray={v9IndDashArray(shapeType)} />
-          </svg>
+          <span style={{ flexShrink: 0, display: "inline-flex", opacity: 0.95, transform: "scale(0.72)", transformOrigin: "center" }}>
+            <V9PlotStylePreview style={plotStyle} color={isOpen ? c.acL : c.ts} />
+          </span>
           <I n="chevDown" s={7} cl={isOpen ? c.acL : c.ts} />
           {isOpen && <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "70%", height: 2, background: `linear-gradient(90deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}`, pointerEvents: "none" }} />}
         </div>
@@ -22528,6 +22551,9 @@ const TalariaV8bLive = () => {
               TlChk(!!raw, chkKey, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.id]: !d[p.id] })), { vpImmediate: true })
             );
           }
+          if (p.type === "select" && v9IsIndPlotStyleParamId(p.id)) {
+            return row(renderIndPlotStyleDrop(p.id, () => raw, false));
+          }
           if (p.type === "select" && Array.isArray(p.options)) {
             return row(renderIndParamSelect(p, raw, { width: 130, minWidth: 0 }));
           }
@@ -22939,7 +22965,7 @@ const TalariaV8bLive = () => {
           const stSel = (pid, disabled) => {
             const p = def0(pid);
             if (!p) return <div />;
-            return renderIndShapeStyleDrop(pid, () => val(pid), disabled);
+            return renderIndPlotStyleDrop(pid, () => val(pid), disabled);
           };
           const renderPlotRow = (row, i, section) => {
             const histOff = section && section.histSection && val("showHist") === false;
@@ -23091,11 +23117,11 @@ const TalariaV8bLive = () => {
                 </div>
               );
             }
-            if (p.type === "select" && v9IsSimpleIndLineStyleParam(p)) {
+            if (p.type === "select" && v9IsIndPlotStyleParamId(p.id)) {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
                   <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
-                  {renderIndShapeStyleDrop(p.id, () => raw, false)}
+                  {renderIndPlotStyleDrop(p.id, () => raw, false)}
                 </div>
               );
             }
@@ -23433,36 +23459,48 @@ const TalariaV8bLive = () => {
         const dropParam = dropDef ? dropDef.params.find((x) => x.id === pid) : null;
         const rawVal = indSettDraft[pid] !== undefined ? indSettDraft[pid] : dropParam?.default;
         if (isStyle) {
-          const shapeType = v9IndPlotStyleToShapeType(rawVal);
+          const plotOpts = v9IndPlotStyleOptions();
+          const menuMaxH = typeof window !== "undefined" ? Math.max(120, window.innerHeight - a.top - 12) : 360;
           return (
-            <div data-sdrop="1" data-ind-style-drop="1"
+            <div data-sdrop="1" data-ind-style-drop="1" className="tlr-scroll"
               onPointerDown={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
               style={{
                 position: "fixed",
                 top: a.top,
                 left: a.left,
-                width: a.width,
+                width: Math.max(a.width, 220),
                 zIndex: 13000,
+                maxHeight: menuMaxH,
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+                WebkitOverflowScrolling: "touch",
+                touchAction: "pan-y",
                 background: c.sf,
                 border: "1px solid rgba(140,160,255,0.22)",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+                borderRadius: 4,
                 pointerEvents: "auto",
                 fontFamily: F,
-                animation: a.openUp ? "tlrDropIn 0.12s ease" : "tlrDropIn 0.12s ease",
+                animation: "tlrDropIn 0.12s ease",
               }}>
               <div style={{ height: 2, background: `linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }} />
-              {V9_IND_SHAPE_STYLE_OPTS.map(([v, dArr, sw]) => {
-                const isA = shapeType === v;
-                const optH = hov === `ind-st-${pid}-${v}`;
+              {plotOpts.map((opt) => {
+                const isA = v9IndPlotStyleMatches(rawVal, opt.value);
+                const optKey = `ind-st-${pid}-${String(opt.value)}`;
+                const optH = hov === optKey;
                 return (
-                  <div key={v} {...indStyleDropPick(() => patchIndSettDraftLive((d) => ({ ...d, [pid]: v9ShapeTypeToIndPlotStyle(v) })))}
-                    onMouseEnter={() => setHov(`ind-st-${pid}-${v}`)} onMouseLeave={() => setHov(null)}
-                    style={{ padding: "7px 0", cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", position: "relative",
-                      background: isA ? c.acD : optH ? c.hv : "transparent", transition: "background 0.1s" }}>
+                  <div key={String(opt.value)} {...indStyleDropPick(() => patchIndSettDraftLive((d) => ({ ...d, [pid]: opt.value })))}
+                    onMouseEnter={() => setHov(optKey)} onMouseLeave={() => setHov(null)}
+                    style={{ padding: "6px 10px", cursor: "default", display: "flex", alignItems: "center", gap: 10, position: "relative",
+                      background: isA ? "rgba(74,106,255,0.14)" : optH ? c.hv : "transparent", transition: "background 0.1s" }}>
                     {isA && <div style={{ position: "absolute", left: 0, top: "15%", bottom: "15%", width: 2, background: `linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow: `0 0 6px ${c.acG}` }} />}
-                    <svg width={28} height={10} viewBox="0 0 28 10"><line x1={0} y1={5} x2={28} y2={5} stroke={isA ? c.acL : c.ts} strokeWidth={sw} strokeLinecap="round" strokeDasharray={dArr} /></svg>
+                    <span style={{ flexShrink: 0, width: 56, display: "inline-flex", justifyContent: "center", opacity: 0.95 }}>
+                      <V9PlotStylePreview style={opt.value} color={isA ? c.acL : optH ? c.tx : c.ts} />
+                    </span>
+                    <span style={{ fontSize: 12, color: isA ? c.acL : optH ? c.tx : c.ts, lineHeight: 1.2 }}>{opt.label || opt.value}</span>
                   </div>
                 );
               })}
@@ -23551,7 +23589,9 @@ const TalariaV8bLive = () => {
             }}
           >
             {menuOptions.map((opt) => {
-              const sel = String(opt.value) === strVal;
+              const sel = v9IsIndPlotStyleParamId(menuParam.id)
+                ? v9IndPlotStyleMatches(rawVal, opt.value)
+                : String(opt.value) === strVal;
               const optKey = `ind-opt-${menuParam.id}-${String(opt.value)}`;
               return (
                 <div
@@ -23565,7 +23605,7 @@ const TalariaV8bLive = () => {
                   onMouseEnter={() => setHov(optKey)}
                   onMouseLeave={() => setHov(null)}
                   style={{
-                    padding: menuParam.id === "lineStyle" ? "6px 10px" : "7px 10px",
+                    padding: v9IsIndPlotStyleParamId(menuParam.id) ? "6px 10px" : "7px 10px",
                     fontSize: 12,
                     cursor: "default",
                     color: sel ? c.acL : hov === optKey ? c.tx : c.ts,
@@ -23574,11 +23614,11 @@ const TalariaV8bLive = () => {
                     transition: "background 0.1s, color 0.1s",
                     display: "flex",
                     alignItems: "center",
-                    gap: menuParam.id === "lineStyle" ? 10 : 0,
+                    gap: v9IsIndPlotStyleParamId(menuParam.id) ? 10 : 0,
                   }}
                 >
-                  {menuParam.id === "lineStyle" && (
-                    <span style={{ flexShrink: 0, opacity: 0.95, display: "inline-flex" }}>
+                  {v9IsIndPlotStyleParamId(menuParam.id) && (
+                    <span style={{ flexShrink: 0, width: 56, display: "inline-flex", justifyContent: "center", opacity: 0.95 }}>
                       <V9PlotStylePreview style={opt.value} color={sel ? c.acL : hov === optKey ? c.tx : "#b2b5be"} />
                     </span>
                   )}
