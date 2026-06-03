@@ -5466,21 +5466,24 @@
             return Math.max(indTop + 2, Math.min(indBottom - 2, y));
         };
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.lineWidth = 1;
-        const numGridLines = 4;
-        for (let g = 0; g <= numGridLines; g++) {
-            const val = min + (max - min) * (g / numGridLines);
-            const y = scaleY(val);
-            if (y === null) continue;
-            ctx.beginPath();
-            ctx.moveTo(m.l, y);
-            ctx.lineTo(this.w, y);
-            ctx.stroke();
-            ctx.fillStyle = '#787b86';
-            ctx.font = '10px Roboto';
-            ctx.textAlign = 'right';
-            ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
+        const panelFast = this._panelRenderFast === true;
+        const numGridLines = panelFast ? 0 : 4;
+        if (numGridLines > 0) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for (let g = 0; g <= numGridLines; g++) {
+                const val = min + (max - min) * (g / numGridLines);
+                const y = scaleY(val);
+                if (y === null) continue;
+                ctx.beginPath();
+                ctx.moveTo(m.l, y);
+                ctx.lineTo(this.w, y);
+                ctx.stroke();
+                ctx.fillStyle = '#787b86';
+                ctx.font = '10px Roboto';
+                ctx.textAlign = 'right';
+                ctx.fillText(val.toFixed(2), this.w - 6, y + 3);
+            }
         }
 
         plots.forEach(function(plot) {
@@ -8086,6 +8089,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     Chart.prototype._drawPanelHLine = function(ctx, m, panelTop, panelBottom, scaleY, value, color, lineStyle, labelText, lineWidth) {
+        if (this._panelRenderFast === true) return;
         if (value === null || value === undefined || isNaN(value)) return;
         const y = scaleY(value);
         if (y === null || !Number.isFinite(y) || y <= panelTop || y >= panelBottom) return;
@@ -8112,18 +8116,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         ctx.font = '10px Roboto';
         ctx.textAlign = 'right';
         ctx.fillStyle = '#787b86';
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.lineWidth = 1;
-        const numGridLines = fast ? 2 : 4;
-        for (let i = 0; i <= numGridLines; i++) {
-            const tickVal = min + (max - min) * (i / numGridLines);
-            const tickY = scaleY(tickVal);
-            if (!Number.isFinite(tickY)) continue;
-            ctx.beginPath();
-            ctx.moveTo(m.l, tickY);
-            ctx.lineTo(this.w, tickY);
-            ctx.stroke();
-            if (!fast) ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
+        const numGridLines = fast ? 0 : 4;
+        if (numGridLines > 0) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= numGridLines; i++) {
+                const tickVal = min + (max - min) * (i / numGridLines);
+                const tickY = scaleY(tickVal);
+                if (!Number.isFinite(tickY)) continue;
+                ctx.beginPath();
+                ctx.moveTo(m.l, tickY);
+                ctx.lineTo(this.w, tickY);
+                ctx.stroke();
+                ctx.fillText(tickVal.toFixed(d), this.w - 6, tickY + 3);
+            }
         }
     };
 
@@ -8485,7 +8491,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg) {
+        if (style.showBg && this._panelRenderFast !== true) {
             ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
             ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
@@ -8496,6 +8502,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
         const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
 
+        if (this._panelRenderFast !== true) {
         if (style.showOverbought !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
                 style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
@@ -8507,6 +8514,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
                 style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        }
         }
 
         const kWidth = style.kLineWidth != null ? style.kLineWidth : (style.lineWidth || 2);

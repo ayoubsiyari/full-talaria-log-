@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a76';
+const CHART_ENGINE_BUILD = '20260602a78';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -17040,18 +17040,17 @@ class Chart {
         if (visible.length === 0 && this.data.length > 0) {
             // Still draw grid, axes, and drawings even when no candles are visible
             // This ensures drawings remain visible when scrolling past chart edges
-            this.drawGrid();
+            this.drawGrid({ skipAll: interactionFast });
             const latestCandle = this.data[this.data.length - 1];
             this.drawPriceLine([latestCandle]);
             if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
             if (typeof this.renderSeparatePanelIndicators === 'function') {
-                this.renderSeparatePanelIndicators();
+                this.renderSeparatePanelIndicators({ panFast: interactionFast });
             }
             this.drawAxes();
-            this.drawEconomicCalendarAxisMarkers({ panFast: chartViewPanning });
-            
+
             this.drawCurrentPriceLabel([latestCandle]);
             
             // Redraw drawings even when no candles are visible
@@ -17076,9 +17075,8 @@ class Chart {
                 this.compareOverlay.updateLeftMargin();
             }
 
-            // Skip grid only during wheel / axis-drag bursts (cached ticks stale). Keep grid while chart panning.
-            const skipGridDuringInteraction = wheelBurstLight || axisZoomDragging;
-            this.drawGrid({ panFast: true, skipAll: skipGridDuringInteraction });
+            // Hide main-chart grid while panning / zooming / resizing panels — redraw on release.
+            this.drawGrid({ panFast: true, skipAll: true });
             if (!this._volumeRendersInSeparatePanel || !this._volumeRendersInSeparatePanel()) {
                 this.drawVolume(visible, panOpts);
             }
@@ -17092,6 +17090,9 @@ class Chart {
             }
             this.drawAxes();
             this.drawCurrentPriceLabel(visible);
+            if (typeof this.hideEconomicCalendarTooltip === 'function') {
+                this.hideEconomicCalendarTooltip();
+            }
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
@@ -17186,8 +17187,10 @@ class Chart {
         this.drawAxes();
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
-        if (!chartViewPanning) {
+        if (!this._isInteractionFastRender()) {
             this.drawEconomicCalendarAxisMarkers();
+        } else if (typeof this.hideEconomicCalendarTooltip === 'function') {
+            this.hideEconomicCalendarTooltip();
         }
 
         // Draw current price label AFTER axes so it isn't covered by the axis background fill
@@ -17210,7 +17213,7 @@ class Chart {
         }
 
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
-        if (!this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
+        if (!this._isInteractionFastRender() && !this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
             window.__economicCalendarNotifyChartRender(this);
         }
 
@@ -20272,12 +20275,18 @@ class Chart {
      * the last completion so pan/zoom stay smooth while news markers hydrate.
      */
     _scheduleEconomicCalendarFlagRedraw() {
+        if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
+            return;
+        }
         if (this._econCalFlagRedrawTimer) {
             clearTimeout(this._econCalFlagRedrawTimer);
             this._econCalFlagRedrawTimer = null;
         }
         this._econCalFlagRedrawTimer = setTimeout(() => {
             this._econCalFlagRedrawTimer = null;
+            if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
+                return;
+            }
             if (this._isChartPanDragging()) return;
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
         }, 110);
@@ -20319,8 +20328,15 @@ class Chart {
      * Economic calendar: circular TV-style markers on the time-axis row; hover regions on this._economicCalendarHitRegions.
      * @param {Object} [options]
      * @param {boolean} [options.panFast] - draw visible flags only; skip hit regions and new image loads
+     * @param {boolean} [options.skip] - force skip (same as interaction fast render)
      */
     drawEconomicCalendarAxisMarkers(options = {}) {
+        if (options.skip || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender())) {
+            if (typeof this.hideEconomicCalendarTooltip === 'function') {
+                this.hideEconomicCalendarTooltip();
+            }
+            return;
+        }
         const panFast = !!options.panFast;
         if (!panFast) {
             this._economicCalendarHitRegions = [];
@@ -20581,7 +20597,7 @@ class Chart {
 
     updateEconomicCalendarHover(mx, my, domEvent) {
         if (this.isPanel) return;
-        if (this.drag && this.drag.active) {
+        if ((this.drag && this.drag.active) || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender())) {
             this.hideEconomicCalendarTooltip();
             return;
         }
