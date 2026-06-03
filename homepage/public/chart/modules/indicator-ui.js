@@ -278,6 +278,37 @@ function donchianInputParams() {
     ];
 }
 
+/** TradingView-style Supertrend Input tab. */
+function supertrendInputParams() {
+    return [
+        { id: 'period', label: 'ATR Length', type: 'number', default: 10, min: 1, tab: 'input' },
+        { id: 'multiplier', label: 'Factor', type: 'number', default: 3, min: 0.1, step: 0.1, tab: 'input' }
+    ];
+}
+
+/** TradingView-style Supertrend Style tab. */
+function supertrendStyleParams() {
+    return [
+        { id: 'showUp', label: 'Show up trend', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upColor', label: 'Up trend color', type: 'color', default: '#26a69a', tab: 'style' },
+        { id: 'upLineStyle', label: 'Up trend line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upLineWidth', label: 'Up trend thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showDown', label: 'Show down trend', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'downColor', label: 'Down trend color', type: 'color', default: '#ef5350', tab: 'style' },
+        { id: 'downLineStyle', label: 'Down trend line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'downLineWidth', label: 'Down trend thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showBody', label: 'Show body middle line', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bodyColor', label: 'Body middle line color', type: 'color', default: 'rgba(120,123,134,0.5)', tab: 'style' },
+        { id: 'bodyLineStyle', label: 'Body middle line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'bodyLineWidth', label: 'Body middle line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showUpBg', label: 'Show up trend background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'upBgColor', label: 'Up trend background', type: 'color', default: 'rgba(38,166,154,0.15)', tab: 'style' },
+        { id: 'showDownBg', label: 'Show down trend background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'downBgColor', label: 'Down trend background', type: 'color', default: 'rgba(239,83,80,0.15)', tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 /** TradingView-style Donchian Channels Style tab. */
 function donchianStyleParams() {
     return [
@@ -1117,16 +1148,7 @@ const INDICATOR_DEFINITIONS = {
     supertrend: {
         name: 'Supertrend',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'ATR Length', type: 'number', default: 10, min: 1 },
-            { id: 'multiplier', label: 'Factor', type: 'number', default: 3, min: 0.1, step: 0.1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'hl2' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-            { id: 'upColor', label: 'Up Trend Color', type: 'color', default: '#26a69a', tab: 'style' },
-            { id: 'downColor', label: 'Down Trend Color', type: 'color', default: '#ef5350', tab: 'style' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: supertrendInputParams().concat(supertrendStyleParams())
     },
     stddev: {
         name: 'Standard Deviation',
@@ -3421,7 +3443,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
-    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear|upper|middle|lower)color$/i.test(id)) return true;
+    if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear|upper|middle|lower|body)color$/i.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
@@ -3533,6 +3555,26 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
                     v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
                     v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'supertrend') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('Up Trend', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
+                    v9PlotRow('Down Trend', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown'),
+                    v9PlotRow('Body Middle Line', 'bodyColor', 'bodyLineStyle', 'bodyLineWidth', 'showBody')
+                ]
+            }, {
+                title: 'Background',
+                rows: [
+                    v9ColorRow('Up Trend', 'upBgColor', 'showUpBg'),
+                    v9ColorRow('Down Trend', 'downBgColor', 'showDownBg')
                 ]
             }],
             footers: footers

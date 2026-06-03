@@ -387,6 +387,30 @@
         ]);
     }
 
+    function applySupertrendStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showUp = params.showUp !== false;
+        indicator.style.upColor = params.upColor || '#26a69a';
+        indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
+        indicator.style.showDown = params.showDown !== false;
+        indicator.style.downColor = params.downColor || '#ef5350';
+        indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
+        indicator.style.showBody = params.showBody === true;
+        indicator.style.bodyColor = params.bodyColor || 'rgba(120,123,134,0.5)';
+        indicator.style.bodyLineWidth = params.bodyLineWidth != null ? params.bodyLineWidth : 1;
+        indicator.style.showUpBg = params.showUpBg === true;
+        indicator.style.upBgColor = params.upBgColor || 'rgba(38,166,154,0.15)';
+        indicator.style.showDownBg = params.showDownBg === true;
+        indicator.style.downBgColor = params.downBgColor || 'rgba(239,83,80,0.15)';
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['upLineStyle', 'upLineDashStyle', legacyS],
+            ['downLineStyle', 'downLineDashStyle', legacyS],
+            ['bodyLineStyle', 'bodyLineDashStyle', legacyS]
+        ]);
+    }
+
     function resolvePsarCalcParams(params) {
         params = params || {};
         const start = params.start != null ? Number(params.start) : (params.step != null ? Number(params.step) : 0.02);
@@ -2985,18 +3009,19 @@
         return { upper: upper, lower: lower, middle: middle };
     }
 
-    function calculateSupertrend(data, period, multiplier, source) {
+    function calculateSupertrend(data, period, multiplier) {
         const mult = multiplier != null ? multiplier : 3;
         const p = Math.max(1, period || 10);
-        source = source || 'hl2';
         const atr = calculateATR(data, p);
         const n = data.length;
         const finalUpper = new Array(n).fill(null);
         const finalLower = new Array(n).fill(null);
         const line = new Array(n).fill(null);
         const direction = new Array(n).fill(1);
+        const body = new Array(n).fill(null);
         for (let i = 0; i < n; i++) {
-            const hl2 = resolveOhlcSourceValue(data[i], source);
+            const hl2 = resolveOhlcSourceValue(data[i], 'hl2');
+            body[i] = Number.isFinite(hl2) ? hl2 : null;
             const close = resolveOhlcSourceValue(data[i], 'close');
             const a = atr[i];
             if (a == null || isNaN(a) || !Number.isFinite(hl2)) continue;
@@ -3032,7 +3057,7 @@
                 }
             }
         }
-        return { line: line, direction: direction, upper: finalUpper, lower: finalLower };
+        return { line: line, direction: direction, upper: finalUpper, lower: finalLower, body: body };
     }
 
     function calculateStdDevLine(data, period, source) {
@@ -3999,15 +4024,10 @@
             case 'supertrend':
                 indicator.params.period = params.period != null ? params.period : 10;
                 indicator.params.multiplier = params.multiplier != null ? params.multiplier : 3;
-                indicator.params.source = params.source || 'hl2';
-                indicator.style.upColor = params.upColor || '#26a69a';
-                indicator.style.downColor = params.downColor || '#ef5350';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
+                applySupertrendStyleFromParams(indicator, params);
                 indicator.overlay = true;
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
                 break;
 
             case 'stddev':
@@ -4808,6 +4828,9 @@
             indicator.overlay = true;
             applyStddevStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'supertrend') {
+            applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -5099,7 +5122,7 @@
                 break;
             case 'supertrend':
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source || 'hl2');
+                this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
                 break;
             case 'stddev':
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
@@ -5434,7 +5457,7 @@
                     this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
                     break;
                 case 'supertrend':
-                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier, indicator.params.source || 'hl2');
+                    this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
                     break;
                 case 'stddev':
                     this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -5907,10 +5930,56 @@
         if (!data || !data.line || !data.direction) return;
         const ctx = this.ctx;
         const m = this.margin;
-        const upColor = indicator.style.upColor || '#26a69a';
-        const downColor = indicator.style.downColor || '#ef5350';
-        const lw = indicator.style.lineWidth || 2;
-        const dash = this._lineDashForStyle(indicator.style.lineStyle);
+        const style = indicator.style || {};
+        const upColor = style.upColor || '#26a69a';
+        const downColor = style.downColor || '#ef5350';
+        const upLw = style.upLineWidth != null ? style.upLineWidth : (style.lineWidth != null ? style.lineWidth : 2);
+        const downLw = style.downLineWidth != null ? style.downLineWidth : (style.lineWidth != null ? style.lineWidth : 2);
+        const dashForPlot = function(plotStyle, dashStyleOpt) {
+            const normalized = this._normalizePlotStyle(plotStyle || 'Line');
+            if (normalized === 'Dashed' || normalized === 'Dotted' || normalized === 'Dashdot') {
+                return this._lineDashForStyle(normalized);
+            }
+            const ds = dashStyleOpt || 'Solid';
+            return this._lineDashForStyle(ds === 'Solid' ? 'Line' : ds);
+        }.bind(this);
+        const upDash = dashForPlot(style.upLineStyle || style.lineStyle, style.upLineDashStyle);
+        const downDash = dashForPlot(style.downLineStyle || style.lineStyle, style.downLineDashStyle);
+        const chartData = this.data;
+
+        if ((style.showUpBg || style.showDownBg) && Array.isArray(chartData)) {
+            const cw = Math.max(1, (this.candleWidth || 8) * 0.9);
+            for (let bi = startIndex; bi < endIndex && bi < data.line.length; bi++) {
+                if (data.line[bi] == null || isNaN(data.line[bi])) continue;
+                const dirUp = data.direction[bi] >= 0;
+                if (dirUp && !style.showUpBg) continue;
+                if (!dirUp && !style.showDownBg) continue;
+                const bar = chartData[bi];
+                if (!bar) continue;
+                const close = resolveOhlcSourceValue(bar, 'close');
+                if (!Number.isFinite(close)) continue;
+                const x = this.dataIndexToPixel(bi);
+                if (x < m.l - 30 || x > this.w - m.r + 30) continue;
+                const yLine = this.yScale(data.line[bi]);
+                const yClose = this.yScale(close);
+                if (!Number.isFinite(yLine) || !Number.isFinite(yClose)) continue;
+                ctx.fillStyle = dirUp ? (style.upBgColor || 'rgba(38,166,154,0.15)') : (style.downBgColor || 'rgba(239,83,80,0.15)');
+                ctx.fillRect(x - cw / 2, Math.min(yLine, yClose), cw, Math.abs(yClose - yLine));
+            }
+        }
+
+        if (style.showBody && Array.isArray(data.body)) {
+            this.drawLineIndicator(
+                data.body,
+                style.bodyColor || 'rgba(120,123,134,0.5)',
+                style.bodyLineWidth != null ? style.bodyLineWidth : 1,
+                startIndex,
+                endIndex,
+                style.bodyLineStyle || 'Line',
+                { dashStyle: style.bodyLineDashStyle || 'Solid' }
+            );
+        }
+
         let i = startIndex;
         while (i < endIndex && i < data.line.length) {
             if (data.line[i] == null || isNaN(data.line[i])) {
@@ -5918,9 +5987,17 @@
                 continue;
             }
             const dirUp = data.direction[i] >= 0;
+            if (dirUp && style.showUp === false) {
+                i++;
+                continue;
+            }
+            if (!dirUp && style.showDown === false) {
+                i++;
+                continue;
+            }
             ctx.strokeStyle = dirUp ? upColor : downColor;
-            ctx.lineWidth = lw;
-            ctx.setLineDash(dash);
+            ctx.lineWidth = dirUp ? upLw : downLw;
+            ctx.setLineDash(dirUp ? upDash : downDash);
             ctx.beginPath();
             let started = false;
             let j = i;
