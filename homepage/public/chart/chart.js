@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a78';
+const CHART_ENGINE_BUILD = '20260602a79';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -630,6 +630,8 @@ class Chart {
         this._pendingCrosshairMoveEvent = null;
         this._wheelBurstRenderRaf = null;
         this._wheelBurstFinalPass = false;
+        /** Hide grid / panel decor until this timestamp (extends past wheel burst gaps). */
+        this._hideDecorUntil = 0;
         
         // Performance metrics
         this.lastFrameTime = performance.now();
@@ -16143,12 +16145,28 @@ class Chart {
         return typeof this._wheelBurstUntil === 'number' && performance.now() < this._wheelBurstUntil;
     }
 
+    /** Extend grid/decor hide window (wheel gaps, inertia tail, release settle). */
+    _markChartDecorHidden(durationMs) {
+        const ms = Number.isFinite(durationMs) ? durationMs : 360;
+        this._hideDecorUntil = Math.max(this._hideDecorUntil || 0, performance.now() + ms);
+    }
+
+    /** True while grids, panel tick overlays, and news flags should stay hidden. */
+    _shouldHideChartDecorDuringInteraction() {
+        if (typeof this._hideDecorUntil === 'number' && performance.now() < this._hideDecorUntil) {
+            return true;
+        }
+        return this._isInteractionFastRender();
+    }
+
     /** Pan, inertia, wheel burst, axis drag, or panel resize — lightweight paint until interaction settles. */
     _isInteractionFastRender() {
+        if (this._chartPanRenderLoopActive) return true;
         if (this._isChartViewPanning()) return true;
         if (this._isWheelZoomBurst() && !this._wheelBurstFinalPass) return true;
         if (this._isAxisZoomDragging() && !this._axisZoomFinalizePass) return true;
         if (this._isSeparatePanelResizing() && !this._separatePanelResizeFinalizePass) return true;
+        if (this.drag && this.drag.active && this.drag.type === 'pan') return true;
         return false;
     }
 
@@ -16982,7 +17000,13 @@ class Chart {
         
         const chartViewPanning = this._isChartViewPanning();
         const axisZoomDragging = this._isAxisZoomDragging() && !this._axisZoomFinalizePass;
-        const interactionFast = this._isInteractionFastRender();
+        if (chartViewPanning || axisZoomDragging || this._isWheelZoomBurst() || this._isSeparatePanelResizing()) {
+            this._markChartDecorHidden(360);
+        }
+        const interactionFast = this._shouldHideChartDecorDuringInteraction();
+        if (interactionFast && typeof this._clearSeparatePanelAxisOverlayDecor === 'function') {
+            this._clearSeparatePanelAxisOverlayDecor();
+        }
 
         // If no data, show message
         if (!this.data || this.data.length === 0) {
@@ -17088,7 +17112,7 @@ class Chart {
             if (typeof this.renderSeparatePanelIndicators === 'function') {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
-            this.drawAxes();
+            this.drawAxes({ hideDecor: true });
             this.drawCurrentPriceLabel(visible);
             if (typeof this.hideEconomicCalendarTooltip === 'function') {
                 this.hideEconomicCalendarTooltip();
@@ -17187,7 +17211,7 @@ class Chart {
         this.drawAxes();
 
         // Economic calendar markers (Finnhub) on the time-axis row — after axes so they sit above the axis line.
-        if (!this._isInteractionFastRender()) {
+        if (!this._shouldHideChartDecorDuringInteraction()) {
             this.drawEconomicCalendarAxisMarkers();
         } else if (typeof this.hideEconomicCalendarTooltip === 'function') {
             this.hideEconomicCalendarTooltip();
@@ -17213,7 +17237,7 @@ class Chart {
         }
 
         // Economic calendar: refetch Finnhub range when visible window date span changes (long histories / pan).
-        if (!this._isInteractionFastRender() && !this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
+        if (!this._shouldHideChartDecorDuringInteraction() && !this.isPanel && typeof window !== 'undefined' && typeof window.__economicCalendarNotifyChartRender === 'function') {
             window.__economicCalendarNotifyChartRender(this);
         }
 
@@ -17243,6 +17267,11 @@ class Chart {
     drawGrid(opts = {}) {
         // Skip if grid is disabled
         if (!this.chartSettings.showGrid || this.chartSettings.gridStyle === 'None') return;
+
+        if (!opts.skipAll && typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction()) {
+            opts = { ...opts, skipAll: true };
+        }
         
         const m = this.margin;
         const plotLayout = typeof this._getMainPricePlotLayout === 'function'
@@ -17310,7 +17339,7 @@ class Chart {
         }
         
         // Volume section separator (only show if volume is visible)
-        if ((typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) && volumeAreaHeight > 0) {
+        if (!skipAll && (typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume) && volumeAreaHeight > 0) {
             const indPanelH = this.separateIndicatorPanelHeight || 0;
             this.ctx.strokeStyle = this.chartSettings.gridColor || 'rgba(255, 255, 255, 0.08)';
             this.ctx.lineWidth = 1;
@@ -17326,8 +17355,12 @@ class Chart {
     /**
      * Draw axis labels and ticks
      */
-    drawAxes() {
+    drawAxes(opts = {}) {
         if (!this.xScale || !this.yScale) return;
+
+        const hideDecor = !!opts.hideDecor
+            || (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+                && this._shouldHideChartDecorDuringInteraction());
 
         this._syncAdaptivePriceAxisMargin();
 
@@ -17425,11 +17458,13 @@ class Chart {
                 const tick = this._timeTicks[i];
                 const xLine = tick.x;
                 const labelX = xLine;
-                applyScaleLineStyle();
-                this.ctx.beginPath();
-                this.ctx.moveTo(xLine, this.h - m.b);
-                this.ctx.lineTo(xLine, this.h - m.b + 5);
-                this.ctx.stroke();
+                if (!hideDecor) {
+                    applyScaleLineStyle();
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(xLine, this.h - m.b);
+                    this.ctx.lineTo(xLine, this.h - m.b + 5);
+                    this.ctx.stroke();
+                }
                 this.ctx.fillStyle = axisTextColor;
                 this.ctx.font = scaleFont;
                 this.ctx.fillText(tick.label, labelX, timeLabelY);
@@ -20275,7 +20310,8 @@ class Chart {
      * the last completion so pan/zoom stay smooth while news markers hydrate.
      */
     _scheduleEconomicCalendarFlagRedraw() {
-        if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
+        if (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction()) {
             return;
         }
         if (this._econCalFlagRedrawTimer) {
@@ -20284,7 +20320,8 @@ class Chart {
         }
         this._econCalFlagRedrawTimer = setTimeout(() => {
             this._econCalFlagRedrawTimer = null;
-            if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
+            if (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+                && this._shouldHideChartDecorDuringInteraction()) {
                 return;
             }
             if (this._isChartPanDragging()) return;
@@ -20331,7 +20368,8 @@ class Chart {
      * @param {boolean} [options.skip] - force skip (same as interaction fast render)
      */
     drawEconomicCalendarAxisMarkers(options = {}) {
-        if (options.skip || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender())) {
+        if (options.skip || (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction())) {
             if (typeof this.hideEconomicCalendarTooltip === 'function') {
                 this.hideEconomicCalendarTooltip();
             }
@@ -20597,7 +20635,8 @@ class Chart {
 
     updateEconomicCalendarHover(mx, my, domEvent) {
         if (this.isPanel) return;
-        if ((this.drag && this.drag.active) || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender())) {
+        if ((this.drag && this.drag.active) || (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction())) {
             this.hideEconomicCalendarTooltip();
             return;
         }
@@ -20835,6 +20874,9 @@ class Chart {
             // 200ms so back-to-back wheel ticks stay inside a single burst.
             const burstWasActive = this._isWheelZoomBurst();
             this._wheelBurstUntil = performance.now() + 200;
+            if (typeof this._markChartDecorHidden === 'function') {
+                this._markChartDecorHidden(400);
+            }
             this._clearPanTimeTickCache();
             if (!burstWasActive && this.yScale) {
                 const d = this.yScale.domain();
@@ -21224,6 +21266,9 @@ class Chart {
                 this.canvas.style.cursor = 'ns-resize';
                 if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ns-resize';
             } else if (mode === 'priceAxis') {
+                if (typeof this._markChartDecorHidden === 'function') {
+                    this._markChartDecorHidden(400);
+                }
                 this.drag.type = 'priceAxis';
                 const wasAutoScale = this.autoScale;
                 this.autoScale = false;
@@ -21241,6 +21286,9 @@ class Chart {
                 this._cachedInteractionTimeTicks = this._timeTicks;
                 this.canvas.style.cursor = 'ns-resize';
             } else if (mode === 'timeAxis') {
+                if (typeof this._markChartDecorHidden === 'function') {
+                    this._markChartDecorHidden(400);
+                }
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;
@@ -21263,6 +21311,9 @@ class Chart {
                     this.replaySystem.onUserPan();
                 }
                 // Start pan loop on finger-down so the first mousemove is not waiting on rAF setup.
+                if (typeof this._markChartDecorHidden === 'function') {
+                    this._markChartDecorHidden(400);
+                }
                 this._scheduleChartPanRender();
                 this.renderPending = false;
                 this.render();

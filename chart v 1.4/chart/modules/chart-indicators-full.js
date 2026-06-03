@@ -5633,6 +5633,16 @@ Chart.prototype._getMainPricePlotLayout = function() {
     return { m: m, ch: ch, volumeAreaHeight: volumeAreaHeight, indPanelH: indPanelH, plotBottom: plotBottom, plotHeight: plotHeight };
 };
 
+/** Remove DOM axis tick labels on indicator panels (canvas grids are separate). */
+Chart.prototype._clearSeparatePanelAxisOverlayDecor = function() {
+    const canvas = this.ctx && this.ctx.canvas;
+    const wrapper = canvas ? canvas.parentElement : null;
+    if (!wrapper) return;
+    const overlay = wrapper.querySelector('#separatePanelsOverlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
+};
+
 /** Opaque fill for the separate-panel stack — call before candles so price series cannot bleed through. */
 Chart.prototype._paintSeparatePanelStackBackground = function() {
     if (typeof this._getVisibleSeparateIndicators !== 'function') return;
@@ -5765,6 +5775,9 @@ Chart.prototype._applyVolumePanelHeightPx = function(heightPx) {
 
 Chart.prototype.startSeparatePanelResize = function(handle, startY) {
     if (!handle || !this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.panelHeights)) return false;
+    if (typeof this._markChartDecorHidden === 'function') {
+        this._markChartDecorHidden(400);
+    }
     const usesVolume = !!(handle.isVolume || handle.isVolumePair);
     const baseVolumeHeight = usesVolume ? this._getVolumePanelHeight() : 0;
     this._separatePanelResize = {
@@ -5859,8 +5872,12 @@ Chart.prototype.finishSeparatePanelResize = function() {
 Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     opts = opts || {};
     const panFast = opts.panFast === true
-        || (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender());
+        || (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction());
     this._panelRenderFast = panFast;
+    if (panFast && typeof this._clearSeparatePanelAxisOverlayDecor === 'function') {
+        this._clearSeparatePanelAxisOverlayDecor();
+    }
     try {
     if (!this.indicators || !this.indicators.active) {
         return;
@@ -6240,7 +6257,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         });
 
         // Reference lines for oscillators
-        if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
+        if (this._panelRenderFast !== true && (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality')) {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -6304,6 +6321,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
                 color: color
             }];
             
+            if (this._panelRenderFast !== true) {
             // Dashed line at current value
             ctx.strokeStyle = color;
             ctx.lineWidth = 1;
@@ -6313,6 +6331,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             ctx.lineTo(this.w, currentY);
             ctx.stroke();
             ctx.setLineDash([]);
+            }
             
             // Value label box on right
             const labelWidth = 50;
@@ -9132,6 +9151,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!overlay || !Array.isArray(indicators)) return;
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
         overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
+        if (typeof this._shouldHideChartDecorDuringInteraction === 'function'
+            && this._shouldHideChartDecorDuringInteraction()) {
+            return;
+        }
         const m = this.margin || { r: 56 };
         const axisLeft = this.w - m.r;
         const axisWidth = Math.max(30, m.r - 4);
