@@ -5529,19 +5529,10 @@
 const DEFAULT_SEPARATE_PANEL_HEIGHT = 100;
 const MIN_SEPARATE_PANEL_HEIGHT = 60;
 const DEFAULT_VOLUME_PANEL_HEIGHT = 80;
-const MIN_VOLUME_PANEL_PRESERVE_HEIGHT = 72;
 
 Chart.prototype._getMaxSeparatePanelStackHeight = function() {
     const m = this.margin || { t: 0, b: 0 };
     return Math.max(MIN_SEPARATE_PANEL_HEIGHT, (this.h || 0) - m.t - m.b);
-};
-
-Chart.prototype._getVolumePanelPreserveMin = function() {
-    const maxStack = this._getMaxSeparatePanelStackHeight();
-    return Math.max(
-        MIN_SEPARATE_PANEL_HEIGHT,
-        Math.min(MIN_VOLUME_PANEL_PRESERVE_HEIGHT, Math.floor(maxStack * 0.12))
-    );
 };
 
 /** Volume band height for layout — honors live resize state so scales/background match slots. */
@@ -5555,21 +5546,14 @@ Chart.prototype._getVolumePanelHeightForLayout = function() {
     return this._getVolumePanelHeight();
 };
 
-/**
- * Keep the stacked panel area inside the chart and avoid crushing volume when oscillators grow.
- */
+/** Shrink panel stack only when it exceeds chart height (never force volume back on). */
 Chart.prototype._clampSeparatePanelLayout = function(panelHeights, volumePanelHeight) {
     const maxStack = this._getMaxSeparatePanelStackHeight();
     const heights = Array.isArray(panelHeights) ? panelHeights.slice() : [];
     let vol = Number.isFinite(volumePanelHeight) ? volumePanelHeight : 0;
     const volInPanel = vol > 0;
-    const volFloor = volInPanel ? this._getVolumePanelPreserveMin() : 0;
 
-    if (volInPanel) {
-        vol = Math.max(volFloor, vol);
-    }
-
-    let total = vol + heights.reduce((sum, h) => sum + (Number(h) || 0), 0);
+    let total = vol + heights.reduce(function(sum, h) { return sum + (Number(h) || 0); }, 0);
     if (total <= maxStack) {
         return { panelHeights: heights, volumePanelHeight: volInPanel ? Math.round(vol) : 0 };
     }
@@ -5591,16 +5575,7 @@ Chart.prototype._clampSeparatePanelLayout = function(panelHeights, volumePanelHe
     total = vol + heights.reduce(function(s, h) { return s + h; }, 0);
     excess = total - maxStack;
     if (excess > 0 && volInPanel) {
-        vol = Math.max(volFloor, vol - Math.min(Math.max(0, vol - volFloor), excess));
-        total = vol + heights.reduce(function(s, h) { return s + h; }, 0);
-        excess = total - maxStack;
-    }
-    if (excess > 0) {
-        shrinkOscillators();
-    }
-
-    if (volInPanel) {
-        vol = Math.max(volFloor, vol);
+        vol = Math.max(MIN_SEPARATE_PANEL_HEIGHT, vol - Math.min(Math.max(0, vol - MIN_SEPARATE_PANEL_HEIGHT), excess));
     }
     return { panelHeights: heights, volumePanelHeight: volInPanel ? Math.round(vol) : 0 };
 };
@@ -5618,7 +5593,8 @@ Chart.prototype._getActiveVolumeIndicator = function() {
 
 Chart.prototype._volumeRendersInSeparatePanel = function() {
     if (!this.chartSettings || this.chartSettings.showVolume !== true) return false;
-    if (!this._getActiveVolumeIndicator()) return false;
+    const volInd = this._getActiveVolumeIndicator();
+    if (!volInd || volInd.visible === false) return false;
     return this._getVisibleSeparateIndicators().length > 0;
 };
 
@@ -5657,11 +5633,13 @@ Chart.prototype._paintSeparatePanelStackBackground = function() {
         this._separatePanelResize.activeHeights.length === panelHeights.length) {
         panelHeights = this._separatePanelResize.activeHeights.slice();
     }
-    const volumePanelHeight = volumeInPanel ? this._getVolumePanelHeightForLayout() : 0;
-    const clampedLayout = this._clampSeparatePanelLayout(panelHeights, volumePanelHeight);
-    panelHeights = clampedLayout.panelHeights;
-    const clampedVolume = volumeInPanel ? clampedLayout.volumePanelHeight : 0;
-    const totalPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + clampedVolume;
+    let volumePanelHeight = volumeInPanel ? this._getVolumePanelHeightForLayout() : 0;
+    if (!this._separatePanelResize) {
+        const clampedLayout = this._clampSeparatePanelLayout(panelHeights, volumePanelHeight);
+        panelHeights = clampedLayout.panelHeights;
+        volumePanelHeight = volumeInPanel ? clampedLayout.volumePanelHeight : 0;
+    }
+    const totalPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + volumePanelHeight;
     if (totalPanelHeight <= 0) return;
 
     const panelBottom = this.h - m.b;
@@ -5689,9 +5667,13 @@ Chart.prototype._syncSeparateIndicatorPanelHeightEstimate = function() {
             panelHeights = this._separatePanelResize.activeHeights.slice();
         }
     }
+    let volH = this._volumeRendersInSeparatePanel() ? this._getVolumePanelHeightForLayout() : 0;
+    if (this._separatePanelResize) {
+        this.separateIndicatorPanelHeight = panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + volH;
+        return;
+    }
     let total = panelHeights.reduce(function(sum, h) { return sum + h; }, 0);
-    if (this._volumeRendersInSeparatePanel()) {
-        const volH = this._getVolumePanelHeightForLayout();
+    if (volH > 0) {
         const clamped = this._clampSeparatePanelLayout(panelHeights, volH);
         total = clamped.panelHeights.reduce(function(sum, h) { return sum + h; }, 0) + clamped.volumePanelHeight;
     }
@@ -5756,8 +5738,7 @@ Chart.prototype._clampVolumePanelHeight = function(heightPx) {
     const m = this.margin || { t: 0, b: 0 };
     const ch = Math.max(0, (this.h || 0) - m.t - m.b);
     const maxH = Math.round(ch * 0.35);
-    const minH = this._getVolumePanelPreserveMin();
-    return Math.max(minH, Math.min(maxH || minH, Math.round(heightPx)));
+    return Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(maxH || MIN_SEPARATE_PANEL_HEIGHT, Math.round(heightPx)));
 };
 
 Chart.prototype._applyVolumePanelHeightPx = function(heightPx) {
@@ -5797,10 +5778,16 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
     const baseVolumeHeight = state.baseVolumeHeight != null ? state.baseVolumeHeight : (state.activeVolumeHeight || 0);
     let activeVolumeHeight = baseVolumeHeight;
 
-    // Canvas Y grows downward: drag up (dy < 0) moves the handle up — grow panel above, shrink panel below.
+    // Canvas Y grows downward: drag up (dy < 0) shrinks panel above handle, grows panel below.
     if (state.handleType === 'top') {
         if (state.isVolume) {
-            activeVolumeHeight = this._applyVolumePanelHeightPx(baseVolumeHeight - dy);
+            activeVolumeHeight = Math.max(
+                MIN_SEPARATE_PANEL_HEIGHT,
+                Math.min(
+                    Math.round(this._getMaxSeparatePanelStackHeight() * 0.35),
+                    baseVolumeHeight + dy
+                )
+            );
         } else {
             const topIdx = state.handleIndex;
             if (topIdx < 0 || topIdx >= heights.length) return false;
@@ -5808,17 +5795,16 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
                 return i === topIdx ? s : s + h;
             }, 0) + activeVolumeHeight;
             const maxTop = Math.max(MIN_SEPARATE_PANEL_HEIGHT, this._getMaxSeparatePanelStackHeight() - otherSum);
-            let nextTopHeight = baseHeights[topIdx] - dy;
+            let nextTopHeight = baseHeights[topIdx] + dy;
             nextTopHeight = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(maxTop, nextTopHeight));
             heights[topIdx] = nextTopHeight;
         }
     } else if (state.isVolumePair) {
         if (heights.length === 0) return false;
-        const volMin = this._getVolumePanelPreserveMin();
         const pairTotal = baseVolumeHeight + baseHeights[0];
-        let nextVolume = baseVolumeHeight - dy;
-        nextVolume = Math.max(volMin, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
-        activeVolumeHeight = this._applyVolumePanelHeightPx(nextVolume);
+        let nextVolume = baseVolumeHeight + dy;
+        nextVolume = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextVolume));
+        activeVolumeHeight = nextVolume;
         heights[0] = pairTotal - activeVolumeHeight;
     } else {
         const upperIdx = state.handleIndex;
@@ -5826,7 +5812,7 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         if (upperIdx < 0 || lowerIdx >= heights.length) return false;
 
         const pairTotal = baseHeights[upperIdx] + baseHeights[lowerIdx];
-        let nextUpper = baseHeights[upperIdx] - dy;
+        let nextUpper = baseHeights[upperIdx] + dy;
         nextUpper = Math.max(MIN_SEPARATE_PANEL_HEIGHT, Math.min(pairTotal - MIN_SEPARATE_PANEL_HEIGHT, nextUpper));
         const nextLower = pairTotal - nextUpper;
 
@@ -5834,24 +5820,22 @@ Chart.prototype.updateSeparatePanelResize = function(currentY) {
         heights[lowerIdx] = nextLower;
     }
 
-    const layout = this._clampSeparatePanelLayout(heights, activeVolumeHeight);
-    heights = layout.panelHeights;
-    if (layout.volumePanelHeight > 0 && layout.volumePanelHeight !== activeVolumeHeight) {
-        activeVolumeHeight = this._applyVolumePanelHeightPx(layout.volumePanelHeight);
-    } else if (layout.volumePanelHeight > 0) {
-        activeVolumeHeight = layout.volumePanelHeight;
-    }
-
     state.activeHeights = heights;
     state.activeVolumeHeight = activeVolumeHeight;
-    this._persistSeparatePanelHeights(this.separatePanelInfo.indicators, heights, false);
-    this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0) + activeVolumeHeight;
+    this.separateIndicatorPanelHeight = heights.reduce(function(sum, h) { return sum + h; }, 0) + activeVolumeHeight;
     return true;
 };
 
 Chart.prototype.finishSeparatePanelResize = function() {
     if (!this._separatePanelResize || !this.separatePanelInfo || !Array.isArray(this.separatePanelInfo.indicators)) return;
-    const finalHeights = this._separatePanelResize.activeHeights || this._separatePanelResize.baseHeights;
+    let finalHeights = this._separatePanelResize.activeHeights || this._separatePanelResize.baseHeights;
+    let finalVol = this._separatePanelResize.activeVolumeHeight || 0;
+    const layout = this._clampSeparatePanelLayout(finalHeights, finalVol);
+    finalHeights = layout.panelHeights;
+    const volOut = layout.volumePanelHeight > 0 ? layout.volumePanelHeight : finalVol;
+    if (volOut > 0) {
+        this._applyVolumePanelHeightPx(volOut);
+    }
     this._persistSeparatePanelHeights(this.separatePanelInfo.indicators, finalHeights, true);
     this._separatePanelResize = null;
 };
@@ -5896,14 +5880,10 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     }
     const volumeIndicator = this._volumeRendersInSeparatePanel() ? this._getActiveVolumeIndicator() : null;
     let volumePanelHeight = volumeIndicator ? this._getVolumePanelHeightForLayout() : 0;
-    const layoutClamp = this._clampSeparatePanelLayout(panelHeights, volumePanelHeight);
-    panelHeights = layoutClamp.panelHeights;
-    volumePanelHeight = volumeIndicator ? layoutClamp.volumePanelHeight : 0;
-    if (volumePanelHeight > 0 && !this._separatePanelResize) {
-        const currentVolH = this._getVolumePanelHeight();
-        if (Math.abs(volumePanelHeight - currentVolH) >= 1) {
-            volumePanelHeight = this._applyVolumePanelHeightPx(volumePanelHeight);
-        }
+    if (!this._separatePanelResize) {
+        const layoutClamp = this._clampSeparatePanelLayout(panelHeights, volumePanelHeight);
+        panelHeights = layoutClamp.panelHeights;
+        volumePanelHeight = volumeIndicator ? layoutClamp.volumePanelHeight : 0;
     }
     let totalPanelHeight = panelHeights.reduce((sum, h) => sum + h, 0) + volumePanelHeight;
 
