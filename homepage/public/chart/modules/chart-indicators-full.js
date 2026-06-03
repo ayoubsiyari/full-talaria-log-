@@ -5591,10 +5591,21 @@ Chart.prototype._getActiveVolumeIndicator = function() {
     return null;
 };
 
+/** Volume bars only when the user added the Volume indicator (ignores legacy chartSettings.showVolume alone). */
+Chart.prototype._isVolumeDisplayEnabled = function() {
+    if (!this._getActiveVolumeIndicator()) return false;
+    if (!this.chartSettings || this.chartSettings.showVolume === false) return false;
+    return true;
+};
+
+/** Keep persisted showVolume aligned with whether a Volume indicator is on the chart. */
+Chart.prototype._syncVolumeDisplayFromIndicators = function() {
+    if (!this.chartSettings) this.chartSettings = {};
+    this.chartSettings.showVolume = !!this._getActiveVolumeIndicator();
+};
+
 Chart.prototype._volumeRendersInSeparatePanel = function() {
-    if (!this.chartSettings || this.chartSettings.showVolume !== true) return false;
-    const volInd = this._getActiveVolumeIndicator();
-    if (!volInd || volInd.visible === false) return false;
+    if (!this._isVolumeDisplayEnabled()) return false;
     return this._getVisibleSeparateIndicators().length > 0;
 };
 
@@ -5611,7 +5622,7 @@ Chart.prototype._getMainPricePlotLayout = function() {
     const m = this.margin;
     const ch = this.h - m.t - m.b;
     const volInPanel = typeof this._volumeRendersInSeparatePanel === 'function' && this._volumeRendersInSeparatePanel();
-    const effectiveVolumeHeight = (this.chartSettings && this.chartSettings.showVolume && !volInPanel) ? this.volumeHeight : 0;
+    const effectiveVolumeHeight = (this._isVolumeDisplayEnabled() && !volInPanel) ? this.volumeHeight : 0;
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const indPanelH = this.separateIndicatorPanelHeight || 0;
     const plotBottom = this.h - m.b - volumeAreaHeight - indPanelH;
@@ -7307,7 +7318,7 @@ Chart.prototype.drawSessions = function(data, style, startIndex = 0, endIndex = 
     const ctx = this.ctx;
     const m = this.margin;
     const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const priceAreaBottom = this.h - m.b - volumeAreaHeight;
     
@@ -7342,7 +7353,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     const ctx = this.ctx;
     const m = this.margin;
     const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const priceAreaBottom = this.h - m.b - volumeAreaHeight;
     
@@ -7584,7 +7595,7 @@ Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endInd
     const ctx = this.ctx;
     const m = this.margin;
     const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const priceAreaBottom = this.h - m.b - volumeAreaHeight;
     const n = this.data ? this.data.length : 0;
@@ -7780,7 +7791,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     const ctx = this.ctx;
     const m = this.margin;
     const ch = this.h - m.t - m.b;
-    const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+    const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
     const volumeAreaHeight = ch * effectiveVolumeHeight;
     const priceAreaBottom = this.h - m.b - volumeAreaHeight;
     const hiCol = style.highColor || '#f23645';
@@ -7914,7 +7925,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     Chart.prototype._renderVolumePanel = function(ctx, m, indTop, indBottom, panelHeight, indicator, visibleStart, visibleEnd) {
-        if (!this.data || !this.data.length || !this.chartSettings || this.chartSettings.showVolume !== true) return;
+        if (!this.data || !this.data.length || !this._isVolumeDisplayEnabled()) return;
         if (!indicator || indicator.visible === false) return;
 
         let upColor = this.chartSettings.volumeUpColor || 'rgba(8, 153, 129, 0.5)';
@@ -9421,7 +9432,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         const m = this.margin;
         const ch = this.h - m.t - m.b;
-        const effectiveVolumeHeight = this.chartSettings && this.chartSettings.showVolume ? this.volumeHeight : 0;
+        const effectiveVolumeHeight = this._isVolumeDisplayEnabled() ? this.volumeHeight : 0;
         const volumeAreaHeight = ch * effectiveVolumeHeight;
         const maxY = this.h - m.b - volumeAreaHeight;
         const labels = [];
