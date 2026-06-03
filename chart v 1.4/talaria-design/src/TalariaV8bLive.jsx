@@ -23160,6 +23160,7 @@ const TalariaV8bLive = () => {
           const ids = new Set();
           if (layout && layout.sections) {
             layout.sections.forEach((sec) => {
+              if (sec.checkboxRow && sec.checkboxRow.showId) ids.add(sec.checkboxRow.showId);
               (sec.rows || []).forEach((row) => {
                 if (row.showId) ids.add(row.showId);
                 if (row.colorId) ids.add(row.colorId);
@@ -23171,6 +23172,7 @@ const TalariaV8bLive = () => {
                 if (row.valueId) ids.add(row.valueId);
                 if (row.colorId) ids.add(row.colorId);
                 if (row.styleId) ids.add(row.styleId);
+                if (row.widthId) ids.add(row.widthId);
               });
             });
             (layout.footers || []).forEach((f) => { if (f.id) ids.add(f.id); });
