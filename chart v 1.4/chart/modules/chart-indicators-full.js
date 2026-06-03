@@ -249,14 +249,17 @@
         indicator.style.showOverbought = params.showOverbought !== false;
         indicator.style.overboughtColor = params.overboughtColor || '#787b86';
         indicator.style.overboughtLineStyle = params.overboughtLineStyle || 'Dotted';
+        indicator.style.overboughtLineWidth = params.overboughtLineWidth != null ? params.overboughtLineWidth : 1;
         indicator.style.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : levelDefaults.oversold;
         indicator.style.showOversold = params.showOversold !== false;
         indicator.style.oversoldColor = params.oversoldColor || '#787b86';
         indicator.style.oversoldLineStyle = params.oversoldLineStyle || 'Dotted';
+        indicator.style.oversoldLineWidth = params.oversoldLineWidth != null ? params.oversoldLineWidth : 1;
         indicator.style.midValue = params.midValue != null ? Number(params.midValue) : levelDefaults.mid;
         indicator.style.showMid = params.showMid !== false;
         indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
         indicator.style.midLineStyle = params.midLineStyle || 'Dotted';
+        indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
         indicator.style.showBg = params.showBg === true;
         indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
     }
@@ -2642,12 +2645,12 @@
     }
 
     /** Stochastic RSI — %K / %D in 0–100 panel (same shape as Stochastic). */
-    function calculateStochRSI(data, rsiPeriod, stochLen, smoothK, smoothD) {
+    function calculateStochRSI(data, rsiPeriod, stochLen, smoothK, smoothD, source) {
         const rp = Math.max(2, rsiPeriod | 0);
         const sl = Math.max(2, stochLen | 0);
         const sk = Math.max(1, smoothK | 0);
         const sd = Math.max(1, smoothD | 0);
-        const rsi = calculateRSI(data, rp);
+        const rsi = calculateRSI(data, rp, source || 'close');
         const raw = data.map(function() { return null; });
         for (let i = 0; i < data.length; i++) {
             let lo = Infinity;
@@ -3541,6 +3544,7 @@
 
             case 'stochrsi':
                 indicator.params.rsiPeriod = params.rsiPeriod != null ? params.rsiPeriod : 14;
+                indicator.params.source = params.source || 'close';
                 indicator.params.stochLen = params.stochLen != null ? params.stochLen : 14;
                 indicator.params.smoothK = params.smoothK != null ? params.smoothK : 3;
                 indicator.params.smoothD = params.smoothD != null ? params.smoothD : 3;
@@ -3552,7 +3556,8 @@
                     indicator.params.rsiPeriod,
                     indicator.params.stochLen,
                     indicator.params.smoothK,
-                    indicator.params.smoothD
+                    indicator.params.smoothD,
+                    indicator.params.source
                 );
                 break;
 
@@ -4568,7 +4573,8 @@
                     indicator.params.rsiPeriod,
                     indicator.params.stochLen,
                     indicator.params.smoothK,
-                    indicator.params.smoothD
+                    indicator.params.smoothD,
+                    indicator.params.source || 'close'
                 );
                 break;
             case 'massindex':
@@ -4878,7 +4884,8 @@
                         indicator.params.rsiPeriod,
                         indicator.params.stochLen,
                         indicator.params.smoothK,
-                        indicator.params.smoothD
+                        indicator.params.smoothD,
+                        indicator.params.source || 'close'
                     );
                     break;
                 case 'massindex':
@@ -8522,29 +8529,40 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
+        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
+        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
+        const obW = style.overboughtLineWidth != null ? style.overboughtLineWidth : 1;
+        const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
+        const midW = style.midLineWidth != null ? style.midLineWidth : 1;
+
         if (style.showBg && this._panelRenderFast !== true) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+            const yUpper = scaleY(obVal);
+            const yLower = scaleY(osVal);
+            if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                const fillTop = Math.min(yUpper, yLower);
+                const fillHeight = Math.abs(yLower - yUpper);
+                if (fillHeight > 0) {
+                    ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+                    ctx.fillRect(m.l, fillTop, Math.max(0, this.w - m.l), fillHeight);
+                }
+            }
         }
 
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
-        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
-        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
-        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
-
         if (this._panelRenderFast !== true) {
         if (style.showOverbought !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal, obW);
         }
         if (style.showOversold !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal, osW);
         }
         if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal, midW);
         }
         }
 

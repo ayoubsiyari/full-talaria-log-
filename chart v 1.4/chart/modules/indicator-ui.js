@@ -208,30 +208,33 @@ function rsiStyleParams() {
     ].concat(oscillatorLevelStyleParams());
 }
 
-/** Stochastic Input tab level defaults (80 / 20 / 50). */
+/** Stochastic Input tab level defaults (80 / 50 / 20). */
 function stochasticInputLevelParams() {
     return [
         { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
-        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: 80, min: 0, max: 100, step: 1, tab: 'input' },
-        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: 20, min: 0, max: 100, step: 1, tab: 'input' },
-        { id: 'midValue', label: 'Midline', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'input' }
+        { id: 'overboughtValue', label: 'Upper Band', type: 'number', default: 80, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Middle Band', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'oversoldValue', label: 'Lower Band', type: 'number', default: 20, min: 0, max: 100, step: 1, tab: 'input' }
     ];
 }
 
-/** Stochastic Style tab level appearance (values live on Input tab). */
+/** Stochastic Style tab band appearance (values on Input tab; opacity via color alpha). */
 function stochasticLevelStyleParams() {
     return [
-        { id: 'showOverbought', label: 'Show overbought level', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'overboughtColor', label: 'Overbought color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'overboughtLineStyle', label: 'Overbought line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
-        { id: 'showOversold', label: 'Show oversold level', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'oversoldColor', label: 'Oversold color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'oversoldLineStyle', label: 'Oversold line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
-        { id: 'showMid', label: 'Show mid level', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'midColor', label: 'Mid color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
-        { id: 'midLineStyle', label: 'Mid line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
-        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
-        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+        { id: 'showOverbought', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'overboughtColor', label: 'Upper band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'overboughtLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'overboughtLineWidth', label: 'Upper band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showMid', label: 'Show middle band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Middle band color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midLineStyle', label: 'Middle band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showOversold', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'oversoldColor', label: 'Lower band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'oversoldLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'oversoldLineWidth', label: 'Lower band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background fill (upper to lower band)', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background fill color', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
     ];
 }
 
@@ -1037,6 +1040,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'rsiPeriod', label: 'RSI length', type: 'number', default: 14, min: 2 },
+            { id: 'source', label: 'RSI Source', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
             { id: 'stochLen', label: 'Stoch lookback', type: 'number', default: 14, min: 2 },
             { id: 'smoothK', label: '%K smoothing', type: 'number', default: 3, min: 1 },
             { id: 'smoothD', label: '%D smoothing', type: 'number', default: 3, min: 1 }
@@ -3279,6 +3283,7 @@ function setupIndicatorUI(chartInstance) {
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     const id = String(paramId || '').toLowerCase();
+    if (/^(overbought|oversold|mid|bg)color$/.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
@@ -3331,8 +3336,8 @@ function v9ColorRow(label, colorId, showId) {
     return { label: label, colorId: colorId, styleId: null, widthId: null, showId: showId || null, colorOnly: true };
 }
 
-function v9LevelRow(valueId, showId, colorId, styleId) {
-    return { valueId: valueId, showId: showId, colorId: colorId, styleId: styleId };
+function v9LevelRow(valueId, showId, colorId, styleId, widthId) {
+    return { valueId: valueId, showId: showId, colorId: colorId, styleId: styleId, widthId: widthId || null };
 }
 
 /**
@@ -3500,19 +3505,19 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('%D', 'dColor', 'dLineStyle', 'dLineWidth', 'showD')
                 ]
             }, {
-                title: 'Overbought Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
+                title: 'Upper Band',
+                bandLevelHeader: true,
+                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle', 'overboughtLineWidth')]
             }, {
-                title: 'Oversold Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
+                title: 'Middle Band',
+                bandLevelHeader: true,
+                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle', 'midLineWidth')]
             }, {
-                title: 'Mid Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
+                title: 'Lower Band',
+                bandLevelHeader: true,
+                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle', 'oversoldLineWidth')]
             }, {
-                title: 'Background',
+                title: 'Background Fill (Upper to Lower Band)',
                 rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
             }],
             footers: footers

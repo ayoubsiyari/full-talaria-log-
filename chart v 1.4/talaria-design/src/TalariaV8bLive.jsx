@@ -22888,6 +22888,7 @@ const TalariaV8bLive = () => {
             return { ...d, [id]: !cur };
           });
           const gc = "16px 1fr 26px 56px 56px";
+          const gcBand = "16px 1fr 26px 56px 44px 44px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
@@ -22958,17 +22959,20 @@ const TalariaV8bLive = () => {
               </div>
             );
           };
-          const renderLevelRow = (row, i) => {
+          const renderLevelRow = (row, i, section) => {
             const on = val(row.showId) !== false;
+            const band = !!(section && section.bandLevelHeader);
+            const cols = band ? gcBand : gc;
             return (
-              <div key={row.valueId} style={R(i ? 8 : 0)}>
+              <div key={row.valueId} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
                 {lbl("Value", on)}
                 <Swatch pid={row.colorId} disabled={!on} />
                 {stSel(row.styleId, !on)}
-                {numW(row.valueId, !on)}
+                {band ? numW(row.widthId, !on) : numW(row.valueId, !on)}
+                {band ? numW(row.valueId, !on) : null}
               </div>
             );
           };
@@ -22994,8 +22998,16 @@ const TalariaV8bLive = () => {
                     <div>{hdr("VALUE")}</div>
                   </div>
                 )}
+                {section.bandLevelHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: gcBand, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div>{hdr("COLOR")}</div>
+                    <div>{hdr("STYLE")}</div>
+                    <div>{hdr("THICKNESS")}</div>
+                    <div>{hdr("VALUE")}</div>
+                  </div>
+                )}
                 {section.rows && section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
-                {section.levelRows && section.levelRows.map((row, ri) => renderLevelRow(row, ri))}
+                {section.levelRows && section.levelRows.map((row, ri) => renderLevelRow(row, ri, section))}
               </div>
             ))}
             {(layout.footers || []).map((f) => {
