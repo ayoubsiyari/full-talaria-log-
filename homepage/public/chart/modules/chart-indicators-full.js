@@ -310,11 +310,45 @@
     function applyRsiStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
+        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 70;
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 30;
+        indicator.params.smoothingType = params.smoothingType || 'None';
+        indicator.params.smoothingLength = params.smoothingLength != null ? Number(params.smoothingLength) : 14;
+        indicator.params.bbStdDev = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        indicator.params.divergenceEnabled = params.divergenceEnabled === true;
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#9c27b0';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
-        applyOscillatorLevelStyleFromParams(indicator, params);
+        const hasSmoothing = String(indicator.params.smoothingType || 'None') !== 'None';
+        indicator.style.showMa = hasSmoothing && params.showMa !== false;
+        indicator.style.maColor = params.maColor || '#ff9800';
+        indicator.style.maLineWidth = params.maLineWidth != null ? params.maLineWidth : 1;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['maLineStyle', 'maLineDashStyle', 'Line']]);
+        indicator.style.overboughtValue = indicator.params.overboughtValue;
+        indicator.style.showOverbought = params.showOverbought !== false;
+        indicator.style.overboughtColor = params.overboughtColor || '#787b86';
+        indicator.style.overboughtLineWidth = params.overboughtLineWidth != null ? params.overboughtLineWidth : 1;
+        indicator.style.midValue = indicator.params.midValue;
+        indicator.style.showMid = params.showMid !== false;
+        indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
+        indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
+        indicator.style.oversoldValue = indicator.params.oversoldValue;
+        indicator.style.showOversold = params.showOversold !== false;
+        indicator.style.oversoldColor = params.oversoldColor || '#787b86';
+        indicator.style.oversoldLineWidth = params.oversoldLineWidth != null ? params.oversoldLineWidth : 1;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['overboughtLineStyle', 'overboughtLineDashStyle', 'Dotted'],
+            ['oversoldLineStyle', 'oversoldLineDashStyle', 'Dotted'],
+            ['midLineStyle', 'midLineDashStyle', 'Dotted']
+        ]);
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        indicator.style.showObGradient = params.showObGradient === true;
+        indicator.style.obGradientColor = params.obGradientColor || 'rgba(239,83,80,0.12)';
+        indicator.style.showOsGradient = params.showOsGradient === true;
+        indicator.style.osGradientColor = params.osGradientColor || 'rgba(38,166,154,0.12)';
     }
 
     function applyStochasticStyleFromParams(indicator, params) {
@@ -606,6 +640,156 @@
             if (ok) out[i] = sum / denom;
         }
         return out;
+    }
+
+    function rollingEmaNullable(arr, period) {
+        const p = Math.max(1, period | 0);
+        const mult = 2 / (p + 1);
+        const out = arr.map(function () { return null; });
+        let ema = null;
+        for (let i = 0; i < arr.length; i++) {
+            const v = arr[i];
+            if (v === null || v === undefined || isNaN(v)) {
+                out[i] = null;
+                continue;
+            }
+            if (ema === null) {
+                let sum = 0;
+                let count = 0;
+                for (let j = 0; j < p; j++) {
+                    const idx = i - (p - 1) + j;
+                    if (idx < 0) { count = -1; break; }
+                    const x = arr[idx];
+                    if (x === null || x === undefined || isNaN(x)) { count = -1; break; }
+                    sum += x;
+                    count++;
+                }
+                if (count === p) {
+                    ema = sum / p;
+                    out[i] = ema;
+                }
+            } else {
+                ema = (v - ema) * mult + ema;
+                out[i] = ema;
+            }
+        }
+        return out;
+    }
+
+    function rollingRmaNullable(arr, period) {
+        const p = Math.max(1, period | 0);
+        const out = arr.map(function () { return null; });
+        let rma = null;
+        let seedSum = 0;
+        let seedCount = 0;
+        for (let i = 0; i < arr.length; i++) {
+            const v = arr[i];
+            if (v === null || v === undefined || isNaN(v)) {
+                out[i] = null;
+                continue;
+            }
+            if (rma === null) {
+                seedSum += v;
+                seedCount++;
+                if (seedCount >= p) {
+                    rma = seedSum / p;
+                    out[i] = rma;
+                }
+            } else {
+                rma = (rma * (p - 1) + v) / p;
+                out[i] = rma;
+            }
+        }
+        return out;
+    }
+
+    function rollingVwmaOnRsi(data, rsi, period) {
+        const p = Math.max(1, period | 0);
+        const out = rsi.map(function () { return null; });
+        for (let i = 0; i < rsi.length; i++) {
+            if (i < p - 1) continue;
+            let wSum = 0;
+            let vSum = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const rv = rsi[i - j];
+                const bar = data[i - j];
+                const vol = bar && bar.volume != null ? Number(bar.volume) : NaN;
+                if (rv === null || rv === undefined || isNaN(rv) || !Number.isFinite(vol) || vol <= 0) {
+                    ok = false;
+                    break;
+                }
+                wSum += rv * vol;
+                vSum += vol;
+            }
+            if (ok && vSum > 0) out[i] = wSum / vSum;
+        }
+        return out;
+    }
+
+    function rollingBbOnSeries(arr, period, stdDev) {
+        const p = Math.max(1, period | 0);
+        const sd = Number(stdDev);
+        const st = Number.isFinite(sd) ? sd : 2;
+        const middle = rollingSmaNullable(arr, p);
+        const upper = [];
+        const lower = [];
+        for (let i = 0; i < arr.length; i++) {
+            if (middle[i] === null || middle[i] === undefined || isNaN(middle[i])) {
+                upper.push(null);
+                lower.push(null);
+                continue;
+            }
+            let sumSq = 0;
+            let ok = true;
+            for (let j = 0; j < p; j++) {
+                const idx = i - j;
+                if (idx < 0) { ok = false; break; }
+                const v = arr[idx];
+                if (v === null || v === undefined || isNaN(v)) { ok = false; break; }
+                const d = v - middle[i];
+                sumSq += d * d;
+            }
+            if (!ok) {
+                upper.push(null);
+                lower.push(null);
+            } else {
+                const stdev = Math.sqrt(sumSq / p);
+                upper.push(middle[i] + st * stdev);
+                lower.push(middle[i] - st * stdev);
+            }
+        }
+        return { middle: middle, upper: upper, lower: lower };
+    }
+
+    function calculateRSIIndicatorData(data, params) {
+        params = params || {};
+        const period = params.period != null ? params.period : 14;
+        const source = params.source || 'close';
+        const rsi = calculateRSI(data, period, source);
+        const type = String(params.smoothingType || 'None');
+        const len = Math.max(1, params.smoothingLength != null ? Number(params.smoothingLength) : 14);
+        const bbStd = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        let ma = null;
+        let bbUpper = null;
+        let bbLower = null;
+        if (type === 'SMA') {
+            ma = rollingSmaNullable(rsi, len);
+        } else if (type === 'SMA+BB') {
+            const bb = rollingBbOnSeries(rsi, len, bbStd);
+            ma = bb.middle;
+            bbUpper = bb.upper;
+            bbLower = bb.lower;
+        } else if (type === 'EMA') {
+            ma = rollingEmaNullable(rsi, len);
+        } else if (type === 'RMA') {
+            ma = rollingRmaNullable(rsi, len);
+        } else if (type === 'WMA') {
+            ma = rollingWmaNullable(rsi, len);
+        } else if (type === 'VWMA') {
+            ma = rollingVwmaOnRsi(data, rsi, len);
+        }
+        return { rsi: rsi, ma: ma, bbUpper: bbUpper, bbLower: bbLower };
     }
     
     // Bollinger Bands
@@ -3188,11 +3372,10 @@
             case 'rsi':
                 indicator.params.period = params.period || 14;
                 indicator.params.source = params.source || 'close';
-                indicator.params.divergenceEnabled = params.divergenceEnabled === true;
                 indicator.overlay = false;
                 applyRsiStyleFromParams(indicator, params);
                 indicator.name = 'RSI(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
                 break;
                 
             case 'macd':
@@ -4380,7 +4563,7 @@
 
             case 'rsi':
                 indicator.name = 'RSI(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
                 break;
             case 'macd':
             case 'ppo':
@@ -4805,7 +4988,7 @@
                     this.indicators.data[indicator.id] = calculateADX(this.data, indicator.params.diLength, indicator.params.adxSmoothing);
                     break;
                 case 'rsi':
-                    this.indicators.data[indicator.id] = calculateRSI(this.data, indicator.params.period, indicator.params.source || 'close');
+                    this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
                     break;
                 case 'macd':
                 case 'ppo':
@@ -8837,10 +9020,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = lastU !== null ? '↑' + lastU.toFixed(0) + ' ↓' + (lastD != null ? lastD.toFixed(0) : '—') : '';
     };
 
-    // ---- RSI panel: 0–100 + configurable levels + optional background ----
-    Chart.prototype._renderRsiPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+    // ---- RSI panel: 0–100 + bands + MA + gradient fills ----
+    Chart.prototype._renderRsiPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        const pack = data && data.rsi ? data : { rsi: data, ma: null, bbUpper: null, bbLower: null };
+        const values = pack.rsi;
         if (!values || !values.length) return;
         const style = indicator.style || {};
+        const levelDefaults = { overbought: 70, oversold: 30, mid: 50 };
         indicator._panelBaseMin = 0;
         indicator._panelBaseMax = 100;
         const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
@@ -8854,30 +9040,80 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg && this._panelRenderFast !== true) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
+        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
+        const obW = style.overboughtLineWidth != null ? style.overboughtLineWidth : 1;
+        const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
+        const midW = style.midLineWidth != null ? style.midLineWidth : 1;
+        const panelW = Math.max(0, this.w - m.l);
+
+        if (this._panelRenderFast !== true) {
+            if (style.showObGradient) {
+                const yOb = scaleY(obVal);
+                if (Number.isFinite(yOb)) {
+                    const fillTop = Math.min(panelTop, yOb);
+                    const fillH = Math.max(0, Math.max(panelTop, yOb) - fillTop);
+                    if (fillH > 0) {
+                        ctx.fillStyle = style.obGradientColor || 'rgba(239,83,80,0.12)';
+                        ctx.fillRect(m.l, fillTop, panelW, fillH);
+                    }
+                }
+            }
+            if (style.showOsGradient) {
+                const yOs = scaleY(osVal);
+                if (Number.isFinite(yOs)) {
+                    const fillTop = Math.min(yOs, panelBottom);
+                    const fillH = Math.max(0, panelBottom - fillTop);
+                    if (fillH > 0) {
+                        ctx.fillStyle = style.osGradientColor || 'rgba(38,166,154,0.12)';
+                        ctx.fillRect(m.l, fillTop, panelW, fillH);
+                    }
+                }
+            }
+            if (style.showBg) {
+                const yUpper = scaleY(obVal);
+                const yLower = scaleY(osVal);
+                if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                    const fillTop = Math.min(yUpper, yLower);
+                    const fillHeight = Math.abs(yLower - yUpper);
+                    if (fillHeight > 0) {
+                        ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+                        ctx.fillRect(m.l, fillTop, panelW, fillHeight);
+                    }
+                }
+            }
         }
 
         this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 0);
 
         if (this._panelRenderFast !== true) {
-        if (style.showOverbought !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.overboughtValue != null ? style.overboughtValue : 70,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', style.overboughtValue != null ? style.overboughtValue : 70);
-        }
-        if (style.showOversold !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.oversoldValue != null ? style.oversoldValue : 30,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', style.oversoldValue != null ? style.oversoldValue : 30);
-        }
-        if (style.showMid !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, style.midValue != null ? style.midValue : 50,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', style.midValue != null ? style.midValue : 50);
-        }
+            if (style.showOverbought !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                    style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
+            }
+            if (style.showOversold !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                    style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+            }
+            if (style.showMid !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                    style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
+            }
         }
 
+        const maWidth = style.maLineWidth != null ? style.maLineWidth : 1;
+        if (style.showMa !== false && pack.bbUpper) {
+            this._drawPanelLine(ctx, m, pack.bbUpper, style.maColor || '#ff9800', maWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.bbLower) {
+            this._drawPanelLine(ctx, m, pack.bbLower, style.maColor || '#ff9800', maWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.ma) {
+            this._drawPanelLine(ctx, m, pack.ma, style.maColor || '#ff9800', maWidth, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
         if (style.showLine !== false) {
-            this._drawPanelLine(ctx, m, values, style.color || '#9c27b0', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, values, style.color || '#9c27b0', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
         let last = null;
