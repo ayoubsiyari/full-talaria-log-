@@ -8396,6 +8396,27 @@ Chart.prototype._drawSeparatePanelResizeSeparator = function(ctx, m, y, panelFul
     ctx.lineCap = 'butt';
 };
 
+/** Plot-area hit inside a stacked indicator pane (excludes right price strip + resize grips). */
+Chart.prototype._findSeparatePanelPlotSlot = function(x, y, opts) {
+    opts = opts || {};
+    const m = this.margin || { l: 60, r: 60 };
+    const spi = this.separatePanelInfo;
+    if (!spi || !Array.isArray(spi.panelSlots)) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (x < m.l || x > this.w - m.r) return null;
+    const skipResize = opts.skipResizeHandles !== false;
+    for (let i = 0; i < spi.panelSlots.length; i++) {
+        const slot = spi.panelSlots[i];
+        if (y < slot.top || y > slot.bottom) continue;
+        if (skipResize && typeof this.getSeparatePanelResizeHandleAt === 'function') {
+            const handle = this.getSeparatePanelResizeHandleAt(x, y, 10);
+            if (handle) return null;
+        }
+        return slot;
+    }
+    return null;
+};
+
 /** Vertical drag on right margin over a separate indicator slot */
 Chart.prototype.separatePanelAxisDragStep = function(slot, dy, pointerY) {
     const ind = slot.indicator;

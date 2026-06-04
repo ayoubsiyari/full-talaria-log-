@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b220';
+const CHART_ENGINE_BUILD = '20260602b221';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -468,8 +468,8 @@ class Chart {
         this.cursor = {
             x: 0,
             y: 0,
-            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis', 'separatePanelAxis'
-            separatePanelSlot: null,     // slot hit on indicator pane price strip (from separatePanelInfo.panelSlots)
+            mode: 'chart',               // 'chart', 'priceAxis', 'timeAxis', 'separatePanelAxis', 'separatePanelPlot'
+            separatePanelSlot: null,     // slot hit on indicator pane (axis strip or plot interior)
             dataIndex: 0,
             price: 0
         };
@@ -16693,10 +16693,14 @@ class Chart {
         if (!this._isChartPanDragging()) return;
         const zPan = this._v9LayoutZoom();
         const effectiveDx = this.timeScale.locked ? 0 : (clientX - this.drag.lastX) / zPan;
-        const effectiveDy = this.priceScale.locked ? 0 : (clientY - this.drag.lastY) / zPan;
+        const effectiveDy = (clientY - this.drag.lastY) / zPan;
 
         this.offsetX += effectiveDx;
-        if (this.yScale && effectiveDy !== 0) {
+        const panelSlot = this.drag && this.drag.separatePanelSlot;
+        if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
+            const pointerY = Number.isFinite(this.mouseY) ? this.mouseY : clientY;
+            this.separatePanelAxisDragStep(panelSlot, effectiveDy, pointerY);
+        } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
             this.autoScale = false;
             this.priceScale.autoScale = false;
             const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
@@ -20760,6 +20764,13 @@ class Chart {
             } else if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
                 return 'timeAxis';
             } else if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
+                const plotSlot = typeof this._findSeparatePanelPlotSlot === 'function'
+                    ? this._findSeparatePanelPlotSlot(mx, my)
+                    : null;
+                if (plotSlot) {
+                    this.cursor.separatePanelSlot = plotSlot;
+                    return 'separatePanelPlot';
+                }
                 return 'chart';
             }
             return 'outside';
@@ -21256,8 +21267,9 @@ class Chart {
                 this.drag.type = 'timeAxis';
                 this.isZooming = true;
                 this._cachedInteractionTimeTicks = this._timeTicks;
-            } else if (mode === 'chart') {
+            } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
+                this.drag.separatePanelSlot = mode === 'separatePanelPlot' ? this.cursor.separatePanelSlot : null;
                 this._snapshotPanDrawingsLayer();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
@@ -21323,6 +21335,9 @@ class Chart {
                     dragCursor = 'ew-resize';
                 } else if (this.drag.type === 'pan') {
                     dragCursor = this.cursorType === 'dot' ? 'none' : 'move';
+                    if (this.drag.separatePanelSlot) {
+                        dragCursor = 'move';
+                    }
                 } else if (this.drag.type === 'separatePanelResize') {
                     dragCursor = 'ns-resize';
                 }
@@ -21465,6 +21480,10 @@ class Chart {
                     this.canvas.classList.add('cursor-time-axis');
                     this.canvas.style.cursor = 'ew-resize';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ew-resize';
+                } else if (mode === 'separatePanelPlot') {
+                    const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
+                    this.canvas.style.cursor = panCursor;
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = panCursor;
                 } else if (this.tool || (this.drawingManager && this.drawingManager.currentTool)) {
                     this.canvas.style.cursor = 'crosshair';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'crosshair';
@@ -21663,7 +21682,7 @@ class Chart {
                             && this.data && this.data.length) {
                             const [mx, my] = this._eventCanvasLocalXY(e);
                             const mode = detectCursorMode(mx, my);
-                            if (mode === 'chart' || mode === 'timeAxis') {
+                            if (mode === 'chart' || mode === 'separatePanelPlot' || mode === 'timeAxis') {
                                 const idx = Math.floor(this.pixelToDataIndex(mx));
                                 const clamped = Math.max(0, Math.min(idx, this.data.length - 1));
                                 const ts = this.data[clamped]?.t;
@@ -21863,10 +21882,13 @@ class Chart {
                         this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
-                        let effectiveDx = this.timeScale.locked ? 0 : dx;
-                        let effectiveDy = this.priceScale.locked ? 0 : dy;
+                        const effectiveDx = this.timeScale.locked ? 0 : dx;
+                        const effectiveDy = dy;
                         this.offsetX += effectiveDx;
-                        if (this.yScale && effectiveDy !== 0) {
+                        const panelSlot = this.drag.separatePanelSlot;
+                        if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
+                            this.separatePanelAxisDragStep(panelSlot, effectiveDy, my);
+                        } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
                             this.autoScale = false;
                             this.priceScale.autoScale = false;
                             const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
