@@ -612,24 +612,42 @@ function cciStyleParams() {
     ].concat(cciBandStyleParams());
 }
 
-/** Williams %R Input tab level defaults (−20 / −80 / −50). */
-function willrInputLevelParams() {
+/** Williams %R band levels + appearance (values on Style tab; opacity in color picker). */
+function willrBandLevelStyleParams() {
     return [
-        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
-        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: -20, step: 1, tab: 'input' },
-        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: -80, step: 1, tab: 'input' },
-        { id: 'midValue', label: 'Midline', type: 'number', default: -50, step: 1, tab: 'input' }
+        { id: 'overboughtValue', label: 'Upper band', type: 'number', default: -20, step: 1, tab: 'style' },
+        { id: 'showOverbought', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'overboughtColor', label: 'Upper band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'overboughtOpacity', label: 'Upper band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'overboughtLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'overboughtLineWidth', label: 'Upper band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'midValue', label: 'Middle band', type: 'number', default: -50, step: 1, tab: 'style' },
+        { id: 'showMid', label: 'Show middle band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Middle band color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midOpacity', label: 'Middle band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'midLineStyle', label: 'Middle band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'oversoldValue', label: 'Lower band', type: 'number', default: -80, step: 1, tab: 'style' },
+        { id: 'showOversold', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'oversoldColor', label: 'Lower band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'oversoldOpacity', label: 'Lower band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'oversoldLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'oversoldLineWidth', label: 'Lower band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background fill (upper to lower band)', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background fill color', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
     ];
 }
 
-/** Williams %R Style tab (%R line + level appearance + optional panel bg). */
+/** Williams %R Style tab (%R line + band levels + optional panel bg). */
 function willrStyleParams() {
     return [
         { id: 'showLine', label: 'Show %R line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: '%R color', type: 'color', default: '#ec407a', tab: 'style' },
+        { id: 'lineOpacity', label: '%R opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'lineStyle', label: '%R line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'lineWidth', label: '%R thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
-    ].concat(stochasticLevelStyleParams());
+    ].concat(willrBandLevelStyleParams());
 }
 
 /** MACD Input tab MA types (fast/slow oscillator + signal smoothing). */
@@ -1377,7 +1395,7 @@ const INDICATOR_DEFINITIONS = {
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
             { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
-        ].concat(willrInputLevelParams()).concat(willrStyleParams())
+        ].concat(willrStyleParams())
     },
     mfi: {
         name: 'Money Flow Index',
@@ -4515,27 +4533,36 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'willr') {
         return {
-            sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('%R', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
-            }, {
-                title: 'Overbought Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
-            }, {
-                title: 'Oversold Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
-            }, {
-                title: 'Mid Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
-            }],
+            sections: [
+                {
+                    title: '%R',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('%R', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Upper Band',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Upper Band',
+                    levelRows: [v9OscLevelStyleRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtOpacity', 'overboughtLineStyle', 'overboughtLineWidth')]
+                },
+                {
+                    title: 'Middle Band',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Middle Band',
+                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth')]
+                },
+                {
+                    title: 'Lower Band',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Lower Band',
+                    levelRows: [v9OscLevelStyleRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldOpacity', 'oversoldLineStyle', 'oversoldLineWidth')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }

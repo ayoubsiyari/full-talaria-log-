@@ -697,9 +697,16 @@
         indicator.params.midValue = params.midValue != null ? Number(params.midValue) : -50;
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#ec407a';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: -20, oversold: -80, mid: -50 });
+        indicator.style.overboughtOpacity = params.overboughtOpacity != null ? Number(params.overboughtOpacity) : 100;
+        indicator.style.midOpacity = params.midOpacity != null ? Number(params.midOpacity) : 100;
+        indicator.style.oversoldOpacity = params.oversoldOpacity != null ? Number(params.oversoldOpacity) : 100;
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
 
     function applyMacdStyleFromParams(indicator, params) {
@@ -10506,13 +10513,18 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
     };
 
-    // ---- Williams %R: fixed −100 … 0, configurable levels + optional background ----
+    // ---- Williams %R: fixed −100 … 0, configurable bands + optional background ----
     Chart.prototype._renderWilliamsRPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
         if (!values || !values.length) return;
         const style = indicator.style || {};
-        const obVal = style.overboughtValue != null ? style.overboughtValue : -20;
-        const osVal = style.oversoldValue != null ? style.oversoldValue : -80;
-        const midVal = style.midValue != null ? style.midValue : -50;
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const levelDefaults = { overbought: -20, oversold: -80, mid: -50 };
+        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
+        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
+        const obW = style.overboughtLineWidth != null ? style.overboughtLineWidth : 1;
+        const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
+        const midW = style.midLineWidth != null ? style.midLineWidth : 1;
 
         indicator._panelBaseMin = -100;
         indicator._panelBaseMax = 0;
@@ -10527,45 +10539,56 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        if (style.showBg && this._panelRenderFast !== true) {
+            const yUpper = scaleY(obVal);
+            const yLower = scaleY(osVal);
+            if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                const fillTop = Math.min(yUpper, yLower);
+                const fillHeight = Math.abs(yLower - yUpper);
+                if (fillHeight > 0) {
+                    ctx.fillStyle = resolve(style.bgColor, style.bgOpacity);
+                    ctx.fillRect(m.l, fillTop, Math.max(0, this.w - m.l), fillHeight);
+                }
+            }
         }
 
         this._drawPanelAxisTicks(ctx, m, wMin, wMax, scaleY, 0);
 
-        if (style.showOverbought !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
-        }
-        if (style.showOversold !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
-        }
-        if (style.showMid !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        if (this._panelRenderFast !== true) {
+            if (style.showOverbought !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                    resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Dotted', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
+            }
+            if (style.showOversold !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                    resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Dotted', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+            }
+            if (style.showMid !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
+            }
         }
 
+        const lineColor = resolve(style.color || '#ec407a', style.lineOpacity);
         if (style.showLine !== false) {
-            this._drawPanelLine(ctx, m, values, style.color || '#ec407a', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
             if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
         }
-        indicator._displayColor = style.color || '#ec407a';
+        indicator._displayColor = lineColor;
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
         if (last !== null && Number.isFinite(last)) {
             const currentY = scaleY(last);
             indicator._axisLabelY = currentY;
             indicator._axisLabelText = last.toFixed(2);
-            indicator._axisLabelColor = style.color || '#ec407a';
+            indicator._axisLabelColor = lineColor;
             indicator._axisLabelTags = [{
                 y: currentY,
                 text: last.toFixed(2),
-                color: style.color || '#ec407a'
+                color: lineColor
             }];
         }
     };
