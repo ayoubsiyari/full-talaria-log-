@@ -409,6 +409,50 @@ function rsiStyleParams() {
     ].concat(rsiBandStyleParams()).concat(rsiBackgroundStyleParams());
 }
 
+/** MFI Input tab — length + level values (80 / 50 / 20). */
+function mfiInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 14, min: 2, tab: 'input' },
+        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
+        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: 80, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Middle Band', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'input' },
+        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: 20, min: 0, max: 100, step: 1, tab: 'input' }
+    ];
+}
+
+function mfiOscillatorLevelStyleParams() {
+    return [
+        { id: 'showOverbought', label: 'Show overbought', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'overboughtColor', label: 'Overbought color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'overboughtOpacity', label: 'Overbought opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'overboughtLineStyle', label: 'Overbought line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'overboughtLineWidth', label: 'Overbought line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showMid', label: 'Show middle band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Middle band color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midOpacity', label: 'Middle band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'midLineStyle', label: 'Middle band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showOversold', label: 'Show oversold', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'oversoldColor', label: 'Oversold color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'oversoldOpacity', label: 'Oversold opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'oversoldLineStyle', label: 'Oversold line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'oversoldLineWidth', label: 'Oversold line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background fill (overbought to oversold)', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background fill color', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+function mfiStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show MFI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'MFI color', type: 'color', default: '#5c6bc0', tab: 'style' },
+        { id: 'lineOpacity', label: 'MFI opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'MFI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'MFI line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ].concat(mfiOscillatorLevelStyleParams());
+}
+
 /** Stochastic Input tab level defaults (80 / 50 / 20). */
 function stochasticInputLevelParams() {
     return [
@@ -1249,11 +1293,7 @@ const INDICATOR_DEFINITIONS = {
     mfi: {
         name: 'Money Flow Index',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 2 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#5c6bc0' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: mfiInputParams().concat(mfiStyleParams())
     },
     donchian: {
         name: 'Donchian Channels',
@@ -3801,6 +3841,19 @@ function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId) {
     };
 }
 
+/** Oscillator level row: value on Input tab; Style row has color, opacity, style, thickness. */
+function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthId) {
+    return {
+        valueId: valueId,
+        showId: showId,
+        colorId: colorId,
+        opacityId: opacityId,
+        styleId: styleId,
+        widthId: widthId,
+        oscLevelStyleRow: true
+    };
+}
+
 /**
  * TradingView-style Style tab layout: sections of grid rows (chk | label | color | style | thickness).
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
@@ -4076,6 +4129,39 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('-DI', 'minusDIColor', 'minusDILineStyle', 'minusDILineWidth', 'showMinusDI')
                 ]
             }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'mfi') {
+        return {
+            sections: [
+                {
+                    title: 'MFI',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('MFI', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Overbought',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtOpacity', 'overboughtLineStyle', 'overboughtLineWidth')]
+                },
+                {
+                    title: 'Middle Band',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth')]
+                },
+                {
+                    title: 'Oversold',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldOpacity', 'oversoldLineStyle', 'oversoldLineWidth')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }

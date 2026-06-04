@@ -590,6 +590,27 @@
         applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
     }
 
+    function applyMfiStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.period = params.period != null ? Number(params.period) : 14;
+        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 80;
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 20;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#5c6bc0';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
+        indicator.style.overboughtOpacity = params.overboughtOpacity != null ? Number(params.overboughtOpacity) : 100;
+        indicator.style.midOpacity = params.midOpacity != null ? Number(params.midOpacity) : 100;
+        indicator.style.oversoldOpacity = params.oversoldOpacity != null ? Number(params.oversoldOpacity) : 100;
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function applyCciStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -4194,10 +4215,7 @@
                 this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'mfi':
-                indicator.params.period = params.period || 14;
-                indicator.style.color = params.color || '#5c6bc0';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.overlay = false;
+                applyMfiStyleFromParams(indicator, params);
                 indicator.name = 'MFI(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateMFI(this.data, indicator.params.period);
                 break;
@@ -5077,6 +5095,9 @@
         }
         if (indicator.type === 'cci') {
             applyCciStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'mfi') {
+            applyMfiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'mom' || indicator.type === 'momentum') {
             indicator.type = 'mom';
@@ -10320,14 +10341,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
     };
 
-    // ---- MFI: 0–100 with 80/50/20 bands (same idea as Stoch) ----
+    // ---- MFI: 0–100 with configurable levels + optional OB–OS background ----
     Chart.prototype._renderMFIPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
         if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const levelDefaults = { overbought: 80, oversold: 20, mid: 50 };
         indicator._panelBaseMin = 0;
         indicator._panelBaseMax = 100;
-        const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
-        const sMin = dom.min;
-        const sMax = dom.max;
+        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const sMin = domS.min;
+        const sMax = domS.max;
         const sSpan = Math.max(1e-9, sMax - sMin);
         const scaleY = v => {
             if (v === null || v === undefined) return null;
@@ -10335,34 +10359,66 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!Number.isFinite(y)) return null;
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
+
+        const obVal = style.overboughtValue != null ? style.overboughtValue : levelDefaults.overbought;
+        const osVal = style.oversoldValue != null ? style.oversoldValue : levelDefaults.oversold;
+        const midVal = style.midValue != null ? style.midValue : levelDefaults.mid;
+        const obW = style.overboughtLineWidth != null ? style.overboughtLineWidth : 1;
+        const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
+        const midW = style.midLineWidth != null ? style.midLineWidth : 1;
+
+        if (style.showBg && this._panelRenderFast !== true) {
+            const yUpper = scaleY(obVal);
+            const yLower = scaleY(osVal);
+            if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                const fillTop = Math.min(yUpper, yLower);
+                const fillHeight = Math.abs(yLower - yUpper);
+                if (fillHeight > 0) {
+                    ctx.fillStyle = resolve(style.bgColor, style.bgOpacity);
+                    ctx.fillRect(m.l, fillTop, Math.max(0, this.w - m.l), fillHeight);
+                }
+            }
+        }
+
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
-        [[80, 'rgba(239,83,80,0.5)'], [50, 'rgba(120,123,134,0.3)'], [20, 'rgba(38,166,154,0.5)']].forEach(([lvl, col]) => {
-            const ry = scaleY(lvl);
-            if (ry !== null && ry > panelTop && ry < panelBottom) {
-                ctx.strokeStyle = col;
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 3]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, ry);
-                ctx.lineTo(this.w, ry);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = col;
-                ctx.font = '9px Roboto';
-                ctx.textAlign = 'right';
-                ctx.fillText(String(lvl), this.w - 6, ry - 2);
+        if (this._panelRenderFast !== true) {
+            if (style.showOverbought !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                    resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
             }
-        });
+            if (style.showOversold !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                    resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+            }
+            if (style.showMid !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
+            }
+        }
 
-        this._drawPanelLine(ctx, m, values, indicator.style.color || '#5c6bc0', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
+        const lineColor = resolve(style.color || '#5c6bc0', style.lineOpacity);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
             if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
         }
-        indicator._displayColor = indicator.style.color || '#5c6bc0';
+        indicator._displayColor = lineColor;
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(2),
+                color: lineColor
+            }];
+        }
     };
 
     Chart.prototype._renderSeparatePanelLegendValue = function(el, ind) {

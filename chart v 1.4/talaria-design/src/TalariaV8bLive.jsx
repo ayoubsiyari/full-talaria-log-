@@ -23162,7 +23162,34 @@ const TalariaV8bLive = () => {
               </div>
             );
           };
+          const renderOscLevelStyleRow = (row, i, section) => {
+            const on = val(row.showId) !== false;
+            const opRaw = row.opacityId ? val(row.opacityId) : 100;
+            const rowLabel = section && section.title ? section.title : "Level";
+            return (
+              <div key={row.colorId || rowLabel} style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
+                </div>
+                {lbl(rowLabel, on)}
+                <Swatch pid={row.colorId} disabled={!on} />
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <input type="number" className="tlr-nospinner" value={opRaw == null ? "" : opRaw} min={0} max={100} step={1}
+                    disabled={!on}
+                    onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [row.opacityId]: e.target.value }))}
+                    style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                      color: on ? c.tx : c.tm, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
+                      textAlign: "center", cursor: on ? "text" : "default", opacity: on ? 1 : 0.45 }} />
+                </div>
+                {stSel(row.styleId, !on)}
+                {numW(row.widthId, !on)}
+                {psSel(row.styleId, !on)}
+              </div>
+            );
+          };
           const renderLevelRow = (row, i, section) => {
+            if (row.oscLevelStyleRow) return renderOscLevelStyleRow(row, i, section);
             const on = val(row.showId) !== false;
             const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
             const cols = extended ? gcBand : gc;
@@ -23215,6 +23242,15 @@ const TalariaV8bLive = () => {
                   </div>
                 )}
                 {section.bandStyleHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div>{hdr("COLOR")}</div>
+                    <div>{hdr("OPACITY")}</div>
+                    <div>{hdr("STYLE")}</div>
+                    <div>{hdr("THICKNESS")}</div>
+                    <div />
+                  </div>
+                )}
+                {section.oscLevelStyleHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("OPACITY")}</div>
@@ -23395,6 +23431,7 @@ const TalariaV8bLive = () => {
                 if (row.showId) ids.add(row.showId);
                 if (row.valueId) ids.add(row.valueId);
                 if (row.colorId) ids.add(row.colorId);
+                if (row.opacityId) ids.add(row.opacityId);
                 if (row.styleId) ids.add(row.styleId);
                 if (row.styleId) {
                   const dashId = v9IndDashStyleParamId(row.styleId);
