@@ -11796,6 +11796,8 @@ const TalariaV8bLive = () => {
     const isOutsideUiChrome = (el) =>
       !!el &&
       !el.closest("[data-sdrop]") &&
+      !el.closest("[data-v9-ind-select-root]") &&
+      !el.closest("[data-v9-ind-select-panel]") &&
       !el.closest("[data-v9-chrome]") &&
       !el.closest("[data-tlbar]") &&
       !el.closest("#drawing-toolbar") &&
@@ -11919,6 +11921,19 @@ const TalariaV8bLive = () => {
       window.removeEventListener("keydown", onKey, true);
     };
   }, [v9IndSelectMenu]);
+
+  useEffect(() => {
+    if (!v9IndSelectMenu || !v9IndSelectMenu.wallClock) return;
+    const raf = requestAnimationFrame(() => {
+      const panel = document.querySelector("[data-v9-ind-select-panel='1']");
+      if (!panel) return;
+      const sel = panel.querySelector("[data-v9-wall-clock-selected='1']");
+      if (sel) {
+        try { sel.scrollIntoView({ block: "center" }); } catch (_) { /* ignore */ }
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [v9IndSelectMenu?.key, v9IndSelectMenu?.wallClock]);
 
   // While the V9 style panel is open, release the full-chart #drawingSvg hit-capture layer
   // (z-index 11 + pointer-events all) so nothing under the body-portaled panel eats clicks.
@@ -23978,6 +23993,13 @@ const TalariaV8bLive = () => {
         const menuMaxH = isWallClock
           ? 220
           : (typeof window !== "undefined" ? Math.max(120, window.innerHeight - menuTop - 12) : 260);
+        const onMenuWheel = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const el = e.currentTarget;
+          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          el.scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop + e.deltaY));
+        };
         return (
           <div
             data-sdrop="1"
@@ -23987,7 +24009,7 @@ const TalariaV8bLive = () => {
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
-            onWheel={(e) => e.stopPropagation()}
+            onWheel={onMenuWheel}
             style={{
               position: "fixed",
               top: menuTop,
@@ -23996,9 +24018,10 @@ const TalariaV8bLive = () => {
               zIndex: 13000,
               maxHeight: menuMaxH,
               overflowY: "auto",
+              overflowX: "hidden",
               overscrollBehavior: "contain",
               WebkitOverflowScrolling: "touch",
-              touchAction: "pan-y",
+              touchAction: "none",
               background: c.sf,
               border: `1px solid ${c.brH}`,
               boxShadow: "0 12px 40px rgba(0,0,0,0.75)",
@@ -24020,11 +24043,7 @@ const TalariaV8bLive = () => {
                 <div
                   key={String(opt.value)}
                   role="option"
-                  ref={sel ? (el) => {
-                    if (el) requestAnimationFrame(() => {
-                      try { el.scrollIntoView({ block: "nearest" }); } catch (_) { /* ignore */ }
-                    });
-                  } : null}
+                  {...(sel && isWallClock ? { "data-v9-wall-clock-selected": "1" } : {})}
                   onClick={(e) => {
                     e.stopPropagation();
                     patchIndSettDraftLive((d) => ({ ...d, [menuParamId]: opt.value }));
