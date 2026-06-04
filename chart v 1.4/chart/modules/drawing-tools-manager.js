@@ -3383,16 +3383,40 @@ class DrawingToolsManager {
         return pointIndex - 1;
     }
 
+    /** Bar-index anchors at handle drag-start (undo state uses timestamp JSON without x/y). */
+    _captureShiftResizeAnchorPoints(drawing) {
+        if (!drawing || !Array.isArray(drawing.points)) {
+            this._shiftResizeAnchorPoints = null;
+            return;
+        }
+        this._shiftResizeAnchorPoints = drawing.points.map((p) => (
+            p && Number.isFinite(p.x) && Number.isFinite(p.y)
+                ? { x: p.x, y: p.y }
+                : null
+        ));
+    }
+
+    _clearShiftResizeAnchorPoints() {
+        this._shiftResizeAnchorPoints = null;
+    }
+
     /** Fixed anchor at resize drag-start (stable while the handle moves). */
     _shiftAngleAnchorPoint(drawing, pointIndex) {
         const anchorIndex = this._shiftAngleAnchorIndex(drawing, pointIndex);
         if (anchorIndex == null) return null;
-        const snapPts = this.resizeBeforeState && Array.isArray(this.resizeBeforeState.points)
-            ? this.resizeBeforeState.points
-            : null;
-        const src = (snapPts && snapPts[anchorIndex]) || (drawing.points && drawing.points[anchorIndex]);
-        if (!src || !Number.isFinite(src.x) || !Number.isFinite(src.y)) return null;
-        return { x: src.x, y: src.y };
+
+        const snapPts = this._shiftResizeAnchorPoints;
+        const snapped = snapPts && snapPts[anchorIndex];
+        if (snapped && Number.isFinite(snapped.x) && Number.isFinite(snapped.y)) {
+            return { x: snapped.x, y: snapped.y };
+        }
+
+        const live = drawing.points && drawing.points[anchorIndex];
+        if (live && Number.isFinite(live.x) && Number.isFinite(live.y)) {
+            return { x: live.x, y: live.y };
+        }
+
+        return null;
     }
 
     _applyShiftAngleConstraintForResize(drawing, pointIndex, point, shiftKey) {
@@ -7276,6 +7300,7 @@ class DrawingToolsManager {
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = 'ew-resize';
         this.svg.style('cursor', 'ew-resize');
+        this._captureShiftResizeAnchorPoints(drawing);
         // Capture state for undo
         if (this.history) {
             this.resizeBeforeState = this.history.captureState(drawing);
@@ -7334,6 +7359,7 @@ class DrawingToolsManager {
         this.resizingPointIndex = null;
         this.resizingHandleRole = null;
         this.resizeBeforeState = null;
+        this._clearShiftResizeAnchorPoints();
         this._endDrawingLiveInteraction();
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -7375,6 +7401,7 @@ class DrawingToolsManager {
         this.svg.style('cursor', cursor);
         this.customHandlePointIndex = pointIndex; // Store point index for arc/curve
         this.customHandleStart = this.collectHandleContext(event);
+        this._captureShiftResizeAnchorPoints(drawing);
         // Capture state for undo
         if (this.history) {
             this.customHandleBeforeState = this.history.captureState(drawing);
@@ -7448,6 +7475,7 @@ class DrawingToolsManager {
         this.customHandleRole = null;
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
+        this._clearShiftResizeAnchorPoints();
         this._endDrawingLiveInteraction();
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
@@ -8513,6 +8541,7 @@ class DrawingToolsManager {
                 this.resizingDrawing = null;
                 this.resizingPointIndex = null;
                 this.resizeBeforeState = null;
+                this._clearShiftResizeAnchorPoints();
             }
             if (this.customHandleDrawing === drawing || this.customHandleDraggingDrawing === drawing) {
                 this.isCustomHandleDrag = false;
