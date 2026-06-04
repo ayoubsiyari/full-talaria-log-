@@ -667,12 +667,14 @@ function coppockInputParams() {
     ];
 }
 
-/** Coppock Curve Style — line color (opacity in color picker). */
+/** Coppock Curve Style — line color, style, thickness (opacity in color picker). */
 function coppockStyleParams() {
     return [
         { id: 'showCoppock', label: 'Coppock Curve', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'Coppock Curve color', type: 'color', default: '#8e24aa', tab: 'style' },
-        { id: 'lineOpacity', label: 'Coppock Curve opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+        { id: 'lineOpacity', label: 'Coppock Curve opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'Coppock Curve style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Coppock Curve thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
 }
 
@@ -4636,7 +4638,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 title: 'Coppock Curve',
                 checkboxRow: { showId: 'showCoppock', label: 'Coppock Curve' },
                 bandStyleHeader: true,
-                rows: [v9BandStyleRow('Coppock Curve', 'color', 'lineOpacity', null, null, null)]
+                rows: [v9BandStyleRow('Coppock Curve', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', null)]
             }],
             footers: footers
         };
