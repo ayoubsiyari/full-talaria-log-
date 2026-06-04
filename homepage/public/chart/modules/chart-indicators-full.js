@@ -3343,6 +3343,8 @@
         let dayKey = null;
         let forming = false;
         let settled = false;
+        let extendForDay = false;
+        let rangeStartIdx = null;
         let dayHigh = null;
         let dayLow = null;
 
@@ -3353,11 +3355,14 @@
                 dayKey = dk;
                 forming = false;
                 settled = false;
+                extendForDay = false;
+                rangeStartIdx = null;
                 dayHigh = null;
                 dayLow = null;
             }
             const inWin = isInSessionDecimal(dec, session);
             if (inWin) {
+                if (rangeStartIdx == null) rangeStartIdx = i;
                 forming = true;
                 if (dayHigh == null) {
                     dayHigh = data[i].h;
@@ -3368,8 +3373,11 @@
                 }
             } else if (forming && !settled) {
                 settled = true;
+                extendForDay = true;
             }
-            if (settled && dayHigh != null && dayLow != null) {
+            const showBand = rangeStartIdx != null && dayHigh != null && dayLow != null
+                && i >= rangeStartIdx && (inWin || extendForDay);
+            if (showBand) {
                 upper.push(dayHigh);
                 lower.push(dayLow);
                 middle.push((dayHigh + dayLow) / 2);
