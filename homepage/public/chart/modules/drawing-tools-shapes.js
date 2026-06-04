@@ -267,6 +267,43 @@ function deriveBoxCornerRole(dataPoint, anchorX, anchorY) {
     return 'corner-br';
 }
 
+/** Shift + corner drag: keep a square from the opposite corner (TradingView-style). */
+function squareConstrainedBoxPoint(role, start, dataPoint) {
+    if (!start || !dataPoint || !role || !String(role).startsWith('corner-')) {
+        return dataPoint;
+    }
+    let ax = start.left;
+    let ay = start.top;
+    switch (role) {
+        case 'corner-br':
+            ax = start.left;
+            ay = start.top;
+            break;
+        case 'corner-tl':
+            ax = start.right;
+            ay = start.bottom;
+            break;
+        case 'corner-tr':
+            ax = start.left;
+            ay = start.bottom;
+            break;
+        case 'corner-bl':
+            ax = start.right;
+            ay = start.top;
+            break;
+        default:
+            return dataPoint;
+    }
+    const dx = dataPoint.x - ax;
+    const dy = dataPoint.y - ay;
+    const size = Math.max(Math.abs(dx), Math.abs(dy));
+    if (!Number.isFinite(size) || size === 0) return { ...dataPoint };
+    return {
+        x: ax + (dx >= 0 ? size : -size),
+        y: ay + (dy >= 0 ? size : -size)
+    };
+}
+
 /**
  * TradingView-style box resize: opposite edge/corner from drag start stays fixed;
  * crossing flips which handle is active so resize continues instead of collapsing to a line.
@@ -861,7 +898,11 @@ class RectangleTool extends BaseDrawing {
 
         const role = this._resizeRole || handleRole;
         const start = this._resizeStart || boxBoundsFromPoints(this.points);
-        const next = applyBoxHandleDragWithFlip(role, start, dataPoint);
+        let dragPoint = dataPoint;
+        if (context.shiftKey && start) {
+            dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+        }
+        const next = applyBoxHandleDragWithFlip(role, start, dragPoint);
         if (!next) {
             console.warn(`⚠️ Rectangle handleCustomHandleDrag: Unknown role ${role}`);
             return false;

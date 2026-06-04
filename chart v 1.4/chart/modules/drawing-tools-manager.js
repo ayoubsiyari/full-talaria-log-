@@ -3361,6 +3361,64 @@ class DrawingToolsManager {
         };
     }
 
+    /** Anchor index for Shift angle-snap while resizing (adjacent point, not always 0/1). */
+    _shiftAngleAnchorIndex(drawing, pointIndex) {
+        const len = drawing?.points?.length || 0;
+        if (len < 2 || pointIndex == null || isNaN(pointIndex)) return null;
+        if (len === 2) return pointIndex === 0 ? 1 : 0;
+        if (pointIndex === 0) return 1;
+        if (pointIndex === len - 1) return len - 2;
+        return pointIndex - 1;
+    }
+
+    /** Fixed anchor at resize drag-start (stable while the handle moves). */
+    _shiftAngleAnchorPoint(drawing, pointIndex) {
+        const anchorIndex = this._shiftAngleAnchorIndex(drawing, pointIndex);
+        if (anchorIndex == null) return null;
+        const snapPts = this.resizeBeforeState && Array.isArray(this.resizeBeforeState.points)
+            ? this.resizeBeforeState.points
+            : null;
+        const src = (snapPts && snapPts[anchorIndex]) || (drawing.points && drawing.points[anchorIndex]);
+        if (!src || !Number.isFinite(src.x) || !Number.isFinite(src.y)) return null;
+        return { x: src.x, y: src.y };
+    }
+
+    _applyShiftAngleConstraintForResize(drawing, pointIndex, point, shiftKey) {
+        if (!shiftKey || !drawing || !this.angleSnapTools.includes(drawing.type)) return point;
+        const anchor = this._shiftAngleAnchorPoint(drawing, pointIndex);
+        if (!anchor) return point;
+        return this.constrainToAngle(anchor, point);
+    }
+
+    /** Shift + move: lock translation to 0°/45°/90° (TradingView-style). */
+    _constrainPixelDeltaToSnapAngles(pixelDx, pixelDy) {
+        const dx = Number(pixelDx) || 0;
+        const dy = Number(pixelDy) || 0;
+        if (dx === 0 && dy === 0) return { dx: 0, dy: 0 };
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        const snapAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+        return {
+            dx: dist * Math.cos(snapAngle),
+            dy: dist * Math.sin(snapAngle)
+        };
+    }
+
+    /**
+     * Commit a leftover CSS translate on the drawing group into data points before resize.
+     * Prevents handles staying at the pre-move origin while the stroke was visually offset.
+     */
+    _commitStaleDrawingGroupTransform(drawing) {
+        if (!drawing?.group) return;
+        const transform = drawing.group.attr('transform');
+        if (!transform) return;
+        const startPts = Array.isArray(drawing.points)
+            ? drawing.points.map((p) => ({ ...p }))
+            : null;
+        if (!startPts || !startPts.length) return;
+        this._commitDrawingPixelDragDelta(drawing, startPts, { x: 0, y: 0 });
+    }
+
     /**
      * Snap a point to the nearest candle OHLC value (magnet mode)
      * This is used when holding Ctrl/Cmd to snap to candle prices like TradingView
@@ -3541,8 +3599,13 @@ class DrawingToolsManager {
             const [currentScreenX, currentScreenY] = this._eventCanvasLocalXY(event);
             
             // Calculate pixel delta
-            const pixelDx = currentScreenX - this.dragStartScreen.x;
-            const pixelDy = currentScreenY - this.dragStartScreen.y;
+            let pixelDx = currentScreenX - this.dragStartScreen.x;
+            let pixelDy = currentScreenY - this.dragStartScreen.y;
+            if (event.shiftKey && this.draggingDrawing && this.angleSnapTools.includes(this.draggingDrawing.type)) {
+                const snapped = this._constrainPixelDeltaToSnapAngles(pixelDx, pixelDy);
+                pixelDx = snapped.dx;
+                pixelDy = snapped.dy;
+            }
             
             if (this.draggingMultiple && this.multiDragStartPositions) {
                 this.multiDragStartPositions.forEach(({ drawing, points, startTransform }) => {
@@ -3584,7 +3647,13 @@ class DrawingToolsManager {
                 this.resizingPointIndex = null;
                 return;
             }
-            const currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
+            let currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
+            currentPoint = this._applyShiftAngleConstraintForResize(
+                this.resizingDrawing,
+                this.resizingPointIndex,
+                currentPoint,
+                event.shiftKey
+            );
             let handledByDrawing = false;
             if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
                 handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
@@ -6301,6 +6370,11 @@ class DrawingToolsManager {
                     const [currentScreenX, currentScreenY] = self._eventCanvasLocalXY(event.sourceEvent);
                     let pixelDx = currentScreenX - bodyDragStartScreen.x;
                     let pixelDy = currentScreenY - bodyDragStartScreen.y;
+                    if (event.sourceEvent?.shiftKey && self.angleSnapTools.includes(drawing.type)) {
+                        const snapped = self._constrainPixelDeltaToSnapAngles(pixelDx, pixelDy);
+                        pixelDx = snapped.dx;
+                        pixelDy = snapped.dy;
+                    }
                     if (self._isHorizontalAnchorToolType(drawing.type)) {
                         pixelDy = 0;
                     }
@@ -7004,13 +7078,12 @@ class DrawingToolsManager {
                     let point = self.getDataPoint(event.sourceEvent, drawing.type);
                     const index = self.resizingPointIndex;
                     
-                    // Apply Shift key angle constraint for supported line tools
-                    if (event.sourceEvent.shiftKey && self.angleSnapTools.includes(drawing.type)) {
-                        const otherIndex = index === 0 ? 1 : 0;
-                        if (drawing.points[otherIndex]) {
-                            point = self.constrainToAngle(drawing.points[otherIndex], point);
-                        }
-                    }
+                    point = self._applyShiftAngleConstraintForResize(
+                        drawing,
+                        index,
+                        point,
+                        event.sourceEvent.shiftKey
+                    );
                     
                     if (!applyPointHandleDrag(point, drawing, index)) {
                         self.handleDrag(event);
@@ -7079,6 +7152,7 @@ class DrawingToolsManager {
      */
     startHandleDrag(drawing, pointIndex, event) {
         this._commitInlineTextEditorBeforeGeometryEdit();
+        this._commitStaleDrawingGroupTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
@@ -7116,14 +7190,12 @@ class DrawingToolsManager {
             return;
         }
         
-        // Apply Shift key angle constraint for supported line tools
-        if (event.sourceEvent.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-            // Get the other anchor point (for 2-point tools)
-            const otherIndex = index === 0 ? 1 : 0;
-            if (drawing.points[otherIndex]) {
-                point = this.constrainToAngle(drawing.points[otherIndex], point);
-            }
-        }
+        point = this._applyShiftAngleConstraintForResize(
+            drawing,
+            index,
+            point,
+            event.sourceEvent.shiftKey
+        );
         
         // Update point
         drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
@@ -7178,6 +7250,7 @@ class DrawingToolsManager {
 
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
         this._commitInlineTextEditorBeforeGeometryEdit();
+        this._commitStaleDrawingGroupTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
@@ -7215,15 +7288,14 @@ class DrawingToolsManager {
         // Add pointIndex to context for arc/curve sensitivity
         context.pointIndex = this.customHandlePointIndex;
         
-        // Apply Shift key angle constraint for supported line tools
-        if (context.shiftKey && this.angleSnapTools.includes(drawing.type)) {
-            const pointIndex = context.pointIndex;
-            const otherIndex = pointIndex === 0 ? 1 : 0;
-            if (drawing.points[otherIndex]) {
-                context.dataPoint = this.constrainToAngle(drawing.points[otherIndex], context.dataPoint);
-                context.point = context.dataPoint;
-            }
-        }
+        const pi = context.pointIndex;
+        context.dataPoint = this._applyShiftAngleConstraintForResize(
+            drawing,
+            pi,
+            context.dataPoint,
+            context.shiftKey
+        );
+        context.point = context.dataPoint;
         
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
