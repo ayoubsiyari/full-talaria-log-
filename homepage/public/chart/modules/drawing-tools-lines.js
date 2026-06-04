@@ -1082,6 +1082,23 @@ class HorizontalLineTool extends BaseDrawing {
         if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
     }
 
+    /** Hot-path: patch stroke + handle without rebuilding labels (split-text needs full render). */
+    patchLiveAnchorGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
+        if (this._splitInfo) return false;
+        const p = this.points[0];
+        const y = scales.yScale(p.y);
+        if (!Number.isFinite(y)) return false;
+        this.group.selectAll('line').each(function () {
+            const el = d3.select(this);
+            if (el.attr('y1') == null) return;
+            el.attr('y1', y).attr('y2', y);
+        });
+        const pos = this._getHandleScreenPosition(scales);
+        if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
+        return true;
+    }
+
     renderPriceLabel(scales, xRange, point) {
         // Format price value using the chart's instrument-aware decimal count (NQ=2,
         // GC=1, CL=2, FX=5, etc.). Falls back to 5 only for unknown symbols so we
@@ -1478,6 +1495,24 @@ class VerticalLineTool extends BaseDrawing {
     updateHandlePositions(scales) {
         const pos = this._getHandleScreenPosition(scales);
         if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
+    }
+
+    patchLiveAnchorGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
+        if (this._splitInfo) return false;
+        const p = this.points[0];
+        const x = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        if (!Number.isFinite(x)) return false;
+        this.group.selectAll('line').each(function () {
+            const el = d3.select(this);
+            if (el.attr('x1') == null) return;
+            el.attr('x1', x).attr('x2', x);
+        });
+        const pos = this._getHandleScreenPosition(scales, x);
+        if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
+        return true;
     }
 
     renderTextLabel(scales, x, yRange) {
@@ -2237,6 +2272,42 @@ class HorizontalRayTool extends BaseDrawing {
 
     updateHandlePositions(scales) {
         this.syncDirectPointHandleDom(scales, 0);
+    }
+
+    patchLiveAnchorGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
+        if (this._splitInfo) return false;
+        const p = this.points[0];
+        const x = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const y = scales.yScale(p.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+
+        const xRange = scales.xScale.range();
+        const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
+            ? (scales.chart.w - scales.chart.margin.r)
+            : xRange[1];
+
+        this.group.selectAll('line').each(function () {
+            const el = d3.select(this);
+            if (el.attr('y1') == null) return;
+            el.attr('y1', y).attr('y2', y);
+            const x2 = parseFloat(el.attr('x2'));
+            if (!Number.isFinite(x2)) return;
+            if (x2 >= chartRightX - 2) {
+                el.attr('x1', x);
+            } else {
+                const x1 = parseFloat(el.attr('x1'));
+                if (Number.isFinite(x1)) {
+                    const width = x2 - x1;
+                    el.attr('x1', x).attr('x2', x + width);
+                }
+            }
+        });
+
+        this.syncDirectPointHandleDom(scales, 0);
+        return true;
     }
 
     renderPriceLabel(scales, xRange, point) {

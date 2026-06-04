@@ -427,8 +427,34 @@ class DrawingToolsManager {
         return true;
     }
 
+    /** Line tools with bare `.resize-handle` circles (not resize-handle-group). */
+    _usesDirectResizeHandles(drawingType) {
+        return drawingType === 'horizontal-ray'
+            || drawingType === 'horizontal'
+            || drawingType === 'vertical';
+    }
+
     scheduleRenderDrawing(drawing) {
         if (!drawing) return;
+        // Direct-handle lines: patch or render synchronously (no RAF) so stroke + handle stay aligned.
+        if (this.isResizing && this.resizingDrawing === drawing && this._usesDirectResizeHandles(drawing.type)) {
+            try {
+                const stillTracked = this.drawings.find(item => item === drawing || (item && drawing && item.id === drawing.id));
+                if (stillTracked && this.chart && this.chart.xScale && this.chart.yScale) {
+                    const scales = {
+                        xScale: this.chart.xScale,
+                        yScale: this.chart.yScale,
+                        chart: this.chart
+                    };
+                    if (typeof stillTracked.patchLiveAnchorGeometry === 'function'
+                        && stillTracked.patchLiveAnchorGeometry(scales)) {
+                        return;
+                    }
+                    this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
+                }
+            } catch (_) { /* ignore */ }
+            return;
+        }
         if (!this._rafRenderSet) this._rafRenderSet = new Set();
         this._rafRenderSet.add(drawing);
         if (this._rafRenderQueued) return;
