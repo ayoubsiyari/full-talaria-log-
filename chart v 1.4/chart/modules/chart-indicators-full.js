@@ -1616,69 +1616,144 @@
         return { upper, lower, middle, atr: atrValues };
     }
     
-    // Sessions indicator - marks trading sessions with time zones
-    function calculateSessions(data, params) {
-        const sessions = [];
-        
-        // Helper to parse time string "HH:MM" to decimal hours
-        const parseTime = (timeStr) => {
-            if (!timeStr) return 0;
-            const parts = timeStr.split(':');
-            return parseInt(parts[0]) + (parseInt(parts[1] || 0) / 60);
-        };
-        
-        // Parse session times from params (or use defaults)
-        const sessionDefs = {
-            asian: { 
-                start: parseTime(params.asianStart || '00:00'), 
-                end: parseTime(params.asianEnd || '09:00'), 
-                color: params.asianColor || 'rgba(255, 193, 7, 0.15)' 
-            },
-            london: { 
-                start: parseTime(params.londonStart || '07:00'), 
-                end: parseTime(params.londonEnd || '16:00'), 
-                color: params.londonColor || 'rgba(33, 150, 243, 0.15)' 
-            },
-            newYork: { 
-                start: parseTime(params.newYorkStart || '12:00'), 
-                end: parseTime(params.newYorkEnd || '21:00'), 
-                color: params.newYorkColor || 'rgba(76, 175, 80, 0.15)' 
-            }
-        };
-        
-        // Helper to check if time is in session (handles overnight sessions)
-        const isInSession = (hour, minute, session) => {
-            const timeDecimal = hour + (minute / 60);
-            if (session.start <= session.end) {
-                // Normal session (e.g., 09:00 - 17:00)
-                return timeDecimal >= session.start && timeDecimal < session.end;
-            } else {
-                // Overnight session (e.g., 22:00 - 06:00)
-                return timeDecimal >= session.start || timeDecimal < session.end;
-            }
-        };
-        
-        for (let i = 0; i < data.length; i++) {
-            const date = new Date(data[i].t);
-            const hour = date.getUTCHours();
-            const minute = date.getUTCMinutes();
-            
-            const candleSessions = [];
-            
-            if (params.showAsian !== false && isInSession(hour, minute, sessionDefs.asian)) {
-                candleSessions.push({ type: 'asian', color: sessionDefs.asian.color });
-            }
-            if (params.showLondon !== false && isInSession(hour, minute, sessionDefs.london)) {
-                candleSessions.push({ type: 'london', color: sessionDefs.london.color });
-            }
-            if (params.showNewYork !== false && isInSession(hour, minute, sessionDefs.newYork)) {
-                candleSessions.push({ type: 'newYork', color: sessionDefs.newYork.color });
-            }
-            
-            sessions.push(candleSessions);
+    function parseSessionTimeStr(timeStr) {
+        if (!timeStr) return 0;
+        const parts = String(timeStr).split(':');
+        return parseInt(parts[0], 10) + (parseInt(parts[1] || 0, 10) / 60);
+    }
+
+    function sessionWallDecimal(utcMs, tzId) {
+        try {
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: tzId || 'Etc/UTC',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).formatToParts(new Date(utcMs));
+            const hPart = parts.find(function (p) { return p.type === 'hour'; });
+            const mPart = parts.find(function (p) { return p.type === 'minute'; });
+            const h = hPart ? parseInt(hPart.value, 10) : 0;
+            const m = mPart ? parseInt(mPart.value, 10) : 0;
+            return h + m / 60;
+        } catch (e) {
+            const d = new Date(utcMs);
+            return d.getUTCHours() + d.getUTCMinutes() / 60;
         }
-        
-        return sessions;
+    }
+
+    function isInSessionDecimal(timeDecimal, session) {
+        if (session.start <= session.end) {
+            return timeDecimal >= session.start && timeDecimal < session.end;
+        }
+        return timeDecimal >= session.start || timeDecimal < session.end;
+    }
+
+    function buildSessionBoxRuntimeDefs(params) {
+        const defs = (typeof window !== 'undefined' && window.__v9SessionBoxSessionDefs) || [];
+        const out = [];
+        defs.forEach(function (sess) {
+            if (params[sess.showId] === false) return;
+            out.push({
+                key: sess.key,
+                name: params[sess.nameId] != null ? String(params[sess.nameId]) : sess.defaultName,
+                start: parseSessionTimeStr(params[sess.startId] != null ? params[sess.startId] : sess.defaultStart),
+                end: parseSessionTimeStr(params[sess.endId] != null ? params[sess.endId] : sess.defaultEnd),
+                color: params[sess.colorId] || sess.defaultColor
+            });
+        });
+        if (!out.length) {
+            if (params.showAsian !== false) {
+                out.push({
+                    key: 'asian',
+                    name: params.asianName || 'Asian',
+                    start: parseSessionTimeStr(params.asianStart || '00:00'),
+                    end: parseSessionTimeStr(params.asianEnd || '09:00'),
+                    color: params.asianColor || 'rgba(255, 193, 7, 0.15)'
+                });
+            }
+            if (params.showLondon !== false) {
+                out.push({
+                    key: 'london',
+                    name: params.londonName || 'London',
+                    start: parseSessionTimeStr(params.londonStart || '07:00'),
+                    end: parseSessionTimeStr(params.londonEnd || '16:00'),
+                    color: params.londonColor || 'rgba(33, 150, 243, 0.15)'
+                });
+            }
+            if (params.showNewYork !== false) {
+                out.push({
+                    key: 'newYork',
+                    name: params.newYorkName || 'New York',
+                    start: parseSessionTimeStr(params.newYorkStart || '12:00'),
+                    end: parseSessionTimeStr(params.newYorkEnd || '21:00'),
+                    color: params.newYorkColor || 'rgba(76, 175, 80, 0.15)'
+                });
+            }
+        }
+        return out;
+    }
+
+    function sessionsCalcPayload(indicator) {
+        const p = Object.assign({}, indicator.params || {}, indicator.style || {});
+        const defs = (typeof window !== 'undefined' && window.__v9SessionBoxSessionDefs) || [];
+        defs.forEach(function (sess) {
+            if (indicator.style && indicator.style[sess.colorId] != null) {
+                p[sess.colorId] = indicator.style[sess.colorId];
+            }
+        });
+        return p;
+    }
+
+    function applySessionsFromParams(indicator, params) {
+        const defs = (typeof window !== 'undefined' && window.__v9SessionBoxSessionDefs) || [];
+        indicator.overlay = true;
+        indicator.isSessions = true;
+        indicator.name = 'Session Boxes';
+        defs.forEach(function (sess) {
+            if (params[sess.showId] !== undefined) indicator.params[sess.showId] = params[sess.showId] !== false;
+            if (params[sess.nameId] != null) indicator.params[sess.nameId] = String(params[sess.nameId]);
+            if (params[sess.startId] != null) indicator.params[sess.startId] = params[sess.startId];
+            if (params[sess.endId] != null) indicator.params[sess.endId] = params[sess.endId];
+            if (params[sess.colorId] != null) indicator.style[sess.colorId] = params[sess.colorId];
+        });
+        if (params.showAsian !== undefined) indicator.params.showAsian = params.showAsian !== false;
+        if (params.showLondon !== undefined) indicator.params.showLondon = params.showLondon !== false;
+        if (params.showNewYork !== undefined) indicator.params.showNewYork = params.showNewYork !== false;
+        if (params.asianStart != null) indicator.params.asianStart = params.asianStart;
+        if (params.asianEnd != null) indicator.params.asianEnd = params.asianEnd;
+        if (params.londonStart != null) indicator.params.londonStart = params.londonStart;
+        if (params.londonEnd != null) indicator.params.londonEnd = params.londonEnd;
+        if (params.newYorkStart != null) indicator.params.newYorkStart = params.newYorkStart;
+        if (params.newYorkEnd != null) indicator.params.newYorkEnd = params.newYorkEnd;
+        indicator.style.showSessionLabels = params.showSessionLabels !== false;
+        indicator.params.maxTimeframeMinutes = params.maxTimeframeMinutes != null
+            ? String(params.maxTimeframeMinutes) : (indicator.params.maxTimeframeMinutes || '240');
+        indicator.params.sessionTimezone = params.sessionTimezone || indicator.params.sessionTimezone || 'Etc/UTC';
+    }
+
+    // Sessions indicator — session boxes with configurable TZ, names, and spans
+    function calculateSessions(data, params) {
+        const perCandle = [];
+        const tz = params.sessionTimezone || 'Etc/UTC';
+        const sessionDefs = buildSessionBoxRuntimeDefs(params);
+
+        for (let i = 0; i < data.length; i++) {
+            const dec = sessionWallDecimal(data[i].t, tz);
+            const candleSessions = [];
+            for (let d = 0; d < sessionDefs.length; d++) {
+                const sd = sessionDefs[d];
+                if (isInSessionDecimal(dec, sd)) {
+                    candleSessions.push({
+                        type: sd.key,
+                        name: sd.name,
+                        color: sd.color
+                    });
+                }
+            }
+            perCandle.push(candleSessions);
+        }
+
+        return { perCandle: perCandle, defs: sessionDefs, timezone: tz };
     }
     
     // ICT Kill Zones indicator - session boxes with high/low, NY midnight line, deviations
@@ -3900,38 +3975,8 @@
                 break;
             
             case 'sessions':
-                // Session visibility
-                indicator.params.showAsian = params.showAsian !== false;
-                indicator.params.showLondon = params.showLondon !== false;
-                indicator.params.showNewYork = params.showNewYork !== false;
-                // Session times (HH:MM format)
-                indicator.params.asianStart = params.asianStart || '00:00';
-                indicator.params.asianEnd = params.asianEnd || '09:00';
-                indicator.params.londonStart = params.londonStart || '07:00';
-                indicator.params.londonEnd = params.londonEnd || '16:00';
-                indicator.params.newYorkStart = params.newYorkStart || '12:00';
-                indicator.params.newYorkEnd = params.newYorkEnd || '21:00';
-                // Session colors
-                indicator.style.asianColor = params.asianColor || 'rgba(255, 193, 7, 0.15)';
-                indicator.style.londonColor = params.londonColor || 'rgba(33, 150, 243, 0.15)';
-                indicator.style.newYorkColor = params.newYorkColor || 'rgba(76, 175, 80, 0.15)';
-                indicator.overlay = true;
-                indicator.isSessions = true;
-                indicator.name = 'Sessions';
-                this.indicators.data[indicator.id] = calculateSessions(this.data, {
-                    showAsian: indicator.params.showAsian,
-                    showLondon: indicator.params.showLondon,
-                    showNewYork: indicator.params.showNewYork,
-                    asianStart: indicator.params.asianStart,
-                    asianEnd: indicator.params.asianEnd,
-                    londonStart: indicator.params.londonStart,
-                    londonEnd: indicator.params.londonEnd,
-                    newYorkStart: indicator.params.newYorkStart,
-                    newYorkEnd: indicator.params.newYorkEnd,
-                    asianColor: indicator.style.asianColor,
-                    londonColor: indicator.style.londonColor,
-                    newYorkColor: indicator.style.newYorkColor
-                });
+                applySessionsFromParams(indicator, params);
+                this.indicators.data[indicator.id] = calculateSessions(this.data, sessionsCalcPayload(indicator));
                 break;
             
             case 'killzones':
@@ -4996,6 +5041,9 @@
         if (indicator.type === 'sma') {
             applySmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'sessions') {
+            applySessionsFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -5099,35 +5147,7 @@
                 break;
             }
             case 'sessions':
-                // Update visibility
-                if (newParams.showAsian !== undefined) indicator.params.showAsian = newParams.showAsian;
-                if (newParams.showLondon !== undefined) indicator.params.showLondon = newParams.showLondon;
-                if (newParams.showNewYork !== undefined) indicator.params.showNewYork = newParams.showNewYork;
-                // Update times
-                if (newParams.asianStart !== undefined) indicator.params.asianStart = newParams.asianStart;
-                if (newParams.asianEnd !== undefined) indicator.params.asianEnd = newParams.asianEnd;
-                if (newParams.londonStart !== undefined) indicator.params.londonStart = newParams.londonStart;
-                if (newParams.londonEnd !== undefined) indicator.params.londonEnd = newParams.londonEnd;
-                if (newParams.newYorkStart !== undefined) indicator.params.newYorkStart = newParams.newYorkStart;
-                if (newParams.newYorkEnd !== undefined) indicator.params.newYorkEnd = newParams.newYorkEnd;
-                // Update colors
-                if (newParams.asianColor !== undefined) indicator.style.asianColor = newParams.asianColor;
-                if (newParams.londonColor !== undefined) indicator.style.londonColor = newParams.londonColor;
-                if (newParams.newYorkColor !== undefined) indicator.style.newYorkColor = newParams.newYorkColor;
-                this.indicators.data[indicator.id] = calculateSessions(this.data, {
-                    showAsian: indicator.params.showAsian,
-                    showLondon: indicator.params.showLondon,
-                    showNewYork: indicator.params.showNewYork,
-                    asianStart: indicator.params.asianStart,
-                    asianEnd: indicator.params.asianEnd,
-                    londonStart: indicator.params.londonStart,
-                    londonEnd: indicator.params.londonEnd,
-                    newYorkStart: indicator.params.newYorkStart,
-                    newYorkEnd: indicator.params.newYorkEnd,
-                    asianColor: indicator.style.asianColor,
-                    londonColor: indicator.style.londonColor,
-                    newYorkColor: indicator.style.newYorkColor
-                });
+                this.indicators.data[indicator.id] = calculateSessions(this.data, sessionsCalcPayload(indicator));
                 break;
             case 'killzones':
             case 'ictkz':
@@ -5500,14 +5520,7 @@
                     this.indicators.data[indicator.id] = { active: true };
                     break;
                 case 'sessions':
-                    this.indicators.data[indicator.id] = calculateSessions(this.data, {
-                        showAsian: indicator.params.showAsian,
-                        showLondon: indicator.params.showLondon,
-                        showNewYork: indicator.params.showNewYork,
-                        asianColor: indicator.style.asianColor,
-                        londonColor: indicator.style.londonColor,
-                        newYorkColor: indicator.style.newYorkColor
-                    });
+                    this.indicators.data[indicator.id] = calculateSessions(this.data, sessionsCalcPayload(indicator));
                     break;
                 case 'killzones':
                 case 'ictkz':
@@ -6047,9 +6060,11 @@
             } else if (indicator.type === 'psar') {
                 this.drawParabolicSAR(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'sessions') {
-                this.drawSessions(data, indicator.style, startIndex, endIndex);
+                if (this._sessionsVisibleForMaxTimeframe(indicator)) {
+                    this.drawSessions(data, indicator, startIndex, endIndex);
+                }
             } else if (indicator.type === 'sessionsplus' || indicator.isSessionsPlus) {
-                this.drawSessions(data, indicator.style, startIndex, endIndex);
+                this.drawSessions(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'openingrange') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote' || indicator.type === 'ictsesspd') {
@@ -8309,37 +8324,96 @@ Chart.prototype.drawATRBands = function(data, style, startIndex = 0, endIndex) {
     ctx.globalAlpha = 1.0;
 };
 
-// Draw Sessions indicator - colored background for trading sessions
-Chart.prototype.drawSessions = function(data, style, startIndex = 0, endIndex = data.length) {
+Chart.prototype._chartBarMinutes = function() {
+    if (typeof this.parseTimeframe !== 'function' || !this.currentTimeframe) return null;
+    const ms = this.parseTimeframe(this.currentTimeframe);
+    return ms ? ms / 60000 : null;
+};
+
+Chart.prototype._sessionsVisibleForMaxTimeframe = function(indicator) {
+    if (!indicator || !indicator.params) return true;
+    const maxRaw = indicator.params.maxTimeframeMinutes;
+    const maxMin = maxRaw != null ? Number(maxRaw) : 0;
+    if (!Number.isFinite(maxMin) || maxMin <= 0) return true;
+    const barMin = this._chartBarMinutes();
+    if (!Number.isFinite(barMin)) return true;
+    return barMin <= maxMin;
+};
+
+// Draw Sessions indicator — merged session boxes with optional labels
+Chart.prototype.drawSessions = function(data, indicator, startIndex, endIndex) {
+    const style = (indicator && indicator.style) || indicator || {};
+    const perCandle = Array.isArray(data)
+        ? data
+        : (data && Array.isArray(data.perCandle) ? data.perCandle : null);
+    if (!perCandle || !perCandle.length) return;
+
     const ctx = this.ctx;
     const m = this.margin;
     const plotLayout = typeof this._getMainPricePlotLayout === 'function'
         ? this._getMainPricePlotLayout()
         : null;
     const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
-    
-    // Draw session backgrounds
-    for (let i = startIndex; i < endIndex && i < data.length; i++) {
-        const sessions = data[i];
-        if (!sessions || sessions.length === 0) continue;
-        
-        const x = this.dataIndexToPixel(i);
-        const candleWidth = this.candleWidth || 8;
-        
-        // Skip if outside visible area
-        if (x < m.l - candleWidth || x > this.w - m.r + candleWidth) continue;
-        
-        // Draw each session's background color
-        sessions.forEach(session => {
-            ctx.fillStyle = session.color;
-            ctx.fillRect(
-                x - candleWidth / 2,
-                m.t,
-                candleWidth,
-                priceAreaBottom - m.t
-            );
+    const plotH = priceAreaBottom - m.t;
+    const showLabels = style.showSessionLabels !== false;
+    const end = Math.min(endIndex != null ? endIndex : perCandle.length, perCandle.length);
+    const start = Math.max(0, startIndex || 0);
+
+    const activeKeys = {};
+    for (let i = start; i < end; i++) {
+        const list = perCandle[i];
+        if (!list || !list.length) continue;
+        list.forEach(function (s) {
+            if (s && s.type) activeKeys[s.type] = true;
         });
     }
+
+    const self = this;
+    Object.keys(activeKeys).forEach(function (sessionKey) {
+        let runStart = null;
+        let runColor = null;
+        let runName = null;
+
+        function flushRun(runEnd) {
+            if (runStart == null || runEnd < runStart) return;
+            const x1 = self.dataIndexToPixel(runStart);
+            const x2 = self.dataIndexToPixel(runEnd);
+            const cw = self.candleWidth || 8;
+            const left = Math.min(x1, x2) - cw / 2;
+            const width = Math.max(cw, Math.abs(x2 - x1) + cw);
+            if (left + width < m.l || left > self.w - m.r) return;
+            ctx.fillStyle = runColor || 'rgba(120,123,134,0.12)';
+            ctx.fillRect(left, m.t, width, plotH);
+            if (showLabels && runName) {
+                const midX = left + width / 2;
+                ctx.save();
+                ctx.font = '600 11px system-ui, -apple-system, Segoe UI, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = 'rgba(209, 212, 220, 0.92)';
+                ctx.fillText(runName, midX, m.t + 6);
+                ctx.restore();
+            }
+        }
+
+        for (let i = start; i < end; i++) {
+            const list = perCandle[i] || [];
+            const hit = list.find(function (s) { return s && s.type === sessionKey; });
+            if (hit) {
+                if (runStart == null) {
+                    runStart = i;
+                    runColor = hit.color;
+                    runName = hit.name || sessionKey;
+                }
+            } else if (runStart != null) {
+                flushRun(i - 1);
+                runStart = null;
+                runColor = null;
+                runName = null;
+            }
+        }
+        if (runStart != null) flushRun(end - 1);
+    });
 };
 
 // Draw ICT Kill Zones indicator - session boxes with high/low boundaries

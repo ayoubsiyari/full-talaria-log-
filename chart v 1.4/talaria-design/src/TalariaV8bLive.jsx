@@ -22575,9 +22575,41 @@ const TalariaV8bLive = () => {
               }}>{right}</div>
             </div>
           );
+          if (p.type === "sessionInput") {
+            const showVal = indSettDraft[p.showId] !== undefined ? indSettDraft[p.showId] : p.defaultShow !== false;
+            const nameVal = indSettDraft[p.nameId] != null ? indSettDraft[p.nameId] : (p.defaultName || p.label || "");
+            const startVal = indSettDraft[p.startId] != null ? indSettDraft[p.startId] : (p.defaultStart || "00:00");
+            const endVal = indSettDraft[p.endId] != null ? indSettDraft[p.endId] : (p.defaultEnd || "00:00");
+            const timeInp = (id, val) => (
+              <input type="time" value={val || ""} onClick={(e) => e.stopPropagation()}
+                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
+                style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
+            );
+            return (
+              <div key={"sess-" + p.sessionKey} style={{
+                display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", marginBottom: 6,
+                background: "rgba(140,160,255,0.04)", border: `1px solid ${c.br}`, boxSizing: "border-box",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {TlChk(!!showVal, `ind-${p.showId}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.showId]: !d[p.showId] })), { vpImmediate: true })}
+                  <input type="text" value={nameVal} placeholder="Session name" onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.nameId]: e.target.value }))}
+                    style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                      color: c.tx, fontSize: 12, fontFamily: F, padding: "0 8px", outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 26 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 36, flexShrink: 0 }}>Time</span>
+                  {timeInp(p.startId, startVal)}
+                  <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                  {timeInp(p.endId, endVal)}
+                </div>
+              </div>
+            );
+          }
           if (p.type === "heading") {
             return (
-              <div key={p.id} style={{
+              <div key={p.id || p.label} style={{
                 width: "100%",
                 fontSize: 10,
                 fontWeight: 800,
@@ -22587,6 +22619,16 @@ const TalariaV8bLive = () => {
                 paddingTop: 6,
                 borderTop: `1px solid ${c.br}`,
               }}>{p.label}</div>
+            );
+          }
+          if (p.type === "divider") {
+            return (
+              <div key={p.id || "div"} style={{
+                width: "100%",
+                margin: "12px 0 6px",
+                borderTop: `1px solid ${c.br}`,
+                minHeight: 1,
+              }}>{p.label ? <span style={{ fontSize: 10, color: c.tm }}>{p.label}</span> : null}</div>
             );
           }
           if (p.type === "number") {
@@ -23303,7 +23345,7 @@ const TalariaV8bLive = () => {
           }
           return ids;
         })();
-        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && !styleLayoutIds.has(p.id));
+        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && p.type !== "divider" && p.type !== "sessionInput" && !styleLayoutIds.has(p.id));
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1"

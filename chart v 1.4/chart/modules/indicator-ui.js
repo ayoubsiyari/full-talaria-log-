@@ -583,6 +583,87 @@ const MA_SMOOTHING_TYPE_OPTIONS = [
     { value: 'VWMA', label: 'VWMA' }
 ];
 
+/** Max chart timeframe (bar minutes) on which Session Boxes may display. */
+const SESSION_BOX_MAX_TIMEFRAME_OPTIONS = [
+    { value: '0', label: 'All timeframes' },
+    { value: '1', label: '1 minute' },
+    { value: '3', label: '3 minutes' },
+    { value: '5', label: '5 minutes' },
+    { value: '15', label: '15 minutes' },
+    { value: '30', label: '30 minutes' },
+    { value: '60', label: '1 hour' },
+    { value: '120', label: '2 hours' },
+    { value: '240', label: '4 hours' },
+    { value: '480', label: '8 hours' },
+    { value: '720', label: '12 hours' },
+    { value: '1440', label: '1 day' },
+    { value: '10080', label: '1 week' }
+];
+
+const SESSION_BOX_TIMEZONE_OPTIONS = [
+    { value: 'Etc/UTC', label: 'UTC' },
+    { value: 'America/New_York', label: 'New York' },
+    { value: 'America/Chicago', label: 'Chicago' },
+    { value: 'America/Los_Angeles', label: 'Los Angeles' },
+    { value: 'Europe/London', label: 'London' },
+    { value: 'Europe/Berlin', label: 'Berlin' },
+    { value: 'Europe/Paris', label: 'Paris' },
+    { value: 'Asia/Tokyo', label: 'Tokyo' },
+    { value: 'Asia/Hong_Kong', label: 'Hong Kong' },
+    { value: 'Asia/Singapore', label: 'Singapore' },
+    { value: 'Australia/Sydney', label: 'Sydney' }
+];
+
+/** Session Boxes — per-session input rows (show, name, start/end on one line). */
+const SESSION_BOX_SESSION_DEFS = [
+    { key: 'asian', showId: 'showAsian', nameId: 'asianName', startId: 'asianStart', endId: 'asianEnd', colorId: 'asianColor',
+        label: 'Asian', defaultName: 'Asian', defaultStart: '00:00', defaultEnd: '09:00', defaultColor: 'rgba(255, 193, 7, 0.15)', defaultShow: true },
+    { key: 'london', showId: 'showLondon', nameId: 'londonName', startId: 'londonStart', endId: 'londonEnd', colorId: 'londonColor',
+        label: 'London', defaultName: 'London', defaultStart: '07:00', defaultEnd: '16:00', defaultColor: 'rgba(33, 150, 243, 0.15)', defaultShow: true },
+    { key: 'newYork', showId: 'showNewYork', nameId: 'newYorkName', startId: 'newYorkStart', endId: 'newYorkEnd', colorId: 'newYorkColor',
+        label: 'New York', defaultName: 'New York', defaultStart: '12:00', defaultEnd: '21:00', defaultColor: 'rgba(76, 175, 80, 0.15)', defaultShow: true },
+    { key: 'frankfurt', showId: 'showFrankfurt', nameId: 'frankfurtName', startId: 'frankfurtStart', endId: 'frankfurtEnd', colorId: 'frankfurtColor',
+        label: 'Frankfurt', defaultName: 'Frankfurt', defaultStart: '07:00', defaultEnd: '10:00', defaultColor: 'rgba(3, 169, 244, 0.14)', defaultShow: false },
+    { key: 'sydney', showId: 'showSydney', nameId: 'sydneyName', startId: 'sydneyStart', endId: 'sydneyEnd', colorId: 'sydneyColor',
+        label: 'Sydney', defaultName: 'Sydney', defaultStart: '21:00', defaultEnd: '06:00', defaultColor: 'rgba(156, 39, 176, 0.14)', defaultShow: false }
+];
+
+function sessionsBoxInputParams() {
+    const rows = [{ id: 'h_sessions', type: 'heading', label: 'Sessions', tab: 'input' }];
+    SESSION_BOX_SESSION_DEFS.forEach(function (sess) {
+        rows.push({
+            type: 'sessionInput',
+            sessionKey: sess.key,
+            showId: sess.showId,
+            nameId: sess.nameId,
+            startId: sess.startId,
+            endId: sess.endId,
+            label: sess.label,
+            defaultShow: sess.defaultShow,
+            defaultName: sess.defaultName,
+            defaultStart: sess.defaultStart,
+            defaultEnd: sess.defaultEnd,
+            tab: 'input'
+        });
+    });
+    return rows;
+}
+
+function sessionsBoxStyleParams() {
+    return [
+        { id: 'showSessionLabels', label: 'Show session labels', type: 'checkbox', default: true, tab: 'style' },
+        {
+            id: 'maxTimeframeMinutes', label: 'Highest Timeframe to Display the Indicator On (Max Timeframe)',
+            type: 'select', tab: 'style', default: '240', options: SESSION_BOX_MAX_TIMEFRAME_OPTIONS
+        },
+        { id: 'h_sessStyleDivider', type: 'divider', label: '', tab: 'style' },
+        {
+            id: 'sessionTimezone', label: 'Time zone', type: 'select', tab: 'style', default: 'Etc/UTC',
+            options: SESSION_BOX_TIMEZONE_OPTIONS
+        }
+    ];
+}
+
 /** Shared overlay MA input (SMA / WMA): length, source, offset, smoothing. */
 function smoothedOverlayMaInputParams() {
     return [
@@ -1027,25 +1108,19 @@ const INDICATOR_DEFINITIONS = {
         ]
     },
     sessions: {
-        name: 'Trading Sessions',
+        name: 'Session Boxes',
         type: 'overlay',
-        params: [
-            // Asian Session
-            { id: 'showAsian', label: 'Asian Session', type: 'checkbox', default: true },
-            { id: 'asianStart', label: 'Asian Start (UTC)', type: 'time', default: '00:00' },
-            { id: 'asianEnd', label: 'Asian End (UTC)', type: 'time', default: '09:00' },
-            { id: 'asianColor', label: 'Asian Color', type: 'color', default: 'rgba(255, 193, 7, 0.15)' },
-            // London Session
-            { id: 'showLondon', label: 'London Session', type: 'checkbox', default: true },
-            { id: 'londonStart', label: 'London Start (UTC)', type: 'time', default: '07:00' },
-            { id: 'londonEnd', label: 'London End (UTC)', type: 'time', default: '16:00' },
-            { id: 'londonColor', label: 'London Color', type: 'color', default: 'rgba(33, 150, 243, 0.15)' },
-            // New York Session
-            { id: 'showNewYork', label: 'New York Session', type: 'checkbox', default: true },
-            { id: 'newYorkStart', label: 'NY Start (UTC)', type: 'time', default: '12:00' },
-            { id: 'newYorkEnd', label: 'NY End (UTC)', type: 'time', default: '21:00' },
-            { id: 'newYorkColor', label: 'NY Color', type: 'color', default: 'rgba(76, 175, 80, 0.15)' }
-        ]
+        params: sessionsBoxInputParams().concat(
+            SESSION_BOX_SESSION_DEFS.map(function (sess) {
+                return {
+                    id: sess.colorId,
+                    label: sess.label + ' background',
+                    type: 'color',
+                    default: sess.defaultColor,
+                    tab: 'style'
+                };
+            })
+        ).concat(sessionsBoxStyleParams())
     },
     killzones: {
         name: 'ICT Kill Zones',
@@ -2837,6 +2912,7 @@ function createIndicatorSelectionMenu(chartInstance) {
 
 /** Same tab buckets as drawing tool settings: Style / Input / Visibility */
 function indicatorSettingsTabForParam(param) {
+    if (param.type === 'sessionInput') return param.tab || 'input';
     if (param.tab === 'style' || param.tab === 'input' || param.tab === 'visibility') return param.tab;
     const id = String(param.id || '').toLowerCase();
     const label = String(param.label || '').toLowerCase();
@@ -3103,7 +3179,69 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         pane.appendChild(em);
     }
 
+    function appendIndicatorSessionInputRow(param, mountEl) {
+        const showVal = allParams[param.showId] !== undefined ? allParams[param.showId] : param.defaultShow !== false;
+        const nameVal = allParams[param.nameId] != null ? allParams[param.nameId] : (param.defaultName || param.label || '');
+        const startVal = allParams[param.startId] != null ? allParams[param.startId] : (param.defaultStart || '00:00');
+        const endVal = allParams[param.endId] != null ? allParams[param.endId] : (param.defaultEnd || '00:00');
+
+        const block = document.createElement('div');
+        block.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-bottom:4px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));box-sizing:border-box;';
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;align-items:center;gap:10px;min-height:30px;';
+        const showCb = document.createElement('input');
+        showCb.type = 'checkbox';
+        showCb.className = 'tv-native-checkbox';
+        showCb.checked = showVal !== false;
+        showCb.style.cssText = 'width:16px;height:16px;accent-color:var(--sp-accent,#2962ff);flex-shrink:0;';
+        showCb.setAttribute('data-param-id', param.showId);
+        showCb.setAttribute('data-param-type', 'checkbox');
+        head.appendChild(showCb);
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'settings-input';
+        nameInput.value = nameVal;
+        nameInput.placeholder = 'Session name';
+        nameInput.style.cssText = 'flex:1;min-width:0;height:26px;padding:0 8px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
+        nameInput.setAttribute('data-param-id', param.nameId);
+        nameInput.setAttribute('data-param-type', 'text');
+        head.appendChild(nameInput);
+        block.appendChild(head);
+
+        const timeRow = document.createElement('div');
+        timeRow.style.cssText = 'display:flex;align-items:center;gap:8px;padding-left:26px;';
+        const timeLbl = document.createElement('span');
+        timeLbl.textContent = 'Time';
+        timeLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--sp-text-muted,#9aa2b1);width:36px;flex-shrink:0;';
+        timeRow.appendChild(timeLbl);
+
+        const mkTime = function (id, val) {
+            const inp = document.createElement('input');
+            inp.type = 'time';
+            inp.className = 'settings-input';
+            inp.value = val;
+            inp.style.cssText = 'flex:1;min-width:0;height:26px;padding:0 6px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
+            inp.setAttribute('data-param-id', id);
+            inp.setAttribute('data-param-type', 'time');
+            return inp;
+        };
+        timeRow.appendChild(mkTime(param.startId, startVal));
+        const sep = document.createElement('span');
+        sep.textContent = '–';
+        sep.style.cssText = 'color:var(--sp-text-muted,#787b86);font-size:12px;flex-shrink:0;';
+        timeRow.appendChild(sep);
+        timeRow.appendChild(mkTime(param.endId, endVal));
+        block.appendChild(timeRow);
+        mountEl.appendChild(block);
+    }
+
     function appendIndicatorParamRow(param, mountEl) {
+        if (param.type === 'sessionInput') {
+            appendIndicatorSessionInputRow(param, mountEl);
+            return;
+        }
         if (param.type === 'heading' || param.type === 'divider') {
             const h = document.createElement('div');
             h.textContent = param.label || '';
@@ -3117,6 +3255,11 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
                 'margin-top:4px',
                 'border-top:1px solid var(--sp-ui-border, rgba(42,46,57,0.55))'
             ].join(';');
+            if (param.type === 'divider' && !param.label) {
+                h.style.padding = '10px 0 4px';
+                h.style.borderTop = '1px solid var(--sp-ui-border, rgba(42,46,57,0.55))';
+                h.style.minHeight = '0';
+            }
             mountEl.appendChild(h);
             return;
         }
@@ -3833,6 +3976,19 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
+    if (indicatorType === 'sessions') {
+        return {
+            sections: [{
+                title: 'Background',
+                header: true,
+                rows: SESSION_BOX_SESSION_DEFS.map(function (sess) {
+                    return v9ColorRow(sess.label, sess.colorId, null);
+                })
+            }],
+            footers: footers
+        };
+    }
+
     if (indicatorType === 'adx') {
         return {
             sections: [{
@@ -4153,6 +4309,7 @@ window.__v9ClampIndicatorStyleLineWidths = clampIndicatorStyleLineWidths;
 window.__v9SanitizeIndicatorPayloadFromDefinition = sanitizeIndicatorPayloadFromDefinition;
 window.INDICATOR_MAX_LINE_WIDTH = INDICATOR_MAX_LINE_WIDTH;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
+window.__v9SessionBoxSessionDefs = SESSION_BOX_SESSION_DEFS;
 window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
 window.__v9MigrateIndicatorDraftColors = v9MigrateIndicatorDraftColors;
