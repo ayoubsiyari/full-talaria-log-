@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a156';
+const CHART_ENGINE_BUILD = '20260602a157';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -18866,26 +18866,30 @@ class Chart {
         const plotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b - (this.separateIndicatorPanelHeight || 0));
         let volBandTop = plotBottom - (plotLayout ? plotLayout.volumeAreaHeight : 0);
         let volBandBottom = plotBottom;
-        let upColor = this.chartSettings.volumeUpColor;
-        let downColor = this.chartSettings.volumeDownColor;
-        let showMA = false;
-        let maPeriod = 20;
-        let maColor = '#2962ff';
-        
+        let cfg = {
+            showBars: true,
+            usePrevClose: false,
+            growingColor: this.chartSettings.volumeUpColor,
+            fallingColor: this.chartSettings.volumeDownColor,
+            growingBarWidth: 1,
+            fallingBarWidth: 1,
+            showMa: false,
+            maPeriod: 20,
+            maColor: '#2962ff',
+            maLineWidth: 2,
+            maLineDashStyle: 'Solid'
+        };
         if (this.indicators && this.indicators.active) {
             const volumeIndicator = this.indicators.active.find(ind => ind.type === 'volume' || ind.isVolume);
-            if (volumeIndicator) {
-                if (volumeIndicator.style) {
-                    upColor = volumeIndicator.style.upColor || upColor;
-                    downColor = volumeIndicator.style.downColor || downColor;
-                    maColor = volumeIndicator.style.maColor || maColor;
-                }
-                if (volumeIndicator.params) {
-                    showMA = volumeIndicator.params.showMA || false;
-                    maPeriod = volumeIndicator.params.maPeriod || 20;
-                }
+            if (volumeIndicator && typeof this._getVolumeRenderConfig === 'function') {
+                cfg = this._getVolumeRenderConfig(volumeIndicator);
             }
         }
+        const upColor = cfg.growingColor;
+        const downColor = cfg.fallingColor;
+        const showMA = cfg.showMa;
+        const maPeriod = cfg.maPeriod;
+        const maColor = cfg.maColor;
         
         // Clip to the bottom overlay band — volumeScale range matches calculateScales().
         this.ctx.save();
@@ -18916,24 +18920,44 @@ class Chart {
                 .range(this.volumeScale.range())
             : null;
 
-        const drawVolBar = (volVal, idx, isGreen, pixelX) => {
+        const baseCw = Math.max(1, this.candleWidth || 6);
+        const drawVolBar = (volVal, idx, bar, pixelX) => {
             const x = Number.isFinite(pixelX) ? pixelX : this.dataIndexToPixel(idx);
             if (x < m.l - 10 || x > this.w - m.r + 10) return;
             const vs = volScaleLod || this.volumeScale;
             const volumeY = vs(volVal);
             const volumeHeight = Math.max(1, volBandBottom - volumeY);
-            const barW = Number.isFinite(pixelX) ? 1 : this.candleWidth;
+            let isGreen = true;
+            if (bar && typeof this._getVolumeRenderConfig === 'function') {
+                const usePrev = cfg.usePrevClose;
+                const c = Number(bar.c);
+                if (usePrev) {
+                    const dataIdx = Number.isFinite(idx) ? idx : -1;
+                    const prev = dataIdx > 0 && this.data && this.data[dataIdx - 1] ? this.data[dataIdx - 1] : null;
+                    isGreen = c >= Number(prev ? prev.c : c);
+                } else {
+                    isGreen = c >= Number(bar.o);
+                }
+            } else if (bar) {
+                isGreen = Number(bar.c) >= Number(bar.o);
+            }
+            const thick = isGreen ? cfg.growingBarWidth : cfg.fallingBarWidth;
+            const barW = Number.isFinite(pixelX)
+                ? Math.max(1, thick)
+                : Math.max(1, baseCw * (thick / 2));
             this.ctx.fillStyle = isGreen ? upColor : downColor;
             this.ctx.fillRect(x - barW / 2, volumeY, barW, volumeHeight);
         };
 
+        if (cfg.showBars) {
         if (volLod) {
-            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b.c >= b.o, b._pixelX));
+            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b, b._pixelX));
         } else {
             visible.forEach((d, i) => {
                 const idx = Number.isFinite(d.midIdx) ? d.midIdx : this.visibleStartIndex + i;
-                drawVolBar(Number.isFinite(d.v) ? d.v : (d.vSum || 0), idx, d.c >= d.o);
+                drawVolBar(Number.isFinite(d.v) ? d.v : (d.vSum || 0), idx, d);
             });
+        }
         }
         
         // Draw Volume MA if enabled — cache full-series MA; recomputing O(n·period) every
@@ -18958,9 +18982,11 @@ class Chart {
                 this._volumeMaSeriesCacheKey = maKey;
             }
             
-            // Draw the MA line
             this.ctx.strokeStyle = maColor;
-            this.ctx.lineWidth = 2;
+            this.ctx.lineWidth = cfg.maLineWidth;
+            if (typeof this._lineDashForStyle === 'function') {
+                this.ctx.setLineDash(this._lineDashForStyle(cfg.maLineDashStyle));
+            }
             this.ctx.beginPath();
             
             let started = false;
@@ -18987,6 +19013,7 @@ class Chart {
             }
             
             this.ctx.stroke();
+            this.ctx.setLineDash([]);
         }
         
         this.ctx.restore();
@@ -26420,24 +26447,28 @@ class Chart {
             };
             volumeElem.textContent = formatVolume(candle.v || 0);
             
-            // Get volume indicator colors if available
             let upColor = '#089981';
             let downColor = '#f23645';
+            let usePrevClose = false;
+            let barIdx = this.hoverIndex;
+            if (!Number.isFinite(barIdx) || barIdx < 0) barIdx = this.data ? this.data.length - 1 : -1;
             if (this.indicators && this.indicators.active) {
                 const volumeInd = this.indicators.active.find(ind => ind.type === 'volume' || ind.isVolume);
                 if (volumeInd && volumeInd.style) {
-                    // Extract color from rgba if needed
-                    upColor = volumeInd.style.upColor || upColor;
-                    downColor = volumeInd.style.downColor || downColor;
+                    upColor = volumeInd.style.growingColor || volumeInd.style.upColor || upColor;
+                    downColor = volumeInd.style.fallingColor || volumeInd.style.downColor || downColor;
+                    usePrevClose = volumeInd.params && volumeInd.params.colorBasedOnPrevClose === true;
                 }
             }
-            
-            // Color volume based on candle direction
-            if (candle.c >= candle.o) {
-                volumeElem.style.color = upColor.includes('rgba') ? '#089981' : upColor;
-            } else {
-                volumeElem.style.color = downColor.includes('rgba') ? '#f23645' : downColor;
+            let isGrowing = candle.c >= candle.o;
+            if (usePrevClose && this.data && barIdx > 0) {
+                const prev = this.data[barIdx - 1];
+                isGrowing = candle.c >= (prev ? prev.c : candle.c);
+            } else if (usePrevClose) {
+                isGrowing = true;
             }
+            const pick = isGrowing ? upColor : downColor;
+            volumeElem.style.color = String(pick).includes('rgba') ? (isGrowing ? '#089981' : '#f23645') : pick;
         }
     }
     

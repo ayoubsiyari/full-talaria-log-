@@ -659,6 +659,39 @@ const VWAP_BANDS_CALC_OPTIONS = [
     { value: 'percentage', label: 'Percentage' }
 ];
 
+/** Volume Input tab. */
+function volumeInputParams() {
+    return [
+        {
+            id: 'colorBasedOnPrevClose',
+            label: 'Color based on previous close',
+            type: 'checkbox',
+            default: false,
+            tab: 'input'
+        }
+    ];
+}
+
+/** Volume Style — bars (growing/falling) + optional MA line (opacity in color picker). */
+function volumeStyleParams() {
+    return [
+        { id: 'showVolume', label: 'Volume', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'growingColor', label: 'Growing color', type: 'color', default: 'rgba(8, 153, 129, 0.5)', tab: 'style' },
+        { id: 'growingOpacity', label: 'Growing opacity', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'growingLineStyle', label: 'Growing style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Histogram', tab: 'style' },
+        { id: 'growingLineWidth', label: 'Growing thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'fallingColor', label: 'Falling color', type: 'color', default: 'rgba(242, 54, 69, 0.5)', tab: 'style' },
+        { id: 'fallingOpacity', label: 'Falling opacity', type: 'number', default: 50, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'fallingLineStyle', label: 'Falling style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Histogram', tab: 'style' },
+        { id: 'fallingLineWidth', label: 'Falling thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showMa', label: 'Volume MA', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'maColor', label: 'Volume MA color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'maOpacity', label: 'Volume MA opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'maLineStyle', label: 'Volume MA style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'maLineWidth', label: 'Volume MA thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
 /** VWAP Input tab. */
 function vwapInputParams() {
     return [
@@ -1564,15 +1597,7 @@ const INDICATOR_DEFINITIONS = {
     volume: {
         name: 'Volume',
         type: 'separate',
-        params: [
-            { id: 'volBarsHeading', label: 'BARS', type: 'heading', tab: 'style' },
-            { id: 'upColor', label: 'Up Color', type: 'color', default: 'rgba(8, 153, 129, 0.5)', tab: 'style' },
-            { id: 'downColor', label: 'Down Color', type: 'color', default: 'rgba(242, 54, 69, 0.5)', tab: 'style' },
-            { id: 'maColor', label: 'MA Color', type: 'color', default: '#2962ff', tab: 'style' },
-            { id: 'volMaHeading', label: 'MOVING AVERAGE', type: 'heading', tab: 'input' },
-            { id: 'showMA', label: 'Show MA', type: 'checkbox', default: false, tab: 'input' },
-            { id: 'maPeriod', label: 'MA Length', type: 'number', default: 20, min: 1, max: 500, tab: 'input' }
-        ]
+        params: volumeInputParams().concat(volumeStyleParams())
     },
     sessions: {
         name: 'Session Boxes',
@@ -2225,10 +2250,15 @@ function talariaFormatVolumeIndicatorValueTokens(chart, indicator) {
     const bar = chart.data[idx];
     const v = bar && Number(bar.v);
     if (!Number.isFinite(v)) return [];
-    const up = Number(bar.c) >= Number(bar.o);
-    const color = up
-        ? (indicator.style && indicator.style.upColor) || 'rgba(8, 153, 129, 0.85)'
-        : (indicator.style && indicator.style.downColor) || 'rgba(242, 54, 69, 0.85)';
+    const st = indicator.style || {};
+    const pa = indicator.params || {};
+    const prev = idx > 0 ? chart.data[idx - 1] : null;
+    const growing = pa.colorBasedOnPrevClose === true
+        ? Number(bar.c) >= Number(prev ? prev.c : bar.c)
+        : Number(bar.c) >= Number(bar.o);
+    const color = growing
+        ? (st.growingColor || st.upColor || 'rgba(8, 153, 129, 0.85)')
+        : (st.fallingColor || st.downColor || 'rgba(242, 54, 69, 0.85)');
     let text;
     if (v >= 1e9) text = (v / 1e9).toFixed(2) + 'B';
     else if (v >= 1e6) text = (v / 1e6).toFixed(2) + 'M';
@@ -2238,8 +2268,9 @@ function talariaFormatVolumeIndicatorValueTokens(chart, indicator) {
 }
 
 function talariaVolumeLegendLabel(indicator) {
-    if (indicator.params && indicator.params.showMA) {
-        return 'Volume MA(' + (indicator.params.maPeriod || 20) + ')';
+    const pa = indicator.params || {};
+    if (pa.showMa === true || pa.showMA === true) {
+        return 'Volume MA(' + (pa.maPeriod || 20) + ')';
     }
     return indicator.name || 'Volume';
 }
@@ -4232,7 +4263,7 @@ function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     if (v9IndicatorOpacityKeyForColor(paramId)) return true;
     const id = String(paramId || '').toLowerCase();
     if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear|upper|middle|lower|body)color$/i.test(id)) return true;
-    if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
+    if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|growingcolor|fallingcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
     if (/^asian|^london|^newyork|^sydney|^tokyo|^frankfurt|^cbdr|^nyam|^lc/.test(id) && id.indexOf('color') >= 0) return true;
     if (paramDef && paramDef.type === 'color') {
         const d = String(paramDef.default || '');
@@ -5012,16 +5043,23 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'volume') {
         return {
-            sections: [{
-                title: 'Bars',
-                rows: [
-                    v9ColorRow('Up Color', 'upColor'),
-                    v9ColorRow('Down Color', 'downColor')
-                ]
-            }, {
-                title: 'Moving Average',
-                rows: [v9ColorRow('MA Color', 'maColor')]
-            }],
+            sections: [
+                {
+                    title: 'Volume',
+                    checkboxRow: { showId: 'showVolume', label: 'Volume' },
+                    bandStyleHeader: true,
+                    rows: [
+                        v9BandStyleRow('Growing', 'growingColor', 'growingOpacity', 'growingLineStyle', 'growingLineWidth', null),
+                        v9BandStyleRow('Falling', 'fallingColor', 'fallingOpacity', 'fallingLineStyle', 'fallingLineWidth', null)
+                    ]
+                },
+                {
+                    title: 'Volume MA',
+                    checkboxRow: { showId: 'showMa', label: 'Volume MA' },
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Volume MA', 'maColor', 'maOpacity', 'maLineStyle', 'maLineWidth', null)]
+                }
+            ],
             footers: footers
         };
     }

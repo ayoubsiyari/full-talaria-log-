@@ -1540,6 +1540,64 @@
         indicator.separatePanel = true;
     }
 
+    function volumeColorsFromStyle(style, resolve) {
+        style = style || {};
+        const growingRaw = style.growingColor || style.upColor || 'rgba(8, 153, 129, 0.5)';
+        const fallingRaw = style.fallingColor || style.downColor || 'rgba(242, 54, 69, 0.5)';
+        const gOp = style.growingOpacity != null ? Number(style.growingOpacity) : null;
+        const fOp = style.fallingOpacity != null ? Number(style.fallingOpacity) : null;
+        return {
+            growing: resolve(growingRaw, gOp),
+            falling: resolve(fallingRaw, fOp)
+        };
+    }
+
+    function volumeBarIsGrowing(chart, barIndex, bar, usePrevClose) {
+        if (!bar) return true;
+        const c = Number(bar.c);
+        if (!usePrevClose) return c >= Number(bar.o);
+        const data = chart && chart.data;
+        const prev = barIndex > 0 && data && data[barIndex - 1] ? data[barIndex - 1] : null;
+        const pc = prev ? Number(prev.c) : c;
+        return c >= pc;
+    }
+
+    function applyVolumeStyleFromParams(indicator, params) {
+        const legacyUp = params.upColor || 'rgba(8, 153, 129, 0.5)';
+        const legacyDn = params.downColor || 'rgba(242, 54, 69, 0.5)';
+        indicator.style.showVolume = params.showVolume !== false;
+        indicator.style.growingColor = params.growingColor || legacyUp;
+        indicator.style.growingOpacity = params.growingOpacity != null ? Number(params.growingOpacity) : 50;
+        indicator.style.growingLineWidth = params.growingLineWidth != null ? params.growingLineWidth : 1;
+        indicator.style.fallingColor = params.fallingColor || legacyDn;
+        indicator.style.fallingOpacity = params.fallingOpacity != null ? Number(params.fallingOpacity) : 50;
+        indicator.style.fallingLineWidth = params.fallingLineWidth != null ? params.fallingLineWidth : 1;
+        indicator.style.maColor = params.maColor || '#2962ff';
+        indicator.style.maOpacity = params.maOpacity != null ? Number(params.maOpacity) : 100;
+        indicator.style.maLineWidth = params.maLineWidth != null ? params.maLineWidth : 2;
+        indicator.params.colorBasedOnPrevClose = params.colorBasedOnPrevClose === true;
+        indicator.params.showMa = params.showMa === true || params.showMA === true;
+        indicator.params.maPeriod = params.maPeriod != null ? Math.max(1, Number(params.maPeriod) | 0) : 20;
+        indicator.style.upColor = indicator.style.growingColor;
+        indicator.style.downColor = indicator.style.fallingColor;
+        indicator.params.showMA = indicator.params.showMa;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['growingLineStyle', 'growingLineDashStyle', 'Histogram'],
+            ['fallingLineStyle', 'fallingLineDashStyle', 'Histogram'],
+            ['maLineStyle', 'maLineDashStyle', 'Line']
+        ]);
+        indicator.overlay = false;
+        indicator.separatePanel = false;
+        indicator.isVolume = true;
+    }
+
+    function syncVolumeChartSettings(chart, indicator) {
+        if (!chart || !chart.chartSettings || !indicator) return;
+        const st = indicator.style || {};
+        chart.chartSettings.volumeUpColor = st.growingColor || st.upColor || chart.chartSettings.volumeUpColor;
+        chart.chartSettings.volumeDownColor = st.fallingColor || st.downColor || chart.chartSettings.volumeDownColor;
+    }
+
     /** Dorsey Mass Index uses 9-period EMA of range; Length controls summation window. */
     const MASS_INDEX_EMA_PERIOD = 9;
 
@@ -4584,18 +4642,10 @@
                 break;
             
             case 'volume':
-                indicator.style.upColor = params.upColor || 'rgba(8, 153, 129, 0.5)';
-                indicator.style.downColor = params.downColor || 'rgba(242, 54, 69, 0.5)';
-                indicator.params.showMA = params.showMA || false;
-                indicator.params.maPeriod = params.maPeriod || 20;
-                indicator.style.maColor = params.maColor || '#2962ff';
-                indicator.overlay = false;
-                indicator.separatePanel = false;
-                indicator.isVolume = true;
+                applyVolumeStyleFromParams(indicator, params);
                 indicator.name = 'Volume';
-                // Volume data is already in the candle data, we just need to mark it as active
                 this.indicators.data[indicator.id] = { active: true };
-                // Enable volume display in chart settings
+                syncVolumeChartSettings(this, indicator);
                 this.chartSettings.showVolume = true;
                 if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
                     this._normalizeVolumeIndicatorLayout();
@@ -5613,6 +5663,23 @@
                 this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
             }
         }
+        if (indicator.type === 'volume' || indicator.isVolume) {
+            applyVolumeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            syncVolumeChartSettings(this, indicator);
+            const volumeLine = document.getElementById('volumeIndicatorLine');
+            if (volumeLine) {
+                const colorBox = volumeLine.querySelector('.volume-color-box');
+                if (colorBox) {
+                    colorBox.style.background = indicator.style.growingColor || indicator.style.upColor || 'rgba(8, 153, 129, 0.5)';
+                }
+                const label = volumeLine.querySelector('.volume-label');
+                if (label) {
+                    label.textContent = (indicator.params.showMa || indicator.params.showMA)
+                        ? 'Volume MA(' + (indicator.params.maPeriod || 20) + ')'
+                        : 'Volume';
+                }
+            }
+        }
         if (indicator.type === 'trix') {
             applyTrixStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
@@ -5795,35 +5862,10 @@
                 indicator.name = 'ADR(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateADR(this.data, indicator.params.period);
                 break;
-            case 'volume': {
-                // Update colors
-                if (newParams.upColor !== undefined) indicator.style.upColor = newParams.upColor;
-                if (newParams.downColor !== undefined) indicator.style.downColor = newParams.downColor;
-                if (newParams.showMA !== undefined) indicator.params.showMA = newParams.showMA;
-                if (newParams.maPeriod !== undefined) indicator.params.maPeriod = newParams.maPeriod;
-                if (newParams.maColor !== undefined) indicator.style.maColor = newParams.maColor;
-                // Update chart settings colors
-                this.chartSettings.volumeUpColor = indicator.style.upColor;
-                this.chartSettings.volumeDownColor = indicator.style.downColor;
-                // Update volume line display
-                const volumeLine = document.getElementById('volumeIndicatorLine');
-                if (volumeLine) {
-                    const colorBox = volumeLine.querySelector('.volume-color-box');
-                    if (colorBox) {
-                        colorBox.style.background = indicator.style.upColor || 'rgba(8, 153, 129, 0.5)';
-                    }
-                    // Update label to show MA period if enabled
-                    const label = volumeLine.querySelector('.volume-label');
-                    if (label) {
-                        if (indicator.params.showMA) {
-                            label.textContent = 'Volume MA(' + (indicator.params.maPeriod || 20) + ')';
-                        } else {
-                            label.textContent = 'Volume';
-                        }
-                    }
-                }
+            case 'volume':
+                applyVolumeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+                syncVolumeChartSettings(this, indicator);
                 break;
-            }
             case 'sessions':
                 this.indicators.data[indicator.id] = calculateSessions(this.data, sessionsCalcPayload(indicator));
                 break;
@@ -6457,7 +6499,7 @@
         // Update color box
         const colorBox = volumeLine.querySelector('.volume-color-box');
         if (colorBox) {
-            colorBox.style.background = indicator.style.upColor || 'rgba(8, 153, 129, 0.5)';
+            colorBox.style.background = indicator.style.growingColor || indicator.style.upColor || 'rgba(8, 153, 129, 0.5)';
         }
         
         // Update label text and opacity based on visibility and MA settings
@@ -6465,7 +6507,7 @@
         if (label) {
             label.style.opacity = indicator.visible !== false ? '1' : '0.5';
             // Show MA period in label if MA is enabled
-            if (indicator.params && indicator.params.showMA) {
+            if (indicator.params && (indicator.params.showMa || indicator.params.showMA)) {
                 label.textContent = 'Volume MA(' + (indicator.params.maPeriod || 20) + ')';
             } else {
                 label.textContent = 'Volume';
@@ -9875,24 +9917,37 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this.separateIndicatorPanelHeight = heights.reduce((sum, h) => sum + h, 0);
     };
 
+    Chart.prototype._getVolumeRenderConfig = function(indicator) {
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const st = (indicator && indicator.style) || {};
+        const pa = (indicator && indicator.params) || {};
+        const colors = volumeColorsFromStyle(st, resolve);
+        return {
+            showBars: st.showVolume !== false,
+            usePrevClose: pa.colorBasedOnPrevClose === true,
+            growingColor: colors.growing,
+            fallingColor: colors.falling,
+            growingBarWidth: st.growingLineWidth != null ? st.growingLineWidth : 1,
+            fallingBarWidth: st.fallingLineWidth != null ? st.fallingLineWidth : 1,
+            showMa: pa.showMa === true || pa.showMA === true,
+            maPeriod: pa.maPeriod != null ? Math.max(1, Number(pa.maPeriod) | 0) : 20,
+            maColor: resolve(st.maColor || '#2962ff', st.maOpacity),
+            maLineWidth: st.maLineWidth != null ? st.maLineWidth : 2,
+            maLineDashStyle: st.maLineDashStyle || 'Solid'
+        };
+    };
+
     Chart.prototype._renderVolumePanel = function(ctx, m, indTop, indBottom, panelHeight, indicator, visibleStart, visibleEnd) {
         if (!this.data || !this.data.length || !this._isVolumeDisplayEnabled()) return;
         if (!indicator || indicator.visible === false) return;
 
-        let upColor = this.chartSettings.volumeUpColor || 'rgba(8, 153, 129, 0.5)';
-        let downColor = this.chartSettings.volumeDownColor || 'rgba(242, 54, 69, 0.5)';
-        let showMA = false;
-        let maPeriod = 20;
-        let maColor = '#2962ff';
-        if (indicator.style) {
-            upColor = indicator.style.upColor || upColor;
-            downColor = indicator.style.downColor || downColor;
-            maColor = indicator.style.maColor || maColor;
-        }
-        if (indicator.params) {
-            showMA = !!indicator.params.showMA;
-            maPeriod = indicator.params.maPeriod || 20;
-        }
+        const cfg = this._getVolumeRenderConfig(indicator);
+        const upColor = cfg.growingColor;
+        const downColor = cfg.fallingColor;
+        const showMA = cfg.showMa;
+        const maPeriod = cfg.maPeriod;
+        const maColor = cfg.maColor;
+        const baseCw = Math.max(1, this.candleWidth || 6);
 
         ctx.save();
         ctx.beginPath();
@@ -9911,10 +9966,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             ? d3.scaleLinear().domain([0, maxVol]).range([volBandBottom, volBandTop])
             : function(v) { return volBandBottom - (v / maxVol) * (volBandBottom - volBandTop); };
 
-        const cw = Math.max(1, this.candleWidth || 6);
         const fast = this._panelRenderFast === true;
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
         let drewLod = false;
+        if (cfg.showBars) {
         if (fast && typeof this._aggregateVisibleOhlcvBuckets === 'function' && typeof this._getCandleRenderMaxBuckets === 'function') {
             const visSlice = [];
             for (let i = visibleStart; i < visibleEnd && i < this.data.length; i++) {
@@ -9927,13 +9982,20 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 drewLod = true;
                 volLod.forEach(function(b) {
                     const v = Number(b.vSum) || 0;
-                    const x = Number.isFinite(b._pixelX) ? b._pixelX : this.dataIndexToPixel(b.midIdx);
+                    const midIdx = Number.isFinite(b.midIdx) ? b.midIdx : 0;
+                    const x = Number.isFinite(b._pixelX) ? b._pixelX : this.dataIndexToPixel(midIdx);
                     if (x < m.l - 10 || x > this.w - m.r + 10) return;
                     const volumeY = scaleY(v);
                     const barH = Math.max(1, volBandBottom - volumeY);
-                    const isGreen = Number(b.c) >= Number(b.o);
+                    const isGreen = cfg.usePrevClose
+                        ? volumeBarIsGrowing(this, midIdx, { c: b.c, o: b.o }, true)
+                        : Number(b.c) >= Number(b.o);
+                    const thick = isGreen ? cfg.growingBarWidth : cfg.fallingBarWidth;
+                    const barW = Number.isFinite(b._pixelX)
+                        ? Math.max(1, thick)
+                        : Math.max(1, baseCw * (thick / 2));
                     ctx.fillStyle = isGreen ? upColor : downColor;
-                    ctx.fillRect(x - (Number.isFinite(b._pixelX) ? 0.5 : cw / 2), volumeY, Number.isFinite(b._pixelX) ? 1 : cw, barH);
+                    ctx.fillRect(x - barW / 2, volumeY, barW, barH);
                 }, this);
             }
         }
@@ -9947,9 +10009,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (x < m.l - 10 || x > this.w - m.r + 10) continue;
             const volumeY = scaleY(v);
             const barH = Math.max(1, volBandBottom - volumeY);
-            const isGreen = Number(bar.c) >= Number(bar.o);
+            const isGreen = volumeBarIsGrowing(this, i, bar, cfg.usePrevClose);
+            const thick = isGreen ? cfg.growingBarWidth : cfg.fallingBarWidth;
+            const barW = Math.max(1, baseCw * (thick / 2));
             ctx.fillStyle = isGreen ? upColor : downColor;
-            ctx.fillRect(x - cw / 2, volumeY, cw, barH);
+            ctx.fillRect(x - barW / 2, volumeY, barW, barH);
+        }
         }
         }
 
@@ -9971,7 +10036,8 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 this._volumeMaSeriesCacheKey = maKey;
             }
             ctx.strokeStyle = maColor;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = cfg.maLineWidth;
+            ctx.setLineDash(this._lineDashForStyle(cfg.maLineDashStyle));
             ctx.beginPath();
             let started = false;
             for (let i = visibleStart; i < visibleEnd && i < volumeMA.length; i++) {
@@ -9986,6 +10052,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 else { ctx.lineTo(x, y); }
             }
             if (started) ctx.stroke();
+            ctx.setLineDash([]);
         }
 
         let displayValue = null;
@@ -9996,7 +10063,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const hv = Number(hb && hb.v);
             if (Number.isFinite(hv)) {
                 displayValue = hv;
-                displayColor = Number(hb.c) >= Number(hb.o) ? upColor : downColor;
+                displayColor = volumeBarIsGrowing(this, hoverIdx, hb, cfg.usePrevClose) ? upColor : downColor;
             }
         }
         indicator._displayColor = displayColor;
