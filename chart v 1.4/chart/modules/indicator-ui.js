@@ -3248,26 +3248,53 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         pane.appendChild(em);
     }
 
+    function snapWallClockTimeStr(value, fallback) {
+        fallback = fallback || '09:30';
+        const m = String(value != null ? value : fallback).trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return fallback;
+        let h = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+        let mn = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+        mn = Math.round(mn / 5) * 5;
+        if (mn >= 60) { mn = 0; h = (h + 1) % 24; }
+        return String(h).padStart(2, '0') + ':' + String(mn).padStart(2, '0');
+    }
+
+    function buildWallClockSelectOptions() {
+        const out = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 5) {
+                out.push(String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'));
+            }
+        }
+        return out;
+    }
+
     function appendIndicatorTimeRangeRow(param, mountEl) {
-        const startVal = allParams[param.startId] != null ? allParams[param.startId] : (param.defaultStart || '00:00');
-        const endVal = allParams[param.endId] != null ? allParams[param.endId] : (param.defaultEnd || '00:00');
+        const startVal = snapWallClockTimeStr(allParams[param.startId], param.defaultStart || '09:30');
+        const endVal = snapWallClockTimeStr(allParams[param.endId], param.defaultEnd || '10:00');
         const block = document.createElement('div');
         block.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-bottom:4px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));box-sizing:border-box;';
         const timeRow = document.createElement('div');
         timeRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
         const timeLbl = document.createElement('span');
-        timeLbl.textContent = param.label || 'Time';
+        timeLbl.textContent = param.label || 'Range';
         timeLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--sp-text-muted,#9aa2b1);width:72px;flex-shrink:0;';
         timeRow.appendChild(timeLbl);
+        const timeOpts = buildWallClockSelectOptions();
         const mkTime = function (id, val) {
-            const inp = document.createElement('input');
-            inp.type = 'time';
-            inp.className = 'settings-input';
-            inp.value = val;
-            inp.style.cssText = 'flex:1;min-width:0;height:26px;padding:0 6px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
-            inp.setAttribute('data-param-id', id);
-            inp.setAttribute('data-param-type', 'time');
-            return inp;
+            const sel = document.createElement('select');
+            sel.className = 'settings-input';
+            sel.value = val;
+            sel.style.cssText = 'flex:1;min-width:0;max-width:96px;height:26px;padding:0 4px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;cursor:default;';
+            sel.setAttribute('data-param-id', id);
+            sel.setAttribute('data-param-type', 'time');
+            timeOpts.forEach(function (t) {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                sel.appendChild(opt);
+            });
+            return sel;
         };
         timeRow.appendChild(mkTime(param.startId, startVal));
         const sep = document.createElement('span');
@@ -3282,8 +3309,8 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     function appendIndicatorSessionInputRow(param, mountEl) {
         const showVal = allParams[param.showId] !== undefined ? allParams[param.showId] : param.defaultShow !== false;
         const nameVal = allParams[param.nameId] != null ? allParams[param.nameId] : (param.defaultName || param.label || '');
-        const startVal = allParams[param.startId] != null ? allParams[param.startId] : (param.defaultStart || '00:00');
-        const endVal = allParams[param.endId] != null ? allParams[param.endId] : (param.defaultEnd || '00:00');
+        const startVal = snapWallClockTimeStr(allParams[param.startId], param.defaultStart || '00:00');
+        const endVal = snapWallClockTimeStr(allParams[param.endId], param.defaultEnd || '00:00');
 
         const block = document.createElement('div');
         block.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-bottom:4px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));box-sizing:border-box;';
@@ -3317,15 +3344,21 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         timeLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--sp-text-muted,#9aa2b1);width:36px;flex-shrink:0;';
         timeRow.appendChild(timeLbl);
 
+        const timeOpts = buildWallClockSelectOptions();
         const mkTime = function (id, val) {
-            const inp = document.createElement('input');
-            inp.type = 'time';
-            inp.className = 'settings-input';
-            inp.value = val;
-            inp.style.cssText = 'flex:1;min-width:0;height:26px;padding:0 6px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
-            inp.setAttribute('data-param-id', id);
-            inp.setAttribute('data-param-type', 'time');
-            return inp;
+            const sel = document.createElement('select');
+            sel.className = 'settings-input';
+            sel.value = snapWallClockTimeStr(val, '00:00');
+            sel.style.cssText = 'flex:1;min-width:0;max-width:96px;height:26px;padding:0 4px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;cursor:default;';
+            sel.setAttribute('data-param-id', id);
+            sel.setAttribute('data-param-type', 'time');
+            timeOpts.forEach(function (t) {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                sel.appendChild(opt);
+            });
+            return sel;
         };
         timeRow.appendChild(mkTime(param.startId, startVal));
         const sep = document.createElement('span');

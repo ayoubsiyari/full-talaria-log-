@@ -72,6 +72,31 @@ const LAYOUT_SYNC_HELP =
   "Replay (playhead) is always shared across tiles. Indicators and Chart type switches apply to the classic panel manager only; " +
   "multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.";
 
+const V9_IND_WALL_CLOCK_STEP_MIN = 5;
+
+function v9SnapWallClockTime(value, fallback = "09:30") {
+  const m = String(value != null ? value : fallback).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallback;
+  let h = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+  let mn = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+  mn = Math.round(mn / V9_IND_WALL_CLOCK_STEP_MIN) * V9_IND_WALL_CLOCK_STEP_MIN;
+  if (mn >= 60) { mn = 0; h = (h + 1) % 24; }
+  return `${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}`;
+}
+
+let v9WallClockSelectOptionsCache = null;
+function v9GetWallClockSelectOptions() {
+  if (v9WallClockSelectOptionsCache) return v9WallClockSelectOptionsCache;
+  const out = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += V9_IND_WALL_CLOCK_STEP_MIN) {
+      out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  v9WallClockSelectOptionsCache = out;
+  return out;
+}
+
 /** Block Chrome/Edge default menu on the chart app; keep native menu on text fields only. */
 function v9BlockBrowserContextMenu(e) {
   const t = e.target;
@@ -22576,13 +22601,32 @@ const TalariaV8bLive = () => {
             </div>
           );
           if (p.type === "timeRange") {
-            const startVal = indSettDraft[p.startId] != null ? indSettDraft[p.startId] : (p.defaultStart || "00:00");
-            const endVal = indSettDraft[p.endId] != null ? indSettDraft[p.endId] : (p.defaultEnd || "00:00");
-            const timeInp = (id, val) => (
-              <input type="time" value={val || ""} onClick={(e) => e.stopPropagation()}
+            const startVal = v9SnapWallClockTime(
+              indSettDraft[p.startId],
+              p.defaultStart || "09:30"
+            );
+            const endVal = v9SnapWallClockTime(
+              indSettDraft[p.endId],
+              p.defaultEnd || "10:00"
+            );
+            const timeSel = (id, val) => (
+              <select
+                value={val}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
-                style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
+                style={{
+                  flex: 1, minWidth: 0, maxWidth: 96, height: 26,
+                  background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none",
+                  boxSizing: "border-box", cursor: "default", colorScheme: darkMode ? "dark" : "light",
+                }}
+              >
+                {v9GetWallClockSelectOptions().map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             );
             return (
               <div key={"tr-" + (p.startId || "")} style={{
@@ -22590,10 +22634,10 @@ const TalariaV8bLive = () => {
                 background: "rgba(140,160,255,0.04)", border: `1px solid ${c.br}`, boxSizing: "border-box",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 72, flexShrink: 0 }}>{p.label || "Time"}</span>
-                  {timeInp(p.startId, startVal)}
-                  <span style={{ color: c.tm, fontSize: 12 }}>–</span>
-                  {timeInp(p.endId, endVal)}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 72, flexShrink: 0 }}>{p.label || "Range"}</span>
+                  {timeSel(p.startId, startVal)}
+                  <span style={{ color: c.tm, fontSize: 12, flexShrink: 0 }}>–</span>
+                  {timeSel(p.endId, endVal)}
                 </div>
               </div>
             );
@@ -22603,12 +22647,28 @@ const TalariaV8bLive = () => {
             const nameVal = indSettDraft[p.nameId] != null ? indSettDraft[p.nameId] : (p.defaultName || p.label || "");
             const startVal = indSettDraft[p.startId] != null ? indSettDraft[p.startId] : (p.defaultStart || "00:00");
             const endVal = indSettDraft[p.endId] != null ? indSettDraft[p.endId] : (p.defaultEnd || "00:00");
-            const timeInp = (id, val) => (
-              <input type="time" value={val || ""} onClick={(e) => e.stopPropagation()}
-                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
-                style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
-            );
+            const timeSel = (id, val, fallback) => {
+              const v = v9SnapWallClockTime(val, fallback || "00:00");
+              return (
+                <select
+                  value={v}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
+                  style={{
+                    flex: 1, minWidth: 0, maxWidth: 96, height: 26,
+                    background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                    color: c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none",
+                    boxSizing: "border-box", cursor: "default", colorScheme: darkMode ? "dark" : "light",
+                  }}
+                >
+                  {v9GetWallClockSelectOptions().map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              );
+            };
             return (
               <div key={"sess-" + p.sessionKey} style={{
                 display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", marginBottom: 6,
@@ -22623,9 +22683,9 @@ const TalariaV8bLive = () => {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 26 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 36, flexShrink: 0 }}>Time</span>
-                  {timeInp(p.startId, startVal)}
+                  {timeSel(p.startId, startVal, p.defaultStart)}
                   <span style={{ color: c.tm, fontSize: 12 }}>–</span>
-                  {timeInp(p.endId, endVal)}
+                  {timeSel(p.endId, endVal, p.defaultEnd)}
                 </div>
               </div>
             );
@@ -22712,11 +22772,24 @@ const TalariaV8bLive = () => {
             );
           }
           if (p.type === "time") {
+            const tVal = v9SnapWallClockTime(raw, p.default || "00:00");
             return row(
-              <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
+              <select
+                value={tVal}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
-                style={{ width: 118, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
+                style={{
+                  width: 96, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
+                  cursor: "default", colorScheme: darkMode ? "dark" : "light",
+                }}
+              >
+                {v9GetWallClockSelectOptions().map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             );
           }
           return row(
@@ -23307,10 +23380,98 @@ const TalariaV8bLive = () => {
             const raw = indSettDraft[p.id] !== undefined ? indSettDraft[p.id] : p.default;
             if (p.type === "heading") {
               return (
-                <div key={p.id} style={{
+                <div key={p.id || p.label} style={{
                   fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em",
                   marginTop: 14, marginBottom: 6, paddingTop: 6, borderTop: `1px solid ${c.br}`,
                 }}>{p.label}</div>
+              );
+            }
+            if (p.type === "timeRange") {
+              const startVal = v9SnapWallClockTime(
+                indSettDraft[p.startId],
+                p.defaultStart || "09:30"
+              );
+              const endVal = v9SnapWallClockTime(
+                indSettDraft[p.endId],
+                p.defaultEnd || "10:00"
+              );
+              const timeSel = (id, val) => (
+                <select
+                  value={val}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
+                  style={{
+                    width: 88, height: 26, flexShrink: 0,
+                    background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                    color: c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none",
+                    boxSizing: "border-box", cursor: "default", colorScheme: darkMode ? "dark" : "light",
+                  }}
+                >
+                  {v9GetWallClockSelectOptions().map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              );
+              return (
+                <div key={"tr-flex-" + (p.startId || "")} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 0", gap: 12,
+                }}>
+                  <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label || "Range"}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {timeSel(p.startId, startVal)}
+                    <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                    {timeSel(p.endId, endVal)}
+                  </div>
+                </div>
+              );
+            }
+            if (p.type === "sessionInput") {
+              const showVal = indSettDraft[p.showId] !== undefined ? indSettDraft[p.showId] : p.defaultShow !== false;
+              const nameVal = indSettDraft[p.nameId] != null ? indSettDraft[p.nameId] : (p.defaultName || p.label || "");
+              const startVal = indSettDraft[p.startId] != null ? indSettDraft[p.startId] : (p.defaultStart || "00:00");
+              const endVal = indSettDraft[p.endId] != null ? indSettDraft[p.endId] : (p.defaultEnd || "00:00");
+              const timeSel = (id, val, fallback) => {
+                const v = v9SnapWallClockTime(val, fallback || "00:00");
+                return (
+                  <select
+                    value={v}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
+                    style={{
+                      width: 88, height: 26, flexShrink: 0,
+                      background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                      color: c.tx, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none",
+                      boxSizing: "border-box", cursor: "default", colorScheme: darkMode ? "dark" : "light",
+                    }}
+                  >
+                    {v9GetWallClockSelectOptions().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                );
+              };
+              return (
+                <div key={"sess-flex-" + p.sessionKey} style={{
+                  display: "flex", flexDirection: "column", gap: 8, padding: "10px 0",
+                  borderBottom: `1px solid ${c.br}`,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {TlChk(!!showVal, `ind-flex-${p.showId}`, null, () => patchIndSettDraftLive((d) => ({ ...d, [p.showId]: !d[p.showId] })), { vpImmediate: true })}
+                    <input type="text" value={nameVal} placeholder="Session name" onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.nameId]: e.target.value }))}
+                      style={{ ...inpBase, flex: 1, minWidth: 0, padding: "0 8px", cursor: "text" }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, paddingLeft: 26 }}>
+                    {timeSel(p.startId, startVal, p.defaultStart)}
+                    <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                    {timeSel(p.endId, endVal, p.defaultEnd)}
+                  </div>
+                </div>
               );
             }
             if (p.type === "checkbox") {
@@ -23376,12 +23537,22 @@ const TalariaV8bLive = () => {
               );
             }
             if (p.type === "time") {
+              const tVal = v9SnapWallClockTime(raw, p.default || "00:00");
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
                   <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
-                  <input type="time" value={raw || p.default || ""} onClick={(e) => e.stopPropagation()}
+                  <select
+                    value={tVal}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
-                    style={{ ...inpBase, width: 118, padding: "0 6px", fontVariantNumeric: "tabular-nums" }} />
+                    style={{ ...inpBase, width: 96, padding: "0 4px", fontVariantNumeric: "tabular-nums", colorScheme: darkMode ? "dark" : "light" }}
+                  >
+                    {v9GetWallClockSelectOptions().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
                 </div>
               );
             }
