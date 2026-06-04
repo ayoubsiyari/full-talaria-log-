@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a194';
+const CHART_ENGINE_BUILD = '20260602b201';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16477,6 +16477,11 @@ class Chart {
         } else {
             this._panSnapYDomain = null;
         }
+        if (typeof this._snapshotSeparatePanelDomains === 'function') {
+            this._snapshotSeparatePanelDomains();
+        } else {
+            this._panelSnapDomains = null;
+        }
         // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
         const panTicks = this._buildTimeTicks();
         this._panTimeTickCache = {
@@ -16609,6 +16614,7 @@ class Chart {
             this._panSnapOffsetX = null;
             this._panSnapPriceOffset = null;
             this._panSnapYDomain = null;
+            this._panelSnapDomains = null;
         }
     }
 

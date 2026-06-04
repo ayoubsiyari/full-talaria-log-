@@ -7217,9 +7217,7 @@
         min = min - range * 0.1;
         max = max + range * 0.1;
 
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         min = dom.min;
         max = dom.max;
 
@@ -8014,9 +8012,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         min = min - range * 0.1;
         max = max + range * 0.1;
 
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         min = dom.min;
         max = dom.max;
         
@@ -8193,7 +8189,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
 
     if (panelResizeActive) {
         this._repositionSeparatePanelOverlay(panelSlots, m);
-    } else if (!panFast) {
+    } else if (!panelResizeActive) {
         this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
     }
     } finally {
@@ -8282,6 +8278,34 @@ Chart.prototype._applyIndicatorPanelDomain = function(baseMin, baseMax, indicato
     const mid = (b0 + b1) / 2 + (pa.offset || 0);
     const span = (b1 - b0) / z;
     return { min: mid - span / 2, max: mid + span / 2 };
+};
+
+/** Freeze auto-fit panel Y range while chart-panning (mirrors main chart _panSnapYDomain). */
+Chart.prototype._snapshotSeparatePanelDomains = function() {
+    this._panelSnapDomains = {};
+    if (typeof this._getVisibleSeparateIndicators !== 'function') return;
+    this._getVisibleSeparateIndicators().forEach(function(ind) {
+        const b0 = ind._panelBaseMin;
+        const b1 = ind._panelBaseMax;
+        if (Number.isFinite(b0) && Number.isFinite(b1) && b1 > b0) {
+            this._panelSnapDomains[ind.id] = { min: b0, max: b1 };
+        }
+    }, this);
+};
+
+Chart.prototype._finalizePanelRange = function(indicator, baseMin, baseMax) {
+    let b0 = baseMin;
+    let b1 = baseMax;
+    if (this._isChartViewPanning && this._panelSnapDomains && indicator && indicator.id != null) {
+        const snap = this._panelSnapDomains[indicator.id];
+        if (snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
+            b0 = snap.min;
+            b1 = snap.max;
+        }
+    }
+    indicator._panelBaseMin = b0;
+    indicator._panelBaseMax = b1;
+    return this._applyIndicatorPanelDomain(b0, b1, indicator);
 };
 
 /** Vertical drag on right margin over a separate indicator slot */
@@ -10309,9 +10333,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const aMin = dom.min;
         const aMax = dom.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
@@ -10325,7 +10347,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
         const zeroY = scaleY(zeroVal);
-        if (this._panelRenderFast !== true && zeroY !== null && Number.isFinite(zeroY)) {
+        if (zeroY !== null && Number.isFinite(zeroY)) {
             ctx.strokeStyle = 'rgba(120, 123, 134, 0.45)';
             ctx.lineWidth = 1;
             ctx.setLineDash([3, 3]);
@@ -10396,9 +10418,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (min === Infinity) return;
         const range = max - min || 1;
         min -= range * 0.1; max += range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const domM = this._applyIndicatorPanelDomain(min, max, indicator);
+        const domM = this._finalizePanelRange(indicator, min, max);
         min = domM.min; max = domM.max;
         const mSpan = Math.max(1e-12, max - min);
         const scaleY = v => {
@@ -10416,7 +10436,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 4);
 
         const zeroY = scaleY(zeroVal);
-        if (this._panelRenderFast !== true && style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
+        if (style.showZero !== false && zeroY !== null && zeroY > panelTop && zeroY < panelBottom) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Line', zeroVal, zeroW);
         }
@@ -10522,9 +10542,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min -= range * 0.08;
         max += range * 0.08;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         min = dom.min;
         max = dom.max;
         const vSpan = Math.max(1e-12, max - min);
@@ -10593,9 +10611,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min -= range * 0.08;
         max += range * 0.08;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         min = dom.min;
         max = dom.max;
         const vSpan = Math.max(1e-12, max - min);
@@ -10608,7 +10624,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
 
         const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
-        if (this._panelRenderFast !== true && style.showZero !== false) {
+        if (style.showZero !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Line', null, zeroW, style.zeroLineDashStyle || 'Solid');
         }
@@ -10690,9 +10706,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         max += range * 0.08;
         if (min > 0) min = Math.min(min, 0);
         if (max < 0) max = Math.max(max, 0);
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         min = dom.min;
         max = dom.max;
         const vSpan = Math.max(1e-12, max - min);
@@ -10755,9 +10769,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const tMin = dom.min;
         const tMax = dom.max;
         const tSpan = Math.max(1e-9, tMax - tMin);
@@ -10771,7 +10783,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, tMin, tMax, scaleY, 2);
 
         const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
-        if (this._panelRenderFast !== true && style.showZero !== false) {
+        if (style.showZero !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Dotted', zeroVal, zeroW, style.zeroLineDashStyle || 'Dotted');
         }
@@ -10880,9 +10892,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const rMin = dom.min;
         const rMax = dom.max;
         const rSpan = Math.max(1e-9, rMax - rMin);
@@ -10895,18 +10905,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 2);
 
-        if (this._panelRenderFast !== true) {
-            const zy = scaleY(0);
-            if (zy !== null && zy > panelTop && zy < panelBottom) {
-                ctx.strokeStyle = 'rgba(120,123,134,0.35)';
-                ctx.lineWidth = 1;
-                ctx.setLineDash([3, 3]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, zy);
-                ctx.lineTo(this.w, zy);
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
+        const zy = scaleY(0);
+        if (zy !== null && zy > panelTop && zy < panelBottom) {
+            ctx.strokeStyle = 'rgba(120,123,134,0.35)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zy);
+            ctx.lineTo(this.w, zy);
+            ctx.stroke();
+            ctx.setLineDash([]);
         }
 
         const rviColor = resolve(style.color || '#ffa726', style.lineOpacity);
@@ -10970,9 +10978,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const aMin = dom.min;
         const aMax = dom.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
@@ -11024,9 +11030,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const cMin = dom.min;
         const cMax = dom.max;
         const cSpan = Math.max(1e-9, cMax - cMin);
@@ -11078,9 +11082,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const mMin = dom.min;
         const mMax = dom.max;
         const mSpan = Math.max(1e-9, mMax - mMin);
@@ -11117,9 +11119,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!Array.isArray(data)) return;
         const style = indicator.style || {};
         const resolve = this._resolveIndicatorBandLineColor.bind(this);
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = 100;
-        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const domS = this._finalizePanelRange(indicator, 0, 100);
         const sMin = domS.min;
         const sMax = domS.max;
         const sSpan = Math.max(1e-9, sMax - sMin);
@@ -11130,23 +11130,21 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
-        if (this._panelRenderFast !== true) {
-            [[70, 'rgba(239,83,80,0.45)'], [50, 'rgba(120,123,134,0.3)'], [30, 'rgba(38,166,154,0.45)']].forEach(function(row) {
-                const lvl = row[0];
-                const col = row[1];
-                const ry = scaleY(lvl);
-                if (ry !== null && ry > panelTop && ry < panelBottom) {
-                    ctx.strokeStyle = col;
-                    ctx.lineWidth = 1;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.moveTo(m.l, ry);
-                    ctx.lineTo(this.w, ry);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
-            }, this);
-        }
+        [[70, 'rgba(239,83,80,0.45)'], [50, 'rgba(120,123,134,0.3)'], [30, 'rgba(38,166,154,0.45)']].forEach(function(row) {
+            const lvl = row[0];
+            const col = row[1];
+            const ry = scaleY(lvl);
+            if (ry !== null && ry > panelTop && ry < panelBottom) {
+                ctx.strokeStyle = col;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath();
+                ctx.moveTo(m.l, ry);
+                ctx.lineTo(this.w, ry);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }, this);
         const lineColor = resolve(style.color || '#7e57c2', style.lineOpacity);
         if (style.showLine !== false) {
             this._drawPanelLine(ctx, m, data, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
@@ -11177,9 +11175,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const dArr = data.d;
         const style = indicator.style || {};
         const levelDefaults = { overbought: 80, oversold: 20, mid: 50 };
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = 100;
-        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const domS = this._finalizePanelRange(indicator, 0, 100);
         const sMin = domS.min;
         const sMax = domS.max;
         const sSpan = Math.max(1e-9, sMax - sMin);
@@ -11212,7 +11208,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
-        if (this._panelRenderFast !== true) {
         if (style.showOverbought !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
                 style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
@@ -11224,7 +11219,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
                 style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
-        }
         }
 
         const kWidth = style.kLineWidth != null ? style.kLineWidth : (style.lineWidth || 2);
@@ -11287,9 +11281,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             [adxArr[i], plusArr[i], minusArr[i]].forEach(v => { if (v !== null && !isNaN(v)) max = Math.max(max, v); });
         }
         max = Math.max(max * 1.1, 60);
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = max;
-        const domA = this._applyIndicatorPanelDomain(0, max, indicator);
+        const domA = this._finalizePanelRange(indicator, 0, max);
         const aMin = domA.min;
         const aMax = domA.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
@@ -11345,9 +11337,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const padY = 8;
         const clipTop = panelTop + padY;
         const clipBottom = panelBottom - padY;
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = 100;
-        const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const dom = this._finalizePanelRange(indicator, 0, 100);
         const aMin = dom.min;
         const aMax = dom.max;
         const aSpan = Math.max(1e-9, aMax - aMin);
@@ -11415,9 +11405,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!values || !values.length) return;
         const style = indicator.style || {};
         const levelDefaults = { overbought: 70, oversold: 30, mid: 50 };
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = 100;
-        const dom = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const dom = this._finalizePanelRange(indicator, 0, 100);
         const rMin = dom.min;
         const rMax = dom.max;
         const rSpan = Math.max(1e-9, rMax - rMin);
@@ -11475,19 +11463,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, rMin, rMax, scaleY, 0);
 
-        if (this._panelRenderFast !== true) {
-            if (style.showOverbought !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                    style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
-            }
-            if (style.showOversold !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                    style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
-            }
-            if (style.showMid !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                    style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
-            }
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
 
         const maWidth = style.maLineWidth != null ? style.maLineWidth : 1;
@@ -11543,9 +11529,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const cMin = dom.min;
         const cMax = dom.max;
         const cSpan = Math.max(1e-9, cMax - cMin);
@@ -11577,19 +11561,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
 
-        if (this._panelRenderFast !== true) {
-            if (style.showUpper !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, upperVal,
-                    resolve(style.upperColor, style.upperOpacity), style.upperLineStyle || 'Dotted', upperVal, upperW, style.upperLineDashStyle || 'Dotted');
-            }
-            if (style.showLower !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, lowerVal,
-                    resolve(style.lowerColor, style.lowerOpacity), style.lowerLineStyle || 'Dotted', lowerVal, lowerW, style.lowerLineDashStyle || 'Dotted');
-            }
-            if (style.showMid !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
-            }
+        if (style.showUpper !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, upperVal,
+                resolve(style.upperColor, style.upperOpacity), style.upperLineStyle || 'Dotted', upperVal, upperW, style.upperLineDashStyle || 'Dotted');
+        }
+        if (style.showLower !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, lowerVal,
+                resolve(style.lowerColor, style.lowerOpacity), style.lowerLineStyle || 'Dotted', lowerVal, lowerW, style.lowerLineDashStyle || 'Dotted');
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
 
         const maColor = resolve(style.maColor || '#ff9800', style.maOpacity);
@@ -11653,9 +11635,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const dMin = dom.min;
         const dMax = dom.max;
         const dSpan = Math.max(1e-9, dMax - dMin);
@@ -11673,7 +11653,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, dMin, dMax, scaleY, 2);
 
-        if (this._panelRenderFast !== true && style.showMid !== false) {
+        if (style.showMid !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
                 resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
@@ -11731,9 +11711,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const oMin = dom.min;
         const oMax = dom.max;
         const oSpan = Math.max(1e-9, oMax - oMin);
@@ -11803,9 +11781,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const mMin = dom.min;
         const mMax = dom.max;
         const mSpan = Math.max(1e-9, mMax - mMin);
@@ -11860,9 +11836,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
         const midW = style.midLineWidth != null ? style.midLineWidth : 1;
 
-        indicator._panelBaseMin = -100;
-        indicator._panelBaseMax = 0;
-        const dom = this._applyIndicatorPanelDomain(-100, 0, indicator);
+        const dom = this._finalizePanelRange(indicator, -100, 0);
         const wMin = dom.min;
         const wMax = dom.max;
         const wSpan = Math.max(1e-9, wMax - wMin);
@@ -11888,19 +11862,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, wMin, wMax, scaleY, 0);
 
-        if (this._panelRenderFast !== true) {
-            if (style.showOverbought !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                    resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Dotted', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
-            }
-            if (style.showOversold !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                    resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Dotted', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
-            }
-            if (style.showMid !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
-            }
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Dotted', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Dotted', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
 
         const lineColor = resolve(style.color || '#ec407a', style.lineOpacity);
@@ -11952,9 +11924,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const mMin = dom.min;
         const mMax = dom.max;
         const mSpan = Math.max(1e-9, mMax - mMin);
@@ -11973,7 +11943,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
 
         const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
-        if (this._panelRenderFast !== true && style.showZero !== false) {
+        if (style.showZero !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Dotted', zeroVal, zeroW, style.zeroLineDashStyle || 'Dotted');
         }
@@ -12027,9 +11997,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const range = max - min || 1;
         min = min - range * 0.1;
         max = max + range * 0.1;
-        indicator._panelBaseMin = min;
-        indicator._panelBaseMax = max;
-        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const dom = this._finalizePanelRange(indicator, min, max);
         const mMin = dom.min;
         const mMax = dom.max;
         const mSpan = Math.max(1e-9, mMax - mMin);
@@ -12043,7 +12011,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
 
         const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
-        if (this._panelRenderFast !== true && style.showZero !== false) {
+        if (style.showZero !== false) {
             this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
                 resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Dotted', zeroVal, zeroW, style.zeroLineDashStyle || 'Dotted');
         }
@@ -12078,9 +12046,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const style = indicator.style || {};
         const resolve = this._resolveIndicatorBandLineColor.bind(this);
         const levelDefaults = { overbought: 80, oversold: 20, mid: 50 };
-        indicator._panelBaseMin = 0;
-        indicator._panelBaseMax = 100;
-        const domS = this._applyIndicatorPanelDomain(0, 100, indicator);
+        const domS = this._finalizePanelRange(indicator, 0, 100);
         const sMin = domS.min;
         const sMax = domS.max;
         const sSpan = Math.max(1e-9, sMax - sMin);
@@ -12113,19 +12079,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
 
-        if (this._panelRenderFast !== true) {
-            if (style.showOverbought !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                    resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
-            }
-            if (style.showOversold !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                    resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
-            }
-            if (style.showMid !== false) {
-                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
-            }
+        if (style.showOverbought !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
+                resolve(style.overboughtColor, style.overboughtOpacity), style.overboughtLineStyle || 'Line', obVal, obW, style.overboughtLineDashStyle || 'Dotted');
+        }
+        if (style.showOversold !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
+                resolve(style.oversoldColor, style.oversoldOpacity), style.oversoldLineStyle || 'Line', osVal, osW, style.oversoldLineDashStyle || 'Dotted');
+        }
+        if (style.showMid !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Line', midVal, midW, style.midLineDashStyle || 'Dotted');
         }
 
         const lineColor = resolve(style.color || '#5c6bc0', style.lineOpacity);
