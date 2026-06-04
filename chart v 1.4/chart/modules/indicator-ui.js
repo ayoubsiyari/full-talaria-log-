@@ -641,6 +641,27 @@ function rviStyleParams() {
     ];
 }
 
+/** Vortex Input — length. */
+function vortexInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' }
+    ];
+}
+
+/** Vortex Style — VI+ (color) + VI- (color, style, thickness); opacity in color picker. */
+function vortexStyleParams() {
+    return [
+        { id: 'showPlus', label: 'VI+ line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'plusColor', label: 'VI+ color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'plusOpacity', label: 'VI+ opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'showMinus', label: 'VI- line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'minusColor', label: 'VI- color', type: 'color', default: '#f23645', tab: 'style' },
+        { id: 'minusOpacity', label: 'VI- opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'minusLineStyle', label: 'VI- style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'minusLineWidth', label: 'VI- thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
 /** Ultimate Oscillator Style — oscillator line (opacity in color picker). */
 function uoStyleParams() {
     return [
@@ -1671,12 +1692,7 @@ const INDICATOR_DEFINITIONS = {
     vortex: {
         name: 'Vortex Indicator',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'plusColor', label: '+VI color', type: 'color', default: '#00e676' },
-            { id: 'minusColor', label: '-VI color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: vortexInputParams().concat(vortexStyleParams())
     },
     dpo: {
         name: 'Detrended Price Oscillator',
@@ -4388,6 +4404,24 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     title: 'Signal',
                     bandStyleHeader: true,
                     rows: [v9BandStyleRow('Signal', 'signalColor', 'signalOpacity', 'signalLineStyle', 'signalLineWidth', 'showSignal')]
+                }
+            ],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'vortex') {
+        return {
+            sections: [
+                {
+                    title: 'VI+',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('VI+', 'plusColor', 'plusOpacity', null, null, 'showPlus')]
+                },
+                {
+                    title: 'VI-',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('VI-', 'minusColor', 'minusOpacity', 'minusLineStyle', 'minusLineWidth', 'showMinus')]
                 }
             ],
             footers: footers

@@ -1487,6 +1487,27 @@
         indicator.separatePanel = true;
     }
 
+    function applyVortexStyleFromParams(indicator, params) {
+        indicator.params.period = params.period != null ? params.period : 14;
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        const minusS = params.minusLineStyle || legacyS;
+        indicator.style.showPlus = params.showPlus !== false;
+        indicator.style.plusColor = params.plusColor || '#00e676';
+        indicator.style.plusOpacity = params.plusOpacity != null ? Number(params.plusOpacity) : 100;
+        indicator.style.plusLineWidth = legacyW;
+        indicator.style.showMinus = params.showMinus !== false;
+        indicator.style.minusColor = params.minusColor || '#f23645';
+        indicator.style.minusOpacity = params.minusOpacity != null ? Number(params.minusOpacity) : 100;
+        indicator.style.minusLineWidth = params.minusLineWidth != null ? params.minusLineWidth : legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['plusLineStyle', 'plusLineDashStyle', 'Line'],
+            ['minusLineStyle', 'minusLineDashStyle', minusS]
+        ]);
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function applyUoStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -4722,11 +4743,7 @@
                 break;
 
             case 'vortex':
-                indicator.params.period = params.period || 14;
-                indicator.style.plusColor = params.plusColor || '#00e676';
-                indicator.style.minusColor = params.minusColor || '#f23645';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.overlay = false;
+                applyVortexStyleFromParams(indicator, params);
                 indicator.name = 'Vortex(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
                 break;
@@ -5459,6 +5476,15 @@
         }
         if (indicator.type === 'uo') {
             applyUoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
+        if (indicator.type === 'vortex') {
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.period !== undefined;
+            applyVortexStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'Vortex(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
+            }
         }
         if (indicator.type === 'trix') {
             applyTrixStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -10031,8 +10057,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
     Chart.prototype._renderVortexPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         if (!data || !data.viPlus || !data.viMinus) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
         const a = data.viPlus;
         const b = data.viMinus;
+        const refVal = 1;
         let min = Infinity;
         let max = -Infinity;
         for (let i = visibleStart; i < visibleEnd; i++) {
@@ -10044,6 +10073,10 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 min = Math.min(min, b[i]);
                 max = Math.max(max, b[i]);
             }
+        }
+        if (Number.isFinite(refVal)) {
+            min = Math.min(min, refVal);
+            max = Math.max(max, refVal);
         }
         if (min === Infinity) return;
         const range = max - min || 1;
@@ -10062,21 +10095,35 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
         this._drawPanelAxisTicks(ctx, m, min, max, scaleY, 2);
-        this._drawPanelLine(ctx, m, a, indicator.style.plusColor || '#00e676', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        this._drawPanelLine(ctx, m, b, indicator.style.minusColor || '#f23645', indicator.style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom);
-        const zy = scaleY(1);
-        if (zy !== null && zy > panelTop && zy < panelBottom) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(m.l, zy);
-            ctx.lineTo(this.w, zy);
-            ctx.stroke();
-            ctx.setLineDash([]);
+
+        const plusColor = resolve(style.plusColor || '#00e676', style.plusOpacity);
+        if (style.showPlus !== false) {
+            this._drawPanelLine(ctx, m, a, plusColor, style.plusLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.plusLineStyle || 'Line', style.plusLineDashStyle || 'Solid');
         }
-        indicator._displayColor = indicator.style.plusColor || '#00e676';
-        indicator._displayLabel = 'VI';
+        const minusColor = resolve(style.minusColor || '#f23645', style.minusOpacity);
+        if (style.showMinus !== false) {
+            this._drawPanelLine(ctx, m, b, minusColor, style.minusLineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.minusLineStyle || 'Line', style.minusLineDashStyle || 'Solid');
+        }
+
+        let lastPlus = null;
+        let lastMinus = null;
+        for (let i = Math.min(visibleEnd - 1, a.length - 1); i >= visibleStart; i--) {
+            if (lastPlus === null && a[i] !== null && !isNaN(a[i])) lastPlus = a[i];
+            if (lastMinus === null && b[i] !== null && !isNaN(b[i])) lastMinus = b[i];
+            if (lastPlus !== null && lastMinus !== null) break;
+        }
+        indicator._displayColor = plusColor;
+        const parts = [];
+        if (lastPlus !== null) parts.push('+' + lastPlus.toFixed(3));
+        if (lastMinus !== null) parts.push('-' + lastMinus.toFixed(3));
+        indicator._displayLabel = parts.length ? parts.join(' ') : 'VI';
+        if (lastPlus !== null && Number.isFinite(lastPlus)) {
+            const y = scaleY(lastPlus);
+            indicator._axisLabelY = y;
+            indicator._axisLabelText = '+' + lastPlus.toFixed(3);
+            indicator._axisLabelColor = plusColor;
+            indicator._axisLabelTags = [{ y: y, text: '+' + lastPlus.toFixed(3), color: plusColor }];
+        }
     };
 
     Chart.prototype._renderElderRayPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
