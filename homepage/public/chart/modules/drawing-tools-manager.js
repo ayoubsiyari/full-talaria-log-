@@ -474,6 +474,14 @@ class DrawingToolsManager {
         );
     }
 
+    /** Resize-handle or box-corner edit in progress (not whole-shape CSS move). */
+    _isLiveHandleEditing() {
+        return !!(
+            (this.isResizing && this.resizingDrawing)
+            || (this.isCustomHandleDrag && this.customHandleDrawing)
+        );
+    }
+
     beginTextInlineEdit(drawing) {
         if (!drawing) return;
         if (this._textInlineEditDrawing && this._textInlineEditDrawing !== drawing) {
@@ -569,9 +577,11 @@ class DrawingToolsManager {
         const live = this._isLiveDrawingInteraction()
             || !!(drawing && drawing._inlineTextEditing);
         if (!live) return {};
+        const skipTimestampSync = !!(drawing && this._isDrawingLiveEditing(drawing));
         return {
             skipInteraction: true,
             liveRender: true,
+            skipTimestampSync,
             drawingRenderOpts: {
                 reuseGroup: !!(drawing && drawing.group && !drawing.group.empty()),
                 skipHandles: true
@@ -3404,6 +3414,22 @@ class DrawingToolsManager {
             || this._isBoxShiftSnapTool(drawing.type);
     }
 
+    /** Match first-draw smoothness: no per-frame bar rounding while dragging handles. */
+    _shouldDeferBarIndexSnapForPointer(activeToolType, event) {
+        if (!activeToolType || !event) return false;
+        if (this._isLiveHandleEditing()) {
+            if (this._shouldSnapPointXToCandle(activeToolType)) {
+                return true;
+            }
+        }
+        if (event.shiftKey
+            && (this.angleSnapTools.includes(activeToolType)
+                || this._isBoxShiftSnapTool(activeToolType))) {
+            return true;
+        }
+        return false;
+    }
+
     /** Shift + first corner while placing a 2-point box (rectangle / ellipse preview). */
     _constrainBoxPlacementPoint(toolType, anchor, point) {
         if (!anchor || !point || !this._isBoxShiftSnapTool(toolType)) return point;
@@ -3420,12 +3446,13 @@ class DrawingToolsManager {
     }
 
     /** Assign one resize-handle point (angle snap + optional bar snap). */
-    _assignResizePoint(drawing, pointIndex, point, shiftKey) {
+    _assignResizePoint(drawing, pointIndex, point, shiftKey, event = null) {
         if (!drawing || !Array.isArray(drawing.points) || !point) return;
         if (pointIndex === undefined || pointIndex === null || isNaN(pointIndex)) return;
 
         point = this._applyShiftAngleConstraintForResize(drawing, pointIndex, point, shiftKey);
-        if (this._deferBarIndexSnapDuringShiftEdit(drawing, shiftKey)) {
+        const pointerEvent = event || { shiftKey: !!shiftKey };
+        if (this._shouldDeferBarIndexSnapForPointer(drawing.type, pointerEvent)) {
             point = this.clampPointToCandleRange(point, drawing.type);
         } else {
             point = this._snapPointXForDrawingType(point, drawing.type);
@@ -3595,7 +3622,24 @@ class DrawingToolsManager {
             target: last.target,
             currentTarget: last.currentTarget
         };
+        if (this._runLiveHandleDragFromPointerEvent(fakeEvent)) return;
         this.handleMouseMove(fakeEvent);
+    }
+
+    /**
+     * Apply custom-handle resize from a pointer event (svg mousemove, Shift/Ctrl refresh, document drag).
+     * @returns {boolean} true when the event was consumed
+     */
+    _runLiveHandleDragFromPointerEvent(event) {
+        if (!this.isCustomHandleDrag || !this.customHandleDrawing) return false;
+        const src = event && (event.sourceEvent || event);
+        if (src) this._lastMouseEvent = src;
+        if (event && event.buttons !== undefined && event.buttons === 0) {
+            this.endCustomHandleDrag(event);
+            return true;
+        }
+        this.handleCustomHandleDrag(event);
+        return true;
     }
 
     handleMouseMove(event) {
@@ -3607,7 +3651,8 @@ class DrawingToolsManager {
 
         // Always keep crosshair visible when a tool is active, drawing is selected, or dragging
         if (this.chart && typeof this.chart.updateCrosshair === 'function' &&
-            (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing || this.isResizing)) {
+            (this.currentTool || this.selectedDrawing || this.isDragging || this.isDrawing
+                || this.isResizing || this.isCustomHandleDrag)) {
             this.chart.updateCrosshair(event);
         }
 
@@ -3682,6 +3727,11 @@ class DrawingToolsManager {
             this._refreshPointerChromeDuringGeometryDrag(event);
             return;
         }
+
+        // Box shapes (rectangle, ellipse, …) use isCustomHandleDrag — not legacy isCustomHandleDragging
+        if (this._runLiveHandleDragFromPointerEvent(event)) {
+            return;
+        }
         
         // Handle resizing
         if (this.isResizing && this.resizingDrawing) {
@@ -3714,10 +3764,9 @@ class DrawingToolsManager {
                     resizeDrawing,
                     this.resizingPointIndex,
                     currentPoint,
-                    event.shiftKey
+                    event.shiftKey,
+                    event
                 );
-            } else if (!this._deferBarIndexSnapDuringShiftEdit(resizeDrawing, event.shiftKey)) {
-                this._snapDrawingPointsX(resizeDrawing);
             }
             this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
 
@@ -4408,12 +4457,8 @@ class DrawingToolsManager {
         point = this.clampPointToCandleRange(point, activeToolType);
 
         // Anchor X to whole bar indices for geometric tools (not freehand / text / pixel-anchored tools).
-        // Shift + angle-snap tools: keep fractional X during drag so the line follows the snapped angle.
-        const deferBarSnapForShiftEdit = event && event.shiftKey
-            && activeToolType
-            && (this.angleSnapTools.includes(activeToolType)
-                || this._isBoxShiftSnapTool(activeToolType));
-        if (!deferBarSnapForShiftEdit
+        // Defer during live handle edit + Shift so edit matches first-draw smoothness.
+        if (!this._shouldDeferBarIndexSnapForPointer(activeToolType, event)
             && !isFreehandStroke
             && !this._isTextDrawingType(activeToolType)
             && !this._usesPointScreenAnchor(activeToolType)) {
@@ -7051,9 +7096,6 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    if (!self._deferBarIndexSnapDuringShiftEdit(drawing, shiftKey)) {
-                        self._snapDrawingPointsX(drawing);
-                    }
                     self.scheduleRenderDrawing(drawing);
                     return true;
                 }
@@ -7134,6 +7176,8 @@ class DrawingToolsManager {
                     }
                     // Check if we're in custom handle drag mode
                     if (self.isCustomHandleDrag) {
+                        const src = event.sourceEvent;
+                        if (src) self._lastMouseEvent = src;
                         self.handleCustomHandleDrag(event);
                         return;
                     }
@@ -7146,7 +7190,8 @@ class DrawingToolsManager {
                             drawing,
                             index,
                             point,
-                            event.sourceEvent.shiftKey
+                            event.sourceEvent.shiftKey,
+                            event.sourceEvent
                         );
                         self.scheduleRenderDrawing(drawing);
                         self._broadcastLiveEditUpdate(drawing);
@@ -7216,6 +7261,8 @@ class DrawingToolsManager {
     startHandleDrag(drawing, pointIndex, event) {
         this._commitInlineTextEditorBeforeGeometryEdit();
         this._commitStaleDrawingGroupTransform(drawing);
+        const src = event && (event.sourceEvent || event);
+        if (src) this._lastMouseEvent = src;
         this._beginDrawingLiveInteraction();
         this.isResizing = true;
         this.resizingDrawing = drawing;
@@ -7253,7 +7300,7 @@ class DrawingToolsManager {
             return;
         }
 
-        this._assignResizePoint(drawing, index, point, event.sourceEvent.shiftKey);
+        this._assignResizePoint(drawing, index, point, event.sourceEvent.shiftKey, event.sourceEvent);
         this.scheduleRenderDrawing(drawing);
         this._broadcastLiveEditUpdate(drawing);
     }
@@ -7309,6 +7356,8 @@ class DrawingToolsManager {
     startCustomHandleDrag(drawing, handleRole, event, pointIndex) {
         this._commitInlineTextEditorBeforeGeometryEdit();
         this._commitStaleDrawingGroupTransform(drawing);
+        const src = event && (event.sourceEvent || event);
+        if (src) this._lastMouseEvent = src;
         this._beginDrawingLiveInteraction();
         this.isCustomHandleDrag = true;
         this.customHandleDrawing = drawing;
@@ -7339,6 +7388,9 @@ class DrawingToolsManager {
 
     handleCustomHandleDrag(event) {
         if (!this.isCustomHandleDrag || !this.customHandleDrawing) return;
+        const sourceEvent = event && (event.sourceEvent || event);
+        if (sourceEvent) this._lastMouseEvent = sourceEvent;
+
         const context = this.collectHandleContext(event);
         const drawing = this.customHandleDrawing;
         const handleRole = this.customHandleRole;
@@ -7358,9 +7410,7 @@ class DrawingToolsManager {
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
         }
-        if (!this._deferBarIndexSnapDuringShiftEdit(drawing, context.shiftKey)) {
-            this._snapDrawingPointsX(drawing);
-        }
+        // Bar snap runs once on endCustomHandleDrag — not each frame (avoids "stuck" edit).
 
         // Always re-render during drag
         this.scheduleRenderDrawing(drawing);
