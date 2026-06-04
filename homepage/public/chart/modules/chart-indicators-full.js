@@ -638,14 +638,53 @@
     function applyCciStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
-        indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 80;
-        indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 20;
-        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
+        const maS = params.maLineStyle || 'Line';
+        indicator.params.period = params.period != null ? Number(params.period) : 20;
+        indicator.params.source = params.source || 'hlc3';
+        indicator.params.smoothingType = params.smoothingType || 'None';
+        indicator.params.smoothingLength = params.smoothingLength != null ? Number(params.smoothingLength) : 14;
+        indicator.params.bbStdDev = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        indicator.params.upperValue = params.upperValue != null ? Number(params.upperValue)
+            : (params.overboughtValue != null ? Number(params.overboughtValue) : 100);
+        indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 0;
+        indicator.params.lowerValue = params.lowerValue != null ? Number(params.lowerValue)
+            : (params.oversoldValue != null ? Number(params.oversoldValue) : -100);
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#00e676';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
-        applyOscillatorLevelStyleFromParams(indicator, params, { overbought: 80, oversold: 20, mid: 50 });
+        const hasSmoothing = String(indicator.params.smoothingType || 'None') !== 'None';
+        indicator.style.showMa = hasSmoothing && params.showMa !== false;
+        indicator.style.maColor = params.maColor || '#ff9800';
+        indicator.style.maOpacity = params.maOpacity != null ? Number(params.maOpacity) : 100;
+        indicator.style.maLineWidth = params.maLineWidth != null ? params.maLineWidth : 1;
+        indicator.style.upperValue = indicator.params.upperValue;
+        indicator.style.showUpper = params.showUpper !== false;
+        indicator.style.upperColor = params.upperColor || '#787b86';
+        indicator.style.upperOpacity = params.upperOpacity != null ? Number(params.upperOpacity) : 100;
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : 1;
+        indicator.style.midValue = indicator.params.midValue;
+        indicator.style.showMid = params.showMid !== false;
+        indicator.style.midColor = params.midColor || 'rgba(120,123,134,0.45)';
+        indicator.style.midOpacity = params.midOpacity != null ? Number(params.midOpacity) : 100;
+        indicator.style.midLineWidth = params.midLineWidth != null ? params.midLineWidth : 1;
+        indicator.style.lowerValue = indicator.params.lowerValue;
+        indicator.style.showLower = params.showLower !== false;
+        indicator.style.lowerColor = params.lowerColor || '#787b86';
+        indicator.style.lowerOpacity = params.lowerOpacity != null ? Number(params.lowerOpacity) : 100;
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : 1;
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['maLineStyle', 'maLineDashStyle', maS],
+            ['upperLineStyle', 'upperLineDashStyle', 'Dotted'],
+            ['midLineStyle', 'midLineDashStyle', 'Dotted'],
+            ['lowerLineStyle', 'lowerLineDashStyle', 'Dotted']
+        ]);
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
 
     function applyWillrStyleFromParams(indicator, params) {
@@ -2726,41 +2765,82 @@
     }
     
     // CCI (Commodity Channel Index)
-    function calculateCCI(data, period) {
+    function calculateCCI(data, period, source) {
+        const p = Math.max(1, period | 0);
+        source = source || 'hlc3';
         const result = [];
         const constant = 0.015;
-        
+
         for (let i = 0; i < data.length; i++) {
-            if (i < period - 1) {
+            if (i < p - 1) {
                 result.push(null);
             } else {
-                const tp = (data[i].h + data[i].l + data[i].c) / 3;
-                
-                // Calculate SMA of Typical Price (TP)
-                let sumTP = 0;
-                for (let j = 0; j < period; j++) {
-                    sumTP += (data[i - j].h + data[i - j].l + data[i - j].c) / 3;
+                const price = resolveOhlcSourceValue(data[i], source);
+                if (!Number.isFinite(price)) {
+                    result.push(null);
+                    continue;
                 }
-                const smaTP = sumTP / period;
-                
-                // Calculate Mean Deviation (MD)
+                let sumP = 0;
+                let ok = true;
+                for (let j = 0; j < p; j++) {
+                    const pv = resolveOhlcSourceValue(data[i - j], source);
+                    if (!Number.isFinite(pv)) { ok = false; break; }
+                    sumP += pv;
+                }
+                if (!ok) {
+                    result.push(null);
+                    continue;
+                }
+                const smaP = sumP / p;
                 let sumMD = 0;
-                for (let j = 0; j < period; j++) {
-                    const prevTP = (data[i - j].h + data[i - j].l + data[i - j].c) / 3;
-                    sumMD += Math.abs(prevTP - smaTP);
+                for (let j = 0; j < p; j++) {
+                    const prevP = resolveOhlcSourceValue(data[i - j], source);
+                    if (!Number.isFinite(prevP)) { ok = false; break; }
+                    sumMD += Math.abs(prevP - smaP);
                 }
-                const meanDeviation = sumMD / period;
-                
+                if (!ok) {
+                    result.push(null);
+                    continue;
+                }
+                const meanDeviation = sumMD / p;
                 if (meanDeviation === 0) {
-                    result.push(0); // Avoid division by zero
+                    result.push(0);
                 } else {
-                    const cci = (tp - smaTP) / (constant * meanDeviation);
-                    result.push(cci);
+                    result.push((price - smaP) / (constant * meanDeviation));
                 }
             }
         }
-        
         return result;
+    }
+
+    function calculateCCIIndicatorData(data, params) {
+        params = params || {};
+        const period = params.period != null ? params.period : 20;
+        const source = params.source || 'hlc3';
+        const cci = calculateCCI(data, period, source);
+        const type = String(params.smoothingType || 'None');
+        const len = Math.max(1, params.smoothingLength != null ? Number(params.smoothingLength) : 14);
+        const bbStd = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        let ma = null;
+        let bbUpper = null;
+        let bbLower = null;
+        if (type === 'SMA') {
+            ma = rollingSmaNullable(cci, len);
+        } else if (type === 'SMA+BB') {
+            const bb = rollingBbOnSeries(cci, len, bbStd);
+            ma = bb.middle;
+            bbUpper = bb.upper;
+            bbLower = bb.lower;
+        } else if (type === 'EMA') {
+            ma = rollingEmaNullable(cci, len);
+        } else if (type === 'RMA') {
+            ma = rollingRmaNullable(cci, len);
+        } else if (type === 'WMA') {
+            ma = rollingWmaNullable(cci, len);
+        } else if (type === 'VWMA') {
+            ma = rollingVwmaOnSeries(data, cci, len);
+        }
+        return { cci: cci, ma: ma, bbUpper: bbUpper, bbLower: bbLower };
     }
 
     function calculateDEMA(data, period, source) {
@@ -4085,11 +4165,9 @@
                 break;
 
             case 'cci':
-                indicator.params.period = params.period || 20;
-                indicator.overlay = false;
                 applyCciStyleFromParams(indicator, params);
                 indicator.name = 'CCI(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateCCIIndicatorData(this.data, indicator.params);
                 break;
 
             case 'adx':
@@ -5273,8 +5351,9 @@
                 break;
 
             case 'cci':
+                applyCciStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
                 indicator.name = 'CCI(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateCCIIndicatorData(this.data, indicator.params);
                 break;
 
             case 'adx':
@@ -5680,7 +5759,7 @@
                     this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
                     break;
                 case 'cci':
-                    this.indicators.data[indicator.id] = calculateCCI(this.data, indicator.params.period);
+                    this.indicators.data[indicator.id] = calculateCCIIndicatorData(this.data, indicator.params);
                     break;
                 case 'adx':
                     indicator.name = 'ADX(' + indicator.params.diLength + ',' + indicator.params.adxSmoothing + ')';
@@ -10141,13 +10220,16 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
     };
 
-    // ---- CCI panel: auto-scaled + configurable levels + optional background ----
-    Chart.prototype._renderCciPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+    // ---- CCI panel: auto-scaled + CCI-based MA + bands + upper–lower background ----
+    Chart.prototype._renderCciPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        const pack = data && data.cci ? data : { cci: data, ma: null, bbUpper: null, bbLower: null };
+        const values = pack.cci;
         if (!values || !values.length) return;
         const style = indicator.style || {};
-        const obVal = style.overboughtValue != null ? style.overboughtValue : 80;
-        const osVal = style.oversoldValue != null ? style.oversoldValue : 20;
-        const midVal = style.midValue != null ? style.midValue : 50;
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const upperVal = style.upperValue != null ? style.upperValue : 100;
+        const lowerVal = style.lowerValue != null ? style.lowerValue : -100;
+        const midVal = style.midValue != null ? style.midValue : 0;
 
         let min = Infinity;
         let max = -Infinity;
@@ -10158,7 +10240,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 max = Math.max(max, val);
             }
         }
-        [obVal, osVal, midVal].forEach(function(v) {
+        [upperVal, lowerVal, midVal].forEach(function(v) {
             if (Number.isFinite(v)) {
                 min = Math.min(min, v);
                 max = Math.max(max, v);
@@ -10182,45 +10264,73 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        const panelW = Math.max(0, this.w - m.l);
+        const upperW = style.upperLineWidth != null ? style.upperLineWidth : 1;
+        const lowerW = style.lowerLineWidth != null ? style.lowerLineWidth : 1;
+        const midW = style.midLineWidth != null ? style.midLineWidth : 1;
+        const maW = style.maLineWidth != null ? style.maLineWidth : 1;
+
+        if (this._panelRenderFast !== true && style.showBg) {
+            const yUpper = scaleY(upperVal);
+            const yLower = scaleY(lowerVal);
+            if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                const fillTop = Math.min(yUpper, yLower);
+                const fillHeight = Math.abs(yLower - yUpper);
+                if (fillHeight > 0) {
+                    ctx.fillStyle = resolve(style.bgColor, style.bgOpacity);
+                    ctx.fillRect(m.l, fillTop, panelW, fillHeight);
+                }
+            }
         }
 
         this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
 
-        if (style.showOverbought !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, obVal,
-                style.overboughtColor || '#787b86', style.overboughtLineStyle || 'Dotted', obVal);
-        }
-        if (style.showOversold !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, osVal,
-                style.oversoldColor || '#787b86', style.oversoldLineStyle || 'Dotted', osVal);
-        }
-        if (style.showMid !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
-                style.midColor || 'rgba(120,123,134,0.45)', style.midLineStyle || 'Dotted', midVal);
+        if (this._panelRenderFast !== true) {
+            if (style.showUpper !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, upperVal,
+                    resolve(style.upperColor, style.upperOpacity), style.upperLineStyle || 'Dotted', upperVal, upperW, style.upperLineDashStyle || 'Dotted');
+            }
+            if (style.showLower !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, lowerVal,
+                    resolve(style.lowerColor, style.lowerOpacity), style.lowerLineStyle || 'Dotted', lowerVal, lowerW, style.lowerLineDashStyle || 'Dotted');
+            }
+            if (style.showMid !== false) {
+                this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, midVal,
+                    resolve(style.midColor, style.midOpacity), style.midLineStyle || 'Dotted', midVal, midW, style.midLineDashStyle || 'Dotted');
+            }
         }
 
+        const maColor = resolve(style.maColor || '#ff9800', style.maOpacity);
+        if (style.showMa !== false && pack.bbUpper) {
+            this._drawPanelLine(ctx, m, pack.bbUpper, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.bbLower) {
+            this._drawPanelLine(ctx, m, pack.bbLower, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.ma) {
+            this._drawPanelLine(ctx, m, pack.ma, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+
+        const lineColor = resolve(style.color || '#00e676', style.lineOpacity);
         if (style.showLine !== false) {
-            this._drawPanelLine(ctx, m, values, style.color || '#00e676', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
             if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
         }
-        indicator._displayColor = style.color || '#00e676';
+        indicator._displayColor = lineColor;
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
         if (last !== null && Number.isFinite(last)) {
             const currentY = scaleY(last);
             indicator._axisLabelY = currentY;
             indicator._axisLabelText = last.toFixed(2);
-            indicator._axisLabelColor = style.color || '#00e676';
+            indicator._axisLabelColor = lineColor;
             indicator._axisLabelTags = [{
                 y: currentY,
                 text: last.toFixed(2),
-                color: style.color || '#00e676'
+                color: lineColor
             }];
         }
     };

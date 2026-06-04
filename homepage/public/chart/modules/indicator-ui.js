@@ -554,24 +554,62 @@ function stochasticStyleParams() {
     ].concat(stochasticLevelStyleParams());
 }
 
-/** CCI Input tab level defaults (80 / 20 / 50). */
-function cciInputLevelParams() {
+/** CCI Input — source, length, smoothing, band values (100 / 0 / −100). */
+function cciInputParams() {
     return [
-        { id: 'levelsHeading', label: 'Levels', type: 'heading', tab: 'input' },
-        { id: 'overboughtValue', label: 'Overbought', type: 'number', default: 80, step: 1, tab: 'input' },
-        { id: 'oversoldValue', label: 'Oversold', type: 'number', default: 20, step: 1, tab: 'input' },
-        { id: 'midValue', label: 'Midline', type: 'number', default: 50, step: 1, tab: 'input' }
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'hlc3', tab: 'input' },
+        { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
+        {
+            id: 'smoothingType', label: 'Type', type: 'select', tab: 'input', default: 'None',
+            options: MA_SMOOTHING_TYPE_OPTIONS
+        },
+        { id: 'smoothingLength', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' },
+        { id: 'bbStdDev', label: 'BB stdDev', type: 'number', default: 2, min: 0.1, step: 0.1, tab: 'input' },
+        { id: 'bandsHeading', label: 'Bands', type: 'heading', tab: 'input' },
+        { id: 'upperValue', label: 'Upper band', type: 'number', default: 100, step: 1, tab: 'input' },
+        { id: 'midValue', label: 'Middle band', type: 'number', default: 0, step: 1, tab: 'input' },
+        { id: 'lowerValue', label: 'Lower band', type: 'number', default: -100, step: 1, tab: 'input' }
     ];
 }
 
-/** TradingView-style CCI Style tab (CCI line + level appearance + optional panel bg). */
+function cciBandStyleParams() {
+    return [
+        { id: 'showUpper', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'upperOpacity', label: 'Upper band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showMid', label: 'Show middle band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'midColor', label: 'Middle band color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midOpacity', label: 'Middle band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'midLineStyle', label: 'Middle band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'midLineWidth', label: 'Middle band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'lowerOpacity', label: 'Lower band opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower band line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background fill (upper to lower band)', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background fill color', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+/** TradingView-style CCI Style tab (CCI line + CCI-based MA + bands + background). */
 function cciStyleParams() {
     return [
-        { id: 'showLine', label: 'Show CCI line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'showLine', label: 'Show CCI', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'CCI color', type: 'color', default: '#00e676', tab: 'style' },
+        { id: 'lineOpacity', label: 'CCI opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'lineStyle', label: 'CCI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'CCI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
-    ].concat(stochasticLevelStyleParams());
+        { id: 'lineWidth', label: 'CCI line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showMa', label: 'Show CCI-based MA', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'maColor', label: 'CCI-based MA color', type: 'color', default: '#ff9800', tab: 'style' },
+        { id: 'maOpacity', label: 'CCI-based MA opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'maLineStyle', label: 'CCI-based MA line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'maLineWidth', label: 'CCI-based MA line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ].concat(cciBandStyleParams());
 }
 
 /** Williams %R Input tab level defaults (−20 / −80 / −50). */
@@ -1188,9 +1226,7 @@ const INDICATOR_DEFINITIONS = {
     cci: {
         name: 'Commodity Channel Index',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 }
-        ].concat(cciInputLevelParams()).concat(cciStyleParams())
+        params: cciInputParams().concat(cciStyleParams())
     },
     adx: {
         name: 'Average Directional Index',
@@ -4378,27 +4414,38 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'cci') {
         return {
-            sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('CCI', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
-            }, {
-                title: 'Overbought Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtLineStyle')]
-            }, {
-                title: 'Oversold Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle')]
-            }, {
-                title: 'Mid Level',
-                levelHeader: true,
-                levelRows: [v9LevelRow('midValue', 'showMid', 'midColor', 'midLineStyle')]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
-            }],
+            sections: [
+                {
+                    title: 'CCI',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('CCI', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'CCI-based MA',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('CCI-based MA', 'maColor', 'maOpacity', 'maLineStyle', 'maLineWidth', 'showMa')]
+                },
+                {
+                    title: 'Upper Band',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('upperValue', 'showUpper', 'upperColor', 'upperOpacity', 'upperLineStyle', 'upperLineWidth')]
+                },
+                {
+                    title: 'Middle Band',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth')]
+                },
+                {
+                    title: 'Lower Band',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('lowerValue', 'showLower', 'lowerColor', 'lowerOpacity', 'lowerLineStyle', 'lowerLineWidth')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }
@@ -4763,11 +4810,12 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
                 }
                 break;
             case 'cci':
-                // Commodity Channel Index
-                const cciPeriod = indicator.params.period;
-                if (typeof calculateCCI === 'function') {
-                    this.indicators.data[id] = calculateCCI(this.data, cciPeriod);
-                    console.log('✅ CCI recalculated with period:', cciPeriod);
+                if (typeof calculateCCIIndicatorData === 'function') {
+                    this.indicators.data[id] = calculateCCIIndicatorData(this.data, indicator.params);
+                    console.log('✅ CCI recalculated');
+                } else if (typeof calculateCCI === 'function') {
+                    this.indicators.data[id] = calculateCCI(this.data, indicator.params.period, indicator.params.source);
+                    console.log('✅ CCI recalculated with period:', indicator.params.period);
                 } else {
                     console.error('❌ calculateCCI function not found. Cannot recalculate CCI.');
                 }
