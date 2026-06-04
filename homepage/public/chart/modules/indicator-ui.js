@@ -351,7 +351,8 @@ function psarInputParams() {
 /** Parabolic SAR Style tab (up/down colors + shared plot style). */
 function psarStyleParams() {
     return [
-        { id: 'showLine', label: 'Show Parabolic SAR', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'showUp', label: 'Show up', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'showDown', label: 'Show down', type: 'checkbox', default: true, tab: 'style' },
         { id: 'bullColor', label: 'Up color', type: 'color', default: '#26a69a', tab: 'style' },
         { id: 'bearColor', label: 'Down color', type: 'color', default: '#ef5350', tab: 'style' },
         { id: 'lineStyle', label: 'Parabolic SAR line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Circles', tab: 'style' },
@@ -4128,8 +4129,9 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('Up', 'bullColor', 'lineStyle', 'lineWidth', 'showLine'),
-                    v9PlotRow('Down', 'bearColor', null, null, null)
+                    v9ColorRow('Up', 'bullColor', 'showUp'),
+                    v9ColorRow('Down', 'bearColor', 'showDown'),
+                    v9PlotRow('Plot', null, 'lineStyle', 'lineWidth', null)
                 ]
             }],
             footers: footers

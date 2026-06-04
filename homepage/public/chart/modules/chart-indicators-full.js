@@ -510,7 +510,16 @@
         indicator.params.start = calc.start;
         indicator.params.increment = calc.increment;
         indicator.params.maxStep = calc.maxStep;
-        indicator.style.showLine = params.showLine !== false;
+        let showUp = params.showUp !== false;
+        let showDown = params.showDown !== false;
+        if (params.showUp === undefined && params.showDown === undefined && params.showLine !== undefined) {
+            const on = params.showLine !== false;
+            showUp = on;
+            showDown = on;
+        }
+        indicator.style.showUp = showUp;
+        indicator.style.showDown = showDown;
+        indicator.style.showLine = showUp || showDown;
         indicator.style.bullColor = params.bullColor || params.color || '#26a69a';
         indicator.style.bearColor = params.bearColor || '#ef5350';
         indicator.style.color = indicator.style.bullColor;
@@ -8106,7 +8115,10 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
 
 /** Parabolic SAR — dots or plot-style markers; up/down colors by trend */
 Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex) {
-    if (!sar || !this.data || !this.data.length || !style || style.showLine === false) return;
+    if (!sar || !this.data || !this.data.length || !style) return;
+    const showUp = style.showUp !== false;
+    const showDown = style.showDown !== false;
+    if (!showUp && !showDown) return;
     const plotStyle = this._normalizePlotStyle(style.lineStyle || 'Circles');
     const bull = style.bullColor || style.color || '#26a69a';
     const bear = style.bearColor || '#ef5350';
@@ -8115,10 +8127,16 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
     const scatterStyles = { Circles: 1, Cross: 1 };
     const n = Math.min(sar.length, this.data.length);
     endIndex = endIndex == null ? n : Math.min(endIndex, n);
+    const self = this;
+    const isUpAt = function (i) {
+        const bar = self.data[i];
+        return bar && sar[i] != null && !isNaN(sar[i]) && bar.c >= sar[i];
+    };
+    const shouldDrawAt = function (i) {
+        return isUpAt(i) ? showUp : showDown;
+    };
     const colorAt = (i) => {
-        const bar = this.data[i];
-        if (!bar || sar[i] == null || isNaN(sar[i])) return bull;
-        return bar.c >= sar[i] ? bull : bear;
+        return isUpAt(i) ? bull : bear;
     };
     if (!scatterStyles[plotStyle]) {
         const ctx = this.ctx;
@@ -8139,7 +8157,7 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
             segStarted = false;
         };
         for (let i = startIndex; i < endIndex && i < sar.length; i++) {
-            if (sar[i] == null || isNaN(sar[i])) {
+            if (sar[i] == null || isNaN(sar[i]) || !shouldDrawAt(i)) {
                 flushSeg();
                 prevX = null;
                 continue;
@@ -8186,7 +8204,7 @@ Chart.prototype.drawParabolicSAR = function(sar, style, startIndex = 0, endIndex
     ctx.lineWidth = Math.max(1, lw * 0.75);
     ctx.lineCap = 'round';
     for (let i = startIndex; i < endIndex; i++) {
-        if (sar[i] === null || sar[i] === undefined || isNaN(sar[i])) continue;
+        if (sar[i] === null || sar[i] === undefined || isNaN(sar[i]) || !shouldDrawAt(i)) continue;
         const x = this.dataIndexToPixel(i);
         const y = this.yScale(sar[i]);
         if (x < m.l - 50 || x > this.w - m.r + 50) continue;
