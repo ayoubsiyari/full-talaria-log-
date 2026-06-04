@@ -2993,6 +2993,80 @@ function indicatorSettingsTabForParam(param) {
     return 'input';
 }
 
+function snapIndicatorWallClockTime(value, fallback) {
+    fallback = fallback || '09:30';
+    const m = String(value != null ? value : fallback).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return fallback;
+    let h = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+    let mn = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+    mn = Math.round(mn / 5) * 5;
+    if (mn >= 60) { mn = 0; h = (h + 1) % 24; }
+    return String(h).padStart(2, '0') + ':' + String(mn).padStart(2, '0');
+}
+
+function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, newStyle) {
+    if (param.type === 'timeRange') {
+        const startFb = param.defaultStart || '09:30';
+        const endFb = param.defaultEnd || '10:00';
+        const startRaw = draft[param.startId];
+        const endRaw = draft[param.endId];
+        newParams[param.startId] = snapIndicatorWallClockTime(
+            startRaw !== undefined ? startRaw : baseExisting[param.startId],
+            startFb
+        );
+        newParams[param.endId] = snapIndicatorWallClockTime(
+            endRaw !== undefined ? endRaw : baseExisting[param.endId],
+            endFb
+        );
+        return;
+    }
+    if (param.type === 'sessionInput') {
+        const showRaw = draft[param.showId];
+        newParams[param.showId] = showRaw !== undefined
+            ? !!showRaw
+            : (baseExisting[param.showId] !== undefined ? !!baseExisting[param.showId] : param.defaultShow !== false);
+        const nameRaw = draft[param.nameId];
+        newParams[param.nameId] = nameRaw !== undefined
+            ? nameRaw
+            : (baseExisting[param.nameId] != null ? baseExisting[param.nameId] : (param.defaultName || param.label || ''));
+        newParams[param.startId] = snapIndicatorWallClockTime(
+            draft[param.startId] !== undefined ? draft[param.startId] : baseExisting[param.startId],
+            param.defaultStart || '00:00'
+        );
+        newParams[param.endId] = snapIndicatorWallClockTime(
+            draft[param.endId] !== undefined ? draft[param.endId] : baseExisting[param.endId],
+            param.defaultEnd || '00:00'
+        );
+        return;
+    }
+    var raw = draft[param.id];
+    if (raw === undefined) {
+        raw = baseExisting[param.id] !== undefined ? baseExisting[param.id] : param.default;
+    }
+    var value = raw;
+    if (param.type === 'checkbox') {
+        value = !!raw;
+    } else if (param.type === 'number') {
+        value = sanitizeIndicatorParamValue(param, raw);
+    } else if (param.type === 'time') {
+        value = snapIndicatorWallClockTime(raw, param.default || '09:30');
+    }
+    var pid = String(param.id).toLowerCase();
+    var toStyle = param.tab === 'style'
+        || pid.indexOf('color') >= 0
+        || pid.indexOf('width') >= 0
+        || pid.indexOf('fill') >= 0
+        || pid.indexOf('linestyle') >= 0
+        || pid.indexOf('opacity') >= 0
+        || pid === 'showlabel'
+        || /^show(middle|upper|lower|fill)$/.test(pid);
+    if (toStyle) {
+        newStyle[param.id] = value;
+    } else {
+        newParams[param.id] = value;
+    }
+}
+
 /**
  * Build merged payload for Chart.prototype.updateIndicator from a flat draft object (React V9 panel).
  * Mirrors createIndicatorSettingsPanel saveBtn classification.
@@ -3007,30 +3081,7 @@ function mergeIndicatorDraftForUpdate(indicatorType, existingIndicator, draft) {
     const newStyle = {};
     def.params.forEach(function(param) {
         if (param.type === 'heading' || param.type === 'divider') return;
-        var raw = draft[param.id];
-        if (raw === undefined) {
-            raw = baseExisting[param.id] !== undefined ? baseExisting[param.id] : param.default;
-        }
-        var value = raw;
-        if (param.type === 'checkbox') {
-            value = !!raw;
-        } else if (param.type === 'number') {
-            value = sanitizeIndicatorParamValue(param, raw);
-        }
-        var pid = String(param.id).toLowerCase();
-        var toStyle = param.tab === 'style'
-            || pid.indexOf('color') >= 0
-            || pid.indexOf('width') >= 0
-            || pid.indexOf('fill') >= 0
-            || pid.indexOf('linestyle') >= 0
-            || pid.indexOf('opacity') >= 0
-            || pid === 'showlabel'
-            || /^show(middle|upper|lower|fill)$/.test(pid);
-        if (toStyle) {
-            newStyle[param.id] = value;
-        } else {
-            newParams[param.id] = value;
-        }
+        mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, newStyle);
     });
     const merged = Object.assign({}, baseExisting, newParams, newStyle);
     clampIndicatorStyleLineWidths(merged);
@@ -3608,6 +3659,21 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         
         def.params.forEach(param => {
             if (param.type === 'heading' || param.type === 'divider') return;
+            if (param.type === 'timeRange' || param.type === 'sessionInput') {
+                const scratch = {};
+                const startEl = panel.querySelector('[data-param-id="' + param.startId + '"]');
+                const endEl = panel.querySelector('[data-param-id="' + param.endId + '"]');
+                if (startEl) scratch[param.startId] = startEl.value;
+                if (endEl) scratch[param.endId] = endEl.value;
+                if (param.type === 'sessionInput') {
+                    const showEl = panel.querySelector('[data-param-id="' + param.showId + '"]');
+                    const nameEl = panel.querySelector('[data-param-id="' + param.nameId + '"]');
+                    if (showEl) scratch[param.showId] = showEl.checked;
+                    if (nameEl) scratch[param.nameId] = nameEl.value;
+                }
+                mergeIndicatorDraftParamEntry(param, scratch, baseExisting, newParams, newStyle);
+                return;
+            }
             const input = panel.querySelector(`[data-param-id="${param.id}"]`);
             if (!input) {
                 console.warn('Input not found for param:', param.id);

@@ -11425,6 +11425,18 @@ const TalariaV8bLive = () => {
       const draft = {};
       def.params.forEach((p) => {
         if (p.type === "heading" || p.type === "divider") return;
+        if (p.type === "timeRange") {
+          draft[p.startId] = allParams[p.startId] !== undefined ? allParams[p.startId] : p.defaultStart;
+          draft[p.endId] = allParams[p.endId] !== undefined ? allParams[p.endId] : p.defaultEnd;
+          return;
+        }
+        if (p.type === "sessionInput") {
+          draft[p.showId] = allParams[p.showId] !== undefined ? allParams[p.showId] : p.defaultShow !== false;
+          draft[p.nameId] = allParams[p.nameId] != null ? allParams[p.nameId] : (p.defaultName || p.label || "");
+          draft[p.startId] = allParams[p.startId] !== undefined ? allParams[p.startId] : p.defaultStart;
+          draft[p.endId] = allParams[p.endId] !== undefined ? allParams[p.endId] : p.defaultEnd;
+          return;
+        }
         draft[p.id] = allParams[p.id] !== undefined ? allParams[p.id] : p.default;
       });
       if (typeof window.__v9MigrateIndicatorDraftColors === "function") {
