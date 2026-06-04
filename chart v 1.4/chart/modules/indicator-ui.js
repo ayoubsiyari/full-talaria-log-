@@ -1127,13 +1127,19 @@ function hmaStyleParams() {
     ];
 }
 
-/** Standard Deviation Style tab (overlay plot line). */
+/** Standard Deviation Input — length + source (overlay on price chart / legend container). */
+function stddevInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 2, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' }
+    ];
+}
+
+/** Standard Deviation Style — line color (opacity in color picker). */
 function stddevStyleParams() {
     return [
-        { id: 'showLine', label: 'Show plot line', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc', tab: 'style' },
-        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+        { id: 'color', label: 'Color', type: 'color', default: '#ab47bc', tab: 'style' },
+        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
     ];
 }
 
@@ -1646,10 +1652,7 @@ const INDICATOR_DEFINITIONS = {
     stddev: {
         name: 'Standard Deviation',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
-        ].concat(stddevStyleParams())
+        params: stddevInputParams().concat(stddevStyleParams())
     },
     ao: {
         name: 'Awesome Oscillator',
@@ -4537,10 +4540,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
     if (indicatorType === 'stddev') {
         return {
             sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('Plot Line', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
+                title: 'Standard Deviation',
+                rows: [v9BandStyleRow('Standard Deviation', 'color', 'lineOpacity', null, null, null)]
             }],
             footers: footers
         };

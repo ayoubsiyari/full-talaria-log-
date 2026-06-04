@@ -808,8 +808,12 @@
         const legacyS = params.lineStyle || 'Line';
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#ab47bc';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
-        indicator.style.lineStyle = params.lineStyle || legacyS;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.overlay = true;
+        indicator.separatePanel = false;
+        indicator.hidePlot = false;
     }
 
     function applyOscZeroPanelStyleFromParams(indicator, params, defaultPeriod, defaultColor) {
@@ -5521,8 +5525,17 @@
             applyDpoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'stddev') {
-            indicator.overlay = true;
-            applyStddevStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.period !== undefined || newParams.source !== undefined;
+            applyStddevStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'StdDev(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateStdDevLine(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.source || 'close'
+                );
+            }
         }
         if (indicator.type === 'supertrend') {
             applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6619,7 +6632,13 @@
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'stddev') {
                 if (indicator.style.showLine !== false) {
-                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
+                    const lineColor = this._resolveIndicatorBandLineColor(
+                        indicator.style.color || '#ab47bc',
+                        indicator.style.lineOpacity
+                    );
+                    this.drawLineIndicator(data, lineColor, indicator.style.lineWidth || 2, startIndex, endIndex, indicator.style.lineStyle || 'Line', {
+                        dashStyle: indicator.style.lineDashStyle || 'Solid'
+                    });
                 }
             } else if (indicator.type === 'hma') {
                 if (indicator.style.showLine !== false) {
