@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a109';
+const CHART_ENGINE_BUILD = '20260602a110';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -912,6 +912,9 @@ class Chart {
         // Listen for timezone changes (main + panel charts so axes/crosshairs stay in sync)
         if (window.timezoneManager) {
             window.timezoneManager.addListener(() => {
+                if (typeof this.recalculateIndicators === 'function') {
+                    try { this.recalculateIndicators(); } catch (_tzInd) { /* ignore */ }
+                }
                 this.scheduleRender();
             });
         }

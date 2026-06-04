@@ -360,13 +360,13 @@ function psarStyleParams() {
     ];
 }
 
-/** Opening Range Input — custom session window in UTC-5 (America/New_York). */
+/** Opening Range Input — wall-clock window in the chart time zone. */
 function openingRangeInputParams() {
     return [
-        { id: 'h_orRange', type: 'heading', label: 'Custom range (UTC-5)', tab: 'input' },
+        { id: 'h_orRange', type: 'heading', label: 'Session range (chart time zone)', tab: 'input' },
         {
             type: 'timeRange',
-            label: 'Time',
+            label: 'Range',
             startId: 'rangeStart',
             endId: 'rangeEnd',
             defaultStart: '09:30',

@@ -3245,12 +3245,57 @@
         return sessions;
     }
 
-    const OPENING_RANGE_TZ = 'America/New_York';
+    function resolveChartWallTimezoneId() {
+        if (typeof window !== 'undefined' && window.timezoneManager) {
+            const tz = window.timezoneManager.getTimezone && window.timezoneManager.getTimezone();
+            if (tz && tz.id) return tz.id;
+        }
+        let label = null;
+        if (typeof window !== 'undefined' && window.chart && window.chart.chartSettings) {
+            label = window.chart.chartSettings.timezone;
+        }
+        if (label != null && label !== '' && typeof window !== 'undefined' && window.chart
+            && typeof window.chart.mapV9TimezoneLabelToId === 'function') {
+            const mapped = window.chart.mapV9TimezoneLabelToId(String(label).trim());
+            if (mapped) return mapped;
+        }
+        const legacy = {
+            'UTC': 'UTC',
+            'UTC+3 (Riyadh)': 'Europe/Moscow',
+            'UTC+4 (Dubai)': 'Asia/Dubai',
+            'UTC+5:30 (IST)': 'Asia/Kolkata',
+            'UTC+8 (Asia)': 'Asia/Singapore',
+            'UTC-5 (EST)': 'America/New_York',
+            'UTC-8 (PST)': 'America/Los_Angeles',
+            '(UTC-5) Toronto': 'America/Toronto',
+            '(UTC-8) Los Angeles': 'America/Los_Angeles',
+            '(UTC) London': 'Europe/London',
+            '(UTC+1) Paris': 'Europe/Paris'
+        };
+        if (label == null || label === '') return 'UTC';
+        const v = String(label).trim();
+        if (Object.prototype.hasOwnProperty.call(legacy, v)) return legacy[v];
+        if (v === 'UTC') return 'UTC';
+        if (/^[A-Za-z_]+\/.+$/.test(v)) {
+            try {
+                new Intl.DateTimeFormat('en-US', { timeZone: v });
+                return v;
+            } catch (e0) { /* invalid */ }
+        }
+        const ianaTail = v.match(/\)\s*([A-Za-z][A-Za-z0-9_]*(?:\/[A-Za-z0-9_]+)+)\s*$/);
+        if (ianaTail && ianaTail[1]) {
+            try {
+                new Intl.DateTimeFormat('en-US', { timeZone: ianaTail[1] });
+                return ianaTail[1];
+            } catch (e1) { /* invalid */ }
+        }
+        return 'UTC';
+    }
 
     function dayKeyInTimezone(utcMs, tzId) {
         try {
             return new Intl.DateTimeFormat('en-CA', {
-                timeZone: tzId || OPENING_RANGE_TZ,
+                timeZone: tzId || 'UTC',
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit'
@@ -3276,21 +3321,22 @@
         return {
             rangeStart: rangeStart,
             rangeEnd: rangeEnd,
-            timezone: params.rangeTimezone || OPENING_RANGE_TZ
+            timezone: params.rangeTimezone || resolveChartWallTimezoneId()
         };
     }
 
-    /** Per-day opening range in UTC-5 window; null gaps between days so lines do not connect. */
+    /** Per-day opening range in chart wall-clock window; null gaps before range settles each day. */
     function calculateOpeningRange(data, params) {
         const resolved = typeof params === 'number'
             ? { rangeStart: '00:00', rangeEnd: (function (m) {
                 const mins = Math.max(1, Math.floor(m));
                 return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
-            })(params), timezone: OPENING_RANGE_TZ }
+            })(params), timezone: resolveChartWallTimezoneId() }
             : resolveOpeningRangeParams(params);
         const tz = resolved.timezone;
         const startDec = parseSessionTimeStr(resolved.rangeStart);
         const endDec = parseSessionTimeStr(resolved.rangeEnd);
+        const session = { start: startDec, end: endDec };
         const upper = [];
         const lower = [];
         const middle = [];
@@ -3310,7 +3356,7 @@
                 dayHigh = null;
                 dayLow = null;
             }
-            const inWin = isInSessionDecimal(dec, startDec, endDec);
+            const inWin = isInSessionDecimal(dec, session);
             if (inWin) {
                 forming = true;
                 if (dayHigh == null) {
@@ -3342,7 +3388,7 @@
         const resolved = resolveOpeningRangeParams(params);
         indicator.params.rangeStart = resolved.rangeStart;
         indicator.params.rangeEnd = resolved.rangeEnd;
-        indicator.params.rangeTimezone = resolved.timezone;
+        indicator.params.rangeTimezone = resolveChartWallTimezoneId();
         indicator.overlay = true;
         indicator.style.showUpper = params.showUpper !== false;
         indicator.style.upperColor = params.upperColor || '#2962ff';
@@ -4321,7 +4367,7 @@
             case 'or':
                 applyOpeningRangeStyleFromParams(indicator, params);
                 indicator.type = 'openingrange';
-                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ' UTC-5)';
+                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ')';
                 this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                 break;
 
@@ -5418,7 +5464,8 @@
                 break;
             case 'openingrange':
             case 'or':
-                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ' UTC-5)';
+                applyOpeningRangeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ')';
                 this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                 break;
             case 'supertrend':
@@ -5748,6 +5795,7 @@
                     break;
                 case 'openingrange':
                 case 'or':
+                    applyOpeningRangeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
                     this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                     break;
                 case 'supertrend':
@@ -8163,11 +8211,20 @@ Chart.prototype.drawOpeningRange = function(bands, style, startIndex, endIndex) 
     if (!bands || !bands.upper) return;
     style = style || {};
     const resolve = this._resolveIndicatorBandLineColor.bind(this);
+    const breakStyle = function (s) {
+        if (!s || s === 'Line') return 'Line with breaks';
+        if (s === 'Step line') return 'Step line with breaks';
+        if (s === 'Area') return 'Area with breaks';
+        return s;
+    };
     const drawStyle = Object.assign({}, style, {
         showFill: false,
         upperColor: resolve(style.upperColor, style.upperOpacity),
         middleColor: resolve(style.middleColor, style.middleOpacity),
-        lowerColor: resolve(style.lowerColor, style.lowerOpacity)
+        lowerColor: resolve(style.lowerColor, style.lowerOpacity),
+        upperLineStyle: breakStyle(style.upperLineStyle),
+        middleLineStyle: breakStyle(style.middleLineStyle),
+        lowerLineStyle: breakStyle(style.lowerLineStyle)
     });
     this.drawBollingerBands(bands, drawStyle, startIndex, endIndex);
 };
