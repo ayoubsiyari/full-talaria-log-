@@ -611,6 +611,30 @@
         indicator.separatePanel = true;
     }
 
+    function applyCmfStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        const zeroS = params.zeroLineStyle || 'Dotted';
+        indicator.params.period = params.period != null ? Number(params.period) : 20;
+        indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#29b6f6';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.showZero = params.showZero !== false;
+        indicator.style.zeroValue = indicator.params.zeroValue;
+        indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
+        indicator.style.zeroOpacity = params.zeroOpacity != null ? Number(params.zeroOpacity) : 100;
+        indicator.style.zeroLineWidth = params.zeroLineWidth != null ? params.zeroLineWidth : 1;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['zeroLineStyle', 'zeroLineDashStyle', zeroS]
+        ]);
+        indicator.hidePlot = params.hideFromContainer === true;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function applyCciStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -4294,10 +4318,7 @@
                 this.indicators.data[indicator.id] = calculateAroon(this.data, indicator.params.period);
                 break;
             case 'cmf':
-                indicator.params.period = params.period || 20;
-                indicator.style.color = params.color || '#29b6f6';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.overlay = false;
+                applyCmfStyleFromParams(indicator, params);
                 indicator.name = 'CMF(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateCMF(this.data, indicator.params.period);
                 break;
@@ -5153,6 +5174,9 @@
         if (indicator.type === 'mfi') {
             applyMfiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'cmf') {
+            applyCmfStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
         if (indicator.type === 'mom' || indicator.type === 'momentum') {
             indicator.type = 'mom';
             indicator.overlay = false;
@@ -5431,6 +5455,7 @@
                 this.indicators.data[indicator.id] = calculateAroon(this.data, indicator.params.period);
                 break;
             case 'cmf':
+                applyCmfStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
                 indicator.name = 'CMF(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateCMF(this.data, indicator.params.period);
                 break;
@@ -7244,6 +7269,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         } else if (indicator.type === 'mfi') {
             this._renderMFIPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
+        } else if (indicator.type === 'cmf') {
+            this._renderCMFPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
         } else if (indicator.type === 'dpo') {
             this._renderDpoPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
@@ -7331,7 +7359,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         });
 
         // Reference lines for oscillators
-        if (indicator.type === 'cmf' || indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
+        if (indicator.type === 'trix' || indicator.type === 'rvi' || indicator.type === 'seasonality') {
             const zy = scaleY(0);
             if (zy !== null && zy > indTop && zy < indBottom) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -10402,6 +10430,76 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 y: currentY,
                 text: last.toFixed(2),
                 color: style.color || '#ec407a'
+            }];
+        }
+    };
+
+    // ---- CMF: auto-scaled with CMF line + configurable zero level ----
+    Chart.prototype._renderCMFPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (Number.isFinite(zeroVal)) {
+            min = Math.min(min, zeroVal);
+            max = Math.max(max, zeroVal);
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const mMin = dom.min;
+        const mMax = dom.max;
+        const mSpan = Math.max(1e-9, mMax - mMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
+
+        const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
+        if (this._panelRenderFast !== true && style.showZero !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
+                resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Dotted', zeroVal, zeroW, style.zeroLineDashStyle || 'Dotted');
+        }
+
+        const lineColor = resolve(style.color || '#29b6f6', style.lineOpacity);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(4) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(2),
+                color: lineColor
             }];
         }
     };

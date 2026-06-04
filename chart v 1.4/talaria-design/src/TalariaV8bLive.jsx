@@ -11442,6 +11442,9 @@ const TalariaV8bLive = () => {
       if (typeof window.__v9MigrateIndicatorDraftColors === "function") {
         window.__v9MigrateIndicatorDraftColors(indicatorType, draft, allParams);
       }
+      if (indicatorType === "cmf" && existingIndicator.hidePlot === true) {
+        draft.hideFromContainer = true;
+      }
       draft.visible = existingIndicator.visible !== false;
       Object.assign(draft, v9IndicatorVisibilityDraftFromIndicator(existingIndicator));
       const counts = { style: 0, input: 0, visibility: 0 };

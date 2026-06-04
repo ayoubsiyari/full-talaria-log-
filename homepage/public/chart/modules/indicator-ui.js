@@ -453,6 +453,37 @@ function mfiStyleParams() {
     ].concat(mfiOscillatorLevelStyleParams());
 }
 
+/** CMF Input — length + zero level value. */
+function cmfInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'zeroValue', label: 'Zero', type: 'number', default: 0, step: 0.0001, tab: 'input' }
+    ];
+}
+
+/** CMF Style — CMF line + zero line (opacity on style rows). */
+function cmfStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show CMF', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'CMF color', type: 'color', default: '#29b6f6', tab: 'style' },
+        { id: 'lineOpacity', label: 'CMF opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'CMF line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'CMF line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showZero', label: 'Show zero', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroOpacity', label: 'Zero opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'zeroLineWidth', label: 'Zero line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+/** CMF Visibility — hide plot from indicator pane (TradingView container). */
+function cmfVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
 /** Stochastic Input tab level defaults (80 / 50 / 20). */
 function stochasticInputLevelParams() {
     return [
@@ -1315,11 +1346,7 @@ const INDICATOR_DEFINITIONS = {
     cmf: {
         name: 'Chaikin Money Flow',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#29b6f6' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: cmfInputParams().concat(cmfStyleParams()).concat(cmfVisibilityParams())
     },
     trix: {
         name: 'TRIX',
@@ -4228,6 +4255,24 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('-DI', 'minusDIColor', 'minusDILineStyle', 'minusDILineWidth', 'showMinusDI')
                 ]
             }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'cmf') {
+        return {
+            sections: [
+                {
+                    title: 'CMF',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('CMF', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Zero',
+                    oscLevelStyleHeader: true,
+                    levelRows: [v9OscLevelStyleRow('zeroValue', 'showZero', 'zeroColor', 'zeroOpacity', 'zeroLineStyle', 'zeroLineWidth')]
+                }
+            ],
             footers: footers
         };
     }
