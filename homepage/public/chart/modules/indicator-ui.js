@@ -583,8 +583,8 @@ const MA_SMOOTHING_TYPE_OPTIONS = [
     { value: 'VWMA', label: 'VWMA' }
 ];
 
-/** Weighted Moving Average (WMA) Input tab. */
-function wmaInputParams() {
+/** Shared overlay MA input (SMA / WMA): length, source, offset, smoothing. */
+function smoothedOverlayMaInputParams() {
     return [
         { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
         { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
@@ -599,15 +599,32 @@ function wmaInputParams() {
     ];
 }
 
-/** Weighted Moving Average (WMA) Style tab. */
-function wmaStyleParams() {
+/** Shared overlay MA style row (show line, color, thickness, style, label). */
+function smoothedOverlayMaStyleParams(lineLabel, defaultColor) {
     return [
-        { id: 'showLine', label: 'Show WMA line', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Line color', type: 'color', default: '#ff9800', tab: 'style' },
+        { id: 'showLine', label: 'Show ' + lineLabel + ' line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Line color', type: 'color', default: defaultColor, tab: 'style' },
         { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
+}
+
+function smaInputParams() {
+    return smoothedOverlayMaInputParams();
+}
+
+function smaStyleParams() {
+    return smoothedOverlayMaStyleParams('SMA', '#2962ff');
+}
+
+/** Weighted Moving Average (WMA) Input tab. */
+function wmaInputParams() {
+    return smoothedOverlayMaInputParams();
+}
+
+function wmaStyleParams() {
+    return smoothedOverlayMaStyleParams('WMA', '#ff9800');
 }
 
 /** Double EMA (DEMA) Input tab. */
@@ -896,14 +913,7 @@ const INDICATOR_DEFINITIONS = {
     sma: {
         name: 'Simple Moving Average',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#2962ff' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: smaInputParams().concat(smaStyleParams())
     },
     ema: {
         name: 'Exponential Moving Average',
@@ -3805,6 +3815,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('WMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'sma') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('SMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }],
             footers: footers

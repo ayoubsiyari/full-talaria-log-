@@ -200,8 +200,8 @@
         ]);
     }
 
-    function applyWmaCalcParams(indicator, params) {
-        applyMaLengthSourceFromParams(indicator, params, 20);
+    function applySmoothedOverlayMaCalcParams(indicator, params, defaultPeriod) {
+        applyMaLengthSourceFromParams(indicator, params, defaultPeriod != null ? defaultPeriod : 20);
         const offsetRaw = params.offset != null ? Number(params.offset) : 0;
         indicator.params.offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
         indicator.params.smoothingType = params.smoothingType || 'None';
@@ -209,13 +209,13 @@
         indicator.params.bbStdDev = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
     }
 
-    function applyWmaStyleFromParams(indicator, params) {
-        applyWmaCalcParams(indicator, params);
+    function applySmoothedOverlayMaStyleFromParams(indicator, params, defaultColor) {
+        applySmoothedOverlayMaCalcParams(indicator, params, 20);
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.overlay = true;
         indicator.style.showLine = params.showLine !== false;
-        indicator.style.color = params.color || '#ff9800';
+        indicator.style.color = params.color || defaultColor || '#2962ff';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         indicator.style.lineStyle = params.lineStyle || legacyS;
         indicator.style.showLabel = params.showLabel !== false;
@@ -227,6 +227,14 @@
             ['lineStyle', 'lineDashStyle', legacyS],
             ['smoothLineStyle', 'smoothLineDashStyle', 'Line']
         ]);
+    }
+
+    function applyWmaStyleFromParams(indicator, params) {
+        applySmoothedOverlayMaStyleFromParams(indicator, params, '#ff9800');
+    }
+
+    function applySmaStyleFromParams(indicator, params) {
+        applySmoothedOverlayMaStyleFromParams(indicator, params, '#2962ff');
     }
 
     function clampIndicatorLineWidth(w, fallback) {
@@ -846,14 +854,7 @@
         return out;
     }
 
-    function calculateWMAIndicatorData(data, params) {
-        params = params || {};
-        const period = params.period != null ? params.period : 20;
-        const source = params.source || 'close';
-        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
-        const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
-        let line = calculateWMA(data, period, source);
-        line = shiftLineSeries(line, offset);
+    function applySmoothedOverlayMaSmoothing(line, data, params) {
         const type = String(params.smoothingType || 'None');
         const len = Math.max(1, params.smoothingLength != null ? Number(params.smoothingLength) : 14);
         const bbStd = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
@@ -877,6 +878,25 @@
             ma = rollingVwmaOnSeries(data, line, len);
         }
         return { line: line, ma: ma, bbUpper: bbUpper, bbLower: bbLower };
+    }
+
+    function calculateSmoothedOverlayMaData(data, params, computeBaseLine) {
+        params = params || {};
+        const period = params.period != null ? params.period : 20;
+        const source = params.source || 'close';
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+        let line = computeBaseLine(data, period, source);
+        line = shiftLineSeries(line, offset);
+        return applySmoothedOverlayMaSmoothing(line, data, params);
+    }
+
+    function calculateWMAIndicatorData(data, params) {
+        return calculateSmoothedOverlayMaData(data, params, calculateWMA);
+    }
+
+    function calculateSMAIndicatorData(data, params) {
+        return calculateSmoothedOverlayMaData(data, params, calculateSMA);
     }
 
     /** Rolling SMA; null until full window of finite values */
@@ -3727,14 +3747,9 @@
         // Configure indicator based on type
         switch (indicator.type) {
             case 'sma':
-                indicator.params.period = params.period || 20;
-                indicator.params.source = params.source || 'close';
-                indicator.style.color = params.color || '#2962ff';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
+                applySmaStyleFromParams(indicator, params);
                 indicator.name = 'SMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
                 break;
                 
             case 'ema':
@@ -4978,12 +4993,15 @@
         if (indicator.type === 'wma') {
             applyWmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'sma') {
+            applySmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
             case 'sma':
                 indicator.name = 'SMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
                 break;
             case 'ema':
                 indicator.name = 'EMA(' + indicator.params.period + ')';
@@ -5423,7 +5441,7 @@
         this.indicators.active.forEach(function(indicator) {
             switch (indicator.type) {
                 case 'sma':
-                    this.indicators.data[indicator.id] = calculateSMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                    this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
                     break;
                 case 'ema':
                     this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -6068,10 +6086,8 @@
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
-            } else if (indicator.type === 'wma') {
-                this.drawWmaOverlay(data, indicator, startIndex, endIndex);
-            } else if (indicator.type === 'sma') {
-                this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
+            } else if (indicator.type === 'wma' || indicator.type === 'sma') {
+                this.drawSmoothedMaOverlay(data, indicator, startIndex, endIndex);
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
             }
@@ -6087,7 +6103,7 @@
         ctx.restore();
     };
 
-    Chart.prototype.drawWmaOverlay = function(data, indicator, startIndex, endIndex) {
+    Chart.prototype.drawSmoothedMaOverlay = function(data, indicator, startIndex, endIndex) {
         if (!data) return;
         const st = indicator.style || {};
         const pack = Array.isArray(data) ? { line: data } : data;
@@ -7439,7 +7455,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
             return out;
         }
         if (indicator.type === 'supertrend' && Array.isArray(data.line)) return [data.line];
-        if (indicator.type === 'wma' && Array.isArray(data.line)) return [data.line];
+        if ((indicator.type === 'wma' || indicator.type === 'sma') && Array.isArray(data.line)) return [data.line];
         if (Array.isArray(data.upper) || Array.isArray(data.middle) || Array.isArray(data.lower)) {
             const bands = [];
             if (Array.isArray(data.upper)) bands.push(data.upper);
