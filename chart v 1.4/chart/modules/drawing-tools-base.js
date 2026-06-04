@@ -672,6 +672,47 @@ class BaseDrawing {
         });
     }
 
+    /** Tools that append bare `.resize-handle` circles (not resize-handle-group). */
+    _pruneDuplicateDirectHandles(pointIndex = 0) {
+        if (!this.group || this.group.empty()) return;
+        ['resize-handle', 'resize-handle-hit'].forEach((cls) => {
+            const nodes = this.group.selectAll(`circle.${cls}[data-point-index="${pointIndex}"]`).nodes();
+            if (nodes.length > 1) {
+                nodes.slice(1).forEach((node) => {
+                    try { node.remove(); } catch (_) {}
+                });
+            }
+        });
+    }
+
+    /**
+     * @param {Object} [screenPos] - Optional { cx, cy } when handle is not at the data anchor (e.g. horizontal line center).
+     */
+    syncDirectPointHandleDom(scales, pointIndex = 0, screenPos = null) {
+        if (!this.group || this.group.empty() || !scales) return;
+        let cx;
+        let cy;
+        if (screenPos && Number.isFinite(screenPos.cx) && Number.isFinite(screenPos.cy)) {
+            cx = screenPos.cx;
+            cy = screenPos.cy;
+        } else {
+            const points = this.virtualPoints || this.points;
+            const point = points && points[pointIndex];
+            if (!point) return;
+            cx = scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(point.x)
+                : scales.xScale(point.x);
+            cy = scales.yScale(point.y);
+        }
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+        this._pruneDuplicateDirectHandles(pointIndex);
+        this.group.selectAll(
+            `circle.resize-handle[data-point-index="${pointIndex}"], circle.resize-handle-hit[data-point-index="${pointIndex}"]`
+        )
+            .attr('cx', cx)
+            .attr('cy', cy);
+    }
+
     /**
      * Render the drawing to SVG
      * @param {d3.Selection} container - D3 selection of the drawings container

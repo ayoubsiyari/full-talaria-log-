@@ -1033,26 +1033,53 @@ class HorizontalLineTool extends BaseDrawing {
         // Render custom text label if provided
         this.renderTextLabel(scales, xRange, p);
 
-        // Create single handle at the center (same style as other shapes)
-        const centerX = (xRange[0] + xRange[1]) / 2;
-        const handleX = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
-        const handleRadius = 3;
-        const handleStrokeWidth = 2;
-        const handle = this.group.append('circle')
-            .attr('class', 'resize-handle')
-            .attr('cx', centerX)
-            .attr('cy', scales.yScale(p.y))
-            .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
-            .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'ns-resize')
-            .style('pointer-events', 'all')
-            .style('opacity', this.selected ? 1 : 0)
-            .attr('data-point-index', 0);
-        
+        if (this._shouldCreateHandles(renderOpts)) {
+            const pos = this._getHandleScreenPosition(scales);
+            if (pos) {
+                const handleRadius = 3;
+                const handleStrokeWidth = 2;
+                const hitRadius = 12;
+                this.group.append('circle')
+                    .attr('class', 'resize-handle-hit')
+                    .attr('cx', pos.cx)
+                    .attr('cy', pos.cy)
+                    .attr('r', hitRadius)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', 'none')
+                    .style('cursor', 'ns-resize')
+                    .style('pointer-events', 'all')
+                    .style('opacity', 0)
+                    .attr('data-point-index', 0);
+                this.group.append('circle')
+                    .attr('class', 'resize-handle')
+                    .attr('cx', pos.cx)
+                    .attr('cy', pos.cy)
+                    .attr('r', handleRadius)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', '#2962FF')
+                    .attr('stroke-width', handleStrokeWidth)
+                    .style('cursor', 'ns-resize')
+                    .style('pointer-events', 'all')
+                    .style('opacity', this.selected ? 1 : 0)
+                    .attr('data-point-index', 0);
+            }
+        }
+
         return this.group;
+    }
+
+    _getHandleScreenPosition(scales) {
+        const p = this.points && this.points[0];
+        if (!p || !scales || !scales.xScale) return null;
+        const xRange = scales.xScale.range();
+        const cy = scales.yScale(p.y);
+        if (!Number.isFinite(cy)) return null;
+        return { cx: (xRange[0] + xRange[1]) / 2, cy };
+    }
+
+    updateHandlePositions(scales) {
+        const pos = this._getHandleScreenPosition(scales);
+        if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
     }
 
     renderPriceLabel(scales, xRange, point) {
@@ -1399,24 +1426,58 @@ class VerticalLineTool extends BaseDrawing {
 
         this.renderTextLabel(scales, x, yRange);
 
-        // Create single handle at the center (same style as other shapes)
-        const centerY = (yRange[0] + yRange[1]) / 2;
-        const handleRadius = 3;
-        const handleStrokeWidth = 2;
-        const handle = this.group.append('circle')
-            .attr('class', 'resize-handle')
-            .attr('cx', x)
-            .attr('cy', centerY)
-            .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
-            .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'ew-resize')
-            .style('pointer-events', 'all')
-            .style('opacity', this.selected ? 1 : 0)
-            .attr('data-point-index', 0);
-        
+        if (this._shouldCreateHandles(renderOpts)) {
+            const pos = this._getHandleScreenPosition(scales, x);
+            if (pos) {
+                const handleRadius = 3;
+                const handleStrokeWidth = 2;
+                const hitRadius = 12;
+                this.group.append('circle')
+                    .attr('class', 'resize-handle-hit')
+                    .attr('cx', pos.cx)
+                    .attr('cy', pos.cy)
+                    .attr('r', hitRadius)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', 'none')
+                    .style('cursor', 'ew-resize')
+                    .style('pointer-events', 'all')
+                    .style('opacity', 0)
+                    .attr('data-point-index', 0);
+                this.group.append('circle')
+                    .attr('class', 'resize-handle')
+                    .attr('cx', pos.cx)
+                    .attr('cy', pos.cy)
+                    .attr('r', handleRadius)
+                    .attr('fill', 'transparent')
+                    .attr('stroke', '#2962FF')
+                    .attr('stroke-width', handleStrokeWidth)
+                    .style('cursor', 'ew-resize')
+                    .style('pointer-events', 'all')
+                    .style('opacity', this.selected ? 1 : 0)
+                    .attr('data-point-index', 0);
+            }
+        }
+
         return this.group;
+    }
+
+    _getHandleScreenPosition(scales, anchorX) {
+        const p = this.points && this.points[0];
+        if (!p || !scales || !scales.yScale) return null;
+        const cx = Number.isFinite(anchorX)
+            ? anchorX
+            : (scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x));
+        const yRange = scales.yScale.range();
+        const cy = (yRange[0] + yRange[1]) / 2;
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+        return { cx, cy };
+    }
+
+    updateHandlePositions(scales) {
+        const pos = this._getHandleScreenPosition(scales);
+        if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
     }
 
     renderTextLabel(scales, x, yRange) {
@@ -2140,36 +2201,42 @@ class HorizontalRayTool extends BaseDrawing {
         // Render custom text label if provided
         this.renderTextLabel(scales, xRange, p, x);
 
-        // Create single handle at the center (same behavior as Horizontal Line)
-        const centerX = x;
-        const handleRadius = 3;
-        const handleStrokeWidth = 2;
-        const hitRadius = 12;
-        this.group.append('circle')
-            .attr('class', 'resize-handle-hit')
-            .attr('cx', centerX)
-            .attr('cy', scales.yScale(p.y))
-            .attr('r', hitRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', 'none')
-            .style('cursor', 'ns-resize')
-            .style('pointer-events', 'all')
-            .style('opacity', 0)
-            .attr('data-point-index', 0);
-        const handle = this.group.append('circle')
-            .attr('class', 'resize-handle')
-            .attr('cx', centerX)
-            .attr('cy', scales.yScale(p.y))
-            .attr('r', handleRadius)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#2962FF')
-            .attr('stroke-width', handleStrokeWidth)
-            .style('cursor', 'ns-resize')
-            .style('pointer-events', 'all')
-            .style('opacity', this.selected ? 1 : 0)
-            .attr('data-point-index', 0);
-        
+        if (this._shouldCreateHandles(renderOpts)) {
+            const anchorX = x;
+            const anchorY = scales.yScale(p.y);
+            const handleRadius = 3;
+            const handleStrokeWidth = 2;
+            const hitRadius = 12;
+            this.group.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', anchorX)
+                .attr('cy', anchorY)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', 'move')
+                .style('pointer-events', 'all')
+                .style('opacity', 0)
+                .attr('data-point-index', 0);
+            this.group.append('circle')
+                .attr('class', 'resize-handle')
+                .attr('cx', anchorX)
+                .attr('cy', anchorY)
+                .attr('r', handleRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', '#2962FF')
+                .attr('stroke-width', handleStrokeWidth)
+                .style('cursor', 'move')
+                .style('pointer-events', 'all')
+                .style('opacity', this.selected ? 1 : 0)
+                .attr('data-point-index', 0);
+        }
+
         return this.group;
+    }
+
+    updateHandlePositions(scales) {
+        this.syncDirectPointHandleDom(scales, 0);
     }
 
     renderPriceLabel(scales, xRange, point) {
