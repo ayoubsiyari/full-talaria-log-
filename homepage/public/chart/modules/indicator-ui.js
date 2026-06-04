@@ -581,6 +581,25 @@ function dpoStyleParams() {
     ];
 }
 
+/** Double EMA (DEMA) Input tab. */
+function demaInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' }
+    ];
+}
+
+/** Double EMA (DEMA) Style tab. */
+function demaStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show DEMA line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4', tab: 'style' },
+        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 /** Triple EMA (TEMA) Input tab. */
 function temaInputParams() {
     return [
@@ -1037,14 +1056,7 @@ const INDICATOR_DEFINITIONS = {
     dema: {
         name: 'Double EMA (DEMA)',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: demaInputParams().concat(demaStyleParams())
     },
     tema: {
         name: 'Triple EMA (TEMA)',
@@ -3747,6 +3759,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('TEMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'dema') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('DEMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }],
             footers: footers
