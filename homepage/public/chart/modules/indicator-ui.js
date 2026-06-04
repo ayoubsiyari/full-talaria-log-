@@ -223,15 +223,7 @@ function rsiInputParams() {
         { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
         {
             id: 'smoothingType', label: 'Type', type: 'select', tab: 'input', default: 'None',
-            options: [
-                { value: 'None', label: 'None' },
-                { value: 'SMA', label: 'SMA' },
-                { value: 'SMA+BB', label: 'SMA+Bollinger Bands' },
-                { value: 'EMA', label: 'EMA' },
-                { value: 'RMA', label: 'SMMA(RMA)' },
-                { value: 'WMA', label: 'WMA' },
-                { value: 'VWMA', label: 'VWMA' }
-            ]
+            options: MA_SMOOTHING_TYPE_OPTIONS
         },
         { id: 'smoothingLength', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' },
         { id: 'bbStdDev', label: 'BB stdDev', type: 'number', default: 2, min: 0.1, step: 0.1, tab: 'input' }
@@ -578,6 +570,43 @@ function dpoStyleParams() {
         { id: 'midValue', label: 'Middle line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
         { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
         { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+    ];
+}
+
+const MA_SMOOTHING_TYPE_OPTIONS = [
+    { value: 'None', label: 'None' },
+    { value: 'SMA', label: 'SMA' },
+    { value: 'SMA+BB', label: 'SMA+Bollinger Bands' },
+    { value: 'EMA', label: 'EMA' },
+    { value: 'RMA', label: 'SMMA(RMA)' },
+    { value: 'WMA', label: 'WMA' },
+    { value: 'VWMA', label: 'VWMA' }
+];
+
+/** Weighted Moving Average (WMA) Input tab. */
+function wmaInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' },
+        { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
+        {
+            id: 'smoothingType', label: 'Type', type: 'select', tab: 'input', default: 'None',
+            options: MA_SMOOTHING_TYPE_OPTIONS
+        },
+        { id: 'smoothingLength', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' },
+        { id: 'bbStdDev', label: 'BB stdDev', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' }
+    ];
+}
+
+/** Weighted Moving Average (WMA) Style tab. */
+function wmaStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show WMA line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Line color', type: 'color', default: '#ff9800', tab: 'style' },
+        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
 
@@ -928,14 +957,7 @@ const INDICATOR_DEFINITIONS = {
     wma: {
         name: 'Weighted Moving Average',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#ff9800' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: wmaInputParams().concat(wmaStyleParams())
     },
     vwap: {
         name: 'Volume Weighted Average Price',
@@ -3771,6 +3793,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('DEMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'wma') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('WMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }],
             footers: footers
