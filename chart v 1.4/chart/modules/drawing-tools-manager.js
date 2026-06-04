@@ -129,6 +129,8 @@ class DrawingToolsManager {
         
         // Tools that support angle snapping with Shift key
         this.angleSnapTools = ['trendline', 'ray', 'arrow', 'ruler', 'fibonacci-retracement', 'fibonacci-extension', 'polyline'];
+        // Box shapes: Shift + corner resize keeps square/circle proportions (see drawing-tools-shapes.js)
+        this.boxShiftSnapTools = ['rectangle', 'ellipse', 'gann-box'];
 
         // Tool registry
         this.toolRegistry = {
@@ -3391,8 +3393,30 @@ class DrawingToolsManager {
     }
 
     /** Skip integer bar snap while Shift+angle editing so the handle can move freely along the ray. */
-    _deferBarIndexSnapDuringShiftAngle(drawing, shiftKey) {
-        return !!(shiftKey && drawing && this.angleSnapTools.includes(drawing.type));
+    _isBoxShiftSnapTool(toolType) {
+        return !!(toolType && this.boxShiftSnapTools && this.boxShiftSnapTools.includes(toolType));
+    }
+
+    /** Skip integer bar snap while Shift constrains geometry (lines + box shapes). */
+    _deferBarIndexSnapDuringShiftEdit(drawing, shiftKey) {
+        if (!shiftKey || !drawing) return false;
+        return this.angleSnapTools.includes(drawing.type)
+            || this._isBoxShiftSnapTool(drawing.type);
+    }
+
+    /** Shift + first corner while placing a 2-point box (rectangle / ellipse preview). */
+    _constrainBoxPlacementPoint(toolType, anchor, point) {
+        if (!anchor || !point || !this._isBoxShiftSnapTool(toolType)) return point;
+        const ax = anchor.x;
+        const ay = anchor.y;
+        const dx = point.x - ax;
+        const dy = point.y - ay;
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        if (!Number.isFinite(size) || size === 0) return { ...point };
+        return {
+            x: ax + (dx >= 0 ? size : -size),
+            y: ay + (dy >= 0 ? size : -size)
+        };
     }
 
     /** Assign one resize-handle point (angle snap + optional bar snap). */
@@ -3401,7 +3425,7 @@ class DrawingToolsManager {
         if (pointIndex === undefined || pointIndex === null || isNaN(pointIndex)) return;
 
         point = this._applyShiftAngleConstraintForResize(drawing, pointIndex, point, shiftKey);
-        if (this._deferBarIndexSnapDuringShiftAngle(drawing, shiftKey)) {
+        if (this._deferBarIndexSnapDuringShiftEdit(drawing, shiftKey)) {
             point = this.clampPointToCandleRange(point, drawing.type);
         } else {
             point = this._snapPointXForDrawingType(point, drawing.type);
@@ -3692,7 +3716,7 @@ class DrawingToolsManager {
                     currentPoint,
                     event.shiftKey
                 );
-            } else if (!this._deferBarIndexSnapDuringShiftAngle(resizeDrawing, event.shiftKey)) {
+            } else if (!this._deferBarIndexSnapDuringShiftEdit(resizeDrawing, event.shiftKey)) {
                 this._snapDrawingPointsX(resizeDrawing);
             }
             this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
@@ -3782,6 +3806,14 @@ class DrawingToolsManager {
             const anchorPoint = this.drawingState.tempPoints[0];
             const rangeMode = this.getRangeToolMode();
             point = this.constrainDatePriceRangePoint(point, anchorPoint, rangeMode);
+        }
+
+        if (event.shiftKey && this.drawingState.tempPoints.length > 0 && this._isBoxShiftSnapTool(this.currentTool)) {
+            point = this._constrainBoxPlacementPoint(
+                this.currentTool,
+                this.drawingState.tempPoints[0],
+                point
+            );
         }
         
         if (
@@ -4377,10 +4409,11 @@ class DrawingToolsManager {
 
         // Anchor X to whole bar indices for geometric tools (not freehand / text / pixel-anchored tools).
         // Shift + angle-snap tools: keep fractional X during drag so the line follows the snapped angle.
-        const deferBarSnapForShiftAngle = event && event.shiftKey
+        const deferBarSnapForShiftEdit = event && event.shiftKey
             && activeToolType
-            && this.angleSnapTools.includes(activeToolType);
-        if (!deferBarSnapForShiftAngle
+            && (this.angleSnapTools.includes(activeToolType)
+                || this._isBoxShiftSnapTool(activeToolType));
+        if (!deferBarSnapForShiftEdit
             && !isFreehandStroke
             && !this._isTextDrawingType(activeToolType)
             && !this._usesPointScreenAnchor(activeToolType)) {
@@ -7018,7 +7051,7 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    if (!self._deferBarIndexSnapDuringShiftAngle(drawing, shiftKey)) {
+                    if (!self._deferBarIndexSnapDuringShiftEdit(drawing, shiftKey)) {
                         self._snapDrawingPointsX(drawing);
                     }
                     self.scheduleRenderDrawing(drawing);
@@ -7325,7 +7358,9 @@ class DrawingToolsManager {
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
         }
-        this._snapDrawingPointsX(drawing);
+        if (!this._deferBarIndexSnapDuringShiftEdit(drawing, context.shiftKey)) {
+            this._snapDrawingPointsX(drawing);
+        }
 
         // Always re-render during drag
         this.scheduleRenderDrawing(drawing);

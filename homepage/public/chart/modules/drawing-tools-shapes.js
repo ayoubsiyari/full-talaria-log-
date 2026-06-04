@@ -1171,15 +1171,47 @@ class EllipseTool extends BaseDrawing {
         });
     }
 
+    beginHandleDrag(handleRole, context = {}) {
+        if (!this.points || this.points.length < 2) return;
+        this._resizeRole = handleRole;
+        this._resizeStart = boxBoundsFromPoints(this.points);
+    }
+
+    endHandleDrag() {
+        this._resizeRole = null;
+        this._resizeStart = null;
+    }
+
     /**
      * Handle custom drag for 8-point handles
      * Handles are on the ellipse border, so we need to calculate the new bounding box
      */
     handleCustomHandleDrag(handleRole, context = {}) {
-        const { dataPoint, scales } = context;
+        const { dataPoint } = context;
         if (!dataPoint) {
             console.warn('⚠️ Ellipse handleCustomHandleDrag: No dataPoint in context');
             return false;
+        }
+
+        const role = this._resizeRole || handleRole;
+        const start = this._resizeStart || boxBoundsFromPoints(this.points);
+        if (context.shiftKey && start && String(role || '').startsWith('corner-')) {
+            let dragPoint = squareConstrainedBoxPoint(role, start, dataPoint);
+            const next = applyBoxHandleDragWithFlip(role, start, dragPoint);
+            if (!next) return false;
+            if (next.activeRole !== role) {
+                this._resizeStart = {
+                    left: next.left,
+                    right: next.right,
+                    top: next.top,
+                    bottom: next.bottom
+                };
+            }
+            this._resizeRole = next.activeRole;
+            this.points[0] = { x: next.left, y: next.top };
+            this.points[1] = { x: next.right, y: next.bottom };
+            this.meta.updatedAt = Date.now();
+            return true;
         }
         
         const p1 = { ...this.points[0] };

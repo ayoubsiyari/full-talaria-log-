@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602a160';
+const CHART_ENGINE_BUILD = '20260602a166';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -21027,22 +21027,7 @@ class Chart {
             this.scheduleRender();
         };
 
-        const tryStartBoxZoom = (e) => {
-            if (this.drag && this.drag.active) return false;
-            if (e.button !== 2) return false;
-            if (this.tool) return false;
-            const wrap = this.canvas && this.canvas.parentElement;
-            if (!wrap || !wrap.contains(e.target)) return false;
-            const [mx, my] = this._eventCanvasLocalXY(e);
-            const mode = detectCursorMode(mx, my);
-            if (mode !== 'chart') return false;
-            if (this.drawingManager && this.drawingManager.currentTool) {
-                return false;
-            }
-            startBoxZoomGesture(e, mx, my);
-            if (typeof e.preventDefault === 'function') e.preventDefault();
-            return true;
-        };
+        const tryStartBoxZoom = () => false;
 
         const tryStartCtrlMarqueeSelect = (e) => {
             if (this.drag && this.drag.active) return false;

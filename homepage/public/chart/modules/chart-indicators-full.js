@@ -3356,6 +3356,37 @@
         return out;
     }
 
+    function calculateOBVIndicatorData(data, params) {
+        params = params || {};
+        const obv = calculateOBV(data);
+        const sm = applySmoothedOverlayMaSmoothing(obv, data, params);
+        return { obv: sm.line, ma: sm.ma, bbUpper: sm.bbUpper, bbLower: sm.bbLower };
+    }
+
+    function applyObvStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        indicator.params.smoothingType = params.smoothingType || 'None';
+        indicator.params.smoothingLength = params.smoothingLength != null ? Number(params.smoothingLength) : 14;
+        indicator.params.bbStdDev = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        indicator.style.showObv = params.showObv !== false && params.showLine !== false;
+        indicator.style.showLine = indicator.style.showObv;
+        indicator.style.color = params.color || '#78909c';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = legacyW;
+        indicator.style.lineStyle = 'Line';
+        indicator.style.lineDashStyle = 'Solid';
+        const hasSmoothing = String(indicator.params.smoothingType || 'None') !== 'None';
+        indicator.style.showMa = hasSmoothing;
+        indicator.style.maColor = '#ff9800';
+        indicator.style.maOpacity = 100;
+        indicator.style.maLineWidth = 1;
+        indicator.style.maLineStyle = 'Line';
+        indicator.style.maLineDashStyle = 'Solid';
+        indicator.hidePlot = params.hideFromContainer === true;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function calculateWilliamsR(data, period, source) {
         const p = Math.max(1, period);
         source = source || 'close';
@@ -4759,12 +4790,9 @@
                 this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source);
                 break;
             case 'obv':
-                indicator.style.color = params.color || '#78909c';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.overlay = false;
-                indicator.separatePanel = true;
+                applyObvStyleFromParams(indicator, params);
                 indicator.name = 'OBV';
-                this.indicators.data[indicator.id] = calculateOBV(this.data);
+                this.indicators.data[indicator.id] = calculateOBVIndicatorData(this.data, indicator.params);
                 break;
             case 'willr':
             case 'williams':
@@ -5663,6 +5691,16 @@
                 this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
             }
         }
+        if (indicator.type === 'obv') {
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = ['smoothingType', 'smoothingLength', 'bbStdDev'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            applyObvStyleFromParams(indicator, merged);
+            if (recalc) {
+                this.indicators.data[indicator.id] = calculateOBVIndicatorData(this.data, indicator.params);
+            }
+        }
         if (indicator.type === 'volume' || indicator.isVolume) {
             applyVolumeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
             syncVolumeChartSettings(this, indicator);
@@ -5954,7 +5992,8 @@
                 this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'obv':
-                this.indicators.data[indicator.id] = calculateOBV(this.data);
+                applyObvStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                this.indicators.data[indicator.id] = calculateOBVIndicatorData(this.data, indicator.params);
                 break;
             case 'willr':
                 indicator.name = 'Williams %R(' + indicator.params.period + ')';
@@ -6310,7 +6349,7 @@
                     this.indicators.data[indicator.id] = calculateMomentum(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'obv':
-                    this.indicators.data[indicator.id] = calculateOBV(this.data);
+                    this.indicators.data[indicator.id] = calculateOBVIndicatorData(this.data, indicator.params);
                     break;
                 case 'willr':
                     this.indicators.data[indicator.id] = calculateWilliamsR(this.data, indicator.params.period, indicator.params.source || 'close');
@@ -7862,6 +7901,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'rvi') {
             this._renderRviPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'obv') {
+            this._renderObvPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'custom') {
             this._renderCustomSeparatePanelSlot(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -11476,6 +11518,87 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelTags = [{
                 y: currentY,
                 text: last.toFixed(5),
+                color: lineColor
+            }];
+        }
+    };
+
+    // ---- OBV panel: auto-scaled OBV + optional smoothing MA / BB ----
+    Chart.prototype._renderObvPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
+        const pack = data && data.obv ? data : { obv: data, ma: null, bbUpper: null, bbLower: null };
+        const values = pack.obv;
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+
+        let min = Infinity;
+        let max = -Infinity;
+        const consider = function(series) {
+            if (!Array.isArray(series)) return;
+            for (let i = visibleStart; i < visibleEnd && i < series.length; i++) {
+                const val = series[i];
+                if (val !== null && val !== undefined && !isNaN(val)) {
+                    min = Math.min(min, val);
+                    max = Math.max(max, val);
+                }
+            }
+        };
+        consider(values);
+        consider(pack.ma);
+        consider(pack.bbUpper);
+        consider(pack.bbLower);
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const oMin = dom.min;
+        const oMax = dom.max;
+        const oSpan = Math.max(1e-9, oMax - oMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - oMin) / oSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, oMin, oMax, scaleY, 2);
+
+        const maColor = resolve(style.maColor || '#ff9800', style.maOpacity);
+        const maW = style.maLineWidth != null ? style.maLineWidth : 1;
+        if (style.showMa !== false && pack.bbUpper) {
+            this._drawPanelLine(ctx, m, pack.bbUpper, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.bbLower) {
+            this._drawPanelLine(ctx, m, pack.bbLower, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+        if (style.showMa !== false && pack.ma) {
+            this._drawPanelLine(ctx, m, pack.ma, maColor, maW, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.maLineStyle || 'Line', style.maLineDashStyle || 'Solid');
+        }
+
+        const lineColor = resolve(style.color || '#78909c', style.lineOpacity);
+        if (style.showObv !== false && style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        const decimals = Math.abs(last) >= 1e6 ? 0 : (Math.abs(last) >= 1000 ? 1 : 2);
+        indicator._displayLabel = last !== null ? last.toFixed(decimals) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(decimals);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(decimals),
                 color: lineColor
             }];
         }

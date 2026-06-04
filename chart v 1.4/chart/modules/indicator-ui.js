@@ -659,6 +659,38 @@ const VWAP_BANDS_CALC_OPTIONS = [
     { value: 'percentage', label: 'Percentage' }
 ];
 
+/** OBV Input — optional smoothing on OBV series. */
+function obvInputParams() {
+    return [
+        { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
+        {
+            id: 'smoothingType',
+            label: 'Type',
+            type: 'select',
+            tab: 'input',
+            default: 'None',
+            options: MA_SMOOTHING_TYPE_OPTIONS
+        },
+        { id: 'smoothingLength', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' },
+        { id: 'bbStdDev', label: 'BB stdDev', type: 'number', default: 2, min: 0.1, step: 0.1, tab: 'input' }
+    ];
+}
+
+/** OBV Style — main line (opacity in color picker). */
+function obvStyleParams() {
+    return [
+        { id: 'showObv', label: 'On Balance Volume', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'On Balance Volume color', type: 'color', default: '#78909c', tab: 'style' },
+        { id: 'lineOpacity', label: 'On Balance Volume opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+function obvVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
 /** Volume Input tab. */
 function volumeInputParams() {
     return [
@@ -1686,10 +1718,7 @@ const INDICATOR_DEFINITIONS = {
     obv: {
         name: 'On Balance Volume',
         type: 'separate',
-        params: [
-            { id: 'color', label: 'Line Color', type: 'color', default: '#78909c' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: obvInputParams().concat(obvStyleParams()).concat(obvVisibilityParams())
     },
     willr: {
         name: 'Williams %R',
@@ -5037,6 +5066,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     rows: [v9BandStyleRow('Lower Band', 'lowerColor', 'lowerOpacity', 'lowerLineStyle', 'lowerLineWidth', 'showLower')]
                 }
             ],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'obv') {
+        return {
+            sections: [{
+                title: 'On Balance Volume',
+                checkboxRow: { showId: 'showObv', label: 'On Balance Volume' },
+                bandStyleHeader: true,
+                rows: [v9BandStyleRow('On Balance Volume', 'color', 'lineOpacity', null, null, null)]
+            }],
             footers: footers
         };
     }

@@ -18946,13 +18946,13 @@ const TalariaV8bLive = () => {
                       hover: swHov === key,
                     })}/>
                 );
-                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw"].includes(tlSubTool.icon);
+                const isBrushTool = ["draw","brush"].includes(tlSubTool.icon);
+                const showEp = !isFibTool && !isPatternTool && !isBrushTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork"].includes(tlSubTool.icon);
                 const hasBg = ["polyline","pathTool","curve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
                 const isRegCh = tlSubTool.icon === "regressionCh";
                 const isPitchfork = tlSubTool.icon === "pitchfork";
-                const isBrushTool = ["draw","brush"].includes(tlSubTool.icon);
                 const isFibSpiralTool = tlSubTool.icon === "fibSpiral";
                 const noLineStyle = isBrushTool || isElliottTool || isPatternTool || isFibSpiralTool;
                 const showStyle = !noLineStyle;
@@ -19205,7 +19205,7 @@ const TalariaV8bLive = () => {
                   </div>
                 </>);
                 return (<>
-                  {showLine && <div style={{ display:"grid", gridTemplateColumns: isFibSpiralTool ? "1fr auto" : `1fr auto auto auto ${(showEp||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:tlSubTool.icon==="draw"?65:0 }}>
+                  {showLine && <div style={{ display:"grid", gridTemplateColumns: isFibSpiralTool ? "1fr auto" : `1fr auto auto auto ${(showEp||isPatternTool)?"auto":""}`, columnGap:12, rowGap:0, alignItems:"start", marginRight:isBrushTool?65:0 }}>
                     {/* Column headers */}
                     <div/><div/>
                     {showStyle ? <div style={{ display:"flex", justifyContent:"center", paddingBottom:4 }}>
