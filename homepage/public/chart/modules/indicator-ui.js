@@ -3930,8 +3930,18 @@ function setupIndicatorUI(chartInstance) {
     };
 }
 
+/** Opacity % param paired with a color param (opacity lives in the color picker, not a separate column). */
+function v9IndicatorOpacityKeyForColor(paramId) {
+    const id = String(paramId || '');
+    if (!id) return null;
+    if (id === 'color') return 'lineOpacity';
+    if (/Color$/i.test(id)) return id.replace(/Color$/i, 'Opacity');
+    return null;
+}
+
 /** Whether indicator color picker should expose alpha (fill / volume / session tints). */
 function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
+    if (v9IndicatorOpacityKeyForColor(paramId)) return true;
     const id = String(paramId || '').toLowerCase();
     if (/^(overbought|oversold|mid|bg|obgradient|osgradient|histcolor[0-3]|zero|macd|signal|k|d|ma|bull|bear|upper|middle|lower|body)color$/i.test(id)) return true;
     if (/fill|background|zonebg|bgcolor|midcolor|upcolor|downcolor|bullcolor|bearcolor|sfc$|_fc$|fc$/.test(id)) return true;
@@ -3943,29 +3953,56 @@ function v9IndicatorColorSupportsAlpha(paramId, paramDef) {
     return false;
 }
 
-/** Merge legacy hex fillColor + fillOpacity into rgba on draft open. */
+function v9HexOpacityToRgba(hexColor, opacityPct) {
+    const s = String(hexColor != null ? hexColor : '').trim();
+    if (!s || s.indexOf('rgba') >= 0) return s;
+    let op = Number(opacityPct);
+    if (!Number.isFinite(op)) op = 100;
+    op = Math.max(0, Math.min(100, op)) / 100;
+    if (s.charAt(0) !== '#') return s;
+    let h = s.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6) return s;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return s;
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
+}
+
+function v9RgbaAlphaPercent(rgbaStr) {
+    const m = String(rgbaStr != null ? rgbaStr : '').match(/rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/i);
+    if (!m) return null;
+    return Math.round(Math.max(0, Math.min(1, parseFloat(m[1]))) * 100);
+}
+
+/** Merge legacy hex + separate opacity % into rgba on draft open; sync opacity % from rgba alpha. */
 function v9MigrateIndicatorDraftColors(indicatorType, draft, allParams) {
     if (!draft || !allParams) return;
     const fo = allParams.fillOpacity;
-    const fc = draft.fillColor;
+    const fc = draft.fillColor != null ? draft.fillColor : allParams.fillColor;
     if (fo != null && fc != null && String(fc).indexOf('rgba') < 0) {
-        let op = Number(fo);
-        if (!Number.isFinite(op)) op = 10;
-        op = Math.max(0, Math.min(100, op)) / 100;
-        const s = String(fc).trim();
-        if (s.charAt(0) === '#') {
-            let h = s.slice(1);
-            if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-            if (h.length === 6) {
-                const r = parseInt(h.slice(0, 2), 16);
-                const g = parseInt(h.slice(2, 4), 16);
-                const b = parseInt(h.slice(4, 6), 16);
-                if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
-                    draft.fillColor = 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
-                }
-            }
-        }
+        draft.fillColor = v9HexOpacityToRgba(fc, fo);
     }
+    const def = INDICATOR_DEFINITIONS[resolveIndicatorDefinitionKey(indicatorType)];
+    if (!def || !def.params) return;
+    def.params.forEach(function (p) {
+        if (p.type !== 'color') return;
+        const opKey = v9IndicatorOpacityKeyForColor(p.id);
+        if (!opKey) return;
+        const col = draft[p.id] !== undefined ? draft[p.id] : allParams[p.id];
+        const op = draft[opKey] !== undefined ? draft[opKey] : allParams[opKey];
+        if (col == null) return;
+        const colStr = String(col);
+        if (colStr.indexOf('rgba') >= 0) {
+            const pct = v9RgbaAlphaPercent(colStr);
+            if (pct != null) draft[opKey] = pct;
+            return;
+        }
+        if (op != null) {
+            draft[p.id] = v9HexOpacityToRgba(colStr, op);
+        }
+    });
 }
 
 function v9ParamById(params, id) {
@@ -4690,6 +4727,7 @@ window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
 window.__v9SessionBoxSessionDefs = SESSION_BOX_SESSION_DEFS;
 window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
+window.__v9IndicatorOpacityKeyForColor = v9IndicatorOpacityKeyForColor;
 window.__v9MigrateIndicatorDraftColors = v9MigrateIndicatorDraftColors;
 window.setupIndicatorUI = setupIndicatorUI;
 

@@ -149,6 +149,25 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Hex color + separate opacity % → rgba for indicator swatch / color picker. */
+function v9IndResolvedPickerColor(draft, valFn, defFn, colorId) {
+  const colStr = String(valFn(colorId) != null ? valFn(colorId) : "#787b86");
+  const opKeyFn = typeof window.__v9IndicatorOpacityKeyForColor === "function"
+    ? window.__v9IndicatorOpacityKeyForColor
+    : null;
+  const opKey = opKeyFn ? opKeyFn(colorId) : null;
+  if (!opKey) return colStr;
+  if (colStr.indexOf("rgba") >= 0) return colStr;
+  let op = Number(valFn(opKey));
+  if (!Number.isFinite(op)) {
+    const p = defFn(opKey);
+    op = p?.default != null ? Number(p.default) : 100;
+  }
+  op = Math.max(0, Math.min(100, op)) / 100;
+  const p = parseColor(colStr);
+  return cpBuildColor(p.r, p.g, p.b, op);
+}
+
 /** Mini plot-style icon for indicator Line Style dropdown (TradingView-like). */
 function V9PlotStylePreview({ style, color = "#d1d4dc" }) {
   const s = String(style || "Line").toLowerCase();
@@ -13959,8 +13978,17 @@ const TalariaV8bLive = () => {
     else if(targetKey === "rr_labelColor")  setRrStyle(s=>({...s, labelColor:  colorVal}));
     else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
       const pid = targetKey.slice(4);
-      if (indSettOpenRef.current) patchIndSettDraftLive((d) => ({ ...d, [pid]: colorVal }));
-      else patchIndSettDraft((d) => ({ ...d, [pid]: colorVal }));
+      const patch = { [pid]: colorVal };
+      const opKeyFn = typeof window.__v9IndicatorOpacityKeyForColor === "function"
+        ? window.__v9IndicatorOpacityKeyForColor
+        : null;
+      const opKey = opKeyFn ? opKeyFn(pid) : null;
+      if (opKey) {
+        const p = parseColor(colorVal);
+        patch[opKey] = Math.round(Math.max(0, Math.min(1, p.a)) * 100);
+      }
+      if (indSettOpenRef.current) patchIndSettDraftLive((d) => ({ ...d, ...patch }));
+      else patchIndSettDraft((d) => ({ ...d, ...patch }));
     }
     else updateSetting(targetKey, colorVal);
   };
@@ -22487,7 +22515,10 @@ const TalariaV8bLive = () => {
         const tabsShown = isIctEverything ? [["input","Settings"],["visibility","Visibility"]] : tabOrder;
         const tabIdx = Math.max(0, tabsShown.findIndex(([id]) => id === indSettTab));
         const openIndCP = (e, paramId, val) => {
-          const p0 = parseColor(val || "#ffffff");
+          const def0 = (id) => def.params.find((x) => x.id === id);
+          const valFn = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
+          const colStr = v9IndResolvedPickerColor(indSettDraft, valFn, def0, paramId);
+          const p0 = parseColor(colStr || "#ffffff");
           const hsv = rgbToHsv(p0.r, p0.g, p0.b);
           setCpH(hsv.h); setCpS(hsv.s); setCpV(hsv.v); setCpA(p0.a);
           setCpHex(toHex2(p0.r) + toHex2(p0.g) + toHex2(p0.b));
@@ -22788,7 +22819,9 @@ const TalariaV8bLive = () => {
             const ck = "ind-" + p.id;
             const isAct = colorPicker === ck;
             const isH = hov === ck;
-            const colStr = String(raw || "#2962ff");
+            const def0Flex = (id) => def.params.find((x) => x.id === id);
+            const valFlex = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0Flex(id)?.default);
+            const colStr = v9IndResolvedPickerColor(indSettDraft, valFlex, def0Flex, p.id);
             return row(
               <div data-v9-color-swatch="1"
                 onMouseEnter={() => setHov(ck)} onMouseLeave={() => setHov(null)}
@@ -23167,15 +23200,13 @@ const TalariaV8bLive = () => {
           });
           const gc = "16px 1fr 26px 56px 56px 28px";
           const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
-          const gcBandStyle = "16px 1fr 26px 44px 56px 44px 28px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
           const R = (marginTop = 0) => ({ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 30, ...(marginTop ? { marginTop } : {}) });
           const Swatch = ({ pid, disabled }) => {
-            const raw = val(pid);
             const ck = "ind-" + pid;
-            const colStr = String(raw != null ? raw : "#787b86");
+            const colStr = v9IndResolvedPickerColor(indSettDraft, val, def0, pid);
             const isAct = colorPicker === ck;
             const isH = hov === ck;
             return (
@@ -23227,9 +23258,10 @@ const TalariaV8bLive = () => {
           };
           const renderBandStyleRow = (row, i) => {
             const on = row.showId ? val(row.showId) !== false : true;
-            const opRaw = row.opacityId ? val(row.opacityId) : 100;
+            const hasStyleCol = !!row.styleId;
+            const cols = hasStyleCol ? gc : "16px 1fr 26px 28px";
             return (
-              <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
+              <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {row.showId
                     ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
@@ -23237,18 +23269,9 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <input type="number" className="tlr-nospinner" value={opRaw == null ? "" : opRaw} min={0} max={100} step={1}
-                    disabled={!on}
-                    onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [row.opacityId]: e.target.value }))}
-                    style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
-                      color: on ? c.tx : c.tm, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
-                      textAlign: "center", cursor: on ? "text" : "default", opacity: on ? 1 : 0.45 }} />
-                </div>
-                {row.styleId ? stSel(row.styleId, !on) : <div />}
-                {row.widthId ? numW(row.widthId, !on) : <div />}
-                {row.styleId ? psSel(row.styleId, !on) : <div />}
+                {hasStyleCol ? stSel(row.styleId, !on) : null}
+                {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : null}
+                {hasStyleCol ? psSel(row.styleId, !on) : null}
               </div>
             );
           };
@@ -23275,24 +23298,14 @@ const TalariaV8bLive = () => {
           };
           const renderOscLevelStyleRow = (row, i, section) => {
             const on = val(row.showId) !== false;
-            const opRaw = row.opacityId ? val(row.opacityId) : 100;
             const rowLabel = section && section.title ? section.title : "Level";
             return (
-              <div key={row.colorId || rowLabel} style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
+              <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0) }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
                 {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <input type="number" className="tlr-nospinner" value={opRaw == null ? "" : opRaw} min={0} max={100} step={1}
-                    disabled={!on}
-                    onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [row.opacityId]: e.target.value }))}
-                    style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
-                      color: on ? c.tx : c.tm, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
-                      textAlign: "center", cursor: on ? "text" : "default", opacity: on ? 1 : 0.45 }} />
-                </div>
                 {stSel(row.styleId, !on)}
                 {numW(row.widthId, !on)}
                 {psSel(row.styleId, !on)}
@@ -23353,18 +23366,16 @@ const TalariaV8bLive = () => {
                   </div>
                 )}
                 {section.bandStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("OPACITY")}</div>
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div />
                   </div>
                 )}
                 {section.oscLevelStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("OPACITY")}</div>
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div />
@@ -23601,7 +23612,12 @@ const TalariaV8bLive = () => {
           }
           return ids;
         })();
-        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && p.type !== "divider" && p.type !== "sessionInput" && p.type !== "timeRange" && !styleLayoutIds.has(p.id));
+        const styleFlexParams = inTab.filter((p) => {
+          if (p.type === "heading" || p.type === "divider" || p.type === "sessionInput" || p.type === "timeRange") return false;
+          if (styleLayoutIds.has(p.id)) return false;
+          if (p.type === "number" && /opacity$/i.test(String(p.id || ""))) return false;
+          return true;
+        });
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1"
