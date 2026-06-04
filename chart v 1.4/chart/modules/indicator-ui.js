@@ -360,6 +360,42 @@ function psarStyleParams() {
     ];
 }
 
+/** Opening Range Input — custom session window in UTC-5 (America/New_York). */
+function openingRangeInputParams() {
+    return [
+        { id: 'h_orRange', type: 'heading', label: 'Custom range (UTC-5)', tab: 'input' },
+        {
+            type: 'timeRange',
+            label: 'Time',
+            startId: 'rangeStart',
+            endId: 'rangeEnd',
+            defaultStart: '09:30',
+            defaultEnd: '10:00',
+            tab: 'input'
+        }
+    ];
+}
+
+function openingRangeBandStyleFields(prefix, label, colorDefault) {
+    const cap = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    return [
+        { id: 'show' + cap, label: 'Show ' + label.toLowerCase(), type: 'checkbox', default: true, tab: 'style' },
+        { id: prefix + 'Color', label: label + ' color', type: 'color', default: colorDefault, tab: 'style' },
+        { id: prefix + 'Opacity', label: label + ' opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: prefix + 'LineStyle', label: label + ' line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: prefix + 'LineWidth', label: label + ' line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+function openingRangeStyleParams() {
+    return openingRangeBandStyleFields('upper', 'High band', '#2962ff')
+        .concat(openingRangeBandStyleFields('middle', 'Middle line', '#787b86'))
+        .concat(openingRangeBandStyleFields('lower', 'Lower band', '#2962ff'))
+        .concat([
+            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+        ]);
+}
+
 function rsiStyleParams() {
     return [
         { id: 'showLine', label: 'Show RSI line', type: 'checkbox', default: true, tab: 'style' },
@@ -1290,17 +1326,9 @@ const INDICATOR_DEFINITIONS = {
         ]
     },
     openingrange: {
-        name: 'Opening range (UTC day, first N min)',
+        name: 'Opening Range',
         type: 'overlay',
-        params: [
-            { id: 'minutes', label: 'Minutes from UTC midnight', type: 'number', default: 30, min: 1, max: 1440 },
-            { id: 'upperColor', label: 'High band color', type: 'color', default: '#2962ff' },
-            { id: 'middleColor', label: 'Midline color', type: 'color', default: '#787b86' },
-            { id: 'lowerColor', label: 'Low band color', type: 'color', default: '#2962ff' },
-            { id: 'fillColor', label: 'Background', type: 'color', default: 'rgba(41,98,255,0.06)', tab: 'style' },
-            { id: 'showFill', label: 'Show fill', type: 'checkbox', default: true, tab: 'style' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4 }
-        ]
+        params: openingRangeInputParams().concat(openingRangeStyleParams())
     },
     supertrend: {
         name: 'Supertrend',
@@ -2913,7 +2941,7 @@ function createIndicatorSelectionMenu(chartInstance) {
 
 /** Same tab buckets as drawing tool settings: Style / Input / Visibility */
 function indicatorSettingsTabForParam(param) {
-    if (param.type === 'sessionInput') return param.tab || 'input';
+    if (param.type === 'sessionInput' || param.type === 'timeRange') return param.tab || 'input';
     if (param.tab === 'style' || param.tab === 'input' || param.tab === 'visibility') return param.tab;
     const id = String(param.id || '').toLowerCase();
     const label = String(param.label || '').toLowerCase();
@@ -3180,6 +3208,37 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
         pane.appendChild(em);
     }
 
+    function appendIndicatorTimeRangeRow(param, mountEl) {
+        const startVal = allParams[param.startId] != null ? allParams[param.startId] : (param.defaultStart || '00:00');
+        const endVal = allParams[param.endId] != null ? allParams[param.endId] : (param.defaultEnd || '00:00');
+        const block = document.createElement('div');
+        block.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px 10px;margin-bottom:4px;background:var(--sp-ui-surface-bg,#1e2740);border:1px solid var(--sp-ui-border,rgba(42,46,57,0.55));box-sizing:border-box;';
+        const timeRow = document.createElement('div');
+        timeRow.style.cssText = 'display:flex;align-items:center;gap:8px;';
+        const timeLbl = document.createElement('span');
+        timeLbl.textContent = param.label || 'Time';
+        timeLbl.style.cssText = 'font-size:12px;font-weight:600;color:var(--sp-text-muted,#9aa2b1);width:72px;flex-shrink:0;';
+        timeRow.appendChild(timeLbl);
+        const mkTime = function (id, val) {
+            const inp = document.createElement('input');
+            inp.type = 'time';
+            inp.className = 'settings-input';
+            inp.value = val;
+            inp.style.cssText = 'flex:1;min-width:0;height:26px;padding:0 6px;background:var(--sp-ui-chrome-bg,#131722);color:var(--sp-text,#d1d4dc);border:1px solid var(--sp-input-border,rgba(255,255,255,0.14));outline:none;box-sizing:border-box;';
+            inp.setAttribute('data-param-id', id);
+            inp.setAttribute('data-param-type', 'time');
+            return inp;
+        };
+        timeRow.appendChild(mkTime(param.startId, startVal));
+        const sep = document.createElement('span');
+        sep.textContent = '–';
+        sep.style.cssText = 'color:var(--sp-text-muted,#787b86);font-size:12px;flex-shrink:0;';
+        timeRow.appendChild(sep);
+        timeRow.appendChild(mkTime(param.endId, endVal));
+        block.appendChild(timeRow);
+        mountEl.appendChild(block);
+    }
+
     function appendIndicatorSessionInputRow(param, mountEl) {
         const showVal = allParams[param.showId] !== undefined ? allParams[param.showId] : param.defaultShow !== false;
         const nameVal = allParams[param.nameId] != null ? allParams[param.nameId] : (param.defaultName || param.label || '');
@@ -3241,6 +3300,10 @@ function createIndicatorSettingsPanel(chartInstance, indicatorType, existingIndi
     function appendIndicatorParamRow(param, mountEl) {
         if (param.type === 'sessionInput') {
             appendIndicatorSessionInputRow(param, mountEl);
+            return;
+        }
+        if (param.type === 'timeRange') {
+            appendIndicatorTimeRangeRow(param, mountEl);
             return;
         }
         if (param.type === 'heading' || param.type === 'divider') {
@@ -3725,6 +3788,19 @@ function v9LevelRow(valueId, showId, colorId, styleId, widthId) {
     return { valueId: valueId, showId: showId, colorId: colorId, styleId: styleId, widthId: widthId || null };
 }
 
+/** Style grid row with color, opacity %, line style, thickness (Opening Range bands). */
+function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId) {
+    return {
+        label: label,
+        colorId: colorId,
+        opacityId: opacityId,
+        styleId: styleId,
+        widthId: widthId,
+        showId: showId,
+        bandStyleRow: true
+    };
+}
+
 /**
  * TradingView-style Style tab layout: sections of grid rows (chk | label | color | style | thickness).
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
@@ -4134,6 +4210,29 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('Plot', null, 'lineStyle', 'lineWidth', null)
                 ]
             }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'openingrange') {
+        return {
+            sections: [
+                {
+                    title: 'High Band',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('High Band', 'upperColor', 'upperOpacity', 'upperLineStyle', 'upperLineWidth', 'showUpper')]
+                },
+                {
+                    title: 'Middle Line',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Middle Line', 'middleColor', 'middleOpacity', 'middleLineStyle', 'middleLineWidth', 'showMiddle')]
+                },
+                {
+                    title: 'Lower Band',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Lower Band', 'lowerColor', 'lowerOpacity', 'lowerLineStyle', 'lowerLineWidth', 'showLower')]
+                }
+            ],
             footers: footers
         };
     }

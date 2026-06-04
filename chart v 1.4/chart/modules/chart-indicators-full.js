@@ -3224,38 +3224,127 @@
         return sessions;
     }
 
-    /** First N minutes of each UTC day — high/low channel (opening range). */
-    function calculateOpeningRange(data, minutes) {
+    const OPENING_RANGE_TZ = 'America/New_York';
+
+    function dayKeyInTimezone(utcMs, tzId) {
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: tzId || OPENING_RANGE_TZ,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date(utcMs));
+        } catch (e) {
+            return new Date(utcMs).toISOString().slice(0, 10);
+        }
+    }
+
+    function resolveOpeningRangeParams(params) {
+        params = params || {};
+        let rangeStart = params.rangeStart || '09:30';
+        let rangeEnd = params.rangeEnd || '10:00';
+        if ((!params.rangeStart && params.minutes != null) || (rangeStart === '09:30' && rangeEnd === '10:00' && params.minutes != null)) {
+            const mins = Math.max(1, Math.floor(Number(params.minutes) || 30));
+            const startH = 0;
+            const endTotal = mins;
+            const endH = Math.floor(endTotal / 60);
+            const endM = endTotal % 60;
+            rangeStart = String(startH).padStart(2, '0') + ':00';
+            rangeEnd = String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0');
+        }
+        return {
+            rangeStart: rangeStart,
+            rangeEnd: rangeEnd,
+            timezone: params.rangeTimezone || OPENING_RANGE_TZ
+        };
+    }
+
+    /** Per-day opening range in UTC-5 window; null gaps between days so lines do not connect. */
+    function calculateOpeningRange(data, params) {
+        const resolved = typeof params === 'number'
+            ? { rangeStart: '00:00', rangeEnd: (function (m) {
+                const mins = Math.max(1, Math.floor(m));
+                return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+            })(params), timezone: OPENING_RANGE_TZ }
+            : resolveOpeningRangeParams(params);
+        const tz = resolved.timezone;
+        const startDec = parseSessionTimeStr(resolved.rangeStart);
+        const endDec = parseSessionTimeStr(resolved.rangeEnd);
         const upper = [];
         const lower = [];
-        const m = Math.max(1, Math.floor(minutes));
+        const middle = [];
         let dayKey = null;
-        let orH = null;
-        let orL = null;
-        let windowEnd = null;
-        const dayStr = function(t) {
-            return new Date(t).toISOString().slice(0, 10);
-        };
+        let forming = false;
+        let settled = false;
+        let dayHigh = null;
+        let dayLow = null;
+
         for (let i = 0; i < data.length; i++) {
-            const dk = dayStr(data[i].t);
+            const dk = dayKeyInTimezone(data[i].t, tz);
+            const dec = sessionWallDecimal(data[i].t, tz);
             if (dk !== dayKey) {
                 dayKey = dk;
-                const t0 = data[i].t;
-                windowEnd = t0 + m * 60 * 1000;
-                orH = data[i].h;
-                orL = data[i].l;
+                forming = false;
+                settled = false;
+                dayHigh = null;
+                dayLow = null;
             }
-            if (data[i].t <= windowEnd) {
-                orH = Math.max(orH, data[i].h);
-                orL = Math.min(orL, data[i].l);
+            const inWin = isInSessionDecimal(dec, startDec, endDec);
+            if (inWin) {
+                forming = true;
+                if (dayHigh == null) {
+                    dayHigh = data[i].h;
+                    dayLow = data[i].l;
+                } else {
+                    dayHigh = Math.max(dayHigh, data[i].h);
+                    dayLow = Math.min(dayLow, data[i].l);
+                }
+            } else if (forming && !settled) {
+                settled = true;
             }
-            upper.push(orH);
-            lower.push(orL);
+            if (settled && dayHigh != null && dayLow != null) {
+                upper.push(dayHigh);
+                lower.push(dayLow);
+                middle.push((dayHigh + dayLow) / 2);
+            } else {
+                upper.push(null);
+                lower.push(null);
+                middle.push(null);
+            }
         }
-        const middle = upper.map(function(u, i) {
-            return (u + lower[i]) / 2;
-        });
         return { upper: upper, lower: lower, middle: middle };
+    }
+
+    function applyOpeningRangeStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 1;
+        const legacyS = params.lineStyle || 'Line';
+        const resolved = resolveOpeningRangeParams(params);
+        indicator.params.rangeStart = resolved.rangeStart;
+        indicator.params.rangeEnd = resolved.rangeEnd;
+        indicator.params.rangeTimezone = resolved.timezone;
+        indicator.overlay = true;
+        indicator.style.showUpper = params.showUpper !== false;
+        indicator.style.upperColor = params.upperColor || '#2962ff';
+        indicator.style.upperOpacity = params.upperOpacity != null ? Number(params.upperOpacity) : 100;
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
+        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
+        indicator.style.showMiddle = params.showMiddle !== false;
+        indicator.style.middleColor = params.middleColor || '#787b86';
+        indicator.style.middleOpacity = params.middleOpacity != null ? Number(params.middleOpacity) : 100;
+        indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
+        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
+        indicator.style.showLower = params.showLower !== false;
+        indicator.style.lowerColor = params.lowerColor || '#2962ff';
+        indicator.style.lowerOpacity = params.lowerOpacity != null ? Number(params.lowerOpacity) : 100;
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
+        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
+        indicator.style.showFill = false;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['upperLineStyle', 'upperLineDashStyle', legacyS],
+            ['middleLineStyle', 'middleLineDashStyle', legacyS],
+            ['lowerLineStyle', 'lowerLineDashStyle', legacyS]
+        ]);
     }
 
     function calculateSupertrend(data, period, multiplier) {
@@ -4212,16 +4301,10 @@
 
             case 'openingrange':
             case 'or':
-                indicator.params.minutes = params.minutes != null ? params.minutes : 30;
-                indicator.style.upperColor = params.upperColor || '#2962ff';
-                indicator.style.lowerColor = params.lowerColor || '#2962ff';
-                indicator.style.middleColor = params.middleColor || '#787b86';
-                indicator.style.fillColor = params.fillColor || 'rgba(41, 98, 255, 0.06)';
-                indicator.style.lineWidth = params.lineWidth || 1;
-                indicator.overlay = true;
+                applyOpeningRangeStyleFromParams(indicator, params);
                 indicator.type = 'openingrange';
-                indicator.name = 'Opening Range(' + indicator.params.minutes + 'm)';
-                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ' UTC-5)';
+                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                 break;
 
             case 'supertrend':
@@ -5053,6 +5136,9 @@
         if (indicator.type === 'sessions') {
             applySessionsFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
+        if (indicator.type === 'openingrange' || indicator.type === 'or') {
+            applyOpeningRangeStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        }
 
         // Recalculate data
         switch (indicator.type) {
@@ -5311,8 +5397,8 @@
                 break;
             case 'openingrange':
             case 'or':
-                indicator.name = 'Opening Range(' + indicator.params.minutes + 'm)';
-                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                indicator.name = 'Opening Range(' + indicator.params.rangeStart + '-' + indicator.params.rangeEnd + ' UTC-5)';
+                this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                 break;
             case 'supertrend':
                 indicator.name = 'Supertrend(' + indicator.params.period + ')';
@@ -5641,7 +5727,7 @@
                     break;
                 case 'openingrange':
                 case 'or':
-                    this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params.minutes);
+                    this.indicators.data[indicator.id] = calculateOpeningRange(this.data, indicator.params);
                     break;
                 case 'supertrend':
                     this.indicators.data[indicator.id] = calculateSupertrend(this.data, indicator.params.period, indicator.params.multiplier);
@@ -6075,7 +6161,7 @@
             } else if (indicator.type === 'sessionsplus' || indicator.isSessionsPlus) {
                 this.drawSessions(data, indicator, startIndex, endIndex);
             } else if (indicator.type === 'openingrange') {
-                this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
+                this.drawOpeningRange(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictpd' || indicator.type === 'ictasian' || indicator.type === 'ictote' || indicator.type === 'ictsesspd') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'ictliquidity' || indicator.isLiquidityEq) {
@@ -8025,6 +8111,44 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     }
 
     ctx.restore();
+};
+
+Chart.prototype._resolveIndicatorBandLineColor = function(color, opacityPct) {
+    if (!color) return color;
+    let op = opacityPct != null ? Number(opacityPct) : 100;
+    if (!Number.isFinite(op) || op >= 100) return color;
+    op = Math.max(0, Math.min(100, op)) / 100;
+    const s = String(color).trim();
+    const rgbaMatch = s.match(/^rgba\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+    if (rgbaMatch) {
+        return 'rgba(' + rgbaMatch[1] + ',' + rgbaMatch[2] + ',' + rgbaMatch[3] + ',' + (parseFloat(rgbaMatch[4]) * op) + ')';
+    }
+    if (s.charAt(0) === '#') {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        if (h.length === 6) {
+            const r = parseInt(h.slice(0, 2), 16);
+            const g = parseInt(h.slice(2, 4), 16);
+            const b = parseInt(h.slice(4, 6), 16);
+            if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+                return 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
+            }
+        }
+    }
+    return color;
+};
+
+Chart.prototype.drawOpeningRange = function(bands, style, startIndex, endIndex) {
+    if (!bands || !bands.upper) return;
+    style = style || {};
+    const resolve = this._resolveIndicatorBandLineColor.bind(this);
+    const drawStyle = Object.assign({}, style, {
+        showFill: false,
+        upperColor: resolve(style.upperColor, style.upperOpacity),
+        middleColor: resolve(style.middleColor, style.middleOpacity),
+        lowerColor: resolve(style.lowerColor, style.lowerOpacity)
+    });
+    this.drawBollingerBands(bands, drawStyle, startIndex, endIndex);
 };
 
 Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endIndex = bands.upper.length) {

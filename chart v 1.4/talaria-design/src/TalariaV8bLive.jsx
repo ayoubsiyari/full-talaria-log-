@@ -22575,6 +22575,29 @@ const TalariaV8bLive = () => {
               }}>{right}</div>
             </div>
           );
+          if (p.type === "timeRange") {
+            const startVal = indSettDraft[p.startId] != null ? indSettDraft[p.startId] : (p.defaultStart || "00:00");
+            const endVal = indSettDraft[p.endId] != null ? indSettDraft[p.endId] : (p.defaultEnd || "00:00");
+            const timeInp = (id, val) => (
+              <input type="time" value={val || ""} onClick={(e) => e.stopPropagation()}
+                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [id]: e.target.value }))}
+                style={{ flex: 1, minWidth: 0, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" }} />
+            );
+            return (
+              <div key={"tr-" + (p.startId || "")} style={{
+                display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", marginBottom: 6,
+                background: "rgba(140,160,255,0.04)", border: `1px solid ${c.br}`, boxSizing: "border-box",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.ts, width: 72, flexShrink: 0 }}>{p.label || "Time"}</span>
+                  {timeInp(p.startId, startVal)}
+                  <span style={{ color: c.tm, fontSize: 12 }}>–</span>
+                  {timeInp(p.endId, endVal)}
+                </div>
+              </div>
+            );
+          }
           if (p.type === "sessionInput") {
             const showVal = indSettDraft[p.showId] !== undefined ? indSettDraft[p.showId] : p.defaultShow !== false;
             const nameVal = indSettDraft[p.nameId] != null ? indSettDraft[p.nameId] : (p.defaultName || p.label || "");
@@ -23033,6 +23056,7 @@ const TalariaV8bLive = () => {
           });
           const gc = "16px 1fr 26px 56px 56px 28px";
           const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
+          const gcBandStyle = "16px 1fr 26px 44px 56px 44px 28px";
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
@@ -23090,7 +23114,35 @@ const TalariaV8bLive = () => {
             if (!p) return <div />;
             return renderIndPlotStyleDrop(pid, () => v9GetIndPlotStyle(indSettDraft, pid, def0), disabled);
           };
+          const renderBandStyleRow = (row, i) => {
+            const on = row.showId ? val(row.showId) !== false : true;
+            const opRaw = row.opacityId ? val(row.opacityId) : 100;
+            return (
+              <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {row.showId
+                    ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
+                    : <div style={{ width: 16 }} />}
+                </div>
+                {lbl(row.label, on)}
+                {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <input type="number" className="tlr-nospinner" value={opRaw == null ? "" : opRaw} min={0} max={100} step={1}
+                    disabled={!on}
+                    onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [row.opacityId]: e.target.value }))}
+                    style={{ width: 44, height: 26, background: "rgba(140,160,255,0.05)", border: "1px solid rgba(140,160,255,0.2)",
+                      color: on ? c.tx : c.tm, fontSize: 12, fontFamily: F, padding: "0 4px", outline: "none", boxSizing: "border-box",
+                      textAlign: "center", cursor: on ? "text" : "default", opacity: on ? 1 : 0.45 }} />
+                </div>
+                {row.styleId ? stSel(row.styleId, !on) : <div />}
+                {row.widthId ? numW(row.widthId, !on) : <div />}
+                {row.styleId ? psSel(row.styleId, !on) : <div />}
+              </div>
+            );
+          };
           const renderPlotRow = (row, i, section) => {
+            if (row.bandStyleRow) return renderBandStyleRow(row, i);
             const histOff = section && section.histSection && val("showHist") === false;
             const on = row.showId ? val(row.showId) !== false : !histOff;
             const hasStyleCol = section.header && row.styleId;
@@ -23159,6 +23211,15 @@ const TalariaV8bLive = () => {
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
                     <div>{hdr("VALUE")}</div>
+                    <div />
+                  </div>
+                )}
+                {section.bandStyleHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: gcBandStyle, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                    <div /><div /><div>{hdr("COLOR")}</div>
+                    <div>{hdr("OPACITY")}</div>
+                    <div>{hdr("STYLE")}</div>
+                    <div>{hdr("THICKNESS")}</div>
                     <div />
                   </div>
                 )}
@@ -23322,6 +23383,7 @@ const TalariaV8bLive = () => {
               (sec.rows || []).forEach((row) => {
                 if (row.showId) ids.add(row.showId);
                 if (row.colorId) ids.add(row.colorId);
+                if (row.opacityId) ids.add(row.opacityId);
                 if (row.styleId) ids.add(row.styleId);
                 if (row.styleId) {
                   const dashId = v9IndDashStyleParamId(row.styleId);
@@ -23345,7 +23407,7 @@ const TalariaV8bLive = () => {
           }
           return ids;
         })();
-        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && p.type !== "divider" && p.type !== "sessionInput" && !styleLayoutIds.has(p.id));
+        const styleFlexParams = inTab.filter((p) => p.type !== "heading" && p.type !== "divider" && p.type !== "sessionInput" && p.type !== "timeRange" && !styleLayoutIds.has(p.id));
         const emptyLabel = indSettTab === "style" ? "style" : indSettTab === "input" ? "input" : "visibility";
         return (
         <div data-sdrop="1" data-v9-ind-sett="1"
