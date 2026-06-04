@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b201';
+const CHART_ENGINE_BUILD = '20260602b210';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16482,6 +16482,11 @@ class Chart {
         } else {
             this._panelSnapDomains = null;
         }
+        if (this.compareOverlay && typeof this.compareOverlay.snapshotPanDomains === 'function') {
+            this.compareOverlay.snapshotPanDomains();
+        } else {
+            this._overlaySnapDomains = null;
+        }
         // Pre-warm tick cache so the first pan frame does not stall on _buildTimeTicks().
         const panTicks = this._buildTimeTicks();
         this._panTimeTickCache = {
@@ -16615,6 +16620,7 @@ class Chart {
             this._panSnapPriceOffset = null;
             this._panSnapYDomain = null;
             this._panelSnapDomains = null;
+            this._overlaySnapDomains = null;
         }
     }
 
@@ -17099,6 +17105,22 @@ class Chart {
                 this.renderSeparatePanelIndicators({ panFast: true });
             }
             this.drawAxes();
+            if (chartViewPanning) {
+                this.drawEconomicCalendarAxisMarkers({ panFast: true });
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.updateLeftMargin === 'function') {
+                this.compareOverlay.updateLeftMargin();
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.drawOverlays === 'function') {
+                try {
+                    this.compareOverlay.drawOverlays();
+                } catch (e) {
+                    console.error('Error drawing overlays during pan:', e);
+                }
+            }
+            if (this.compareOverlay && typeof this.compareOverlay.updateInfoPositions === 'function') {
+                this.compareOverlay.updateInfoPositions();
+            }
             this.drawCurrentPriceLabel(visible);
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);

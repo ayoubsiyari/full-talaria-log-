@@ -3222,6 +3222,22 @@ class CompareOverlay {
         const axisWidth = this.chart.margin.r; // Same width as main chart Y-axis
         this.chart.margin.l = visibleOverlays * axisWidth;
     }
+
+    /** Freeze compare overlay Y domains while chart-panning (same pattern as separate panels). */
+    snapshotPanDomains() {
+        const chart = this.chart;
+        if (!chart) return;
+        chart._overlaySnapDomains = {};
+        this.overlays.forEach(function(overlay) {
+            if (!overlay || overlay.visible === false) return;
+            if (overlay.yScale && typeof overlay.yScale.domain === 'function') {
+                const d = overlay.yScale.domain();
+                if (d && d.length === 2 && Number.isFinite(d[0]) && Number.isFinite(d[1]) && d[1] > d[0]) {
+                    chart._overlaySnapDomains[overlay.id] = { min: d[0], max: d[1] };
+                }
+            }
+        });
+    }
     
     /**
      * Called during chart render to draw overlays
@@ -3293,26 +3309,36 @@ class CompareOverlay {
                 return;
             }
             
-            // Calculate Y scale for this overlay from full OHLC range.
-            // Using close-only can distort/clip candle wicks on higher timeframes.
-            let minPrice = Infinity, maxPrice = -Infinity;
-            overlayData.forEach(d => {
-                const lo = Number.isFinite(d.l) ? d.l : d.c;
-                const hi = Number.isFinite(d.h) ? d.h : d.c;
-                if (lo < minPrice) minPrice = lo;
-                if (hi > maxPrice) maxPrice = hi;
-            });
-            
-            let priceRange = maxPrice - minPrice || 1;
-            const padding = priceRange * 0.1;
-            minPrice -= padding;
-            maxPrice += padding;
-            
-            // Apply zoom and offset
-            const midPrice = (minPrice + maxPrice) / 2;
-            priceRange = (maxPrice - minPrice) / overlay.priceZoom;
-            minPrice = midPrice - priceRange / 2 + overlay.priceOffset;
-            maxPrice = midPrice + priceRange / 2 + overlay.priceOffset;
+            let minPrice;
+            let maxPrice;
+            const snap = this.chart._overlaySnapDomains && this.chart._overlaySnapDomains[overlay.id];
+            const panning = typeof this.chart._isChartViewPanning === 'function' && this.chart._isChartViewPanning();
+            if (panning && snap && Number.isFinite(snap.min) && Number.isFinite(snap.max) && snap.max > snap.min) {
+                minPrice = snap.min;
+                maxPrice = snap.max;
+            } else {
+                // Calculate Y scale for this overlay from full OHLC range.
+                // Using close-only can distort/clip candle wicks on higher timeframes.
+                minPrice = Infinity;
+                maxPrice = -Infinity;
+                overlayData.forEach(d => {
+                    const lo = Number.isFinite(d.l) ? d.l : d.c;
+                    const hi = Number.isFinite(d.h) ? d.h : d.c;
+                    if (lo < minPrice) minPrice = lo;
+                    if (hi > maxPrice) maxPrice = hi;
+                });
+                
+                let priceRange = maxPrice - minPrice || 1;
+                const padding = priceRange * 0.1;
+                minPrice -= padding;
+                maxPrice += padding;
+                
+                // Apply zoom and offset
+                const midPrice = (minPrice + maxPrice) / 2;
+                priceRange = (maxPrice - minPrice) / overlay.priceZoom;
+                minPrice = midPrice - priceRange / 2 + overlay.priceOffset;
+                maxPrice = midPrice + priceRange / 2 + overlay.priceOffset;
+            }
             
             // Create Y scale for overlay
             const overlayYScale = (price) => {

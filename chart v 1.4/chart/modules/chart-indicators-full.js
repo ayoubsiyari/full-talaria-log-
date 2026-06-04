@@ -7739,49 +7739,15 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     ctx.clip();
     
     // Outer top separator — solid divider line matching panel borders
-    const _sepColor = _isLightBg ? 'rgba(119,130,150,0.45)' : 'rgba(110,122,145,0.38)';
-    const _sepColorStrong = _isLightBg ? 'rgba(80,96,122,0.6)' : 'rgba(145,160,190,0.52)';
-    const _gripColor = _isLightBg ? 'rgba(0, 0, 0, 0.30)' : 'rgba(150, 170, 210, 0.55)';
-    const _hoverColor = _isLightBg ? 'rgba(41,98,255,0.60)' : 'rgba(106,138,255,0.72)';
-    const _hoverGlow = _isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
     const panelResizeActive = !!(this._separatePanelResize);
-    const hoverHandleY = !panFast && !panelResizeActive && this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
+    const hoverHandleY = !panelResizeActive && this._separatePanelHoverHandle && Number.isFinite(this._separatePanelHoverHandle.y)
         ? this._separatePanelHoverHandle.y
         : null;
-    if (!panFast) {
-    ctx.strokeStyle = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2 ? _hoverColor : _sepColorStrong;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([]);
-    ctx.beginPath();
-    ctx.moveTo(m.l, panelTop);
-    ctx.lineTo(panelFullRight, panelTop);
-    ctx.stroke();
-    const topHandleMidX = this.w - m.r - 18;
-    const topHandleHover = hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2;
-    ctx.strokeStyle = topHandleHover ? _hoverColor : _gripColor;
-    ctx.lineWidth = topHandleHover ? 3 : 2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(topHandleMidX - 8, panelTop);
-    ctx.lineTo(topHandleMidX + 8, panelTop);
-    ctx.stroke();
-    if (topHandleHover) {
-        ctx.strokeStyle = _hoverGlow;
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(topHandleMidX - 10, panelTop);
-        ctx.lineTo(topHandleMidX + 10, panelTop);
-        ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-    } else {
-        ctx.strokeStyle = _sepColor;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(m.l, panelTop);
-        ctx.lineTo(panelFullRight, panelTop);
-        ctx.stroke();
-    }
+    this._drawSeparatePanelResizeSeparator(ctx, m, panelTop, panelFullRight, {
+        isLightBg: _isLightBg,
+        isHover: hoverHandleY !== null && Math.abs(hoverHandleY - panelTop) <= 2,
+        strongTop: true
+    });
     
     // Visible indices (set in render() from plot left/right); keep in sync with overlay drawIndicators.
     const visibleStart = Math.max(0, Math.floor(Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0));
@@ -7829,23 +7795,11 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             const indTop = slot.top;
             const panelHeight = slot.height;
             if (idx > 0) {
-                if (panFast) {
-                    ctx.strokeStyle = _sepColor;
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(m.l, indTop);
-                    ctx.lineTo(panelFullRight, indTop);
-                    ctx.stroke();
-                } else {
-                    const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
-                    ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([]);
-                    ctx.beginPath();
-                    ctx.moveTo(m.l, indTop);
-                    ctx.lineTo(panelFullRight, indTop);
-                    ctx.stroke();
-                }
+                this._drawSeparatePanelResizeSeparator(ctx, m, indTop, panelFullRight, {
+                    isLightBg: _isLightBg,
+                    isHover: hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2,
+                    strongTop: false
+                });
             }
             ctx.fillStyle = axisStripBg;
             ctx.fillRect(panelAxisLeft, indTop, panelFullRight - panelAxisLeft, panelHeight);
@@ -7860,40 +7814,11 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
 
         // Separator between slots — soft divider at top edge (below previous slot)
         if (idx > 0) {
-            if (panFast) {
-                ctx.strokeStyle = _sepColor;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(m.l, indTop);
-                ctx.lineTo(panelFullRight, indTop);
-                ctx.stroke();
-            } else {
-                const isHoverSep = hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2;
-                ctx.strokeStyle = isHoverSep ? _hoverColor : _sepColor;
-                ctx.lineWidth = 3;
-                ctx.setLineDash([]);
-                ctx.beginPath();
-                ctx.moveTo(m.l, indTop);
-                ctx.lineTo(panelFullRight, indTop);
-                ctx.stroke();
-                const handleMidX = this.w - m.r - 18;
-                ctx.strokeStyle = isHoverSep ? _hoverColor : _gripColor;
-                ctx.lineWidth = isHoverSep ? 3 : 2;
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                ctx.moveTo(handleMidX - 8, indTop);
-                ctx.lineTo(handleMidX + 8, indTop);
-                ctx.stroke();
-                if (isHoverSep) {
-                    ctx.strokeStyle = _hoverGlow;
-                    ctx.lineWidth = 5;
-                    ctx.beginPath();
-                    ctx.moveTo(handleMidX - 10, indTop);
-                    ctx.lineTo(handleMidX + 10, indTop);
-                    ctx.stroke();
-                }
-                ctx.lineCap = 'butt';
-            }
+            this._drawSeparatePanelResizeSeparator(ctx, m, indTop, panelFullRight, {
+                isLightBg: _isLightBg,
+                isHover: hoverHandleY !== null && Math.abs(hoverHandleY - indTop) <= 2,
+                strongTop: false
+            });
         }
 
         // Give every separate pane its own visible right axis background block.
@@ -8306,6 +8231,45 @@ Chart.prototype._finalizePanelRange = function(indicator, baseMin, baseMax) {
     indicator._panelBaseMin = b0;
     indicator._panelBaseMax = b1;
     return this._applyIndicatorPanelDomain(b0, b1, indicator);
+};
+
+/** Resize divider between separate indicator slots (full line + right-axis grip). */
+Chart.prototype._drawSeparatePanelResizeSeparator = function(ctx, m, y, panelFullRight, opts) {
+    opts = opts || {};
+    const isLightBg = !!opts.isLightBg;
+    const isHover = !!opts.isHover;
+    const strongTop = !!opts.strongTop;
+    const _sepColor = isLightBg ? 'rgba(119,130,150,0.45)' : 'rgba(110,122,145,0.38)';
+    const _sepColorStrong = isLightBg ? 'rgba(80,96,122,0.6)' : 'rgba(145,160,190,0.52)';
+    const _gripColor = isLightBg ? 'rgba(0, 0, 0, 0.30)' : 'rgba(150, 170, 210, 0.55)';
+    const _hoverColor = isLightBg ? 'rgba(41,98,255,0.60)' : 'rgba(106,138,255,0.72)';
+    const _hoverGlow = isLightBg ? 'rgba(41,98,255,0.22)' : 'rgba(106,138,255,0.30)';
+
+    ctx.strokeStyle = isHover ? _hoverColor : (strongTop ? _sepColorStrong : _sepColor);
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(m.l, y);
+    ctx.lineTo(panelFullRight, y);
+    ctx.stroke();
+
+    const handleMidX = this.w - m.r - 18;
+    ctx.strokeStyle = isHover ? _hoverColor : _gripColor;
+    ctx.lineWidth = isHover ? 3 : 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(handleMidX - 8, y);
+    ctx.lineTo(handleMidX + 8, y);
+    ctx.stroke();
+    if (isHover) {
+        ctx.strokeStyle = _hoverGlow;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(handleMidX - 10, y);
+        ctx.lineTo(handleMidX + 10, y);
+        ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
 };
 
 /** Vertical drag on right margin over a separate indicator slot */
@@ -12157,6 +12121,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }, this);
     };
 
+    /** Reposition legend rows without rebuilding DOM (pan + resize). */
+    Chart.prototype._syncSeparatePanelOverlayPositions = function(overlay, panelSlots) {
+        if (!overlay || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
+        const bars = overlay.querySelectorAll('.talaria-ind-legend-row');
+        panelSlots.forEach(function(slot, idx) {
+            const bar = bars[idx];
+            if (!bar || !slot || !Number.isFinite(slot.top)) return;
+            bar.style.top = (slot.top + 2) + 'px';
+        });
+    };
+
     /** Move existing separate-panel legend rows during height resize (no DOM rebuild). */
     Chart.prototype._repositionSeparatePanelOverlay = function(panelSlots, m) {
         const canvas = this.ctx && this.ctx.canvas;
@@ -12164,12 +12139,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!wrapper || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
         const overlay = wrapper.querySelector('#separatePanelsOverlay');
         if (!overlay) return;
-        const bars = overlay.querySelectorAll('.talaria-ind-legend-row');
-        panelSlots.forEach(function(slot, idx) {
-            const bar = bars[idx];
-            if (!bar || !slot) return;
-            bar.style.top = (slot.top + 2) + 'px';
-        });
+        this._syncSeparatePanelOverlayPositions(overlay, panelSlots);
         overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) { n.remove(); });
         overlay.querySelectorAll('[data-talaria-sp-axis-tick]').forEach(function(n) { n.remove(); });
     };
@@ -12349,6 +12319,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         let overlay = wrapper.querySelector('#separatePanelsOverlay');
         if (overlay && overlay._structureKey === structureKey) {
+            this._syncSeparatePanelOverlayPositions(overlay, panelSlots);
             this._syncSeparatePanelOverlayValues(overlay, indicators);
             this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
             return;
