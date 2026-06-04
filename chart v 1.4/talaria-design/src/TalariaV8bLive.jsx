@@ -23300,6 +23300,7 @@ const TalariaV8bLive = () => {
             const on = val(row.showId) !== false;
             const rowLabel = section && section.title ? section.title : "Level";
             const showValue = !!(row.valueId && section && section.bandLevelHeader);
+            const plotOnly = row.plotStyleOnly === true;
             const cols = showValue ? gcBand : gc;
             return (
               <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
@@ -23308,10 +23309,10 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
-                {stSel(row.styleId, !on)}
+                {plotOnly ? psSel(row.styleId, !on) : stSel(row.styleId, !on)}
                 {numW(row.widthId, !on)}
                 {showValue ? numW(row.valueId, !on) : null}
-                {psSel(row.styleId, !on)}
+                {plotOnly ? <div /> : psSel(row.styleId, !on)}
               </div>
             );
           };

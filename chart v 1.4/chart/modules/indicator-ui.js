@@ -484,6 +484,137 @@ function cmfVisibilityParams() {
     ];
 }
 
+/** Awesome Oscillator Style — growing / falling histogram colors (opacity in color picker). */
+function aoStyleParams() {
+    return [
+        { id: 'showAO', label: 'AO', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'histColor0', label: 'Color 0', type: 'color', default: '#26a69a', tab: 'style' },
+        { id: 'histColor0Opacity', label: 'Color 0 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'histColor0LineStyle', label: 'Color 0 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Histogram', tab: 'style' },
+        { id: 'histColor0LineWidth', label: 'Color 0 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'histColor1', label: 'Color 1', type: 'color', default: '#ef5350', tab: 'style' },
+        { id: 'histColor1Opacity', label: 'Color 1 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'histColor1LineStyle', label: 'Color 1 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Histogram', tab: 'style' },
+        { id: 'histColor1LineWidth', label: 'Color 1 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+/** AO Visibility — hide plot from indicator pane. */
+function aoVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
+/** Elder Ray Input — EMA length. */
+function elderRayInputParams() {
+    return [
+        { id: 'period', label: 'EMA length', type: 'number', default: 13, min: 2, tab: 'input' }
+    ];
+}
+
+/** Mass Index Input — summation length (EMA smoothing fixed at 9). */
+function massIndexInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 10, min: 2, tab: 'input' }
+    ];
+}
+
+/** Mass Index Style — line color (opacity in color picker). */
+function massIndexStyleParams() {
+    return [
+        { id: 'color', label: 'Color', type: 'color', default: '#00bcd4', tab: 'style' },
+        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+/** Mass Index Visibility — hide plot from indicator pane. */
+function massIndexVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
+/** Elder Ray Style — BBPower columns + zero line (opacity in color picker). */
+function elderRayStyleParams() {
+    return [
+        { id: 'showBBPower', label: 'BBPower', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'bullColor', label: 'Color 0', type: 'color', default: '#26a69a', tab: 'style' },
+        { id: 'bullOpacity', label: 'Color 0 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'bullLineStyle', label: 'Color 0 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Columns', tab: 'style' },
+        { id: 'bullLineWidth', label: 'Color 0 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'bearColor', label: 'Color 1', type: 'color', default: '#ef5350', tab: 'style' },
+        { id: 'bearOpacity', label: 'Color 1 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'bearLineStyle', label: 'Color 1 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Columns', tab: 'style' },
+        { id: 'bearLineWidth', label: 'Color 1 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
+        { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroOpacity', label: 'Zero opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'zeroLineWidth', label: 'Zero line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+/** TRIX Style — TRIX line + zero line (opacity in color picker). */
+function trixStyleParams() {
+    return [
+        { id: 'showLine', label: 'Show TRIX line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'TRIX color', type: 'color', default: '#8d6e63', tab: 'style' },
+        { id: 'lineOpacity', label: 'TRIX opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'TRIX line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'TRIX thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'zeroValue', label: 'Zero', type: 'number', default: 0, step: 0.0001, tab: 'style' },
+        { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroOpacity', label: 'Zero opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'zeroLineWidth', label: 'Zero line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+/** TRIX Visibility — hide plot from indicator pane. */
+function trixVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
+/** RVI Input — smoothing length + signal plot offset. */
+function rviInputParams() {
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 10, min: 2, tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' }
+    ];
+}
+
+/** RVI Style — RVGI line + signal line (opacity in color picker). */
+function rviStyleParams() {
+    return [
+        { id: 'showRvi', label: 'RVGI', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'RVGI color', type: 'color', default: '#ffa726', tab: 'style' },
+        { id: 'lineOpacity', label: 'RVGI opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'RVGI line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'RVGI thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showSignal', label: 'Signal', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'signalColor', label: 'Signal color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'signalOpacity', label: 'Signal opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'signalLineStyle', label: 'Signal line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'signalLineWidth', label: 'Signal thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
+/** Ultimate Oscillator Style — oscillator line (opacity in color picker). */
+function uoStyleParams() {
+    return [
+        { id: 'showLine', label: 'Oscillator line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Oscillator line color', type: 'color', default: '#7e57c2', tab: 'style' },
+        { id: 'lineOpacity', label: 'Oscillator line opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'Oscillator line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Oscillator line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
+    ];
+}
+
 /** Stochastic Input tab level defaults (80 / 50 / 20). */
 function stochasticInputLevelParams() {
     return [
@@ -748,20 +879,23 @@ function rocStyleParams() {
     ];
 }
 
-/** DPO Style tab (DPO line + middle line + optional panel bg). */
+/** DPO Style tab (DPO line + middle line + optional panel bg; opacity in color picker). */
 function dpoStyleParams() {
     return [
         { id: 'showLine', label: 'Show DPO line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'color', label: 'DPO color', type: 'color', default: '#78909c', tab: 'style' },
+        { id: 'lineOpacity', label: 'DPO opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'lineStyle', label: 'DPO line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'lineWidth', label: 'DPO thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'midValue', label: 'Middle line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
         { id: 'showMid', label: 'Show middle line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'midColor', label: 'Middle color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'midOpacity', label: 'Middle opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
         { id: 'midLineStyle', label: 'Middle line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
         { id: 'midLineWidth', label: 'Middle thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'midValue', label: 'Middle line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
         { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
-        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' }
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
     ];
 }
 
@@ -1428,10 +1562,8 @@ const INDICATOR_DEFINITIONS = {
         name: 'TRIX',
         type: 'separate',
         params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#8d6e63' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' }
+        ].concat(trixStyleParams()).concat(trixVisibilityParams())
     },
     psar: {
         name: 'Parabolic SAR',
@@ -1489,21 +1621,16 @@ const INDICATOR_DEFINITIONS = {
     ao: {
         name: 'Awesome Oscillator',
         type: 'separate',
-        params: [
-            { id: 'color', label: 'Bar / line color', type: 'color', default: '#26a69a' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: aoStyleParams().concat(aoVisibilityParams())
     },
     uo: {
         name: 'Ultimate Oscillator',
         type: 'separate',
         params: [
-            { id: 'period1', label: 'Period 1', type: 'number', default: 7, min: 1 },
-            { id: 'period2', label: 'Period 2', type: 'number', default: 14, min: 1 },
-            { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#7e57c2' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+            { id: 'period1', label: 'Period 1', type: 'number', default: 7, min: 1, tab: 'input' },
+            { id: 'period2', label: 'Period 2', type: 'number', default: 14, min: 1, tab: 'input' },
+            { id: 'period3', label: 'Period 3', type: 'number', default: 28, min: 1, tab: 'input' }
+        ].concat(uoStyleParams())
     },
     vortex: {
         name: 'Vortex Indicator',
@@ -1520,7 +1647,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 20, min: 2 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
+            { id: 'centered', label: 'Centered', type: 'checkbox', default: false, tab: 'input' }
         ].concat(dpoStyleParams())
     },
     stochrsi: {
@@ -1537,12 +1664,7 @@ const INDICATOR_DEFINITIONS = {
     massindex: {
         name: 'Mass Index',
         type: 'separate',
-        params: [
-            { id: 'emaPeriod', label: 'EMA length', type: 'number', default: 9, min: 2 },
-            { id: 'sumPeriod', label: 'Sum length', type: 'number', default: 25, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: massIndexInputParams().concat(massIndexStyleParams()).concat(massIndexVisibilityParams())
     },
     coppock: {
         name: 'Coppock Curve',
@@ -1556,21 +1678,12 @@ const INDICATOR_DEFINITIONS = {
     rvi: {
         name: 'Relative Vigor Index',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Smoothing length', type: 'number', default: 10, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#ffa726' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: rviInputParams().concat(rviStyleParams())
     },
     elderray: {
         name: 'Elder Ray (Bull / Bear power)',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'EMA length', type: 'number', default: 13, min: 2 },
-            { id: 'bullColor', label: 'Bull power', type: 'color', default: '#26a69a' },
-            { id: 'bearColor', label: 'Bear power', type: 'color', default: '#ef5350' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: elderRayInputParams().concat(elderRayStyleParams())
     },
     seasonality: {
         name: 'Seasonality (avg % by calendar date)',
@@ -4081,7 +4194,7 @@ function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId) {
 }
 
 /** Oscillator level row: value on Input tab; Style row has color, opacity, style, thickness. */
-function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthId) {
+function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthId, plotStyleOnly) {
     return {
         valueId: valueId,
         showId: showId,
@@ -4089,7 +4202,8 @@ function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthI
         opacityId: opacityId,
         styleId: styleId,
         widthId: widthId,
-        oscLevelStyleRow: true
+        oscLevelStyleRow: true,
+        plotStyleOnly: plotStyleOnly === true
     };
 }
 
@@ -4226,6 +4340,102 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
+    if (indicatorType === 'rvi') {
+        return {
+            sections: [
+                {
+                    title: 'RVGI',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('RVGI', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showRvi')]
+                },
+                {
+                    title: 'Signal',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Signal', 'signalColor', 'signalOpacity', 'signalLineStyle', 'signalLineWidth', 'showSignal')]
+                }
+            ],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'trix') {
+        return {
+            sections: [
+                {
+                    title: 'TRIX',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('TRIX', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Zero',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Zero',
+                    levelRows: [v9OscLevelStyleRow('zeroValue', 'showZero', 'zeroColor', 'zeroOpacity', 'zeroLineStyle', 'zeroLineWidth')]
+                }
+            ],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'uo') {
+        return {
+            sections: [{
+                title: 'Oscillator line',
+                bandStyleHeader: true,
+                rows: [v9BandStyleRow('Oscillator line', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'massindex') {
+        return {
+            sections: [{
+                title: 'Mass Index',
+                rows: [v9BandStyleRow('Mass Index', 'color', 'lineOpacity', null, null, null)]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'ao') {
+        return {
+            sections: [{
+                title: 'AO',
+                checkboxRow: { showId: 'showAO', label: 'AO' },
+                bandStyleHeader: true,
+                rows: [
+                    v9BandStyleRow('Color 0', 'histColor0', 'histColor0Opacity', 'histColor0LineStyle', 'histColor0LineWidth', null),
+                    v9BandStyleRow('Color 1', 'histColor1', 'histColor1Opacity', 'histColor1LineStyle', 'histColor1LineWidth', null)
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'elderray') {
+        return {
+            sections: [
+                {
+                    title: 'BBPower',
+                    checkboxRow: { showId: 'showBBPower', label: 'BBPower' },
+                    bandStyleHeader: true,
+                    rows: [
+                        v9BandStyleRow('Color 0', 'bullColor', 'bullOpacity', 'bullLineStyle', 'bullLineWidth', null),
+                        v9BandStyleRow('Color 1', 'bearColor', 'bearOpacity', 'bearLineStyle', 'bearLineWidth', null)
+                    ]
+                },
+                {
+                    title: 'Zero Line',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Zero line',
+                    levelRows: [v9OscLevelStyleRow('zeroValue', 'showZero', 'zeroColor', 'zeroOpacity', 'zeroLineStyle', 'zeroLineWidth', true)]
+                }
+            ],
+            footers: footers
+        };
+    }
+
     if (indicatorType === 'macd') {
         return {
             sections: [{
@@ -4259,16 +4469,24 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'dpo') {
         return {
-            sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('DPO', 'color', 'lineStyle', 'lineWidth', 'showLine'),
-                    v9PlotRow('Middle Line', 'midColor', 'midLineStyle', 'midLineWidth', 'showMid')
-                ]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
-            }],
+            sections: [
+                {
+                    title: 'DPO',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('DPO', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Middle Line',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Middle Line',
+                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }
