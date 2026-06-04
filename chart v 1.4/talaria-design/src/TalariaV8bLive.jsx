@@ -23319,7 +23319,7 @@ const TalariaV8bLive = () => {
             const on = row.showId ? val(row.showId) !== false : !histOff;
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
-            const hidePlot = row.hidePlotStyle !== false;
+            const hidePlot = row.hidePlotStyle === true;
             const cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
             return (
               <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
@@ -23367,7 +23367,7 @@ const TalariaV8bLive = () => {
             if (row.oscLevelStyleRow) return renderOscLevelStyleRow(row, i, section);
             const on = val(row.showId) !== false;
             const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
-            const hidePlot = row.hidePlotStyle !== false;
+            const hidePlot = row.hidePlotStyle === true;
             const cols = extended ? (hidePlot ? gcBandNoPlot : gcBand) : (hidePlot ? gcNoPlot : gc);
             const rowLabel = section && section.zeroLevelHeader ? "Zero" : "Value";
             return (
