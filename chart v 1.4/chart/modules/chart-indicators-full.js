@@ -1524,6 +1524,11 @@
     }
 
     function applyAoStyleFromParams(indicator, params) {
+        let fastLength = params.fastLength != null ? Math.max(1, Number(params.fastLength) | 0) : 5;
+        let slowLength = params.slowLength != null ? Math.max(2, Number(params.slowLength) | 0) : 34;
+        if (slowLength <= fastLength) slowLength = fastLength + 1;
+        indicator.params.fastLength = fastLength;
+        indicator.params.slowLength = slowLength;
         indicator.style.showAO = params.showAO !== false;
         indicator.style.histColor0 = params.histColor0 || '#26a69a';
         indicator.style.histColor0Opacity = params.histColor0Opacity != null ? Number(params.histColor0Opacity) : 100;
@@ -4050,9 +4055,12 @@
         return out;
     }
 
-    function calculateAO(data) {
-        const fast = smaMedianPrice(data, 5);
-        const slow = smaMedianPrice(data, 34);
+    function calculateAO(data, fastLen, slowLen) {
+        let fastPeriod = Math.max(1, Number(fastLen) | 0) || 5;
+        let slowPeriod = Math.max(2, Number(slowLen) | 0) || 34;
+        if (slowPeriod <= fastPeriod) slowPeriod = fastPeriod + 1;
+        const fast = smaMedianPrice(data, fastPeriod);
+        const slow = smaMedianPrice(data, slowPeriod);
         return fast.map(function(f, i) {
             if (f == null || slow[i] == null) return null;
             return f - slow[i];
@@ -4966,8 +4974,8 @@
 
             case 'ao':
                 applyAoStyleFromParams(indicator, params);
-                indicator.name = 'Awesome Oscillator';
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
 
             case 'uo':
@@ -5703,7 +5711,13 @@
             applyCmfStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'ao') {
-            applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.fastLength !== undefined || newParams.slowLength !== undefined;
+            applyAoStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
+            }
         }
         if (indicator.type === 'uo') {
             applyUoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6086,7 +6100,8 @@
                 break;
             case 'ao':
                 applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
             case 'uo':
                 applyUoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
@@ -6144,7 +6159,9 @@
                 this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'ao':
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
             case 'uo':
                 this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
@@ -6481,7 +6498,8 @@
                     this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'ao':
-                    this.indicators.data[indicator.id] = calculateAO(this.data);
+                    applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                    this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                     break;
                 case 'uo':
                     this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
@@ -10307,7 +10325,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
         const zeroY = scaleY(zeroVal);
-        if (style.showAO !== false && this._panelRenderFast !== true) {
+        if (this._panelRenderFast !== true && zeroY !== null && Number.isFinite(zeroY)) {
+            ctx.strokeStyle = 'rgba(120, 123, 134, 0.45)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zeroY);
+            ctx.lineTo(this.w, zeroY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        if (style.showAO !== false) {
             const baseBarW = Math.max(1, (this.candleWidth || 8) * 0.8);
             for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
                 const val = values[i];

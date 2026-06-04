@@ -1445,7 +1445,7 @@
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         const zeroS = params.zeroLineStyle || 'Dotted';
-        indicator.params.period = params.period != null ? Number(params.period) : 14;
+        indicator.params.period = params.period != null ? Math.max(1, Number(params.period) | 0) : 14;
         indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#8d6e63';
@@ -1524,6 +1524,11 @@
     }
 
     function applyAoStyleFromParams(indicator, params) {
+        let fastLength = params.fastLength != null ? Math.max(1, Number(params.fastLength) | 0) : 5;
+        let slowLength = params.slowLength != null ? Math.max(2, Number(params.slowLength) | 0) : 34;
+        if (slowLength <= fastLength) slowLength = fastLength + 1;
+        indicator.params.fastLength = fastLength;
+        indicator.params.slowLength = slowLength;
         indicator.style.showAO = params.showAO !== false;
         indicator.style.histColor0 = params.histColor0 || '#26a69a';
         indicator.style.histColor0Opacity = params.histColor0Opacity != null ? Number(params.histColor0Opacity) : 100;
@@ -3625,22 +3630,25 @@
     }
 
     function calculateTRIX(data, period) {
-        const p = Math.max(1, period);
-        const e1 = calculateEMA(data, p, 'c');
-        const p2 = data.map(function(d, i) {
-            const v = e1[i];
-            return { h: v, l: v, c: v, o: v, v: d.v, t: d.t };
+        const p = Math.max(1, period | 0);
+        const close = data.map(function(d) {
+            return resolveOhlcSourceValue(d, 'close');
         });
-        const e2 = calculateEMA(p2, p, 'c');
-        const p3 = data.map(function(d, i) {
-            const v = e2[i];
-            return { h: v, l: v, c: v, o: v, v: d.v, t: d.t };
-        });
-        const e3 = calculateEMA(p3, p, 'c');
+        const e1 = rollingEmaNullable(close, p);
+        const e2 = rollingEmaNullable(e1, p);
+        const e3 = rollingEmaNullable(e2, p);
         const out = [];
         for (let i = 0; i < e3.length; i++) {
-            if (e3[i] == null || i === 0 || e3[i - 1] == null || e3[i - 1] === 0) out.push(null);
-            else out.push(100 * (e3[i] - e3[i - 1]) / e3[i - 1]);
+            if (i === 0 || e3[i] == null || e3[i - 1] == null) {
+                out.push(null);
+                continue;
+            }
+            const prev = e3[i - 1];
+            if (!Number.isFinite(prev) || Math.abs(prev) < 1e-12) {
+                out.push(null);
+                continue;
+            }
+            out.push(100 * (e3[i] - prev) / prev);
         }
         return out;
     }
@@ -4047,9 +4055,12 @@
         return out;
     }
 
-    function calculateAO(data) {
-        const fast = smaMedianPrice(data, 5);
-        const slow = smaMedianPrice(data, 34);
+    function calculateAO(data, fastLen, slowLen) {
+        let fastPeriod = Math.max(1, Number(fastLen) | 0) || 5;
+        let slowPeriod = Math.max(2, Number(slowLen) | 0) || 34;
+        if (slowPeriod <= fastPeriod) slowPeriod = fastPeriod + 1;
+        const fast = smaMedianPrice(data, fastPeriod);
+        const slow = smaMedianPrice(data, slowPeriod);
         return fast.map(function(f, i) {
             if (f == null || slow[i] == null) return null;
             return f - slow[i];
@@ -4963,8 +4974,8 @@
 
             case 'ao':
                 applyAoStyleFromParams(indicator, params);
-                indicator.name = 'Awesome Oscillator';
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
 
             case 'uo':
@@ -5700,7 +5711,13 @@
             applyCmfStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'ao') {
-            applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.fastLength !== undefined || newParams.slowLength !== undefined;
+            applyAoStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
+            }
         }
         if (indicator.type === 'uo') {
             applyUoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -5753,7 +5770,13 @@
             }
         }
         if (indicator.type === 'trix') {
-            applyTrixStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.period !== undefined;
+            applyTrixStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'TRIX(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateTRIX(this.data, indicator.params.period);
+            }
         }
         if (indicator.type === 'rvi') {
             applyRviStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6077,7 +6100,8 @@
                 break;
             case 'ao':
                 applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
             case 'uo':
                 applyUoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
@@ -6135,7 +6159,9 @@
                 this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                 break;
             case 'ao':
-                this.indicators.data[indicator.id] = calculateAO(this.data);
+                applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                indicator.name = 'AO(' + indicator.params.fastLength + ',' + indicator.params.slowLength + ')';
+                this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                 break;
             case 'uo':
                 this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
@@ -6472,7 +6498,8 @@
                     this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'ao':
-                    this.indicators.data[indicator.id] = calculateAO(this.data);
+                    applyAoStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                    this.indicators.data[indicator.id] = calculateAO(this.data, indicator.params.fastLength, indicator.params.slowLength);
                     break;
                 case 'uo':
                     this.indicators.data[indicator.id] = calculateUltimateOscillator(this.data, indicator.params.period1, indicator.params.period2, indicator.params.period3);
@@ -10298,7 +10325,17 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
 
         const zeroY = scaleY(zeroVal);
-        if (style.showAO !== false && this._panelRenderFast !== true) {
+        if (this._panelRenderFast !== true && zeroY !== null && Number.isFinite(zeroY)) {
+            ctx.strokeStyle = 'rgba(120, 123, 134, 0.45)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(m.l, zeroY);
+            ctx.lineTo(this.w, zeroY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        if (style.showAO !== false) {
             const baseBarW = Math.max(1, (this.candleWidth || 8) * 0.8);
             for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
                 const val = values[i];
@@ -10740,8 +10777,27 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
 
         const lineColor = resolve(style.color || '#8d6e63', style.lineOpacity);
+        const plotStyle = this._normalizePlotStyle(style.lineStyle || 'Line');
+        const dashStyle = style.lineDashStyle || 'Solid';
         if (style.showLine !== false) {
-            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+            if (plotStyle === 'Histogram' || plotStyle === 'Columns') {
+                const lw = style.lineWidth != null ? style.lineWidth : 2;
+                const half = function(i) { return this._plotBarWidthPx(i, lw) / 2; }.bind(this);
+                ctx.fillStyle = lineColor;
+                for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+                    const val = values[i];
+                    if (val == null || isNaN(val)) continue;
+                    const x = this.dataIndexToPixel(i);
+                    const y = scaleY(val);
+                    const z = scaleY(zeroVal);
+                    if (y == null || z == null || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+                    const w = half(i) * 2;
+                    const top = Math.min(y, z);
+                    ctx.fillRect(x - w / 2, top, w, Math.max(1, Math.abs(z - y)));
+                }
+            } else {
+                this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, plotStyle, dashStyle);
+            }
         }
 
         let last = null;

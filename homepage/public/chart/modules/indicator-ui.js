@@ -484,6 +484,14 @@ function cmfVisibilityParams() {
     ];
 }
 
+/** Awesome Oscillator Input — fast / slow SMA lengths on median price (TradingView defaults 5 / 34). */
+function aoInputParams() {
+    return [
+        { id: 'fastLength', label: 'Fast length', type: 'number', default: 5, min: 1, tab: 'input' },
+        { id: 'slowLength', label: 'Slow length', type: 'number', default: 34, min: 2, tab: 'input' }
+    ];
+}
+
 /** Awesome Oscillator Style — growing / falling histogram colors (opacity in color picker). */
 function aoStyleParams() {
     return [
@@ -1840,7 +1848,7 @@ const INDICATOR_DEFINITIONS = {
     ao: {
         name: 'Awesome Oscillator',
         type: 'separate',
-        params: aoStyleParams().concat(aoVisibilityParams())
+        params: aoInputParams().concat(aoStyleParams()).concat(aoVisibilityParams())
     },
     uo: {
         name: 'Ultimate Oscillator',
