@@ -23207,6 +23207,13 @@ const TalariaV8bLive = () => {
           });
           const gc = "16px 1fr 26px 56px 56px 28px";
           const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
+          const gcColorOnly = "16px 1fr 26px 28px";
+          const gcBandColorOnly = "16px 1fr 26px 44px 28px";
+          const sectionHasStyleCol = (section) => {
+            const rows = (section && section.rows) || [];
+            const levels = (section && section.levelRows) || [];
+            return rows.some((row) => row.styleId) || levels.some((row) => row.styleId);
+          };
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
           const lbl = (txt, on) => <span style={{ fontSize: 12, color: on === false ? "rgba(160,160,200,0.38)" : c.ts, transition: "color 0.15s" }}>{txt}</span>;
@@ -23308,7 +23315,8 @@ const TalariaV8bLive = () => {
             const rowLabel = section && section.title ? section.title : "Level";
             const showValue = !!(row.valueId && section && section.bandLevelHeader);
             const plotOnly = row.plotStyleOnly === true;
-            const cols = showValue ? gcBand : gc;
+            const hasStyleCol = !!row.styleId;
+            const cols = showValue ? (hasStyleCol ? gcBand : gcBandColorOnly) : (hasStyleCol ? gc : gcColorOnly);
             return (
               <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -23316,10 +23324,10 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(rowLabel, on)}
                 <Swatch pid={row.colorId} disabled={!on} />
-                {plotOnly ? psSel(row.styleId, !on) : stSel(row.styleId, !on)}
-                {numW(row.widthId, !on)}
+                {hasStyleCol ? (plotOnly ? psSel(row.styleId, !on) : stSel(row.styleId, !on)) : null}
+                {hasStyleCol ? numW(row.widthId, !on) : null}
                 {showValue ? numW(row.valueId, !on) : null}
-                {plotOnly ? <div /> : psSel(row.styleId, !on)}
+                {hasStyleCol ? (plotOnly ? <div /> : psSel(row.styleId, !on)) : null}
               </div>
             );
           };
@@ -23368,19 +23376,17 @@ const TalariaV8bLive = () => {
                   </div>
                 )}
                 {section.bandLevelHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gcBand, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: sectionHasStyleCol(section) ? gcBand : gcBandColorOnly, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("STYLE")}</div>
-                    <div>{hdr("THICKNESS")}</div>
+                    {sectionHasStyleCol(section) ? <><div>{hdr("STYLE")}</div><div>{hdr("THICKNESS")}</div></> : null}
                     <div>{hdr(section.levelValueHeader || "VALUE")}</div>
-                    <div />
+                    {sectionHasStyleCol(section) ? <div /> : null}
                   </div>
                 )}
                 {section.bandStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: sectionHasStyleCol(section) ? gc : gcColorOnly, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    <div>{hdr("STYLE")}</div>
-                    <div>{hdr("THICKNESS")}</div>
+                    {sectionHasStyleCol(section) ? <><div>{hdr("STYLE")}</div><div>{hdr("THICKNESS")}</div></> : null}
                     <div />
                   </div>
                 )}

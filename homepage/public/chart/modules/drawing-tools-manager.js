@@ -887,6 +887,60 @@ class DrawingToolsManager {
         return 600;
     }
 
+    /** After 401, skip cloud drawings API until a new token appears (avoids console spam). */
+    static _drawingsCloudAuthBlocked = false;
+    static _drawingsCloudAuthLastToken = null;
+    static _drawingsAuthWarnAt = 0;
+
+    _canUseDrawingsCloudApi() {
+        if (typeof localStorage === 'undefined') return false;
+        const token = localStorage.getItem('token');
+        if (!token) {
+            DrawingToolsManager._drawingsCloudAuthBlocked = false;
+            DrawingToolsManager._drawingsCloudAuthLastToken = null;
+            return false;
+        }
+        if (token !== DrawingToolsManager._drawingsCloudAuthLastToken) {
+            DrawingToolsManager._drawingsCloudAuthLastToken = token;
+            DrawingToolsManager._drawingsCloudAuthBlocked = false;
+        }
+        return !DrawingToolsManager._drawingsCloudAuthBlocked;
+    }
+
+    /** Mint journal JWT from cookie session (same as homepage syncJournalTokenFromSession). */
+    async _recoverDrawingsCloudAuthFromSession() {
+        try {
+            const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+            if (!res.ok) return false;
+            const data = await res.json();
+            const t = data && data.journal_token;
+            if (typeof t !== 'string' || !t.trim()) return false;
+            localStorage.setItem('token', t.trim());
+            DrawingToolsManager._drawingsCloudAuthLastToken = t.trim();
+            DrawingToolsManager._drawingsCloudAuthBlocked = false;
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    _onDrawingsApiUnauthorized() {
+        if (typeof localStorage !== 'undefined') {
+            try { localStorage.removeItem('token'); } catch (_) { /* ignore */ }
+        }
+        DrawingToolsManager._drawingsCloudAuthBlocked = true;
+        DrawingToolsManager._drawingsCloudAuthLastToken = null;
+        if (this._apiSaveTimer) {
+            clearTimeout(this._apiSaveTimer);
+            this._apiSaveTimer = null;
+        }
+        const now = Date.now();
+        if (!DrawingToolsManager._drawingsAuthWarnAt || now - DrawingToolsManager._drawingsAuthWarnAt > 60000) {
+            DrawingToolsManager._drawingsAuthWarnAt = now;
+            console.warn('⚠️ Drawings cloud sync paused — sign in again to sync across devices');
+        }
+    }
+
     _isStorageQuotaError(error) {
         if (!error) return false;
         const name = error.name || '';
@@ -1013,7 +1067,7 @@ class DrawingToolsManager {
      */
     async _resolveDrawingsPayloadForLoad() {
         const key = this.getStorageKey();
-        const hasToken = typeof localStorage !== 'undefined' && localStorage.getItem('token');
+        const hasToken = this._canUseDrawingsCloudApi();
         const localData = this._readLocalDrawingsCache(key);
         const localMeta = this._readDrawingsCacheMeta(key);
         const localMs = this._parseUpdatedAtMs(localMeta?.client_updated_at || localMeta?.updated_at);
@@ -1074,9 +1128,9 @@ class DrawingToolsManager {
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
                 : null;
-            const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-            if (!token) return;
+            if (!this._canUseDrawingsCloudApi()) return;
 
+            const token = localStorage.getItem('token');
             const body = JSON.stringify({
                 drawings: data,
                 session_id: sessionId,
@@ -9312,6 +9366,7 @@ class DrawingToolsManager {
      * Schedule API save with debouncing to avoid excessive requests
      */
     scheduleSaveToAPI(data, clientUpdatedAt) {
+        if (!this._canUseDrawingsCloudApi()) return;
         // Clear existing timer
         if (this._apiSaveTimer) {
             clearTimeout(this._apiSaveTimer);
@@ -9333,6 +9388,7 @@ class DrawingToolsManager {
      * Save drawings to backend API for cross-device sync (canonical store).
      */
     async saveDrawingsToAPI(data, clientUpdatedAt) {
+        if (!this._canUseDrawingsCloudApi()) return;
         // Single-flight: overlapping debounced/flush saves in one tab must not 409 each other.
         if (this._drawingsApiSaveInFlight) {
             this._drawingsApiSaveQueued = true;
@@ -9353,8 +9409,10 @@ class DrawingToolsManager {
         }
     }
 
-    async _saveDrawingsToAPIOnce(data, clientUpdatedAt) {
+    async _saveDrawingsToAPIOnce(data, clientUpdatedAt, retryAfterAuthRefresh = false) {
         try {
+            if (!this._canUseDrawingsCloudApi()) return;
+
             const symbol = this.chart.currentFileId || 'default';
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
@@ -9383,6 +9441,7 @@ class DrawingToolsManager {
             });
 
             if (response.ok) {
+                DrawingToolsManager._drawingsCloudAuthBlocked = false;
                 const result = await response.json();
                 console.log(`✅ Drawings synced to cloud (${result.count} drawings)`);
                 this._drawingsSaveError = false;
@@ -9393,7 +9452,10 @@ class DrawingToolsManager {
                     client_updated_at: serverMs
                 });
             } else if (response.status === 401) {
-                console.warn('⚠️ Not authenticated - drawings saved locally only');
+                if (!retryAfterAuthRefresh && await this._recoverDrawingsCloudAuthFromSession()) {
+                    return this._saveDrawingsToAPIOnce(data, clientUpdatedAt, true);
+                }
+                this._onDrawingsApiUnauthorized();
             } else if (response.status === 413) {
                 console.warn('⚠️ Drawings payload too large for cloud');
                 this._drawingsSaveError = true;
@@ -9570,8 +9632,10 @@ class DrawingToolsManager {
     /**
      * Load drawings from backend API for cross-device sync
      */
-    async loadDrawingsFromAPI() {
+    async loadDrawingsFromAPI(retryAfterAuthRefresh = false) {
         try {
+            if (!this._canUseDrawingsCloudApi()) return null;
+
             const symbol = this.chart.currentFileId || 'default';
             const sessionId = this.chart && typeof this.chart.getActiveTradingSessionId === 'function'
                 ? this.chart.getActiveTradingSessionId()
@@ -9579,7 +9643,6 @@ class DrawingToolsManager {
             
             const token = localStorage.getItem('token');
             if (!token) {
-                // User not logged in, skip API load
                 return null;
             }
             
@@ -9597,6 +9660,7 @@ class DrawingToolsManager {
             });
             
             if (response.ok) {
+                DrawingToolsManager._drawingsCloudAuthBlocked = false;
                 const result = await response.json();
                 if (result.success) {
                     return {
@@ -9605,7 +9669,10 @@ class DrawingToolsManager {
                     };
                 }
             } else if (response.status === 401) {
-                console.warn('⚠️ Not authenticated - using local drawings only');
+                if (!retryAfterAuthRefresh && await this._recoverDrawingsCloudAuthFromSession()) {
+                    return this.loadDrawingsFromAPI(true);
+                }
+                this._onDrawingsApiUnauthorized();
             }
             
             return null;
