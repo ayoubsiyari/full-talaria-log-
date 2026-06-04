@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b210';
+const CHART_ENGINE_BUILD = '20260602b220';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -23989,6 +23989,10 @@ class Chart {
             
             if (hasSnappedCandle) {
                 const candle = snappedCandle;
+                this.hoverIndex = snappedDataIdx;
+                if (typeof this.syncCrosshairIndicatorValues === 'function') {
+                    this.syncCrosshairIndicatorValues();
+                }
                 
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
@@ -24077,6 +24081,14 @@ class Chart {
     }
     
     hideCrosshair() {
+        if (this.data && this.data.length > 0) {
+            this.hoverIndex = this.data.length - 1;
+            if (typeof this.syncCrosshairIndicatorValues === 'function') {
+                this.syncCrosshairIndicatorValues();
+            }
+        } else {
+            this.hoverIndex = -1;
+        }
         const container = this.canvas?.parentElement;
         if (!container) return;
         const vLine = container.querySelector('.crosshair-vertical');

@@ -8115,6 +8115,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
     if (panelResizeActive) {
         this._repositionSeparatePanelOverlay(panelSlots, m);
     } else if (!panelResizeActive) {
+        this._applyCrosshairIndicatorDisplays(stackIndicators);
         this._updateSeparatePanelLabels(panelSlots, stackIndicators, m);
     }
     } finally {
@@ -8180,6 +8181,129 @@ Chart.prototype.drawSeparatePanelCrosshair = function(ctx, m, panelTop, panelBot
     }
     
     ctx.textAlign = 'left';
+};
+
+Chart.prototype._getCrosshairBarIndex = function() {
+    if (!this.data || !this.data.length) return -1;
+    if (Number.isFinite(this.hoverIndex) && this.hoverIndex >= 0 && this.hoverIndex < this.data.length) {
+        return Math.floor(this.hoverIndex);
+    }
+    if (Number.isFinite(this.mouseX) && typeof this.pixelToDataIndex === 'function') {
+        const idx = Math.round(this.pixelToDataIndex(this.mouseX));
+        if (idx >= 0 && idx < this.data.length) return idx;
+    }
+    return this.data.length - 1;
+};
+
+Chart.prototype._pickFiniteSeriesValue = function(arr, barIdx) {
+    if (!Array.isArray(arr) || barIdx < 0) return null;
+    let i = Math.min(barIdx, arr.length - 1);
+    while (i >= 0) {
+        const v = arr[i];
+        if (v !== null && v !== undefined && !isNaN(v) && Number.isFinite(Number(v))) return Number(v);
+        i--;
+    }
+    return null;
+};
+
+Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
+    if (!indicator || barIdx < 0) return { text: '—', color: '#9ca3af' };
+    const store = this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : null;
+    if (!store) return { text: '—', color: '#9ca3af' };
+    const st = indicator.style || {};
+    const color = st.color || '#9ca3af';
+    const pick = (arr, decimals, col) => {
+        const v = this._pickFiniteSeriesValue(arr, barIdx);
+        if (v === null) return null;
+        return { text: Number(v).toFixed(decimals), color: col || color };
+    };
+    const type = indicator.type;
+    if (type === 'macd' && store.macd && store.signal) {
+        const m = pick(store.macd, 4, st.macdColor || color);
+        const s = pick(store.signal, 4, st.signalColor || '#f23645');
+        if (m && s) return { text: 'M:' + m.text + '  S:' + s.text, color: m.color };
+        if (m) return m;
+        if (s) return s;
+    }
+    if ((type === 'stoch' || type === 'stochastic') && store.k && store.d) {
+        const k = pick(store.k, 2, st.kColor || color);
+        const d = pick(store.d, 2, st.dColor || '#f23645');
+        if (k && d) return { text: 'K:' + k.text + '  D:' + d.text, color: k.color };
+        if (k) return k;
+        if (d) return d;
+    }
+    if (type === 'cci' && store.cci) {
+        const v = pick(store.cci, 2, color);
+        if (v) return v;
+    }
+    if (Array.isArray(store)) {
+        const decimals = (type === 'willr' || type === 'williams' || type === 'cci' || type === 'rsi' || type === 'stoch') ? 2 : 4;
+        const v = pick(store, decimals, color);
+        return v || { text: '—', color: color };
+    }
+    if (typeof store === 'object') {
+        const keys = ['upper', 'middle', 'lower', 'fast', 'slow', 'k', 'd', 'cci'];
+        for (let ki = 0; ki < keys.length; ki++) {
+            const k = keys[ki];
+            if (!Array.isArray(store[k])) continue;
+            const col = st[k + 'Color'] || color;
+            const v = pick(store[k], k === 'cci' ? 2 : 4, col);
+            if (v) return v;
+        }
+    }
+    return { text: '—', color: color };
+};
+
+Chart.prototype._applyCrosshairIndicatorDisplays = function(indicators) {
+    if (!Array.isArray(indicators) || indicators.length === 0) return;
+    const barIdx = this._getCrosshairBarIndex();
+    if (barIdx < 0) return;
+    indicators.forEach((ind) => {
+        if (!ind || ind.hideValues === true) return;
+        const fmt = this._formatIndicatorValueAtBar(ind, barIdx);
+        if (!fmt) return;
+        ind._displayLabel = fmt.text;
+        if (fmt.color) ind._displayColor = fmt.color;
+    });
+};
+
+Chart.prototype.syncCrosshairIndicatorValues = function() {
+    if (!this.indicators || !this.indicators.active) return;
+
+    const overlayIndicators = this.indicators.active.filter((ind) => {
+        if (ind.type === 'volume' || ind.isVolume) return false;
+        return ind.overlay !== false;
+    });
+    this._applyCrosshairIndicatorDisplays(overlayIndicators);
+
+    const separateIndicators = typeof this._getVisibleSeparateIndicators === 'function'
+        ? this._getVisibleSeparateIndicators()
+        : this.indicators.active.filter((ind) => ind.overlay === false && ind.type !== 'volume' && !ind.isVolume);
+    this._applyCrosshairIndicatorDisplays(separateIndicators);
+
+    if (this._volumeRendersInSeparatePanel && this._volumeRendersInSeparatePanel()) {
+        const vol = typeof this._getActiveVolumeIndicator === 'function' ? this._getActiveVolumeIndicator() : null;
+        if (vol) this._applyCrosshairIndicatorDisplays([vol]);
+    }
+
+    const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
+    const ohlcDiv = typeof document !== 'undefined' ? document.getElementById('ohlcIndicators' + idSuffix) : null;
+    if (ohlcDiv && typeof window.talariaSyncOhlcIndicatorLegendValues === 'function') {
+        window.talariaSyncOhlcIndicatorLegendValues(this, ohlcDiv);
+    }
+
+    const canvas = this.ctx && this.ctx.canvas;
+    const wrapper = canvas ? canvas.parentElement : null;
+    const overlay = wrapper ? wrapper.querySelector('#separatePanelsOverlay') : null;
+    if (overlay) {
+        const stack = [];
+        if (this._volumeRendersInSeparatePanel && this._volumeRendersInSeparatePanel()) {
+            const vol = typeof this._getActiveVolumeIndicator === 'function' ? this._getActiveVolumeIndicator() : null;
+            if (vol) stack.push(vol);
+        }
+        separateIndicators.forEach((ind) => stack.push(ind));
+        this._syncSeparatePanelOverlayValues(overlay, stack);
+    }
 };
 
 /** Per-indicator Y zoom/pan for separate panels (right-axis drag / wheel). */

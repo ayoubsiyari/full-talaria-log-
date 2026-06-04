@@ -2263,11 +2263,35 @@ function ensureTalariaIndLegendHoverCss() {
     document.head.appendChild(s);
 }
 
+function talariaCrosshairBarIndex(chart) {
+    if (!chart || !chart.data || !chart.data.length) return -1;
+    if (Number.isFinite(chart.hoverIndex) && chart.hoverIndex >= 0 && chart.hoverIndex < chart.data.length) {
+        return Math.floor(chart.hoverIndex);
+    }
+    if (Number.isFinite(chart.mouseX) && typeof chart.pixelToDataIndex === 'function') {
+        const idx = Math.round(chart.pixelToDataIndex(chart.mouseX));
+        if (idx >= 0 && idx < chart.data.length) return idx;
+    }
+    return chart.data.length - 1;
+}
+
+function talariaPickFiniteSeriesValue(arr, barIdx) {
+    if (!Array.isArray(arr) || barIdx < 0) return null;
+    let i = Math.min(barIdx, arr.length - 1);
+    while (i >= 0) {
+        const v = arr[i];
+        if (v !== null && v !== undefined && !isNaN(v) && Number.isFinite(Number(v))) return Number(v);
+        i--;
+    }
+    return null;
+}
+
 /** Same value tokens as chart-indicators-full.js updateOHLCIndicators (panel MACD bar). */
 function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
     const valuesStore = chart.indicators && chart.indicators.data ? chart.indicators.data[indicator.id] : null;
     if (!valuesStore) return [];
     const out = [];
+    const barIdx = talariaCrosshairBarIndex(chart);
     const pushToken = function(val, color, decimals) {
         if (!Number.isFinite(val)) return;
         out.push({
@@ -2276,38 +2300,81 @@ function talariaFormatOverlayIndicatorValueTokens(chart, indicator) {
         });
     };
     if (Array.isArray(valuesStore)) {
-        for (let i = valuesStore.length - 1; i >= 0; i--) {
-            if (Number.isFinite(valuesStore[i])) {
-                pushToken(valuesStore[i], indicator.style && indicator.style.color, 4);
-                break;
-            }
-        }
+        const val = talariaPickFiniteSeriesValue(valuesStore, barIdx);
+        if (val !== null) pushToken(val, indicator.style && indicator.style.color, 4);
         return out;
     }
     if (typeof valuesStore === 'object') {
-        const keys = ['upper', 'middle', 'lower', 'ema1', 'ema2', 'ema3', 'fast', 'slow'];
+        if (Array.isArray(valuesStore.macd) && Array.isArray(valuesStore.signal)) {
+            const m = talariaPickFiniteSeriesValue(valuesStore.macd, barIdx);
+            const s = talariaPickFiniteSeriesValue(valuesStore.signal, barIdx);
+            if (m !== null) pushToken(m, indicator.style && indicator.style.macdColor, 4);
+            if (s !== null) pushToken(s, indicator.style && indicator.style.signalColor, 4);
+            if (out.length > 0) return out;
+        }
+        const keys = ['upper', 'middle', 'lower', 'ema1', 'ema2', 'ema3', 'fast', 'slow', 'k', 'd', 'cci'];
         keys.forEach(function(k) {
             const arr = valuesStore[k];
             if (!Array.isArray(arr)) return;
-            for (let i = arr.length - 1; i >= 0; i--) {
-                if (Number.isFinite(arr[i])) {
-                    const colorKey = k + 'Color';
-                    pushToken(arr[i], indicator.style && indicator.style[colorKey], 4);
-                    break;
-                }
-            }
+            const val = talariaPickFiniteSeriesValue(arr, barIdx);
+            if (val === null) return;
+            const colorKey = k + 'Color';
+            pushToken(val, indicator.style && indicator.style[colorKey], k === 'cci' ? 2 : 4);
         });
         if (out.length > 0) return out;
     }
     return out;
 }
 
+function talariaFillLegendValueSpan(valuesSpan, tokens) {
+    if (!valuesSpan) return;
+    valuesSpan.innerHTML = '';
+    if (!tokens || tokens.length === 0) {
+        const dash = document.createElement('span');
+        dash.textContent = '—';
+        dash.style.cssText = 'color:#9ca3af;';
+        valuesSpan.appendChild(dash);
+        return;
+    }
+    tokens.forEach(function(tok, i) {
+        const t = document.createElement('span');
+        t.textContent = tok.text;
+        t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
+        valuesSpan.appendChild(t);
+        if (i < tokens.length - 1) {
+            const gap = document.createElement('span');
+            gap.textContent = ' ';
+            gap.style.cssText = 'color:#6b7280;';
+            valuesSpan.appendChild(gap);
+        }
+    });
+}
+
+/** Lightweight OHLC legend value refresh on crosshair move (no DOM rebuild). */
+function talariaSyncOhlcIndicatorLegendValues(chart, div) {
+    if (!chart || !div || !chart.indicators || !chart.indicators.active) return;
+    const rows = div.querySelectorAll('.talaria-ind-legend-row');
+    let rowIdx = 0;
+    chart.indicators.active.forEach(function(indicator) {
+        const isVolume = indicator.type === 'volume' || indicator.isVolume;
+        const isOverlay = indicator.overlay !== false && !isVolume;
+        if (!isVolume && !isOverlay) return;
+        let row = div.querySelector('[data-talaria-ind-id="' + indicator.id + '"]');
+        if (!row && rows[rowIdx]) row = rows[rowIdx];
+        rowIdx++;
+        if (!row) return;
+        const valuesSpan = row.querySelector('[data-talaria-ind-val]') || row.querySelector('span:nth-child(2)');
+        if (!valuesSpan) return;
+        const tokens = isVolume
+            ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
+            : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
+        talariaFillLegendValueSpan(valuesSpan, tokens);
+    });
+}
+
 function talariaFormatVolumeIndicatorValueTokens(chart, indicator) {
     if (!chart || !chart.data || !chart.data.length) return [];
-    let idx = chart.data.length - 1;
-    if (Number.isFinite(chart.hoverIndex) && chart.hoverIndex >= 0 && chart.hoverIndex < chart.data.length) {
-        idx = chart.hoverIndex;
-    }
+    const idx = talariaCrosshairBarIndex(chart);
     const bar = chart.data[idx];
     const v = bar && Number(bar.v);
     if (!Number.isFinite(v)) return [];
@@ -2340,6 +2407,7 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     const isVolume = indicator.type === 'volume' || indicator.isVolume;
     const item = document.createElement('div');
     item.className = 'talaria-ind-legend-row';
+    item.setAttribute('data-talaria-ind-id', String(indicator.id));
     item.style.cssText = 'pointer-events:auto;display:flex;align-items:center;gap:4px;width:fit-content;max-width:100%;align-self:flex-start;background:transparent;border:none;border-radius:0;padding:0;font-family:Roboto,sans-serif;';
 
     const nameSpan = document.createElement('span');
@@ -2350,23 +2418,12 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
     item.appendChild(nameSpan);
 
     const valuesSpan = document.createElement('span');
+    valuesSpan.setAttribute('data-talaria-ind-val', '1');
     valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
     const valueTokens = isVolume
         ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
         : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
-    if (valueTokens.length === 0) {
-        const dash = document.createElement('span');
-        dash.textContent = '—';
-        dash.style.cssText = 'color:#9ca3af;';
-        valuesSpan.appendChild(dash);
-    } else {
-        valueTokens.forEach(function(tok) {
-            const t = document.createElement('span');
-            t.textContent = tok.text;
-            t.style.cssText = 'color:' + (tok.color || '#9ca3af') + ';';
-            valuesSpan.appendChild(t);
-        });
-    }
+    talariaFillLegendValueSpan(valuesSpan, valueTokens);
     item.appendChild(valuesSpan);
 
     const actions = document.createElement('span');
@@ -5593,3 +5650,5 @@ if (typeof Chart !== 'undefined') {
 
 // Export createIndicatorSettingsPanel globally for volume settings
 window.createIndicatorSettingsPanel = createIndicatorSettingsPanel;
+window.talariaSyncOhlcIndicatorLegendValues = talariaSyncOhlcIndicatorLegendValues;
+window.talariaCrosshairBarIndex = talariaCrosshairBarIndex;
