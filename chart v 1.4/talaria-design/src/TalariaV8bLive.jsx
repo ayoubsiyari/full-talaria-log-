@@ -23207,12 +23207,28 @@ const TalariaV8bLive = () => {
           });
           const gc = "16px 1fr 26px 56px 56px 28px";
           const gcBand = "16px 1fr 26px 56px 44px 44px 28px";
+          const gcNoPlot = "16px 1fr 26px 56px 56px";
+          const gcBandNoPlot = "16px 1fr 26px 56px 44px 44px";
           const gcColorOnly = "16px 1fr 26px 28px";
           const gcBandColorOnly = "16px 1fr 26px 44px 28px";
           const sectionHasStyleCol = (section) => {
             const rows = (section && section.rows) || [];
             const levels = (section && section.levelRows) || [];
             return rows.some((row) => row.styleId) || levels.some((row) => row.styleId);
+          };
+          const sectionHasPlotStyleCol = (section) => {
+            const rows = (section && section.rows) || [];
+            const levels = (section && section.levelRows) || [];
+            return rows.some((row) => row.styleId && row.hidePlotStyle !== true)
+              || levels.some((row) => row.styleId && row.hidePlotStyle !== true);
+          };
+          const bandGridCols = (section) => {
+            if (!sectionHasStyleCol(section)) return gcBandColorOnly;
+            return sectionHasPlotStyleCol(section) ? gcBand : gcBandNoPlot;
+          };
+          const styleGridCols = (section) => {
+            if (!sectionHasStyleCol(section)) return gcColorOnly;
+            return sectionHasPlotStyleCol(section) ? gc : gcNoPlot;
           };
           const cg = 8;
           const hdr = (txt) => <span style={{ fontSize: 9, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", textAlign: "center", display: "block" }}>{txt}</span>;
@@ -23273,7 +23289,8 @@ const TalariaV8bLive = () => {
           const renderBandStyleRow = (row, i) => {
             const on = row.showId ? val(row.showId) !== false : true;
             const hasStyleCol = !!row.styleId;
-            const cols = hasStyleCol ? gc : "16px 1fr 26px 28px";
+            const hidePlot = row.hidePlotStyle === true;
+            const cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
             return (
               <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -23285,7 +23302,7 @@ const TalariaV8bLive = () => {
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
                 {hasStyleCol ? stSel(row.styleId, !on) : null}
                 {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : null}
-                {hasStyleCol ? psSel(row.styleId, !on) : null}
+                {hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null}
               </div>
             );
           };
@@ -23316,7 +23333,13 @@ const TalariaV8bLive = () => {
             const showValue = !!(row.valueId && section && section.bandLevelHeader);
             const plotOnly = row.plotStyleOnly === true;
             const hasStyleCol = !!row.styleId;
-            const cols = showValue ? (hasStyleCol ? gcBand : gcBandColorOnly) : (hasStyleCol ? gc : gcColorOnly);
+            const hidePlot = row.hidePlotStyle === true;
+            let cols;
+            if (showValue) {
+              cols = hasStyleCol ? (hidePlot ? gcBandNoPlot : gcBand) : gcBandColorOnly;
+            } else {
+              cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
+            }
             return (
               <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -23327,7 +23350,7 @@ const TalariaV8bLive = () => {
                 {hasStyleCol ? (plotOnly ? psSel(row.styleId, !on) : stSel(row.styleId, !on)) : null}
                 {hasStyleCol ? numW(row.widthId, !on) : null}
                 {showValue ? numW(row.valueId, !on) : null}
-                {hasStyleCol ? (plotOnly ? <div /> : psSel(row.styleId, !on)) : null}
+                {hasStyleCol && !hidePlot ? (plotOnly ? <div /> : psSel(row.styleId, !on)) : null}
               </div>
             );
           };
@@ -23376,15 +23399,15 @@ const TalariaV8bLive = () => {
                   </div>
                 )}
                 {section.bandLevelHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: sectionHasStyleCol(section) ? gcBand : gcBandColorOnly, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: bandGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {sectionHasStyleCol(section) ? <><div>{hdr("STYLE")}</div><div>{hdr("THICKNESS")}</div></> : null}
                     <div>{hdr(section.levelValueHeader || "VALUE")}</div>
-                    {sectionHasStyleCol(section) ? <div /> : null}
+                    {sectionHasPlotStyleCol(section) ? <div /> : null}
                   </div>
                 )}
                 {section.bandStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: sectionHasStyleCol(section) ? gc : gcColorOnly, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: styleGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {sectionHasStyleCol(section) ? <><div>{hdr("STYLE")}</div><div>{hdr("THICKNESS")}</div></> : null}
                     <div />
