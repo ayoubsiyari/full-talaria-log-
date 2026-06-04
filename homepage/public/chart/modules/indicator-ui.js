@@ -4395,20 +4395,34 @@ function v9StyleTabParams(params) {
     });
 }
 
-function v9PlotRow(label, colorId, styleId, widthId, showId) {
-    return { label: label, colorId: colorId, styleId: styleId || null, widthId: widthId || null, showId: showId || null };
+function v9PlotRow(label, colorId, styleId, widthId, showId, showPlotStyle) {
+    return {
+        label: label,
+        colorId: colorId,
+        styleId: styleId || null,
+        widthId: widthId || null,
+        showId: showId || null,
+        hidePlotStyle: styleId ? showPlotStyle !== true : true
+    };
 }
 
 function v9ColorRow(label, colorId, showId) {
     return { label: label, colorId: colorId, styleId: null, widthId: null, showId: showId || null, colorOnly: true };
 }
 
-function v9LevelRow(valueId, showId, colorId, styleId, widthId) {
-    return { valueId: valueId, showId: showId, colorId: colorId, styleId: styleId, widthId: widthId || null };
+function v9LevelRow(valueId, showId, colorId, styleId, widthId, showPlotStyle) {
+    return {
+        valueId: valueId,
+        showId: showId,
+        colorId: colorId,
+        styleId: styleId,
+        widthId: widthId || null,
+        hidePlotStyle: styleId ? showPlotStyle !== true : true
+    };
 }
 
 /** Style grid row with color, opacity %, line style, thickness (Opening Range bands). */
-function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId, hidePlotStyle) {
+function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId, showPlotStyle) {
     return {
         label: label,
         colorId: colorId,
@@ -4417,12 +4431,12 @@ function v9BandStyleRow(label, colorId, opacityId, styleId, widthId, showId, hid
         widthId: widthId,
         showId: showId,
         bandStyleRow: true,
-        hidePlotStyle: hidePlotStyle === true
+        hidePlotStyle: styleId ? showPlotStyle !== true : true
     };
 }
 
 /** Oscillator level row: value on Input tab; Style row has color, opacity, style, thickness. */
-function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthId, plotStyleOnly, hidePlotStyle) {
+function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthId, plotStyleOnly, showPlotStyle) {
     return {
         valueId: valueId,
         showId: showId,
@@ -4432,7 +4446,7 @@ function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthI
         widthId: widthId,
         oscLevelStyleRow: true,
         plotStyleOnly: plotStyleOnly === true,
-        hidePlotStyle: hidePlotStyle === true
+        hidePlotStyle: styleId ? showPlotStyle === true ? false : true : true
     };
 }
 
@@ -4675,8 +4689,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 checkboxRow: { showId: 'showAO', label: 'AO' },
                 bandStyleHeader: true,
                 rows: [
-                    v9BandStyleRow('Color 0', 'histColor0', 'histColor0Opacity', 'histColor0LineStyle', 'histColor0LineWidth', null),
-                    v9BandStyleRow('Color 1', 'histColor1', 'histColor1Opacity', 'histColor1LineStyle', 'histColor1LineWidth', null)
+                    v9BandStyleRow('Color 0', 'histColor0', 'histColor0Opacity', 'histColor0LineStyle', 'histColor0LineWidth', null, true),
+                    v9BandStyleRow('Color 1', 'histColor1', 'histColor1Opacity', 'histColor1LineStyle', 'histColor1LineWidth', null, true)
                 ]
             }],
             footers: footers
@@ -4691,8 +4705,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     checkboxRow: { showId: 'showBBPower', label: 'BBPower' },
                     bandStyleHeader: true,
                     rows: [
-                        v9BandStyleRow('Color 0', 'bullColor', 'bullOpacity', 'bullLineStyle', 'bullLineWidth', null),
-                        v9BandStyleRow('Color 1', 'bearColor', 'bearOpacity', 'bearLineStyle', 'bearLineWidth', null)
+                        v9BandStyleRow('Color 0', 'bullColor', 'bullOpacity', 'bullLineStyle', 'bullLineWidth', null, true),
+                        v9BandStyleRow('Color 1', 'bearColor', 'bearOpacity', 'bearLineStyle', 'bearLineWidth', null, true)
                     ]
                 },
                 {
@@ -4714,10 +4728,10 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 histSection: true,
                 header: true,
                 rows: [
-                    v9PlotRow('Color 0', 'histColor0', 'histColor0LineStyle', 'histColor0LineWidth', null),
-                    v9PlotRow('Color 1', 'histColor1', 'histColor1LineStyle', 'histColor1LineWidth', null),
-                    v9PlotRow('Color 2', 'histColor2', 'histColor2LineStyle', 'histColor2LineWidth', null),
-                    v9PlotRow('Color 3', 'histColor3', 'histColor3LineStyle', 'histColor3LineWidth', null)
+                    v9PlotRow('Color 0', 'histColor0', 'histColor0LineStyle', 'histColor0LineWidth', null, true),
+                    v9PlotRow('Color 1', 'histColor1', 'histColor1LineStyle', 'histColor1LineWidth', null, true),
+                    v9PlotRow('Color 2', 'histColor2', 'histColor2LineStyle', 'histColor2LineWidth', null, true),
+                    v9PlotRow('Color 3', 'histColor3', 'histColor3LineStyle', 'histColor3LineWidth', null, true)
                 ]
             }, {
                 header: true,
@@ -5050,25 +5064,25 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 {
                     title: '%R',
                     bandStyleHeader: true,
-                    rows: [v9BandStyleRow('%R', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine', true)]
+                    rows: [v9BandStyleRow('%R', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
                 },
                 {
                     title: 'Upper Band',
                     bandLevelHeader: true,
                     levelValueHeader: 'Upper Band',
-                    levelRows: [v9OscLevelStyleRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtOpacity', 'overboughtLineStyle', 'overboughtLineWidth', false, true)]
+                    levelRows: [v9OscLevelStyleRow('overboughtValue', 'showOverbought', 'overboughtColor', 'overboughtOpacity', 'overboughtLineStyle', 'overboughtLineWidth')]
                 },
                 {
                     title: 'Middle Band',
                     bandLevelHeader: true,
                     levelValueHeader: 'Middle Band',
-                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth', false, true)]
+                    levelRows: [v9OscLevelStyleRow('midValue', 'showMid', 'midColor', 'midOpacity', 'midLineStyle', 'midLineWidth')]
                 },
                 {
                     title: 'Lower Band',
                     bandLevelHeader: true,
                     levelValueHeader: 'Lower Band',
-                    levelRows: [v9OscLevelStyleRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldOpacity', 'oversoldLineStyle', 'oversoldLineWidth', false, true)]
+                    levelRows: [v9OscLevelStyleRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldOpacity', 'oversoldLineStyle', 'oversoldLineWidth')]
                 },
                 {
                     title: 'Background',
@@ -5087,7 +5101,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 rows: [
                     v9ColorRow('Up', 'bullColor', 'showUp'),
                     v9ColorRow('Down', 'bearColor', 'showDown'),
-                    v9PlotRow('Plot', null, 'lineStyle', 'lineWidth', null)
+                    v9PlotRow('Plot', null, 'lineStyle', 'lineWidth', null, true)
                 ]
             }],
             footers: footers
@@ -5137,8 +5151,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     checkboxRow: { showId: 'showVolume', label: 'Volume' },
                     bandStyleHeader: true,
                     rows: [
-                        v9BandStyleRow('Growing', 'growingColor', 'growingOpacity', 'growingLineStyle', 'growingLineWidth', null),
-                        v9BandStyleRow('Falling', 'fallingColor', 'fallingOpacity', 'fallingLineStyle', 'fallingLineWidth', null)
+                        v9BandStyleRow('Growing', 'growingColor', 'growingOpacity', 'growingLineStyle', 'growingLineWidth', null, true),
+                        v9BandStyleRow('Falling', 'fallingColor', 'fallingOpacity', 'fallingLineStyle', 'fallingLineWidth', null, true)
                     ]
                 },
                 {

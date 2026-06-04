@@ -264,9 +264,16 @@ function V9PlotStylePreview({ style, color = "#d1d4dc" }) {
       </svg>
     );
   }
+  if (s === "line" || s === "solid") {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 9 H52" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      </svg>
+    );
+  }
   return (
     <svg {...svgProps}>
-      <path d="M4 11 C12 5, 20 14, 28 8 S44 12, 52 7" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M4 9 H52" stroke={stroke} strokeWidth={sw} strokeLinecap="round" />
     </svg>
   );
 }
@@ -23312,8 +23319,10 @@ const TalariaV8bLive = () => {
             const on = row.showId ? val(row.showId) !== false : !histOff;
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
+            const hidePlot = row.hidePlotStyle !== false;
+            const cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
             return (
-              <div key={`${row.colorId || row.label}-${i}`} style={R(i ? 8 : 0)}>
+              <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {row.showId
                     ? TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })
@@ -23323,7 +23332,7 @@ const TalariaV8bLive = () => {
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
                 {hasStyleCol ? stSel(row.styleId, !on) : <div />}
                 {hasWidthCol ? numW(row.widthId, !on) : <div />}
-                {hasStyleCol ? psSel(row.styleId, !on) : <div />}
+                {hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null}
               </div>
             );
           };
@@ -23358,10 +23367,11 @@ const TalariaV8bLive = () => {
             if (row.oscLevelStyleRow) return renderOscLevelStyleRow(row, i, section);
             const on = val(row.showId) !== false;
             const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
-            const cols = extended ? gcBand : gc;
+            const hidePlot = row.hidePlotStyle !== false;
+            const cols = extended ? (hidePlot ? gcBandNoPlot : gcBand) : (hidePlot ? gcNoPlot : gc);
             const rowLabel = section && section.zeroLevelHeader ? "Zero" : "Value";
             return (
-              <div key={row.valueId} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
+              <div key={row.valueId} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
@@ -23370,7 +23380,7 @@ const TalariaV8bLive = () => {
                 {stSel(row.styleId, !on)}
                 {extended ? numW(row.widthId, !on) : numW(row.valueId, !on)}
                 {extended ? numW(row.valueId, !on) : null}
-                {psSel(row.styleId, !on)}
+                {!hidePlot ? psSel(row.styleId, !on) : null}
               </div>
             );
           };
