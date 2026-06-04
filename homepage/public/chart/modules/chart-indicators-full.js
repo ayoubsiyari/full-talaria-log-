@@ -12275,6 +12275,75 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (!bar || !slot || !Number.isFinite(slot.top)) return;
             bar.style.top = (slot.top + 2) + 'px';
         });
+        const m = this.margin || { l: 60, r: 60 };
+        if (typeof this._syncSeparatePanelDragZones === 'function') {
+            this._syncSeparatePanelDragZones(overlay, panelSlots, m);
+        }
+    };
+
+    /** Forward DOM pointer/mouse events to the canvas so chart pan handlers run. */
+    Chart.prototype._forwardPointerEventToCanvas = function(e) {
+        const canvas = this.ctx && this.ctx.canvas;
+        if (!canvas || !e || typeof e.clientX !== 'number' || typeof e.clientY !== 'number') return;
+        const type = e.type || 'mousedown';
+        canvas.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            screenX: e.screenX,
+            screenY: e.screenY,
+            button: e.button,
+            buttons: e.buttons,
+            ctrlKey: !!e.ctrlKey,
+            shiftKey: !!e.shiftKey,
+            altKey: !!e.altKey,
+            metaKey: !!e.metaKey
+        }));
+    };
+
+    /** Transparent hit layers over each indicator plot band — legend sits above; drags reach the chart. */
+    Chart.prototype._syncSeparatePanelDragZones = function(overlay, panelSlots, m) {
+        if (!overlay || !Array.isArray(panelSlots) || panelSlots.length === 0) return;
+        const self = this;
+        const plotWidth = Math.max(1, (this.w || 0) - m.l - m.r);
+        panelSlots.forEach(function(slot, idx) {
+            if (!slot || !Number.isFinite(slot.top) || !Number.isFinite(slot.height)) return;
+            let zone = overlay.querySelector('[data-talaria-sp-drag-zone="' + idx + '"]');
+            if (!zone) {
+                zone = document.createElement('div');
+                zone.setAttribute('data-talaria-sp-drag-zone', String(idx));
+                const onPanStart = function(ev) {
+                    if (ev.button !== 0) return;
+                    if (self.tool) return;
+                    if (ev.target && ev.target.closest && ev.target.closest('.talaria-ind-actions')) return;
+                    ev.preventDefault();
+                    if (typeof self._forwardPointerEventToCanvas === 'function') {
+                        self._forwardPointerEventToCanvas(ev);
+                    }
+                };
+                zone.addEventListener('mousedown', onPanStart);
+                zone.addEventListener('pointerdown', onPanStart);
+                overlay.insertBefore(zone, overlay.firstChild);
+            }
+            zone.style.cssText = [
+                'position:absolute',
+                'left:' + m.l + 'px',
+                'top:' + slot.top + 'px',
+                'width:' + plotWidth + 'px',
+                'height:' + slot.height + 'px',
+                'z-index:1',
+                'pointer-events:auto',
+                'cursor:move',
+                'background:transparent',
+                'touch-action:none'
+            ].join(';');
+        });
+        overlay.querySelectorAll('[data-talaria-sp-drag-zone]').forEach(function(z) {
+            const idx = Number(z.getAttribute('data-talaria-sp-drag-zone'));
+            if (!Number.isFinite(idx) || idx >= panelSlots.length) z.remove();
+        });
     };
 
     /** Move existing separate-panel legend rows during height resize (no DOM rebuild). */
@@ -12510,7 +12579,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 'justify-content:flex-start',
                 'min-width:0',
                 'z-index:10',
-                'pointer-events:auto',
+                'pointer-events:none',
                 'user-select:none',
                 'font-family:Roboto,sans-serif'
             ].join(';') + ';margin:0;background:transparent;border:none;border-radius:0;padding:0;';
@@ -12530,7 +12599,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
             const actions = document.createElement('span');
             actions.className = 'talaria-ind-actions';
-            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto;padding:0;background:transparent;border:none;box-shadow:none;';
+            actions.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:4px;flex:0 0 auto;padding:0;background:transparent;border:none;box-shadow:none;pointer-events:auto;';
             const baseActionStyle = getTalariaActionBtnStyle();
 
             const eyeBtn = document.createElement('span');
@@ -12596,6 +12665,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             overlay.appendChild(bar);
 
         });
+        this._syncSeparatePanelDragZones(overlay, panelSlots, m);
         this._syncSeparatePanelAxisTags(overlay, indicators, panelSlots);
     };
 

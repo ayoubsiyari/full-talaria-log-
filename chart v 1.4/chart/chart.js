@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b221';
+const CHART_ENGINE_BUILD = '20260602b222';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -16430,6 +16430,26 @@ class Chart {
         return !!(this.drag && this.drag.active && this.drag.type === 'pan');
     }
 
+    _releasePanPointerCapture() {
+        if (this._panPointerCaptureId == null || !this.canvas) return;
+        try {
+            if (typeof this.canvas.releasePointerCapture === 'function') {
+                this.canvas.releasePointerCapture(this._panPointerCaptureId);
+            }
+        } catch (_e) {}
+        this._panPointerCaptureId = null;
+    }
+
+    _tryCapturePanPointer(e) {
+        this._releasePanPointerCapture();
+        if (!this.canvas || !e || typeof e.pointerId !== 'number') return;
+        if (typeof this.canvas.setPointerCapture !== 'function') return;
+        try {
+            this.canvas.setPointerCapture(e.pointerId);
+            this._panPointerCaptureId = e.pointerId;
+        } catch (_e) {}
+    }
+
     /**
      * Cheap bounds clamp while dragging — no history fetch, no elastic resistance.
      * Keeps pan feeling 1:1 with the mouse (TradingView-style).
@@ -21270,6 +21290,7 @@ class Chart {
             } else if (mode === 'chart' || mode === 'separatePanelPlot') {
                 this.drag.type = 'pan';
                 this.drag.separatePanelSlot = mode === 'separatePanelPlot' ? this.cursor.separatePanelSlot : null;
+                this._tryCapturePanPointer(e);
                 this._snapshotPanDrawingsLayer();
                 // DON'T change autoScale here - preserve lock state from double-click
                 // Update cursor to move during pan (unless in dot mode)
@@ -21610,7 +21631,8 @@ class Chart {
                 }
             }
             // Handle pan end — stop immediately on release (no post-release slide)
-            else if (dragType === 'pan' && wasDragging) {
+            else             if (dragType === 'pan' && wasDragging) {
+                this._releasePanPointerCapture();
                 this._flushChartPanFrame();
                 this._cancelChartPanFrame();
                 const panClickThresholdPx = 5;
@@ -21838,13 +21860,23 @@ class Chart {
                 this.scheduleRender();
             }
 
-            // Continue axis/pan drags even when mouse is outside the canvas
+            // Continue axis/pan drags when pointer leaves canvas or moves over separate-panel DOM layers.
             if (this.drag && this.drag.active && this.canvas) {
                 const rect = this._pointerLayoutRect();
                 const [mx, my] = this._eventCanvasLocalXY(e);
                 const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;
+                const onCanvas = e.target === this.canvas;
+                const overSeparatePanelLayer = !!(e.target && e.target.closest && (
+                    e.target.closest('#separatePanelsOverlay') ||
+                    e.target.closest('[data-talaria-sp-drag-zone]')
+                ));
+                const continueOverlayPan = this.drag.type === 'pan' && !onCanvas && overSeparatePanelLayer;
 
-                if (isOutside) {
+                if (isOutside || continueOverlayPan) {
+                    if (continueOverlayPan) {
+                        this.mouseX = mx;
+                        this.mouseY = my;
+                    }
                     const zd = this._v9LayoutZoom();
                     const dx = (e.clientX - this.drag.lastX) / zd;
                     const dy = (e.clientY - this.drag.lastY) / zd;
@@ -21882,26 +21914,32 @@ class Chart {
                         this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
-                        const effectiveDx = this.timeScale.locked ? 0 : dx;
-                        const effectiveDy = dy;
-                        this.offsetX += effectiveDx;
-                        const panelSlot = this.drag.separatePanelSlot;
-                        if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
-                            this.separatePanelAxisDragStep(panelSlot, effectiveDy, my);
-                        } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
-                            this.autoScale = false;
-                            this.priceScale.autoScale = false;
-                            const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-                            const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
-                            this.priceOffset += effectiveDy * pricePerPixel;
+                        if (continueOverlayPan) {
+                            this._scheduleChartPanFrame(e.clientX, e.clientY);
+                        } else {
+                            const effectiveDx = this.timeScale.locked ? 0 : dx;
+                            const effectiveDy = dy;
+                            this.offsetX += effectiveDx;
+                            const panelSlot = this.drag.separatePanelSlot;
+                            if (panelSlot && typeof this.separatePanelAxisDragStep === 'function' && effectiveDy !== 0) {
+                                this.separatePanelAxisDragStep(panelSlot, effectiveDy, my);
+                            } else if (this.yScale && !this.priceScale.locked && effectiveDy !== 0) {
+                                this.autoScale = false;
+                                this.priceScale.autoScale = false;
+                                const priceRange = this.yScale.domain()[1] - this.yScale.domain()[0];
+                                const pricePerPixel = priceRange / (this.h - this.margin.t - this.margin.b);
+                                this.priceOffset += effectiveDy * pricePerPixel;
+                            }
+                            this.constrainOffset();
+                            this.scheduleRender();
+                            this.dispatchScrollSync();
                         }
-                        this.constrainOffset();
-                        this.scheduleRender();
-                        this.dispatchScrollSync();
                     }
 
-                    this.drag.lastX = e.clientX;
-                    this.drag.lastY = e.clientY;
+                    if (!continueOverlayPan || this.drag.type !== 'pan') {
+                        this.drag.lastX = e.clientX;
+                        this.drag.lastY = e.clientY;
+                    }
                 }
             }
 
