@@ -452,7 +452,12 @@ class DrawingToolsManager {
                 }
             });
 
-            if (this._isLiveDrawingInteraction() && this.chart && this.chart.scheduleRender) {
+            // Full chart.render → redrawAll destroys SVG groups and breaks d3 handle drags mid-edit.
+            if (this._isLiveDrawingInteraction()
+                && !this._isLiveHandleEditing()
+                && !this._isDrawingGeometryMoveActive()
+                && this.chart
+                && this.chart.scheduleRender) {
                 this.chart.scheduleRender();
             }
         });
@@ -3072,6 +3077,7 @@ class DrawingToolsManager {
                             : (typeof drawing.onPointHandleDrag === 'function');
 
                         if (role && hasCustomOverride) {
+                            this._customHandlePointerSource = 'document';
                             this.startCustomHandleDrag(drawing, role, { sourceEvent: event });
                             this._directResizeMoveHandler = (e) => {
                                 if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
@@ -3082,6 +3088,7 @@ class DrawingToolsManager {
                                 this.endCustomHandleDrag({ sourceEvent: e });
                             };
                         } else if (!isNaN(idx) && hasCustomOverride && !hasPointOverride) {
+                            this._customHandlePointerSource = 'document';
                             this.startCustomHandleDrag(drawing, idx, { sourceEvent: event }, idx);
                             this._directResizeMoveHandler = (e) => {
                                 if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
@@ -3092,6 +3099,7 @@ class DrawingToolsManager {
                                 this.endCustomHandleDrag({ sourceEvent: e });
                             };
                         } else {
+                            this._resizePointerSource = 'document';
                             this.startHandleDrag(drawing, idx, { sourceEvent: event });
                             this._directResizeMoveHandler = (e) => {
                                 if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
@@ -3483,6 +3491,26 @@ class DrawingToolsManager {
         }
         drawing.points[pointIndex] = point;
         if (drawing.meta) drawing.meta.updatedAt = Date.now();
+        this._refreshLiveTimestampForPoint(drawing, pointIndex);
+    }
+
+    /** Keep timestamp anchors aligned during live drag so a stray sync does not jump back. */
+    _refreshLiveTimestampForPoint(drawing, pointIndex) {
+        if (!drawing || pointIndex == null || isNaN(pointIndex)) return;
+        if (!Array.isArray(drawing.timestampPoints) || !drawing.timestampPoints[pointIndex]) return;
+        if (!this.chart || !Array.isArray(this.chart.data) || this.chart.data.length === 0) return;
+        const p = drawing.points && drawing.points[pointIndex];
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+        if (typeof CoordinateUtils === 'undefined' || typeof CoordinateUtils.indexToTimestamp !== 'function') {
+            return;
+        }
+        try {
+            const timeframe = this.chart.currentTimeframe || null;
+            const ts = CoordinateUtils.indexToTimestamp(p.x, this.chart.data, timeframe);
+            if (ts == null) return;
+            drawing.timestampPoints[pointIndex].timestamp = ts;
+            drawing.timestampPoints[pointIndex].price = p.y;
+        } catch (_) { /* ignore */ }
     }
 
     /** Shift + move: lock translation to 0°/45°/90° (TradingView-style). */
@@ -3646,16 +3674,65 @@ class DrawingToolsManager {
             target: last.target,
             currentTarget: last.currentTarget
         };
-        if (this._runLiveHandleDragFromPointerEvent(fakeEvent)) return;
+        if (this.isResizing && this.resizingDrawing) {
+            this._applyLiveResizeFromPointerEvent(fakeEvent);
+            return;
+        }
+        if (this._runLiveHandleDragFromPointerEvent(fakeEvent, { force: true })) return;
         this.handleMouseMove(fakeEvent);
+    }
+
+    /**
+     * Point-handle resize (trendline, ray, …) from pointer or Shift/Ctrl refresh.
+     */
+    _applyLiveResizeFromPointerEvent(event) {
+        if (!this.isResizing || !this.resizingDrawing) return;
+        const src = event && (event.sourceEvent || event);
+        if (src) this._lastMouseEvent = src;
+        if (event && event.buttons !== undefined && event.buttons === 0) {
+            this.endHandleDrag(this.resizingDrawing);
+            return;
+        }
+        const resizeDrawing = this.resizingDrawing;
+        let currentPoint = this.getDataPoint(event, resizeDrawing.type);
+        let handledByDrawing = false;
+        if (typeof resizeDrawing.onPointHandleDrag === 'function') {
+            currentPoint = this._applyShiftAngleConstraintForResize(
+                resizeDrawing,
+                this.resizingPointIndex,
+                currentPoint,
+                event.shiftKey
+            );
+            handledByDrawing = resizeDrawing.onPointHandleDrag(this.resizingPointIndex, {
+                point: currentPoint,
+                scales: {
+                    xScale: this.chart.xScale,
+                    yScale: this.chart.yScale,
+                    chart: this.chart
+                }
+            }) === true;
+        }
+        if (!handledByDrawing) {
+            this._assignResizePoint(
+                resizeDrawing,
+                this.resizingPointIndex,
+                currentPoint,
+                event.shiftKey,
+                event
+            );
+        }
+        this._syncHorizontalAnchorToolPointY(resizeDrawing);
+        this.scheduleRenderDrawing(resizeDrawing);
+        this._broadcastLiveEditUpdate(resizeDrawing);
     }
 
     /**
      * Apply custom-handle resize from a pointer event (svg mousemove, Shift/Ctrl refresh, document drag).
      * @returns {boolean} true when the event was consumed
      */
-    _runLiveHandleDragFromPointerEvent(event) {
+    _runLiveHandleDragFromPointerEvent(event, options = {}) {
         if (!this.isCustomHandleDrag || !this.customHandleDrawing) return false;
+        if (!options.force && this._customHandlePointerSource === 'd3') return false;
         const src = event && (event.sourceEvent || event);
         if (src) this._lastMouseEvent = src;
         if (event && event.buttons !== undefined && event.buttons === 0) {
@@ -3757,45 +3834,16 @@ class DrawingToolsManager {
             return;
         }
         
-        // Handle resizing
+        // Handle resizing — d3 owns pointer moves; document listeners + modifier refresh use _applyLiveResizeFromPointerEvent
         if (this.isResizing && this.resizingDrawing) {
             if (event.buttons !== undefined && event.buttons === 0) {
                 this.endHandleDrag(this.resizingDrawing);
                 return;
             }
-            const resizeDrawing = this.resizingDrawing;
-            let currentPoint = this.getDataPoint(event, resizeDrawing.type);
-            let handledByDrawing = false;
-            if (typeof resizeDrawing.onPointHandleDrag === 'function') {
-                currentPoint = this._applyShiftAngleConstraintForResize(
-                    resizeDrawing,
-                    this.resizingPointIndex,
-                    currentPoint,
-                    event.shiftKey
-                );
-                handledByDrawing = resizeDrawing.onPointHandleDrag(this.resizingPointIndex, {
-                    point: currentPoint,
-                    scales: {
-                        xScale: this.chart.xScale,
-                        yScale: this.chart.yScale,
-                        chart: this.chart
-                    }
-                }) === true;
+            if (this._resizePointerSource !== 'document') {
+                return;
             }
-
-            if (!handledByDrawing) {
-                this._assignResizePoint(
-                    resizeDrawing,
-                    this.resizingPointIndex,
-                    currentPoint,
-                    event.shiftKey,
-                    event
-                );
-            }
-            this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
-
-            this.scheduleRenderDrawing(this.resizingDrawing);
-            this._broadcastLiveEditUpdate(this.resizingDrawing);
+            this._applyLiveResizeFromPointerEvent(event);
             return;
         }
         
@@ -5468,7 +5516,7 @@ class DrawingToolsManager {
             }
         }
 
-        if (!opts.skipTimestampSync) {
+        if (!opts.skipTimestampSync && !this._isDrawingLiveEditing(drawing)) {
             this._syncDrawingPointsFromTimestamps(drawing);
         }
 
@@ -7168,13 +7216,16 @@ class DrawingToolsManager {
 
                     if (handleRole && hasCustomOverride) {
                         self.resizingHandleRole = handleRole || null;
+                        self._customHandlePointerSource = 'd3';
                         self.startCustomHandleDrag(drawing, handleRole, event, index);
                     } else if (!isNaN(index) && hasCustomOverride && !hasPointOverride) {
                         // Tools that rely on custom drag math but expose point-index handles.
                         self.resizingHandleRole = handleRole || null;
+                        self._customHandlePointerSource = 'd3';
                         self.startCustomHandleDrag(drawing, index, event, index);
                     } else {
                         self.resizingHandleRole = handleRole || null;
+                        self._resizePointerSource = 'd3';
                         self.startHandleDrag(drawing, index, event);
                     }
                     const rrPriceHandle = (drawing.type === 'long-position' || drawing.type === 'short-position')
@@ -7359,6 +7410,7 @@ class DrawingToolsManager {
         this.resizingPointIndex = null;
         this.resizingHandleRole = null;
         this.resizeBeforeState = null;
+        this._resizePointerSource = null;
         this._clearShiftResizeAnchorPoints();
         this._endDrawingLiveInteraction();
 
@@ -7436,6 +7488,9 @@ class DrawingToolsManager {
         
         if (typeof drawing.handleCustomHandleDrag === 'function') {
             drawing.handleCustomHandleDrag(handleRole, context);
+            if (Array.isArray(drawing.points)) {
+                drawing.points.forEach((_, i) => this._refreshLiveTimestampForPoint(drawing, i));
+            }
         }
         // Bar snap runs once on endCustomHandleDrag — not each frame (avoids "stuck" edit).
 
@@ -7461,13 +7516,13 @@ class DrawingToolsManager {
 
         this._snapDrawingPointsX(drawing);
 
-        if (typeof drawing.recalculateTimestamps === 'function') {
-            try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
-        }
-
         // Record modification for undo/redo
         if (this.history && this.customHandleBeforeState) {
             this.history.recordModify(drawing, this.customHandleBeforeState);
+        }
+
+        if (typeof drawing.recalculateTimestamps === 'function') {
+            try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
         }
 
         this.isCustomHandleDrag = false;
@@ -7475,6 +7530,7 @@ class DrawingToolsManager {
         this.customHandleRole = null;
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
+        this._customHandlePointerSource = null;
         this._clearShiftResizeAnchorPoints();
         this._endDrawingLiveInteraction();
 
@@ -8541,6 +8597,7 @@ class DrawingToolsManager {
                 this.resizingDrawing = null;
                 this.resizingPointIndex = null;
                 this.resizeBeforeState = null;
+                this._resizePointerSource = null;
                 this._clearShiftResizeAnchorPoints();
             }
             if (this.customHandleDrawing === drawing || this.customHandleDraggingDrawing === drawing) {
@@ -8789,6 +8846,13 @@ class DrawingToolsManager {
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Scales not ready for drawing');
             return;
+        }
+
+        // Never tear down SVG groups mid-handle-drag (causes snap-back / stuck handles).
+        if (!options.panFast && !options.forceFull) {
+            if (this._isLiveHandleEditing() || this._isDrawingGeometryMoveActive()) {
+                return;
+            }
         }
 
         // Update clip path dimensions in case chart was resized
