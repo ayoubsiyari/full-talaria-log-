@@ -565,11 +565,14 @@ function massIndexInputParams() {
     ];
 }
 
-/** Mass Index Style — line color (opacity in color picker). */
+/** Mass Index Style — line color, style, thickness (opacity in color picker). */
 function massIndexStyleParams() {
     return [
-        { id: 'color', label: 'Color', type: 'color', default: '#00bcd4', tab: 'style' },
-        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+        { id: 'showLine', label: 'Mass Index', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Mass Index color', type: 'color', default: '#00bcd4', tab: 'style' },
+        { id: 'lineOpacity', label: 'Mass Index opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'Mass Index style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Mass Index thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
 }
 
@@ -4634,7 +4637,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         return {
             sections: [{
                 title: 'Mass Index',
-                rows: [v9BandStyleRow('Mass Index', 'color', 'lineOpacity', null, null, null)]
+                bandStyleHeader: true,
+                rows: [v9BandStyleRow('Mass Index', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
             }],
             footers: footers
         };
