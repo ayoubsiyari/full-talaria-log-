@@ -1025,6 +1025,18 @@ function v9TlStylePatchForRangeType(prev, nextRangeType) {
   };
 }
 
+/** Toggle one Show Info metric; uncheck master `showInfo` when nothing remains selected. */
+function v9PatchTlShowInfoTypesOnToggle(prev, metric) {
+  const arr = prev.showInfoTypes.includes(metric)
+    ? prev.showInfoTypes.filter((x) => x !== metric)
+    : [...prev.showInfoTypes, metric];
+  return {
+    ...prev,
+    showInfoTypes: arr,
+    showInfo: arr.length > 0 ? !!prev.showInfo : false,
+  };
+}
+
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
   const show = !!tlStyle?.showInfo && types.length > 0;
@@ -17093,12 +17105,7 @@ const TalariaV8bLive = () => {
 
   /** Range Tool stats metric toggle — immediate chart sync. */
   const applyTlShowInfoTypeToggle = useCallback((metric) => {
-    flushSync(() => setTlStyle((s) => {
-      const arr = s.showInfoTypes.includes(metric)
-        ? s.showInfoTypes.filter((x) => x !== metric)
-        : [...s.showInfoTypes, metric];
-      return { ...s, showInfoTypes: arr };
-    }));
+    flushSync(() => setTlStyle((s) => v9PatchTlShowInfoTypesOnToggle(s, metric)));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
@@ -20171,7 +20178,7 @@ const TalariaV8bLive = () => {
                       {["Price range","Percent change","Change in pips","Bars range","Date/time range","Distance","Angle"].map(v=>{
                         const isA=tlStyle.showInfoTypes.includes(v); const isH=hov===`tli-${v}`;
                         return (
-                          <div key={v} onClick={()=>{setTlStyle(s=>{const arr=s.showInfoTypes.includes(v)?s.showInfoTypes.filter(x=>x!==v):[...s.showInfoTypes,v];return {...s,showInfoTypes:arr};});}}
+                          <div key={v} {...tlStyleDropPick(() => applyTlShowInfoTypeToggle(v))}
                             onMouseEnter={()=>setHov(`tli-${v}`)} onMouseLeave={()=>setHov(null)}
                             style={{ padding:"6px 10px", cursor:"default", display:"flex", alignItems:"center", gap:8, position:"relative",
                                      background:isH?c.hv2:"transparent", transition:"background 0.1s" }}>

@@ -1639,6 +1639,7 @@
         const legacyW = params.lineWidth != null ? params.lineWidth : 1;
         const legacyS = params.lineStyle || 'Columns';
         const zeroS = params.zeroLineStyle || 'Line';
+        indicator.params.period = params.period != null ? Math.max(2, Number(params.period) | 0) : (indicator.params.period || 13);
         indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
         indicator.style.showBBPower = params.showBBPower !== false;
         indicator.style.bullColor = params.bullColor || '#26a69a';
@@ -5758,7 +5759,14 @@
             applyRviStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'elderray') {
-            applyElderRayStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.period !== undefined;
+            if (recalc) indicator.params.period = Math.max(2, Number(merged.period) | 0) || 13;
+            applyElderRayStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'Elder Ray(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateElderRay(this.data, indicator.params.period);
+            }
         }
         if (indicator.type === 'massindex') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
@@ -8020,7 +8028,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         // Draw the indicator plot (TradingView-style line / step / area / columns / …)
         this.drawLineIndicator(values, color, indicator.style.lineWidth || 2, visibleStart, visibleEnd, indicator.style.lineStyle, {
             yScale: scaleY,
-            baselineY: indBottom - 2
+            baselineY: indBottom - 2,
+            panelTop: indTop,
+            panelBottom: indBottom
         });
 
         // Reference lines for oscillators
@@ -8739,7 +8749,14 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         : { m: m, plotHeight: this.h - m.t - m.b };
     const plotYMin = plotLayout.m.t;
     const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
-    const inPlotY = function(y) { return Number.isFinite(y) && y >= plotYMin && y <= plotYMax; };
+    const panelTopOpt = options.panelTop;
+    const panelBottomOpt = options.panelBottom;
+    const inPlotY = function(y) {
+        if (Number.isFinite(panelTopOpt) && Number.isFinite(panelBottomOpt) && panelBottomOpt > panelTopOpt) {
+            return Number.isFinite(y) && y >= panelTopOpt && y <= panelBottomOpt;
+        }
+        return Number.isFinite(y) && y >= plotYMin && y <= plotYMax;
+    };
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -10565,7 +10582,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             const bearColor = resolve(style.bearColor || '#ef5350', style.bearOpacity);
             const bullW = style.bullLineWidth != null ? style.bullLineWidth : 1;
             const bearW = style.bearLineWidth != null ? style.bearLineWidth : 1;
-            const baseOpts = { yScale: scaleY, baselineY: baselineY };
+            const baseOpts = {
+                yScale: scaleY,
+                baselineY: baselineY,
+                panelTop: panelTop,
+                panelBottom: panelBottom
+            };
             this.drawLineIndicator(a, bullColor, bullW, visibleStart, visibleEnd, style.bullLineStyle || 'Columns', Object.assign({}, baseOpts, {
                 dashStyle: style.bullLineDashStyle || 'Solid'
             }));
