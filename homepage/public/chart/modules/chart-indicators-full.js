@@ -1605,27 +1605,143 @@
         indicator.separatePanel = true;
     }
     
-    // VWAP (Volume Weighted Average Price)
-    function calculateVWAP(data) {
-        const result = [];
-        let cumulativeTPV = 0; // Typical Price * Volume
-        let cumulativeVolume = 0;
-        
-        for (let i = 0; i < data.length; i++) {
-            const typicalPrice = (data[i].h + data[i].l + data[i].c) / 3;
-            const tpv = typicalPrice * data[i].v;
-            
-            cumulativeTPV += tpv;
-            cumulativeVolume += data[i].v;
-            
-            if (cumulativeVolume === 0) {
-                result.push(null);
-            } else {
-                result.push(cumulativeTPV / cumulativeVolume);
+    function vwapAnchorPeriodKey(bar, anchorPeriod) {
+        const t = bar && bar.t != null ? Number(bar.t) : NaN;
+        if (!Number.isFinite(t)) return '0';
+        const d = new Date(t);
+        const y = d.getUTCFullYear();
+        const mo = d.getUTCMonth();
+        const day = d.getUTCDate();
+        const ap = String(anchorPeriod || 'session').toLowerCase();
+        if (ap === 'week') {
+            const tmp = new Date(Date.UTC(y, mo, day));
+            const dayNum = tmp.getUTCDay() || 7;
+            tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+            return tmp.getUTCFullYear() + '-W' + weekNo;
+        }
+        if (ap === 'month') return y + '-' + mo;
+        if (ap === 'quarter') return y + '-Q' + (Math.floor(mo / 3) + 1);
+        if (ap === 'year') return String(y);
+        if (ap === 'decade') return String(Math.floor(y / 10) * 10);
+        if (ap === 'century') return String(Math.floor(y / 100) * 100);
+        return y + '-' + mo + '-' + day;
+    }
+
+    /** VWAP with anchored periods, optional std-dev / % bands, and plot offset. */
+    function calculateVWAPIndicatorData(data, params) {
+        params = params || {};
+        const source = params.source || 'hlc3';
+        const offset = Number(params.offset) | 0;
+        const bandsMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
+        const mults = [
+            { on: params.band1Enabled !== false, v: Number(params.band1Mult) || 1 },
+            { on: params.band2Enabled === true, v: Number(params.band2Mult) || 2 },
+            { on: params.band3Enabled === true, v: Number(params.band3Mult) || 3 }
+        ];
+        const n = data.length;
+        const vwap = data.map(function() { return null; });
+        const upper1 = data.map(function() { return null; });
+        const lower1 = data.map(function() { return null; });
+        const upper2 = data.map(function() { return null; });
+        const lower2 = data.map(function() { return null; });
+        const upper3 = data.map(function() { return null; });
+        const lower3 = data.map(function() { return null; });
+        let cumPV = 0;
+        let cumP2V = 0;
+        let cumVol = 0;
+        let prevKey = null;
+        for (let i = 0; i < n; i++) {
+            const key = vwapAnchorPeriodKey(data[i], params.anchorPeriod);
+            if (prevKey !== null && key !== prevKey) {
+                cumPV = 0;
+                cumP2V = 0;
+                cumVol = 0;
+            }
+            prevKey = key;
+            const src = resolveOhlcSourceValue(data[i], source);
+            const volRaw = Number(data[i].v);
+            const vol = Number.isFinite(volRaw) ? Math.max(volRaw, 0) : 0;
+            if (Number.isFinite(src) && vol > 0) {
+                cumPV += src * vol;
+                cumP2V += src * src * vol;
+                cumVol += vol;
+            }
+            if (cumVol > 0) {
+                const v = cumPV / cumVol;
+                const variance = Math.max(cumP2V / cumVol - v * v, 0);
+                const stdev = Math.sqrt(variance);
+                vwap[i] = v;
+                const bands = [
+                    { u: upper1, l: lower1, on: mults[0].on, m: mults[0].v },
+                    { u: upper2, l: lower2, on: mults[1].on, m: mults[1].v },
+                    { u: upper3, l: lower3, on: mults[2].on, m: mults[2].v }
+                ];
+                for (let bi = 0; bi < bands.length; bi++) {
+                    if (!bands[bi].on) continue;
+                    const mult = bands[bi].m;
+                    if (bandsMode === 'percentage') {
+                        bands[bi].u[i] = v * (1 + mult / 100);
+                        bands[bi].l[i] = v * (1 - mult / 100);
+                    } else {
+                        bands[bi].u[i] = v + mult * stdev;
+                        bands[bi].l[i] = v - mult * stdev;
+                    }
+                }
             }
         }
-        
-        return result;
+        return {
+            vwap: shiftLineSeries(vwap, offset),
+            upper1: shiftLineSeries(upper1, offset),
+            lower1: shiftLineSeries(lower1, offset),
+            upper2: shiftLineSeries(upper2, offset),
+            lower2: shiftLineSeries(lower2, offset),
+            upper3: shiftLineSeries(upper3, offset),
+            lower3: shiftLineSeries(lower3, offset)
+        };
+    }
+
+    function calculateVWAP(data, params) {
+        return calculateVWAPIndicatorData(data, params || { source: 'hlc3', anchorPeriod: 'session' }).vwap;
+    }
+
+    function applyVwapStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.source = params.source || 'hlc3';
+        indicator.params.offset = params.offset != null ? Number(params.offset) : 0;
+        indicator.params.anchorPeriod = params.anchorPeriod || 'session';
+        indicator.params.hideOn1DOrAbove = params.hideOn1DOrAbove === true;
+        indicator.params.bandsCalcMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
+        indicator.params.band1Enabled = params.band1Enabled !== false;
+        indicator.params.band1Mult = params.band1Mult != null ? Number(params.band1Mult) : 1;
+        indicator.params.band2Enabled = params.band2Enabled === true;
+        indicator.params.band2Mult = params.band2Mult != null ? Number(params.band2Mult) : 2;
+        indicator.params.band3Enabled = params.band3Enabled === true;
+        indicator.params.band3Mult = params.band3Mult != null ? Number(params.band3Mult) : 3;
+        indicator.style.showVwap = params.showVwap !== false;
+        indicator.style.color = params.color || '#2962ff';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.showUpper1 = params.showUpper1 !== false;
+        indicator.style.upperColor = params.upperColor || params.color || '#2962ff';
+        indicator.style.upperOpacity = params.upperOpacity != null ? Number(params.upperOpacity) : 100;
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : 1;
+        indicator.style.showLower1 = params.showLower1 !== false;
+        indicator.style.lowerColor = params.lowerColor || params.color || '#2962ff';
+        indicator.style.lowerOpacity = params.lowerOpacity != null ? Number(params.lowerOpacity) : 100;
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : 1;
+        indicator.style.showFill1 = params.showFill1 === true;
+        indicator.style.fillColor = params.fillColor || 'rgba(41,98,255,0.12)';
+        indicator.style.fillOpacity = params.fillOpacity != null ? Number(params.fillOpacity) : 12;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['upperLineStyle', 'upperLineDashStyle', legacyS],
+            ['lowerLineStyle', 'lowerLineDashStyle', legacyS]
+        ]);
+        indicator.overlay = true;
+        indicator.separatePanel = false;
     }
     
     // Stochastic Oscillator
@@ -4388,9 +4504,9 @@
                 break;
                 
             case 'vwap':
-                applyOverlayLineStyleFromParams(indicator, params, '#00bcd4');
+                applyVwapStyleFromParams(indicator, params);
                 indicator.name = 'VWAP';
-                this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
                 break;
                 
             case 'atr':
@@ -5486,6 +5602,17 @@
                 this.indicators.data[indicator.id] = calculateVortex(this.data, indicator.params.period);
             }
         }
+        if (indicator.type === 'vwap') {
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = ['source', 'offset', 'anchorPeriod', 'bandsCalcMode', 'band1Enabled', 'band1Mult',
+                'band2Enabled', 'band2Mult', 'band3Enabled', 'band3Mult'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            applyVwapStyleFromParams(indicator, merged);
+            if (recalc) {
+                this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
+            }
+        }
         if (indicator.type === 'trix') {
             applyTrixStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
@@ -5614,7 +5741,8 @@
                 this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source || 'close');
                 break;
             case 'vwap':
-                this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                applyVwapStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
                 break;
             case 'atr':
                 indicator.params.period = atrPeriodFromParams(indicator.params);
@@ -6041,7 +6169,7 @@
                     this.indicators.data[indicator.id] = calculateEnvelope(this.data, indicator.params.period, indicator.params.percent, indicator.params.source || 'close');
                     break;
                 case 'vwap':
-                    this.indicators.data[indicator.id] = calculateVWAP(this.data);
+                    this.indicators.data[indicator.id] = calculateVWAPIndicatorData(this.data, indicator.params);
                     break;
                 case 'atr':
                     indicator.params.period = atrPeriodFromParams(indicator.params);
@@ -6584,6 +6712,14 @@
         return parsed.value >= minV && parsed.value <= maxV;
     };
 
+    Chart.prototype._vwapVisibleOnTimeframe = function(indicator) {
+        if (!indicator || !indicator.params || indicator.params.hideOn1DOrAbove !== true) return true;
+        const parsed = this._parseChartTimeframeForVisibility(this.currentTimeframe);
+        if (!parsed) return true;
+        const u = parsed.unit;
+        return u !== 'd' && u !== 'w' && u !== 'M';
+    };
+
     Chart.prototype.drawIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
@@ -6617,12 +6753,15 @@
 
             if (!indicator.visible) continue;
             if (!this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
+            if (indicator.type === 'vwap' && !this._vwapVisibleOnTimeframe(indicator)) continue;
 
             const data = this.indicators.data[indicator.id];
             if (!data) continue;
 
             // Draw based on type
-            if (indicator.type === 'bb' || indicator.type === 'bollinger') {
+            if (indicator.type === 'vwap') {
+                this.drawVwapIndicator(data, indicator.style, startIndex, endIndex);
+            } else if (indicator.type === 'bb' || indicator.type === 'bollinger') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'envelope' || indicator.type === 'smaenvelope') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
@@ -8066,6 +8205,14 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         }
         if (indicator.type === 'supertrend' && Array.isArray(data.line)) return [data.line];
         if ((indicator.type === 'wma' || indicator.type === 'sma') && Array.isArray(data.line)) return [data.line];
+        if (indicator.type === 'vwap' && Array.isArray(data.vwap)) {
+            const st = indicator.style || {};
+            const out = [];
+            if (st.showVwap !== false) out.push(data.vwap);
+            if (st.showUpper1 !== false && Array.isArray(data.upper1)) out.push(data.upper1);
+            if (st.showLower1 !== false && Array.isArray(data.lower1)) out.push(data.lower1);
+            return out;
+        }
         if (Array.isArray(data.upper) || Array.isArray(data.middle) || Array.isArray(data.lower)) {
             const bands = [];
             if (Array.isArray(data.upper)) bands.push(data.upper);
@@ -8232,6 +8379,8 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
             if (!isSelectableOverlayLineIndicator(indicator)) continue;
             if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
                 && !this._indicatorVisibleForCurrentTimeframe(indicator)) continue;
+            if (indicator.type === 'vwap' && typeof this._vwapVisibleOnTimeframe === 'function'
+                && !this._vwapVisibleOnTimeframe(indicator)) continue;
 
             const data = this.indicators.data[indicator.id];
             const seriesList = getOverlayHitTestSeries(indicator, data);
@@ -8738,6 +8887,87 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
             bands.lower,
             lowerColor,
             style.lowerLineWidth != null ? style.lowerLineWidth : legacyW,
+            startIndex,
+            endIndex,
+            style.lowerLineStyle || legacyS,
+            { dashStyle: style.lowerLineDashStyle || 'Solid' }
+        );
+    }
+};
+
+/** VWAP overlay — main line, band #1 lines, optional fill between upper1/lower1. */
+Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex) {
+    if (!data || !Array.isArray(data.vwap)) return;
+    style = style || {};
+    const resolve = this._resolveIndicatorBandLineColor.bind(this);
+    const legacyW = style.lineWidth != null ? style.lineWidth : 2;
+    const legacyS = style.lineStyle || 'Line';
+
+    if (style.showFill1 === true && data.upper1 && data.lower1) {
+        const fillRgba = bollingerFillRgba({
+            showFill: true,
+            fillColor: style.fillColor,
+            fillOpacity: style.fillOpacity
+        });
+        if (fillRgba) {
+            const ctx = this.ctx;
+            const m = this.margin;
+            ctx.fillStyle = fillRgba;
+            ctx.beginPath();
+            let pathStarted = false;
+            for (let i = startIndex; i < endIndex; i++) {
+                if (data.upper1[i] == null) continue;
+                const x = this.dataIndexToPixel(i);
+                const y = this.yScale(data.upper1[i]);
+                if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+                if (!pathStarted) {
+                    ctx.moveTo(x, y);
+                    pathStarted = true;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            for (let i = Math.min(endIndex - 1, data.lower1.length - 1); i >= startIndex; i--) {
+                if (data.lower1[i] == null || !pathStarted) continue;
+                const x = this.dataIndexToPixel(i);
+                const y = this.yScale(data.lower1[i]);
+                if (x < m.l - 50 || x > this.w - m.r + 50) continue;
+                ctx.lineTo(x, y);
+            }
+            if (pathStarted) {
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+    }
+
+    if (style.showVwap !== false) {
+        this.drawLineIndicator(
+            data.vwap,
+            resolve(style.color, style.lineOpacity),
+            legacyW,
+            startIndex,
+            endIndex,
+            legacyS,
+            { dashStyle: style.lineDashStyle || 'Solid' }
+        );
+    }
+    if (style.showUpper1 !== false && data.upper1) {
+        this.drawLineIndicator(
+            data.upper1,
+            resolve(style.upperColor, style.upperOpacity),
+            style.upperLineWidth != null ? style.upperLineWidth : 1,
+            startIndex,
+            endIndex,
+            style.upperLineStyle || legacyS,
+            { dashStyle: style.upperLineDashStyle || 'Solid' }
+        );
+    }
+    if (style.showLower1 !== false && data.lower1) {
+        this.drawLineIndicator(
+            data.lower1,
+            resolve(style.lowerColor, style.lowerOpacity),
+            style.lowerLineWidth != null ? style.lowerLineWidth : 1,
             startIndex,
             endIndex,
             style.lowerLineStyle || legacyS,

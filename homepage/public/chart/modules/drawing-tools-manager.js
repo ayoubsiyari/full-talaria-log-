@@ -3390,6 +3390,26 @@ class DrawingToolsManager {
         return this.constrainToAngle(anchor, point);
     }
 
+    /** Skip integer bar snap while Shift+angle editing so the handle can move freely along the ray. */
+    _deferBarIndexSnapDuringShiftAngle(drawing, shiftKey) {
+        return !!(shiftKey && drawing && this.angleSnapTools.includes(drawing.type));
+    }
+
+    /** Assign one resize-handle point (angle snap + optional bar snap). */
+    _assignResizePoint(drawing, pointIndex, point, shiftKey) {
+        if (!drawing || !Array.isArray(drawing.points) || !point) return;
+        if (pointIndex === undefined || pointIndex === null || isNaN(pointIndex)) return;
+
+        point = this._applyShiftAngleConstraintForResize(drawing, pointIndex, point, shiftKey);
+        if (this._deferBarIndexSnapDuringShiftAngle(drawing, shiftKey)) {
+            point = this.clampPointToCandleRange(point, drawing.type);
+        } else {
+            point = this._snapPointXForDrawingType(point, drawing.type);
+        }
+        drawing.points[pointIndex] = point;
+        if (drawing.meta) drawing.meta.updatedAt = Date.now();
+    }
+
     /** Shift + move: lock translation to 0°/45°/90° (TradingView-style). */
     _constrainPixelDeltaToSnapAngles(pixelDx, pixelDy) {
         const dx = Number(pixelDx) || 0;
@@ -3642,21 +3662,20 @@ class DrawingToolsManager {
         // Handle resizing
         if (this.isResizing && this.resizingDrawing) {
             if (event.buttons !== undefined && event.buttons === 0) {
-                this.isResizing = false;
-                this.resizingDrawing = null;
-                this.resizingPointIndex = null;
+                this.endHandleDrag(this.resizingDrawing);
                 return;
             }
-            let currentPoint = this.getDataPoint(event, this.resizingDrawing ? this.resizingDrawing.type : null);
-            currentPoint = this._applyShiftAngleConstraintForResize(
-                this.resizingDrawing,
-                this.resizingPointIndex,
-                currentPoint,
-                event.shiftKey
-            );
+            const resizeDrawing = this.resizingDrawing;
+            let currentPoint = this.getDataPoint(event, resizeDrawing.type);
             let handledByDrawing = false;
-            if (typeof this.resizingDrawing.onPointHandleDrag === 'function') {
-                handledByDrawing = this.resizingDrawing.onPointHandleDrag(this.resizingPointIndex, {
+            if (typeof resizeDrawing.onPointHandleDrag === 'function') {
+                currentPoint = this._applyShiftAngleConstraintForResize(
+                    resizeDrawing,
+                    this.resizingPointIndex,
+                    currentPoint,
+                    event.shiftKey
+                );
+                handledByDrawing = resizeDrawing.onPointHandleDrag(this.resizingPointIndex, {
                     point: currentPoint,
                     scales: {
                         xScale: this.chart.xScale,
@@ -3667,13 +3686,14 @@ class DrawingToolsManager {
             }
 
             if (!handledByDrawing) {
-                this.resizingDrawing.points[this.resizingPointIndex] = this._snapPointXForDrawingType(
+                this._assignResizePoint(
+                    resizeDrawing,
+                    this.resizingPointIndex,
                     currentPoint,
-                    this.resizingDrawing.type
+                    event.shiftKey
                 );
-                this.resizingDrawing.meta.updatedAt = Date.now();
-            } else {
-                this._snapDrawingPointsX(this.resizingDrawing);
+            } else if (!this._deferBarIndexSnapDuringShiftAngle(resizeDrawing, event.shiftKey)) {
+                this._snapDrawingPointsX(resizeDrawing);
             }
             this._syncHorizontalAnchorToolPointY(this.resizingDrawing);
 
@@ -3908,10 +3928,10 @@ class DrawingToolsManager {
         if (this.isDragging) {
             this.endDrag();
         }
-        if (this.isResizing) {
-            this.isResizing = false;
-            this.resizingDrawing = null;
-            this.resizingPointIndex = null;
+        if (this.isCustomHandleDrag && this.customHandleDrawing) {
+            this.endCustomHandleDrag(event);
+        } else if (this.isResizing && this.resizingDrawing) {
+            this.endHandleDrag(this.resizingDrawing);
         }
     }
 
@@ -4356,7 +4376,14 @@ class DrawingToolsManager {
         point = this.clampPointToCandleRange(point, activeToolType);
 
         // Anchor X to whole bar indices for geometric tools (not freehand / text / pixel-anchored tools).
-        if (!isFreehandStroke && !this._isTextDrawingType(activeToolType) && !this._usesPointScreenAnchor(activeToolType)) {
+        // Shift + angle-snap tools: keep fractional X during drag so the line follows the snapped angle.
+        const deferBarSnapForShiftAngle = event && event.shiftKey
+            && activeToolType
+            && this.angleSnapTools.includes(activeToolType);
+        if (!deferBarSnapForShiftAngle
+            && !isFreehandStroke
+            && !this._isTextDrawingType(activeToolType)
+            && !this._usesPointScreenAnchor(activeToolType)) {
             point = this.snapPointXToNearestCandle(point);
         }
 
@@ -6978,8 +7005,9 @@ class DrawingToolsManager {
             return !!(t && t.closest && t.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
         };
         
-        const applyPointHandleDrag = (point, drawing, index) => {
+        const applyPointHandleDrag = (point, drawing, index, shiftKey) => {
             if (typeof drawing.onPointHandleDrag === 'function') {
+                point = self._applyShiftAngleConstraintForResize(drawing, index, point, shiftKey);
                 const context = {
                     point,
                     scales: {
@@ -6990,7 +7018,9 @@ class DrawingToolsManager {
                 };
                 const handled = drawing.onPointHandleDrag(index, context);
                 if (handled) {
-                    self._snapDrawingPointsX(drawing);
+                    if (!self._deferBarIndexSnapDuringShiftAngle(drawing, shiftKey)) {
+                        self._snapDrawingPointsX(drawing);
+                    }
                     self.scheduleRenderDrawing(drawing);
                     return true;
                 }
@@ -7075,18 +7105,18 @@ class DrawingToolsManager {
                         return;
                     }
                     
-                    let point = self.getDataPoint(event.sourceEvent, drawing.type);
                     const index = self.resizingPointIndex;
-                    
-                    point = self._applyShiftAngleConstraintForResize(
-                        drawing,
-                        index,
-                        point,
-                        event.sourceEvent.shiftKey
-                    );
-                    
-                    if (!applyPointHandleDrag(point, drawing, index)) {
-                        self.handleDrag(event);
+                    let point = self.getDataPoint(event.sourceEvent, drawing.type);
+
+                    if (!applyPointHandleDrag(point, drawing, index, event.sourceEvent.shiftKey)) {
+                        self._assignResizePoint(
+                            drawing,
+                            index,
+                            point,
+                            event.sourceEvent.shiftKey
+                        );
+                        self.scheduleRenderDrawing(drawing);
+                        self._broadcastLiveEditUpdate(drawing);
                     }
                 })
                 .on('end', function(event) {
@@ -7181,7 +7211,7 @@ class DrawingToolsManager {
         
         // Use sourceEvent for accurate mouse position
         const drawing = this.resizingDrawing;
-        let point = this.getDataPoint(event.sourceEvent, drawing.type);
+        const point = this.getDataPoint(event.sourceEvent, drawing.type);
         const index = this.resizingPointIndex;
         
         // Validate index
@@ -7189,18 +7219,8 @@ class DrawingToolsManager {
             console.warn('⚠️ Invalid resize point index:', index);
             return;
         }
-        
-        point = this._applyShiftAngleConstraintForResize(
-            drawing,
-            index,
-            point,
-            event.sourceEvent.shiftKey
-        );
-        
-        // Update point
-        drawing.points[index] = this._snapPointXForDrawingType(point, drawing.type);
-        drawing.meta.updatedAt = Date.now();
 
+        this._assignResizePoint(drawing, index, point, event.sourceEvent.shiftKey);
         this.scheduleRenderDrawing(drawing);
         this._broadcastLiveEditUpdate(drawing);
     }
@@ -7209,6 +7229,8 @@ class DrawingToolsManager {
      * End handle drag
      */
     endHandleDrag(drawing) {
+        if (!drawing || !this.isResizing || this.resizingDrawing !== drawing) return;
+
         // Record modification for undo/redo
         if (this.history && this.resizeBeforeState) {
             this.history.recordModify(drawing, this.resizeBeforeState);
@@ -7222,7 +7244,11 @@ class DrawingToolsManager {
             drawing._isActiveResizing = false;
             drawing._activeResizingPointIndex = null;
         }
-        
+
+        if (typeof drawing.recalculateTimestamps === 'function') {
+            try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
+        }
+
         this.isResizing = false;
         this.resizingDrawing = null;
         this.resizingPointIndex = null;
@@ -7234,8 +7260,7 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
 
-        drawing.recalculateTimestamps();
-        this.renderDrawing(drawing);
+        this.renderDrawing(drawing, { skipTimestampSync: true });
 
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
@@ -7324,8 +7349,9 @@ class DrawingToolsManager {
 
         this._snapDrawingPointsX(drawing);
 
-        drawing.recalculateTimestamps();
-        this.renderDrawing(drawing);
+        if (typeof drawing.recalculateTimestamps === 'function') {
+            try { drawing.recalculateTimestamps(); } catch (_) { /* ignore */ }
+        }
 
         // Record modification for undo/redo
         if (this.history && this.customHandleBeforeState) {
@@ -7338,6 +7364,8 @@ class DrawingToolsManager {
         this.customHandleStart = null;
         this.customHandleBeforeState = null;
         this._endDrawingLiveInteraction();
+
+        this.renderDrawing(drawing, { skipTimestampSync: true });
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';
@@ -8971,6 +8999,22 @@ class DrawingToolsManager {
     /** True while the user is dragging/resizing — do not snap points back to stale timestamps. */
     _isDrawingLiveEditing(drawing) {
         if (!drawing) return false;
+        const liveDepth = this._drawingLiveInteractionDepth || 0;
+        if (liveDepth > 0) {
+            if (this.resizingDrawing === drawing) return true;
+            if (this.customHandleDrawing === drawing) return true;
+            if (this.customHandleDraggingDrawing === drawing) return true;
+            if (this.draggingDrawing === drawing) return true;
+            if (this._directMoveMoveHandler && Array.isArray(this._directMoveDrawings) && this._directMoveDrawings.includes(drawing)) {
+                return true;
+            }
+            if (this.draggingMultiple && Array.isArray(this.selectedDrawings) && this.selectedDrawings.includes(drawing)) {
+                return true;
+            }
+            if (this.drawingState && this.drawingState.currentDrawing === drawing) {
+                return true;
+            }
+        }
         if (this._directMoveMoveHandler && Array.isArray(this._directMoveDrawings) && this._directMoveDrawings.includes(drawing)) {
             return true;
         }

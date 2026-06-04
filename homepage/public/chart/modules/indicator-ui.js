@@ -641,6 +641,89 @@ function rviStyleParams() {
     ];
 }
 
+const VWAP_ANCHOR_PERIOD_OPTIONS = [
+    { value: 'session', label: 'Session' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'quarter', label: 'Quarter' },
+    { value: 'year', label: 'Year' },
+    { value: 'decade', label: 'Decade' },
+    { value: 'century', label: 'Century' },
+    { value: 'earnings', label: 'Earnings' },
+    { value: 'dividends', label: 'Dividends' },
+    { value: 'splits', label: 'Splits' }
+];
+
+const VWAP_BANDS_CALC_OPTIONS = [
+    { value: 'standard_deviation', label: 'Standard Deviation' },
+    { value: 'percentage', label: 'Percentage' }
+];
+
+/** VWAP Input tab. */
+function vwapInputParams() {
+    return [
+        { id: 'hideOn1DOrAbove', label: 'Hide VWAP on 1D or Above', type: 'checkbox', default: false, tab: 'input' },
+        {
+            id: 'anchorPeriod',
+            label: 'Anchor Period',
+            type: 'select',
+            tab: 'input',
+            default: 'session',
+            options: VWAP_ANCHOR_PERIOD_OPTIONS
+        },
+        {
+            id: 'source',
+            label: 'Source (OHLC Source)',
+            type: 'select',
+            tab: 'input',
+            default: 'hlc3',
+            options: OHLC_SOURCE_OPTIONS
+        },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' },
+        {
+            id: 'bandsCalcMode',
+            label: 'Bands calculation Mode',
+            type: 'select',
+            tab: 'input',
+            default: 'standard_deviation',
+            options: VWAP_BANDS_CALC_OPTIONS
+        },
+        { id: 'band1Heading', label: '1-Bands Multiplier', type: 'heading', tab: 'input' },
+        { id: 'band1Enabled', label: '1-Bands Multiplier', type: 'checkbox', default: true, tab: 'input' },
+        { id: 'band1Mult', label: 'Value', type: 'number', default: 1, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'band2Heading', label: '2-Bands Multiplier', type: 'heading', tab: 'input' },
+        { id: 'band2Enabled', label: '2-Bands Multiplier', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'band2Mult', label: 'Value', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'band3Heading', label: '3-Bands Multiplier', type: 'heading', tab: 'input' },
+        { id: 'band3Enabled', label: '3-Bands Multiplier', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'band3Mult', label: 'Value', type: 'number', default: 3, min: 0.001, step: 0.1, tab: 'input' }
+    ];
+}
+
+/** VWAP Style tab — main line + band #1 lines/fill (opacity in color picker). */
+function vwapStyleParams() {
+    return [
+        { id: 'showVwap', label: 'VWAP', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'VWAP color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lineOpacity', label: 'VWAP opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'VWAP style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'VWAP thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showUpper1', label: 'Upper Band #1', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper Band #1 color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperOpacity', label: 'Upper Band #1 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper Band #1 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper Band #1 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower1', label: 'Lower Band #1', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower Band #1 color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerOpacity', label: 'Lower Band #1 opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower Band #1 style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower Band #1 thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showFill1', label: 'Bands Fill #1', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'fillColor', label: 'Bands Fill #1 color', type: 'color', default: 'rgba(41,98,255,0.12)', tab: 'style' },
+        { id: 'fillOpacity', label: 'Bands Fill #1 opacity', type: 'number', default: 12, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
 /** Vortex Input — length. */
 function vortexInputParams() {
     return [
@@ -1443,7 +1526,7 @@ const INDICATOR_DEFINITIONS = {
     vwap: {
         name: 'Volume Weighted Average Price',
         type: 'overlay',
-        params: overlayLineStyleParams('#00bcd4')
+        params: vwapInputParams().concat(vwapStyleParams())
     },
     stoch: {
         name: 'Stochastic Oscillator',
@@ -4577,6 +4660,33 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 title: 'Standard Deviation',
                 rows: [v9BandStyleRow('Standard Deviation', 'color', 'lineOpacity', null, null, null)]
             }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'vwap') {
+        return {
+            sections: [
+                {
+                    title: 'VWAP',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('VWAP', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showVwap')]
+                },
+                {
+                    title: 'Upper Band #1',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Upper Band #1', 'upperColor', 'upperOpacity', 'upperLineStyle', 'upperLineWidth', 'showUpper1')]
+                },
+                {
+                    title: 'Lower Band #1',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Lower Band #1', 'lowerColor', 'lowerOpacity', 'lowerLineStyle', 'lowerLineWidth', 'showLower1')]
+                },
+                {
+                    title: 'Bands Fill #1',
+                    rows: [v9BandStyleRow('Bands Fill #1', 'fillColor', 'fillOpacity', null, null, 'showFill1')]
+                }
+            ],
             footers: footers
         };
     }
