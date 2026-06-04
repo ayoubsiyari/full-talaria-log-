@@ -1524,6 +1524,21 @@
         return 10;
     }
 
+    function applyAtrStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.period = atrPeriodFromParams(params);
+        indicator.params.smoothingType = atrSmoothingTypeFromParams(params);
+        indicator.style.color = params.color || '#ff6d00';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = legacyW;
+        indicator.style.showLine = params.showLine !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.hidePlot = params.hideFromContainer === true;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+    }
+
     function applyMassIndexStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -1617,12 +1632,22 @@
         return { k: smoothedK, d: smoothedD };
     }
     
-    // ATR (Average True Range)
-    function calculateATR(data, period) {
+    const ATR_DEFAULT_PERIOD = 14;
+
+    function atrSmoothingTypeFromParams(params) {
+        const t = String((params && params.smoothingType) || 'RMA').toUpperCase();
+        if (t === 'SMMA') return 'RMA';
+        if (t === 'SMA' || t === 'EMA' || t === 'WMA' || t === 'RMA') return t;
+        return 'RMA';
+    }
+
+    function atrPeriodFromParams(params) {
+        if (params && params.period != null) return Math.max(1, Number(params.period) | 0);
+        return ATR_DEFAULT_PERIOD;
+    }
+
+    function calculateTrueRangeSeries(data) {
         const trs = [];
-        const atr = [];
-        
-        // Calculate True Range (TR)
         for (let i = 0; i < data.length; i++) {
             let tr;
             if (i === 0) {
@@ -1635,30 +1660,18 @@
             }
             trs.push(tr);
         }
-        
-        // Calculate ATR (Smoothed Moving Average of TR)
-        let currentATR = 0;
-        const multiplier = 1 / period;
-        
-        for (let i = 0; i < trs.length; i++) {
-            if (i < period - 1) {
-                atr.push(null);
-            } else if (i === period - 1) {
-                // Initial ATR is the simple average of the first 'period' TRs
-                let sumTR = 0;
-                for (let j = 0; j < period; j++) {
-                    sumTR += trs[j];
-                }
-                currentATR = sumTR / period;
-                atr.push(currentATR);
-            } else {
-                // Smoothed ATR
-                currentATR = ((currentATR * (period - 1)) + trs[i]) / period;
-                atr.push(currentATR);
-            }
-        }
-        
-        return atr;
+        return trs;
+    }
+
+    // ATR (Average True Range) — smooth true range with RMA / SMA / EMA / WMA
+    function calculateATR(data, period, smoothingType) {
+        const p = Math.max(1, period | 0);
+        const trs = calculateTrueRangeSeries(data);
+        const st = atrSmoothingTypeFromParams({ smoothingType: smoothingType });
+        if (st === 'SMA') return rollingSmaNullable(trs, p);
+        if (st === 'EMA') return rollingEmaNullable(trs, p);
+        if (st === 'WMA') return rollingWmaNullable(trs, p);
+        return rollingRmaNullable(trs, p);
     }
     
     // ADX (Average Directional Index)
@@ -4356,15 +4369,13 @@
                 break;
                 
             case 'atr':
-                indicator.params.period = params.period || 14;
-                indicator.style.color = params.color || '#ff6d00';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
-                indicator.overlay = false;
-                indicator.separatePanel = true;
+                applyAtrStyleFromParams(indicator, params);
                 indicator.name = 'ATR(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateATR(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.smoothingType
+                );
                 break;
 
             case 'cci':
@@ -5463,6 +5474,19 @@
                 this.indicators.data[indicator.id] = calculateMassIndex(this.data, MASS_INDEX_EMA_PERIOD, indicator.params.period);
             }
         }
+        if (indicator.type === 'atr') {
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = newParams.period !== undefined || newParams.smoothingType !== undefined;
+            applyAtrStyleFromParams(indicator, merged);
+            if (recalc) {
+                indicator.name = 'ATR(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateATR(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.smoothingType
+                );
+            }
+        }
         if (indicator.type === 'mom' || indicator.type === 'momentum') {
             indicator.type = 'mom';
             indicator.overlay = false;
@@ -5554,8 +5578,14 @@
                 this.indicators.data[indicator.id] = calculateVWAP(this.data);
                 break;
             case 'atr':
+                indicator.params.period = atrPeriodFromParams(indicator.params);
+                indicator.params.smoothingType = atrSmoothingTypeFromParams(indicator.params);
                 indicator.name = 'ATR(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateATR(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.smoothingType
+                );
                 break;
 
             case 'cci':
@@ -5975,7 +6005,13 @@
                     this.indicators.data[indicator.id] = calculateVWAP(this.data);
                     break;
                 case 'atr':
-                    this.indicators.data[indicator.id] = calculateATR(this.data, indicator.params.period);
+                    indicator.params.period = atrPeriodFromParams(indicator.params);
+                    indicator.params.smoothingType = atrSmoothingTypeFromParams(indicator.params);
+                    this.indicators.data[indicator.id] = calculateATR(
+                        this.data,
+                        indicator.params.period,
+                        indicator.params.smoothingType
+                    );
                     break;
                 case 'cci':
                     this.indicators.data[indicator.id] = calculateCCIIndicatorData(this.data, indicator.params);
@@ -7591,6 +7627,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'massindex') {
             this._renderMassIndexPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'atr') {
+            this._renderAtrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'trix') {
             this._renderTrixPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -10379,6 +10418,60 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelY = tags[tags.length - 1].y;
             indicator._axisLabelText = tags[tags.length - 1].text;
             indicator._axisLabelColor = tags[tags.length - 1].color;
+        }
+    };
+
+    Chart.prototype._renderAtrPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const aMin = dom.min;
+        const aMax = dom.max;
+        const aSpan = Math.max(1e-9, aMax - aMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
+
+        const lineColor = resolve(style.color || '#ff6d00', style.lineOpacity);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{ y: currentY, text: last.toFixed(2), color: lineColor }];
         }
     };
 

@@ -513,6 +513,43 @@ function elderRayInputParams() {
     ];
 }
 
+const ATR_SMOOTHING_TYPE_OPTIONS = [
+    { value: 'RMA', label: 'RMA' },
+    { value: 'SMA', label: 'SMA' },
+    { value: 'EMA', label: 'EMA' },
+    { value: 'WMA', label: 'WMA' }
+];
+
+/** ATR Input — smoothing MA type applied to true range. */
+function atrInputParams() {
+    return [
+        { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
+        {
+            id: 'smoothingType',
+            label: 'Type',
+            type: 'select',
+            tab: 'input',
+            default: 'RMA',
+            options: ATR_SMOOTHING_TYPE_OPTIONS
+        }
+    ];
+}
+
+/** ATR Style — line color (opacity in color picker). */
+function atrStyleParams() {
+    return [
+        { id: 'color', label: 'Color', type: 'color', default: '#ff6d00', tab: 'style' },
+        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+/** ATR Visibility — hide plot from indicator pane. */
+function atrVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
 /** Mass Index Input — summation length (EMA smoothing fixed at 9). */
 function massIndexInputParams() {
     return [
@@ -1393,11 +1430,7 @@ const INDICATOR_DEFINITIONS = {
     atr: {
         name: 'Average True Range',
         type: 'separate',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#ff6d00' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: atrInputParams().concat(atrStyleParams()).concat(atrVisibilityParams())
     },
     cci: {
         name: 'Commodity Channel Index',
@@ -4398,6 +4431,16 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
+    if (indicatorType === 'atr') {
+        return {
+            sections: [{
+                title: 'Average True Range',
+                rows: [v9BandStyleRow('Average True Range', 'color', 'lineOpacity', null, null, null)]
+            }],
+            footers: footers
+        };
+    }
+
     if (indicatorType === 'ao') {
         return {
             sections: [{
@@ -5112,8 +5155,9 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
                 // Re-calculate ATR (assuming calculateATR is available globally or on Chart prototype)
                 // Since the original file didn't include the calculation logic here, I'll assume it's available globally as in the first file.
                 if (typeof calculateATR === 'function') {
-                    this.indicators.data[id] = calculateATR(this.data, atrPeriod);
-                    console.log('✅ ATR recalculated with period:', atrPeriod);
+                    const atrSmooth = indicator.params.smoothingType || 'RMA';
+                    this.indicators.data[id] = calculateATR(this.data, atrPeriod, atrSmooth);
+                    console.log('✅ ATR recalculated with period:', atrPeriod, 'smoothing:', atrSmooth);
                 } else {
                     console.error('❌ calculateATR function not found. Cannot recalculate ATR.');
                 }
