@@ -4224,16 +4224,52 @@
         return out;
     }
 
-    /** Coppock curve — WMA of ROC(11)+ROC(14). */
-    function calculateCoppock(data, wmaPeriod) {
-        const wp = Math.max(2, wmaPeriod | 0);
-        const roc11 = calculateROC(data, 11);
-        const roc14 = calculateROC(data, 14);
+    const COPPOCK_WMA_PERIOD = 10;
+
+    function coppockCalcParams(params) {
+        params = params || {};
+        return {
+            longRoc: params.longRocLength != null
+                ? Math.max(1, Number(params.longRocLength) | 0)
+                : 14,
+            shortRoc: params.shortRocLength != null
+                ? Math.max(1, Number(params.shortRocLength) | 0)
+                : 11,
+            wmaPeriod: params.wmaPeriod != null
+                ? Math.max(2, Number(params.wmaPeriod) | 0)
+                : COPPOCK_WMA_PERIOD
+        };
+    }
+
+    /** Coppock curve — WMA of ROC(short) + ROC(long). */
+    function calculateCoppock(data, paramsOrWma) {
+        const calc = typeof paramsOrWma === 'number'
+            ? { longRoc: 14, shortRoc: 11, wmaPeriod: Math.max(2, paramsOrWma | 0) }
+            : coppockCalcParams(paramsOrWma);
+        const rocShort = calculateROC(data, calc.shortRoc);
+        const rocLong = calculateROC(data, calc.longRoc);
         const sum = data.map(function(_, i) {
-            if (roc11[i] == null || roc14[i] == null) return null;
-            return roc11[i] + roc14[i];
+            if (rocShort[i] == null || rocLong[i] == null) return null;
+            return rocShort[i] + rocLong[i];
         });
-        return rollingWmaNullable(sum, wp);
+        return rollingWmaNullable(sum, calc.wmaPeriod);
+    }
+
+    function applyCoppockStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.params.longRocLength = coppockCalcParams(params).longRoc;
+        indicator.params.shortRocLength = coppockCalcParams(params).shortRoc;
+        indicator.params.wmaPeriod = coppockCalcParams(params).wmaPeriod;
+        indicator.style.showCoppock = params.showCoppock !== false && params.showLine !== false;
+        indicator.style.showLine = indicator.style.showCoppock;
+        indicator.style.color = params.color || '#8e24aa';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.hidePlot = params.hideFromContainer === true;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
 
     /** Relative Vigor Index — RVGI + signal (SMA of RVGI, default length 4). */
@@ -5000,12 +5036,9 @@
                 break;
 
             case 'coppock':
-                indicator.params.wmaPeriod = params.wmaPeriod != null ? params.wmaPeriod : 10;
-                indicator.style.color = params.color || '#8e24aa';
-                indicator.style.lineWidth = params.lineWidth || 2;
-                indicator.overlay = false;
-                indicator.name = 'Coppock(' + indicator.params.wmaPeriod + ')';
-                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                applyCoppockStyleFromParams(indicator, params);
+                indicator.name = 'Coppock Curve';
+                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params);
                 break;
 
             case 'rvi':
@@ -5736,6 +5769,16 @@
                 this.indicators.data[indicator.id] = calculateMassIndex(this.data, MASS_INDEX_EMA_PERIOD, indicator.params.period);
             }
         }
+        if (indicator.type === 'coppock') {
+            const merged = Object.assign({}, indicator.style, indicator.params, newParams);
+            const recalc = ['longRocLength', 'shortRocLength', 'wmaPeriod'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            applyCoppockStyleFromParams(indicator, merged);
+            if (recalc) {
+                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params);
+            }
+        }
         if (indicator.type === 'atr') {
             const merged = Object.assign({}, indicator.style, indicator.params, newParams);
             const recalc = newParams.period !== undefined || newParams.smoothingType !== undefined;
@@ -6133,8 +6176,9 @@
                 );
                 break;
             case 'coppock':
-                indicator.name = 'Coppock(' + indicator.params.wmaPeriod + ')';
-                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                applyCoppockStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
+                indicator.name = 'Coppock Curve';
+                this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params);
                 break;
             case 'rvi':
                 applyRviStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params));
@@ -6454,7 +6498,7 @@
                     );
                     break;
                 case 'coppock':
-                    this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params.wmaPeriod);
+                    this.indicators.data[indicator.id] = calculateCoppock(this.data, indicator.params);
                     break;
                 case 'rvi':
                     this.indicators.data[indicator.id] = calculateRVI(this.data, indicator.params.period);
@@ -7892,6 +7936,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'massindex') {
             this._renderMassIndexPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'coppock') {
+            this._renderCoppockPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'atr') {
             this._renderAtrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -10862,6 +10909,60 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         const lineColor = resolve(style.color || '#ff6d00', style.lineOpacity);
         if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{ y: currentY, text: last.toFixed(2), color: lineColor }];
+        }
+    };
+
+    Chart.prototype._renderCoppockPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const cMin = dom.min;
+        const cMax = dom.max;
+        const cSpan = Math.max(1e-9, cMax - cMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - cMin) / cSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, cMin, cMax, scaleY, 2);
+
+        const lineColor = resolve(style.color || '#8e24aa', style.lineOpacity);
+        if (style.showCoppock !== false && style.showLine !== false) {
             this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 

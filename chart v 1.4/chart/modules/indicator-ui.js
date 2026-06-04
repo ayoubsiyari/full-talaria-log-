@@ -659,6 +659,29 @@ const VWAP_BANDS_CALC_OPTIONS = [
     { value: 'percentage', label: 'Percentage' }
 ];
 
+/** Coppock Curve Input — long/short ROC lengths (WMA smoothing fixed at 10). */
+function coppockInputParams() {
+    return [
+        { id: 'longRocLength', label: 'Long RoC Length', type: 'number', default: 14, min: 1, tab: 'input' },
+        { id: 'shortRocLength', label: 'Short RoC Length', type: 'number', default: 11, min: 1, tab: 'input' }
+    ];
+}
+
+/** Coppock Curve Style — line color (opacity in color picker). */
+function coppockStyleParams() {
+    return [
+        { id: 'showCoppock', label: 'Coppock Curve', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Coppock Curve color', type: 'color', default: '#8e24aa', tab: 'style' },
+        { id: 'lineOpacity', label: 'Coppock Curve opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
+}
+
+function coppockVisibilityParams() {
+    return [
+        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
+    ];
+}
+
 /** OBV Input — optional smoothing on OBV series. */
 function obvInputParams() {
     return [
@@ -1858,11 +1881,7 @@ const INDICATOR_DEFINITIONS = {
     coppock: {
         name: 'Coppock Curve',
         type: 'separate',
-        params: [
-            { id: 'wmaPeriod', label: 'WMA length', type: 'number', default: 10, min: 2 },
-            { id: 'color', label: 'Line color', type: 'color', default: '#8e24aa' },
-            { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+        params: coppockInputParams().concat(coppockStyleParams()).concat(coppockVisibilityParams())
     },
     rvi: {
         name: 'Relative Vigor Index',
@@ -4606,6 +4625,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 title: 'Mass Index',
                 rows: [v9BandStyleRow('Mass Index', 'color', 'lineOpacity', null, null, null)]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'coppock') {
+        return {
+            sections: [{
+                title: 'Coppock Curve',
+                checkboxRow: { showId: 'showCoppock', label: 'Coppock Curve' },
+                bandStyleHeader: true,
+                rows: [v9BandStyleRow('Coppock Curve', 'color', 'lineOpacity', null, null, null)]
             }],
             footers: footers
         };
