@@ -23299,8 +23299,10 @@ const TalariaV8bLive = () => {
           const renderOscLevelStyleRow = (row, i, section) => {
             const on = val(row.showId) !== false;
             const rowLabel = section && section.title ? section.title : "Level";
+            const showValue = !!(row.valueId && section && section.bandLevelHeader);
+            const cols = showValue ? gcBand : gc;
             return (
-              <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0) }}>
+              <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
                   {TlChk(!!on, `ind-${ctx.indicatorType}-${row.showId}`, null, () => flip(row.showId), { vpImmediate: true })}
                 </div>
@@ -23308,6 +23310,7 @@ const TalariaV8bLive = () => {
                 <Swatch pid={row.colorId} disabled={!on} />
                 {stSel(row.styleId, !on)}
                 {numW(row.widthId, !on)}
+                {showValue ? numW(row.valueId, !on) : null}
                 {psSel(row.styleId, !on)}
               </div>
             );
@@ -23361,7 +23364,7 @@ const TalariaV8bLive = () => {
                     <div /><div /><div>{hdr("COLOR")}</div>
                     <div>{hdr("STYLE")}</div>
                     <div>{hdr("THICKNESS")}</div>
-                    <div>{hdr("VALUE")}</div>
+                    <div>{hdr(section.levelValueHeader || "VALUE")}</div>
                     <div />
                   </div>
                 )}

@@ -696,14 +696,38 @@ function oscZeroPanelStyleParams(lineLabel, defaultColor) {
     ];
 }
 
-/** Momentum Style tab (line + zero line + optional panel bg). */
+/** Momentum Style tab (MOM line + optional panel bg; opacity in color picker). */
 function momStyleParams() {
-    return oscZeroPanelStyleParams('Momentum', '#66bb6a');
+    return [
+        { id: 'showLine', label: 'Show Momentum line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'MOM color', type: 'color', default: '#66bb6a', tab: 'style' },
+        { id: 'lineOpacity', label: 'MOM opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'MOM line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'MOM thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
 }
 
-/** Rate of Change Style tab (line + zero line + optional panel bg). */
+/** Rate of Change Style tab (ROC line + zero line + optional panel bg; opacity in color picker). */
 function rocStyleParams() {
-    return oscZeroPanelStyleParams('ROC', '#ffa726');
+    return [
+        { id: 'showLine', label: 'Show ROC line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'ROC color', type: 'color', default: '#ffa726', tab: 'style' },
+        { id: 'lineOpacity', label: 'ROC opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'ROC line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'ROC thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'style' },
+        { id: 'showZero', label: 'Show zero line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'zeroColor', label: 'Zero color', type: 'color', default: 'rgba(120,123,134,0.45)', tab: 'style' },
+        { id: 'zeroOpacity', label: 'Zero opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'zeroLineStyle', label: 'Zero line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Dotted', tab: 'style' },
+        { id: 'zeroLineWidth', label: 'Zero line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
+    ];
 }
 
 /** DPO Style tab (DPO line + middle line + optional panel bg). */
@@ -1328,8 +1352,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 12, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'input' }
+            { id: 'source', label: 'OHLC Source', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
         ].concat(rocStyleParams())
     },
     mom: {
@@ -1337,8 +1360,7 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length', type: 'number', default: 10, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'zeroValue', label: 'Zero line', type: 'number', default: 0, step: 0.0001, tab: 'input' }
+            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' }
         ].concat(momStyleParams())
     },
     obv: {
@@ -4413,38 +4435,42 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'mom' || indicatorType === 'momentum') {
         return {
-            sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('Momentum', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
-            }, {
-                title: 'Zero Line',
-                levelHeader: true,
-                levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
-            }],
+            sections: [
+                {
+                    title: 'MOM',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('MOM', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }
 
     if (indicatorType === 'roc') {
         return {
-            sections: [{
-                header: true,
-                rows: [
-                    v9PlotRow('ROC', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
-            }, {
-                title: 'Zero Line',
-                levelHeader: true,
-                levelRows: [v9LevelRow('zeroValue', 'showZero', 'zeroColor', 'zeroLineStyle')]
-            }, {
-                title: 'Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
-            }],
+            sections: [
+                {
+                    title: 'ROC',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('ROC', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Zero line',
+                    bandLevelHeader: true,
+                    levelValueHeader: 'Zero line',
+                    levelRows: [v9OscLevelStyleRow('zeroValue', 'showZero', 'zeroColor', 'zeroOpacity', 'zeroLineStyle', 'zeroLineWidth')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }

@@ -817,11 +817,45 @@
     }
 
     function applyMomStyleFromParams(indicator, params) {
-        applyOscZeroPanelStyleFromParams(indicator, params, 10, '#66bb6a');
+        applyMaLengthSourceFromParams(indicator, params, 10);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#66bb6a';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
 
     function applyRocStyleFromParams(indicator, params) {
-        applyOscZeroPanelStyleFromParams(indicator, params, 12, '#ffa726');
+        applyMaLengthSourceFromParams(indicator, params, 12);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        const zeroS = params.zeroLineStyle || 'Dotted';
+        indicator.params.zeroValue = params.zeroValue != null ? Number(params.zeroValue) : 0;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#ffa726';
+        indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.showZero = params.showZero !== false;
+        indicator.style.zeroValue = indicator.params.zeroValue;
+        indicator.style.zeroColor = params.zeroColor || 'rgba(120,123,134,0.45)';
+        indicator.style.zeroOpacity = params.zeroOpacity != null ? Number(params.zeroOpacity) : 100;
+        indicator.style.zeroLineWidth = params.zeroLineWidth != null ? params.zeroLineWidth : 1;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['zeroLineStyle', 'zeroLineDashStyle', zeroS]
+        ]);
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
     }
     
     // Simple Moving Average
@@ -7340,7 +7374,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             this._renderMomPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'roc') {
-            this._renderMomPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            this._renderRocPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'willr') {
             this._renderWilliamsRPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -10408,11 +10442,11 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
     };
 
-    // ---- Momentum panel: auto-scaled + zero line + optional background ----
+    // ---- Momentum panel: auto-scaled MOM line + optional background ----
     Chart.prototype._renderMomPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
         if (!values || !values.length) return;
         const style = indicator.style || {};
-        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
 
         let min = Infinity;
         let max = -Infinity;
@@ -10422,10 +10456,6 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 min = Math.min(min, val);
                 max = Math.max(max, val);
             }
-        }
-        if (Number.isFinite(zeroVal)) {
-            min = Math.min(min, zeroVal);
-            max = Math.max(max, zeroVal);
         }
         if (min === Infinity || max === -Infinity) return;
 
@@ -10446,36 +10476,32 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         };
 
         if (style.showBg) {
-            ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+            ctx.fillStyle = resolve(style.bgColor || 'rgba(19,23,34,0.15)', style.bgOpacity);
             ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
 
         this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
 
-        if (style.showZero !== false) {
-            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
-                style.zeroColor || 'rgba(120,123,134,0.45)', style.zeroLineStyle || 'Dotted', zeroVal);
-        }
-
+        const lineColor = resolve(style.color || '#66bb6a', style.lineOpacity);
         if (style.showLine !== false) {
-            this._drawPanelLine(ctx, m, values, style.color || '#66bb6a', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line');
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
         let last = null;
         for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
             if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
         }
-        indicator._displayColor = style.color || '#66bb6a';
+        indicator._displayColor = lineColor;
         indicator._displayLabel = last !== null ? last.toFixed(5) : '';
         if (last !== null && Number.isFinite(last)) {
             const currentY = scaleY(last);
             indicator._axisLabelY = currentY;
             indicator._axisLabelText = last.toFixed(5);
-            indicator._axisLabelColor = style.color || '#66bb6a';
+            indicator._axisLabelColor = lineColor;
             indicator._axisLabelTags = [{
                 y: currentY,
                 text: last.toFixed(5),
-                color: style.color || '#66bb6a'
+                color: lineColor
             }];
         }
     };
@@ -10540,6 +10566,81 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
                 y: currentY,
                 text: last.toFixed(2),
                 color: style.color || '#ec407a'
+            }];
+        }
+    };
+
+    // ---- ROC: auto-scaled ROC line + zero line + optional background ----
+    Chart.prototype._renderRocPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        const zeroVal = style.zeroValue != null ? style.zeroValue : 0;
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (Number.isFinite(zeroVal)) {
+            min = Math.min(min, zeroVal);
+            max = Math.max(max, zeroVal);
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        indicator._panelBaseMin = min;
+        indicator._panelBaseMax = max;
+        const dom = this._applyIndicatorPanelDomain(min, max, indicator);
+        const mMin = dom.min;
+        const mMax = dom.max;
+        const mSpan = Math.max(1e-9, mMax - mMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - mMin) / mSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = resolve(style.bgColor || 'rgba(19,23,34,0.15)', style.bgOpacity);
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, mMin, mMax, scaleY, 2);
+
+        const zeroW = style.zeroLineWidth != null ? style.zeroLineWidth : 1;
+        if (this._panelRenderFast !== true && style.showZero !== false) {
+            this._drawPanelHLine(ctx, m, panelTop, panelBottom, scaleY, zeroVal,
+                resolve(style.zeroColor, style.zeroOpacity), style.zeroLineStyle || 'Dotted', zeroVal, zeroW, style.zeroLineDashStyle || 'Dotted');
+        }
+
+        const lineColor = resolve(style.color || '#ffa726', style.lineOpacity);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(4) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(4);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(4),
+                color: lineColor
             }];
         }
     };
