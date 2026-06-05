@@ -48,11 +48,25 @@ function clampIndicatorLineWidth(w, fallback) {
     return Math.max(INDICATOR_MIN_LINE_WIDTH, Math.min(INDICATOR_MAX_LINE_WIDTH, Math.round(n)));
 }
 
+/** Normalize locale digits/separators (e.g. Eastern Arabic ١٠٠, ١٢,٣) for indicator number fields. */
+function normalizeIndicatorNumericString(rawValue) {
+    if (rawValue == null) return '';
+    let s = String(rawValue).trim();
+    s = s.replace(/[\u0660-\u0669]/g, function(ch) {
+        return String(ch.charCodeAt(0) - 0x0660);
+    });
+    s = s.replace(/[\u06F0-\u06F9]/g, function(ch) {
+        return String(ch.charCodeAt(0) - 0x06F0);
+    });
+    s = s.replace(/\u066B/g, '.').replace(/\u066C/g, '').replace(/,/g, '.');
+    return s;
+}
+
 function sanitizeIndicatorParamValue(param, rawValue) {
     if (!param) return rawValue;
     if (param.type === 'checkbox') return !!rawValue;
     if (param.type !== 'number') return rawValue;
-    let value = parseFloat(rawValue);
+    let value = parseFloat(normalizeIndicatorNumericString(rawValue));
     if (!Number.isFinite(value)) value = param.default;
     if (isIndicatorLineWidthParam(param)) {
         return clampIndicatorLineWidth(value, param.default != null ? param.default : 2);
@@ -5381,6 +5395,7 @@ window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;
 window.__v9MergeIndicatorDraftForUpdate = mergeIndicatorDraftForUpdate;
 window.__v9SanitizeIndicatorParamValue = sanitizeIndicatorParamValue;
+window.__v9NormalizeIndicatorNumericString = normalizeIndicatorNumericString;
 window.__v9ClampIndicatorLineWidth = clampIndicatorLineWidth;
 window.__v9ClampIndicatorStyleLineWidths = clampIndicatorStyleLineWidths;
 window.__v9SanitizeIndicatorPayloadFromDefinition = sanitizeIndicatorPayloadFromDefinition;

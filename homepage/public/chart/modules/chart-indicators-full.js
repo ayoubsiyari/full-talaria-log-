@@ -493,6 +493,35 @@
         return tokens;
     }
 
+    function formatObvLegendNumber(val) {
+        if (val === null || !Number.isFinite(val)) return null;
+        const decimals = Math.abs(val) >= 1e6 ? 0 : (Math.abs(val) >= 1000 ? 1 : 2);
+        return val.toFixed(decimals);
+    }
+
+    function buildObvLegendTokens(obvVal, maVal, style) {
+        const st = style || {};
+        const tokens = [];
+        if (st.showObv !== false && st.showLine !== false && obvVal !== null && Number.isFinite(obvVal)) {
+            tokens.push({ text: formatObvLegendNumber(obvVal), color: st.color || '#78909c' });
+        }
+        if (st.showMa !== false && maVal !== null && Number.isFinite(maVal)) {
+            tokens.push({ text: formatObvLegendNumber(maVal), color: st.maColor || '#ff9800' });
+        }
+        return tokens;
+    }
+
+    function safeIndicatorNumber(raw, fallback) {
+        let s = raw;
+        if (typeof window !== 'undefined' && typeof window.__v9NormalizeIndicatorNumericString === 'function') {
+            s = window.__v9NormalizeIndicatorNumericString(raw);
+        } else if (raw != null && typeof raw !== 'number') {
+            s = String(raw).trim().replace(/,/g, '.');
+        }
+        const n = Number(s);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
     function applySupertrendStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -1027,8 +1056,8 @@
 
     function applySmoothedOverlayMaSmoothing(line, data, params) {
         const type = String(params.smoothingType || 'None');
-        const len = Math.max(1, params.smoothingLength != null ? Number(params.smoothingLength) : 14);
-        const bbStd = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        const len = Math.max(1, safeIndicatorNumber(params.smoothingLength, 14));
+        const bbStd = safeIndicatorNumber(params.bbStdDev, 2);
         let ma = null;
         let bbUpper = null;
         let bbLower = null;
@@ -3400,8 +3429,12 @@
     function applyObvStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         indicator.params.smoothingType = params.smoothingType || 'None';
-        indicator.params.smoothingLength = params.smoothingLength != null ? Number(params.smoothingLength) : 14;
-        indicator.params.bbStdDev = params.bbStdDev != null ? Number(params.bbStdDev) : 2;
+        indicator.params.smoothingLength = params.smoothingLength != null
+            ? safeIndicatorNumber(params.smoothingLength, 14)
+            : 14;
+        indicator.params.bbStdDev = params.bbStdDev != null
+            ? safeIndicatorNumber(params.bbStdDev, 2)
+            : 2;
         indicator.style.showObv = params.showObv !== false && params.showLine !== false;
         indicator.style.showLine = indicator.style.showObv;
         indicator.style.color = params.color || '#78909c';
@@ -8463,6 +8496,18 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
             };
         }
     }
+    if (type === 'obv' && store.obv) {
+        const obvV = this._pickFiniteSeriesValue(store.obv, barIdx);
+        const maV = store.ma ? this._pickFiniteSeriesValue(store.ma, barIdx) : null;
+        const tokens = buildObvLegendTokens(obvV, maV, st);
+        if (tokens.length) {
+            return {
+                text: tokens.map(function(t) { return t.text; }).join(' '),
+                color: tokens[0].color,
+                tokens: tokens
+            };
+        }
+    }
     if (type === 'cci' && store.cci) {
         const v = pick(store.cci, 2, color);
         if (v) return v;
@@ -12140,23 +12185,57 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
         }
 
-        let last = null;
-        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
-            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        const barIdx = typeof this._getCrosshairBarIndex === 'function' ? this._getCrosshairBarIndex() : -1;
+        let obvVal = null;
+        let maVal = null;
+        if (barIdx >= 0) {
+            obvVal = this._pickFiniteSeriesValue(values, barIdx);
+            if (pack.ma) maVal = this._pickFiniteSeriesValue(pack.ma, barIdx);
         }
+        if (obvVal === null) {
+            for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+                if (values[i] !== null && !isNaN(values[i])) { obvVal = values[i]; break; }
+            }
+        }
+        if (maVal === null && pack.ma) {
+            for (let i = Math.min(visibleEnd - 1, pack.ma.length - 1); i >= visibleStart; i--) {
+                if (pack.ma[i] !== null && !isNaN(pack.ma[i])) { maVal = pack.ma[i]; break; }
+            }
+        }
+        const legendTokens = buildObvLegendTokens(obvVal, maVal, style);
         indicator._displayColor = lineColor;
-        const decimals = Math.abs(last) >= 1e6 ? 0 : (Math.abs(last) >= 1000 ? 1 : 2);
-        indicator._displayLabel = last !== null ? last.toFixed(decimals) : '';
-        if (last !== null && Number.isFinite(last)) {
-            const currentY = scaleY(last);
-            indicator._axisLabelY = currentY;
-            indicator._axisLabelText = last.toFixed(decimals);
-            indicator._axisLabelColor = lineColor;
-            indicator._axisLabelTags = [{
-                y: currentY,
-                text: last.toFixed(decimals),
-                color: lineColor
-            }];
+        indicator._legendValueTags = legendTokens.map(function(t) {
+            return { text: t.text, color: t.color };
+        });
+        indicator._displayLabel = legendTokens.length
+            ? legendTokens.map(function(t) { return t.text; }).join(' ')
+            : '';
+        const obvTags = [];
+        if (obvVal !== null && Number.isFinite(obvVal) && style.showObv !== false && style.showLine !== false) {
+            const yObv = scaleY(obvVal);
+            if (Number.isFinite(yObv)) {
+                obvTags.push({ y: yObv, text: formatObvLegendNumber(obvVal), color: lineColor });
+            }
+        }
+        if (maVal !== null && Number.isFinite(maVal) && style.showMa !== false) {
+            const yMa = scaleY(maVal);
+            if (Number.isFinite(yMa)) {
+                obvTags.push({ y: yMa, text: formatObvLegendNumber(maVal), color: maColor });
+            }
+        }
+        obvTags.sort(function(a, b) { return a.y - b.y; });
+        for (let ti = 1; ti < obvTags.length; ti++) {
+            if (obvTags[ti].y - obvTags[ti - 1].y < 18) obvTags[ti].y = obvTags[ti - 1].y + 18;
+        }
+        indicator._axisLabelTags = obvTags;
+        if (obvTags.length > 0) {
+            indicator._axisLabelY = obvTags[0].y;
+            indicator._axisLabelText = obvTags[0].text;
+            indicator._axisLabelColor = obvTags[0].color;
+        } else {
+            indicator._axisLabelY = null;
+            indicator._axisLabelText = '';
+            indicator._axisLabelColor = '';
         }
     };
 
