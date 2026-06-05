@@ -799,6 +799,11 @@
                     if (pcSync.replaySystem && pcSync.replaySystem.isActive) {
                         syncTs = Number(pcSync.replaySystem.replayTimestamp);
                     }
+                    // Interval sync ON → mirror host A's TF. OFF → keep this panel's TF
+                    // and only align file/session/replay playhead (see syncReplayFromHost).
+                    var syncTf = args.syncTimeframe
+                        ? (pcSync.currentTimeframe || ch.currentTimeframe)
+                        : (ch.currentTimeframe || pcSync.currentTimeframe);
                     if (typeof ch.loadMultichartPanelFromHost !== 'function') {
                         if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
                         return;
@@ -806,7 +811,7 @@
                     var syncP = ch.loadMultichartPanelFromHost({
                         fileId: String(syncFid),
                         session: syncSess,
-                        timeframe: pcSync.currentTimeframe || ch.currentTimeframe,
+                        timeframe: syncTf,
                         replayTimestamp: Number.isFinite(syncTs) ? syncTs : null,
                         force: !!args.force,
                     });
@@ -818,6 +823,28 @@
                         });
                     }
                     return;
+                }
+                case 'syncReplayFromHost': {
+                    var pcReplay = null;
+                    try {
+                        pcReplay = (global.parent && global.parent !== global)
+                            ? global.parent.chart : null;
+                    } catch (_) {}
+                    if (!pcReplay || !pcReplay.replaySystem || !pcReplay.replaySystem.isActive) return;
+                    var hostTs = Number(pcReplay.replaySystem.replayTimestamp);
+                    if (!Number.isFinite(hostTs)) return;
+                    if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                        return applyReplayEnter(ch, hostTs);
+                    }
+                    var panelTfMs = 60000;
+                    if (typeof ch.parseTimeframe === 'function') {
+                        panelTfMs = ch.parseTimeframe(ch.currentTimeframe) || panelTfMs;
+                    }
+                    var panelTs = Number(ch.replaySystem.replayTimestamp);
+                    var replayAligned = Number.isFinite(panelTs)
+                        && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
+                    if (!args.force && replayAligned) return;
+                    return forceReplaySeek(ch, hostTs, false);
                 }
                 case 'replayEnter': {
                     var tsE = Number(args.timestamp);
@@ -1378,6 +1405,7 @@
                 'getOrderPanelPriceSnapshot',
                 'applyV9UiSettings',
                 'syncFromHost',
+                'syncReplayFromHost',
                 'replayEnter',
                 'replayTick',
                 'replayExit',

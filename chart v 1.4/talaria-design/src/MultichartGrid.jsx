@@ -1479,7 +1479,7 @@ export default function MultichartGrid({
             if (!c || c.host || !c.ready) continue;
             try {
                 if (hostInBacktest) {
-                    mgr.sendCommand(c.id, "syncFromHost", { force: true });
+                    mgr.sendCommand(c.id, "syncFromHost", { force: true, syncTimeframe: pushTf });
                 } else if (forceHostFileOnEveryTile) {
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 } else {
@@ -1755,7 +1755,10 @@ export default function MultichartGrid({
                         });
                     }
                     catch (_) {}
-                    try { mgr.sendCommand(c.id, "syncFromHost", { force: true }); }
+                    try {
+                        const syncTf = !!(layoutSyncRef.current && layoutSyncRef.current.interval);
+                        mgr.sendCommand(c.id, "syncFromHost", { force: true, syncTimeframe: syncTf });
+                    }
                     catch (_) {}
                     try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
                     catch (_) {}
@@ -1884,10 +1887,8 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
-        // Hard guard: while parent is in replay, re-broadcast its playhead
-        // every 1.5s so panels that loaded a stale window (localStorage
-        // restore, raced autoLoad, missed replayEnter) are forced back to
-        // host A's exact candle + data window via panel-cmd forceReplaySeek.
+        // Hard guard: while parent is in replay, re-align playhead every 1.5s
+        // without touching each panel's timeframe (Interval sync off = independent TF).
         const replayAlignGuardMs = 1500;
         const replayAlignGuard = setInterval(() => {
             try {
@@ -1904,7 +1905,7 @@ export default function MultichartGrid({
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
-                        mgr.sendCommand(c.id, "syncFromHost", { force: false });
+                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: false });
                     } catch (_) {}
                 }
             } catch (_) {}

@@ -1689,9 +1689,6 @@ class Chart {
         this.isBacktestMode = true;
 
         const replayRawTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
-        this.currentTimeframe = replayRawTf;
-        if (this._tfDataCache) this._tfDataCache.clear();
-        if (this._btTfDataCache) this._btTfDataCache.clear();
 
         const replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
@@ -1699,14 +1696,19 @@ class Chart {
         const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
 
         const sameFile = String(this.currentFileId || '') === fileId;
+        const sameTf = String(this.currentTimeframe || '').toLowerCase() === String(replayRawTf).toLowerCase();
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         const rs0 = this.replaySystem;
         const aligned = !!(rs0 && rs0.isActive && replayTs != null
             && Math.abs(Number(rs0.replayTimestamp) - replayTs) <= tfMs * 2);
-        if (!o.force && sameFile && hasData && rs0 && rs0.isActive
+        if (!o.force && sameFile && sameTf && hasData && rs0 && rs0.isActive
             && (replayTs == null || aligned)) {
             return;
         }
+
+        this.currentTimeframe = replayRawTf;
+        if (this._tfDataCache) this._tfDataCache.clear();
+        if (this._btTfDataCache) this._btTfDataCache.clear();
 
         if (this._multichartPanelLoadInflight) {
             return this._multichartPanelLoadInflight;
