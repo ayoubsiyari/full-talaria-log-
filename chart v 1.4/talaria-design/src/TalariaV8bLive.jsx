@@ -1543,8 +1543,8 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
   if (legacyType === "pitchfork" && (!Array.isArray(out.pfLevels) || !out.pfLevels.length)) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
-  if (legacyType === "regression-trend" && (!Array.isArray(out.regLines) || out.regLines.length < 3)) {
-    out.regLines = v9DefaultRegLinesTl();
+  if (legacyType === "regression-trend") {
+    out.regLines = v9NormalizeRegLines(out.regLines);
   }
   if (!Array.isArray(out.showInfoTypes) || !out.showInfoTypes.length) {
     out.showInfoTypes = Array.isArray(tlStyle.showInfoTypes) && tlStyle.showInfoTypes.length
@@ -3977,6 +3977,31 @@ function v9ParallelChannelAuxLevelLabel(ln, fallbackIdx = 0) {
   return `Level ${fallbackIdx + 1}`;
 }
 
+/** Style-tab label for a regression-channel line row (middle / upper / lower). */
+function v9RegressionChannelRowLabel(rowIdx, ln) {
+  const existing = ln?.label != null ? String(ln.label).trim() : "";
+  if (existing) return existing;
+  if (rowIdx === 0) return "Middle Line";
+  if (rowIdx === 1) return "Upper";
+  if (rowIdx === 2) return "Lower";
+  return `Line ${rowIdx + 1}`;
+}
+
+function v9NormalizeRegLines(regLines) {
+  const defaults = v9DefaultRegLinesTl();
+  if (!Array.isArray(regLines) || regLines.length < 3) {
+    return defaults.map((row) => ({ ...row }));
+  }
+  return regLines.map((ln, i) => ({
+    ...defaults[i],
+    ...ln,
+    label:
+      ln?.label != null && String(ln.label).trim() !== ""
+        ? ln.label
+        : defaults[i].label,
+  }));
+}
+
 function v9SyncParallelChannelMidLineToChLines(tlStyle) {
   const base = v9ResolveParallelChannelChLines(tlStyle, null);
   const idx = v9ParallelChannelMidLineRowIndex(base);
@@ -4020,9 +4045,15 @@ function v9StepChannelLevelValue(raw, delta, step = 0.01) {
 /** Writable chLines/regLines rows — bootstrap from drawing when state list is empty. */
 function v9EnsureChLinesRows(s, stKey = "chLines", drawing = null) {
   const existing = Array.isArray(s[stKey]) ? s[stKey] : [];
-  if (existing.length > 0) return existing.map((row) => ({ ...row }));
+  if (existing.length > 0) {
+    if (stKey === "regLines") return v9NormalizeRegLines(existing);
+    return existing.map((row) => ({ ...row }));
+  }
   if (stKey === "chLines") {
     return v9ResolveParallelChannelChLines(s, drawing).map((row) => ({ ...row }));
+  }
+  if (stKey === "regLines") {
+    return v9DefaultRegLinesTl();
   }
   return [];
 }
@@ -4343,8 +4374,8 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   if (legacyType === "pitchfork" && (!Array.isArray(out.pfLevels) || !out.pfLevels.length)) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
-  if (legacyType === "regression-trend" && (!Array.isArray(out.regLines) || out.regLines.length < 3)) {
-    out.regLines = v9DefaultRegLinesTl();
+  if (legacyType === "regression-trend") {
+    out.regLines = v9NormalizeRegLines(out.regLines);
   }
   v9EnsureTlStyleVisibilityRows(out, fall);
   return out;
@@ -19620,13 +19651,13 @@ const TalariaV8bLive = () => {
                   {/* ── Channel / Regression lines rows ── */}
                   {isChannel && (()=>{
                     const da = v => v==="dotted"?"2,4":v==="dashed"?"7,4":v==="dashdot"?"7,4,2,4":undefined;
+                    const editDrawing = editingDrawingRef.current?.drawing;
                     const rawLines = isRegCh
-                      ? (tlStyle.regLines || [])
+                      ? v9EnsureChLinesRows(tlStyle, "regLines", editDrawing)
                       : v9ResolveParallelChannelChLines(
                           tlStyle,
-                          editingDrawingRef.current?.drawing,
+                          editDrawing,
                         );
-                    const editDrawing = editingDrawingRef.current?.drawing;
                     const lines = !isRegCh && tlSubTool.icon === "channel"
                       ? rawLines.filter(
                           (ln, idx) =>
@@ -19654,7 +19685,7 @@ const TalariaV8bLive = () => {
                         return <React.Fragment key={srcIdx}>
                           {isRegCh
                             ? <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, ln.label, () => applyRegLineRowToggle(srcIdx))}
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9RegressionChannelRowLabel(srcIdx, ln), () => applyRegLineRowToggle(srcIdx))}
                               </div>
                             : tlSubTool.icon === "channel" ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
