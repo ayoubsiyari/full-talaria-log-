@@ -716,9 +716,28 @@
                 try {
                     ch.isBacktestMode = true;
                     if (!ch.backtestingSession) ch.backtestingSession = btSession;
+                    // Read the parent's LIVE replay playhead so this panel loads
+                    // the window centered on the exact same candle host A is on,
+                    // and enters replay there — not at the end of the period.
+                    var parentReplayTs = (function () {
+                        try {
+                            var pc = (window.parent && window.parent !== window)
+                                ? window.parent.chart : null;
+                            var prs = pc && pc.replaySystem ? pc.replaySystem : null;
+                            if (prs && prs.isActive) {
+                                var t = Number(prs.replayTimestamp);
+                                if (isFinite(t) && t > 0) return t;
+                            }
+                        } catch (_) {}
+                        return null;
+                    })();
                     reportToShell('info', 'loading via autoLoadBacktestingData '
-                        + '(session-matched window so panel matches host A)');
-                    var rp = ch.autoLoadBacktestingData(btSession);
+                        + '(session-matched window so panel matches host A'
+                        + (parentReplayTs != null
+                            ? '; playhead=' + parentReplayTs : '') + ')');
+                    var rp = (parentReplayTs != null)
+                        ? ch.autoLoadBacktestingData(btSession, { replayTimestamp: parentReplayTs })
+                        : ch.autoLoadBacktestingData(btSession);
                     if (rp && typeof rp.then === 'function') {
                         rp.then(afterLoad, function (err) {
                             reportToShell('error', 'autoLoadBacktestingData failed: '

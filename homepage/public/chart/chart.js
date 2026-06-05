@@ -1428,7 +1428,7 @@ class Chart {
     /**
      * Auto-load data and start replay for backtesting session
      */
-    async autoLoadBacktestingData(session) {
+    async autoLoadBacktestingData(session, opts = {}) {
         if (this.backtestingStarted) {
             return;
         }
@@ -1524,6 +1524,24 @@ class Chart {
             this._pendingReplayRestore = restoreSessionId
                 ? this._getSavedReplayRestoreState(restoreSessionId)
                 : null;
+            // Multichart panels: when the parent supplies its live replay
+            // playhead, load the window CENTERED on that timestamp and seek
+            // exactly there. Without this a raced parallel iframe load can
+            // fetch an end-anchored window that misses the session start, and
+            // enterReplayMode then falls back to the LAST loaded bar — i.e. the
+            // panel jumps to the END of the backtest period (2023) while host A
+            // sits at the session start (2015). Routing through preservePlayhead
+            // also avoids that `rd.length - 1` end fallback entirely.
+            const parentPlayheadTs = Number(opts && opts.replayTimestamp);
+            if (Number.isFinite(parentPlayheadTs)
+                && !(this._pendingReplayRestore
+                    && Number.isFinite(this._pendingReplayRestore.replayTimestamp))) {
+                this._pendingReplayRestore = Object.assign(
+                    {},
+                    this._pendingReplayRestore || {},
+                    { replayTimestamp: parentPlayheadTs }
+                );
+            }
             const savedReplayTs = this._pendingReplayRestore?.replayTimestamp ?? null;
 
             let result = null;
