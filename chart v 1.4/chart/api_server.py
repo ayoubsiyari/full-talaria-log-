@@ -19809,7 +19809,9 @@ if _DIST_LEGACY_DIR.is_dir():
     app.mount("/chart/dist", StaticFiles(directory=str(_DIST_LEGACY_DIR)), name="chart_dist")
 
 app.mount("/chart/modules", StaticFiles(directory=str(_CHART_ROOT_PATH / "modules")), name="chart_modules")
-app.mount("/chart/indicators", StaticFiles(directory=str(_CHART_ROOT_PATH / "indicators")), name="chart_indicators")
+_INDICATORS_DIR_PATH = _CHART_ROOT_PATH / "indicators"
+_INDICATORS_DIR_PATH.mkdir(exist_ok=True)
+app.mount("/chart/indicators", StaticFiles(directory=str(_INDICATORS_DIR_PATH)), name="chart_indicators")
 app.mount("/chart/image", StaticFiles(directory=str(_CHART_ROOT_PATH / "image")), name="chart_image")
 
 # Multichart sandbox (multi_chart_rebuild_roadmap.md verification rig).

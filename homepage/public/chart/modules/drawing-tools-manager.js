@@ -5947,7 +5947,7 @@ class DrawingToolsManager {
                 ? '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]'
             : isVolumeProfileType
                 ? '.volume-profile-boundary-hit, .volume-profile-boundary, .volume-profile-level-line.shape-border-hit, .volume-profile-values-label, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'
-                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
+                : '.arrow-fill-hit, .shape-border:not(.shape-border-hit), .shape-border-hit, .flag-body-hit, line:not(.shape-border-hit), .fib-level-hit, .gann-level-hit, .pitchfork-level-hit, .pitchfork-handle-hit, .fib-trend-line, .fib-tz-anchor, .fib-arcs-trend, .fib-wedge-trend, path:not(.shape-fill):not(.shape-border-hit), polyline, polygon:not(.upper-fill):not(.lower-fill):not(.shape-fill), circle:not(.shape-fill):not(.rr-plus-hit):not(.rr-plus-visible), ellipse:not(.shape-fill), text:not(.inline-editable-text), .resize-handle, .resize-handle-hit, .custom-handle, .image-content, .image-placeholder, .note-line, .note-line-hit, .flag-stem-hit';
         const interactiveElements = drawing.group.selectAll(selector);
 
         if (this._isFibLikeDrawingType(drawing.type)) {
@@ -6034,6 +6034,8 @@ class DrawingToolsManager {
             if (self._isFibLikeDrawingType(drawing.type)) {
                 const onFibStroke = targetSel.classed('fib-level-hit')
                     || targetSel.classed('gann-level-hit')
+                    || targetSel.classed('pitchfork-level-hit')
+                    || targetSel.classed('pitchfork-handle-hit')
                     || targetSel.classed('fib-circles-axis')
                     || targetSel.classed('fib-trend-line')
                     || targetSel.classed('fib-tz-anchor')
@@ -10323,6 +10325,8 @@ class DrawingToolsManager {
         const circleHitTolerance = 14;
         const strokeSelectors = [
             'line.fib-level-hit',
+            'line.pitchfork-level-hit',
+            'line.pitchfork-handle-hit',
             'line.fib-circles-axis',
             'line.gann-level-hit',
             'line.fib-trend-line',
@@ -11123,7 +11127,7 @@ class DrawingToolsManager {
                     continue;
                 }
             }
-            if (isFibLikeType && !hitsById.has(drawing.id)) {
+            if (isFibLikeType && drawing.type !== 'pitchfork' && drawing.type !== 'pitchfan' && !hitsById.has(drawing.id)) {
                 continue;
             }
 
@@ -11604,7 +11608,8 @@ class DrawingToolsManager {
                 let lineIndex = 0;
                 for (const element of lineElements) {
                     const elementSel = d3.select(element);
-                    const isFibHit = elementSel.classed('fib-level-hit') || elementSel.classed('gann-level-hit');
+                    const isFibHit = elementSel.classed('fib-level-hit') || elementSel.classed('gann-level-hit')
+                        || elementSel.classed('pitchfork-level-hit') || elementSel.classed('pitchfork-handle-hit');
                     const opacity = elementSel.style('opacity');
                     if (opacity === '0') {
                         lineIndex++;

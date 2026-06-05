@@ -1783,13 +1783,24 @@ class Chart {
                 }
 
                 let result = null;
-                if (sessionStartTs != null && Number.isFinite(replayTs)) {
+                if (Number.isFinite(replayTs)) {
+                    const mcRange = this._getMultichartPanelReplayFetchRange(
+                        session, replayTs, masterTf
+                    );
                     try {
-                        result = await this._fetchReplaySeekBuffer(
-                            fileId, session, masterTf, replayTs
+                        result = await this._fetchSmartWindow(
+                            fileId,
+                            masterTf,
+                            session,
+                            'end',
+                            mcRange,
+                            {
+                                skipSessionDates: true,
+                                limit: this._backtestFetchLimitForTimeframe(masterTf),
+                            },
                         );
                     } catch (e) {
-                        console.warn('loadMultichartPanelFromHost: /bars fetch failed', e);
+                        console.warn('loadMultichartPanelFromHost: smart fetch failed', e);
                     }
                 }
                 if (!result) {
@@ -1843,6 +1854,14 @@ class Chart {
                         this._serverCursors.hasMoreRight = true;
                     }
                 }
+                if (sessionStartTs != null && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    const firstT = Number(this.rawData[0]?.t);
+                    const masterMs = this.parseTimeframe(masterTf) || 60_000;
+                    if (Number.isFinite(firstT) && firstT > sessionStartTs + masterMs * 2) {
+                        if (!this._serverCursors) this._serverCursors = {};
+                        this._serverCursors.hasMoreLeft = true;
+                    }
+                }
 
                 const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
                 if (resolvedTicker) this.currentSymbol = resolvedTicker;
@@ -1890,10 +1909,16 @@ class Chart {
                 const sessMc = session;
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
+                    const rsMc = selfMc.replaySystem;
+                    if (rsMc && rsMc.isActive
+                        && selfMc._serverCursors && selfMc._serverCursors.hasMoreLeft
+                        && typeof selfMc.checkViewportLoadMore === 'function') {
+                        try { selfMc.checkViewportLoadMore('backward', true); } catch (_) {}
+                    }
                     if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
                         selfMc._scheduleBacktestTimeframePrefetch(fidMc, sessMc);
                     }
-                }, 2000);
+                }, 250);
             } finally {
                 this._multichartPanelLoadInflight = null;
             }
@@ -1954,7 +1979,24 @@ class Chart {
                 }
 
                 let result = null;
-                if (String(replayRawTf).toLowerCase() === '1m') {
+                if (this._usesMultichartReplayMaster()) {
+                    const mcRange = this._getMultichartPanelReplayFetchRange(session, ts, '1m');
+                    try {
+                        result = await this._fetchSmartWindow(
+                            fileId,
+                            '1m',
+                            session,
+                            'end',
+                            mcRange,
+                            {
+                                skipSessionDates: true,
+                                limit: this._backtestFetchLimitForTimeframe('1m'),
+                            },
+                        );
+                    } catch (e) {
+                        console.warn('ensureReplayDataCoversTimestamp: multichart smart fetch failed', e);
+                    }
+                } else if (String(replayRawTf).toLowerCase() === '1m') {
                     try {
                         result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf, ts);
                     } catch (e) {
@@ -1962,7 +2004,9 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    const range = this._getBacktestReplayFetchRange(replayRawTf, session, ts);
+                    const range = this._usesMultichartReplayMaster()
+                        ? this._getMultichartPanelReplayFetchRange(session, ts, '1m')
+                        : this._getBacktestReplayFetchRange(replayRawTf, session, ts);
                     result = await this._fetchSmartWindow(
                         fileId,
                         replayRawTf,
@@ -15264,6 +15308,55 @@ class Chart {
         let startTs = anchor - backwardBars * tfMs;
         if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
             startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
+        }
+
+        return {
+            startTs: Math.floor(startTs),
+            endTs: Math.floor(endTs),
+        };
+    }
+
+    /**
+     * Multichart panel reload: include session-start preview history (like host tile A),
+     * not just a narrow playhead-centered /bars slice (~8h back on 1m).
+     */
+    _getMultichartPanelReplayFetchRange(session, playheadMs, masterTf = '1m') {
+        const sessionEndMs = this._getBacktestSessionEndMs(session);
+        let sessionStartMs = null;
+        try {
+            const raw = session?.startDate || session?.start_date;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartMs = t;
+            }
+        } catch (_e) { /* ignore */ }
+
+        const tfMs = this.parseTimeframe(masterTf) || 60_000;
+        const barLimit = this._backtestFetchLimitForTimeframe(masterTf) || 2000;
+        const forwardMs = 6000 * tfMs;
+        const anchor = Number.isFinite(playheadMs) ? playheadMs : sessionEndMs;
+        if (!Number.isFinite(anchor)) {
+            return this._getBacktestInitialFetchRange(masterTf, session);
+        }
+
+        let endTs = anchor + forwardMs;
+        if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
+            endTs = Math.min(endTs, sessionEndMs);
+        }
+
+        let startTs;
+        if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
+            startTs = sessionStartMs - 200 * tfMs;
+        } else {
+            startTs = anchor - Math.max(1, barLimit - 120) * tfMs;
+        }
+
+        const maxWindowMs = barLimit * tfMs;
+        if (endTs - startTs > maxWindowMs) {
+            startTs = endTs - maxWindowMs;
+            if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
+                startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
+            }
         }
 
         return {

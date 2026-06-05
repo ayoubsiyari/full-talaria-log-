@@ -2305,6 +2305,33 @@ class PitchforkTool extends BaseDrawing {
 
         const segmentEnd = (sx, sy) => resolveLineSegment(sx, sy);
 
+        const appendPitchforkLine = (x1, y1, x2, y2, opts = {}) => {
+            const stroke = opts.stroke || this.style.stroke;
+            const sw = Math.max(0.5, Number(opts.strokeWidth ?? this.style.strokeWidth) || 1);
+            const dash = opts.strokeDasharray != null ? opts.strokeDasharray : '';
+            const hitClass = opts.hitClass || 'pitchfork-level-hit';
+            const visClass = opts.visClass || 'pitchfork-level';
+            const hitW = Math.max(10, sw * 6);
+            this.group.append('line')
+                .attr('class', hitClass)
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', 'rgba(255,255,255,0.001)')
+                .attr('stroke-width', hitW)
+                .attr('stroke-dasharray', dash || null)
+                .style('pointer-events', 'stroke')
+                .style('cursor', 'move');
+            this.group.append('line')
+                .attr('class', visClass)
+                .attr('x1', x1).attr('y1', y1)
+                .attr('x2', x2).attr('y2', y2)
+                .attr('stroke', stroke)
+                .attr('stroke-width', sw)
+                .attr('stroke-dasharray', dash || null)
+                .style('pointer-events', 'none')
+                .style('cursor', 'move');
+        };
+
         // Calculate median slope - all parallel lines use this slope
         const medianSlopeDenom = forkSpanX;
         const medianSlope = Math.abs(medianSlopeDenom) < 1e-9 ? 0 : forkSpanY / medianSlopeDenom;
@@ -2542,93 +2569,43 @@ class PitchforkTool extends BaseDrawing {
                 : (this.style.strokeDasharray || '');
 
         if (middleLineEnabled) {
+            const handleOpts = {
+                stroke: this.style.medianColor,
+                strokeWidth: medianStrokeWidth,
+                strokeDasharray: medianStrokeDasharray,
+                hitClass: 'pitchfork-handle-hit pitchfork-level-hit',
+                visClass: 'pitchfork-handle',
+            };
+            const tineOpts = {
+                stroke: this.style.medianColor,
+                strokeWidth: medianStrokeWidth,
+                strokeDasharray: medianStrokeDasharray,
+            };
             // Draw construction lines based on style
             if (this.style.pitchforkStyle === 'schiff') {
-                // Schiff: Draw A to B line and B to C base line
-                this.group.append('line')
-                    .attr('x1', ax).attr('y1', ay)
-                    .attr('x2', bx).attr('y2', by)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
-                
-                this.group.append('line')
-                    .attr('x1', bx).attr('y1', by)
-                    .attr('x2', cx).attr('y2', cy)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
+                appendPitchforkLine(ax, ay, bx, by, handleOpts);
+                appendPitchforkLine(bx, by, cx, cy, handleOpts);
             } else if (this.style.pitchforkStyle === 'modified-schiff' || this.style.pitchforkStyle === 'inside') {
-                // For Modified Schiff and Inside: Draw A to B and B to C
-                this.group.append('line')
-                    .attr('x1', ax).attr('y1', ay)
-                    .attr('x2', bx).attr('y2', by)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
-                
-                this.group.append('line')
-                    .attr('x1', bx).attr('y1', by)
-                    .attr('x2', cx).attr('y2', cy)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
+                appendPitchforkLine(ax, ay, bx, by, handleOpts);
+                appendPitchforkLine(bx, by, cx, cy, handleOpts);
             } else {
-                // Original (default): A to midBC, midBC to B, midBC to C
-                this.group.append('line')
-                    .attr('x1', ax).attr('y1', ay)
-                    .attr('x2', midX).attr('y2', midY)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
-                
-                this.group.append('line')
-                    .attr('x1', midX).attr('y1', midY)
-                    .attr('x2', bx).attr('y2', by)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
-                
-                this.group.append('line')
-                    .attr('x1', midX).attr('y1', midY)
-                    .attr('x2', cx).attr('y2', cy)
-                    .attr('stroke', this.style.medianColor)
-                    .attr('stroke-width', medianStrokeWidth)
-                    .attr('stroke-dasharray', medianStrokeDasharray)
-                    .style('cursor', 'move');
+                appendPitchforkLine(ax, ay, midX, midY, handleOpts);
+                appendPitchforkLine(midX, midY, bx, by, handleOpts);
+                appendPitchforkLine(midX, midY, cx, cy, handleOpts);
             }
-            
-            // Draw the median line — Original: starts at mid(B,C), extends right; handle is A→midBC only.
-            const medianStartX = medianLineStartX;
-            const medianStartY = medianLineStartY;
+
             const medianSeg = medianLineSeg;
-            
-            this.group.append('line')
-                .attr('x1', medianSeg.x1).attr('y1', medianSeg.y1)
-                .attr('x2', medianSeg.x2).attr('y2', medianSeg.y2)
-                .attr('stroke', this.style.medianColor)
-                .attr('stroke-width', medianStrokeWidth)
-                .attr('stroke-dasharray', medianStrokeDasharray)
-                .style('cursor', 'move');
+            appendPitchforkLine(medianSeg.x1, medianSeg.y1, medianSeg.x2, medianSeg.y2, tineOpts);
         }
 
         // Draw all level lines
         levelLines.forEach(line => {
             if (line.isMedian) return; // Skip median, already drawn
             const seg = resolveLineSegment(line.startX, line.startY);
-            
-            this.group.append('line')
-                .attr('x1', seg.x1).attr('y1', seg.y1)
-                .attr('x2', seg.x2).attr('y2', seg.y2)
-                .attr('stroke', line.color)
-                .attr('stroke-width', line.strokeWidth || 1)
-                .style('cursor', 'move');
+            appendPitchforkLine(seg.x1, seg.y1, seg.x2, seg.y2, {
+                stroke: line.color,
+                strokeWidth: line.strokeWidth || 1,
+            });
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
