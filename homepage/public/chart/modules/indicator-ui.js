@@ -2478,28 +2478,17 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
         applyEyeState();
         nameSpan.style.opacity = indicator.visible ? '1' : '0.55';
         visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
-        if (!isVolume) {
-            if (!indicator.visible) {
-                if (indicator.data) {
-                    indicator._hiddenData = indicator.data;
-                    indicator.data = [];
-                }
-                if (self.indicators && self.indicators.data && self.indicators.data[id]) {
-                    indicator._hiddenDataStore = self.indicators.data[id];
-                    self.indicators.data[id] = [];
-                }
-            } else {
-                if (indicator._hiddenData) {
-                    indicator.data = indicator._hiddenData;
-                    delete indicator._hiddenData;
-                }
-                if (indicator._hiddenDataStore && self.indicators && self.indicators.data) {
-                    self.indicators.data[id] = indicator._hiddenDataStore;
-                    delete indicator._hiddenDataStore;
-                }
+        if (indicator.visible && self.indicators && self.indicators.data) {
+            const store = self.indicators.data[id];
+            const storeBroken = !store
+                || (Array.isArray(store) && store.length === 0)
+                || (type === 'obv' && (!store.obv || !Array.isArray(store.obv) || store.obv.length === 0));
+            if (storeBroken && typeof self.recalculateIndicators === 'function') {
+                self.recalculateIndicators();
             }
         }
         if (typeof self.render === 'function') self.render();
+        if (typeof self.updateOHLCIndicators === 'function') self.updateOHLCIndicators();
     };
     actions.appendChild(visibilityBtn);
 
@@ -5215,10 +5204,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
     if (indicatorType === 'obv') {
         return {
             sections: [{
-                title: 'On Balance Volume',
-                checkboxRow: { showId: 'showObv', label: 'On Balance Volume' },
                 bandStyleHeader: true,
-                rows: [v9BandStyleRow('On Balance Volume', 'color', 'lineOpacity', null, null, null)]
+                rows: [v9BandStyleRow('On Balance Volume', 'color', 'lineOpacity', null, null, 'showObv')]
             }],
             footers: footers
         };

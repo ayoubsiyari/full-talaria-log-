@@ -7848,7 +7848,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         ctx.fillStyle = axisStripBg;
         ctx.fillRect(panelAxisLeft, indTop, panelFullRight - panelAxisLeft, panelHeight);
         
-        const indicatorData = this.indicators.data[indicator.id];
+        let indicatorData = this.indicators.data[indicator.id];
         if (!indicatorData) return;
         if (indicator.hidePlot === true) {
             indicator._axisLabelTags = [];
@@ -7857,6 +7857,13 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             indicator._axisLabelColor = '';
             indicator._displayLabel = '';
             return;
+        }
+        if (indicator.type === 'obv' && (!indicatorData.obv || !Array.isArray(indicatorData.obv) || indicatorData.obv.length === 0)) {
+            if (typeof this.recalculateIndicators === 'function') {
+                this.recalculateIndicators();
+            }
+            indicatorData = this.indicators.data[indicator.id];
+            if (!indicatorData || !indicatorData.obv || !indicatorData.obv.length) return;
         }
         
         // Type-specific rendering for multi-series indicators
