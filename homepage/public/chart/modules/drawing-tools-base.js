@@ -214,6 +214,10 @@ class BaseDrawing {
         if (opts.skipHandles) return false;
         const mgr = this.chart && this.chart.drawingManager;
         if (mgr && mgr._skipHandleSetup) return false;
+        if (mgr && typeof mgr._isLiveHandleEditing === 'function' && mgr._isLiveHandleEditing()
+            && mgr.resizingDrawing === this) {
+            return false;
+        }
         return true;
     }
 
@@ -351,13 +355,49 @@ class BaseDrawing {
      * @returns {boolean} true when geometry and handles were updated in place
      */
     patchLiveHandleResize(scales, pointIndex) {
+        let patched = false;
         if (typeof this.patchLiveAnchorGeometry === 'function' && this.patchLiveAnchorGeometry(scales)) {
-            return true;
+            patched = true;
+        } else if (typeof this._patchLiveTwoPointGeometry === 'function' && this._patchLiveTwoPointGeometry(scales, pointIndex)) {
+            patched = true;
+        } else if (typeof this.patchPanZoomGeometry === 'function' && this.patchPanZoomGeometry(scales)) {
+            patched = true;
+        } else if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+            patched = true;
         }
-        if (typeof this.patchPanZoomGeometry === 'function' && this.patchPanZoomGeometry(scales)) {
-            return true;
+        this._pruneDuplicateResizeHandles();
+        return patched;
+    }
+
+    /** Remove bare `.resize-handle` / hit circles (horizontal line, vertical line, …). */
+    _clearDirectResizeHandles() {
+        if (!this.group || this.group.empty()) return;
+        this.group.selectAll('.resize-handle, .resize-handle-hit').remove();
+    }
+
+    _pruneDuplicateGroupHandles() {
+        if (!this.group || this.group.empty()) return;
+        const seen = new Set();
+        this.group.selectAll('.resize-handle-group').nodes().slice().reverse().forEach((node) => {
+            if (!node || !node.getAttribute) return;
+            const key = node.getAttribute('data-point-index');
+            const normalized = key != null ? String(key) : '?';
+            if (seen.has(normalized)) {
+                try { node.remove(); } catch (_) {}
+            } else {
+                seen.add(normalized);
+            }
+        });
+    }
+
+    _pruneDuplicateResizeHandles() {
+        const points = this.virtualPoints || this.points;
+        const count = Array.isArray(points) ? points.length : 1;
+        for (let i = 0; i < Math.max(1, count); i++) {
+            this._pruneDuplicateDirectHandles(i);
         }
-        return false;
+        this._pruneDuplicateGroupHandles();
     }
 
     static fibIndexToPixel(scales, xIdx) {
@@ -680,10 +720,12 @@ class BaseDrawing {
                 : scales.xScale(point.x);
             const cy = scales.yScale(point.y);
             if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+            this._pruneDuplicateDirectHandles(index);
             this.group.selectAll(`.resize-handle-group[data-point-index="${index}"] circle`)
                 .attr('cx', cx)
                 .attr('cy', cy);
         });
+        this._pruneDuplicateGroupHandles();
     }
 
     /** Tools that append bare `.resize-handle` circles (not resize-handle-group). */

@@ -568,6 +568,22 @@ class TrendlineTool extends BaseDrawing {
         }
         return true;
     }
+
+    _patchLiveTwoPointGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const x1 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+        const y1 = scales.yScale(p1.y);
+        const x2 = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+        const y2 = scales.yScale(p2.y);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
+        patchTwoPointLineElements(this.group, x1, y1, x2, y2);
+        this.updateHandlePositions(scales);
+        return true;
+    }
     
     renderInfoBox(x1, y1, x2, y2, scales) {
         const infoSettings = this.style.infoSettings || {};
@@ -1133,38 +1149,43 @@ class HorizontalLineTool extends BaseDrawing {
         this.renderTextLabel(scales, xRange, p);
 
         if (this._shouldCreateHandles(renderOpts)) {
-            const pos = this._getHandleScreenPosition(scales);
-            if (pos) {
-                const handleRadius = 3;
-                const handleStrokeWidth = 2;
-                const hitRadius = 12;
-                this.group.append('circle')
-                    .attr('class', 'resize-handle-hit')
-                    .attr('cx', pos.cx)
-                    .attr('cy', pos.cy)
-                    .attr('r', hitRadius)
-                    .attr('fill', 'transparent')
-                    .attr('stroke', 'none')
-                    .style('cursor', 'ns-resize')
-                    .style('pointer-events', 'all')
-                    .style('opacity', 0)
-                    .attr('data-point-index', 0);
-                this.group.append('circle')
-                    .attr('class', 'resize-handle')
-                    .attr('cx', pos.cx)
-                    .attr('cy', pos.cy)
-                    .attr('r', handleRadius)
-                    .attr('fill', 'transparent')
-                    .attr('stroke', '#2962FF')
-                    .attr('stroke-width', handleStrokeWidth)
-                    .style('cursor', 'ns-resize')
-                    .style('pointer-events', 'all')
-                    .style('opacity', this.selected ? 1 : 0)
-                    .attr('data-point-index', 0);
-            }
+            this._recreateDirectResizeHandles(scales);
         }
 
         return this.group;
+    }
+
+    _recreateDirectResizeHandles(scales) {
+        if (!this.group || this.group.empty()) return;
+        this._clearDirectResizeHandles();
+        const pos = this._getHandleScreenPosition(scales);
+        if (!pos) return;
+        const handleRadius = 3;
+        const handleStrokeWidth = 2;
+        const hitRadius = 12;
+        this.group.append('circle')
+            .attr('class', 'resize-handle-hit')
+            .attr('cx', pos.cx)
+            .attr('cy', pos.cy)
+            .attr('r', hitRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('cursor', 'ns-resize')
+            .style('pointer-events', 'all')
+            .style('opacity', 0)
+            .attr('data-point-index', 0);
+        this.group.append('circle')
+            .attr('class', 'resize-handle')
+            .attr('cx', pos.cx)
+            .attr('cy', pos.cy)
+            .attr('r', handleRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', '#2962FF')
+            .attr('stroke-width', handleStrokeWidth)
+            .style('cursor', 'ns-resize')
+            .style('pointer-events', 'all')
+            .style('opacity', this.selected ? 1 : 0)
+            .attr('data-point-index', 0);
     }
 
     _getHandleScreenPosition(scales) {
@@ -1181,10 +1202,8 @@ class HorizontalLineTool extends BaseDrawing {
         if (pos) this.syncDirectPointHandleDom(scales, 0, pos);
     }
 
-    /** Hot-path: patch stroke + handle without rebuilding labels (split-text needs full render). */
     patchLiveAnchorGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
-        if (this._splitInfo) return false;
         const p = this.points[0];
         const y = scales.yScale(p.y);
         if (!Number.isFinite(y)) return false;
@@ -1543,38 +1562,43 @@ class VerticalLineTool extends BaseDrawing {
         this.renderTextLabel(scales, x, yRange);
 
         if (this._shouldCreateHandles(renderOpts)) {
-            const pos = this._getHandleScreenPosition(scales, x);
-            if (pos) {
-                const handleRadius = 3;
-                const handleStrokeWidth = 2;
-                const hitRadius = 12;
-                this.group.append('circle')
-                    .attr('class', 'resize-handle-hit')
-                    .attr('cx', pos.cx)
-                    .attr('cy', pos.cy)
-                    .attr('r', hitRadius)
-                    .attr('fill', 'transparent')
-                    .attr('stroke', 'none')
-                    .style('cursor', 'ew-resize')
-                    .style('pointer-events', 'all')
-                    .style('opacity', 0)
-                    .attr('data-point-index', 0);
-                this.group.append('circle')
-                    .attr('class', 'resize-handle')
-                    .attr('cx', pos.cx)
-                    .attr('cy', pos.cy)
-                    .attr('r', handleRadius)
-                    .attr('fill', 'transparent')
-                    .attr('stroke', '#2962FF')
-                    .attr('stroke-width', handleStrokeWidth)
-                    .style('cursor', 'ew-resize')
-                    .style('pointer-events', 'all')
-                    .style('opacity', this.selected ? 1 : 0)
-                    .attr('data-point-index', 0);
-            }
+            this._recreateDirectResizeHandles(scales, x);
         }
 
         return this.group;
+    }
+
+    _recreateDirectResizeHandles(scales, anchorX) {
+        if (!this.group || this.group.empty()) return;
+        this._clearDirectResizeHandles();
+        const pos = this._getHandleScreenPosition(scales, anchorX);
+        if (!pos) return;
+        const handleRadius = 3;
+        const handleStrokeWidth = 2;
+        const hitRadius = 12;
+        this.group.append('circle')
+            .attr('class', 'resize-handle-hit')
+            .attr('cx', pos.cx)
+            .attr('cy', pos.cy)
+            .attr('r', hitRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('cursor', 'ew-resize')
+            .style('pointer-events', 'all')
+            .style('opacity', 0)
+            .attr('data-point-index', 0);
+        this.group.append('circle')
+            .attr('class', 'resize-handle')
+            .attr('cx', pos.cx)
+            .attr('cy', pos.cy)
+            .attr('r', handleRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', '#2962FF')
+            .attr('stroke-width', handleStrokeWidth)
+            .style('cursor', 'ew-resize')
+            .style('pointer-events', 'all')
+            .style('opacity', this.selected ? 1 : 0)
+            .attr('data-point-index', 0);
     }
 
     _getHandleScreenPosition(scales, anchorX) {
@@ -1598,7 +1622,6 @@ class VerticalLineTool extends BaseDrawing {
 
     patchLiveAnchorGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
-        if (this._splitInfo) return false;
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(p.x)
@@ -2025,6 +2048,15 @@ class RayTool extends BaseDrawing {
         return true;
     }
 
+    _patchLiveTwoPointGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        const seg = computeRayScreenEndpoints(scales, this.points[0], this.points[1]);
+        if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
+        patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        this.updateHandlePositions(scales);
+        return true;
+    }
+
     renderTextLabel(coords) {
         const label = this.text || '';
         if (!label.trim()) return;
@@ -2344,37 +2376,49 @@ class HorizontalRayTool extends BaseDrawing {
         this.renderTextLabel(scales, xRange, p, x);
 
         if (this._shouldCreateHandles(renderOpts)) {
-            const anchorX = x;
-            const anchorY = scales.yScale(p.y);
-            const handleRadius = 3;
-            const handleStrokeWidth = 2;
-            const hitRadius = 12;
-            this.group.append('circle')
-                .attr('class', 'resize-handle-hit')
-                .attr('cx', anchorX)
-                .attr('cy', anchorY)
-                .attr('r', hitRadius)
-                .attr('fill', 'transparent')
-                .attr('stroke', 'none')
-                .style('cursor', 'move')
-                .style('pointer-events', 'all')
-                .style('opacity', 0)
-                .attr('data-point-index', 0);
-            this.group.append('circle')
-                .attr('class', 'resize-handle')
-                .attr('cx', anchorX)
-                .attr('cy', anchorY)
-                .attr('r', handleRadius)
-                .attr('fill', 'transparent')
-                .attr('stroke', '#2962FF')
-                .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'move')
-                .style('pointer-events', 'all')
-                .style('opacity', this.selected ? 1 : 0)
-                .attr('data-point-index', 0);
+            this._recreateDirectResizeHandles(scales, x);
         }
 
         return this.group;
+    }
+
+    _recreateDirectResizeHandles(scales, anchorX) {
+        if (!this.group || this.group.empty() || !this.points?.[0]) return;
+        this._clearDirectResizeHandles();
+        const p = this.points[0];
+        const cx = Number.isFinite(anchorX)
+            ? anchorX
+            : (scales.chart && scales.chart.dataIndexToPixel
+                ? scales.chart.dataIndexToPixel(p.x)
+                : scales.xScale(p.x));
+        const cy = scales.yScale(p.y);
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return;
+        const handleRadius = 3;
+        const handleStrokeWidth = 2;
+        const hitRadius = 12;
+        this.group.append('circle')
+            .attr('class', 'resize-handle-hit')
+            .attr('cx', cx)
+            .attr('cy', cy)
+            .attr('r', hitRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', 'none')
+            .style('cursor', 'move')
+            .style('pointer-events', 'all')
+            .style('opacity', 0)
+            .attr('data-point-index', 0);
+        this.group.append('circle')
+            .attr('class', 'resize-handle')
+            .attr('cx', cx)
+            .attr('cy', cy)
+            .attr('r', handleRadius)
+            .attr('fill', 'transparent')
+            .attr('stroke', '#2962FF')
+            .attr('stroke-width', handleStrokeWidth)
+            .style('cursor', 'move')
+            .style('pointer-events', 'all')
+            .style('opacity', this.selected ? 1 : 0)
+            .attr('data-point-index', 0);
     }
 
     updateHandlePositions(scales) {
@@ -2383,7 +2427,6 @@ class HorizontalRayTool extends BaseDrawing {
 
     patchLiveAnchorGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
-        if (this._splitInfo) return false;
         const p = this.points[0];
         const x = scales.chart && scales.chart.dataIndexToPixel
             ? scales.chart.dataIndexToPixel(p.x)
@@ -2854,6 +2897,15 @@ class ExtendedLineTool extends BaseDrawing {
         if (typeof this.updateHandlePositions === 'function') {
             this.updateHandlePositions(scales);
         }
+        return true;
+    }
+
+    _patchLiveTwoPointGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        const seg = computeExtendedLineScreenEndpoints(scales, this.points[0], this.points[1]);
+        if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
+        patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        this.updateHandlePositions(scales);
         return true;
     }
 

@@ -458,15 +458,27 @@
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.style.showUp = params.showUp !== false;
-        indicator.style.upColor = params.upColor || '#fb8c00';
+        indicator.style.upColor = params.upColor || '#26a69a';
         indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
         indicator.style.showDown = params.showDown !== false;
-        indicator.style.downColor = params.downColor || '#2962ff';
+        indicator.style.downColor = params.downColor || '#ef5350';
         indicator.style.downLineWidth = params.downLineWidth != null ? params.downLineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [
             ['upLineStyle', 'upLineDashStyle', legacyS],
             ['downLineStyle', 'downLineDashStyle', legacyS]
         ]);
+    }
+
+    function buildAroonLegendTokens(upVal, downVal, style) {
+        const st = style || {};
+        const tokens = [];
+        if (st.showUp !== false && upVal !== null && Number.isFinite(upVal)) {
+            tokens.push({ text: '\u2191' + Math.round(upVal), color: st.upColor || '#26a69a' });
+        }
+        if (st.showDown !== false && downVal !== null && Number.isFinite(downVal)) {
+            tokens.push({ text: '\u2193' + Math.round(downVal), color: st.downColor || '#ef5350' });
+        }
+        return tokens;
     }
 
     function applySupertrendStyleFromParams(indicator, params) {
@@ -8232,6 +8244,18 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
         if (k) return k;
         if (d) return d;
     }
+    if (type === 'aroon' && store.up && store.down) {
+        const upV = this._pickFiniteSeriesValue(store.up, barIdx);
+        const downV = this._pickFiniteSeriesValue(store.down, barIdx);
+        const tokens = buildAroonLegendTokens(upV, downV, st);
+        if (tokens.length) {
+            return {
+                text: tokens.map(function(t) { return t.text; }).join(' '),
+                color: tokens[0].color,
+                tokens: tokens
+            };
+        }
+    }
     if (type === 'cci' && store.cci) {
         const v = pick(store.cci, 2, color);
         if (v) return v;
@@ -8262,8 +8286,17 @@ Chart.prototype._applyCrosshairIndicatorDisplays = function(indicators) {
         if (!ind || ind.hideValues === true) return;
         const fmt = this._formatIndicatorValueAtBar(ind, barIdx);
         if (!fmt) return;
-        ind._displayLabel = fmt.text;
-        if (fmt.color) ind._displayColor = fmt.color;
+        if (Array.isArray(fmt.tokens) && fmt.tokens.length) {
+            ind._legendValueTags = fmt.tokens.map(function(t) {
+                return { text: t.text, color: t.color };
+            });
+            ind._displayLabel = fmt.tokens.map(function(t) { return t.text; }).join(' ');
+            ind._displayColor = fmt.tokens[0].color;
+        } else {
+            ind._legendValueTags = null;
+            ind._displayLabel = fmt.text;
+            if (fmt.color) ind._displayColor = fmt.color;
+        }
     });
 };
 
@@ -11460,25 +11493,28 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2, '%');
 
+        const upColor = style.upColor || '#26a69a';
+        const downColor = style.downColor || '#ef5350';
         if (style.showUp !== false) {
-            this._drawPanelLine(ctx, m, upArr, style.upColor || '#fb8c00', style.upLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.upLineStyle || 'Line', style.upLineDashStyle || 'Solid');
+            this._drawPanelLine(ctx, m, upArr, upColor, style.upLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.upLineStyle || 'Line', style.upLineDashStyle || 'Solid');
         }
         if (style.showDown !== false) {
-            this._drawPanelLine(ctx, m, downArr, style.downColor || '#2962ff', style.downLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.downLineStyle || 'Line', style.downLineDashStyle || 'Solid');
+            this._drawPanelLine(ctx, m, downArr, downColor, style.downLineWidth || 2, visibleStart, visibleEnd, scaleY, clipTop, clipBottom, style.downLineStyle || 'Line', style.downLineDashStyle || 'Solid');
         }
 
         let lastU = null, lastD = null;
         for (let i = Math.min(visibleEnd - 1, upArr.length - 1); i >= visibleStart; i--) {
             if (upArr[i] !== null && !isNaN(upArr[i])) { lastU = upArr[i]; lastD = downArr[i]; break; }
         }
+        const legendTokens = buildAroonLegendTokens(lastU, lastD, style);
         const aroonTags = [];
-        if (lastU !== null && Number.isFinite(lastU)) {
+        if (lastU !== null && Number.isFinite(lastU) && style.showUp !== false) {
             const yU = scaleY(lastU);
-            if (Number.isFinite(yU)) aroonTags.push({ y: yU, text: lastU.toFixed(2) + '%', color: style.upColor || '#fb8c00' });
+            if (Number.isFinite(yU)) aroonTags.push({ y: yU, text: lastU.toFixed(2) + '%', color: upColor });
         }
-        if (lastD !== null && Number.isFinite(lastD)) {
+        if (lastD !== null && Number.isFinite(lastD) && style.showDown !== false) {
             const yD = scaleY(lastD);
-            if (Number.isFinite(yD)) aroonTags.push({ y: yD, text: lastD.toFixed(2) + '%', color: style.downColor || '#2962ff' });
+            if (Number.isFinite(yD)) aroonTags.push({ y: yD, text: lastD.toFixed(2) + '%', color: downColor });
         }
         aroonTags.sort(function(a, b) { return a.y - b.y; });
         for (let i = 1; i < aroonTags.length; i++) {
@@ -11501,9 +11537,12 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelText = '';
             indicator._axisLabelColor = '';
         }
-        indicator._displayColor = style.upColor || '#fb8c00';
-        indicator._displayLabel = lastU !== null
-            ? lastU.toFixed(2) + '%' + (lastD != null ? ' ' + lastD.toFixed(2) + '%' : '')
+        indicator._displayColor = upColor;
+        indicator._legendValueTags = legendTokens.map(function(t) {
+            return { text: t.text, color: t.color };
+        });
+        indicator._displayLabel = legendTokens.length
+            ? legendTokens.map(function(t) { return t.text; }).join(' ')
             : '';
     };
 
@@ -12229,7 +12268,9 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         if (!el || !ind) return;
         el.innerHTML = '';
         if (ind.hideValues === true) return;
-        const tags = Array.isArray(ind._axisLabelTags) ? ind._axisLabelTags : [];
+        const tags = Array.isArray(ind._legendValueTags) && ind._legendValueTags.length
+            ? ind._legendValueTags
+            : (Array.isArray(ind._axisLabelTags) ? ind._axisLabelTags : []);
         if (tags.length > 1) {
             tags.forEach(function(tag, i) {
                 const sp = document.createElement('span');

@@ -204,11 +204,11 @@ function oscillatorLevelStyleParams() {
 function aroonStyleParams() {
     return [
         { id: 'showUp', label: 'Show Aroon Up', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'upColor', label: 'Aroon Up color', type: 'color', default: '#fb8c00', tab: 'style' },
+        { id: 'upColor', label: 'Aroon Up color', type: 'color', default: '#26a69a', tab: 'style' },
         { id: 'upLineStyle', label: 'Aroon Up line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'upLineWidth', label: 'Aroon Up thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showDown', label: 'Show Aroon Down', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'downColor', label: 'Aroon Down color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'downColor', label: 'Aroon Down color', type: 'color', default: '#ef5350', tab: 'style' },
         { id: 'downLineStyle', label: 'Aroon Down line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
         { id: 'downLineWidth', label: 'Aroon Down thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];

@@ -429,7 +429,7 @@ class DrawingToolsManager {
 
     scheduleRenderDrawing(drawing) {
         if (!drawing) return;
-        // Handle resize: patch stroke + handles synchronously (never RAF, never destroy handle DOM).
+        // Handle resize: patch only — never rebuild SVG during drag (prevents handle trails).
         if (this.isResizing && this.resizingDrawing === drawing) {
             try {
                 const stillTracked = this.drawings.find(item => item === drawing || (item && drawing && item.id === drawing.id));
@@ -443,7 +443,9 @@ class DrawingToolsManager {
                         && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
                         return;
                     }
-                    this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
+                    if (typeof stillTracked.updateHandlePositions === 'function') {
+                        stillTracked.updateHandlePositions(scales);
+                    }
                 }
             } catch (_) { /* ignore */ }
             return;
@@ -463,6 +465,19 @@ class DrawingToolsManager {
                         if (d && d.group) {
                             d.group.remove();
                             d.group = null;
+                        }
+                        return;
+                    }
+                    if (this.isResizing && this.resizingDrawing === stillTracked) {
+                        const scales = {
+                            xScale: this.chart.xScale,
+                            yScale: this.chart.yScale,
+                            chart: this.chart
+                        };
+                        if (typeof stillTracked.patchLiveHandleResize === 'function') {
+                            stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex);
+                        } else if (typeof stillTracked.updateHandlePositions === 'function') {
+                            stillTracked.updateHandlePositions(scales);
                         }
                         return;
                     }
@@ -3117,7 +3132,7 @@ class DrawingToolsManager {
 
                     if (!drawing.selected || (this.selectedDrawings.length !== 1 || this.selectedDrawings[0] !== drawing)) {
                         this.deselectAll({ forSelectionChange: true });
-                        drawing.select();
+                        drawing.select({ skipAxisHighlights: true });
                         this.selectedDrawing = drawing;
                         this.selectedDrawings = [drawing];
                     }
@@ -5555,6 +5570,23 @@ class DrawingToolsManager {
             return;
         }
 
+        // Live resize-handle edit: patch geometry in place — never rebuild SVG (prevents handle trails).
+        if (this._isLiveHandleEditing() && this.resizingDrawing === drawing) {
+            const scales = {
+                xScale: this.chart.xScale,
+                yScale: this.chart.yScale,
+                chart: this.chart,
+                labelsGroup: this.labelsGroup
+            };
+            if (typeof drawing.patchLiveHandleResize === 'function') {
+                drawing.patchLiveHandleResize(scales, this.resizingPointIndex);
+            } else if (typeof drawing.updateHandlePositions === 'function') {
+                drawing.updateHandlePositions(scales);
+            }
+            if (this.chart) this.chart._isRendering = wasRendering;
+            return;
+        }
+
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
@@ -7250,8 +7282,8 @@ class DrawingToolsManager {
         };
 
         const handles = drawing.type === 'anchored-volume-profile'
-            ? drawing.group.selectAll('.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"]')
-            : drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group');
+            ? drawing.group.selectAll('.resize-handle-hit[data-point-index="0"]')
+            : drawing.group.selectAll('.resize-handle-hit');
         handles.on('.drag', null);
 
         handles.call(
@@ -7307,6 +7339,7 @@ class DrawingToolsManager {
                     d3.select(this).style('cursor', rrPriceHandle ? 'ns-resize' : 'ew-resize');
                 })
                 .on('drag', function(event) {
+                    if (self._resizePointerSource === 'document') return;
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) self.chart.updateCrosshair(event.sourceEvent);
                     const fm = self._freehandHandleWholeMove;
                     if (fm && fm.drawing === drawing) {
@@ -7407,6 +7440,21 @@ class DrawingToolsManager {
     /**
      * Start handle drag
      */
+    _resetResizeHandleDom(drawing) {
+        if (!drawing?.group || drawing.group.empty() || !this.chart?.xScale || !this.chart?.yScale) return;
+        drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
+        const scales = {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale,
+            chart: this.chart
+        };
+        if (typeof drawing._recreateDirectResizeHandles === 'function') {
+            drawing._recreateDirectResizeHandles(scales);
+        } else if (typeof drawing.createHandles === 'function') {
+            drawing.createHandles(drawing.group, scales);
+        }
+    }
+
     startHandleDrag(drawing, pointIndex, event) {
         this._commitInlineTextEditorBeforeGeometryEdit();
         this._commitStaleDrawingGroupTransform(drawing);
@@ -7416,6 +7464,14 @@ class DrawingToolsManager {
         this.isResizing = true;
         this.resizingDrawing = drawing;
         this.resizingPointIndex = pointIndex;
+        this._resetResizeHandleDom(drawing);
+        if (this._resizePointerSource === 'document') {
+            if (drawing.group && !drawing.group.empty()) {
+                drawing.group.selectAll('.resize-handle-hit').on('.drag', null);
+            }
+        } else {
+            this.setupHandleDrag(drawing);
+        }
 
         if (this.isVolumeProfileToolType(drawing.type)) {
             drawing._isActiveResizing = true;
@@ -7438,21 +7494,9 @@ class DrawingToolsManager {
      */
     handleDrag(event) {
         if (!this.isResizing || !this.resizingDrawing) return;
-        
-        // Use sourceEvent for accurate mouse position
-        const drawing = this.resizingDrawing;
-        const point = this.getDataPoint(event.sourceEvent, drawing.type);
-        const index = this.resizingPointIndex;
-        
-        // Validate index
-        if (index === undefined || index === null || isNaN(index)) {
-            console.warn('⚠️ Invalid resize point index:', index);
-            return;
-        }
-
-        this._assignResizePoint(drawing, index, point, event.sourceEvent.shiftKey, event.sourceEvent);
-        this.scheduleRenderDrawing(drawing);
-        this._broadcastLiveEditUpdate(drawing);
+        const src = event && (event.sourceEvent || event);
+        if (!src) return;
+        this._applyLiveResizeFromPointerEvent(src);
     }
 
     /**
