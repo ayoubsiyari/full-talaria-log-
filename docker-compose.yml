@@ -96,6 +96,9 @@ services:
       SESSION_COOKIE_SAMESITE: "lax"
       WEB_CONCURRENCY: "4"
       APP_ROLE: "api"
+      # Skip scanning all datasets for missing binaries/tiles on every container restart (saves CPU on deploy).
+      # Set false in .env when you need a full repair pass after data migration.
+      SKIP_BINARY_BACKFILL_ON_STARTUP: ${SKIP_BINARY_BACKFILL_ON_STARTUP:-true}
       # FirstRate nightly delta sync (admin can override via uploads/firstrate_schedule.json)
       FIrstrate_SCHEDULE_ENABLED: ${FIrstrate_SCHEDULE_ENABLED:-true}
       FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR: ${FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR:-2}

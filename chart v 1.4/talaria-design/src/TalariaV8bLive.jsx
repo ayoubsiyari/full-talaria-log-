@@ -8140,7 +8140,7 @@ const TalariaV8bLive = () => {
   const [slTslStep, setSlTslStep] = useState("0.25");
   const [logoMenu, setLogoMenu] = useState(false);
   const [replayOpts, setReplayOpts] = useState(false);
-  const [replayMode, setReplayMode] = useState("candle");
+  const [replayMode, setReplayMode] = useState("tick");
   const [replayInterval, setReplayInterval] = useState("Auto");
   const [rollback, setRollback] = useState(false);
   /** Replay active + session forbids rewind — disables Rollback on the bar (synced in nav-integrity effect). */

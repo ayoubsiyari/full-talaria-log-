@@ -2250,11 +2250,6 @@ class PitchforkTool extends BaseDrawing {
         const extendRight = this.style.extendRight !== false;
         const forkSpanX = medianTargetX - pivotX;
         const forkSpanY = medianTargetY - pivotY;
-        /** Natural (non-extended) end for a line parallel to the median through (startX, startY). */
-        const naturalParallelEnd = (startX, startY) => ({
-            x: startX + forkSpanX,
-            y: startY + forkSpanY,
-        });
 
         const yOnLineAtX = (x0, y0, x1, y1, x) => {
             const dx = x1 - x0;
@@ -2263,47 +2258,26 @@ class PitchforkTool extends BaseDrawing {
             return safeY(y0 + m * (x - x0));
         };
 
-        const edgeAlongDirection = (sx, sy, dirX, dirY, forward) => {
-            const len2 = dirX * dirX + dirY * dirY;
-            if (len2 < 1e-12) return { x: sx, y: sy };
-            const ex = sx + dirX;
-            const ey = sy + dirY;
-            const candidates = [
-                { x: rightEdge, y: yOnLineAtX(sx, sy, ex, ey, rightEdge) },
-                { x: leftEdge, y: yOnLineAtX(sx, sy, ex, ey, leftEdge) },
-            ];
-            let best = candidates[0];
-            let bestScore = forward ? -Infinity : Infinity;
-            for (const c of candidates) {
-                const score = (c.x - sx) * dirX + (c.y - sy) * dirY;
-                if (forward ? score > bestScore : score < bestScore) {
-                    bestScore = score;
-                    best = c;
-                }
-            }
-            return { x: best.x, y: clampY(best.y) };
-        };
-
-        /** Extend-right only by default (TradingView pitchfork); extend-left optional in Style tab. */
-        const resolveLineSegment = (sx, sy, nx, ny) => {
+        /** All tines share median direction; extend right = chart right edge only (no left extension). */
+        const resolveLineSegment = (sx, sy) => {
+            const dirEx = sx + forkSpanX;
+            const dirEy = sy + forkSpanY;
             let x1 = sx;
             let y1 = sy;
-            let x2 = nx;
-            let y2 = ny;
-            const dirX = nx - sx;
-            const dirY = ny - sy;
+            let x2 = dirEx;
+            let y2 = dirEy;
             if (extendLeft) {
-                const back = edgeAlongDirection(sx, sy, dirX, dirY, false);
-                x1 = back.x;
-                y1 = back.y;
+                x1 = leftEdge;
+                y1 = yOnLineAtX(sx, sy, dirEx, dirEy, leftEdge);
             }
             if (extendRight) {
-                const fwd = edgeAlongDirection(sx, sy, dirX, dirY, true);
-                x2 = fwd.x;
-                y2 = fwd.y;
+                x2 = rightEdge;
+                y2 = yOnLineAtX(sx, sy, dirEx, dirEy, rightEdge);
             }
             return { x1, y1, x2, y2 };
         };
+
+        const segmentEnd = (sx, sy) => resolveLineSegment(sx, sy);
 
         // Calculate median slope - all parallel lines use this slope
         const medianSlopeDenom = forkSpanX;
@@ -2316,29 +2290,25 @@ class PitchforkTool extends BaseDrawing {
         const midX = midBC_X;
         const midY = midBC_Y;
         
-        // Project B and C onto a line parallel to median at medianTargetX
-        const projectedBY = by + medianSlope * (medianTargetX - bx);
-        const projectedCY = cy + medianSlope * (medianTargetX - cx);
+        const isOriginal = this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle;
+        const isInside = this.style.pitchforkStyle === 'inside';
+        const medianLineStartX = isOriginal ? midX : pivotX;
+        const medianLineStartY = isOriginal ? midY : pivotY;
+        const medianLineSeg = segmentEnd(medianLineStartX, medianLineStartY);
         
-        // Distances from median to boundaries at medianTargetX
-        const distToLower = projectedBY - medianTargetY;
-        const distToUpper = projectedCY - medianTargetY;
-        
-        // Add median as level 0
+        // Add median as level 0 (for fill band ordering)
         levelLines.push({
             value: 0,
-            startX: pivotX,
-            startY: pivotY,
-            endX: medianTargetX,
-            endY: medianTargetY,
+            startX: medianLineStartX,
+            startY: medianLineStartY,
+            endX: medianLineSeg.x2,
+            endY: medianLineSeg.y2,
             color: this.style.medianColor,
             isMedian: true,
             strokeWidth: this.style.strokeWidth
         });
         
         // Add enabled levels on both sides - parallel to median
-        const isOriginal = this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle;
-        const isInside = this.style.pitchforkStyle === 'inside';
         
         this.levels.forEach(level => {
             if (!level.enabled) return;
@@ -2347,26 +2317,26 @@ class PitchforkTool extends BaseDrawing {
             if (level.value === 1) {
                 if (isOriginal) {
                     // Original: lines start from B and C
-                    const lowerEnd = naturalParallelEnd(bx, by);
+                    const lowerSeg = segmentEnd(bx, by);
                     levelLines.push({
                         value: -level.value,
                         startX: bx,
                         startY: by,
-                        endX: lowerEnd.x,
-                        endY: lowerEnd.y,
+                        endX: lowerSeg.x2,
+                        endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: this.style.strokeWidth,
                         levelValue: level.value
                     });
                     
-                    const upperEnd = naturalParallelEnd(cx, cy);
+                    const upperSeg = segmentEnd(cx, cy);
                     levelLines.push({
                         value: level.value,
                         startX: cx,
                         startY: cy,
-                        endX: upperEnd.x,
-                        endY: upperEnd.y,
+                        endX: upperSeg.x2,
+                        endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: this.style.strokeWidth,
@@ -2374,26 +2344,26 @@ class PitchforkTool extends BaseDrawing {
                     });
                 } else {
                     // Schiff variants: lines are parallel to median and pass through B and C
-                    const lowerEnd = naturalParallelEnd(bx, by);
+                    const lowerSeg = segmentEnd(bx, by);
                     levelLines.push({
                         value: -level.value,
                         startX: bx,
                         startY: by,
-                        endX: lowerEnd.x,
-                        endY: lowerEnd.y,
+                        endX: lowerSeg.x2,
+                        endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: this.style.strokeWidth,
                         levelValue: level.value
                     });
                     
-                    const upperEnd = naturalParallelEnd(cx, cy);
+                    const upperSeg = segmentEnd(cx, cy);
                     levelLines.push({
                         value: level.value,
                         startX: cx,
                         startY: cy,
-                        endX: upperEnd.x,
-                        endY: upperEnd.y,
+                        endX: upperSeg.x2,
+                        endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: this.style.strokeWidth,
@@ -2406,14 +2376,14 @@ class PitchforkTool extends BaseDrawing {
                     // Original: interpolate from midBC towards B/C
                     const lowerStartX = midX + (bx - midX) * level.value;
                     const lowerStartY = midY + (by - midY) * level.value;
-                    const lowerEnd = naturalParallelEnd(lowerStartX, lowerStartY);
+                    const lowerSeg = segmentEnd(lowerStartX, lowerStartY);
                     
                     levelLines.push({
                         value: -level.value,
                         startX: lowerStartX,
                         startY: lowerStartY,
-                        endX: lowerEnd.x,
-                        endY: lowerEnd.y,
+                        endX: lowerSeg.x2,
+                        endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: 1,
@@ -2422,14 +2392,14 @@ class PitchforkTool extends BaseDrawing {
                     
                     const upperStartX = midX + (cx - midX) * level.value;
                     const upperStartY = midY + (cy - midY) * level.value;
-                    const upperEnd = naturalParallelEnd(upperStartX, upperStartY);
+                    const upperSeg = segmentEnd(upperStartX, upperStartY);
                     
                     levelLines.push({
                         value: level.value,
                         startX: upperStartX,
                         startY: upperStartY,
-                        endX: upperEnd.x,
-                        endY: upperEnd.y,
+                        endX: upperSeg.x2,
+                        endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: 1,
@@ -2439,14 +2409,14 @@ class PitchforkTool extends BaseDrawing {
                     // Schiff/Modified Schiff/Inside: interpolate from midBC towards B/C, lines are parallel
                     const lowerStartX = midX + (bx - midX) * level.value;
                     const lowerStartY = midY + (by - midY) * level.value;
-                    const lowerEnd = naturalParallelEnd(lowerStartX, lowerStartY);
+                    const lowerSeg = segmentEnd(lowerStartX, lowerStartY);
                     
                     levelLines.push({
                         value: -level.value,
                         startX: lowerStartX,
                         startY: lowerStartY,
-                        endX: lowerEnd.x,
-                        endY: lowerEnd.y,
+                        endX: lowerSeg.x2,
+                        endY: lowerSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: 1,
@@ -2455,14 +2425,14 @@ class PitchforkTool extends BaseDrawing {
                     
                     const upperStartX = midX + (cx - midX) * level.value;
                     const upperStartY = midY + (cy - midY) * level.value;
-                    const upperEnd = naturalParallelEnd(upperStartX, upperStartY);
+                    const upperSeg = segmentEnd(upperStartX, upperStartY);
                     
                     levelLines.push({
                         value: level.value,
                         startX: upperStartX,
                         startY: upperStartY,
-                        endX: upperEnd.x,
-                        endY: upperEnd.y,
+                        endX: upperSeg.x2,
+                        endY: upperSeg.y2,
                         color: level.color,
                         isMedian: false,
                         strokeWidth: 1,
@@ -2526,8 +2496,8 @@ class PitchforkTool extends BaseDrawing {
                 const start1Y = line1.isMedian ? midY : line1.startY;
                 const start2X = line2.isMedian ? midX : line2.startX;
                 const start2Y = line2.isMedian ? midY : line2.startY;
-                const seg1 = resolveLineSegment(start1X, start1Y, line1.endX, line1.endY);
-                const seg2 = resolveLineSegment(start2X, start2Y, line2.endX, line2.endY);
+                const seg1 = segmentEnd(start1X, start1Y);
+                const seg2 = segmentEnd(start2X, start2Y);
                 
                 this.group.append('polygon')
                     .attr('class', 'shape-fill')
@@ -2608,11 +2578,10 @@ class PitchforkTool extends BaseDrawing {
                     .style('cursor', 'move');
             }
             
-            // Draw the median line
-            // For Original style: anchor at midBC; for other styles anchor at pivot.
-            const medianStartX = (this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle) ? midX : pivotX;
-            const medianStartY = (this.style.pitchforkStyle === 'original' || !this.style.pitchforkStyle) ? midY : pivotY;
-            const medianSeg = resolveLineSegment(medianStartX, medianStartY, medianTargetX, medianTargetY);
+            // Draw the median line — Original: starts at mid(B,C), extends right; handle is A→midBC only.
+            const medianStartX = medianLineStartX;
+            const medianStartY = medianLineStartY;
+            const medianSeg = medianLineSeg;
             
             this.group.append('line')
                 .attr('x1', medianSeg.x1).attr('y1', medianSeg.y1)
@@ -2626,7 +2595,7 @@ class PitchforkTool extends BaseDrawing {
         // Draw all level lines
         levelLines.forEach(line => {
             if (line.isMedian) return; // Skip median, already drawn
-            const seg = resolveLineSegment(line.startX, line.startY, line.endX, line.endY);
+            const seg = resolveLineSegment(line.startX, line.startY);
             
             this.group.append('line')
                 .attr('x1', seg.x1).attr('y1', seg.y1)

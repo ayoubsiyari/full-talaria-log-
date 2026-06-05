@@ -4224,6 +4224,23 @@ class ReplaySystem {
     updateChartWithAnimatedCandle() {
         if (!this.animatingCandle || !this.chart) return;
 
+        // Multichart: host tile A uses the same mirror renderer as iframe panels
+        // so tick-by-tick forming-candle animation is identical everywhere.
+        if (typeof window !== 'undefined' && window.__multichartGrid) {
+            this._multichartBroadcastReplayFrame();
+            if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
+                this.chart.orderManager.updatePositions();
+            }
+            const tn = performance.now();
+            if (!this._animFollowIndTs || tn - this._animFollowIndTs >= 90) {
+                this._animFollowIndTs = tn;
+                if (this.isActive && !this.isPickingPoint) {
+                    try { this.updateAutoScrollIndicator(); } catch (_) {}
+                }
+            }
+            return;
+        }
+
         // Build the base slice once; reuse on subsequent ticks of the same candle.
         if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
             this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
@@ -5300,30 +5317,41 @@ class ReplaySystem {
     }
 
     /**
-     * Multichart V9: parent tile A drives replay; iframe panels mirror each
-     * animation frame (tick-by-tick forming candle, fast mode, candle mode).
+     * Build replay frame payload for multichart mirror sync (host + iframes).
+     */
+    _buildMultichartReplayFrameDetail() {
+        const detail = {
+            timestamp: this.replayTimestamp,
+            currentIndex: this.currentIndex,
+            tickProgress: this.tickProgress,
+            tickElapsedMs: this.tickElapsedMs,
+            isPlaying: !!this.isPlaying,
+        };
+        if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
+            const ac = this.animatingCandle;
+            detail.animatedCandle = {
+                t: ac.t,
+                o: ac.open,
+                h: ac.high,
+                l: ac.low,
+                c: ac.close,
+                v: ac.volume || 0,
+            };
+        }
+        return detail;
+    }
+
+    /**
+     * Multichart V9: parent tile A drives replay; host + iframe panels share one
+     * mirror renderer (applyMultichartMirrorFrame) so tick animation matches.
      */
     _multichartBroadcastReplayFrame() {
         try {
             if (typeof window === 'undefined' || !window.__multichartGrid) return;
             if (!this.isActive) return;
-            const detail = {
-                timestamp: this.replayTimestamp,
-                currentIndex: this.currentIndex,
-                tickProgress: this.tickProgress,
-                tickElapsedMs: this.tickElapsedMs,
-                isPlaying: !!this.isPlaying,
-            };
-            if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
-                const ac = this.animatingCandle;
-                detail.animatedCandle = {
-                    t: ac.t,
-                    o: ac.open,
-                    h: ac.high,
-                    l: ac.low,
-                    c: ac.close,
-                    v: ac.volume || 0,
-                };
+            const detail = this._buildMultichartReplayFrameDetail();
+            if (typeof this.applyMultichartMirrorFrame === 'function') {
+                this.applyMultichartMirrorFrame(detail);
             }
             window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
         } catch (_e) { /* ignore */ }

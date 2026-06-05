@@ -554,6 +554,14 @@ FIRSTRATE_EXTREME_RATIO_MAX = float(os.getenv("FIRSTRATE_EXTREME_RATIO_MAX", "5.
 BINARY_ONLY_RUNTIME = os.getenv("BINARY_ONLY_RUNTIME", "false").strip().lower() in {"1", "true", "yes", "on"}
 BINARY_BUILD_MODE = (os.getenv("BINARY_BUILD_MODE", "thread").strip().lower() or "thread")
 BINARY_QUEUE_POLL_SECONDS = float(os.getenv("BINARY_QUEUE_POLL_SECONDS", "2.0"))
+# When true, API startup skips scanning all datasets and queueing binary/tile backfill jobs.
+# Set false (or trigger rebuilds from admin) when you need a full chart-data repair pass.
+SKIP_BINARY_BACKFILL_ON_STARTUP = os.getenv("SKIP_BINARY_BACKFILL_ON_STARTUP", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 APP_ROLE = (os.getenv("APP_ROLE", "api").strip().lower() or "api")
 
 # CSV archival support (cold storage on same filesystem/volume by default)
@@ -2101,6 +2109,9 @@ def _backfill_binaries():
     """Check all existing CSV files and build binary files for any that are missing."""
     if APP_ROLE == "worker":
         print("⏭️ Skipping binary backfill in worker role")
+        return
+    if SKIP_BINARY_BACKFILL_ON_STARTUP:
+        print("⏭️ Skipping binary backfill on startup (SKIP_BINARY_BACKFILL_ON_STARTUP=true)")
         return
 
     import threading
