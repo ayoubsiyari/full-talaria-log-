@@ -169,6 +169,118 @@
     var coalescedSeekTs = null;
     var coalescedSeekScheduled = false;
 
+    function isMultichartIframePanel() {
+        try {
+            return !!(global.parent && global.parent !== global
+                && /(?:^|[?&])multichart=1(?:&|$)/.test(String(global.location.search || '')));
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
+     * Apply one replay animation frame from parent tile A. Iframe panels stay
+     * paused locally — parent is the single playhead driver.
+     */
+    function applyReplayFrame(ch, args) {
+        if (!ch || !args || typeof args !== 'object') return;
+        var rs = ch.replaySystem;
+        if (!rs) return;
+        var ts = Number(args.timestamp);
+        if (!Number.isFinite(ts)) return;
+
+        if (!ch.rawData || ch.rawData.length === 0) {
+            pendingReplayTs = ts;
+            return applyReplayEnter(ch, ts);
+        }
+        if (!rs.isActive) {
+            return applyReplayEnter(ch, ts);
+        }
+
+        if (rs.isPlaying) {
+            try {
+                if (typeof rs.stopTickAnimation === 'function') rs.stopTickAnimation();
+                if (typeof rs.pause === 'function') rs.pause();
+            } catch (_) {}
+        }
+
+        var frd = rs.fullRawData;
+        if (!frd || frd.length === 0) {
+            scheduleCoalescedSeek(ch, ts);
+            return;
+        }
+
+        var idx = Number(args.currentIndex);
+        if (Number.isFinite(idx)) {
+            var floorIdx = rs.sessionStartIndex || 0;
+            rs.currentIndex = Math.max(floorIdx, Math.min(idx, frd.length - 1));
+        }
+        rs.replayTimestamp = ts;
+        if (Number.isFinite(args.tickElapsedMs)) {
+            rs.tickElapsedMs = Number(args.tickElapsedMs);
+        }
+        if (Number.isFinite(args.tickProgress)) {
+            rs.tickProgress = Number(args.tickProgress);
+        }
+
+        var anim = args.animatedCandle;
+        var nativeTf = String(ch._nativeRawFetchTf || ch.currentTimeframe || '')
+            .toLowerCase().trim();
+        var rawStepMs = (frd.length > 1) ? Math.abs(frd[1].t - frd[0].t) : 60000;
+        var useAnimSlice = !!(anim && typeof anim === 'object' && Number.isFinite(Number(anim.t))
+            && nativeTf === '1m' && rawStepMs <= 61000);
+
+        if (useAnimSlice) {
+            var sliceEnd = Math.max(rs.currentIndex + 1, 1);
+            var sliced = frd.slice(0, sliceEnd);
+            sliced.push({
+                t: Number(anim.t),
+                o: Number(anim.o),
+                h: Number(anim.h),
+                l: Number(anim.l),
+                c: Number(anim.c),
+                v: Number(anim.v) || 0,
+            });
+            ch.rawData = sliced;
+            if (typeof ch.resampleData === 'function') {
+                ch.data = ch.resampleData(sliced, ch.currentTimeframe);
+            }
+            if (typeof ch._trimLastDataBarToReplayPlayhead === 'function') {
+                ch._trimLastDataBarToReplayPlayhead();
+            }
+        } else if (anim && typeof rs.goToReplayTimestamp === 'function') {
+            try {
+                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false, centerOnCandle: false });
+            } catch (_) {
+                scheduleCoalescedSeek(ch, ts);
+            }
+        } else {
+            var sliceEnd2 = Math.max(rs.currentIndex + 1, 1);
+            var slicedRaw = frd.slice(0, sliceEnd2);
+            ch.rawData = slicedRaw;
+            if (typeof ch.resampleData === 'function') {
+                ch.data = ch.resampleData(slicedRaw, ch.currentTimeframe);
+            }
+        }
+
+        if (typeof ch.bumpDataVersion === 'function') ch.bumpDataVersion();
+        if (typeof ch.recalculateIndicators === 'function') {
+            var tp = Number(args.tickProgress);
+            if (!Number.isFinite(tp) || tp % 18 === 0) {
+                try { ch.recalculateIndicators(); } catch (_) {}
+            }
+        }
+        ch.isLoading = false;
+        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
+        if (typeof ch.render === 'function') {
+            ch.renderPending = true;
+            ch.render();
+        }
+        if (ch.orderManager && typeof ch.orderManager.updatePositions === 'function') {
+            try { ch.orderManager.updatePositions(); } catch (_) {}
+        }
+    }
+
     // ─── per-panel order forwarding state ──────────────────────────────
     //
     // panelOrderState.suppressEmitId — when the iframe is told to mirror
@@ -426,6 +538,21 @@
         if (!ch) return;
         var rs = ch.replaySystem;
         if (!rs || !rs.isActive) return;
+        // Multichart iframe: parent tile A runs the only play loop and
+        // streams replayFrame/replayTick. Never start a local loop here —
+        // independent loops drift on speed + tick animation.
+        if (isMultichartIframePanel()) {
+            if (pendingPlayDesired === false && rs.isPlaying
+                && typeof rs.pause === 'function') {
+                try { rs.pause(); } catch (_) {}
+            } else if (pendingPlayDesired === true && rs.isPlaying) {
+                try {
+                    if (typeof rs.stopTickAnimation === 'function') rs.stopTickAnimation();
+                    if (typeof rs.pause === 'function') rs.pause();
+                } catch (_) {}
+            }
+            return;
+        }
         // Apply speed first so the loop boots at the right rate.
         if (Number.isFinite(pendingPlaySpeed)
             && typeof rs.setSpeed === 'function') {
@@ -869,19 +996,11 @@
                     if (!rsT || !rsT.isActive) {
                         return applyReplayEnter(ch, ts2);
                     }
+                    // Passive iframe: parent streams replayFrame during play.
+                    if (isMultichartIframePanel() && pendingPlayDesired === true) {
+                        return;
+                    }
                     // ─── ALWAYS seek to parent's position ───────────
-                    // Every replayTick forces the iframe to the exact
-                    // parent timestamp via scheduleCoalescedSeek (rAF-
-                    // coalesced, so at most one seek per frame). This
-                    // eliminates drift entirely — the iframe's own play
-                    // loop provides smooth animation between seeks, and
-                    // the seek snaps it back each frame.
-                    //
-                    // Hot path: just stash the latest ts and let the
-                    // rAF coalescer apply it. Older queued ts are
-                    // dropped so iframe never falls behind regardless
-                    // of parent's tick rate (60x, 100x — doesn't
-                    // matter, iframe always renders the newest).
                     pendingReplayTs = ts2;
                     scheduleCoalescedSeek(ch, ts2);
                     return;
@@ -912,42 +1031,20 @@
 
                 // ─── replay PLAYBACK sync ──────────────────────────────
                 //
-                // HYBRID MODEL: iframes run their OWN local play loop
-                // with the host's settings, AND parent broadcasts a
-                // drift-correcting seek on every host tick.
-                //
-                // Why both?
-                //   • Pure local-play (no seek): iframe drifts behind
-                //     host at high speeds because iframe render is
-                //     slower than host. User reported "Panel B moves
-                //     slow not like Panel A".
-                //   • Pure passive (no local play, only seek): iframe
-                //     visually does nothing until parent's tick arrives;
-                //     between ticks iframe is frozen. User reported
-                //     "need to select Panel B and press space — wrong".
-                //   • Hybrid: iframe plays locally so it animates
-                //     smoothly between ticks, AND every host tick
-                //     calls goToReplayTimestamp to snap iframe back to
-                //     host's exact position. Drift can never accumulate
-                //     because each tick re-aligns.
+                // PASSIVE MIRROR (multichart iframe): parent tile A is the
+                // only play loop. Parent broadcasts replayMultichartFrame on
+                // every animation tick; iframes apply applyReplayFrame and
+                // never call play() locally.
                 //
                 // Protocol:
-                //   replayPlay {speed, mode}
-                //     setSpeed + setPlaybackMode + play() locally.
-                //     Iframe.isPlaying becomes true. Local loop runs
-                //     at host's speed/mode.
-                //   replayPause
-                //     pause() locally. Iframe.isPlaying becomes false.
-                //   replaySetSpeed {speed}
-                //     setSpeed (mid-play OK; replaySystem internally
-                //     re-arms its own loop at the new rate).
-                //   replaySetMode {mode}
-                //     setPlaybackMode with restartPlayback so a
-                //     mid-play tick<->candle toggle takes effect.
-                //   replayTick {timestamp}
-                //     Drift correction — iframe seeks via
-                //     scheduleCoalescedSeek so it can never fall
-                //     more than 1 refresh frame behind host.
+                //   replayPlay {speed, mode} — stash intent; do NOT play locally
+                //   replayPause — pause local loop if any + final replayTick
+                //   replayFrame {timestamp, currentIndex, animatedCandle?}
+                //     mirror parent chart slice + forming candle each frame
+                //   replayTick {timestamp} — seek on pause/scrub (not during play)
+                case 'replayFrame': {
+                    return applyReplayFrame(ch, args);
+                }
                 case 'replayPlay': {
                     // Always stash intent first so a deferred apply
                     // (via drainPendingPlay on activation) lands the
@@ -1407,6 +1504,7 @@
                 'syncFromHost',
                 'syncReplayFromHost',
                 'replayEnter',
+                'replayFrame',
                 'replayTick',
                 'replayExit',
                 'replayPlay',

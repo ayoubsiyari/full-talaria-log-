@@ -2667,6 +2667,10 @@ class ReplaySystem {
         this.updateAutoScrollIndicator();
 
         this._persistReplayStateThrottled();
+
+        if (this.isPlaying) {
+            this._multichartBroadcastReplayFrame();
+        }
         
     }
 
@@ -3826,6 +3830,8 @@ class ReplaySystem {
             this.syncPanelCharts(true);
         }
 
+        this._multichartBroadcastReplayFrame();
+
         // Keep follow button responsive in fast mode (injected fixed overlay must stay aligned with #chartWrapper).
         const now = performance.now();
         const throttleMs = this.autoScrollEnabled ? 200 : 100;
@@ -4268,6 +4274,8 @@ class ReplaySystem {
         // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
         // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
         this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
+
+        this._multichartBroadcastReplayFrame();
 
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
@@ -5174,6 +5182,36 @@ class ReplaySystem {
                 }
             });
         }
+    }
+
+    /**
+     * Multichart V9: parent tile A drives replay; iframe panels mirror each
+     * animation frame (tick-by-tick forming candle, fast mode, candle mode).
+     */
+    _multichartBroadcastReplayFrame() {
+        try {
+            if (typeof window === 'undefined' || !window.__multichartGrid) return;
+            if (!this.isActive) return;
+            const detail = {
+                timestamp: this.replayTimestamp,
+                currentIndex: this.currentIndex,
+                tickProgress: this.tickProgress,
+                tickElapsedMs: this.tickElapsedMs,
+                isPlaying: !!this.isPlaying,
+            };
+            if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
+                const ac = this.animatingCandle;
+                detail.animatedCandle = {
+                    t: ac.t,
+                    o: ac.open,
+                    h: ac.high,
+                    l: ac.low,
+                    c: ac.close,
+                    v: ac.volume || 0,
+                };
+            }
+            window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+        } catch (_e) { /* ignore */ }
     }
 
     /**

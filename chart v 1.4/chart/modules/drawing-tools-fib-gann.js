@@ -2140,6 +2140,8 @@ class PitchforkTool extends BaseDrawing {
         this.style.innerFill = style.innerFill || 'rgba(76, 175, 80, 0.2)';
         this.style.outerFill = style.outerFill || 'rgba(41, 98, 255, 0.2)';
         this.style.pitchforkStyle = style.pitchforkStyle || 'original'; // 'original', 'schiff', 'modified-schiff', 'inside'
+        if (style.extendLeft === undefined) this.style.extendLeft = false;
+        if (style.extendRight === undefined) this.style.extendRight = true;
         // Default pitchfork levels
         this.levels = style.levels || [
             { value: 0.25, label: '0.25', color: '#cd853f', enabled: false },
@@ -2244,8 +2246,8 @@ class PitchforkTool extends BaseDrawing {
         const safeX = (v) => Number.isFinite(v) ? v : leftEdge;
         const safeY = (v) => Number.isFinite(v) ? v : topEdge;
 
-        const extendLeft = !!this.style.extendLeft;
-        const extendRight = !!this.style.extendRight;
+        const extendLeft = this.style.extendLeft === true;
+        const extendRight = this.style.extendRight !== false;
         const forkSpanX = medianTargetX - pivotX;
         const forkSpanY = medianTargetY - pivotY;
         /** Natural (non-extended) end for a line parallel to the median through (startX, startY). */
@@ -2261,19 +2263,44 @@ class PitchforkTool extends BaseDrawing {
             return safeY(y0 + m * (x - x0));
         };
 
-        /** Apply extend-left / extend-right toggles (Style tab); default = fork-length segments only. */
+        const edgeAlongDirection = (sx, sy, dirX, dirY, forward) => {
+            const len2 = dirX * dirX + dirY * dirY;
+            if (len2 < 1e-12) return { x: sx, y: sy };
+            const ex = sx + dirX;
+            const ey = sy + dirY;
+            const candidates = [
+                { x: rightEdge, y: yOnLineAtX(sx, sy, ex, ey, rightEdge) },
+                { x: leftEdge, y: yOnLineAtX(sx, sy, ex, ey, leftEdge) },
+            ];
+            let best = candidates[0];
+            let bestScore = forward ? -Infinity : Infinity;
+            for (const c of candidates) {
+                const score = (c.x - sx) * dirX + (c.y - sy) * dirY;
+                if (forward ? score > bestScore : score < bestScore) {
+                    bestScore = score;
+                    best = c;
+                }
+            }
+            return { x: best.x, y: clampY(best.y) };
+        };
+
+        /** Extend-right only by default (TradingView pitchfork); extend-left optional in Style tab. */
         const resolveLineSegment = (sx, sy, nx, ny) => {
             let x1 = sx;
             let y1 = sy;
             let x2 = nx;
             let y2 = ny;
+            const dirX = nx - sx;
+            const dirY = ny - sy;
             if (extendLeft) {
-                x1 = leftEdge;
-                y1 = yOnLineAtX(sx, sy, nx, ny, leftEdge);
+                const back = edgeAlongDirection(sx, sy, dirX, dirY, false);
+                x1 = back.x;
+                y1 = back.y;
             }
             if (extendRight) {
-                x2 = rightEdge;
-                y2 = yOnLineAtX(sx, sy, nx, ny, rightEdge);
+                const fwd = edgeAlongDirection(sx, sy, dirX, dirY, true);
+                x2 = fwd.x;
+                y2 = fwd.y;
             }
             return { x1, y1, x2, y2 };
         };
@@ -2632,6 +2659,9 @@ class PitchforkTool extends BaseDrawing {
         tool.meta = data.meta || { createdAt: Date.now(), updatedAt: Date.now() };
         tool.chart = chart;
         if (data.levels) tool.levels = data.levels;
+        if (tool.style.extendRight === false && tool.style.extendLeft !== true) {
+            tool.style.extendRight = true;
+        }
         return tool;
     }
 }

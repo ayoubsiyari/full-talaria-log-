@@ -1686,6 +1686,10 @@ export default function MultichartGrid({
     // parent candle advance. panel-cmd-bridge forces a seek on every
     // tick (no drift tolerance) so panels never diverge.
     //
+    // PASSIVE MIRROR: parent tile A is the only play loop. Parent broadcasts
+    // replayMultichartFrame on every animation frame; iframe panels apply
+    // replayFrame and never start a local play loop.
+    //
     // The shared replay state is held in a ref so the listener effect
     // (mount-once) and the prime-on-ready effect (depends on
     // readyPanels) can both read/write the same lastBroadcastTs and
@@ -1831,6 +1835,36 @@ export default function MultichartGrid({
         };
 
         window.addEventListener("replayVirtualTimeChanged", onReplayTick);
+
+        // Parent tile A streams every replay animation frame (tick-by-tick
+        // forming candle, fast mode, candle mode). Coalesce to one postMessage
+        // per display frame so B/C/D mirror A's exact speed + rendering.
+        let coalescedFrameDetail = null;
+        let coalescedFrameScheduled = false;
+        const onMultichartReplayFrame = (ev) => {
+            coalescedFrameDetail = ev && ev.detail;
+            if (coalescedFrameScheduled) return;
+            coalescedFrameScheduled = true;
+            window.requestAnimationFrame(() => {
+                coalescedFrameScheduled = false;
+                const detail = coalescedFrameDetail;
+                coalescedFrameDetail = null;
+                if (!detail || !Number.isFinite(Number(detail.timestamp))) return;
+                const mgr = managerRef.current;
+                if (!mgr || !mgr.charts) return;
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try {
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "replayFrame", detail);
+                        } else {
+                            mgr.sendCommand(c.id, "replayFrame", detail);
+                        }
+                    } catch (_) {}
+                }
+            });
+        };
+        window.addEventListener("replayMultichartFrame", onMultichartReplayFrame);
 
         // ─── Replay keyboard forward (iframe → parent) ─────────────
         //
@@ -2155,6 +2189,7 @@ export default function MultichartGrid({
         return () => {
             clearInterval(replayAlignGuard);
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
+            window.removeEventListener("replayMultichartFrame", onMultichartReplayFrame);
             window.removeEventListener("message", onReplayKeyboard);
             // Restore originals if we patched them — keeps single-
             // chart behavior intact when the user picks layout 1 again.

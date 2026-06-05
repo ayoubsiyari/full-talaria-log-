@@ -1543,6 +1543,10 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
   if (legacyType === "pitchfork" && (!Array.isArray(out.pfLevels) || !out.pfLevels.length)) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
+  if (legacyType === "pitchfork") {
+    if (out.extendLeft == null) out.extendLeft = false;
+    if (out.extendRight == null) out.extendRight = true;
+  }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
   }
@@ -4374,6 +4378,10 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   if (legacyType === "pitchfork" && (!Array.isArray(out.pfLevels) || !out.pfLevels.length)) {
     out.pfLevels = v9DefaultPfLevelsTl();
   }
+  if (legacyType === "pitchfork") {
+    if (out.extendLeft == null) out.extendLeft = false;
+    if (out.extendRight == null) out.extendRight = true;
+  }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
   }
@@ -6238,6 +6246,10 @@ function v9TlStylePatchFromDrawing(d) {
           return {
             ...(pf ? { pfLevels: pf } : {}),
             pitchforkStyle: v9ChartPitchforkStyleToUi(s.pitchforkStyle),
+            extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
+              || (typeof s.extendLeft === "string" && /^(true|1|yes)$/i.test(String(s.extendLeft).trim()))),
+            extendRight: !(s.extendRight === false || s.extendRight === 0
+              || (typeof s.extendRight === "string" && /^(false|0|no)$/i.test(String(s.extendRight).trim()))),
             pfMiddleLine: s.lineEnabled !== false,
             pfMedianColor: s.medianColor || s.stroke || s.color || V9_DEFAULT_TL_LINE_COLOR,
             pfMedianType: medianType,
@@ -6616,6 +6628,9 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
       midLineWidth: mid.width || "1",
       chLines,
     };
+  }
+  if (legacy === "pitchfork") {
+    return { extendLeft: false, extendRight: true };
   }
   if (legacy && v9IsPatternChartType(legacy)) {
     return { textColor: V9_DEFAULT_TL_LINE_COLOR };

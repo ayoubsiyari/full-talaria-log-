@@ -1726,6 +1726,132 @@
         indicator.separatePanel = true;
     }
     
+    const VWAP_ANCHOR_PERIODS = [
+        'session', 'week', 'month', 'quarter', 'year', 'decade', 'century',
+        'earnings', 'dividends', 'splits'
+    ];
+
+    function normalizeVwapAnchorPeriod(raw) {
+        const ap = String(raw || 'session').toLowerCase();
+        return VWAP_ANCHOR_PERIODS.indexOf(ap) >= 0 ? ap : 'session';
+    }
+
+    function vwapChartTimezoneId() {
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        if (tm && typeof tm.getTimezone === 'function') {
+            const tz = tm.getTimezone();
+            if (tz) return tz;
+        }
+        return 'Etc/UTC';
+    }
+
+    function vwapCurrentAssetClass() {
+        try {
+            const chart = typeof window !== 'undefined' ? window.chart : null;
+            if (!chart) return 'Forex';
+            const sym = String(chart.currentSymbol || '').toUpperCase();
+            const session = chart._normalizedSession || chart.sessionData || chart.session;
+            const inst = session && session.instruments && sym ? session.instruments[sym] : null;
+            const ac = inst && (inst.asset_class || inst.assetClass || session.asset_class || session.assetClass);
+            if (ac) {
+                const s = String(ac).toLowerCase();
+                if (s.includes('stock') || s.includes('equit')) return 'Stocks';
+                if (s.includes('crypto')) return 'Crypto';
+                if (s.includes('future')) return 'Futures';
+            }
+        } catch (e) { /* ignore */ }
+        return 'Forex';
+    }
+
+    function vwapBarPartsInTimezone(bar, tzId) {
+        const t = bar && bar.t != null ? Number(bar.t) : NaN;
+        if (!Number.isFinite(t)) return null;
+        try {
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: tzId || 'Etc/UTC',
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: false
+            }).formatToParts(new Date(t));
+            const get = function (type) {
+                const p = parts.find(function (x) { return x.type === type; });
+                return p ? parseInt(p.value, 10) : 0;
+            };
+            return {
+                y: get('year'),
+                mo: get('month') - 1,
+                day: get('day'),
+                dec: get('hour') + get('minute') / 60
+            };
+        } catch (e) {
+            const d = new Date(t);
+            return {
+                y: d.getUTCFullYear(),
+                mo: d.getUTCMonth(),
+                day: d.getUTCDate(),
+                dec: d.getUTCHours() + d.getUTCMinutes() / 60
+            };
+        }
+    }
+
+    function vwapSessionAnchorKey(bar) {
+        const asset = vwapCurrentAssetClass();
+        const tz = asset === 'Stocks' ? 'America/New_York' : (asset === 'Forex' || asset === 'Futures' ? 'America/New_York' : vwapChartTimezoneId());
+        const rolloverDec = asset === 'Stocks' ? 9.5 : 17;
+        const parts = vwapBarPartsInTimezone(bar, tz);
+        if (!parts) return '0';
+        let y = parts.y;
+        let mo = parts.mo;
+        let day = parts.day;
+        if (parts.dec >= rolloverDec) {
+            const d = new Date(Date.UTC(y, mo, day));
+            d.setUTCDate(d.getUTCDate() + 1);
+            y = d.getUTCFullYear();
+            mo = d.getUTCMonth();
+            day = d.getUTCDate();
+        }
+        return y + '-' + mo + '-' + day;
+    }
+
+    function vwapCorporateEventTimestamps(eventType) {
+        try {
+            const chart = typeof window !== 'undefined' ? window.chart : null;
+            if (!chart) return [];
+            const sym = String(chart.currentSymbol || '').toUpperCase();
+            const cache = chart._vwapCorporateEventCache;
+            if (cache && sym && cache[sym] && Array.isArray(cache[sym][eventType])) {
+                return cache[sym][eventType]
+                    .map(function (x) { return Number(x); })
+                    .filter(function (x) { return Number.isFinite(x); })
+                    .sort(function (a, b) { return a - b; });
+            }
+        } catch (e) { /* ignore */ }
+        return [];
+    }
+
+    function buildVwapCorporateEventKeys(data, eventType) {
+        const events = vwapCorporateEventTimestamps(eventType);
+        const keys = new Array(data.length);
+        if (!events.length) {
+            for (let i = 0; i < data.length; i++) keys[i] = 'corp-' + eventType;
+            return keys;
+        }
+        let evtIdx = 0;
+        let currentKey = 'corp-' + eventType + '-0';
+        for (let i = 0; i < data.length; i++) {
+            const t = data[i] && data[i].t != null ? Number(data[i].t) : NaN;
+            while (evtIdx < events.length && Number.isFinite(t) && t >= events[evtIdx]) {
+                currentKey = 'corp-' + eventType + '-' + events[evtIdx];
+                evtIdx++;
+            }
+            keys[i] = currentKey;
+        }
+        return keys;
+    }
+
     function vwapAnchorPeriodKey(bar, anchorPeriod) {
         const t = bar && bar.t != null ? Number(bar.t) : NaN;
         if (!Number.isFinite(t)) return '0';
@@ -1733,7 +1859,8 @@
         const y = d.getUTCFullYear();
         const mo = d.getUTCMonth();
         const day = d.getUTCDate();
-        const ap = String(anchorPeriod || 'session').toLowerCase();
+        const ap = normalizeVwapAnchorPeriod(anchorPeriod);
+        if (ap === 'session') return vwapSessionAnchorKey(bar);
         if (ap === 'week') {
             const tmp = new Date(Date.UTC(y, mo, day));
             const dayNum = tmp.getUTCDay() || 7;
@@ -1748,6 +1875,14 @@
         if (ap === 'decade') return String(Math.floor(y / 10) * 10);
         if (ap === 'century') return String(Math.floor(y / 100) * 100);
         return y + '-' + mo + '-' + day;
+    }
+
+    function buildVwapAnchorKeys(data, anchorPeriod) {
+        const ap = normalizeVwapAnchorPeriod(anchorPeriod);
+        if (ap === 'earnings' || ap === 'dividends' || ap === 'splits') {
+            return buildVwapCorporateEventKeys(data, ap);
+        }
+        return null;
     }
 
     /** VWAP with anchored periods, optional std-dev / % bands, and plot offset. */
@@ -1769,12 +1904,13 @@
         const lower2 = data.map(function() { return null; });
         const upper3 = data.map(function() { return null; });
         const lower3 = data.map(function() { return null; });
+        const anchorKeys = buildVwapAnchorKeys(data, params.anchorPeriod);
         let cumPV = 0;
         let cumP2V = 0;
         let cumVol = 0;
         let prevKey = null;
         for (let i = 0; i < n; i++) {
-            const key = vwapAnchorPeriodKey(data[i], params.anchorPeriod);
+            const key = anchorKeys ? anchorKeys[i] : vwapAnchorPeriodKey(data[i], params.anchorPeriod);
             if (prevKey !== null && key !== prevKey) {
                 cumPV = 0;
                 cumP2V = 0;
@@ -1832,7 +1968,7 @@
         const legacyS = params.lineStyle || 'Line';
         indicator.params.source = params.source || 'hlc3';
         indicator.params.offset = params.offset != null ? Number(params.offset) : 0;
-        indicator.params.anchorPeriod = params.anchorPeriod || 'session';
+        indicator.params.anchorPeriod = normalizeVwapAnchorPeriod(params.anchorPeriod);
         indicator.params.hideOn1DOrAbove = params.hideOn1DOrAbove === true;
         indicator.params.bandsCalcMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
         indicator.params.band1Enabled = params.band1Enabled !== false;
