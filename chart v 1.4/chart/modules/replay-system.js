@@ -4724,26 +4724,20 @@ class ReplaySystem {
             return false;
         }
 
-        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-            if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
-                return false;
-            }
-        } else {
-            let idx = 0;
-            if (chart && typeof chart.findGoToTargetIndex === 'function') {
-                idx = chart.findGoToTargetIndex(this.fullRawData, ts);
-            }
-            if (idx < 0) {
-                idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
-            }
-            if (idx < 0) {
-                idx = this.fullRawData.length - 1;
-            }
-            const minIdx = this.sessionStartIndex || 0;
-            idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
-            this.currentIndex = idx;
-            this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
+        let idx = 0;
+        if (chart && typeof chart.findGoToTargetIndex === 'function') {
+            idx = chart.findGoToTargetIndex(this.fullRawData, ts);
         }
+        if (idx < 0) {
+            idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
+        }
+        if (idx < 0) {
+            idx = this.fullRawData.length - 1;
+        }
+        const minIdx = this.sessionStartIndex || 0;
+        idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
+        this.currentIndex = idx;
+        this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
         this.animatingCandle = null;
         this.tickProgress = 0;
@@ -4751,7 +4745,7 @@ class ReplaySystem {
         // Pre-arm guards before chart update
         const om2 = this.chart?.orderManager;
         if (om2 && typeof om2._refreshAllGuardsToTimestamp === 'function') {
-            const rawBar = this.fullRawData[this.currentIndex];
+            const rawBar = this.fullRawData[idx];
             if (rawBar) om2._refreshAllGuardsToTimestamp(rawBar.t);
         }
 
@@ -5230,9 +5224,9 @@ class ReplaySystem {
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
                 // During forming-candle animation, trim collapses the partial bar on
-                // coarse TFs (15m+) back to the static playhead — skip while mid-tick.
+                // coarse TFs (15m+) back to the static playhead — skip until complete.
                 if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                    && tp <= 0) {
+                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
                     chart._trimLastDataBarToReplayPlayhead();
                 }
             }
@@ -5242,36 +5236,25 @@ class ReplaySystem {
                 if (chart.fitToView) chart.fitToView();
             }
         } else {
-            const lastT = Number(frd[frd.length - 1]?.t);
-            if (Number.isFinite(lastT) && ts > lastT) {
-                return false;
+            let idx = 0;
+            if (typeof chart.findGoToTargetIndex === 'function') {
+                idx = chart.findGoToTargetIndex(frd, ts);
             }
+            if (idx < 0) {
+                idx = frd.findIndex(c => c && Number(c.t) >= ts);
+            }
+            if (idx < 0) idx = frd.length - 1;
+            const minIdx = this.sessionStartIndex || 0;
+            idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
 
+            this.currentIndex = idx;
+            this.replayTimestamp = frd[idx]?.t ?? ts;
             this.tickElapsedMs = Number.isFinite(detail.tickElapsedMs)
                 ? Number(detail.tickElapsedMs) : 0;
             this.tickProgress = 0;
             this.animatingCandle = null;
 
-            if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-                if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
-                    return false;
-                }
-            } else {
-                let idx = 0;
-                if (typeof chart.findGoToTargetIndex === 'function') {
-                    idx = chart.findGoToTargetIndex(frd, ts);
-                }
-                if (idx < 0) {
-                    idx = frd.findIndex(c => c && Number(c.t) >= ts);
-                }
-                if (idx < 0) idx = frd.length - 1;
-                const minIdx = this.sessionStartIndex || 0;
-                idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
-                this.currentIndex = idx;
-                this.replayTimestamp = frd[idx]?.t ?? ts;
-            }
-
-            const sliceEnd = Math.max(this.currentIndex + 1, 1);
+            const sliceEnd = Math.max(idx + 1, 1);
             chart.rawData = frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
@@ -5326,7 +5309,11 @@ class ReplaySystem {
             if (typeof window === 'undefined' || !window.__multichartGrid) return;
             if (!this.isActive) return;
             const detail = this._buildMultichartReplayFrameDetail();
-            if (typeof this.applyMultichartMirrorFrame === 'function') {
+            // Host tile A is already updated via updateChartData / updateChartWithAnimatedCandle.
+            // Re-applying the static (non-animated) mirror on the host regresses currentIndex
+            // after calculateNextIndex while iframes follow the broadcast — panel A lags B/C/D.
+            const hasAnim = !!(detail.animatedCandle && Number.isFinite(Number(detail.animatedCandle.t)));
+            if (hasAnim && typeof this.applyMultichartMirrorFrame === 'function') {
                 this.applyMultichartMirrorFrame(detail);
             }
             window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
