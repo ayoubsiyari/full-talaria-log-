@@ -3821,6 +3821,29 @@ select { cursor:default; }
           </div>
         </div>
 
+        <div class="insights-grid" style="margin-top:16px">
+          <div class="card">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              <div class="card-title">What is using CPU?</div>
+              <button type="button" class="btn sm primary" onclick="loadInsightsSystemMetrics()" style="margin-left:auto">Refresh</button>
+            </div>
+            <div class="card-body" id="insightsTopProcessesHost">
+              <p style="font-size:12px;color:var(--text-muted)">Top processes load with the VPS panel above.</p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <div class="card-title">Security &amp; attacks (24h)</div>
+              <button type="button" class="btn sm primary" onclick="loadInsightsSecurity()" style="margin-left:auto">Refresh</button>
+            </div>
+            <div class="card-body" id="insightsSecurityHost">
+              <p style="font-size:12px;color:var(--text-muted)">Failed logins, blocked IPs, and recent security events from the journal backend.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- ─────────────────────────────────────────────────────────────
              Storage & cleanup card — application-level disk health + the
              three safety endpoints added in api_server.py:
@@ -4481,6 +4504,34 @@ function _httpErrDetail(payload) {
 
 async function api(url, opts = {}) {
   opts.credentials = 'include';
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = _httpErrDetail(err) || `Error ${res.status}`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/** Journal admin routes (Bearer JWT) — mint from cookie session when missing. */
+async function journalApi(url, opts = {}) {
+  opts.credentials = 'include';
+  opts.headers = Object.assign({}, opts.headers || {});
+  let token = null;
+  try { token = localStorage.getItem('token'); } catch (_) {}
+  if (!token) {
+    try {
+      const me = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+      if (me.ok) {
+        const d = await me.json();
+        if (d && d.journal_token) {
+          token = d.journal_token;
+          try { localStorage.setItem('token', token); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+  if (token) opts.headers.Authorization = 'Bearer ' + token;
   const res = await fetch(url, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -6645,6 +6696,7 @@ async function loadInsightsAnalyticsPage() {
   stopInsightsSystemPoll();
   await loadInsightsDatasetCharts();
   loadInsightsSystemMetrics();
+  loadInsightsSecurity();
   insightsSystemPollTimer = setInterval(function () {
     var box = $('insightsLiveToggle');
     if (box && !box.checked) return;
@@ -6764,9 +6816,22 @@ function renderInsightsSystemHtml(m) {
     'Uptime ' + fmtInsightsUptime(m.uptime_seconds) + ' · boot ' + esc(m.boot_time_iso || '—') + '<br>' +
     esc(m.platform || '') + '<br>Python ' + esc(m.python_version || '') + '</p>');
   if (m.load_average) {
-    parts.push('<p style="font-size:11px;color:var(--text-muted);margin:-8px 0 12px">Load avg: ' +
-      m.load_average['1m'] + ' · ' + m.load_average['5m'] + ' · ' + m.load_average['15m'] + '</p>');
+    parts.push('<p style="font-size:11px;color:var(--text-muted);margin:-8px 0 8px">Load avg: ' +
+      m.load_average['1m'] + ' · ' + m.load_average['5m'] + ' · ' + m.load_average['15m'] +
+      (m.cpu && m.cpu.logical_cores ? ' · ' + m.cpu.logical_cores + ' cores' : '') + '</p>');
   }
+  if (m.load_health && m.load_health.summary) {
+    var lh = m.load_health.status || 'ok';
+    var lhColor = lh === 'critical' ? 'var(--danger)' : lh === 'warning' || lh === 'elevated' ? 'var(--warn)' : 'var(--ok)';
+    parts.push('<p style="font-size:12px;margin:0 0 12px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border-left:3px solid ' + lhColor + '">' +
+      esc(m.load_health.summary) + '</p>');
+  }
+  (m.diagnostics || []).forEach(function (d) {
+    if (!d || !d.text) return;
+    if (m.load_health && d.text === m.load_health.summary) return;
+    var dc = d.level === 'critical' ? 'var(--danger)' : d.level === 'warning' ? 'var(--warn)' : 'var(--text-muted)';
+    parts.push('<p style="font-size:11px;color:' + dc + ';margin:0 0 6px">• ' + esc(d.text) + '</p>');
+  });
   parts.push(insightsGaugeBar('CPU (system)', m.cpu && m.cpu.percent, 'var(--accent)'));
   parts.push(insightsGaugeBar('Memory', m.memory && m.memory.percent, 'var(--ok)'));
   if (m.swap && m.swap.total > 0) {
@@ -6791,12 +6856,102 @@ function renderInsightsSystemHtml(m) {
     parts.push('<p style="font-size:11px;color:var(--text-muted);margin-top:4px">Network since boot: ↑ ' +
       fmtInsightsNetBytes(m.network_total.bytes_sent) + ' · ↓ ' + fmtInsightsNetBytes(m.network_total.bytes_recv) + '</p>');
   }
+  if (m.docker_stats && m.docker_stats.containers && m.docker_stats.containers.length) {
+    parts.push('<p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin:14px 0 8px">Docker containers</p>');
+    parts.push('<table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="color:var(--text-muted);text-align:left">' +
+      '<th style="padding:4px 6px">Name</th><th>CPU</th><th>Mem</th><th>Net</th></tr></thead><tbody>');
+    m.docker_stats.containers.forEach(function (c) {
+      parts.push('<tr><td style="padding:4px 6px;font-family:monospace">' + esc(c.name) + '</td>' +
+        '<td>' + esc(c.cpu) + '</td><td>' + esc(c.mem_usage) + ' ' + esc(c.mem_pct) + '</td><td>' + esc(c.net_io) + '</td></tr>');
+    });
+    parts.push('</tbody></table>');
+  }
   parts.push('<p style="font-size:10px;color:var(--text-muted);margin-top:12px">Server time (UTC): ' + esc(m.server_time_utc || '') + '</p>');
+  return parts.join('');
+}
+
+function renderInsightsTopProcessesHtml(m) {
+  var tp = m && m.top_processes;
+  if (!tp) return '<p style="color:var(--text-muted);font-size:12px">No process data.</p>';
+  function table(title, rows, sortKey) {
+    if (!rows || !rows.length) return '';
+    var h = '<p style="font-size:12px;font-weight:600;color:var(--text-secondary);margin:0 0 8px">' + esc(title) + '</p>' +
+      '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:14px"><thead><tr style="color:var(--text-muted);text-align:left">' +
+      '<th style="padding:4px 6px">Process</th><th>PID</th><th style="text-align:right">' + esc(sortKey) + '</th><th>RSS</th></tr></thead><tbody>';
+    rows.forEach(function (p) {
+      h += '<tr><td style="padding:4px 6px">' + esc(p.name) + '</td><td style="font-family:monospace">' + fmtN(p.pid) + '</td>' +
+        '<td style="text-align:right;font-variant-numeric:tabular-nums">' + Number(p[sortKey === 'CPU %' ? 'cpu_percent' : 'memory_percent']).toFixed(1) + '%</td>' +
+        '<td>' + esc(p.rss_human || '') + '</td></tr>';
+    });
+    return h + '</tbody></table>';
+  }
+  return table('Top CPU', tp.by_cpu, 'CPU %') + table('Top memory', tp.by_memory, 'Mem %');
+}
+
+async function loadInsightsSecurity() {
+  var host = $('insightsSecurityHost');
+  if (!host) return;
+  try {
+    var data = await journalApi('/journal/api/admin/monitoring/threats');
+    host.innerHTML = renderInsightsSecurityHtml(data);
+  } catch (e) {
+    host.innerHTML = '<p style="color:var(--warn);font-size:12px">' + esc(e.message || String(e)) +
+      '<br><span style="color:var(--text-muted)">Sign in as admin so a journal token is available, or check journal-backend logs.</span></p>';
+  }
+}
+
+function renderInsightsSecurityHtml(data) {
+  if (!data || !data.success) return '<p style="color:var(--danger);font-size:12px">Threat data unavailable.</p>';
+  var s = data.summary || {};
+  var parts = [];
+  parts.push('<div class="stat-cards" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));margin-bottom:12px">' +
+    '<div class="stat-card danger"><div class="label">Failed logins</div><div class="value">' + fmtN(s.failed_logins_24h || 0) + '</div><div class="sub">24h</div></div>' +
+    '<div class="stat-card warn"><div class="label">Security events</div><div class="value">' + fmtN(s.security_events_24h || 0) + '</div><div class="sub">24h</div></div>' +
+    '<div class="stat-card accent"><div class="label">Blocked IPs</div><div class="value">' + fmtN(s.blocked_ips_active || 0) + '</div><div class="sub">active</div></div>' +
+    '<div class="stat-card"><div class="label">Attacker IPs</div><div class="value">' + fmtN(s.unique_attacker_ips_24h || 0) + '</div><div class="sub">unique 24h</div></div></div>');
+  (data.diagnostics || []).forEach(function (d) {
+    if (!d || !d.text) return;
+    var c = d.level === 'critical' ? 'var(--danger)' : d.level === 'warning' ? 'var(--warn)' : 'var(--text-muted)';
+    parts.push('<p style="font-size:11px;color:' + c + ';margin:0 0 6px">• ' + esc(d.text) + '</p>');
+  });
+  var attackers = data.top_attacker_ips || [];
+  if (attackers.length) {
+    parts.push('<p style="font-size:12px;font-weight:600;margin:14px 0 6px;color:var(--text-secondary)">Top attacker IPs (failed login)</p>');
+    parts.push('<table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="color:var(--text-muted);text-align:left">' +
+      '<th style="padding:4px 6px">IP</th><th>Attempts</th><th>Last</th></tr></thead><tbody>');
+    attackers.forEach(function (row) {
+      parts.push('<tr><td style="padding:4px 6px;font-family:monospace">' + esc(row.ip_address) + '</td>' +
+        '<td>' + fmtN(row.attempts) + '</td><td style="color:var(--text-muted)">' + esc(timeAgo(row.last_attempt)) + '</td></tr>');
+    });
+    parts.push('</tbody></table>');
+  }
+  var blocked = data.blocked_ips_active || [];
+  if (blocked.length) {
+    parts.push('<p style="font-size:12px;font-weight:600;margin:14px 0 6px;color:var(--text-secondary)">Currently blocked</p><ul style="margin:0;padding-left:18px;font-size:11px;color:var(--text-muted)">');
+    blocked.slice(0, 8).forEach(function (b) {
+      parts.push('<li><code>' + esc(b.ip_address) + '</code> — ' + esc(b.reason || 'blocked') + '</li>');
+    });
+    parts.push('</ul>');
+  }
+  var events = data.recent_events || [];
+  if (events.length) {
+    parts.push('<p style="font-size:12px;font-weight:600;margin:14px 0 6px;color:var(--text-secondary)">Recent security events</p>');
+    parts.push('<div style="max-height:160px;overflow-y:auto;font-size:11px;border:1px solid var(--border);border-radius:8px">');
+    events.slice(0, 12).forEach(function (ev) {
+      parts.push('<div style="padding:6px 8px;border-bottom:1px solid var(--border)">' +
+        '<span style="color:var(--warn);font-family:monospace">' + esc(ev.event_type) + '</span> ' +
+        '<code>' + esc(ev.ip_address) + '</code> · ' + esc(timeAgo(ev.created_at)) +
+        (ev.details ? '<div style="color:var(--text-muted);margin-top:2px">' + esc(ev.details) + '</div>' : '') +
+        '</div>');
+    });
+    parts.push('</div>');
+  }
   return parts.join('');
 }
 
 async function loadInsightsSystemMetrics() {
   var host = $('insightsSystemHost');
+  var procHost = $('insightsTopProcessesHost');
   var cw = $('insightsCpuSparkWrap');
   var mw = $('insightsMemSparkWrap');
   if (!host) return;
@@ -6806,6 +6961,7 @@ async function loadInsightsSystemMetrics() {
       if (cw) cw.innerHTML = '';
       if (mw) mw.innerHTML = '';
       host.innerHTML = '<p style="color:var(--warn);font-size:13px">' + esc(m.message || 'Metrics unavailable.') + '</p>';
+      if (procHost) procHost.innerHTML = '';
       return;
     }
     var cpu = m.cpu && m.cpu.percent;
@@ -6817,8 +6973,10 @@ async function loadInsightsSystemMetrics() {
     if (cw) cw.innerHTML = insightsSparklineSvg(insightsCpuHistory, '#8b5cf6');
     if (mw) mw.innerHTML = insightsSparklineSvg(insightsMemHistory, '#10b981');
     host.innerHTML = renderInsightsSystemHtml(m);
+    if (procHost) procHost.innerHTML = renderInsightsTopProcessesHtml(m);
   } catch (e) {
     host.innerHTML = '<p style="color:var(--danger);font-size:13px">' + esc(e.message || String(e)) + '</p>';
+    if (procHost) procHost.innerHTML = '';
   }
 }
 

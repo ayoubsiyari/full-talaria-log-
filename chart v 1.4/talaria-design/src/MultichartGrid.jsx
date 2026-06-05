@@ -2063,6 +2063,11 @@ export default function MultichartGrid({
                             // move candle-for-candle with A — like one chart.
                             forceAllPanelsToTimestamp(Number(this.replayTimestamp));
                             broadcastToIframes("replayPlay", { speed, mode });
+                            try {
+                                if (typeof this._multichartBroadcastReplayFrame === 'function') {
+                                    this._multichartBroadcastReplayFrame();
+                                }
+                            } catch (_) {}
                         } catch (_) {}
                         return result;
                     };

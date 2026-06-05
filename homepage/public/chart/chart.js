@@ -1688,15 +1688,18 @@ class Chart {
         this.backtestingSession = session;
         this.isBacktestMode = true;
 
-        const replayRawTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
+        const displayTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
+        // Backtest replay playhead always advances on 1m master bars (same as tile A).
+        // Display TF is resampled client-side so every panel stays candle-for-candle.
+        const masterTf = '1m';
 
         const replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
             : null;
-        const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
+        const tfMs = this.parseTimeframe(displayTf) || 60_000;
 
         const sameFile = String(this.currentFileId || '') === fileId;
-        const sameTf = String(this.currentTimeframe || '').toLowerCase() === String(replayRawTf).toLowerCase();
+        const sameTf = String(this.currentTimeframe || '').toLowerCase() === String(displayTf).toLowerCase();
         const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
         const rs0 = this.replaySystem;
         const aligned = !!(rs0 && rs0.isActive && replayTs != null
@@ -1706,7 +1709,7 @@ class Chart {
             return;
         }
 
-        this.currentTimeframe = replayRawTf;
+        this.currentTimeframe = displayTf;
         if (this._tfDataCache) this._tfDataCache.clear();
         if (this._btTfDataCache) this._btTfDataCache.clear();
 
@@ -1730,15 +1733,14 @@ class Chart {
                 })();
 
                 if (this.viewportData) {
-                    this.viewportData.init(fileId, replayRawTf, sessionStartTs, sessionEndMs);
+                    this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
                 }
 
                 let result = null;
-                if (sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m'
-                    && Number.isFinite(replayTs)) {
+                if (sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
-                            fileId, session, replayRawTf, replayTs
+                            fileId, session, masterTf, replayTs
                         );
                     } catch (e) {
                         console.warn('loadMultichartPanelFromHost: /bars fetch failed', e);
@@ -1746,17 +1748,17 @@ class Chart {
                 }
                 if (!result) {
                     const range = Number.isFinite(replayTs)
-                        ? this._getBacktestReplayFetchRange(replayRawTf, session, replayTs)
-                        : this._getBacktestInitialFetchRange(replayRawTf, session);
+                        ? this._getBacktestReplayFetchRange(masterTf, session, replayTs)
+                        : this._getBacktestInitialFetchRange(masterTf, session);
                     result = await this._fetchSmartWindow(
                         fileId,
-                        replayRawTf,
+                        masterTf,
                         session,
                         'end',
                         range,
                         {
                             skipSessionDates: true,
-                            limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                            limit: this._backtestFetchLimitForTimeframe(masterTf),
                         },
                     );
                 }
@@ -1765,12 +1767,19 @@ class Chart {
                 }
 
                 this.currentFileId = fileId;
-                this._nativeRawFetchTf = replayRawTf;
+                this._nativeRawFetchTf = masterTf;
                 this._ingestSmartWindowResult(result, {
                     skipIndicators: true,
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
+                this.currentTimeframe = displayTf;
+                if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this.data = this.resampleData(this.rawData, displayTf);
+                    if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
+                        this._trimLastDataBarToReplayPlayhead();
+                    }
+                }
                 this.loadedRanges.set(0, result.returned);
                 this._serverCursors = {
                     firstTs: result.first_cursor,
@@ -1871,7 +1880,14 @@ class Chart {
             return this._ensureReplayDataInflight;
         }
 
-        const replayRawTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+        const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+        let replayRawTf = displayTf;
+        try {
+            if (typeof document !== 'undefined'
+                && document.documentElement.classList.contains('multichart-embed')) {
+                replayRawTf = '1m';
+            }
+        } catch (_e) { /* ignore */ }
         const replay = this.replaySystem;
         const wasActive = !!(replay && replay.isActive);
         const wasPlaying = !!(replay && replay.isPlaying);
@@ -1912,6 +1928,13 @@ class Chart {
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
+                if (displayTf !== replayRawTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this.currentTimeframe = displayTf;
+                    this.data = this.resampleData(this.rawData, displayTf);
+                    if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
+                        this._trimLastDataBarToReplayPlayhead();
+                    }
+                }
                 this.loadedRanges.set(0, result.returned);
                 this._serverCursors = {
                     firstTs: result.first_cursor,

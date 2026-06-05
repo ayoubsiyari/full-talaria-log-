@@ -16681,6 +16681,152 @@ async def admin_subscription_stats(request: Request):
         db.close()
 
 
+def _admin_collect_top_processes(limit: int = 8) -> dict:
+    """Top CPU/memory processes on this host (helps explain high load vs low API CPU)."""
+    if psutil is None:
+        return {"by_cpu": [], "by_memory": []}
+    limit = max(1, min(20, int(limit or 8)))
+    rows: list[dict] = []
+    for proc in psutil.process_iter(["pid", "name", "username"]):
+        try:
+            with proc.oneshot():
+                mem = proc.memory_info()
+                rows.append(
+                    {
+                        "pid": int(proc.pid),
+                        "name": (proc.info.get("name") or "?")[:64],
+                        "username": (proc.info.get("username") or "")[:32],
+                        "cpu_percent": round(float(proc.cpu_percent(interval=0) or 0), 2),
+                        "memory_percent": round(float(proc.memory_percent() or 0), 2),
+                        "rss": int(mem.rss),
+                        "rss_human": _human_bytes(int(mem.rss)),
+                    }
+                )
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    by_cpu = sorted(rows, key=lambda r: r["cpu_percent"], reverse=True)[:limit]
+    by_memory = sorted(rows, key=lambda r: r["memory_percent"], reverse=True)[:limit]
+    return {"by_cpu": by_cpu, "by_memory": by_memory}
+
+
+def _admin_interpret_load(load_average: dict | None, logical_cores: int) -> dict | None:
+    if not load_average or not logical_cores:
+        return None
+    l1 = float(load_average.get("1m") or 0)
+    l5 = float(load_average.get("5m") or 0)
+    l15 = float(load_average.get("15m") or 0)
+    ratio = l15 / max(1, logical_cores)
+    if ratio >= 1.5:
+        status = "critical"
+        summary = (
+            f"Load average {l15:.2f} on {logical_cores} cores — the CPU queue is backed up. "
+            "Check top processes below (tile builds, Python workers, or brute-force traffic)."
+        )
+    elif ratio >= 1.0:
+        status = "warning"
+        summary = (
+            f"Load average {l15:.2f} is above core count ({logical_cores}). "
+            "Sustained load — inspect top processes and recent security events."
+        )
+    elif ratio >= 0.7:
+        status = "elevated"
+        summary = f"Load average {l15:.2f} is elevated for {logical_cores} cores — monitor if it keeps rising."
+    else:
+        status = "ok"
+        summary = f"Load average {l15:.2f} is normal for {logical_cores} cores."
+    return {
+        "status": status,
+        "ratio_15m": round(ratio, 3),
+        "summary": summary,
+        "cores_logical": int(logical_cores),
+    }
+
+
+def _admin_build_system_diagnostics(
+    *,
+    cpu_pct: float,
+    load_health: dict | None,
+    top_processes: dict,
+    process_block: dict | None,
+) -> list[dict]:
+    out: list[dict] = []
+    if load_health and load_health.get("status") in ("warning", "critical", "elevated"):
+        out.append({"level": load_health["status"], "text": load_health.get("summary") or ""})
+    top_cpu = (top_processes or {}).get("by_cpu") or []
+    if top_cpu and float(top_cpu[0].get("cpu_percent") or 0) >= 25:
+        p0 = top_cpu[0]
+        out.append(
+            {
+                "level": "info",
+                "text": (
+                    f"Highest CPU: {p0.get('name')} (pid {p0.get('pid')}) "
+                    f"at {p0.get('cpu_percent')}% — likely driver of system load."
+                ),
+            }
+        )
+    if process_block and cpu_pct >= 40 and float(process_block.get("cpu_percent") or 0) < 5:
+        out.append(
+            {
+                "level": "info",
+                "text": (
+                    "System CPU is high but this API process is low — load is probably from "
+                    "other containers/processes on the host (see Top processes)."
+                ),
+            }
+        )
+    top_mem = (top_processes or {}).get("by_memory") or []
+    if top_mem and float(top_mem[0].get("memory_percent") or 0) >= 15:
+        m0 = top_mem[0]
+        out.append(
+            {
+                "level": "info",
+                "text": (
+                    f"Highest memory: {m0.get('name')} (pid {m0.get('pid')}) "
+                    f"using {m0.get('memory_percent')}% RAM ({m0.get('rss_human')})."
+                ),
+            }
+        )
+    if not out:
+        out.append({"level": "ok", "text": "No resource pressure detected in this snapshot."})
+    return out
+
+
+def _admin_docker_stats_snapshot() -> dict | None:
+    """Optional docker stats when CLI is available (host or mounted socket)."""
+    try:
+        proc = subprocess.run(
+            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return None
+    containers: list[dict] = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        containers.append(
+            {
+                "name": row.get("Name") or row.get("Container") or "?",
+                "cpu": row.get("CPUPerc") or row.get("CPU") or "",
+                "mem_usage": row.get("MemUsage") or "",
+                "mem_pct": row.get("MemPerc") or "",
+                "net_io": row.get("NetIO") or "",
+                "block_io": row.get("BlockIO") or "",
+            }
+        )
+    return {"containers": containers[:20], "count": len(containers)} if containers else None
+
+
 def _admin_system_metrics_payload() -> dict:
     """CPU, memory, disks, and network totals for the VPS hosting this API (requires psutil)."""
     if psutil is None:
@@ -16767,6 +16913,23 @@ def _admin_system_metrics_payload() -> dict:
         boot_iso = None
     uptime_s = max(0.0, time.time() - float(boot_t))
 
+    top_processes = _admin_collect_top_processes()
+    load_health = _admin_interpret_load(load_average, cpu_logical)
+    proc_block = {
+        "pid": proc.pid,
+        "cpu_percent": round(proc_cpu, 2) if proc_cpu is not None else None,
+        "rss": int(proc_mem.rss) if proc_mem else None,
+        "rss_human": _human_bytes(int(proc_mem.rss)) if proc_mem else None,
+        "threads": proc.num_threads() if hasattr(proc, "num_threads") else None,
+    }
+    diagnostics = _admin_build_system_diagnostics(
+        cpu_pct=cpu_pct,
+        load_health=load_health,
+        top_processes=top_processes,
+        process_block=proc_block,
+    )
+    docker_stats = _admin_docker_stats_snapshot()
+
     return {
         "success": True,
         "agent_available": True,
@@ -16782,6 +16945,7 @@ def _admin_system_metrics_payload() -> dict:
             "physical_cores": int(cpu_physical) if cpu_physical else None,
         },
         "load_average": load_average,
+        "load_health": load_health,
         "memory": {
             "total": int(vm.total),
             "available": int(vm.available),
@@ -16800,13 +16964,10 @@ def _admin_system_metrics_payload() -> dict:
             "used_human": _human_bytes(int(sw.used)),
         },
         "disks": disks_out,
-        "process": {
-            "pid": proc.pid,
-            "cpu_percent": round(proc_cpu, 2) if proc_cpu is not None else None,
-            "rss": int(proc_mem.rss) if proc_mem else None,
-            "rss_human": _human_bytes(int(proc_mem.rss)) if proc_mem else None,
-            "threads": proc.num_threads() if hasattr(proc, "num_threads") else None,
-        },
+        "process": proc_block,
+        "top_processes": top_processes,
+        "diagnostics": diagnostics,
+        "docker_stats": docker_stats,
         "network_total": net_io,
     }
 

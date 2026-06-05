@@ -5185,6 +5185,121 @@ class ReplaySystem {
     }
 
     /**
+     * Multichart V9: apply one replay frame from parent tile A on this panel.
+     * Resolves playhead by timestamp / forming-candle time — never copies parent index.
+     * @returns {boolean} false when target bar is not in loaded fullRawData (caller may refetch)
+     */
+    applyMultichartMirrorFrame(detail) {
+        if (!this.isActive || !detail || typeof detail !== 'object') return false;
+        const chart = this.chart;
+        const frd = this.fullRawData;
+        if (!chart || !Array.isArray(frd) || !frd.length) return false;
+
+        const ts = Number(detail.timestamp);
+        if (!Number.isFinite(ts)) return false;
+
+        const anim = detail.animatedCandle;
+        const hasAnim = !!(anim && Number.isFinite(Number(anim.t)));
+
+        if (hasAnim) {
+            const formTs = Number(anim.t);
+            let targetIdx = -1;
+            if (typeof chart.findGoToTargetIndex === 'function') {
+                targetIdx = chart.findGoToTargetIndex(frd, formTs);
+            }
+            if (targetIdx < 0) {
+                for (let i = 0; i < frd.length; i++) {
+                    const bt = frd[i] && Number(frd[i].t);
+                    if (Number.isFinite(bt) && Math.abs(bt - formTs) < 1000) {
+                        targetIdx = i;
+                        break;
+                    }
+                }
+            }
+            if (targetIdx < 0) return false;
+
+            const baseIdx = Math.max(0, targetIdx - 1);
+            this.currentIndex = Math.max(this.sessionStartIndex || 0, baseIdx);
+            this.replayTimestamp = ts;
+            if (Number.isFinite(detail.tickElapsedMs)) {
+                this.tickElapsedMs = Number(detail.tickElapsedMs);
+            }
+            if (Number.isFinite(detail.tickProgress)) {
+                this.tickProgress = Number(detail.tickProgress);
+            }
+
+            const animatedCandle = {
+                t: formTs,
+                o: Number(anim.o),
+                h: Number(anim.h),
+                l: Number(anim.l),
+                c: Number(anim.c),
+                v: Number(anim.v) || 0,
+            };
+
+            const sliced = frd.slice(0, targetIdx);
+            sliced.push(animatedCandle);
+            chart.rawData = sliced;
+
+            const tp = this.tickProgress || 0;
+            if (chart.data && chart.data.length > 0 && tp > 1) {
+                const last = chart.data[chart.data.length - 1];
+                last.h = Math.max(last.h, animatedCandle.h);
+                last.l = Math.min(last.l, animatedCandle.l);
+                last.c = animatedCandle.c;
+                last.v = animatedCandle.v;
+            } else {
+                chart.data = chart.resampleData(sliced, chart.currentTimeframe);
+                if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
+                    chart._trimLastDataBarToReplayPlayhead();
+                }
+            }
+
+            if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            if (this.autoScrollEnabled && tp > 0 && tp % 8 === 0) {
+                if (chart.fitToView) chart.fitToView();
+            }
+        } else {
+            let idx = 0;
+            if (typeof chart.findGoToTargetIndex === 'function') {
+                idx = chart.findGoToTargetIndex(frd, ts);
+            }
+            if (idx < 0) {
+                idx = frd.findIndex(c => c && Number(c.t) >= ts);
+            }
+            if (idx < 0) idx = frd.length - 1;
+            const minIdx = this.sessionStartIndex || 0;
+            idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
+
+            this.currentIndex = idx;
+            this.replayTimestamp = frd[idx]?.t ?? ts;
+            this.tickElapsedMs = Number.isFinite(detail.tickElapsedMs)
+                ? Number(detail.tickElapsedMs) : 0;
+            this.tickProgress = 0;
+            this.animatingCandle = null;
+
+            const sliceEnd = Math.max(idx + 1, 1);
+            chart.rawData = frd.slice(0, sliceEnd);
+            chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
+            if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
+                chart._trimLastDataBarToReplayPlayhead();
+            }
+            if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+        }
+
+        chart.isLoading = false;
+        if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+        if (typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
+        }
+        if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
+            try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
+        }
+        return true;
+    }
+
+    /**
      * Multichart V9: parent tile A drives replay; iframe panels mirror each
      * animation frame (tick-by-tick forming candle, fast mode, candle mode).
      */

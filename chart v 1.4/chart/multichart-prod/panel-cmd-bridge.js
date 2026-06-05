@@ -204,81 +204,32 @@
             } catch (_) {}
         }
 
-        var frd = rs.fullRawData;
-        if (!frd || frd.length === 0) {
+        pendingPlayDesired = true;
+
+        if (typeof rs.applyMultichartMirrorFrame !== 'function') {
             scheduleCoalescedSeek(ch, ts);
             return;
         }
 
-        var idx = Number(args.currentIndex);
-        if (Number.isFinite(idx)) {
-            var floorIdx = rs.sessionStartIndex || 0;
-            rs.currentIndex = Math.max(floorIdx, Math.min(idx, frd.length - 1));
-        }
-        rs.replayTimestamp = ts;
-        if (Number.isFinite(args.tickElapsedMs)) {
-            rs.tickElapsedMs = Number(args.tickElapsedMs);
-        }
-        if (Number.isFinite(args.tickProgress)) {
-            rs.tickProgress = Number(args.tickProgress);
-        }
+        var applied = rs.applyMultichartMirrorFrame(args);
+        if (applied) return;
 
-        var anim = args.animatedCandle;
-        var nativeTf = String(ch._nativeRawFetchTf || ch.currentTimeframe || '')
-            .toLowerCase().trim();
-        var rawStepMs = (frd.length > 1) ? Math.abs(frd[1].t - frd[0].t) : 60000;
-        var useAnimSlice = !!(anim && typeof anim === 'object' && Number.isFinite(Number(anim.t))
-            && nativeTf === '1m' && rawStepMs <= 61000);
-
-        if (useAnimSlice) {
-            var sliceEnd = Math.max(rs.currentIndex + 1, 1);
-            var sliced = frd.slice(0, sliceEnd);
-            sliced.push({
-                t: Number(anim.t),
-                o: Number(anim.o),
-                h: Number(anim.h),
-                l: Number(anim.l),
-                c: Number(anim.c),
-                v: Number(anim.v) || 0,
-            });
-            ch.rawData = sliced;
-            if (typeof ch.resampleData === 'function') {
-                ch.data = ch.resampleData(sliced, ch.currentTimeframe);
-            }
-            if (typeof ch._trimLastDataBarToReplayPlayhead === 'function') {
-                ch._trimLastDataBarToReplayPlayhead();
-            }
-        } else if (anim && typeof rs.goToReplayTimestamp === 'function') {
-            try {
-                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false, centerOnCandle: false });
-            } catch (_) {
+        if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
+            return ch.ensureReplayDataCoversTimestamp(ts).then(function () {
+                try {
+                    if (rs.applyMultichartMirrorFrame(args)) return;
+                    scheduleCoalescedSeek(ch, ts);
+                } catch (e) {
+                    warn('applyReplayFrame: mirror after fetch failed', e && e.message);
+                    scheduleCoalescedSeek(ch, ts);
+                }
+            }).catch(function (e) {
+                warn('applyReplayFrame: ensureReplayDataCoversTimestamp failed', e && e.message);
                 scheduleCoalescedSeek(ch, ts);
-            }
-        } else {
-            var sliceEnd2 = Math.max(rs.currentIndex + 1, 1);
-            var slicedRaw = frd.slice(0, sliceEnd2);
-            ch.rawData = slicedRaw;
-            if (typeof ch.resampleData === 'function') {
-                ch.data = ch.resampleData(slicedRaw, ch.currentTimeframe);
-            }
+            });
         }
 
-        if (typeof ch.bumpDataVersion === 'function') ch.bumpDataVersion();
-        if (typeof ch.recalculateIndicators === 'function') {
-            var tp = Number(args.tickProgress);
-            if (!Number.isFinite(tp) || tp % 18 === 0) {
-                try { ch.recalculateIndicators(); } catch (_) {}
-            }
-        }
-        ch.isLoading = false;
-        if (typeof ch.constrainOffset === 'function') ch.constrainOffset();
-        if (typeof ch.render === 'function') {
-            ch.renderPending = true;
-            ch.render();
-        }
-        if (ch.orderManager && typeof ch.orderManager.updatePositions === 'function') {
-            try { ch.orderManager.updatePositions(); } catch (_) {}
-        }
+        scheduleCoalescedSeek(ch, ts);
     }
 
     // ─── per-panel order forwarding state ──────────────────────────────

@@ -1983,6 +1983,136 @@ def get_security_stats():
         return jsonify({"error": "Failed to fetch security stats"}), 500
 
 
+@admin_bp.route('/monitoring/threats', methods=['GET'])
+@jwt_required()
+@rate_limit_admin(max_requests=30, window_seconds=60)
+def monitoring_threats():
+    """
+    Admin-only: application-level attack / abuse signals (failed logins, blocks, security log).
+    Complements host metrics from the chart API — answers “who is hitting us?” not just CPU %.
+    """
+    if not is_admin_user():
+        return jsonify({"error": "Admin access required"}), 403
+
+    try:
+        from sqlalchemy import func
+
+        since_24h = datetime.utcnow() - timedelta(hours=24)
+        since_7d = datetime.utcnow() - timedelta(days=7)
+
+        failed_by_ip = (
+            db.session.query(
+                FailedLoginAttempt.ip_address,
+                func.count(FailedLoginAttempt.id).label("attempts"),
+                func.max(FailedLoginAttempt.attempted_at).label("last_attempt"),
+            )
+            .filter(FailedLoginAttempt.attempted_at >= since_24h)
+            .group_by(FailedLoginAttempt.ip_address)
+            .order_by(func.count(FailedLoginAttempt.id).desc())
+            .limit(15)
+            .all()
+        )
+
+        event_rows = (
+            db.session.query(
+                SecurityLog.event_type,
+                func.count(SecurityLog.id).label("cnt"),
+            )
+            .filter(SecurityLog.created_at >= since_24h)
+            .group_by(SecurityLog.event_type)
+            .order_by(func.count(SecurityLog.id).desc())
+            .all()
+        )
+
+        recent_events = (
+            SecurityLog.query.filter(SecurityLog.created_at >= since_7d)
+            .order_by(SecurityLog.created_at.desc())
+            .limit(25)
+            .all()
+        )
+
+        blocked_active = [ip for ip in BlockedIP.query.order_by(BlockedIP.blocked_at.desc()).limit(50).all() if ip.is_active()]
+
+        failed_24h = FailedLoginAttempt.query.filter(FailedLoginAttempt.attempted_at >= since_24h).count()
+        events_24h = SecurityLog.query.filter(SecurityLog.created_at >= since_24h).count()
+
+        top_attacker = failed_by_ip[0] if failed_by_ip else None
+        diagnostics = []
+        if failed_24h >= 50:
+            diagnostics.append(
+                {
+                    "level": "critical",
+                    "text": f"{failed_24h} failed login attempts in 24h — possible credential stuffing. Review top IPs and ensure fail2ban/UFW are active on the host.",
+                }
+            )
+        elif failed_24h >= 15:
+            diagnostics.append(
+                {
+                    "level": "warning",
+                    "text": f"{failed_24h} failed login attempts in 24h — monitor top attacker IPs below.",
+                }
+            )
+        if len(blocked_active) >= 5:
+            diagnostics.append(
+                {
+                    "level": "info",
+                    "text": f"{len(blocked_active)} IPs currently blocked by the application.",
+                }
+            )
+        if not diagnostics:
+            diagnostics.append({"level": "ok", "text": "No elevated auth abuse in the last 24 hours."})
+
+        return jsonify(
+            {
+                "success": True,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "summary": {
+                    "failed_logins_24h": failed_24h,
+                    "security_events_24h": events_24h,
+                    "blocked_ips_active": len(blocked_active),
+                    "unique_attacker_ips_24h": len(failed_by_ip),
+                },
+                "diagnostics": diagnostics,
+                "top_attacker_ips": [
+                    {
+                        "ip_address": row[0],
+                        "attempts": int(row[1]),
+                        "last_attempt": row[2].isoformat() if row[2] else None,
+                    }
+                    for row in failed_by_ip
+                ],
+                "event_types_24h": [
+                    {"event_type": row[0], "count": int(row[1])} for row in event_rows
+                ],
+                "recent_events": [
+                    {
+                        "id": ev.id,
+                        "ip_address": ev.ip_address,
+                        "event_type": ev.event_type,
+                        "details": (ev.details or "")[:500],
+                        "endpoint": ev.endpoint,
+                        "created_at": ev.created_at.isoformat() if ev.created_at else None,
+                    }
+                    for ev in recent_events
+                ],
+                "blocked_ips_active": [
+                    {
+                        "ip_address": ip.ip_address,
+                        "reason": ip.reason,
+                        "failed_attempts": ip.failed_attempts,
+                        "blocked_at": ip.blocked_at.isoformat() if ip.blocked_at else None,
+                        "is_permanent": bool(ip.is_permanent),
+                    }
+                    for ip in blocked_active[:15]
+                ],
+            }
+        ), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error in monitoring threats: {str(e)}")
+        return jsonify({"error": "Failed to fetch threat monitoring data"}), 500
+
+
 # ============== ANALYTICS ENDPOINTS ==============
 
 @admin_bp.route('/analytics/overview', methods=['GET'])
