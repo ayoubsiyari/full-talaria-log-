@@ -2952,11 +2952,6 @@ class ReplaySystem {
                         this.startCandleByCandle(true);
                     }
 
-                    if (typeof window !== 'undefined' && window.__multichartGrid
-                        && typeof this._multichartBroadcastReplayFrame === 'function') {
-                        this._multichartBroadcastReplayFrame();
-                    }
-
                     requestAnimationFrame(() => {
                         try {
                             this.updateAutoScrollIndicator();
@@ -4729,26 +4724,20 @@ class ReplaySystem {
             return false;
         }
 
-        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-            if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
-                return false;
-            }
-        } else {
-            let idx = 0;
-            if (chart && typeof chart.findGoToTargetIndex === 'function') {
-                idx = chart.findGoToTargetIndex(this.fullRawData, ts);
-            }
-            if (idx < 0) {
-                idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
-            }
-            if (idx < 0) {
-                idx = this.fullRawData.length - 1;
-            }
-            const minIdx = this.sessionStartIndex || 0;
-            idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
-            this.currentIndex = idx;
-            this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
+        let idx = 0;
+        if (chart && typeof chart.findGoToTargetIndex === 'function') {
+            idx = chart.findGoToTargetIndex(this.fullRawData, ts);
         }
+        if (idx < 0) {
+            idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
+        }
+        if (idx < 0) {
+            idx = this.fullRawData.length - 1;
+        }
+        const minIdx = this.sessionStartIndex || 0;
+        idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
+        this.currentIndex = idx;
+        this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
         this.animatingCandle = null;
         this.tickProgress = 0;
@@ -5208,10 +5197,9 @@ class ReplaySystem {
             if (Number.isFinite(detail.tickElapsedMs)) {
                 this.tickElapsedMs = Number(detail.tickElapsedMs);
             }
-            const tp = Number.isFinite(detail.tickProgress)
-                ? Number(detail.tickProgress)
-                : (this.tickProgress || 0);
-            this.tickProgress = tp;
+            if (Number.isFinite(detail.tickProgress)) {
+                this.tickProgress = Number(detail.tickProgress);
+            }
 
             const animatedCandle = {
                 t: formTs,
@@ -5221,20 +5209,12 @@ class ReplaySystem {
                 c: Number(anim.c),
                 v: Number(anim.v) || 0,
             };
-            // Keep mirror state so trim / resume logic matches host panel A.
-            this.animatingCandle = {
-                t: formTs,
-                open: animatedCandle.o,
-                high: animatedCandle.h,
-                low: animatedCandle.l,
-                close: animatedCandle.c,
-                volume: animatedCandle.v,
-            };
 
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
             chart.rawData = sliced;
 
+            const tp = this.tickProgress || 0;
             if (chart.data && chart.data.length > 0 && tp > 1) {
                 const last = chart.data[chart.data.length - 1];
                 last.h = Math.max(last.h, animatedCandle.h);
@@ -5244,9 +5224,9 @@ class ReplaySystem {
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
                 // During forming-candle animation, trim collapses the partial bar on
-                // coarse TFs (15m+) back to the static playhead — skip while mid-tick.
+                // coarse TFs (15m+) back to the static playhead — skip until complete.
                 if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                    && tp <= 0) {
+                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
                     chart._trimLastDataBarToReplayPlayhead();
                 }
             }
@@ -5256,36 +5236,25 @@ class ReplaySystem {
                 if (chart.fitToView) chart.fitToView();
             }
         } else {
-            const lastT = Number(frd[frd.length - 1]?.t);
-            if (Number.isFinite(lastT) && ts > lastT) {
-                return false;
+            let idx = 0;
+            if (typeof chart.findGoToTargetIndex === 'function') {
+                idx = chart.findGoToTargetIndex(frd, ts);
             }
+            if (idx < 0) {
+                idx = frd.findIndex(c => c && Number(c.t) >= ts);
+            }
+            if (idx < 0) idx = frd.length - 1;
+            const minIdx = this.sessionStartIndex || 0;
+            idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
 
+            this.currentIndex = idx;
+            this.replayTimestamp = frd[idx]?.t ?? ts;
             this.tickElapsedMs = Number.isFinite(detail.tickElapsedMs)
                 ? Number(detail.tickElapsedMs) : 0;
             this.tickProgress = 0;
             this.animatingCandle = null;
 
-            if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-                if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
-                    return false;
-                }
-            } else {
-                let idx = 0;
-                if (typeof chart.findGoToTargetIndex === 'function') {
-                    idx = chart.findGoToTargetIndex(frd, ts);
-                }
-                if (idx < 0) {
-                    idx = frd.findIndex(c => c && Number(c.t) >= ts);
-                }
-                if (idx < 0) idx = frd.length - 1;
-                const minIdx = this.sessionStartIndex || 0;
-                idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
-                this.currentIndex = idx;
-                this.replayTimestamp = ts;
-            }
-
-            const sliceEnd = Math.max(this.currentIndex + 1, 1);
+            const sliceEnd = Math.max(idx + 1, 1);
             chart.rawData = frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
@@ -5310,40 +5279,22 @@ class ReplaySystem {
      * Build replay frame payload for multichart mirror sync (host + iframes).
      */
     _buildMultichartReplayFrameDetail() {
-        let tickProgress = this.tickProgress;
-        let tickElapsedMs = this.tickElapsedMs;
-        let candleForAnim = this.animatingCandle;
-
-        // pause() zeroes live tick counters but keeps animatingCandle visible;
-        // mirror iframes need the saved partial-tick state to freeze mid-candle.
-        if (!this.isPlaying && this._savedTickState) {
-            if (Number.isFinite(this._savedTickState.tickProgress)) {
-                tickProgress = this._savedTickState.tickProgress;
-            }
-            if (Number.isFinite(this._savedTickState.tickElapsedMs)) {
-                tickElapsedMs = this._savedTickState.tickElapsedMs;
-            }
-            if (this._savedTickState.animatingCandle) {
-                candleForAnim = this._savedTickState.animatingCandle;
-            }
-        }
-
         const detail = {
             timestamp: this.replayTimestamp,
             currentIndex: this.currentIndex,
-            tickProgress,
-            tickElapsedMs,
+            tickProgress: this.tickProgress,
+            tickElapsedMs: this.tickElapsedMs,
             isPlaying: !!this.isPlaying,
         };
-        if (candleForAnim && !this.fastMode && this.getPlaybackMode() === 'tick') {
-            const ac = candleForAnim;
+        if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
+            const ac = this.animatingCandle;
             detail.animatedCandle = {
                 t: ac.t,
-                o: ac.open ?? ac.o,
-                h: ac.high ?? ac.h,
-                l: ac.low ?? ac.l,
-                c: ac.close ?? ac.c,
-                v: ac.volume ?? ac.v ?? 0,
+                o: ac.open,
+                h: ac.high,
+                l: ac.low,
+                c: ac.close,
+                v: ac.volume || 0,
             };
         }
         return detail;

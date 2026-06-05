@@ -1940,13 +1940,6 @@ class Chart {
         };
 
         if (covers(this.rawData)) return true;
-        const replayForCover = this.replaySystem;
-        if (replayForCover?.isActive
-            && Array.isArray(replayForCover.fullRawData)
-            && replayForCover.fullRawData.length
-            && covers(replayForCover.fullRawData)) {
-            return true;
-        }
 
         const session = this.backtestingSession;
         const fileId = this.currentFileId;
