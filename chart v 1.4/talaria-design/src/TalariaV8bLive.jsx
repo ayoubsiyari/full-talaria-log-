@@ -2114,19 +2114,29 @@ function v9ApplyAnchorPointsFromAvStyle(d, avStyle) {
 function v9ApplyPointsFromTlStyle(d, tlStyle) {
   if (!d || !Array.isArray(d.points) || d.points.length === 0 || !tlStyle) return false;
   let changed = false;
+  let controlEdited = false;
   for (let i = 0; i < Math.min(d.points.length, 7); i++) {
     const n = i + 1;
     const rawP = tlStyle[`pt${n}Price`];
     if (rawP !== undefined && rawP !== null && String(rawP).trim() !== "") {
       const py = parseFloat(String(rawP).replace(/,/g, ""));
-      if (Number.isFinite(py) && py !== d.points[i].y) { d.points[i].y = py; changed = true; }
+      if (Number.isFinite(py) && py !== d.points[i].y) {
+        d.points[i].y = py;
+        changed = true;
+        if (d.type === "curve" && i === 1) controlEdited = true;
+      }
     }
     const rawB = tlStyle[`pt${n}Bar`];
     if (rawB !== undefined && rawB !== null && String(rawB).trim() !== "") {
       const px = parseFloat(String(rawB).replace(/,/g, ""));
-      if (Number.isFinite(px) && px !== d.points[i].x) { d.points[i].x = px; changed = true; }
+      if (Number.isFinite(px) && px !== d.points[i].x) {
+        d.points[i].x = px;
+        changed = true;
+        if (d.type === "curve" && i === 1) controlEdited = true;
+      }
     }
   }
+  if (controlEdited) d._userControlEdited = true;
   if (!changed) return false;
   if (d.meta) d.meta.updatedAt = Date.now();
   if (typeof d.recalculateTimestamps === "function") {
@@ -18891,7 +18901,7 @@ const TalariaV8bLive = () => {
           {/* tabs */}
           {(()=>{
             const noTextTab = !v9ToolHasTextTab(tlSubTool.icon);
-            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
+            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
               || ["channel", "pitchfork", "flatChannel", "disjointCh"].includes(tlSubTool.icon);
@@ -21433,7 +21443,25 @@ const TalariaV8bLive = () => {
               const isSinglePoint = ["arrowUp","arrowDn"].includes(tlSubTool.icon);
               const isVline = tlSubTool.icon === "vline";
               const isCrossLine = tlSubTool.icon === "crossLine";
+              const isCurve = tlSubTool.icon === "curve";
               const isThreePoint = tlSubTool.icon === "fibTime";
+              if (isCurve) return (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr" }}>
+                    <div style={{ padding:"6px 12px" }}/>
+                    {["PRICE","BAR"].map(h=>(
+                      <div key={h} style={{ padding:"6px 8px", fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", textAlign:"center" }}>{h}</div>
+                    ))}
+                  </div>
+                  {["Start","Control","End"].map((lbl, i)=>(
+                    <div key={lbl} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
+                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Price`,"price")}</div>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Bar`,"bar")}</div>
+                    </div>
+                  ))}
+                </div>
+              );
               const elliottPtCount = {"elliott5":6,"elliottABC":4,"elliottTri":6,"elliottWXY":4,"elliottWXYXZ":6}[tlSubTool.icon] || 0;
               const patternPtCount = {"xabcd":5,"headShoulders":7,"abcdPattern":4,"triPattern":4,"threeDrives":7}[tlSubTool.icon] || 0;
               const multiPtCount = isElliottTool ? elliottPtCount : (isPatternTool && !isElliottTool) ? patternPtCount : 0;
@@ -23421,6 +23449,9 @@ const TalariaV8bLive = () => {
           return (<>
             {layout.sections.map((section, si) => {
               const skipDupPlotHeader = hideStylePickers && si > 0 && !!layout.sections[si - 1]?.header && !!section.header;
+              const skipDupBandStyleHeader = hideStylePickers && si > 0
+                && layout.sections.slice(0, si).some((s) => s.bandStyleHeader)
+                && !!section.bandStyleHeader;
               const isFirstBandLevelHeader = !!section.bandLevelHeader
                 && !layout.sections.slice(0, si).some((s) => s.bandLevelHeader);
               const hdrCols = hideStylePickers ? gcAlign : gcNoPlot;
@@ -23458,11 +23489,24 @@ const TalariaV8bLive = () => {
                     {sectionHasPlotStyleCol(section) ? <div /> : (hideStylePickers ? null : null)}
                   </div>
                 )}
-                {section.bandStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: styleGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                {section.bandStyleHeader && !skipDupBandStyleHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcAlign : styleGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {sectionHasStyleCol(section) ? <>{hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}<div>{hdr("THICKNESS")}</div></> : null}
-                    <div />
+                    {hideStylePickers ? (
+                      <>
+                        <div />
+                        <div>{hdr("THICKNESS")}</div>
+                        <div />
+                      </>
+                    ) : sectionHasStyleCol(section) ? (
+                      <>
+                        <div>{hdr("STYLE")}</div>
+                        <div>{hdr("THICKNESS")}</div>
+                        <div />
+                      </>
+                    ) : (
+                      <div />
+                    )}
                   </div>
                 )}
                 {section.oscLevelStyleHeader && (

@@ -2072,7 +2072,7 @@ const TalariaV8b = () => {
           {/* tabs */}
           {(()=>{
             const noTextTab = isFibTool || isGannTool || isPatternTool || tool === "measure" || ["crossLine","polyline","pathTool","curve","doubleCurve","triangle","arcShape","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon);
-            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","curve","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
+            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || (isFibTool && tlSubTool.icon !== "fibSpiral") || isGannTool;
             const tlTabs=[["style","Style"],!noTextTab&&["text","Text"],hasInputTab&&["input","Input"],!noCoordsTab&&["coordinates","Coordinates"],["visibility","Visibility"]].filter(Boolean);
             const tlTabIdx=Math.max(0, tlTabs.findIndex(([id])=>id===tlSettTab));
@@ -4246,7 +4246,25 @@ const TalariaV8b = () => {
               const isSinglePoint = ["arrowUp","arrowDn"].includes(tlSubTool.icon);
               const isVline = tlSubTool.icon === "vline";
               const isCrossLine = tlSubTool.icon === "crossLine";
+              const isCurve = tlSubTool.icon === "curve";
               const isThreePoint = tlSubTool.icon === "fibTime";
+              if (isCurve) return (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr" }}>
+                    <div style={{ padding:"6px 12px" }}/>
+                    {["PRICE","BAR"].map(h=>(
+                      <div key={h} style={{ padding:"6px 8px", fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", textAlign:"center" }}>{h}</div>
+                    ))}
+                  </div>
+                  {["Start","Control","End"].map((lbl, i)=>(
+                    <div key={lbl} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
+                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Price`,"price")}</div>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Bar`,"bar")}</div>
+                    </div>
+                  ))}
+                </div>
+              );
               const elliottPtCount = {"elliott5":6,"elliottABC":4,"elliottTri":6,"elliottWXY":4,"elliottWXYXZ":6}[tlSubTool.icon] || 0;
               const patternPtCount = {"xabcd":5,"headShoulders":7,"abcdPattern":4,"triPattern":4,"threeDrives":7}[tlSubTool.icon] || 0;
               const multiPtCount = isElliottTool ? elliottPtCount : (isPatternTool && !isElliottTool) ? patternPtCount : 0;
