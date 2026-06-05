@@ -1889,13 +1889,13 @@
     function calculateVWAPIndicatorData(data, params) {
         params = params || {};
         const source = params.source || 'hlc3';
-        const offset = Number(params.offset) | 0;
-        const bandsMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
         const mults = [
-            { on: params.band1Enabled !== false, v: Number(params.band1Mult) || 1 },
-            { on: params.band2Enabled === true, v: Number(params.band2Mult) || 2 },
-            { on: params.band3Enabled === true, v: Number(params.band3Mult) || 3 }
+            { on: params.band1Enabled !== false, v: vwapParseNum(params.band1Mult, 1) },
+            { on: params.band2Enabled === true, v: vwapParseNum(params.band2Mult, 2) },
+            { on: params.band3Enabled === true, v: vwapParseNum(params.band3Mult, 3) }
         ];
+        const offset = vwapParseNum(params.offset, 0) | 0;
+        const bandsMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
         const n = data.length;
         const vwap = data.map(function() { return null; });
         const upper1 = data.map(function() { return null; });
@@ -1963,20 +1963,28 @@
         return calculateVWAPIndicatorData(data, params || { source: 'hlc3', anchorPeriod: 'session' }).vwap;
     }
 
+    function vwapParseNum(raw, fallback) {
+        const fn = typeof window !== 'undefined' ? window.__v9NormalizeIndicatorNumericString : null;
+        const s = fn ? fn(raw) : String(raw != null ? raw : '');
+        if (s === '' || s === '-' || s === '+' || s === '.' || s === '-.' || s === '+.') return fallback;
+        const n = parseFloat(s);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
     function applyVwapStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.params.source = params.source || 'hlc3';
-        indicator.params.offset = params.offset != null ? Number(params.offset) : 0;
+        indicator.params.offset = vwapParseNum(params.offset, indicator.params.offset != null ? indicator.params.offset : 0);
         indicator.params.anchorPeriod = normalizeVwapAnchorPeriod(params.anchorPeriod);
         indicator.params.hideOn1DOrAbove = params.hideOn1DOrAbove === true;
         indicator.params.bandsCalcMode = params.bandsCalcMode === 'percentage' ? 'percentage' : 'standard_deviation';
         indicator.params.band1Enabled = params.band1Enabled !== false;
-        indicator.params.band1Mult = params.band1Mult != null ? Number(params.band1Mult) : 1;
+        indicator.params.band1Mult = vwapParseNum(params.band1Mult, 1);
         indicator.params.band2Enabled = params.band2Enabled === true;
-        indicator.params.band2Mult = params.band2Mult != null ? Number(params.band2Mult) : 2;
+        indicator.params.band2Mult = vwapParseNum(params.band2Mult, 2);
         indicator.params.band3Enabled = params.band3Enabled === true;
-        indicator.params.band3Mult = params.band3Mult != null ? Number(params.band3Mult) : 3;
+        indicator.params.band3Mult = vwapParseNum(params.band3Mult, 3);
         indicator.style.showVwap = params.showVwap !== false;
         indicator.style.color = params.color || '#2962ff';
         indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
@@ -7110,7 +7118,7 @@
 
             // Draw based on type
             if (indicator.type === 'vwap') {
-                this.drawVwapIndicator(data, indicator.style, startIndex, endIndex);
+                this.drawVwapIndicator(data, indicator.style, startIndex, endIndex, indicator.params);
             } else if (indicator.type === 'bb' || indicator.type === 'bollinger') {
                 this.drawBollingerBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'envelope' || indicator.type === 'smaenvelope') {
@@ -8927,10 +8935,15 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
         if ((indicator.type === 'wma' || indicator.type === 'sma') && Array.isArray(data.line)) return [data.line];
         if (indicator.type === 'vwap' && Array.isArray(data.vwap)) {
             const st = indicator.style || {};
+            const p = indicator.params || {};
             const out = [];
             if (st.showVwap !== false) out.push(data.vwap);
-            if (st.showUpper1 !== false && Array.isArray(data.upper1)) out.push(data.upper1);
-            if (st.showLower1 !== false && Array.isArray(data.lower1)) out.push(data.lower1);
+            if (p.band1Enabled !== false && st.showUpper1 !== false && Array.isArray(data.upper1)) out.push(data.upper1);
+            if (p.band1Enabled !== false && st.showLower1 !== false && Array.isArray(data.lower1)) out.push(data.lower1);
+            if (p.band2Enabled === true && st.showUpper1 !== false && Array.isArray(data.upper2)) out.push(data.upper2);
+            if (p.band2Enabled === true && st.showLower1 !== false && Array.isArray(data.lower2)) out.push(data.lower2);
+            if (p.band3Enabled === true && st.showUpper1 !== false && Array.isArray(data.upper3)) out.push(data.upper3);
+            if (p.band3Enabled === true && st.showLower1 !== false && Array.isArray(data.lower3)) out.push(data.lower3);
             return out;
         }
         if (Array.isArray(data.upper) || Array.isArray(data.middle) || Array.isArray(data.lower)) {
@@ -9622,13 +9635,30 @@ Chart.prototype.drawBollingerBands = function(bands, style, startIndex = 0, endI
     }
 };
 
-/** VWAP overlay — main line, band #1 lines, optional fill between upper1/lower1. */
-Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex) {
+/** VWAP overlay — main line, band lines (1–3), optional fill between upper1/lower1. */
+Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex, params) {
     if (!data || !Array.isArray(data.vwap)) return;
     style = style || {};
+    params = params || {};
     const resolve = this._resolveIndicatorBandLineColor.bind(this);
     const legacyW = style.lineWidth != null ? style.lineWidth : 2;
     const legacyS = style.lineStyle || 'Line';
+    const upperCol = resolve(style.upperColor, style.upperOpacity);
+    const lowerCol = resolve(style.lowerColor, style.lowerOpacity);
+    const upperW = style.upperLineWidth != null ? style.upperLineWidth : 1;
+    const lowerW = style.lowerLineWidth != null ? style.lowerLineWidth : 1;
+    const upperStyle = style.upperLineStyle || legacyS;
+    const lowerStyle = style.lowerLineStyle || legacyS;
+    const upperDash = style.upperLineDashStyle || 'Solid';
+    const lowerDash = style.lowerLineDashStyle || 'Solid';
+    const drawBandPair = function(upperArr, lowerArr) {
+        if (style.showUpper1 !== false && upperArr) {
+            this.drawLineIndicator(upperArr, upperCol, upperW, startIndex, endIndex, upperStyle, { dashStyle: upperDash });
+        }
+        if (style.showLower1 !== false && lowerArr) {
+            this.drawLineIndicator(lowerArr, lowerCol, lowerW, startIndex, endIndex, lowerStyle, { dashStyle: lowerDash });
+        }
+    }.bind(this);
 
     if (style.showFill1 === true && data.upper1 && data.lower1) {
         const fillRgba = bollingerFillRgba({
@@ -9679,27 +9709,14 @@ Chart.prototype.drawVwapIndicator = function(data, style, startIndex, endIndex) 
             { dashStyle: style.lineDashStyle || 'Solid' }
         );
     }
-    if (style.showUpper1 !== false && data.upper1) {
-        this.drawLineIndicator(
-            data.upper1,
-            resolve(style.upperColor, style.upperOpacity),
-            style.upperLineWidth != null ? style.upperLineWidth : 1,
-            startIndex,
-            endIndex,
-            style.upperLineStyle || legacyS,
-            { dashStyle: style.upperLineDashStyle || 'Solid' }
-        );
+    if (params.band1Enabled !== false) {
+        drawBandPair(data.upper1, data.lower1);
     }
-    if (style.showLower1 !== false && data.lower1) {
-        this.drawLineIndicator(
-            data.lower1,
-            resolve(style.lowerColor, style.lowerOpacity),
-            style.lowerLineWidth != null ? style.lowerLineWidth : 1,
-            startIndex,
-            endIndex,
-            style.lowerLineStyle || legacyS,
-            { dashStyle: style.lowerLineDashStyle || 'Solid' }
-        );
+    if (params.band2Enabled === true) {
+        drawBandPair(data.upper2, data.lower2);
+    }
+    if (params.band3Enabled === true) {
+        drawBandPair(data.upper3, data.lower3);
     }
 };
 

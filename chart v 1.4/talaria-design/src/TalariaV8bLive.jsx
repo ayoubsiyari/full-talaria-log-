@@ -305,6 +305,27 @@ function v9IsIndLineWidthParamId(id) {
   return /linewidth/i.test(String(id || ""));
 }
 
+function v9NormalizeIndNumericString(raw) {
+  const fn = typeof window !== "undefined" && window.__v9NormalizeIndicatorNumericString;
+  return fn ? fn(raw) : String(raw ?? "");
+}
+
+function v9IndNumericDisplayValue(raw) {
+  if (raw == null) return "";
+  return String(raw);
+}
+
+function v9IndNumericInputStyle(base) {
+  return {
+    ...base,
+    direction: "ltr",
+    unicodeBidi: "plaintext",
+    textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
+    cursor: "text",
+  };
+}
+
 function v9IsSimpleIndLineStyleParam(p) {
   if (!p || p.type !== "select" || !Array.isArray(p.options)) return false;
   return p.options.every((o) => V9_IND_SIMPLE_LINE_STYLES.has(String(o.value)));
@@ -22979,17 +23000,17 @@ const TalariaV8bLive = () => {
           }
           if (p.type === "number") {
             return row(
-              <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
-                min={p.min} max={p.max} step={p.step}
+              <input type="text" inputMode="decimal" className="tlr-nospinner"
+                value={v9IndNumericDisplayValue(raw)}
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   try { e.currentTarget.focus({ preventScroll: true }); } catch (_) { e.currentTarget.focus(); }
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
-                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
-                style={{ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
-                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "text" }} />
+                onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: v9NormalizeIndNumericString(e.target.value) }))}
+                style={v9IndNumericInputStyle({ width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                  color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box" })} />
             );
           }
           if (p.type === "color") {
@@ -23778,13 +23799,13 @@ const TalariaV8bLive = () => {
               return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", gap: 12 }}>
                   <span style={{ fontSize: 12, color: c.ts, flex: 1, minWidth: 0 }}>{p.label}</span>
-                  <input type="number" className="tlr-nospinner" value={raw == null ? "" : raw}
-                    min={p.min} max={p.max} step={p.step}
+                  <input type="text" inputMode="decimal" className="tlr-nospinner"
+                    value={v9IndNumericDisplayValue(raw)}
                     onPointerDown={(e) => { e.stopPropagation(); try { e.currentTarget.focus({ preventScroll: true }); } catch (_) { e.currentTarget.focus(); } }}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: e.target.value }))}
-                    style={{ ...inpBase, width: 72, textAlign: "center", fontVariantNumeric: "tabular-nums", cursor: "text" }} />
+                    onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [p.id]: v9NormalizeIndNumericString(e.target.value) }))}
+                    style={v9IndNumericInputStyle({ ...inpBase, width: 72 })} />
                 </div>
               );
             }

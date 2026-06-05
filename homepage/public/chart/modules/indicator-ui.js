@@ -36,6 +36,7 @@ function isIndicatorLineWidthParam(param) {
 
 function indicatorParamAllowsNegative(param) {
     const id = String(param.id || '').toLowerCase();
+    if (id === 'offset') return true;
     if (param.min != null && param.min < 0) return true;
     if (/^(overbought|oversold|mid|zero)value$/.test(id)) return true;
     return false;
@@ -66,7 +67,12 @@ function sanitizeIndicatorParamValue(param, rawValue) {
     if (!param) return rawValue;
     if (param.type === 'checkbox') return !!rawValue;
     if (param.type !== 'number') return rawValue;
-    let value = parseFloat(normalizeIndicatorNumericString(rawValue));
+    const norm = normalizeIndicatorNumericString(rawValue);
+    if (norm === '' || norm === '-' || norm === '+' || norm === '.' || norm === '-.' || norm === '+.') {
+        return norm;
+    }
+    if (/^-?\d+\.$/.test(norm)) return norm;
+    let value = parseFloat(norm);
     if (!Number.isFinite(value)) value = param.default;
     if (isIndicatorLineWidthParam(param)) {
         return clampIndicatorLineWidth(value, param.default != null ? param.default : 2);
@@ -798,14 +804,14 @@ function vwapInputParams() {
             options: VWAP_BANDS_CALC_OPTIONS
         },
         { id: 'band1Heading', label: '1-Bands Multiplier', type: 'heading', tab: 'input' },
-        { id: 'band1Enabled', label: '1-Bands Multiplier', type: 'checkbox', default: true, tab: 'input' },
-        { id: 'band1Mult', label: 'Value', type: 'number', default: 1, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'band1Enabled', label: 'Enable', type: 'checkbox', default: true, tab: 'input' },
+        { id: 'band1Mult', label: 'Multiplier', type: 'number', default: 1, min: 0.001, step: 0.1, tab: 'input' },
         { id: 'band2Heading', label: '2-Bands Multiplier', type: 'heading', tab: 'input' },
-        { id: 'band2Enabled', label: '2-Bands Multiplier', type: 'checkbox', default: false, tab: 'input' },
-        { id: 'band2Mult', label: 'Value', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' },
+        { id: 'band2Enabled', label: 'Enable', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'band2Mult', label: 'Multiplier', type: 'number', default: 2, min: 0.001, step: 0.1, tab: 'input' },
         { id: 'band3Heading', label: '3-Bands Multiplier', type: 'heading', tab: 'input' },
-        { id: 'band3Enabled', label: '3-Bands Multiplier', type: 'checkbox', default: false, tab: 'input' },
-        { id: 'band3Mult', label: 'Value', type: 'number', default: 3, min: 0.001, step: 0.1, tab: 'input' }
+        { id: 'band3Enabled', label: 'Enable', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'band3Mult', label: 'Multiplier', type: 'number', default: 3, min: 0.001, step: 0.1, tab: 'input' }
     ];
 }
 
