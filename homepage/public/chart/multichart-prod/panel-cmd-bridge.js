@@ -918,13 +918,10 @@
                     if (!ch.replaySystem || !ch.replaySystem.isActive) {
                         return applyReplayEnter(ch, hostTs);
                     }
-                    var panelTfMs = 60000;
-                    if (typeof ch.parseTimeframe === 'function') {
-                        panelTfMs = ch.parseTimeframe(ch.currentTimeframe) || panelTfMs;
-                    }
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
+                    // Same virtual playhead as host — allow 1s drift only (not panel TF).
                     var replayAligned = Number.isFinite(panelTs)
-                        && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
+                        && Math.abs(panelTs - hostTs) <= 1000;
                     if (!args.force && replayAligned) return;
                     return forceReplaySeek(ch, hostTs, false);
                 }

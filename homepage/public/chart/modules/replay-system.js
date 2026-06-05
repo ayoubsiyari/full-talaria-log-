@@ -4724,21 +4724,26 @@ class ReplaySystem {
             return false;
         }
 
-        let idx = 0;
-        if (chart && typeof chart.findGoToTargetIndex === 'function') {
-            idx = chart.findGoToTargetIndex(this.fullRawData, ts);
+        if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
+                return false;
+            }
+        } else {
+            let idx = 0;
+            if (chart && typeof chart.findGoToTargetIndex === 'function') {
+                idx = chart.findGoToTargetIndex(this.fullRawData, ts);
+            }
+            if (idx < 0) {
+                idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
+            }
+            if (idx < 0) {
+                idx = this.fullRawData.length - 1;
+            }
+            const minIdx = this.sessionStartIndex || 0;
+            idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
+            this.currentIndex = idx;
+            this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         }
-        if (idx < 0) {
-            idx = this.fullRawData.findIndex(c => Number(c?.t) >= ts);
-        }
-        if (idx < 0) {
-            idx = this.fullRawData.length - 1;
-        }
-        const minIdx = this.sessionStartIndex || 0;
-        idx = Math.min(Math.max(idx, minIdx), this.fullRawData.length - 1);
-
-        this.currentIndex = idx;
-        this.replayTimestamp = this.fullRawData[idx]?.t ?? ts;
         this.tickElapsedMs = 0;
         this.animatingCandle = null;
         this.tickProgress = 0;
@@ -4746,7 +4751,7 @@ class ReplaySystem {
         // Pre-arm guards before chart update
         const om2 = this.chart?.orderManager;
         if (om2 && typeof om2._refreshAllGuardsToTimestamp === 'function') {
-            const rawBar = this.fullRawData[idx];
+            const rawBar = this.fullRawData[this.currentIndex];
             if (rawBar) om2._refreshAllGuardsToTimestamp(rawBar.t);
         }
 
@@ -5237,25 +5242,36 @@ class ReplaySystem {
                 if (chart.fitToView) chart.fitToView();
             }
         } else {
-            let idx = 0;
-            if (typeof chart.findGoToTargetIndex === 'function') {
-                idx = chart.findGoToTargetIndex(frd, ts);
+            const lastT = Number(frd[frd.length - 1]?.t);
+            if (Number.isFinite(lastT) && ts > lastT) {
+                return false;
             }
-            if (idx < 0) {
-                idx = frd.findIndex(c => c && Number(c.t) >= ts);
-            }
-            if (idx < 0) idx = frd.length - 1;
-            const minIdx = this.sessionStartIndex || 0;
-            idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
 
-            this.currentIndex = idx;
-            this.replayTimestamp = frd[idx]?.t ?? ts;
             this.tickElapsedMs = Number.isFinite(detail.tickElapsedMs)
                 ? Number(detail.tickElapsedMs) : 0;
             this.tickProgress = 0;
             this.animatingCandle = null;
 
-            const sliceEnd = Math.max(idx + 1, 1);
+            if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+                if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
+                    return false;
+                }
+            } else {
+                let idx = 0;
+                if (typeof chart.findGoToTargetIndex === 'function') {
+                    idx = chart.findGoToTargetIndex(frd, ts);
+                }
+                if (idx < 0) {
+                    idx = frd.findIndex(c => c && Number(c.t) >= ts);
+                }
+                if (idx < 0) idx = frd.length - 1;
+                const minIdx = this.sessionStartIndex || 0;
+                idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
+                this.currentIndex = idx;
+                this.replayTimestamp = ts;
+            }
+
+            const sliceEnd = Math.max(this.currentIndex + 1, 1);
             chart.rawData = frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
