@@ -564,7 +564,12 @@
                 });
             } catch (_) {}
             var afterLoad = function () {
-                if (tf && typeof ch.setTimeframe === 'function') {
+                // Only switch tf when it actually differs — calling
+                // setTimeframe with the already-loaded tf would trigger a
+                // redundant re-fetch that, in replay, can re-anchor the
+                // window and undo the playhead-matched load above.
+                if (tf && typeof ch.setTimeframe === 'function'
+                    && ch.currentTimeframe !== tf) {
                     try { ch.setTimeframe(tf); } catch (_) {}
                 }
                 // DO NOT call ch.drawingManager.loadDrawings() here.
@@ -713,54 +718,82 @@
                 })();
             if (btSession && typeof ch.autoLoadBacktestingData === 'function'
                 && !ch.backtestingStarted) {
-                try {
-                    ch.isBacktestMode = true;
-                    if (!ch.backtestingSession) ch.backtestingSession = btSession;
-                    // Read the parent's LIVE replay playhead so this panel loads
-                    // the window centered on the exact same candle host A is on,
-                    // and enters replay there — not at the end of the period.
-                    var parentReplayTs = (function () {
+                // Read host A's LIVE replay playhead. Anchoring the panel's
+                // data fetch + replay seek on this exact timestamp is what
+                // makes every panel land on the SAME candle + window as A
+                // (instead of a raced end-anchored window that drops the
+                // panel at the END of the backtest period — the 2015 vs 2023
+                // split). See chart.js autoLoadBacktestingData(opts.replayTimestamp).
+                var readParentPlayhead = function () {
+                    try {
+                        var pc = (window.parent && window.parent !== window)
+                            ? window.parent.chart : null;
+                        var prs = pc && pc.replaySystem ? pc.replaySystem : null;
+                        if (prs && prs.isActive) {
+                            var t = Number(prs.replayTimestamp);
+                            if (isFinite(t) && t > 0) return t;
+                        }
+                    } catch (_) {}
+                    return null;
+                };
+                var doBacktestLoad = function (playheadTs) {
+                    if (ch.backtestingStarted) return;
+                    try {
+                        ch.isBacktestMode = true;
+                        if (!ch.backtestingSession) ch.backtestingSession = btSession;
+                        reportToShell('info', 'loading via autoLoadBacktestingData '
+                            + '(match host A'
+                            + (playheadTs != null
+                                ? '; playhead=' + playheadTs
+                                : '; no parent playhead → session start') + ')');
+                        var rp = (playheadTs != null)
+                            ? ch.autoLoadBacktestingData(btSession, { replayTimestamp: playheadTs })
+                            : ch.autoLoadBacktestingData(btSession);
+                        if (rp && typeof rp.then === 'function') {
+                            rp.then(afterLoad, function (err) {
+                                reportToShell('error', 'autoLoadBacktestingData failed: '
+                                    + (err && err.message || err)
+                                    + ' — falling back to loadFileData');
+                                try {
+                                    var fp = ch.loadFileData(fileId);
+                                    if (fp && typeof fp.then === 'function') fp.then(afterLoad, function () {});
+                                    else afterLoad();
+                                } catch (_) {}
+                            });
+                        } else {
+                            afterLoad();
+                        }
+                    } catch (e) {
+                        reportToShell('error', 'autoLoadBacktestingData threw: '
+                            + (e && e.message || e) + ' — falling back to loadFileData');
                         try {
-                            var pc = (window.parent && window.parent !== window)
-                                ? window.parent.chart : null;
-                            var prs = pc && pc.replaySystem ? pc.replaySystem : null;
-                            if (prs && prs.isActive) {
-                                var t = Number(prs.replayTimestamp);
-                                if (isFinite(t) && t > 0) return t;
-                            }
+                            var p2 = ch.loadFileData(fileId);
+                            if (p2 && typeof p2.then === 'function') p2.then(afterLoad, function () {});
+                            else afterLoad();
                         } catch (_) {}
-                        return null;
-                    })();
-                    reportToShell('info', 'loading via autoLoadBacktestingData '
-                        + '(session-matched window so panel matches host A'
-                        + (parentReplayTs != null
-                            ? '; playhead=' + parentReplayTs : '') + ')');
-                    var rp = (parentReplayTs != null)
-                        ? ch.autoLoadBacktestingData(btSession, { replayTimestamp: parentReplayTs })
-                        : ch.autoLoadBacktestingData(btSession);
-                    if (rp && typeof rp.then === 'function') {
-                        rp.then(afterLoad, function (err) {
-                            reportToShell('error', 'autoLoadBacktestingData failed: '
-                                + (err && err.message || err)
-                                + ' — falling back to loadFileData');
-                            try {
-                                var fp = ch.loadFileData(fileId);
-                                if (fp && typeof fp.then === 'function') fp.then(afterLoad, function () {});
-                                else afterLoad();
-                            } catch (_) {}
-                        });
-                    } else {
-                        afterLoad();
                     }
-                } catch (e) {
-                    reportToShell('error', 'autoLoadBacktestingData threw: '
-                        + (e && e.message || e) + ' — falling back to loadFileData');
-                    p = ch.loadFileData(fileId);
-                    if (p && typeof p.then === 'function') {
-                        p.then(afterLoad, function () {});
-                    } else {
-                        afterLoad();
-                    }
+                };
+                // Host A enters replay asynchronously after its own data load.
+                // If we boot before that, the playhead isn't available yet and
+                // we'd fall back to the racy session-start scan. Wait for A's
+                // replay to go active (poll up to 15s), then anchor on it.
+                var immediateTs = readParentPlayhead();
+                if (immediateTs != null) {
+                    doBacktestLoad(immediateTs);
+                } else {
+                    reportToShell('info', 'waiting for host A replay to become active '
+                        + 'before backtest load (so panel anchors on the same candle)…');
+                    pollFor(
+                        function () { return readParentPlayhead() != null; },
+                        120,
+                        15000,
+                        function () { doBacktestLoad(readParentPlayhead()); },
+                        function () {
+                            reportToShell('warn', 'host A replay not active after 15s; '
+                                + 'loading panel at session start');
+                            doBacktestLoad(null);
+                        }
+                    );
                 }
                 return;
             }

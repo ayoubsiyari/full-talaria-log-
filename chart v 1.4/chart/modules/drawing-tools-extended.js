@@ -135,56 +135,49 @@ class HighlighterTool extends BaseDrawing {
 // Arrow Marker Tool (Single point arrow/pin marker)
 // ============================================================================
 
-/** TradingView-style arrow: uniform shaft, rounded tail, barbed chevron head, sharp tip. */
+/** TradingView-style arrow: chevron head (same topology as arrowMarkUpPathD), uniform shaft, rounded tail. */
 function arrowMarkerPathD(x1, y1, x2, y2) {
     const dx = x2 - x1;
     const dy = y2 - y1;
-    const angle = Math.atan2(dy, dx);
     const length = Math.hypot(dx, dy) || 1;
-    const scaleFactor = Math.max(0.5, Math.min(3, length / 200));
-
-    const shaftHalf = 10 * scaleFactor;
-    const headLen = 56 * scaleFactor;
-    const headHalf = 26 * scaleFactor;
-    const barbAxial = 44 * scaleFactor;
-
-    const ux = Math.cos(angle);
-    const uy = Math.sin(angle);
+    const ux = dx / length;
+    const uy = dy / length;
     const px = -uy;
     const py = ux;
 
+    const scale = Math.max(0.45, Math.min(1.6, length / 220));
+    const shaftHalf = 7.5 * scale;
+    const headOuterHalf = 15 * scale;
+    const headLen = 38 * scale;
+
     const tipX = x2;
     const tipY = y2;
+    const baseX = tipX - headLen * ux;
+    const baseY = tipY - headLen * uy;
 
-    const joinX = tipX - headLen * ux;
-    const joinY = tipY - headLen * uy;
-    const joinLx = joinX - shaftHalf * px;
-    const joinLy = joinY - shaftHalf * py;
-    const joinRx = joinX + shaftHalf * px;
-    const joinRy = joinY + shaftHalf * py;
+    const barbRx = baseX + headOuterHalf * px;
+    const barbRy = baseY + headOuterHalf * py;
+    const innerRx = baseX + shaftHalf * px;
+    const innerRy = baseY + shaftHalf * py;
+    const innerLx = baseX - shaftHalf * px;
+    const innerLy = baseY - shaftHalf * py;
+    const barbLx = baseX - headOuterHalf * px;
+    const barbLy = baseY - headOuterHalf * py;
 
-    const barbCx = tipX - barbAxial * ux;
-    const barbCy = tipY - barbAxial * uy;
-    const barbLx = barbCx - headHalf * px;
-    const barbLy = barbCy - headHalf * py;
-    const barbRx = barbCx + headHalf * px;
-    const barbRy = barbCy + headHalf * py;
-
-    const tailLx = x1 - shaftHalf * px;
-    const tailLy = y1 - shaftHalf * py;
     const tailRx = x1 + shaftHalf * px;
     const tailRy = y1 + shaftHalf * py;
+    const tailLx = x1 - shaftHalf * px;
+    const tailLy = y1 - shaftHalf * py;
 
     const r = shaftHalf;
     return [
-        `M ${tailLx} ${tailLy}`,
-        `L ${joinLx} ${joinLy}`,
-        `L ${barbLx} ${barbLy}`,
-        `L ${tipX} ${tipY}`,
+        `M ${tipX} ${tipY}`,
         `L ${barbRx} ${barbRy}`,
-        `L ${joinRx} ${joinRy}`,
+        `L ${innerRx} ${innerRy}`,
         `L ${tailRx} ${tailRy}`,
         `A ${r} ${r} 0 0 1 ${tailLx} ${tailLy}`,
+        `L ${innerLx} ${innerLy}`,
+        `L ${barbLx} ${barbLy}`,
         'Z',
     ].join(' ');
 }
@@ -225,8 +218,8 @@ class ArrowMarkerTool extends BaseDrawing {
         const dy = y2 - y1;
         const angle = Math.atan2(dy, dx);
         const length = Math.hypot(dx, dy) || 1;
-        const scaleFactor = Math.max(0.5, Math.min(3, length / 200));
-        const shaftHalf = 10 * scaleFactor;
+        const scale = Math.max(0.45, Math.min(1.6, length / 220));
+        const shaftHalf = 7.5 * scale;
 
         const arrowPath = arrowMarkerPathD(x1, y1, x2, y2);
 
@@ -271,6 +264,9 @@ class ArrowMarkerTool extends BaseDrawing {
                 .attr('fill', 'none')
                 .attr('stroke', outlineStroke)
                 .attr('stroke-width', outlineWidth)
+                .attr('stroke-linejoin', 'miter')
+                .attr('stroke-linecap', 'butt')
+                .attr('stroke-miterlimit', 12)
                 .attr('data-original-width', outlineWidth)
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
