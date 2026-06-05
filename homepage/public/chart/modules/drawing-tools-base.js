@@ -346,6 +346,20 @@ class BaseDrawing {
         return false;
     }
 
+    /**
+     * Live resize-handle drag: patch stroke + handles in one synchronous pass (no SVG rebuild).
+     * @returns {boolean} true when geometry and handles were updated in place
+     */
+    patchLiveHandleResize(scales, pointIndex) {
+        if (typeof this.patchLiveAnchorGeometry === 'function' && this.patchLiveAnchorGeometry(scales)) {
+            return true;
+        }
+        if (typeof this.patchPanZoomGeometry === 'function' && this.patchPanZoomGeometry(scales)) {
+            return true;
+        }
+        return false;
+    }
+
     static fibIndexToPixel(scales, xIdx) {
         if (!scales || !Number.isFinite(xIdx)) return NaN;
         return scales.chart && scales.chart.dataIndexToPixel

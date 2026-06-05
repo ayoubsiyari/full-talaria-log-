@@ -91,6 +91,105 @@ const LINE_LABEL_OFFSET = 14;
 
 const EXTENDED_LINE_TEXT_EDGE_PADDING = 10;
 
+function _lineToolChartBounds(scales) {
+    const xRange = scales.xScale.range();
+    const yRange = scales.yScale.range();
+    const chartLeftX = (scales.chart && scales.chart.margin && typeof scales.chart.margin.l === 'number')
+        ? scales.chart.margin.l
+        : xRange[0];
+    const chartRightX = (scales.chart && scales.chart.margin && typeof scales.chart.w === 'number')
+        ? (scales.chart.w - scales.chart.margin.r)
+        : xRange[1];
+    return { xRange, yRange, chartLeftX, chartRightX };
+}
+
+function _lineToolPointToScreen(scales, point) {
+    if (!point) return { x: NaN, y: NaN };
+    const x = scales.chart && scales.chart.dataIndexToPixel
+        ? scales.chart.dataIndexToPixel(point.x)
+        : scales.xScale(point.x);
+    const y = scales.yScale(point.y);
+    return { x, y };
+}
+
+function computeRayScreenEndpoints(scales, p1, p2) {
+    const { x: x1Screen, y: y1Screen } = _lineToolPointToScreen(scales, p1);
+    const { x: x2Screen, y: y2Screen } = _lineToolPointToScreen(scales, p2);
+    const { yRange, chartLeftX, chartRightX } = _lineToolChartBounds(scales);
+    const dx = x2Screen - x1Screen;
+    const dy = y2Screen - y1Screen;
+    let extendedX;
+    let extendedY;
+    if (Math.abs(dx) > 0.001) {
+        const slope = dy / dx;
+        if (dx > 0) {
+            extendedX = chartRightX;
+            extendedY = y1Screen + slope * (extendedX - x1Screen);
+        } else {
+            extendedX = chartLeftX;
+            extendedY = y1Screen + slope * (extendedX - x1Screen);
+        }
+        if (extendedY < yRange[1]) {
+            extendedY = yRange[1];
+            extendedX = x1Screen + (extendedY - y1Screen) / slope;
+        } else if (extendedY > yRange[0]) {
+            extendedY = yRange[0];
+            extendedX = x1Screen + (extendedY - y1Screen) / slope;
+        }
+    } else {
+        extendedX = x1Screen;
+        extendedY = dy > 0 ? yRange[0] : yRange[1];
+    }
+    return { x1: x1Screen, y1: y1Screen, x2: extendedX, y2: extendedY };
+}
+
+function computeExtendedLineScreenEndpoints(scales, p1, p2) {
+    const { x: x1Screen, y: y1Screen } = _lineToolPointToScreen(scales, p1);
+    const { x: x2Screen, y: y2Screen } = _lineToolPointToScreen(scales, p2);
+    const { yRange, chartLeftX, chartRightX } = _lineToolChartBounds(scales);
+    const dx = x2Screen - x1Screen;
+    const dy = y2Screen - y1Screen;
+    let leftX;
+    let leftY;
+    let rightX;
+    let rightY;
+    if (Math.abs(dx) > 0.001) {
+        const slope = dy / dx;
+        leftX = chartLeftX;
+        leftY = y1Screen + slope * (leftX - x1Screen);
+        rightX = chartRightX;
+        rightY = y1Screen + slope * (rightX - x1Screen);
+        if (leftY < yRange[1]) {
+            leftY = yRange[1];
+            leftX = x1Screen + (leftY - y1Screen) / slope;
+        } else if (leftY > yRange[0]) {
+            leftY = yRange[0];
+            leftX = x1Screen + (leftY - y1Screen) / slope;
+        }
+        if (rightY < yRange[1]) {
+            rightY = yRange[1];
+            rightX = x1Screen + (rightY - y1Screen) / slope;
+        } else if (rightY > yRange[0]) {
+            rightY = yRange[0];
+            rightX = x1Screen + (rightY - y1Screen) / slope;
+        }
+    } else {
+        leftX = rightX = x1Screen;
+        leftY = yRange[0];
+        rightY = yRange[1];
+    }
+    return { x1: leftX, y1: leftY, x2: rightX, y2: rightY };
+}
+
+function patchTwoPointLineElements(group, x1, y1, x2, y2) {
+    if (!group || group.empty()) return;
+    group.selectAll('line').each(function () {
+        const el = d3.select(this);
+        if (el.attr('x1') == null) return;
+        el.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
+    });
+}
+
 const TEXT_ALIGN_TO_ANCHOR = {
     left: 'start',
     center: 'middle',
@@ -1681,10 +1780,6 @@ class RayTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
@@ -1916,6 +2011,18 @@ class RayTool extends BaseDrawing {
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
+    }
+
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        if (this._splitInfo) return false;
+        const seg = computeRayScreenEndpoints(scales, this.points[0], this.points[1]);
+        if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
+        patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
+        return true;
     }
 
     renderTextLabel(coords) {
@@ -2490,10 +2597,6 @@ class ExtendedLineTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        // Remove existing if any
-        if (this.group) {
-            this.group.remove();
-        }
         if (this.points.length < 2) return;
 
         // Get zoom scale factor for visual scaling
@@ -2740,6 +2843,18 @@ class ExtendedLineTool extends BaseDrawing {
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
+    }
+
+    patchPanZoomGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
+        if (this._splitInfo) return false;
+        const seg = computeExtendedLineScreenEndpoints(scales, this.points[0], this.points[1]);
+        if (![seg.x1, seg.y1, seg.x2, seg.y2].every(Number.isFinite)) return false;
+        patchTwoPointLineElements(this.group, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
+        return true;
     }
 
     renderTextLabel(coords) {
@@ -3007,6 +3122,38 @@ class CrossLineTool extends BaseDrawing {
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
 
         return this.group;
+    }
+
+    patchLiveAnchorGeometry(scales) {
+        if (!this.group || this.group.empty() || !this.points?.[0] || !scales) return false;
+        const p = this.points[0];
+        const xScreen = scales.chart && scales.chart.dataIndexToPixel
+            ? scales.chart.dataIndexToPixel(p.x)
+            : scales.xScale(p.x);
+        const yScreen = scales.yScale(p.y);
+        if (!Number.isFinite(xScreen) || !Number.isFinite(yScreen)) return false;
+        const xRange = scales.xScale.range();
+        const yRange = scales.yScale.range();
+        this.group.selectAll('line').each(function () {
+            const el = d3.select(this);
+            if (el.attr('x1') == null) return;
+            const x1 = parseFloat(el.attr('x1'));
+            const x2 = parseFloat(el.attr('x2'));
+            const y1 = parseFloat(el.attr('y1'));
+            const y2 = parseFloat(el.attr('y2'));
+            if (!Number.isFinite(x1) || !Number.isFinite(x2) || !Number.isFinite(y1) || !Number.isFinite(y2)) {
+                return;
+            }
+            if (Math.abs(x1 - x2) < 1) {
+                el.attr('x1', xScreen).attr('x2', xScreen);
+            } else {
+                el.attr('y1', yScreen).attr('y2', yScreen);
+            }
+        });
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
+        return true;
     }
 
     static fromJSON(data, chart) {

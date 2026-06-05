@@ -427,17 +427,10 @@ class DrawingToolsManager {
         return true;
     }
 
-    /** Line tools with bare `.resize-handle` circles (not resize-handle-group). */
-    _usesDirectResizeHandles(drawingType) {
-        return drawingType === 'horizontal-ray'
-            || drawingType === 'horizontal'
-            || drawingType === 'vertical';
-    }
-
     scheduleRenderDrawing(drawing) {
         if (!drawing) return;
-        // Direct-handle lines: patch or render synchronously (no RAF) so stroke + handle stay aligned.
-        if (this.isResizing && this.resizingDrawing === drawing && this._usesDirectResizeHandles(drawing.type)) {
+        // Handle resize: patch stroke + handles synchronously (never RAF, never destroy handle DOM).
+        if (this.isResizing && this.resizingDrawing === drawing) {
             try {
                 const stillTracked = this.drawings.find(item => item === drawing || (item && drawing && item.id === drawing.id));
                 if (stillTracked && this.chart && this.chart.xScale && this.chart.yScale) {
@@ -446,8 +439,8 @@ class DrawingToolsManager {
                         yScale: this.chart.yScale,
                         chart: this.chart
                     };
-                    if (typeof stillTracked.patchLiveAnchorGeometry === 'function'
-                        && stillTracked.patchLiveAnchorGeometry(scales)) {
+                    if (typeof stillTracked.patchLiveHandleResize === 'function'
+                        && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
                         return;
                     }
                     this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
@@ -5632,7 +5625,8 @@ class DrawingToolsManager {
             if (drawing.selected) {
                 const hasDragTransform = !!(drawing.group && drawing.group.attr('transform'));
                 const skipAxisDuringMove = this._isDrawingGeometryMoveActive() && hasDragTransform;
-                if (!skipAxisDuringMove) {
+                const skipAxisDuringHandleEdit = this._isLiveHandleEditing() && this.resizingDrawing === drawing;
+                if (!skipAxisDuringMove && !skipAxisDuringHandleEdit) {
                     drawing.showAxisHighlights({ live: liveRender });
                 }
             } else if (typeof drawing.hideAxisHighlights === 'function') {
