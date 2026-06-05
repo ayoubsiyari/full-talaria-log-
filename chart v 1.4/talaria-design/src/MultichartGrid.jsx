@@ -2048,49 +2048,25 @@ export default function MultichartGrid({
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
-                            // Snap every panel to the parent's EXACT candle at
-                            // the instant play begins, so all charts start from
-                            // the identical bar (no panel one frame behind),
-                            // THEN start their local loops at the same speed.
-                            // After this, every parent candle advance fires a
-                            // replayTick that re-forces the seek, so the panels
-                            // move candle-for-candle with A — like one chart.
-                            forceAllPanelsToTimestamp(Number(this.replayTimestamp));
+                            // Iframe panels mirror via replayFrame (forming candle +
+                            // tickProgress). replayTick would reset mid-candle animation.
                             broadcastToIframes("replayPlay", { speed, mode });
-                            try {
-                                if (typeof this._multichartBroadcastReplayFrame === 'function') {
-                                    this._multichartBroadcastReplayFrame();
-                                }
-                            } catch (_) {}
                         } catch (_) {}
                         return result;
                     };
                 }
 
-                // ── pause → broadcast replayPause + final replayTick ──
+                // ── pause → broadcast replayPause + frozen replayFrame ──
                 if (typeof patchedRs.pause === "function") {
                     patchOriginalPause = patchedRs.pause.bind(patchedRs);
                     patchedRs.pause = function () {
                         const result = patchOriginalPause();
                         broadcastToIframes("replayPause", {});
-                        // Send one final replayTick so iframes snap to
-                        // the exact pause position (drift correction).
+                        // Mirror the frozen mid-tick candle — replayTick would
+                        // seek to a closed bar and restart animation on resume.
                         try {
-                            const ts = Number(this.replayTimestamp);
-                            if (Number.isFinite(ts)) {
-                                const mgr = managerRef.current;
-                                if (mgr) {
-                                    for (const c of mgr.charts.values()) {
-                                        if (!c || c.host || !c.ready) continue;
-                                        try {
-                                            if (typeof mgr.sendCommandNoReply === "function") {
-                                                mgr.sendCommandNoReply(c.id, "replayTick", { timestamp: ts });
-                                            } else {
-                                                mgr.sendCommand(c.id, "replayTick", { timestamp: ts });
-                                            }
-                                        } catch (_) {}
-                                    }
-                                }
+                            if (typeof this._multichartBroadcastReplayFrame === 'function') {
+                                this._multichartBroadcastReplayFrame();
                             }
                         } catch (_) {}
                         return result;

@@ -2952,6 +2952,11 @@ class ReplaySystem {
                         this.startCandleByCandle(true);
                     }
 
+                    if (typeof window !== 'undefined' && window.__multichartGrid
+                        && typeof this._multichartBroadcastReplayFrame === 'function') {
+                        this._multichartBroadcastReplayFrame();
+                    }
+
                     requestAnimationFrame(() => {
                         try {
                             this.updateAutoScrollIndicator();
@@ -5203,9 +5208,10 @@ class ReplaySystem {
             if (Number.isFinite(detail.tickElapsedMs)) {
                 this.tickElapsedMs = Number(detail.tickElapsedMs);
             }
-            if (Number.isFinite(detail.tickProgress)) {
-                this.tickProgress = Number(detail.tickProgress);
-            }
+            const tp = Number.isFinite(detail.tickProgress)
+                ? Number(detail.tickProgress)
+                : (this.tickProgress || 0);
+            this.tickProgress = tp;
 
             const animatedCandle = {
                 t: formTs,
@@ -5215,12 +5221,20 @@ class ReplaySystem {
                 c: Number(anim.c),
                 v: Number(anim.v) || 0,
             };
+            // Keep mirror state so trim / resume logic matches host panel A.
+            this.animatingCandle = {
+                t: formTs,
+                open: animatedCandle.o,
+                high: animatedCandle.h,
+                low: animatedCandle.l,
+                close: animatedCandle.c,
+                volume: animatedCandle.v,
+            };
 
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
             chart.rawData = sliced;
 
-            const tp = this.tickProgress || 0;
             if (chart.data && chart.data.length > 0 && tp > 1) {
                 const last = chart.data[chart.data.length - 1];
                 last.h = Math.max(last.h, animatedCandle.h);
@@ -5230,9 +5244,9 @@ class ReplaySystem {
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
                 // During forming-candle animation, trim collapses the partial bar on
-                // coarse TFs (15m+) back to the static playhead — skip until complete.
+                // coarse TFs (15m+) back to the static playhead — skip while mid-tick.
                 if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
+                    && tp <= 0) {
                     chart._trimLastDataBarToReplayPlayhead();
                 }
             }
@@ -5296,22 +5310,40 @@ class ReplaySystem {
      * Build replay frame payload for multichart mirror sync (host + iframes).
      */
     _buildMultichartReplayFrameDetail() {
+        let tickProgress = this.tickProgress;
+        let tickElapsedMs = this.tickElapsedMs;
+        let candleForAnim = this.animatingCandle;
+
+        // pause() zeroes live tick counters but keeps animatingCandle visible;
+        // mirror iframes need the saved partial-tick state to freeze mid-candle.
+        if (!this.isPlaying && this._savedTickState) {
+            if (Number.isFinite(this._savedTickState.tickProgress)) {
+                tickProgress = this._savedTickState.tickProgress;
+            }
+            if (Number.isFinite(this._savedTickState.tickElapsedMs)) {
+                tickElapsedMs = this._savedTickState.tickElapsedMs;
+            }
+            if (this._savedTickState.animatingCandle) {
+                candleForAnim = this._savedTickState.animatingCandle;
+            }
+        }
+
         const detail = {
             timestamp: this.replayTimestamp,
             currentIndex: this.currentIndex,
-            tickProgress: this.tickProgress,
-            tickElapsedMs: this.tickElapsedMs,
+            tickProgress,
+            tickElapsedMs,
             isPlaying: !!this.isPlaying,
         };
-        if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
-            const ac = this.animatingCandle;
+        if (candleForAnim && !this.fastMode && this.getPlaybackMode() === 'tick') {
+            const ac = candleForAnim;
             detail.animatedCandle = {
                 t: ac.t,
-                o: ac.open,
-                h: ac.high,
-                l: ac.low,
-                c: ac.close,
-                v: ac.volume || 0,
+                o: ac.open ?? ac.o,
+                h: ac.high ?? ac.h,
+                l: ac.low ?? ac.l,
+                c: ac.close ?? ac.c,
+                v: ac.volume ?? ac.v ?? 0,
             };
         }
         return detail;
