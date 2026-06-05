@@ -5370,6 +5370,7 @@ Object.keys(INDICATOR_DEFINITIONS).forEach(function (k) {
 
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
+window.V9_HIDE_INDICATOR_STYLE_PICKERS = true;
 window.INDICATOR_DASH_STYLE_OPTIONS = INDICATOR_DASH_STYLE_OPTIONS;
 window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;

@@ -1541,6 +1541,7 @@ class CurveTool extends BaseDrawing {
         this.style.fill = style.fill || 'none';
         this.text = style.text || '';
         this.ensureTextDefaults();
+        this.ensureEndpointStyleDefaults();
         this.controlPointSensitivity = 1.0; // 1:1 mouse movement
         this.controlPointOffset = null; // Store the control point offset from midpoint
     }
@@ -1628,6 +1629,7 @@ class CurveTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
+        this.ensureEndpointStyleDefaults();
         if (this.group) {
             this.group.remove();
         }

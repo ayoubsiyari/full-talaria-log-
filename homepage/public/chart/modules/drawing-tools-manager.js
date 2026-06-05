@@ -12920,6 +12920,10 @@ class DrawingToolsManager {
             };
         }
 
+        const endpointArrowDefaults = (toolType === 'trendline' || toolType === 'curve' || toolType === 'path')
+            ? { startStyle: 'normal', endStyle: 'arrow' }
+            : {};
+
         return {
             stroke,
             color: stroke,
@@ -12942,6 +12946,7 @@ class DrawingToolsManager {
                 || toolType === 'brush' || toolType === 'highlighter'
                 ? { showPriceLabel: false, showTimeLabel: false }
                 : {}),
+            ...endpointArrowDefaults,
         };
     }
 

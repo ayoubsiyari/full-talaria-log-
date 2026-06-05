@@ -14913,7 +14913,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         const startStyle = isTrendline ? (drawing.style.startStyle || 'normal') : '';
 
-        const endStyle = isTrendline ? (drawing.style.endStyle || 'normal') : '';
+        const endStyle = isTrendline ? (drawing.style.endStyle || 'arrow') : '';
 
         
 

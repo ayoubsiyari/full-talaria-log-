@@ -205,6 +205,7 @@ class TrendlineTool extends BaseDrawing {
         super('trendline', points, style);
         this.requiredPoints = 2;
         this.ensureTextDefaults();
+        this.ensureEndpointStyleDefaults();
     }
 
     ensureTextDefaults() {
@@ -222,6 +223,7 @@ class TrendlineTool extends BaseDrawing {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
         this.ensureTextDefaults();
+        this.ensureEndpointStyleDefaults();
 
                 if (this.points.length < 2) return;
 

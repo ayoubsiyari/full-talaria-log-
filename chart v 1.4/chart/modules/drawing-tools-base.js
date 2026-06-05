@@ -175,6 +175,16 @@ class BaseDrawing {
         return 1;
     }
 
+    /** Default line endpoints: plain start, arrow at the end (trendline / curve / path). */
+    ensureEndpointStyleDefaults() {
+        if (this.style.startStyle === undefined || this.style.startStyle === null) {
+            this.style.startStyle = 'normal';
+        }
+        if (this.style.endStyle === undefined || this.style.endStyle === null) {
+            this.style.endStyle = 'arrow';
+        }
+    }
+
     /**
      * Normalize render() third argument (boolean isPreview legacy or opts object).
      */

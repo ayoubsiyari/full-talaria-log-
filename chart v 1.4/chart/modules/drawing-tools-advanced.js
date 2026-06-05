@@ -3880,17 +3880,13 @@ class PathTool extends BaseDrawing {
         this.pointRadius = style.pointRadius || 4;
         this.showArrow = style.showArrow !== undefined ? style.showArrow : false;
 
-        if (this.style.startStyle === undefined || this.style.startStyle === null) {
-            this.style.startStyle = 'normal';
-        }
-        if (this.style.endStyle === undefined || this.style.endStyle === null) {
-            this.style.endStyle = 'arrow';
-        }
+        this.ensureEndpointStyleDefaults();
     }
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
+        this.ensureEndpointStyleDefaults();
         // Remove existing if any
         if (this.points.length < 1) return;
 
