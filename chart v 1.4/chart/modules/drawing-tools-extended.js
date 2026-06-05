@@ -135,7 +135,7 @@ class HighlighterTool extends BaseDrawing {
 // Arrow Marker Tool (Single point arrow/pin marker)
 // ============================================================================
 
-/** TradingView-style arrow: chevron head (same topology as arrowMarkUpPathD), uniform shaft, rounded tail. */
+/** TradingView arrow marker: rounded tail, uniform shaft, triangular head (flat base, wings wider than shaft). */
 function arrowMarkerPathD(x1, y1, x2, y2) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -145,24 +145,24 @@ function arrowMarkerPathD(x1, y1, x2, y2) {
     const px = -uy;
     const py = ux;
 
-    const scale = Math.max(0.45, Math.min(1.6, length / 220));
-    const shaftHalf = 7.5 * scale;
-    const headOuterHalf = 15 * scale;
-    const headLen = 38 * scale;
+    const scale = Math.max(0.5, Math.min(1.5, length / 200));
+    const shaftHalf = 8.5 * scale;
+    const headHalf = 24 * scale;
+    const headLen = 42 * scale;
 
     const tipX = x2;
     const tipY = y2;
     const baseX = tipX - headLen * ux;
     const baseY = tipY - headLen * uy;
 
-    const barbRx = baseX + headOuterHalf * px;
-    const barbRy = baseY + headOuterHalf * py;
-    const innerRx = baseX + shaftHalf * px;
-    const innerRy = baseY + shaftHalf * py;
-    const innerLx = baseX - shaftHalf * px;
-    const innerLy = baseY - shaftHalf * py;
-    const barbLx = baseX - headOuterHalf * px;
-    const barbLy = baseY - headOuterHalf * py;
+    const wingRx = baseX + headHalf * px;
+    const wingRy = baseY + headHalf * py;
+    const wingLx = baseX - headHalf * px;
+    const wingLy = baseY - headHalf * py;
+    const shaftRx = baseX + shaftHalf * px;
+    const shaftRy = baseY + shaftHalf * py;
+    const shaftLx = baseX - shaftHalf * px;
+    const shaftLy = baseY - shaftHalf * py;
 
     const tailRx = x1 + shaftHalf * px;
     const tailRy = y1 + shaftHalf * py;
@@ -172,12 +172,12 @@ function arrowMarkerPathD(x1, y1, x2, y2) {
     const r = shaftHalf;
     return [
         `M ${tipX} ${tipY}`,
-        `L ${barbRx} ${barbRy}`,
-        `L ${innerRx} ${innerRy}`,
+        `L ${wingRx} ${wingRy}`,
+        `L ${shaftRx} ${shaftRy}`,
         `L ${tailRx} ${tailRy}`,
         `A ${r} ${r} 0 0 1 ${tailLx} ${tailLy}`,
-        `L ${innerLx} ${innerLy}`,
-        `L ${barbLx} ${barbLy}`,
+        `L ${shaftLx} ${shaftLy}`,
+        `L ${wingLx} ${wingLy}`,
         'Z',
     ].join(' ');
 }
@@ -218,8 +218,8 @@ class ArrowMarkerTool extends BaseDrawing {
         const dy = y2 - y1;
         const angle = Math.atan2(dy, dx);
         const length = Math.hypot(dx, dy) || 1;
-        const scale = Math.max(0.45, Math.min(1.6, length / 220));
-        const shaftHalf = 7.5 * scale;
+        const scale = Math.max(0.5, Math.min(1.5, length / 200));
+        const shaftHalf = 8.5 * scale;
 
         const arrowPath = arrowMarkerPathD(x1, y1, x2, y2);
 
