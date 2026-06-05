@@ -134,6 +134,61 @@ class HighlighterTool extends BaseDrawing {
 // ============================================================================
 // Arrow Marker Tool (Single point arrow/pin marker)
 // ============================================================================
+
+/** TradingView-style arrow: uniform shaft, rounded tail, barbed chevron head, sharp tip. */
+function arrowMarkerPathD(x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.atan2(dy, dx);
+    const length = Math.hypot(dx, dy) || 1;
+    const scaleFactor = Math.max(0.5, Math.min(3, length / 200));
+
+    const shaftHalf = 10 * scaleFactor;
+    const headLen = 56 * scaleFactor;
+    const headHalf = 26 * scaleFactor;
+    const barbAxial = 44 * scaleFactor;
+
+    const ux = Math.cos(angle);
+    const uy = Math.sin(angle);
+    const px = -uy;
+    const py = ux;
+
+    const tipX = x2;
+    const tipY = y2;
+
+    const joinX = tipX - headLen * ux;
+    const joinY = tipY - headLen * uy;
+    const joinLx = joinX - shaftHalf * px;
+    const joinLy = joinY - shaftHalf * py;
+    const joinRx = joinX + shaftHalf * px;
+    const joinRy = joinY + shaftHalf * py;
+
+    const barbCx = tipX - barbAxial * ux;
+    const barbCy = tipY - barbAxial * uy;
+    const barbLx = barbCx - headHalf * px;
+    const barbLy = barbCy - headHalf * py;
+    const barbRx = barbCx + headHalf * px;
+    const barbRy = barbCy + headHalf * py;
+
+    const tailLx = x1 - shaftHalf * px;
+    const tailLy = y1 - shaftHalf * py;
+    const tailRx = x1 + shaftHalf * px;
+    const tailRy = y1 + shaftHalf * py;
+
+    const r = shaftHalf;
+    return [
+        `M ${tailLx} ${tailLy}`,
+        `L ${joinLx} ${joinLy}`,
+        `L ${barbLx} ${barbLy}`,
+        `L ${tipX} ${tipY}`,
+        `L ${barbRx} ${barbRy}`,
+        `L ${joinRx} ${joinRy}`,
+        `L ${tailRx} ${tailRy}`,
+        `A ${r} ${r} 0 0 1 ${tailLx} ${tailLy}`,
+        'Z',
+    ].join(' ');
+}
+
 class ArrowMarkerTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('arrow-marker', points, style);
@@ -166,46 +221,14 @@ class ArrowMarkerTool extends BaseDrawing {
             scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
 
-        // Calculate angle and length
         const dx = x2 - x1;
         const dy = y2 - y1;
         const angle = Math.atan2(dy, dx);
-        const length = Math.sqrt(dx * dx + dy * dy);
-        
-        // Arrow dimensions - scale with length
-        const scaleFactor = Math.max(0.5, Math.min(3, length / 200)); // Scale between 0.5x and 3x based on length
-        
-        const startWidth = 5 * scaleFactor; // Thin start point
-        const endWidth = 32 * scaleFactor; // Shaft width at head base
-        const headLength = 58 * scaleFactor; // Longer head = sharper tip (was 40 with 50-wide base → blunt)
-        
-        // Calculate arrow body end point (where head starts)
-        const bodyEndX = x2 - headLength * Math.cos(angle);
-        const bodyEndY = y2 - headLength * Math.sin(angle);
-        
-        // Calculate perpendicular offset
-        const perpAngle = angle + Math.PI / 2;
-        
-        // Tapered body - starts thin, ends at head base width (head shares same width → sharp point at tip)
-        const startHalfWidth = startWidth / 2;
-        const endHalfWidth = endWidth / 2;
-        
-        // Body corners (tapered trapezoid)
-        const body1x = x1 + startHalfWidth * Math.cos(perpAngle);
-        const body1y = y1 + startHalfWidth * Math.sin(perpAngle);
-        const body2x = x1 - startHalfWidth * Math.cos(perpAngle);
-        const body2y = y1 - startHalfWidth * Math.sin(perpAngle);
-        const body3x = bodyEndX - endHalfWidth * Math.cos(perpAngle);
-        const body3y = bodyEndY - endHalfWidth * Math.sin(perpAngle);
-        const body4x = bodyEndX + endHalfWidth * Math.cos(perpAngle);
-        const body4y = bodyEndY + endHalfWidth * Math.sin(perpAngle);
-        
-        // Create path for filled tapered arrow (shaft trapezoid + triangle head to tip)
-        const arrowPath = `M ${body1x} ${body1y} 
-            L ${body4x} ${body4y} 
-            L ${x2} ${y2} 
-            L ${body3x} ${body3y} 
-            L ${body2x} ${body2y} Z`;
+        const length = Math.hypot(dx, dy) || 1;
+        const scaleFactor = Math.max(0.5, Math.min(3, length / 200));
+        const shaftHalf = 10 * scaleFactor;
+
+        const arrowPath = arrowMarkerPathD(x1, y1, x2, y2);
 
         // Fill hit area (interactive) - allows select/move/hover by fill
         this.group.append('path')
@@ -264,7 +287,7 @@ class ArrowMarkerTool extends BaseDrawing {
             // Anchor the edge of the text that faces the arrow so all text
             // extends away from the body — no overlap at any angle or width.
             const backAngle = angle + Math.PI;
-            const backDist = startHalfWidth + 6;
+            const backDist = shaftHalf + 6;
             const textX = x1 + backDist * Math.cos(backAngle) + (this.style.textOffsetX || 0);
             const textY = y1 + backDist * Math.sin(backAngle) + (this.style.textOffsetY || 0);
             // If the back-anchor is to the left of the tail, use 'end' so text

@@ -23537,6 +23537,9 @@ const TalariaV8bLive = () => {
               const skipDupBandStyleHeader = hideStylePickers && si > 0
                 && layout.sections.slice(0, si).some((s) => s.bandStyleHeader)
                 && !!section.bandStyleHeader;
+              const skipDupOscLevelStyleHeader = hideStylePickers && si > 0
+                && layout.sections.slice(0, si).some((s) => s.oscLevelStyleHeader)
+                && !!section.oscLevelStyleHeader;
               const isFirstBandLevelHeader = !!section.bandLevelHeader
                 && !layout.sections.slice(0, si).some((s) => s.bandLevelHeader);
               const hdrCols = hideStylePickers ? gcAlign : gcNoPlot;
@@ -23594,12 +23597,22 @@ const TalariaV8bLive = () => {
                     )}
                   </div>
                 )}
-                {section.oscLevelStyleHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcNoPlot : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                {section.oscLevelStyleHeader && !skipDupOscLevelStyleHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcAlign : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}
-                    <div>{hdr("THICKNESS")}</div>
-                    {!hideStylePickers ? <div /> : null}
+                    {hideStylePickers ? (
+                      <>
+                        <div />
+                        <div>{hdr("THICKNESS")}</div>
+                        <div />
+                      </>
+                    ) : (
+                      <>
+                        <div>{hdr("STYLE")}</div>
+                        <div>{hdr("THICKNESS")}</div>
+                        <div />
+                      </>
+                    )}
                   </div>
                 )}
                 {section.zeroLevelHeader && (
