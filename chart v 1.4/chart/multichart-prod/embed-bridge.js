@@ -683,9 +683,72 @@
                     + ' sessionId=' + (sessionId || '(none)'));
                 return;
             }
-            // No mode in URL — chart.js does not auto-load. We must
-            // call loadFileData explicitly to bring data into the
-            // iframe's chart engine.
+            // ── Backtest panel → mirror panel A's EXACT load path ──────
+            //
+            // The grid deliberately does NOT put `mode=backtest` in the
+            // iframe URL (that gated chart.js's React boot behind the
+            // splash/auth pipeline and made panels stick on "Loading").
+            // But `loadFileData(fileId)` anchors at the SESSION END, while
+            // panel A boots via `autoLoadBacktestingData` which loads the
+            // window around the replay PLAYHEAD and enters replay there.
+            // That mismatch is exactly the "Panel B shows 2023 while Panel
+            // A shows 2015" bug.
+            //
+            // Fix: when a backtesting session is available (mirrored from
+            // the parent just above), call `autoLoadBacktestingData(session)`
+            // DIRECTLY — the same async method panel A runs — so the panel
+            // gets the identical data window + replay playhead. We invoke it
+            // ourselves instead of via URL `mode=` so the iframe's React app
+            // still boots normally and `bridge-ready` still fires (no stuck
+            // "Loading"). The enterReplayMode patch installed above keeps the
+            // panel entering at the session start like panel A, and the
+            // parent's replayEnter/replayTick stream then keeps it in lockstep.
+            var btSession = ch.backtestingSession
+                || (function () {
+                    try {
+                        var pc = (window.parent && window.parent !== window)
+                            ? window.parent.chart : null;
+                        return pc && pc.backtestingSession ? pc.backtestingSession : null;
+                    } catch (_) { return null; }
+                })();
+            if (btSession && typeof ch.autoLoadBacktestingData === 'function'
+                && !ch.backtestingStarted) {
+                try {
+                    ch.isBacktestMode = true;
+                    if (!ch.backtestingSession) ch.backtestingSession = btSession;
+                    reportToShell('info', 'loading via autoLoadBacktestingData '
+                        + '(session-matched window so panel matches host A)');
+                    var rp = ch.autoLoadBacktestingData(btSession);
+                    if (rp && typeof rp.then === 'function') {
+                        rp.then(afterLoad, function (err) {
+                            reportToShell('error', 'autoLoadBacktestingData failed: '
+                                + (err && err.message || err)
+                                + ' — falling back to loadFileData');
+                            try {
+                                var fp = ch.loadFileData(fileId);
+                                if (fp && typeof fp.then === 'function') fp.then(afterLoad, function () {});
+                                else afterLoad();
+                            } catch (_) {}
+                        });
+                    } else {
+                        afterLoad();
+                    }
+                } catch (e) {
+                    reportToShell('error', 'autoLoadBacktestingData threw: '
+                        + (e && e.message || e) + ' — falling back to loadFileData');
+                    p = ch.loadFileData(fileId);
+                    if (p && typeof p.then === 'function') {
+                        p.then(afterLoad, function () {});
+                    } else {
+                        afterLoad();
+                    }
+                }
+                return;
+            }
+
+            // No mode in URL and no backtest session — chart.js does not
+            // auto-load. Call loadFileData explicitly to bring (live) data
+            // into the iframe's chart engine.
             p = ch.loadFileData(fileId);
             if (p && typeof p.then === 'function') {
                 p.then(afterLoad, function (err) {
