@@ -1905,6 +1905,29 @@ export default function MultichartGrid({
         let patchOriginalSetSpeed = null;
         let patchOriginalSetMode = null;
         let patchOriginalSetStepTf = null;
+        let patchOriginalGoTo = null;
+        // Authoritative "force every panel to the parent's exact candle".
+        // Shared by the goToReplayTimestamp guard AND the
+        // replayVirtualTimeChanged listener so there is ONE place that
+        // decides what each panel must show.
+        const forceAllPanelsToTimestamp = (ts) => {
+            if (!Number.isFinite(ts)) return;
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return;
+            replayStateRef.current.lastBroadcastTs = ts;
+            const cmd = replayStateRef.current.everEntered ? "replayTick" : "replayEnter";
+            replayStateRef.current.everEntered = true;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                try {
+                    if (cmd === "replayTick" && typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(c.id, "replayTick", { timestamp: ts });
+                    } else {
+                        mgr.sendCommand(c.id, cmd, { timestamp: ts });
+                    }
+                } catch (_) {}
+            }
+        };
         const tryPatch = (deadline) => {
             const ch = window.chart;
             if (ch && ch.replaySystem
@@ -2049,6 +2072,37 @@ export default function MultichartGrid({
                     };
                 }
 
+                // ── goToReplayTimestamp → HARD GUARD: every seek / scrub /
+                //    go-to-date forces ALL panels onto the parent's exact
+                //    candle ──
+                //
+                // Requirement: no matter the action — play, pause, step
+                // forward/back, scrub the timeline, or a go-to-date jump —
+                // every panel MUST sit on the same candle/timestamp as
+                // Panel A. Step + play already broadcast via the
+                // `replayVirtualTimeChanged` listener; this patch closes the
+                // seek/scrub path (and acts as a belt-and-suspenders re-sync
+                // for the others). It re-broadcasts the parent's resulting
+                // candle to every panel. The panel-cmd `replayTick` handler
+                // coalesces per animation frame and forces a seek, so this is
+                // idempotent and cannot cause drift even if it overlaps the
+                // event-driven broadcast.
+                if (typeof patchedRs.goToReplayTimestamp === "function") {
+                    patchOriginalGoTo = patchedRs.goToReplayTimestamp.bind(patchedRs);
+                    patchedRs.goToReplayTimestamp = function (targetTs, options) {
+                        const result = patchOriginalGoTo(targetTs, options);
+                        try {
+                            // Only mirror real moves: goToReplayTimestamp
+                            // returns false when replay isn't active or the
+                            // target was invalid — don't push a stale ts then.
+                            if (this.isActive && result !== false) {
+                                forceAllPanelsToTimestamp(Number(this.replayTimestamp));
+                            }
+                        } catch (_) {}
+                        return result;
+                    };
+                }
+
                 patchedRs.__multichartExitPatched = true;
                 return;
             }
@@ -2072,6 +2126,7 @@ export default function MultichartGrid({
                     if (patchOriginalSetSpeed) patchedRs.setSpeed        = patchOriginalSetSpeed;
                     if (patchOriginalSetMode)  patchedRs.setPlaybackMode = patchOriginalSetMode;
                     if (patchOriginalSetStepTf) patchedRs.setStepTimeframe = patchOriginalSetStepTf;
+                    if (patchOriginalGoTo)     patchedRs.goToReplayTimestamp = patchOriginalGoTo;
                     delete patchedRs.__multichartExitPatched;
                 } catch (_) {}
             }
