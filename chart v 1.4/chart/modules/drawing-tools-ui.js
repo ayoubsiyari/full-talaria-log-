@@ -5761,7 +5761,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        const noCoordinatesTabTypes = ['text', 'polyline', 'path', 'double-curve', 'arc', 'ellipse', 'brush', 'highlighter', 'flat-top-bottom', 'disjoint-channel'];
+        const noCoordinatesTabTypes = ['text', 'polyline', 'path', 'arc', 'ellipse', 'brush', 'highlighter', 'flat-top-bottom', 'disjoint-channel'];
 
         const hasCoordinatesTab = !noCoordinatesTabTypes.includes(drawing.type)
 
@@ -17524,6 +17524,20 @@ body.light-mode .template-save-dialog .dialog-title {
                 { label: 'Start', index: 0 },
                 { label: 'Control', index: 1 },
                 { label: 'End', index: 2 },
+            ];
+        }
+        if (drawing.type === 'double-curve' && drawing.points.length >= 4) {
+            return [
+                { label: 'Start', index: 0 },
+                { label: 'Control 1', index: 2 },
+                { label: 'Control 2', index: 3 },
+                { label: 'End', index: 1 },
+            ];
+        }
+        if (drawing.type === 'double-curve' && drawing.points.length >= 2) {
+            return [
+                { label: 'Start', index: 0 },
+                { label: 'End', index: 1 },
             ];
         }
         if (drawing.points.length >= 2) {

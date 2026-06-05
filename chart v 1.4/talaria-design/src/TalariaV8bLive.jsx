@@ -18901,7 +18901,7 @@ const TalariaV8bLive = () => {
           {/* tabs */}
           {(()=>{
             const noTextTab = !v9ToolHasTextTab(tlSubTool.icon);
-            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","doubleCurve","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
+            const noCoordsTab = (isFibTool && tlSubTool.icon !== "fib" && tlSubTool.icon !== "fibExtension" && tlSubTool.icon !== "fibChannel" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibCircles" && tlSubTool.icon !== "fibSpiral" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && tlSubTool.icon !== "fibFan") || ["polyline","pathTool","arcShape","flatChannel","disjointCh","draw","brush"].includes(tlSubTool.icon);
             const hasFibInputTab = V9_FIB_ICONS_WITH_INPUT_TAB.has(tlSubTool.icon);
             const hasInputTab = tlSubTool.icon === "regressionCh" || tlSubTool.icon === "measure" || isRRTool || hasFibInputTab || isGannTool
               || ["channel", "pitchfork", "flatChannel", "disjointCh"].includes(tlSubTool.icon);
@@ -21444,6 +21444,7 @@ const TalariaV8bLive = () => {
               const isVline = tlSubTool.icon === "vline";
               const isCrossLine = tlSubTool.icon === "crossLine";
               const isCurve = tlSubTool.icon === "curve";
+              const isDoubleCurve = tlSubTool.icon === "doubleCurve";
               const isThreePoint = tlSubTool.icon === "fibTime";
               if (isCurve) return (
                 <div style={{ marginBottom:16 }}>
@@ -21458,6 +21459,28 @@ const TalariaV8bLive = () => {
                       <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
                       <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Price`,"price")}</div>
                       <div style={{ padding:"6px 8px" }}>{spinInput(`pt${i+1}Bar`,"bar")}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+              if (isDoubleCurve) return (
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr" }}>
+                    <div style={{ padding:"6px 12px" }}/>
+                    {["PRICE","BAR"].map(h=>(
+                      <div key={h} style={{ padding:"6px 8px", fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", textAlign:"center" }}>{h}</div>
+                    ))}
+                  </div>
+                  {[
+                    { lbl: "Start", price: "pt1Price", bar: "pt1Bar" },
+                    { lbl: "Control 1", price: "pt3Price", bar: "pt3Bar" },
+                    { lbl: "Control 2", price: "pt4Price", bar: "pt4Bar" },
+                    { lbl: "End", price: "pt2Price", bar: "pt2Bar" },
+                  ].map(({ lbl, price, bar })=>(
+                    <div key={lbl} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr", alignItems:"center" }}>
+                      <span style={{ fontSize:12, color:c.ts, padding:"8px 12px" }}>{lbl}</span>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(price,"price")}</div>
+                      <div style={{ padding:"6px 8px" }}>{spinInput(bar,"bar")}</div>
                     </div>
                   ))}
                 </div>
