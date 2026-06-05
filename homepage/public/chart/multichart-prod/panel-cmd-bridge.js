@@ -526,15 +526,54 @@
                     if (fileId === undefined || fileId === null || fileId === '') {
                         throw new Error('loadFile: missing args.fileId');
                     }
-                    if (typeof ch.loadFileData !== 'function') {
+                    if (typeof ch.loadFileData !== 'function'
+                        && typeof ch.loadMultichartPanelFromHost !== 'function') {
                         throw new Error('chart.loadFileData is not a function');
+                    }
+                    var fidStr = String(fileId);
+                    var btSess = ch.backtestingSession;
+                    var parentPc = null;
+                    try {
+                        parentPc = (global.parent && global.parent !== global)
+                            ? global.parent.chart : null;
+                    } catch (_) {}
+                    if (!btSess && parentPc && parentPc.backtestingSession) {
+                        btSess = parentPc.backtestingSession;
+                        try { ch.backtestingSession = btSess; } catch (_) {}
+                    }
+                    var useHostLoad = btSess
+                        && typeof ch.loadMultichartPanelFromHost === 'function';
+                    if (useHostLoad) {
+                        var hostTs = pendingReplayTs;
+                        if (!Number.isFinite(hostTs) && parentPc && parentPc.replaySystem
+                            && parentPc.replaySystem.isActive) {
+                            hostTs = Number(parentPc.replaySystem.replayTimestamp);
+                        }
+                        var hostTf = (parentPc && parentPc.currentTimeframe)
+                            || ch.currentTimeframe;
+                        var lp = ch.loadMultichartPanelFromHost({
+                            fileId: fidStr,
+                            session: btSess,
+                            timeframe: hostTf,
+                            replayTimestamp: hostTs,
+                            force: !!args.force,
+                        });
+                        if (lp && typeof lp.then === 'function') {
+                            return lp.then(function () {
+                                try { drainPendingReplay(); } catch (_d) {}
+                                setTimeout(function () {
+                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
+                                }, 0);
+                            });
+                        }
+                        try { drainPendingReplay(); } catch (_d2) {}
+                        return;
                     }
                     // Idempotency guard: when the parent fans out symbol
                     // sync to every panel, each panel echoes chart-state
                     // back; without this, the echo would re-trigger
                     // loadFileData on every panel and loop. Same trick
                     // setTimeframe uses above.
-                    var fidStr = String(fileId);
                     if (String(ch.currentFileId || '') === fidStr) {
                         // File already loaded (common when a new tile opens on the same
                         // session instrument). Do NOT call scheduleMultichartPanelReplayFollow
@@ -720,6 +759,40 @@
                 //   • goToReplayTimestamp is cheap and idempotent for
                 //     the same timestamp.
                 //   • exitReplayMode early-returns when !isActive.
+                case 'syncFromHost': {
+                    var pcSync = null;
+                    try {
+                        pcSync = (global.parent && global.parent !== global)
+                            ? global.parent.chart : null;
+                    } catch (_) {}
+                    if (!pcSync) return;
+                    var syncFid = pcSync.currentFileId;
+                    if (syncFid == null || syncFid === '') return;
+                    var syncSess = pcSync.backtestingSession || ch.backtestingSession;
+                    var syncTs = null;
+                    if (pcSync.replaySystem && pcSync.replaySystem.isActive) {
+                        syncTs = Number(pcSync.replaySystem.replayTimestamp);
+                    }
+                    if (typeof ch.loadMultichartPanelFromHost !== 'function') {
+                        if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
+                        return;
+                    }
+                    var syncP = ch.loadMultichartPanelFromHost({
+                        fileId: String(syncFid),
+                        session: syncSess,
+                        timeframe: pcSync.currentTimeframe || ch.currentTimeframe,
+                        replayTimestamp: Number.isFinite(syncTs) ? syncTs : null,
+                        force: !!args.force,
+                    });
+                    if (syncP && typeof syncP.then === 'function') {
+                        return syncP.then(function () {
+                            if (Number.isFinite(syncTs)) {
+                                try { drainPendingPlay(ch); } catch (_) {}
+                            }
+                        });
+                    }
+                    return;
+                }
                 case 'replayEnter': {
                     var tsE = Number(args.timestamp);
                     // First-time activation MUST run synchronously so
@@ -1278,6 +1351,7 @@
                 'getIndicators',
                 'getOrderPanelPriceSnapshot',
                 'applyV9UiSettings',
+                'syncFromHost',
                 'replayEnter',
                 'replayTick',
                 'replayExit',

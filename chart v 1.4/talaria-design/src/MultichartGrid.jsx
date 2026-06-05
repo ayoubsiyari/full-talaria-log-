@@ -1472,10 +1472,15 @@ export default function MultichartGrid({
         // layout toggles off to keep independent instruments per tile.
         const forceHostFileOnEveryTile = symFollow;
         const hostFidStr = String((hostNt.fileId || fid || "")).trim();
+        const hostInBacktest = !!(typeof window !== "undefined"
+            && window.chart
+            && (window.chart.isBacktestMode || window.chart.backtestingSession));
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
             try {
-                if (forceHostFileOnEveryTile) {
+                if (hostInBacktest) {
+                    mgr.sendCommand(c.id, "syncFromHost", { force: true });
+                } else if (forceHostFileOnEveryTile) {
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 } else {
                     const reported = c.state && c.state.fileId != null
@@ -1750,7 +1755,7 @@ export default function MultichartGrid({
                         });
                     }
                     catch (_) {}
-                    try { mgr.sendCommand(c.id, "replayEnter", { timestamp: ts }); }
+                    try { mgr.sendCommand(c.id, "syncFromHost", { force: true }); }
                     catch (_) {}
                     try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
                     catch (_) {}
@@ -1896,11 +1901,10 @@ export default function MultichartGrid({
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
                 replayStateRef.current.parentEverEntered = true;
-                const cmd = "replayEnter";
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
-                        mgr.sendCommand(c.id, cmd, { timestamp: ts, forceAlign: true });
+                        mgr.sendCommand(c.id, "syncFromHost", { force: false });
                     } catch (_) {}
                 }
             } catch (_) {}

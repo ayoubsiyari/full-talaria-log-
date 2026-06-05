@@ -1664,6 +1664,170 @@ class Chart {
     }
 
     /**
+     * Multichart iframe entry: load the SAME backtest window + replay playhead
+     * as host panel A. Does NOT use checkBacktestingMode / splash / alerts.
+     * Safe to call repeatedly (idempotent when already aligned).
+     *
+     * @param {{ fileId?: string, session?: object, timeframe?: string,
+     *           replayTimestamp?: number, force?: boolean }} opts
+     */
+    async loadMultichartPanelFromHost(opts = {}) {
+        const o = opts && typeof opts === 'object' ? opts : {};
+        const fileId = String(o.fileId || this.currentFileId || '').trim();
+        if (!fileId) {
+            throw new Error('loadMultichartPanelFromHost: missing fileId');
+        }
+
+        let session = o.session || this.backtestingSession;
+        if (!session) {
+            try {
+                session = JSON.parse(userStorage.getItem('backtestingSession') || 'null');
+            } catch (_e) { /* ignore */ }
+        }
+        session = this.normalizeBacktestingSession(session || {});
+        this.backtestingSession = session;
+        this.isBacktestMode = true;
+
+        const replayRawTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
+        this.currentTimeframe = replayRawTf;
+        if (this._tfDataCache) this._tfDataCache.clear();
+        if (this._btTfDataCache) this._btTfDataCache.clear();
+
+        const replayTs = Number.isFinite(Number(o.replayTimestamp))
+            ? Number(o.replayTimestamp)
+            : null;
+        const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
+
+        const sameFile = String(this.currentFileId || '') === fileId;
+        const hasData = Array.isArray(this.rawData) && this.rawData.length > 0;
+        const rs0 = this.replaySystem;
+        const aligned = !!(rs0 && rs0.isActive && replayTs != null
+            && Math.abs(Number(rs0.replayTimestamp) - replayTs) <= tfMs * 2);
+        if (!o.force && sameFile && hasData && rs0 && rs0.isActive
+            && (replayTs == null || aligned)) {
+            return;
+        }
+
+        if (this._multichartPanelLoadInflight) {
+            return this._multichartPanelLoadInflight;
+        }
+
+        this._multichartPanelLoadInflight = (async () => {
+            try {
+                const sessionStartTs = (() => {
+                    const raw = session.startDate || session.start_date;
+                    if (!raw) return null;
+                    const t = new Date(raw).getTime();
+                    return Number.isFinite(t) ? t : null;
+                })();
+                const sessionEndMs = (() => {
+                    const r = session.endDate || session.end_date;
+                    if (!r) return null;
+                    const t = this._sessionEndToInclusiveUtcMs(r);
+                    return Number.isFinite(t) ? Math.floor(t) : null;
+                })();
+
+                if (this.viewportData) {
+                    this.viewportData.init(fileId, replayRawTf, sessionStartTs, sessionEndMs);
+                }
+
+                let result = null;
+                if (sessionStartTs != null && String(replayRawTf).toLowerCase() === '1m'
+                    && Number.isFinite(replayTs)) {
+                    try {
+                        result = await this._fetchReplaySeekBuffer(
+                            fileId, session, replayRawTf, replayTs
+                        );
+                    } catch (e) {
+                        console.warn('loadMultichartPanelFromHost: /bars fetch failed', e);
+                    }
+                }
+                if (!result) {
+                    const range = Number.isFinite(replayTs)
+                        ? this._getBacktestReplayFetchRange(replayRawTf, session, replayTs)
+                        : this._getBacktestInitialFetchRange(replayRawTf, session);
+                    result = await this._fetchSmartWindow(
+                        fileId,
+                        replayRawTf,
+                        session,
+                        'end',
+                        range,
+                        {
+                            skipSessionDates: true,
+                            limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                        },
+                    );
+                }
+                if (!this._smartResponseHasPayload(result)) {
+                    throw new Error(this._smartEmptyResponseHint(result, fileId));
+                }
+
+                this.currentFileId = fileId;
+                this._nativeRawFetchTf = replayRawTf;
+                this._ingestSmartWindowResult(result, {
+                    skipIndicators: true,
+                    skipFitToView: true,
+                    skipTimeframePrefetch: true,
+                });
+                this.loadedRanges.set(0, result.returned);
+                this._serverCursors = {
+                    firstTs: result.first_cursor,
+                    lastTs: result.last_cursor,
+                    hasMoreLeft: result.has_more_left !== false,
+                    hasMoreRight: result.has_more_right !== false,
+                };
+                this._panLoading = false;
+
+                const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
+                if (resolvedTicker) this.currentSymbol = resolvedTicker;
+                this.updateChartTitle(this.currentSymbol || `FILE_${fileId}`);
+
+                if (!this.replaySystem) this.initReplaySystem();
+                const replay = this.replaySystem;
+                if (replay && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    if (replay.isActive && typeof replay.exitReplayMode === 'function') {
+                        try { replay.exitReplayMode(); } catch (_e) { /* ignore */ }
+                    }
+                    const restoreTs = replayTs;
+                    replay.enterReplayMode({
+                        preservePlayhead: Number.isFinite(restoreTs),
+                        initialReplayTimestamp: restoreTs,
+                        startAtBeginning: !Number.isFinite(restoreTs),
+                        suppressInitialUpdateChartData: Number.isFinite(restoreTs),
+                    });
+                    if (Number.isFinite(restoreTs)
+                        && typeof replay.goToReplayTimestamp === 'function') {
+                        replay.goToReplayTimestamp(restoreTs, { centerOnCandle: true });
+                    } else if (typeof replay.updateChartData === 'function') {
+                        replay.updateChartData(true);
+                    }
+                    if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                        replay.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: true,
+                            resetPriceScale: true,
+                            render: true,
+                        });
+                    } else if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                        replay.scheduleReplayFollowOnceLayoutSettled();
+                    }
+                }
+
+                this.resize();
+                this.render();
+                try {
+                    global.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                        detail: { fileId, source: 'loadMultichartPanelFromHost' },
+                    }));
+                } catch (_ev) { /* ignore */ }
+            } finally {
+                this._multichartPanelLoadInflight = null;
+            }
+        })();
+
+        return this._multichartPanelLoadInflight;
+    }
+
+    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
