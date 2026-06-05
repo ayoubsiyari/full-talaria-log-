@@ -1201,16 +1201,31 @@ const SESSION_BOX_SESSION_DEFS = [
     { key: 'newYork', showId: 'showNewYork', nameId: 'newYorkName', startId: 'newYorkStart', endId: 'newYorkEnd', colorId: 'newYorkColor',
         label: 'New York', defaultName: 'New York', defaultStart: '12:00', defaultEnd: '21:00', defaultColor: 'rgba(76, 175, 80, 0.15)', defaultShow: true },
     { key: 'frankfurt', showId: 'showFrankfurt', nameId: 'frankfurtName', startId: 'frankfurtStart', endId: 'frankfurtEnd', colorId: 'frankfurtColor',
-        label: 'Frankfurt', defaultName: 'Frankfurt', defaultStart: '07:00', defaultEnd: '10:00', defaultColor: 'rgba(3, 169, 244, 0.14)', defaultShow: false },
+        label: 'Frankfurt', defaultName: 'Frankfurt', defaultStart: '07:00', defaultEnd: '10:00', defaultColor: 'rgba(3, 169, 244, 0.14)', defaultShow: true },
     { key: 'sydney', showId: 'showSydney', nameId: 'sydneyName', startId: 'sydneyStart', endId: 'sydneyEnd', colorId: 'sydneyColor',
-        label: 'Sydney', defaultName: 'Sydney', defaultStart: '21:00', defaultEnd: '06:00', defaultColor: 'rgba(156, 39, 176, 0.14)', defaultShow: false }
+        label: 'Sydney', defaultName: 'Sydney', defaultStart: '21:00', defaultEnd: '06:00', defaultColor: 'rgba(156, 39, 176, 0.14)', defaultShow: true }
 ];
 
-/** Whether a Session Boxes session is enabled (undefined → defaultShow, not “always on”). */
+/** Whether a Session Boxes session is enabled (explicit false hides; undefined → defaultShow). */
 function sessionBoxSessionShown(params, sess) {
     if (!sess) return true;
     params = params || {};
-    if (params[sess.showId] !== undefined) return params[sess.showId] !== false;
+    if (params[sess.showId] === false) return false;
+    if (params[sess.showId] === true) return true;
+    return sess.defaultShow !== false;
+}
+
+/** Resolve show flag for settings merge (never infer false unless user toggled off). */
+function sessionBoxResolveShowForMerge(draft, baseExisting, sess) {
+    if (!sess) return true;
+    draft = draft || {};
+    baseExisting = baseExisting || {};
+    if (draft[sess.showId] !== undefined) return !!draft[sess.showId];
+    if (baseExisting[sess.showId] === false && sess.defaultShow !== false) {
+        return true;
+    }
+    if (baseExisting[sess.showId] !== undefined) return !!baseExisting[sess.showId];
+    if (draft[sess.colorId] != null || baseExisting[sess.colorId] != null) return true;
     return sess.defaultShow !== false;
 }
 
@@ -3548,15 +3563,7 @@ function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, ne
     }
     if (param.type === 'sessionInput') {
         const sessDef = SESSION_BOX_SESSION_DEFS.find(function (s) { return s.showId === param.showId; });
-        const showRaw = draft[param.showId];
-        if (showRaw !== undefined) {
-            newParams[param.showId] = !!showRaw;
-        } else if (baseExisting[param.showId] !== undefined) {
-            newParams[param.showId] = !!baseExisting[param.showId];
-        } else if (sessDef && sessDef.defaultShow !== false) {
-            newParams[param.showId] = true;
-        }
-        // Optional sessions (defaultShow false): omit showId so merge does not force false.
+        newParams[param.showId] = sessionBoxResolveShowForMerge(draft, baseExisting, sessDef || param);
         const nameRaw = draft[param.nameId];
         newParams[param.nameId] = nameRaw !== undefined
             ? nameRaw
@@ -5417,6 +5424,7 @@ window.INDICATOR_MAX_LINE_WIDTH = INDICATOR_MAX_LINE_WIDTH;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
 window.__v9SessionBoxSessionDefs = SESSION_BOX_SESSION_DEFS;
 window.__v9SessionBoxSessionShown = sessionBoxSessionShown;
+window.__v9SessionBoxResolveShowForMerge = sessionBoxResolveShowForMerge;
 window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
 window.__v9IndicatorOpacityKeyForColor = v9IndicatorOpacityKeyForColor;

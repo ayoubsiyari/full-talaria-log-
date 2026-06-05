@@ -11541,10 +11541,21 @@ const TalariaV8bLive = () => {
           return;
         }
         if (p.type === "sessionInput") {
-          if (allParams[p.showId] !== undefined) {
-            draft[p.showId] = !!allParams[p.showId];
-          } else if (p.defaultShow !== false) {
-            draft[p.showId] = true;
+          const stored = allParams[p.showId];
+          const frankfurtOff = allParams.showFrankfurt === false;
+          const sydneyOff = allParams.showSydney === false;
+          const stalePairOff =
+            p.defaultShow !== false &&
+            stored === false &&
+            frankfurtOff &&
+            sydneyOff &&
+            (p.showId === "showFrankfurt" || p.showId === "showSydney");
+          if (stalePairOff) {
+            // Both optional sessions off together — stale merge bug; omit so merge restores them.
+          } else if (stored !== undefined) {
+            draft[p.showId] = !!stored;
+          } else {
+            draft[p.showId] = p.defaultShow !== false;
           }
           draft[p.nameId] = allParams[p.nameId] != null ? allParams[p.nameId] : (p.defaultName || p.label || "");
           draft[p.startId] = allParams[p.startId] !== undefined ? allParams[p.startId] : p.defaultStart;
@@ -14074,6 +14085,13 @@ const TalariaV8bLive = () => {
     else if(typeof targetKey === "string" && targetKey.startsWith("ind-")) {
       const pid = targetKey.slice(4);
       const patch = { [pid]: colorVal };
+      const sessDefs = typeof window.__v9SessionBoxSessionDefs !== "undefined"
+        ? window.__v9SessionBoxSessionDefs
+        : null;
+      if (Array.isArray(sessDefs)) {
+        const sess = sessDefs.find((s) => s.colorId === pid);
+        if (sess && sess.showId) patch[sess.showId] = true;
+      }
       const opKeyFn = typeof window.__v9IndicatorOpacityKeyForColor === "function"
         ? window.__v9IndicatorOpacityKeyForColor
         : null;

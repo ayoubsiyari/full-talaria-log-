@@ -2248,7 +2248,13 @@
         indicator.isSessions = true;
         indicator.name = 'Session Boxes';
         defs.forEach(function (sess) {
-            if (params[sess.showId] !== undefined) indicator.params[sess.showId] = params[sess.showId] !== false;
+            if (params[sess.showId] !== undefined) {
+                indicator.params[sess.showId] = params[sess.showId] !== false;
+            } else if (indicator.params[sess.showId] === undefined) {
+                indicator.params[sess.showId] = sess.defaultShow !== false;
+            } else if (indicator.params[sess.showId] === false && sess.defaultShow !== false) {
+                indicator.params[sess.showId] = true;
+            }
             if (params[sess.nameId] != null) indicator.params[sess.nameId] = String(params[sess.nameId]);
             if (params[sess.startId] != null) indicator.params[sess.startId] = params[sess.startId];
             if (params[sess.endId] != null) indicator.params[sess.endId] = params[sess.endId];
@@ -2257,6 +2263,8 @@
         if (params.showAsian !== undefined) indicator.params.showAsian = params.showAsian !== false;
         if (params.showLondon !== undefined) indicator.params.showLondon = params.showLondon !== false;
         if (params.showNewYork !== undefined) indicator.params.showNewYork = params.showNewYork !== false;
+        if (params.showFrankfurt !== undefined) indicator.params.showFrankfurt = params.showFrankfurt !== false;
+        if (params.showSydney !== undefined) indicator.params.showSydney = params.showSydney !== false;
         if (params.asianStart != null) indicator.params.asianStart = params.asianStart;
         if (params.asianEnd != null) indicator.params.asianEnd = params.asianEnd;
         if (params.londonStart != null) indicator.params.londonStart = params.londonStart;
