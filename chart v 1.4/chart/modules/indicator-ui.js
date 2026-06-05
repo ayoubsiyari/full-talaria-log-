@@ -1332,7 +1332,7 @@ function hmaStyleParams() {
     ];
 }
 
-/** Standard Deviation Input — length + source (overlay on price chart / legend container). */
+/** Standard Deviation Input — length + source (separate volatility panel). */
 function stddevInputParams() {
     return [
         { id: 'period', label: 'Length', type: 'number', default: 20, min: 2, tab: 'input' },
@@ -1340,11 +1340,17 @@ function stddevInputParams() {
     ];
 }
 
-/** Standard Deviation Style — line color (opacity in color picker). */
+/** Standard Deviation Style tab (STD line + optional panel bg; opacity in color picker). */
 function stddevStyleParams() {
     return [
-        { id: 'color', label: 'Color', type: 'color', default: '#ab47bc', tab: 'style' },
-        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+        { id: 'showLine', label: 'Show Standard Deviation line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'STD color', type: 'color', default: '#ab47bc', tab: 'style' },
+        { id: 'lineOpacity', label: 'STD opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'STD line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'STD thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Show background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background', type: 'color', default: 'rgba(19,23,34,0.15)', tab: 'style' },
+        { id: 'bgOpacity', label: 'Background opacity', type: 'number', default: 15, min: 0, max: 100, step: 1, tab: 'style' }
     ];
 }
 
@@ -1845,7 +1851,7 @@ const INDICATOR_DEFINITIONS = {
     },
     stddev: {
         name: 'Standard Deviation',
-        type: 'overlay',
+        type: 'separate',
         params: stddevInputParams().concat(stddevStyleParams())
     },
     ao: {
@@ -4834,10 +4840,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'stddev') {
         return {
-            sections: [{
-                title: 'Standard Deviation',
-                rows: [v9BandStyleRow('Standard Deviation', 'color', 'lineOpacity', null, null, null)]
-            }],
+            sections: [
+                {
+                    title: 'Standard Deviation',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Standard Deviation', 'color', 'lineOpacity', 'lineStyle', 'lineWidth', 'showLine')]
+                },
+                {
+                    title: 'Background',
+                    bandStyleHeader: true,
+                    rows: [v9BandStyleRow('Background', 'bgColor', 'bgOpacity', null, null, 'showBg')]
+                }
+            ],
             footers: footers
         };
     }

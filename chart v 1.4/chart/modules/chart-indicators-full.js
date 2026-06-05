@@ -823,8 +823,11 @@
         indicator.style.lineOpacity = params.lineOpacity != null ? Number(params.lineOpacity) : 100;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', legacyS]]);
-        indicator.overlay = true;
-        indicator.separatePanel = false;
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(19,23,34,0.15)';
+        indicator.style.bgOpacity = params.bgOpacity != null ? Number(params.bgOpacity) : 15;
+        indicator.overlay = false;
+        indicator.separatePanel = true;
         indicator.hidePlot = false;
     }
 
@@ -4979,7 +4982,6 @@
 
             case 'stddev':
                 applyStddevStyleFromParams(indicator, params);
-                indicator.overlay = true;
                 indicator.name = 'StdDev(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateStdDevLine(this.data, indicator.params.period, indicator.params.source);
                 break;
@@ -6967,16 +6969,6 @@
                 this.drawATRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
-            } else if (indicator.type === 'stddev') {
-                if (indicator.style.showLine !== false) {
-                    const lineColor = this._resolveIndicatorBandLineColor(
-                        indicator.style.color || '#ab47bc',
-                        indicator.style.lineOpacity
-                    );
-                    this.drawLineIndicator(data, lineColor, indicator.style.lineWidth || 2, startIndex, endIndex, indicator.style.lineStyle || 'Line', {
-                        dashStyle: indicator.style.lineDashStyle || 'Solid'
-                    });
-                }
             } else if (indicator.type === 'hma') {
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
@@ -7506,6 +7498,10 @@ Chart.prototype._getVisibleSeparateIndicators = function() {
     if (!this.indicators || !this.indicators.active) return [];
     return this.indicators.active.filter(ind => {
         if (ind.type === 'volume' || ind.isVolume) return false;
+        if (ind.type === 'stddev') {
+            ind.overlay = false;
+            ind.separatePanel = true;
+        }
         const isSeparate = ind.overlay === false || ind.separatePanel === true;
         const isVisible = ind.visible !== false;
         if (!isSeparate || !isVisible) return false;
@@ -7912,6 +7908,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'atr') {
             this._renderAtrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'stddev') {
+            this._renderStddevPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'trix') {
             this._renderTrixPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -8670,7 +8669,7 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
 };
 
     var OVERLAY_LINE_SELECT_TYPES = {
-        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1, stddev: 1, mom: 1,
+        sma: 1, ema: 1, wma: 1, dema: 1, tema: 1, hma: 1, vwap: 1,
         supertrend: 1,
         psar: 1,
         bb: 1, bollinger: 1,
@@ -12065,6 +12064,68 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelTags = [{
                 y: currentY,
                 text: last.toFixed(decimals),
+                color: lineColor
+            }];
+        }
+    };
+
+    // ---- Standard Deviation panel: auto-scaled volatility line + optional background ----
+    Chart.prototype._renderStddevPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!values || !values.length) return;
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        const dom = this._finalizePanelRange(indicator, min, max);
+        const sMin = dom.min;
+        const sMax = dom.max;
+        const sSpan = Math.max(1e-9, sMax - sMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - sMin) / sSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        if (style.showBg) {
+            ctx.fillStyle = resolve(style.bgColor || 'rgba(19,23,34,0.15)', style.bgOpacity);
+            ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
+        }
+
+        this._drawPanelAxisTicks(ctx, m, sMin, sMax, scaleY, 2);
+
+        const lineColor = resolve(style.color || '#ab47bc', style.lineOpacity);
+        if (style.showLine !== false) {
+            this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(5) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(5);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{
+                y: currentY,
+                text: last.toFixed(5),
                 color: lineColor
             }];
         }
