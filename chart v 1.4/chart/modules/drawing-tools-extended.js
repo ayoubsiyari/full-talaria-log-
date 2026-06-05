@@ -175,19 +175,18 @@ class ArrowMarkerTool extends BaseDrawing {
         // Arrow dimensions - scale with length
         const scaleFactor = Math.max(0.5, Math.min(3, length / 200)); // Scale between 0.5x and 3x based on length
         
-        const headSize = 40 * scaleFactor;
-        const headWidth = 50 * scaleFactor; // Width of arrow head base
         const startWidth = 5 * scaleFactor; // Thin start point
-        const endWidth = 35 * scaleFactor; // Wide end before head
+        const endWidth = 32 * scaleFactor; // Shaft width at head base
+        const headLength = 58 * scaleFactor; // Longer head = sharper tip (was 40 with 50-wide base → blunt)
         
         // Calculate arrow body end point (where head starts)
-        const bodyEndX = x2 - headSize * Math.cos(angle);
-        const bodyEndY = y2 - headSize * Math.sin(angle);
+        const bodyEndX = x2 - headLength * Math.cos(angle);
+        const bodyEndY = y2 - headLength * Math.sin(angle);
         
         // Calculate perpendicular offset
         const perpAngle = angle + Math.PI / 2;
         
-        // Tapered body - starts thin, ends wide
+        // Tapered body - starts thin, ends at head base width (head shares same width → sharp point at tip)
         const startHalfWidth = startWidth / 2;
         const endHalfWidth = endWidth / 2;
         
@@ -201,19 +200,10 @@ class ArrowMarkerTool extends BaseDrawing {
         const body4x = bodyEndX + endHalfWidth * Math.cos(perpAngle);
         const body4y = bodyEndY + endHalfWidth * Math.sin(perpAngle);
         
-        // Arrow head (triangle)
-        const halfHeadWidth = headWidth / 2;
-        const head1x = bodyEndX + halfHeadWidth * Math.cos(perpAngle);
-        const head1y = bodyEndY + halfHeadWidth * Math.sin(perpAngle);
-        const head2x = bodyEndX - halfHeadWidth * Math.cos(perpAngle);
-        const head2y = bodyEndY - halfHeadWidth * Math.sin(perpAngle);
-        
-        // Create path for filled tapered arrow
+        // Create path for filled tapered arrow (shaft trapezoid + triangle head to tip)
         const arrowPath = `M ${body1x} ${body1y} 
             L ${body4x} ${body4y} 
-            L ${head1x} ${head1y} 
             L ${x2} ${y2} 
-            L ${head2x} ${head2y} 
             L ${body3x} ${body3y} 
             L ${body2x} ${body2y} Z`;
 

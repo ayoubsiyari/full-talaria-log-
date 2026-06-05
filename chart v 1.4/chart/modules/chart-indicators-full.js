@@ -10573,7 +10573,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         }
 
-        if (!fast && showMA && this.data.length >= maPeriod && typeof d3 !== 'undefined') {
+        if (showMA && this.data.length >= maPeriod && typeof d3 !== 'undefined') {
             const maKey = String(this.dataVersion || '') + '|' + maPeriod + '|' + this.data.length;
             let volumeMA = this._volumeMaSeriesCache;
             if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
