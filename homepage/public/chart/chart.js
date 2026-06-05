@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b234';
+const CHART_ENGINE_BUILD = '20260602b235';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -19019,7 +19019,8 @@ class Chart {
         
         // Draw Volume MA if enabled — cache full-series MA; recomputing O(n·period) every
         // render destroyed frame time on large datasets (same zoom-out lag as price scale).
-        if (!opts.panFast && showMA && this.data && this.data.length >= maPeriod) {
+        // Keep drawing during panFast: series is cached and only the visible slice is stroked.
+        if (showMA && this.data && this.data.length >= maPeriod) {
             const maKey = `${this.dataVersion}|${maPeriod}|${this.data.length}`;
             let volumeMA = this._volumeMaSeriesCache;
             if (this._volumeMaSeriesCacheKey !== maKey || !Array.isArray(volumeMA) || volumeMA.length !== this.data.length) {
