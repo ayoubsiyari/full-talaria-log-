@@ -1546,6 +1546,8 @@ function v9TlStyleWithEnsuredLevels(tlStyle, legacyType) {
   if (legacyType === "pitchfork") {
     if (out.extendLeft == null) out.extendLeft = false;
     if (out.extendRight == null) out.extendRight = true;
+    // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
+    if (out.extendRight === false && !out.extendLeft) out.extendRight = true;
   }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);
@@ -1595,8 +1597,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
     startStyle: tlStyle.ep1,
     endStyle: tlStyle.ep2,
-    extendLeft: !!tlStyle.extendLeft,
-    extendRight: !!tlStyle.extendRight,
+    extendLeft: isPf ? !!tlStyle.extendLeft : !!tlStyle.extendLeft,
+    extendRight: isPf ? tlStyle.extendRight !== false : !!tlStyle.extendRight,
     ...(legacyTool === "flat-top-bottom" || legacyTool === "disjoint-channel"
       ? { showHandlePrices: tlStyle.flatChPrices !== false }
       : {}),
@@ -4381,6 +4383,8 @@ function v9EnsureTlStyleArrays(next, prev, legacyType) {
   if (legacyType === "pitchfork") {
     if (out.extendLeft == null) out.extendLeft = false;
     if (out.extendRight == null) out.extendRight = true;
+    // Global tlStyle defaults use extendRight:false; treat that bleed as unset for pitchfork.
+    if (out.extendRight === false && !out.extendLeft) out.extendRight = true;
   }
   if (legacyType === "regression-trend") {
     out.regLines = v9NormalizeRegLines(out.regLines);

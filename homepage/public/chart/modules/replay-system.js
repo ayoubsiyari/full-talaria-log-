@@ -4555,6 +4555,7 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
         }
         this.updateChartData(this.autoScrollEnabled);
+        this._syncMultichartAfterManualStep();
     }
 
     /**
@@ -4586,6 +4587,7 @@ class ReplaySystem {
             this.tickElapsedMs = 0;
         }
         this.updateChartData(this.autoScrollEnabled);
+        this._syncMultichartAfterManualStep();
     }
 
     /**
@@ -5305,11 +5307,43 @@ class ReplaySystem {
     }
 
     /**
+     * After manual step forward/back while paused, mirror host playhead to iframe panels.
+     * Play path already broadcasts every frame; paused steps only call updateChartData.
+     */
+    _syncMultichartAfterManualStep() {
+        try {
+            if (typeof window === 'undefined' || !window.__multichartGrid || !this.isActive) return;
+            if (this.isPlaying) return;
+            this._multichartBroadcastReplayFrame();
+        } catch (_e) { /* ignore */ }
+    }
+
+    /**
+     * Notify multichart iframes + forex news panel of virtual replay time.
+     * V9 React replay bar has no legacy #replayCurrentTime — must not depend on timeLabel.
+     */
+    _dispatchReplayVirtualTimeChanged(displayTs) {
+        if (!Number.isFinite(displayTs)) return;
+        try {
+            const sym = this.chart && this.chart.currentSymbol
+                ? String(this.chart.currentSymbol)
+                : '';
+            window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
+                detail: {
+                    timestamp: displayTs,
+                    symbol: sym,
+                    currentIndex: this.currentIndex,
+                }
+            }));
+        } catch (_e) { /* ignore */ }
+    }
+
+    /**
      * Update time display with TradingView-style format: (Day) YYYY-MM-DD HH:MM:SS
      * Uses timezone manager if available
      */
     updateTimeDisplay() {
-        if (!this.timeLabel || !this.fullRawData || this.fullRawData.length === 0) {
+        if (!this.fullRawData || this.fullRawData.length === 0) {
             return;
         }
 
@@ -5320,21 +5354,17 @@ class ReplaySystem {
             return;
         }
 
+        // Always broadcast — multichart B/C/D panels listen for this event.
+        this._dispatchReplayVirtualTimeChanged(displayTs);
+
+        if (!this.timeLabel) {
+            return;
+        }
+
         // Use timezone manager if available
         if (window.timezoneManager) {
             const timeStr = window.timezoneManager.formatTime(displayTs, 'full');
             this.timeLabel.textContent = timeStr;
-            try {
-                window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: {
-                        timestamp: displayTs,
-                        symbol: this.chart && this.chart.currentSymbol
-                            ? String(this.chart.currentSymbol)
-                            : '',
-                        currentIndex: this.currentIndex,
-                    }
-                }));
-            } catch (e) { /* ignore */ }
             return;
         }
 
@@ -5358,22 +5388,6 @@ class ReplaySystem {
         const timeStr = `(${dayName}) ${year}-${month}-${day} ${hours}:${minutes}`;
 
         this.timeLabel.textContent = timeStr;
-
-        // Forex news panel: virtual time + symbol for period-matched headlines (TradingView-style)
-        try {
-            if (Number.isFinite(displayTs)) {
-                const sym = this.chart && this.chart.currentSymbol
-                    ? String(this.chart.currentSymbol)
-                    : '';
-                window.dispatchEvent(new CustomEvent('replayVirtualTimeChanged', {
-                    detail: {
-                        timestamp: displayTs,
-                        symbol: sym,
-                        currentIndex: this.currentIndex,
-                    }
-                }));
-            }
-        } catch (e) { /* ignore */ }
     }
 
     /**

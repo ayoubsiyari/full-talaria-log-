@@ -204,7 +204,11 @@
             } catch (_) {}
         }
 
-        pendingPlayDesired = true;
+        // Only mark "parent is playing" during active playback — paused step/scrub
+        // frames must not block subsequent replayTick seeks on iframes.
+        if (args.isPlaying) {
+            pendingPlayDesired = true;
+        }
 
         if (typeof rs.applyMultichartMirrorFrame !== 'function') {
             scheduleCoalescedSeek(ch, ts);

@@ -2142,6 +2142,9 @@ class PitchforkTool extends BaseDrawing {
         this.style.pitchforkStyle = style.pitchforkStyle || 'original'; // 'original', 'schiff', 'modified-schiff', 'inside'
         if (style.extendLeft === undefined) this.style.extendLeft = false;
         if (style.extendRight === undefined) this.style.extendRight = true;
+        if (this.style.extendRight === false && this.style.extendLeft !== true) {
+            this.style.extendRight = true;
+        }
         // Default pitchfork levels
         this.levels = style.levels || [
             { value: 0.25, label: '0.25', color: '#cd853f', enabled: false },
@@ -2247,7 +2250,7 @@ class PitchforkTool extends BaseDrawing {
         const safeY = (v) => Number.isFinite(v) ? v : topEdge;
 
         const extendLeft = this.style.extendLeft === true;
-        const extendRight = this.style.extendRight !== false;
+        const extendRight = true;
         const forkSpanX = medianTargetX - pivotX;
         const forkSpanY = medianTargetY - pivotY;
 

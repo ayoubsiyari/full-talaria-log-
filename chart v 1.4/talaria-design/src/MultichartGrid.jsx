@@ -1895,19 +1895,13 @@ export default function MultichartGrid({
                     }
                     break;
                 case "stepForward":
-                    if (rs.isActive && typeof rs.stepForward === "function") {
-                        if (rs.isPlaying && typeof rs.pause === "function") {
-                            try { rs.pause(); } catch (_) {}
-                        }
-                        try { rs.stepForward(); } catch (_) {}
+                    if (rs.isActive && typeof rs.requestStepForward === "function") {
+                        try { rs.requestStepForward(); } catch (_) {}
                     }
                     break;
                 case "stepBackward":
-                    if (rs.isActive && typeof rs.stepBackward === "function") {
-                        if (rs.isPlaying && typeof rs.pause === "function") {
-                            try { rs.pause(); } catch (_) {}
-                        }
-                        try { rs.stepBackward(); } catch (_) {}
+                    if (rs.isActive && typeof rs.requestStepBackward === "function") {
+                        try { rs.requestStepBackward(); } catch (_) {}
                     }
                     break;
                 default:
