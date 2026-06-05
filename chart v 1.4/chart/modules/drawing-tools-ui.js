@@ -17540,6 +17540,13 @@ body.light-mode .template-save-dialog .dialog-title {
                 { label: 'End', index: 1 },
             ];
         }
+        if (drawing.type === 'triangle' && drawing.points.length >= 3) {
+            return [
+                { label: 'Point 1', index: 0 },
+                { label: 'Point 2', index: 1 },
+                { label: 'Point 3', index: 2 },
+            ];
+        }
         if (drawing.points.length >= 2) {
             return [
                 { label: 'Point 1', index: 0 },

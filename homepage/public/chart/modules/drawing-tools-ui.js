@@ -6679,7 +6679,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
         
 
-        // For polyline and shapes: show background color picker without checkbox
+        // For shapes and arrow markers: show background color picker without checkbox
 
         if (isShapeTool || isArrowMarkerType) {
 
@@ -17538,6 +17538,13 @@ body.light-mode .template-save-dialog .dialog-title {
             return [
                 { label: 'Start', index: 0 },
                 { label: 'End', index: 1 },
+            ];
+        }
+        if (drawing.type === 'triangle' && drawing.points.length >= 3) {
+            return [
+                { label: 'Point 1', index: 0 },
+                { label: 'Point 2', index: 1 },
+                { label: 'Point 3', index: 2 },
             ];
         }
         if (drawing.points.length >= 2) {

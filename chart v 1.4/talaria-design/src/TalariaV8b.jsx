@@ -4248,7 +4248,7 @@ const TalariaV8b = () => {
               const isCrossLine = tlSubTool.icon === "crossLine";
               const isCurve = tlSubTool.icon === "curve";
               const isDoubleCurve = tlSubTool.icon === "doubleCurve";
-              const isThreePoint = tlSubTool.icon === "fibTime";
+              const isThreePoint = tlSubTool.icon === "fibTime" || tlSubTool.icon === "triangle";
               if (isCurve) return (
                 <div style={{ marginBottom:16 }}>
                   <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr" }}>
