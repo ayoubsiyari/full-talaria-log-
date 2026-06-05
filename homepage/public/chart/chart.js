@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b223';
+const CHART_ENGINE_BUILD = '20260602b224';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -23762,6 +23762,17 @@ class Chart {
         const hasSnappedCandle = dataIdx >= 0 && dataIdx < this.data.length;
         const snappedCandle = hasSnappedCandle ? this.data[dataIdx] : null;
 
+        if (hasSnappedCandle) {
+            this.hoverIndex = dataIdx;
+            if (typeof this.syncCrosshairIndicatorValues === 'function') {
+                this.syncCrosshairIndicatorValues();
+            }
+        }
+
+        const separatePanelSlot = (this.separatePanelInfo && Array.isArray(this.separatePanelInfo.panelSlots))
+            ? this.separatePanelInfo.panelSlots.find((s) => y >= s.top && y <= s.bottom && s.indicator)
+            : null;
+
         // Snap vertical crosshair to the nearest candle center (TradingView-style).
         const snappedIdx = Math.round(rawDataIdx);
         const lineX = this.dataIndexToPixel(snappedIdx);
@@ -23860,19 +23871,19 @@ class Chart {
         }
 
         // Horizontal line Y: match snapped price on canvas (magnet / Ctrl→OHLC / tick).
-        // Otherwise the label shows snapped values but the line stays on raw cursor Y (TradingView-style snap).
+        // In separate indicator panels, snap to the indicator value at the crosshair bar.
         let hLineRenderY = lineY;
-        {
-            const spiSlot = this.separatePanelInfo && Array.isArray(this.separatePanelInfo.panelSlots)
-                ? this.separatePanelInfo.panelSlots.find((s) => y >= s.top && y <= s.bottom)
-                : null;
-            const inIndicatorSubPanel = !!(spiSlot && spiSlot.indicator);
-            if (!inIndicatorSubPanel && this.yScale && Number.isFinite(crosshairPrice)) {
-                const py = this.yScale(crosshairPrice);
-                if (Number.isFinite(py)) {
-                    hLineRenderY = py;
-                }
+        if (separatePanelSlot && separatePanelSlot.indicator && hasSnappedCandle
+            && typeof this._pickIndicatorPlotValue === 'function'
+            && typeof this._panelValueToSlotY === 'function') {
+            const plotVal = this._pickIndicatorPlotValue(separatePanelSlot.indicator, dataIdx);
+            if (plotVal != null) {
+                const plotY = this._panelValueToSlotY(separatePanelSlot.indicator, separatePanelSlot, plotVal);
+                if (Number.isFinite(plotY)) hLineRenderY = plotY;
             }
+        } else if (this.yScale && Number.isFinite(crosshairPrice)) {
+            const py = this.yScale(crosshairPrice);
+            if (Number.isFinite(py)) hLineRenderY = py;
         }
         
         // Show crosshair lines for 'cross' cursor type, eraser, drawing tool active, or drawing selected/moved
@@ -23937,38 +23948,39 @@ class Chart {
         }
         
         if (priceLabel && this.yScale) {
-            // Use panel-local Y value when cursor is inside a separate indicator panel.
-            // This prevents main price values from leaking into indicator pane axis.
             let labelValue = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
             let valueRange = this.yScale.domain()[1] - this.yScale.domain()[0];
-            const spi = this.separatePanelInfo;
-            if (spi && Array.isArray(spi.panelSlots)) {
-                const slot = spi.panelSlots.find((s) => y >= s.top && y <= s.bottom);
-                if (slot && slot.indicator) {
-                    const ind = slot.indicator;
-                    const b0 = Number(ind._panelBaseMin);
-                    const b1 = Number(ind._panelBaseMax);
-                    if (Number.isFinite(b0) && Number.isFinite(b1) && b1 > b0) {
-                        let d0 = b0;
-                        let d1 = b1;
-                        if (typeof this._applyIndicatorPanelDomain === 'function') {
-                            const dom = this._applyIndicatorPanelDomain(b0, b1, ind);
-                            if (dom && Number.isFinite(dom.min) && Number.isFinite(dom.max) && dom.max > dom.min) {
-                                d0 = dom.min;
-                                d1 = dom.max;
-                            }
-                        }
-                        const h = Math.max(1, slot.height - 10);
-                        const t = Math.max(0, Math.min(1, (slot.bottom - 5 - y) / h));
-                        labelValue = d0 + t * (d1 - d0);
-                        valueRange = d1 - d0;
-                    }
+            let labelBg = this.chartSettings.cursorLabelBgColor;
+            let labelTextColor = this.chartSettings.cursorLabelTextColor;
+            const inIndicatorSubPanel = !!(separatePanelSlot && separatePanelSlot.indicator);
+            if (inIndicatorSubPanel && hasSnappedCandle && typeof this._formatIndicatorValueAtBar === 'function') {
+                const ind = separatePanelSlot.indicator;
+                const fmt = this._formatIndicatorValueAtBar(ind, dataIdx);
+                if (fmt && fmt.text) priceLabel.textContent = fmt.text;
+                else priceLabel.textContent = '—';
+                if (fmt && fmt.color) {
+                    labelBg = fmt.color;
+                    labelTextColor = (typeof this.isLightColor === 'function' && this.isLightColor(fmt.color)) ? '#111111' : '#ffffff';
                 }
+                const b0 = Number(ind._panelBaseMin);
+                const b1 = Number(ind._panelBaseMax);
+                if (Number.isFinite(b0) && Number.isFinite(b1) && b1 > b0) {
+                    let d0 = b0;
+                    let d1 = b1;
+                    if (typeof this._applyIndicatorPanelDomain === 'function') {
+                        const dom = this._applyIndicatorPanelDomain(b0, b1, ind);
+                        if (dom && Number.isFinite(dom.min) && Number.isFinite(dom.max) && dom.max > dom.min) {
+                            d0 = dom.min;
+                            d1 = dom.max;
+                        }
+                    }
+                    valueRange = d1 - d0;
+                }
+            } else {
+                const decimals = this.getPriceDecimals(valueRange);
+                priceLabel.textContent = Number.isFinite(labelValue) ? labelValue.toFixed(decimals) : '—';
             }
-            const decimals = this.getPriceDecimals(valueRange);
-            priceLabel.textContent = Number.isFinite(labelValue) ? labelValue.toFixed(decimals) : '—';
 
-            // Position label to match canvas current price label
             const _axisLeft = !!this.priceAxisLeft;
             const _axisW = _axisLeft ? m.l : m.r;
             priceLabel.style.left = (_axisLeft ? 2 : (this.w - m.r)) + 'px';
@@ -23977,10 +23989,22 @@ class Chart {
             priceLabel.style.transform = 'translateY(-50%)';
             priceLabel.style.width = (_axisW - 4) + 'px';
             priceLabel.style.textAlign = 'center';
-            priceLabel.style.display = (showLines || this.cursorType === 'dot' || this.cursorType === 'eraser') ? 'block' : 'none';
-            // Enforce label colors from settings
-            if (this.chartSettings.cursorLabelBgColor) priceLabel.style.background = this.chartSettings.cursorLabelBgColor;
-            if (this.chartSettings.cursorLabelTextColor) priceLabel.style.color = this.chartSettings.cursorLabelTextColor;
+            const showPanelCrosshairUi = showLines || this.cursorType === 'dot' || this.cursorType === 'eraser';
+            priceLabel.style.display = (inIndicatorSubPanel || !showPanelCrosshairUi) ? 'none' : 'block';
+            if (labelBg) priceLabel.style.background = labelBg;
+            if (labelTextColor) priceLabel.style.color = labelTextColor;
+        }
+
+        if (typeof this._syncSeparatePanelCrosshairUi === 'function') {
+            const inPanel = !!(separatePanelSlot && separatePanelSlot.indicator);
+            this._syncSeparatePanelCrosshairUi({
+                show: inPanel && hasSnappedCandle,
+                slot: separatePanelSlot,
+                indicator: inPanel ? separatePanelSlot.indicator : null,
+                barIdx: hasSnappedCandle ? dataIdx : -1,
+                lineX: lineX,
+                y: y
+            });
         }
         
         const snappedDataIdx = dataIdx;
@@ -24049,10 +24073,6 @@ class Chart {
             
             if (hasSnappedCandle) {
                 const candle = snappedCandle;
-                this.hoverIndex = snappedDataIdx;
-                if (typeof this.syncCrosshairIndicatorValues === 'function') {
-                    this.syncCrosshairIndicatorValues();
-                }
                 
                 // Store and broadcast timestamp for panel sync
                 this.currentCrosshairTimestamp = candle.t;
@@ -24148,6 +24168,9 @@ class Chart {
             }
         } else {
             this.hoverIndex = -1;
+        }
+        if (typeof this._syncSeparatePanelCrosshairUi === 'function') {
+            this._syncSeparatePanelCrosshairUi({ show: false });
         }
         const container = this.canvas?.parentElement;
         if (!container) return;

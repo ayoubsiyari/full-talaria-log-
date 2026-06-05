@@ -8112,13 +8112,7 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
         })()
     };
     
-    // Draw crosshair value if mouse is in the stacked panel area
-    if (!panFast && this.mouseY >= panelTop && this.mouseY <= panelBottom && this.mouseX >= m.l && this.mouseX <= this.w - m.r) {
-        const activeSlot = panelSlots.find(slot => this.mouseY >= slot.top && this.mouseY <= slot.bottom);
-        if (activeSlot) {
-            this.drawSeparatePanelCrosshair(ctx, m, activeSlot.top, activeSlot.bottom, activeSlot.height, [activeSlot.indicator], 0, 100);
-        }
-    }
+    // Separate-panel crosshair UI is DOM-driven from updateCrosshair (mousemove), not canvas paint.
     
     ctx.textAlign = 'left'; // Reset
 
@@ -8218,6 +8212,162 @@ Chart.prototype._pickFiniteSeriesValue = function(arr, barIdx) {
     return null;
 };
 
+/** Primary plotted numeric value at bar (for axis tag Y positioning). */
+Chart.prototype._pickIndicatorPlotValue = function(indicator, barIdx) {
+    if (!indicator || barIdx < 0) return null;
+    const store = this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : null;
+    if (!store) return null;
+    const type = indicator.type;
+    if (type === 'rsi' && store.rsi) return this._pickFiniteSeriesValue(store.rsi, barIdx);
+    if (type === 'cci' && store.cci) return this._pickFiniteSeriesValue(store.cci, barIdx);
+    if (type === 'macd' && store.macd) return this._pickFiniteSeriesValue(store.macd, barIdx);
+    if ((type === 'stoch' || type === 'stochastic') && store.k) return this._pickFiniteSeriesValue(store.k, barIdx);
+    if (type === 'aroon' && store.up) return this._pickFiniteSeriesValue(store.up, barIdx);
+    if (Array.isArray(store)) return this._pickFiniteSeriesValue(store, barIdx);
+    const keys = ['cci', 'k', 'fast', 'upper', 'middle', 'lower'];
+    for (let ki = 0; ki < keys.length; ki++) {
+        const k = keys[ki];
+        if (!Array.isArray(store[k])) continue;
+        const v = this._pickFiniteSeriesValue(store[k], barIdx);
+        if (v !== null) return v;
+    }
+    return null;
+};
+
+/** Map indicator domain value to canvas Y inside a separate panel slot. */
+Chart.prototype._panelValueToSlotY = function(indicator, slot, value) {
+    if (!indicator || !slot || !Number.isFinite(value)) return null;
+    const b0 = Number(indicator._panelBaseMin);
+    const b1 = Number(indicator._panelBaseMax);
+    if (!Number.isFinite(b0) || !Number.isFinite(b1) || b1 <= b0) return null;
+    let d0 = b0;
+    let d1 = b1;
+    if (typeof this._applyIndicatorPanelDomain === 'function') {
+        const dom = this._applyIndicatorPanelDomain(b0, b1, indicator);
+        if (dom && Number.isFinite(dom.min) && Number.isFinite(dom.max) && dom.max > dom.min) {
+            d0 = dom.min;
+            d1 = dom.max;
+        }
+    }
+    const span = Math.max(1e-12, d1 - d0);
+    const y = slot.bottom - 5 - ((value - d0) / span) * (slot.height - 10);
+    if (!Number.isFinite(y)) return null;
+    return Math.max(slot.top + 2, Math.min(slot.bottom - 2, y));
+};
+
+/** Live axis pill + cursor tooltip for separate indicator panels (mousemove, not canvas paint). */
+Chart.prototype._syncSeparatePanelCrosshairUi = function(opts) {
+    opts = opts || {};
+    const canvas = this.ctx && this.ctx.canvas;
+    const wrapper = canvas ? canvas.parentElement : null;
+    const overlay = wrapper ? wrapper.querySelector('#separatePanelsOverlay') : null;
+    if (!overlay) return;
+
+    let liveAxis = overlay.querySelector('[data-talaria-sp-live-axis]');
+    let tip = overlay.querySelector('[data-talaria-sp-crosshair-tip]');
+    const setStaticAxisTagsVisible = function(visible) {
+        overlay.querySelectorAll('[data-talaria-sp-axis-tag]').forEach(function(n) {
+            n.style.visibility = visible ? '' : 'hidden';
+        });
+    };
+    const hide = function() {
+        if (liveAxis) liveAxis.style.display = 'none';
+        if (tip) tip.style.display = 'none';
+        setStaticAxisTagsVisible(true);
+    };
+
+    if (!opts.show || !opts.slot || !opts.indicator || opts.barIdx < 0) {
+        hide();
+        return;
+    }
+    setStaticAxisTagsVisible(false);
+
+    const ind = opts.indicator;
+    const slot = opts.slot;
+    const fmt = typeof this._formatIndicatorValueAtBar === 'function'
+        ? this._formatIndicatorValueAtBar(ind, opts.barIdx)
+        : null;
+    const numVal = typeof this._pickIndicatorPlotValue === 'function'
+        ? this._pickIndicatorPlotValue(ind, opts.barIdx)
+        : null;
+    const tagY = numVal != null && typeof this._panelValueToSlotY === 'function'
+        ? this._panelValueToSlotY(ind, slot, numVal)
+        : null;
+    if (!fmt || !Number.isFinite(tagY)) {
+        hide();
+        return;
+    }
+
+    const m = this.margin || { r: 56 };
+    const axisLeft = this.w - m.r;
+    const axisWidth = Math.max(30, m.r - 4);
+    const scaleTextSize = (this.chartSettings && Number.isFinite(this.chartSettings.scaleTextSize))
+        ? this.chartSettings.scaleTextSize
+        : 11;
+    const bg = fmt.color || ind._displayColor || (ind.style && ind.style.color) || '#2962ff';
+    const textColor = (typeof this.isLightColor === 'function' && this.isLightColor(bg)) ? '#111111' : '#ffffff';
+    const isTopIndicatorSlot = !!slot.isTopBelowMainChart;
+    const boundaryGap = isTopIndicatorSlot ? 18 : 8;
+    const topBound = slot.top + boundaryGap;
+    const bottomBound = slot.bottom - 8;
+    const clampedY = Math.max(topBound, Math.min(bottomBound, tagY));
+
+    if (!liveAxis) {
+        liveAxis = document.createElement('div');
+        liveAxis.setAttribute('data-talaria-sp-live-axis', '1');
+        overlay.appendChild(liveAxis);
+    }
+    liveAxis.style.cssText = [
+        'position:absolute',
+        'left:' + (axisLeft + 2) + 'px',
+        'top:' + (clampedY - 10) + 'px',
+        'width:' + axisWidth + 'px',
+        'height:20px',
+        'padding:0',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'border-radius:2px',
+        'font:500 ' + scaleTextSize + 'px Roboto,sans-serif',
+        'line-height:20px',
+        'font-variant-numeric:tabular-nums',
+        'color:' + textColor,
+        'background:' + bg,
+        'z-index:12',
+        'pointer-events:none',
+        'box-sizing:border-box'
+    ].join(';');
+    liveAxis.textContent = (fmt.text !== undefined && fmt.text !== null && fmt.text !== '') ? String(fmt.text) : '—';
+    liveAxis.style.display = 'flex';
+
+    const lineX = Number.isFinite(opts.lineX) ? opts.lineX : 0;
+    const cursorY = Number.isFinite(opts.y) ? opts.y : clampedY;
+    const indName = ind.name || ind.type || 'Indicator';
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.setAttribute('data-talaria-sp-crosshair-tip', '1');
+        overlay.appendChild(tip);
+    }
+    tip.textContent = indName + ': ' + liveAxis.textContent;
+    tip.style.cssText = [
+        'position:absolute',
+        'left:' + (lineX + 10) + 'px',
+        'top:' + (cursorY - 20) + 'px',
+        'padding:2px 6px',
+        'border-radius:2px',
+        'border:1px solid ' + bg,
+        'background:rgba(19,23,34,0.92)',
+        'color:' + bg,
+        'font:500 11px Roboto,sans-serif',
+        'line-height:1.3',
+        'white-space:nowrap',
+        'pointer-events:none',
+        'z-index:13',
+        'box-sizing:border-box'
+    ].join(';');
+    tip.style.display = 'block';
+};
+
 Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
     if (!indicator || barIdx < 0) return { text: '—', color: '#9ca3af' };
     const store = this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : null;
@@ -8258,6 +8408,10 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
     }
     if (type === 'cci' && store.cci) {
         const v = pick(store.cci, 2, color);
+        if (v) return v;
+    }
+    if (type === 'rsi' && store.rsi) {
+        const v = pick(store.rsi, 2, color);
         if (v) return v;
     }
     if (Array.isArray(store)) {
@@ -11644,6 +11798,13 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         indicator._displayColor = style.color || '#9c27b0';
         indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = style.color || '#9c27b0';
+            indicator._axisLabelTags = [{ y: currentY, text: last.toFixed(2), color: style.color || '#9c27b0' }];
+        }
     };
 
     // ---- CCI panel: auto-scaled + CCI-based MA + bands + upper–lower background ----
