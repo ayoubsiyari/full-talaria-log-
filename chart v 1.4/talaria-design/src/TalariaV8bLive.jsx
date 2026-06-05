@@ -23228,7 +23228,10 @@ const TalariaV8bLive = () => {
           const gcBandNoPlot = "16px 1fr 26px 56px 44px 44px";
           const gcColorOnly = "16px 1fr 26px 28px";
           const gcBandColorOnly = "16px 1fr 26px 44px 28px";
+          /** Single grid for all Style-tab rows when plot/dash pickers hidden — keeps COLOR column aligned. */
+          const gcAlign = "16px 1fr 26px 56px 56px 44px";
           const hideStylePickers = v9HideIndStylePickers();
+          const styleRowCols = (fallbackCols) => (hideStylePickers ? gcAlign : fallbackCols);
           const sectionHasStyleCol = (section) => {
             const rows = (section && section.rows) || [];
             const levels = (section && section.levelRows) || [];
@@ -23310,7 +23313,7 @@ const TalariaV8bLive = () => {
             const on = row.showId ? val(row.showId) !== false : true;
             const hasStyleCol = !!row.styleId;
             const hidePlot = row.hidePlotStyle === true || hideStylePickers;
-            const cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
+            const cols = styleRowCols(hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly);
             return (
               <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, marginTop: i ? 8 : 0 }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -23320,9 +23323,9 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
-                {hasStyleCol ? styleSlot(row.styleId, !on) : null}
-                {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : null}
-                {hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null}
+                {hasStyleCol ? styleSlot(row.styleId, !on) : (hideStylePickers ? <div /> : null)}
+                {hasStyleCol ? (row.widthId ? numW(row.widthId, !on) : <div />) : (hideStylePickers ? <div /> : null)}
+                {hideStylePickers ? <div /> : (hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null)}
               </div>
             );
           };
@@ -23330,10 +23333,18 @@ const TalariaV8bLive = () => {
             if (row.bandStyleRow) return renderBandStyleRow(row, i);
             const histOff = section && section.histSection && val("showHist") === false;
             const on = row.showId ? val(row.showId) !== false : !histOff;
+            const isColorOnly = !!row.colorOnly;
             const hasStyleCol = section.header && row.styleId;
             const hasWidthCol = section.header && row.widthId;
             const hidePlot = row.hidePlotStyle === true || hideStylePickers;
-            const cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
+            let cols;
+            if (hideStylePickers) {
+              cols = gcAlign;
+            } else if (isColorOnly) {
+              cols = gcColorOnly;
+            } else {
+              cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
+            }
             return (
               <div key={`${row.colorId || row.label}-${i}`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -23343,9 +23354,19 @@ const TalariaV8bLive = () => {
                 </div>
                 {lbl(row.label, on)}
                 {row.colorId ? <Swatch pid={row.colorId} disabled={!on} /> : <div />}
-                {hasStyleCol ? styleSlot(row.styleId, !on) : <div />}
-                {hasWidthCol ? numW(row.widthId, !on) : <div />}
-                {hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null}
+                {hideStylePickers ? (
+                  <>
+                    {!isColorOnly && hasStyleCol ? styleSlot(row.styleId, !on) : <div />}
+                    {!isColorOnly && hasWidthCol ? numW(row.widthId, !on) : <div />}
+                    <div />
+                  </>
+                ) : (
+                  <>
+                    {hasStyleCol ? styleSlot(row.styleId, !on) : <div />}
+                    {hasWidthCol ? numW(row.widthId, !on) : <div />}
+                    {hasStyleCol && !hidePlot ? psSel(row.styleId, !on) : null}
+                  </>
+                )}
               </div>
             );
           };
@@ -23358,9 +23379,9 @@ const TalariaV8bLive = () => {
             const hidePlot = row.hidePlotStyle === true || hideStylePickers;
             let cols;
             if (showValue) {
-              cols = hasStyleCol ? (hidePlot ? gcBandNoPlot : gcBand) : gcBandColorOnly;
+              cols = styleRowCols(hasStyleCol ? (hidePlot ? gcBandNoPlot : gcBand) : gcBandColorOnly);
             } else {
-              cols = hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly;
+              cols = styleRowCols(hasStyleCol ? (hidePlot ? gcNoPlot : gc) : gcColorOnly);
             }
             return (
               <div key={row.colorId || rowLabel} style={{ ...R(i ? 8 : 0), gridTemplateColumns: cols }}>
@@ -23381,7 +23402,7 @@ const TalariaV8bLive = () => {
             const on = val(row.showId) !== false;
             const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
             const hidePlot = row.hidePlotStyle === true || hideStylePickers;
-            const cols = extended ? (hidePlot ? gcBandNoPlot : gcBand) : (hidePlot ? gcNoPlot : gc);
+            const cols = styleRowCols(extended ? (hidePlot ? gcBandNoPlot : gcBand) : (hidePlot ? gcNoPlot : gc));
             const rowLabel = section && section.zeroLevelHeader ? "Zero" : "Value";
             return (
               <div key={row.valueId} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
@@ -23398,35 +23419,43 @@ const TalariaV8bLive = () => {
             );
           };
           return (<>
-            {layout.sections.map((section, si) => (
+            {layout.sections.map((section, si) => {
+              const skipDupPlotHeader = hideStylePickers && si > 0 && !!layout.sections[si - 1]?.header && !!section.header;
+              const isFirstBandLevelHeader = !!section.bandLevelHeader
+                && !layout.sections.slice(0, si).some((s) => s.bandLevelHeader);
+              const hdrCols = hideStylePickers ? gcAlign : gcNoPlot;
+              const bandHdrCols = hideStylePickers ? gcAlign : bandGridCols(section);
+              return (
               <div key={`ind-sec-${si}`}>
                 {section.title && (
                   <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginTop: si ? 14 : 0, marginBottom: 4 }}>
                     {section.title}
                   </div>
                 )}
-                {section.header && (
-                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcNoPlot : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                {section.header && !skipDupPlotHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcAlign : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}
                     <div>{hdr("THICKNESS")}</div>
+                    {hideStylePickers ? <div /> : null}
                     {!hideStylePickers ? <div /> : null}
                   </div>
                 )}
                 {section.levelHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcNoPlot : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: hdrCols, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}
                     <div>{hdr("VALUE")}</div>
+                    {hideStylePickers ? <div /> : null}
                     {!hideStylePickers ? <div /> : null}
                   </div>
                 )}
-                {section.bandLevelHeader && (
-                  <div style={{ display: "grid", gridTemplateColumns: bandGridCols(section), columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
+                {section.bandLevelHeader && isFirstBandLevelHeader && (
+                  <div style={{ display: "grid", gridTemplateColumns: bandHdrCols, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {sectionHasStyleCol(section) ? <>{hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}<div>{hdr("THICKNESS")}</div></> : null}
                     <div>{hdr(section.levelValueHeader || "VALUE")}</div>
-                    {sectionHasPlotStyleCol(section) ? <div /> : null}
+                    {sectionHasPlotStyleCol(section) ? <div /> : (hideStylePickers ? null : null)}
                   </div>
                 )}
                 {section.bandStyleHeader && (
