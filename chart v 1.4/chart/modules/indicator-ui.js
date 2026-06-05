@@ -721,12 +721,6 @@ function obvStyleParams() {
     ];
 }
 
-function obvVisibilityParams() {
-    return [
-        { id: 'hideFromContainer', label: 'The indicator is hidden from the container', type: 'checkbox', default: false, tab: 'visibility' }
-    ];
-}
-
 /** Volume Input tab. */
 function volumeInputParams() {
     return [
@@ -1762,7 +1756,7 @@ const INDICATOR_DEFINITIONS = {
     obv: {
         name: 'On Balance Volume',
         type: 'separate',
-        params: obvInputParams().concat(obvStyleParams()).concat(obvVisibilityParams())
+        params: obvInputParams().concat(obvStyleParams())
     },
     willr: {
         name: 'Williams %R',
