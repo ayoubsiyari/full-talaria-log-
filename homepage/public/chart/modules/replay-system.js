@@ -4224,88 +4224,32 @@ class ReplaySystem {
     updateChartWithAnimatedCandle() {
         if (!this.animatingCandle || !this.chart) return;
 
-        // Multichart: host tile A uses the same mirror renderer as iframe panels
-        // so tick-by-tick forming-candle animation is identical everywhere.
+        const detail = this._buildMultichartReplayFrameDetail();
+        if (typeof this.applyMultichartMirrorFrame === 'function') {
+            this.applyMultichartMirrorFrame(detail);
+        }
+
         if (typeof window !== 'undefined' && window.__multichartGrid) {
-            this._multichartBroadcastReplayFrame();
-            if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
-                this.chart.orderManager.updatePositions();
-            }
-            const tn = performance.now();
-            if (!this._animFollowIndTs || tn - this._animFollowIndTs >= 90) {
-                this._animFollowIndTs = tn;
-                if (this.isActive && !this.isPickingPoint) {
-                    try { this.updateAutoScrollIndicator(); } catch (_) {}
-                }
-            }
-            return;
-        }
-
-        // Build the base slice once; reuse on subsequent ticks of the same candle.
-        if (!this._animSlice || this._animSliceIdx !== this.currentIndex) {
-            this._animSlice = this.fullRawData.slice(0, this.currentIndex + 1);
-            this._animSlice.push(null); // placeholder for animated candle
-            this._animSliceIdx = this.currentIndex;
-        }
-
-        const animatedCandle = {
-            t: this.animatingCandle.t,
-            o: this.animatingCandle.open,
-            h: this.animatingCandle.high,
-            l: this.animatingCandle.low,
-            c: this.animatingCandle.close,
-            v: this.animatingCandle.volume
-        };
-        this._animSlice[this._animSlice.length - 1] = animatedCandle;
-
-        this.chart.rawData = this._animSlice;
-
-        // Fast-path: only update the last resampled candle instead of
-        // re-running the full resample loop on every single tick.
-        const chartData = this.chart.data;
-        if (chartData && chartData.length > 0 && this.tickProgress > 1) {
-            const last = chartData[chartData.length - 1];
-            last.h = Math.max(last.h, animatedCandle.h);
-            last.l = Math.min(last.l, animatedCandle.l);
-            last.c = animatedCandle.c;
-            last.v = animatedCandle.v;
-        } else {
-            this.chart.data = this.chart.resampleData(this._animSlice, this.chart.currentTimeframe);
-            if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
-                this.chart._trimLastDataBarToReplayPlayhead();
-            }
+            try {
+                window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
+            } catch (_) {}
+        } else if (detail.animatedCandle && Array.isArray(this.chart.rawData)) {
+            this.syncPanelChartsWithAnimatedCandle(this.chart.rawData, detail.animatedCandle);
         }
 
         if (this.tickProgress % 18 === 0 && this.chart.recalculateAllIndicators) {
             this.chart.recalculateAllIndicators();
         }
 
-        if (this.autoScrollEnabled && this.tickProgress % 8 === 0) {
-            this.chart.fitToView();
-        }
-
-        if (this.chart.render) {
-            this.chart.render();
-        }
-
-        // Keep panels in lockstep with the main chart every tick. Throttling to every 4th tick
-        // made order/preview lines and the last candle jump on panel surfaces while the main chart stayed smooth.
-        this.syncPanelChartsWithAnimatedCandle(this._animSlice, animatedCandle);
-
-        this._multichartBroadcastReplayFrame();
-
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {
             this.chart.orderManager.updatePositions();
         }
 
-        // Tick replay never hits updateChartData(); still refresh follow chrome while bars advance.
         const tn = performance.now();
         if (!this._animFollowIndTs || tn - this._animFollowIndTs >= 90) {
             this._animFollowIndTs = tn;
             if (this.isActive && !this.isPickingPoint) {
-                try {
-                    this.updateAutoScrollIndicator();
-                } catch (_) {}
+                try { this.updateAutoScrollIndicator(); } catch (_) {}
             }
         }
     }
@@ -5267,7 +5211,10 @@ class ReplaySystem {
                 last.v = animatedCandle.v;
             } else {
                 chart.data = chart.resampleData(sliced, chart.currentTimeframe);
-                if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
+                // During forming-candle animation, trim collapses the partial bar on
+                // coarse TFs (15m+) back to the static playhead — skip until complete.
+                if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
+                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
                     chart._trimLastDataBarToReplayPlayhead();
                 }
             }
