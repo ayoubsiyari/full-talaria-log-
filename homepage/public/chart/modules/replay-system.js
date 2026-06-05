@@ -2898,6 +2898,17 @@ class ReplaySystem {
             return;
         }
 
+        // Multichart: after per-panel TF changes the host may sit on the last loaded 1m bar
+        // while the session still has data — prefetch forward before starting the play loop.
+        if (typeof window !== 'undefined' && window.__multichartGrid
+            && this.chart && typeof this.chart.checkViewportLoadMore === 'function'
+            && this._isAtLastLoadedBar()) {
+            const sessionEndMs = this._getBacktestSessionEndMs();
+            if (sessionEndMs == null || !this._playheadReachedSessionEnd(sessionEndMs)) {
+                try { this.chart.checkViewportLoadMore('forward', true); } catch (_pf) { /* ignore */ }
+            }
+        }
+
         // Tick mode can resume partial animation state. Candle mode always resumes on full candles.
         const isResumingTick = useTickAnimation && this.animatingCandle && this.tickProgress > 0;
         const preserveTick = !!isResumingTick;

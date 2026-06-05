@@ -5004,7 +5004,9 @@ class DrawingToolsManager {
                 || this.currentTool === 'gann-square-fixed'
                 || this.currentTool === 'gann-fan'
             );
-            const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool) && !gannUsesArmedPreview;
+            const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool)
+                && !gannUsesArmedPreview
+                && this.currentTool !== 'pitchfork';
             let styleOverrides;
             if (useFibDefaultPreview) {
                 styleOverrides = { opacity: 0.85 };
@@ -13134,6 +13136,7 @@ class DrawingToolsManager {
                 );
 
                 if (key !== 'id' && key !== 'points' && !(isImageTool && key === 'imageUrl') && !isEmojiIdentityField) {
+                    if (drawing.type === 'pitchfork' && (key === 'extendRight' || key === 'extendLeft')) return;
                     drawing.style[key] = savedStyle[key];
                 }
             });
@@ -13162,6 +13165,10 @@ class DrawingToolsManager {
                     drawing.recalculateLotSizeFromRisk();
                 }
             }
+        }
+
+        if (drawing.type === 'pitchfork') {
+            drawing.style.extendRight = true;
         }
     }
 }

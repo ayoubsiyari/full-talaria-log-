@@ -1663,6 +1663,52 @@ class Chart {
         }
     }
 
+    _isMultichartEmbedPanel() {
+        try {
+            return typeof document !== 'undefined'
+                && document.documentElement.classList.contains('multichart-embed');
+        } catch (_e) { return false; }
+    }
+
+    _isMultichartHostPanel() {
+        try {
+            return typeof window !== 'undefined'
+                && !!window.__multichartGrid
+                && !this._isMultichartEmbedPanel();
+        } catch (_e) { return false; }
+    }
+
+    /** Host tile A or iframe B/C/D — share one 1m replay master during backtest. */
+    _usesMultichartReplayMaster() {
+        return this._isMultichartEmbedPanel() || this._isMultichartHostPanel();
+    }
+
+    /**
+     * Multichart backtest replay TF change: reload 1m master at playhead + resample display TF.
+     * Skips _refetchBacktestTimeframe native-TF windows that leave too little forward data.
+     */
+    async _multichartReplayTimeframeSwitch(normalizedTf) {
+        const replay = this.replaySystem;
+        if (!replay || !this.currentFileId || !this.isBacktestMode) {
+            this._endTimeframeSwitching();
+            return;
+        }
+        const playheadMs = this._captureReplayPlayheadMs(replay);
+        try {
+            await this.loadMultichartPanelFromHost({
+                fileId: String(this.currentFileId),
+                session: this.backtestingSession,
+                timeframe: normalizedTf,
+                replayTimestamp: playheadMs,
+                force: true,
+            });
+        } catch (e) {
+            console.warn('[multichart] replay timeframe switch failed', e);
+        } finally {
+            this._endTimeframeSwitching();
+        }
+    }
+
     /**
      * Multichart iframe entry: load the SAME backtest window + replay playhead
      * as host panel A. Does NOT use checkBacktestingMode / splash / alerts.
@@ -1788,6 +1834,15 @@ class Chart {
                     hasMoreRight: result.has_more_right !== false,
                 };
                 this._panLoading = false;
+                // Mid-session replay must keep fetching forward; a playhead-centered
+                // window often reports hasMoreRight=false even though the session continues.
+                if (typeof this._replayPlayheadReachedSessionEnd === 'function') {
+                    const sessEndMc = this._getBacktestSessionEndMs(session);
+                    if (sessEndMc != null && !this._replayPlayheadReachedSessionEnd(session)) {
+                        if (!this._serverCursors) this._serverCursors = {};
+                        this._serverCursors.hasMoreRight = true;
+                    }
+                }
 
                 const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
                 if (resolvedTicker) this.currentSymbol = resolvedTicker;
@@ -2499,7 +2554,18 @@ class Chart {
         })();
         const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
         const contextMs = 500 * tfMs;
-        const forwardMs = 2500 * tfMs;
+        let forwardMs = 2500 * tfMs;
+        try {
+            const isMc = (typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed'))
+                || (typeof window !== 'undefined' && !!window.__multichartGrid);
+            if (isMc) {
+                // Multichart: larger forward slice so play after TF changes does not
+                // immediately stall at the loaded window edge on every panel.
+                forwardMs = 6000 * tfMs;
+            }
+        } catch (_mc) { /* ignore */ }
         let fromMs;
         let toMs;
         if (Number.isFinite(playheadMs)) {
@@ -2798,6 +2864,9 @@ class Chart {
 
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
+        if (this._usesMultichartReplayMaster()) {
+            return '1m';
+        }
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         if (!this.replaySystem?.isActive) return displayTf;
         const rawTf = String(this.replaySystem.rawTimeframe || displayTf).toLowerCase().trim();
@@ -14549,7 +14618,11 @@ class Chart {
         }
 
         // Path A: instant revisit of a recently loaded timeframe (prefetch or prior switch).
-        if (this.currentFileId && this._applyLiveTimeframeSwitchFromCache(normalizedTf)) {
+        // Skip for multichart backtest replay — must keep 1m master at playhead.
+        if (this.currentFileId
+            && !(this.replaySystem && this.replaySystem.isActive
+                && this.isBacktestMode && this._usesMultichartReplayMaster())
+            && this._applyLiveTimeframeSwitchFromCache(normalizedTf)) {
             return;
         }
 
@@ -14561,6 +14634,9 @@ class Chart {
             // _scheduleBacktestTimeframePrefetch fills _btTfDataCache; iframes
             // must refetch native bars at the replay playhead instead.
             if (this.isBacktestMode && this.currentFileId) {
+                if (this._usesMultichartReplayMaster()) {
+                    return this._multichartReplayTimeframeSwitch(normalizedTf);
+                }
                 return this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
@@ -15263,6 +15339,12 @@ class Chart {
         if (!replay || !this.currentFileId) {
             this._endTimeframeSwitching();
             return;
+        }
+
+        if (this._usesMultichartReplayMaster()) {
+            return this._multichartReplayTimeframeSwitch(
+                String(timeframe || '1m').toLowerCase().trim()
+            );
         }
 
         // Fast path: session-anchored backtest cache (instant on 1D↔1m revisit during replay).

@@ -2249,35 +2249,58 @@ class PitchforkTool extends BaseDrawing {
         const safeX = (v) => Number.isFinite(v) ? v : leftEdge;
         const safeY = (v) => Number.isFinite(v) ? v : topEdge;
 
+        const plotLeft = Math.min(leftEdge, rightEdge);
+        const plotRight = Math.max(leftEdge, rightEdge);
+        const plotTop = topEdge;
+        const plotBottom = bottomEdge;
+
         const extendLeft = this.style.extendLeft === true;
-        const extendRight = true;
+        const extendForward = true;
         const forkSpanX = medianTargetX - pivotX;
         const forkSpanY = medianTargetY - pivotY;
 
-        const yOnLineAtX = (x0, y0, x1, y1, x) => {
-            const dx = x1 - x0;
-            if (Math.abs(dx) < 1e-9) return safeY(y0);
-            const m = (y1 - y0) / dx;
-            return safeY(y0 + m * (x - x0));
-        };
-
-        /** All tines share median direction; extend right = chart right edge only (no left extension). */
+        /** Intersect ray (ox,oy)+t*(dx,dy) with plot bounds; pick farthest forward hit (extend) or t=1 (finite). */
         const resolveLineSegment = (sx, sy) => {
-            const dirEx = sx + forkSpanX;
-            const dirEy = sy + forkSpanY;
+            const dx = forkSpanX;
+            const dy = forkSpanY;
             let x1 = sx;
             let y1 = sy;
-            let x2 = dirEx;
-            let y2 = dirEy;
+            let tEnd = 1;
+
+            if (extendForward) {
+                const hits = [];
+                if (Math.abs(dx) > 1e-9) {
+                    hits.push((plotRight - sx) / dx, (plotLeft - sx) / dx);
+                }
+                if (Math.abs(dy) > 1e-9) {
+                    hits.push((plotBottom - sy) / dy, (plotTop - sy) / dy);
+                }
+                const forward = hits.filter((t) => Number.isFinite(t) && t >= 0);
+                if (forward.length) tEnd = Math.max(...forward);
+            }
+
             if (extendLeft) {
-                x1 = leftEdge;
-                y1 = yOnLineAtX(sx, sy, dirEx, dirEy, leftEdge);
+                const hits = [];
+                if (Math.abs(dx) > 1e-9) {
+                    hits.push((plotLeft - sx) / dx, (plotRight - sx) / dx);
+                }
+                if (Math.abs(dy) > 1e-9) {
+                    hits.push((plotTop - sy) / dy, (plotBottom - sy) / dy);
+                }
+                const backward = hits.filter((t) => Number.isFinite(t) && t <= 0);
+                if (backward.length) {
+                    const tStart = Math.min(...backward);
+                    x1 = sx + dx * tStart;
+                    y1 = sy + dy * tStart;
+                }
             }
-            if (extendRight) {
-                x2 = rightEdge;
-                y2 = yOnLineAtX(sx, sy, dirEx, dirEy, rightEdge);
-            }
-            return { x1, y1, x2, y2 };
+
+            return {
+                x1,
+                y1,
+                x2: sx + dx * tEnd,
+                y2: sy + dy * tEnd,
+            };
         };
 
         const segmentEnd = (sx, sy) => resolveLineSegment(sx, sy);
