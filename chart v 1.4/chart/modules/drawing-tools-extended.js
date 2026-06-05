@@ -1242,31 +1242,17 @@ class ArcTool extends BaseDrawing {
     
     // Custom handle drag for control point (same as curve)
     handleCustomHandleDrag(handleRole, context) {
-        const { point, pointIndex } = context;
-        
-        // Initialize drag tracking on first call
+        const { point, pointIndex, scales } = context;
+        if (!point || pointIndex === undefined || pointIndex === null) return;
+
         if (!this._isDragging) {
             this._isDragging = true;
-            if (pointIndex === 1 && this.points.length >= 3) {
-                this._dragStartControlPoint = { ...this.points[1] };
-                this._dragStartMousePoint = { ...point };
-            }
         }
-        
-        // For middle control point (index 1), calculate control point from curve midpoint
-        if (pointIndex === 1 && this.points.length >= 3) {
-            // Mouse position is where user wants the curve midpoint to be
-            // For quadratic Bezier at t=0.5: curvePoint = 0.25*P0 + 0.5*P1 + 0.25*P2
-            // Solving for P1: P1 = 2*curvePoint - 0.5*(P0 + P2)
-            const p0 = this.points[0];
-            const p2 = this.points[2];
-            this.points[1] = {
-                x: 2 * point.x - 0.5 * (p0.x + p2.x),
-                y: 2 * point.y - 0.5 * (p0.y + p2.y)
-            };
-        } else {
-            // Start/end points follow mouse directly
-            this.points[pointIndex] = point;
+
+        if (pointIndex === 1 && this.points.length >= 3 && scales) {
+            setQuadraticControlFromMidpointScreen(this, scales, point);
+        } else if (pointIndex >= 0 && pointIndex < this.points.length) {
+            this.points[pointIndex] = { x: point.x, y: point.y };
         }
     }
     
@@ -1404,23 +1390,9 @@ class ArcTool extends BaseDrawing {
         ];
         
         handlePositions.forEach(pos => {
-            const handleGroup = group.append('g')
-                .attr('class', 'resize-handle-group')
-                .attr('data-point-index', pos.index);
-            
-            const handle = handleGroup.append('circle')
-                .attr('class', 'resize-handle')
-                .attr('cx', pos.x)
-                .attr('cy', pos.y)
-                .attr('r', handleRadius)
-                .attr('fill', handleFill)
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
-                .style('pointer-events', 'all')
-                .style('opacity', this.selected ? 1 : 0)
-                .attr('data-point-index', pos.index);
-            
+            const handleGroup = appendCurveResizeHandle(
+                group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
+            );
             this.handles.push(handleGroup);
         });
     }
@@ -1474,30 +1446,113 @@ class ArcTool extends BaseDrawing {
     }
 }
 
+function drawingPointToScreen(p, scales) {
+    if (!p || !scales) return null;
+    const x = scales.chart && scales.chart.dataIndexToPixel
+        ? scales.chart.dataIndexToPixel(p.x)
+        : scales.xScale(p.x);
+    const y = scales.yScale(p.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+}
+
+function screenPointToDrawing(sp, scales) {
+    if (!sp || !scales) return null;
+    const x = scales.chart && scales.chart.pixelToDataIndex
+        ? scales.chart.pixelToDataIndex(sp.x)
+        : scales.xScale.invert(sp.x);
+    const y = scales.yScale.invert(sp.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
+}
+
+/** Quadratic P1 so the curve at t=0.5 passes through desiredMid (screen-accurate). */
+function setQuadraticControlFromMidpointScreen(tool, scales, desiredMid) {
+    if (!tool || !scales || !desiredMid || tool.points.length < 3) return false;
+    const p0s = drawingPointToScreen(tool.points[0], scales);
+    const p2s = drawingPointToScreen(tool.points[2], scales);
+    const mids = drawingPointToScreen(desiredMid, scales);
+    if (!p0s || !p2s || !mids) return false;
+    const ctrlS = {
+        x: 2 * mids.x - 0.5 * (p0s.x + p2s.x),
+        y: 2 * mids.y - 0.5 * (p0s.y + p2s.y)
+    };
+    const ctrlData = screenPointToDrawing(ctrlS, scales);
+    if (!ctrlData) return false;
+    tool.points[1] = ctrlData;
+    tool._needsScreenOffset = false;
+    tool._userControlEdited = true;
+    return true;
+}
+
+/** Double-curve inner handles: bend perpendicular to endpoint chord (not slide along it). */
+function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseDataPoint) {
+    if (!tool || !scales || !mouseDataPoint || tool.points.length < 4) return false;
+    if (pointIndex !== 2 && pointIndex !== 3) return false;
+    const t = pointIndex === 2 ? 1 / 3 : 2 / 3;
+    const p0s = drawingPointToScreen(tool.points[0], scales);
+    const p1s = drawingPointToScreen(tool.points[1], scales);
+    const ms = drawingPointToScreen(mouseDataPoint, scales);
+    if (!p0s || !p1s || !ms) return false;
+    const bx = p0s.x + (p1s.x - p0s.x) * t;
+    const by = p0s.y + (p1s.y - p0s.y) * t;
+    const dx = p1s.x - p0s.x;
+    const dy = p1s.y - p0s.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) {
+        tool.points[pointIndex] = { x: mouseDataPoint.x, y: mouseDataPoint.y };
+        return true;
+    }
+    const perpX = -dy / len;
+    const perpY = dx / len;
+    const proj = (ms.x - bx) * perpX + (ms.y - by) * perpY;
+    const bent = screenPointToDrawing({ x: bx + perpX * proj, y: by + perpY * proj }, scales);
+    if (!bent) return false;
+    tool.points[pointIndex] = bent;
+    return true;
+}
+
+function appendCurveResizeHandle(group, pos, tool, handleRadius, handleFill, handleStroke, handleStrokeWidth) {
+    const handleGroup = group.append('g')
+        .attr('class', 'resize-handle-group')
+        .attr('data-point-index', pos.index);
+    handleGroup.append('circle')
+        .attr('class', 'resize-handle-hit')
+        .attr('cx', pos.x)
+        .attr('cy', pos.y)
+        .attr('r', 12)
+        .attr('fill', 'transparent')
+        .style('cursor', 'nwse-resize')
+        .style('pointer-events', 'all')
+        .attr('data-point-index', pos.index);
+    handleGroup.append('circle')
+        .attr('class', 'resize-handle')
+        .attr('cx', pos.x)
+        .attr('cy', pos.y)
+        .attr('r', handleRadius)
+        .attr('fill', handleFill)
+        .attr('stroke', handleStroke)
+        .attr('stroke-width', handleStrokeWidth)
+        .style('cursor', 'nwse-resize')
+        .style('pointer-events', 'none')
+        .style('opacity', tool.selected ? 1 : 0)
+        .attr('data-point-index', pos.index);
+    return handleGroup;
+}
+
 /** Shared quadratic bend for Curve + Arc (screen px; index/price axes differ). */
 function applyQuadraticScreenBend(tool, scales) {
     if (!tool || !scales) return;
+    if (tool._isDragging || tool._userControlEdited) return;
     if (tool.points.length === 2 && typeof tool.finalizeDrawing === 'function' && !tool._controlPointGenerated) {
         tool.finalizeDrawing();
     }
     if (tool.points.length < 3) return;
 
-    const pointToScreen = (p) => ({
-        x: scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p.x)
-            : scales.xScale(p.x),
-        y: scales.yScale(p.y)
-    });
-    const screenToPoint = (sp) => {
-        const x = scales.chart && scales.chart.pixelToDataIndex
-            ? scales.chart.pixelToDataIndex(sp.x)
-            : scales.xScale.invert(sp.x);
-        return { x, y: scales.yScale.invert(sp.y) };
-    };
-
-    const p0 = pointToScreen(tool.points[0]);
-    const p1 = pointToScreen(tool.points[1]);
-    const p2 = pointToScreen(tool.points[2]);
+    const p0 = drawingPointToScreen(tool.points[0], scales);
+    const p1 = drawingPointToScreen(tool.points[1], scales);
+    const p2 = drawingPointToScreen(tool.points[2], scales);
+    if (!p0 || !p1 || !p2) return;
 
     const dx = p2.x - p0.x;
     const dy = p2.y - p0.y;
@@ -1526,7 +1581,8 @@ function applyQuadraticScreenBend(tool, scales) {
     const ctrlX = 2 * targetMidX - 0.5 * (p0.x + p2.x);
     const ctrlY = 2 * targetMidY - 0.5 * (p0.y + p2.y);
 
-    tool.points[1] = screenToPoint({ x: ctrlX, y: ctrlY });
+    const ctrlData = screenPointToDrawing({ x: ctrlX, y: ctrlY }, scales);
+    if (ctrlData) tool.points[1] = ctrlData;
     tool._needsScreenOffset = false;
     tool._controlPointGenerated = true;
 }
@@ -1591,31 +1647,17 @@ class CurveTool extends BaseDrawing {
     
     // Custom handle drag for control point with reduced sensitivity
     handleCustomHandleDrag(handleRole, context) {
-        const { point, pointIndex } = context;
-        
-        // Initialize drag tracking on first call
+        const { point, pointIndex, scales } = context;
+        if (!point || pointIndex === undefined || pointIndex === null) return;
+
         if (!this._isDragging) {
             this._isDragging = true;
-            if (pointIndex === 1 && this.points.length >= 3) {
-                this._dragStartControlPoint = { ...this.points[1] };
-                this._dragStartMousePoint = { ...point };
-            }
         }
-        
-        // For middle control point (index 1), calculate control point from curve midpoint
-        if (pointIndex === 1 && this.points.length >= 3) {
-            // Mouse position is where user wants the curve midpoint to be
-            // For quadratic Bezier at t=0.5: curvePoint = 0.25*P0 + 0.5*P1 + 0.25*P2
-            // Solving for P1: P1 = 2*curvePoint - 0.5*(P0 + P2)
-            const p0 = this.points[0];
-            const p2 = this.points[2];
-            this.points[1] = {
-                x: 2 * point.x - 0.5 * (p0.x + p2.x),
-                y: 2 * point.y - 0.5 * (p0.y + p2.y)
-            };
-        } else {
-            // Start/end points follow mouse directly
-            this.points[pointIndex] = point;
+
+        if (pointIndex === 1 && this.points.length >= 3 && scales) {
+            setQuadraticControlFromMidpointScreen(this, scales, point);
+        } else if (pointIndex >= 0 && pointIndex < this.points.length) {
+            this.points[pointIndex] = { x: point.x, y: point.y };
         }
     }
     
@@ -1829,23 +1871,9 @@ class CurveTool extends BaseDrawing {
         ];
         
         handlePositions.forEach(pos => {
-            const handleGroup = group.append('g')
-                .attr('class', 'resize-handle-group')
-                .attr('data-point-index', pos.index);
-            
-            const handle = handleGroup.append('circle')
-                .attr('class', 'resize-handle')
-                .attr('cx', pos.x)
-                .attr('cy', pos.y)
-                .attr('r', handleRadius)
-                .attr('fill', handleFill)
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
-                .style('pointer-events', 'all')
-                .style('opacity', this.selected ? 1 : 0)
-                .attr('data-point-index', pos.index);
-            
+            const handleGroup = appendCurveResizeHandle(
+                group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
+            );
             this.handles.push(handleGroup);
         });
     }
@@ -2159,27 +2187,18 @@ class DoubleCurveTool extends BaseDrawing {
         
         // Create handles for all points (endpoints + control points)
         this.points.forEach((point, index) => {
-            const cx = scales.chart && scales.chart.dataIndexToPixel ? 
+            const cx = scales.chart && scales.chart.dataIndexToPixel ?
                 scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
             const cy = scales.yScale(point.y);
-            
-            const handleGroup = group.append('g')
-                .attr('class', 'resize-handle-group')
-                .attr('data-point-index', index);
-            
-            const handle = handleGroup.append('circle')
-                .attr('class', 'resize-handle')
-                .attr('cx', cx)
-                .attr('cy', cy)
-                .attr('r', handleRadius)
-                .attr('fill', handleFill)
-                .attr('stroke', handleStroke)
-                .attr('stroke-width', handleStrokeWidth)
-                .style('cursor', 'nwse-resize')
-                .style('pointer-events', 'all')
-                .style('opacity', this.selected ? 1 : 0)
-                .attr('data-point-index', index);
-            
+            const handleGroup = appendCurveResizeHandle(
+                group,
+                { x: cx, y: cy, index },
+                this,
+                handleRadius,
+                handleFill,
+                handleStroke,
+                handleStrokeWidth
+            );
             this.handles.push(handleGroup);
         });
     }
@@ -2190,53 +2209,10 @@ class DoubleCurveTool extends BaseDrawing {
         
         if (pointIndex === undefined || !point) return false;
         
-        // If dragging endpoints (0 or 1), just update them
         if (pointIndex === 0 || pointIndex === 1) {
             this.points[pointIndex] = { x: point.x, y: point.y };
-        } 
-        // If dragging control points (2 or 3), adjust the corresponding amplitude in screen coordinates
-        else if (pointIndex === 2 || pointIndex === 3) {
-            if (!scales) return false;
-            
-            const p1 = this.points[0];
-            const p2 = this.points[1];
-            
-            // Convert to screen coordinates
-            const screenP1 = {
-                x: scales.chart && scales.chart.dataIndexToPixel ? 
-                    scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x),
-                y: scales.yScale(p1.y)
-            };
-            const screenP2 = {
-                x: scales.chart && scales.chart.dataIndexToPixel ? 
-                    scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x),
-                y: scales.yScale(p2.y)
-            };
-            const screenPoint = {
-                x: scales.chart && scales.chart.dataIndexToPixel ? 
-                    scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x),
-                y: scales.yScale(point.y)
-            };
-            
-            const screenDx = screenP2.x - screenP1.x;
-            const screenDy = screenP2.y - screenP1.y;
-            
-            // Calculate what the baseline Y should be at this control point (in screen coords)
-            const t = pointIndex === 2 ? 0.25 : 0.75;
-            const baselineY = screenP1.y + screenDy * t;
-            
-            // Calculate new amplitude from the dragged position (in screen coords)
-            const sineValue = Math.sin(t * Math.PI * 2);
-            const distanceFromBaseline = screenPoint.y - baselineY;
-            
-            // Directly update the control point position in data coordinates
-            const yScale = scales.yScale;
-            this.points[pointIndex].y = yScale.invert(screenPoint.y);
-            
-            // Also allow x movement for control points
-            if (scales.chart && scales.chart.pixelToDataIndex) {
-                this.points[pointIndex].x = scales.chart.pixelToDataIndex(screenPoint.x);
-            }
+        } else if ((pointIndex === 2 || pointIndex === 3) && scales) {
+            setDoubleCurveControlFromScreenDrag(this, scales, pointIndex, point);
         }
         
         this.meta.updatedAt = Date.now();
