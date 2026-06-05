@@ -510,13 +510,39 @@
 
                 // ─── timeframe ─────────────────────────────────────────
                 case 'setTimeframe': {
-                    var tf = String(args.tf || '').trim();
+                    var tf = String(args.tf || '').trim().toLowerCase();
                     if (!tf) throw new Error('setTimeframe: missing args.tf');
                     if (typeof ch.setTimeframe !== 'function') {
                         throw new Error('chart.setTimeframe is not a function');
                     }
-                    if (ch.currentTimeframe === tf) return;
-                    ch.setTimeframe(tf);
+                    var nativeTf = String(ch._nativeRawFetchTf || ch.currentTimeframe || '')
+                        .toLowerCase().trim();
+                    if (ch.currentTimeframe === tf && nativeTf === tf
+                        && Array.isArray(ch.data) && ch.data.length > 0
+                        && !ch._timeframeSwitching) {
+                        return;
+                    }
+                    // Multichart backtest: refetch window must anchor on host A's
+                    // replay playhead (same as panel A's _refetchBacktestTimeframe).
+                    try {
+                        var parentPcTf = (global.parent && global.parent !== global)
+                            ? global.parent.chart : null;
+                        var prsTf = parentPcTf && parentPcTf.replaySystem;
+                        if (ch.isBacktestMode && ch.replaySystem && ch.replaySystem.isActive
+                            && prsTf && prsTf.isActive
+                            && Number.isFinite(Number(prsTf.replayTimestamp))) {
+                            ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
+                        }
+                    } catch (_) {}
+                    var sw = ch.setTimeframe(tf);
+                    if (sw && typeof sw.then === 'function') {
+                        return sw.then(function () {
+                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                        });
+                    }
+                    setTimeout(function () {
+                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
+                    }, 0);
                     return;
                 }
 

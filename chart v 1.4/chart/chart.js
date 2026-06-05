@@ -1819,6 +1819,15 @@ class Chart {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
                     }));
                 } catch (_ev) { /* ignore */ }
+                const selfMc = this;
+                const fidMc = fileId;
+                const sessMc = session;
+                setTimeout(function () {
+                    if (String(selfMc.currentFileId) !== String(fidMc)) return;
+                    if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
+                        selfMc._scheduleBacktestTimeframePrefetch(fidMc, sessMc);
+                    }
+                }, 2000);
             } finally {
                 this._multichartPanelLoadInflight = null;
             }
@@ -14471,6 +14480,7 @@ class Chart {
         // data yet (e.g. fresh panel hydrated from session) we still need to fetch.
         const normalizedTf = String(timeframe || '1m').toLowerCase().trim();
         const haveCurrentTfData = (this.currentTimeframe === normalizedTf)
+            && (String(this._nativeRawFetchTf || normalizedTf).toLowerCase().trim() === normalizedTf)
             && Array.isArray(this.data) && this.data.length > 0
             && !this._panLoading;
         if (haveCurrentTfData) {
@@ -14519,21 +14529,26 @@ class Chart {
         }
 
         if (this.replaySystem && this.replaySystem.isActive) {
-            if (this._canClientResampleToTimeframe(normalizedTf)) {
-                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                return;
-            }
-
+            // Backtest replay: ALWAYS server/cache TF path (never client-resample
+            // from the loaded native window). Iframe panels only hold a playhead-
+            // centered slice (e.g. 1m) — resampling it to 5m/15m looks like "TF
+            // changed but candles stayed the same". Host A is fast because
+            // _scheduleBacktestTimeframePrefetch fills _btTfDataCache; iframes
+            // must refetch native bars at the replay playhead instead.
             if (this.isBacktestMode && this.currentFileId) {
-                this._applyBacktestTimeframeFromCache(normalizedTf)
+                return this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
-                        this._refetchBacktestTimeframe(normalizedTf);
+                        return this._refetchBacktestTimeframe(normalizedTf);
                     })
                     .catch((e) => {
                         console.warn('[backtest] TF cache restore failed, refetching', e);
-                        this._refetchBacktestTimeframe(normalizedTf);
+                        return this._refetchBacktestTimeframe(normalizedTf);
                     });
+            }
+
+            if (this._canClientResampleToTimeframe(normalizedTf)) {
+                this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
                 return;
             }
 
