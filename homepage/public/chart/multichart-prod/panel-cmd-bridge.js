@@ -237,16 +237,58 @@
             var seekTs = coalescedSeekTs;
             coalescedSeekTs = null;
             if (seekTs == null) return;
-            var rs = ch.replaySystem;
-            if (!rs || !rs.isActive) return;
+            forceReplaySeek(ch, seekTs, false);
+        });
+    }
+
+    /**
+     * Hard guard: ensure iframe rawData covers ts, then seek. Panels that
+     * loaded a session-start window cannot follow host A without refetch.
+     */
+    function forceReplaySeek(ch, ts, isEnter, onDone) {
+        if (!Number.isFinite(ts)) {
+            if (typeof onDone === 'function') onDone();
+            return;
+        }
+        var rs = ch.replaySystem;
+        if (!rs) {
+            if (typeof onDone === 'function') onDone();
+            return;
+        }
+
+        function finish() {
+            if (typeof onDone === 'function') onDone();
+        }
+
+        function doSeek() {
+            if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
             try {
-                rs.goToReplayTimestamp(seekTs,
-                    { preserveVisibleWindow: false });
+                rs.goToReplayTimestamp(ts, {
+                    preserveVisibleWindow: false,
+                    centerOnCandle: !!isEnter,
+                });
             } catch (e) {
-                warn('coalesced seek threw', e && e.message);
+                warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
             }
-        });
+        }
+
+        if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
+            ch.ensureReplayDataCoversTimestamp(ts).then(function () {
+                doSeek();
+                if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                finish();
+            }).catch(function (e) {
+                warn('forceReplaySeek: ensureReplayDataCoversTimestamp failed', e && e.message);
+                doSeek();
+                if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+                finish();
+            });
+            return;
+        }
+        doSeek();
+        if (isEnter) scheduleMultichartPanelReplayFollow(ch);
+        finish();
     }
 
     /**
@@ -321,25 +363,16 @@
                 warn('replayEnter: enterReplayMode threw', e && e.message);
             }
         }
-        if (rs.isActive && Number.isFinite(ts)
-            && typeof rs.goToReplayTimestamp === 'function') {
-            try {
-                rs.goToReplayTimestamp(ts, { preserveVisibleWindow: false });
-            } catch (e) {
-                warn('replayEnter: goToReplayTimestamp threw', e && e.message);
-            }
+        if (rs.isActive && Number.isFinite(ts)) {
+            forceReplaySeek(ch, ts, true, function () {
+                pendingReplayTs = null;
+                try { drainPendingPlay(ch); } catch (_) {}
+            });
+        } else {
+            scheduleMultichartPanelReplayFollow(ch);
+            pendingReplayTs = null;
+            try { drainPendingPlay(ch); } catch (_) {}
         }
-        // Successfully applied — clear the pending stash so a later
-        // chartDataLoaded (e.g. user changes file via symbol-sync, then
-        // tries to play) doesn't replay a stale timestamp from before
-        // the file change.
-        pendingReplayTs = null;
-        // Apply any deferred play/speed/mode that arrived BEFORE the
-        // iframe was active. This is what makes "join mid-play" work
-        // — without it the iframe sits paused at parent's ts even
-        // though the parent has been playing for minutes.
-        try { drainPendingPlay(ch); } catch (_) {}
-        scheduleMultichartPanelReplayFollow(ch);
         log('replayEnter applied: ts=' + ts
             + ' isActive=' + rs.isActive
             + ' chartDataLen=' + (ch.data ? ch.data.length : 0));

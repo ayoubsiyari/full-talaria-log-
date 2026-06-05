@@ -2202,9 +2202,11 @@
 
     function buildSessionBoxRuntimeDefs(params) {
         const defs = (typeof window !== 'undefined' && window.__v9SessionBoxSessionDefs) || [];
+        const shownFn = (typeof window !== 'undefined' && window.__v9SessionBoxSessionShown) || null;
         const out = [];
         defs.forEach(function (sess) {
-            if (params[sess.showId] === false) return;
+            const shown = shownFn ? shownFn(params, sess) : (params[sess.showId] !== false);
+            if (!shown) return;
             out.push({
                 key: sess.key,
                 name: params[sess.nameId] != null ? String(params[sess.nameId]) : sess.defaultName,
@@ -2214,33 +2216,17 @@
             });
         });
         if (!out.length) {
-            if (params.showAsian !== false) {
+            defs.forEach(function (sess) {
+                const shown = shownFn ? shownFn(params, sess) : (params[sess.showId] !== false);
+                if (!shown) return;
                 out.push({
-                    key: 'asian',
-                    name: params.asianName || 'Asian',
-                    start: parseSessionTimeStr(params.asianStart || '00:00'),
-                    end: parseSessionTimeStr(params.asianEnd || '09:00'),
-                    color: params.asianColor || 'rgba(255, 193, 7, 0.15)'
+                    key: sess.key,
+                    name: params[sess.nameId] != null ? String(params[sess.nameId]) : sess.defaultName,
+                    start: parseSessionTimeStr(params[sess.startId] != null ? params[sess.startId] : sess.defaultStart),
+                    end: parseSessionTimeStr(params[sess.endId] != null ? params[sess.endId] : sess.defaultEnd),
+                    color: params[sess.colorId] || sess.defaultColor
                 });
-            }
-            if (params.showLondon !== false) {
-                out.push({
-                    key: 'london',
-                    name: params.londonName || 'London',
-                    start: parseSessionTimeStr(params.londonStart || '07:00'),
-                    end: parseSessionTimeStr(params.londonEnd || '16:00'),
-                    color: params.londonColor || 'rgba(33, 150, 243, 0.15)'
-                });
-            }
-            if (params.showNewYork !== false) {
-                out.push({
-                    key: 'newYork',
-                    name: params.newYorkName || 'New York',
-                    start: parseSessionTimeStr(params.newYorkStart || '12:00'),
-                    end: parseSessionTimeStr(params.newYorkEnd || '21:00'),
-                    color: params.newYorkColor || 'rgba(76, 175, 80, 0.15)'
-                });
-            }
+            });
         }
         return out;
     }

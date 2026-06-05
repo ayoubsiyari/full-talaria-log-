@@ -736,6 +736,61 @@
                     } catch (_) {}
                     return null;
                 };
+                var hardGuardAlignToHost = function (expectedTs) {
+                    var parentTs = readParentPlayhead();
+                    var targetTs = (parentTs != null) ? parentTs : expectedTs;
+                    if (targetTs == null) return;
+                    var attempts = 0;
+                    var maxAttempts = 12;
+                    var tick = function () {
+                        attempts += 1;
+                        parentTs = readParentPlayhead();
+                        if (parentTs != null) targetTs = parentTs;
+                        var rs = ch.replaySystem;
+                        if (!rs) {
+                            if (attempts < maxAttempts) setTimeout(tick, 400);
+                            return;
+                        }
+                        var panelTs = Number(rs.replayTimestamp);
+                        var tfMs = (typeof ch.parseTimeframe === 'function')
+                            ? (ch.parseTimeframe(ch.currentTimeframe) || 60000)
+                            : 60000;
+                        var aligned = rs.isActive
+                            && Number.isFinite(panelTs)
+                            && Math.abs(panelTs - targetTs) <= tfMs * 2;
+                        if (aligned) {
+                            reportToShell('info', 'hard guard: panel aligned to host ts=' + targetTs);
+                            return;
+                        }
+                        reportToShell('warn', 'hard guard: forcing panel to host ts='
+                            + targetTs + ' (panel ts=' + panelTs + ', attempt ' + attempts + ')');
+                        var apply = function () {
+                            if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+                                try {
+                                    rs.enterReplayMode({
+                                        startAtBeginning: true,
+                                        suppressInitialUpdateChartData: true,
+                                    });
+                                } catch (_) {}
+                            }
+                            if (rs.isActive && typeof rs.goToReplayTimestamp === 'function') {
+                                try {
+                                    rs.goToReplayTimestamp(targetTs, {
+                                        preserveVisibleWindow: false,
+                                        centerOnCandle: true,
+                                    });
+                                } catch (_) {}
+                            }
+                        };
+                        if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
+                            ch.ensureReplayDataCoversTimestamp(targetTs).then(apply).catch(apply);
+                        } else {
+                            apply();
+                        }
+                        if (attempts < maxAttempts) setTimeout(tick, 500);
+                    };
+                    setTimeout(tick, 200);
+                };
                 var doBacktestLoad = function (playheadTs) {
                     if (ch.backtestingStarted) return;
                     try {
@@ -750,7 +805,10 @@
                             ? ch.autoLoadBacktestingData(btSession, { replayTimestamp: playheadTs })
                             : ch.autoLoadBacktestingData(btSession);
                         if (rp && typeof rp.then === 'function') {
-                            rp.then(afterLoad, function (err) {
+                            rp.then(function () {
+                                afterLoad();
+                                hardGuardAlignToHost(playheadTs);
+                            }, function (err) {
                                 reportToShell('error', 'autoLoadBacktestingData failed: '
                                     + (err && err.message || err)
                                     + ' — falling back to loadFileData');

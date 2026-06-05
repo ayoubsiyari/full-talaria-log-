@@ -1206,6 +1206,14 @@ const SESSION_BOX_SESSION_DEFS = [
         label: 'Sydney', defaultName: 'Sydney', defaultStart: '21:00', defaultEnd: '06:00', defaultColor: 'rgba(156, 39, 176, 0.14)', defaultShow: false }
 ];
 
+/** Whether a Session Boxes session is enabled (undefined → defaultShow, not “always on”). */
+function sessionBoxSessionShown(params, sess) {
+    if (!sess) return true;
+    params = params || {};
+    if (params[sess.showId] !== undefined) return params[sess.showId] !== false;
+    return sess.defaultShow !== false;
+}
+
 function sessionsBoxInputParams() {
     const rows = [{ id: 'h_sessions', type: 'heading', label: 'Sessions', tab: 'input' }];
     SESSION_BOX_SESSION_DEFS.forEach(function (sess) {
@@ -3539,10 +3547,16 @@ function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, ne
         return;
     }
     if (param.type === 'sessionInput') {
+        const sessDef = SESSION_BOX_SESSION_DEFS.find(function (s) { return s.showId === param.showId; });
         const showRaw = draft[param.showId];
-        newParams[param.showId] = showRaw !== undefined
-            ? !!showRaw
-            : (baseExisting[param.showId] !== undefined ? !!baseExisting[param.showId] : param.defaultShow !== false);
+        if (showRaw !== undefined) {
+            newParams[param.showId] = !!showRaw;
+        } else if (baseExisting[param.showId] !== undefined) {
+            newParams[param.showId] = !!baseExisting[param.showId];
+        } else if (sessDef && sessDef.defaultShow !== false) {
+            newParams[param.showId] = true;
+        }
+        // Optional sessions (defaultShow false): omit showId so merge does not force false.
         const nameRaw = draft[param.nameId];
         newParams[param.nameId] = nameRaw !== undefined
             ? nameRaw
@@ -5402,6 +5416,7 @@ window.__v9SanitizeIndicatorPayloadFromDefinition = sanitizeIndicatorPayloadFrom
 window.INDICATOR_MAX_LINE_WIDTH = INDICATOR_MAX_LINE_WIDTH;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
 window.__v9SessionBoxSessionDefs = SESSION_BOX_SESSION_DEFS;
+window.__v9SessionBoxSessionShown = sessionBoxSessionShown;
 window.__v9ResolveIndicatorDefinitionKey = resolveIndicatorDefinitionKey;
 window.__v9IndicatorColorSupportsAlpha = v9IndicatorColorSupportsAlpha;
 window.__v9IndicatorOpacityKeyForColor = v9IndicatorOpacityKeyForColor;

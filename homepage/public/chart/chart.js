@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b235';
+const CHART_ENGINE_BUILD = '20260602b236';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1521,26 +1521,23 @@ class Chart {
             }
 
             const restoreSessionId = this.getActiveTradingSessionId();
-            this._pendingReplayRestore = restoreSessionId
+            const savedReplayRestore = restoreSessionId
                 ? this._getSavedReplayRestoreState(restoreSessionId)
                 : null;
-            // Multichart panels: when the parent supplies its live replay
-            // playhead, load the window CENTERED on that timestamp and seek
-            // exactly there. Without this a raced parallel iframe load can
-            // fetch an end-anchored window that misses the session start, and
-            // enterReplayMode then falls back to the LAST loaded bar — i.e. the
-            // panel jumps to the END of the backtest period (2023) while host A
-            // sits at the session start (2015). Routing through preservePlayhead
-            // also avoids that `rd.length - 1` end fallback entirely.
+            // Multichart panels: parent playhead ALWAYS wins over saved
+            // localStorage restore. Without this, iframes read a stale
+            // backup (e.g. session-start 14:30) while host A is at 22:22
+            // and load the wrong window — visible as "one candle at start,
+            // host at end of day".
             const parentPlayheadTs = Number(opts && opts.replayTimestamp);
-            if (Number.isFinite(parentPlayheadTs)
-                && !(this._pendingReplayRestore
-                    && Number.isFinite(this._pendingReplayRestore.replayTimestamp))) {
+            if (Number.isFinite(parentPlayheadTs)) {
                 this._pendingReplayRestore = Object.assign(
                     {},
-                    this._pendingReplayRestore || {},
+                    savedReplayRestore || {},
                     { replayTimestamp: parentPlayheadTs }
                 );
+            } else {
+                this._pendingReplayRestore = savedReplayRestore;
             }
             const savedReplayTs = this._pendingReplayRestore?.replayTimestamp ?? null;
 
@@ -1664,6 +1661,125 @@ class Chart {
             this.backtestingStarted = false;
             this.hideLoader();
         }
+    }
+
+    /**
+     * Multichart hard guard: refetch a playhead-centered window when the
+     * currently loaded rawData does not contain targetTs. Without this,
+     * goToReplayTimestamp clamps to the nearest loaded bar (often session
+     * start → one visible candle) while host A shows a later replay time.
+     * @param {number} targetTs
+     * @returns {Promise<boolean>}
+     */
+    async ensureReplayDataCoversTimestamp(targetTs) {
+        const ts = Number(targetTs);
+        if (!Number.isFinite(ts)) return false;
+
+        const tfMs = this.parseTimeframe(this.currentTimeframe) || 60_000;
+        const margin = Math.max(tfMs * 40, 60_000);
+
+        const covers = (raw) => {
+            if (!Array.isArray(raw) || raw.length === 0) return false;
+            const first = Number(raw[0]?.t);
+            const last = Number(raw[raw.length - 1]?.t);
+            return Number.isFinite(first) && Number.isFinite(last)
+                && ts >= first - margin && ts <= last + margin;
+        };
+
+        if (covers(this.rawData)) return true;
+
+        const session = this.backtestingSession;
+        const fileId = this.currentFileId;
+        if (!session || !fileId) return false;
+
+        if (this._ensureReplayDataInflight) {
+            return this._ensureReplayDataInflight;
+        }
+
+        const replayRawTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+        const replay = this.replaySystem;
+        const wasActive = !!(replay && replay.isActive);
+        const wasPlaying = !!(replay && replay.isPlaying);
+
+        this._ensureReplayDataInflight = (async () => {
+            try {
+                if (wasPlaying && replay && typeof replay.pause === 'function') {
+                    replay.pause();
+                }
+
+                let result = null;
+                if (String(replayRawTf).toLowerCase() === '1m') {
+                    try {
+                        result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf, ts);
+                    } catch (e) {
+                        console.warn('ensureReplayDataCoversTimestamp: /bars fetch failed', e);
+                    }
+                }
+                if (!result) {
+                    const range = this._getBacktestReplayFetchRange(replayRawTf, session, ts);
+                    result = await this._fetchSmartWindow(
+                        fileId,
+                        replayRawTf,
+                        session,
+                        'end',
+                        range,
+                        {
+                            skipSessionDates: true,
+                            limit: this._backtestFetchLimitForTimeframe(replayRawTf),
+                        },
+                    );
+                }
+                if (!this._smartResponseHasPayload(result)) return false;
+
+                this._nativeRawFetchTf = replayRawTf;
+                this._ingestSmartWindowResult(result, {
+                    skipIndicators: true,
+                    skipFitToView: true,
+                    skipTimeframePrefetch: true,
+                });
+                this.loadedRanges.set(0, result.returned);
+                this._serverCursors = {
+                    firstTs: result.first_cursor,
+                    lastTs: result.last_cursor,
+                    hasMoreLeft: result.has_more_left !== false,
+                    hasMoreRight: result.has_more_right !== false,
+                };
+
+                if (replay && wasActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    replay.fullRawData = [...this.rawData];
+                    replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+                    replay.rawTimeframe = replayRawTf;
+                    replay._fullRawDataMatchesTF = false;
+                    replay.tickPathCache = {};
+                    replay.tickPathCacheBuilt = false;
+                    let sessionStartMs = null;
+                    try {
+                        const rawStart = session.startDate || session.start_date;
+                        if (rawStart) {
+                            const t0 = new Date(rawStart).getTime();
+                            if (Number.isFinite(t0)) sessionStartMs = t0;
+                        }
+                    } catch (_e) { /* ignore */ }
+                    if (sessionStartMs != null) {
+                        let floorIdx = 0;
+                        for (let i = 0; i < replay.fullRawData.length; i++) {
+                            const bar = replay.fullRawData[i];
+                            if (bar && Number.isFinite(bar.t) && bar.t >= sessionStartMs) {
+                                floorIdx = i;
+                                break;
+                            }
+                        }
+                        replay.sessionStartIndex = floorIdx;
+                    }
+                }
+
+                return covers(this.rawData);
+            } finally {
+                this._ensureReplayDataInflight = null;
+            }
+        })();
+
+        return this._ensureReplayDataInflight;
     }
     
     /**

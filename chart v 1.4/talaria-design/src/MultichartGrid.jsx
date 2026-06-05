@@ -1879,6 +1879,33 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
+        // Hard guard: while parent is in replay, re-broadcast its playhead
+        // every 1.5s so panels that loaded a stale window (localStorage
+        // restore, raced autoLoad, missed replayEnter) are forced back to
+        // host A's exact candle + data window via panel-cmd forceReplaySeek.
+        const replayAlignGuardMs = 1500;
+        const replayAlignGuard = setInterval(() => {
+            try {
+                const mgr = managerRef.current;
+                if (!mgr || !mgr.charts) return;
+                const ch = window.chart;
+                const rs = ch && ch.replaySystem;
+                if (!rs || !rs.isActive) return;
+                const ts = Number(rs.replayTimestamp);
+                if (!Number.isFinite(ts)) return;
+                replayStateRef.current.lastBroadcastTs = ts;
+                replayStateRef.current.everEntered = true;
+                replayStateRef.current.parentEverEntered = true;
+                const cmd = "replayEnter";
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || !c.ready) continue;
+                    try {
+                        mgr.sendCommand(c.id, cmd, { timestamp: ts, forceAlign: true });
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        }, replayAlignGuardMs);
+
         // Helper: broadcast a replay command to every non-host iframe.
         // Used by all the playback-state monkey-patches below.
         const broadcastToIframes = (cmd, args) => {
@@ -2121,6 +2148,7 @@ export default function MultichartGrid({
         tryPatch(Date.now() + 5000);
 
         return () => {
+            clearInterval(replayAlignGuard);
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
             window.removeEventListener("message", onReplayKeyboard);
             // Restore originals if we patched them — keeps single-

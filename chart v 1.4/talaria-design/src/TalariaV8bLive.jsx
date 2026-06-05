@@ -11541,7 +11541,11 @@ const TalariaV8bLive = () => {
           return;
         }
         if (p.type === "sessionInput") {
-          draft[p.showId] = allParams[p.showId] !== undefined ? allParams[p.showId] : p.defaultShow !== false;
+          if (allParams[p.showId] !== undefined) {
+            draft[p.showId] = !!allParams[p.showId];
+          } else if (p.defaultShow !== false) {
+            draft[p.showId] = true;
+          }
           draft[p.nameId] = allParams[p.nameId] != null ? allParams[p.nameId] : (p.defaultName || p.label || "");
           draft[p.startId] = allParams[p.startId] !== undefined ? allParams[p.startId] : p.defaultStart;
           draft[p.endId] = allParams[p.endId] !== undefined ? allParams[p.endId] : p.defaultEnd;
