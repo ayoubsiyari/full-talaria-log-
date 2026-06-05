@@ -372,11 +372,13 @@ class BaseDrawing {
             patched = true;
         } else if (typeof this.patchPanZoomGeometry === 'function' && this.patchPanZoomGeometry(scales)) {
             patched = true;
-        } else if (typeof this.updateHandlePositions === 'function') {
-            this.updateHandlePositions(scales);
-            patched = true;
         }
-        this._pruneDuplicateResizeHandles();
+        if (patched) {
+            this._pruneDuplicateResizeHandles();
+            if (typeof this.updateHandlePositions === 'function') {
+                this.updateHandlePositions(scales);
+            }
+        }
         return patched;
     }
 

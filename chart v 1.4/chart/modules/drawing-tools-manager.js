@@ -427,10 +427,40 @@ class DrawingToolsManager {
         return true;
     }
 
+    /** Two-point line tools that support in-place geometry patch during handle drag. */
+    _supportsLiveHandleGeometryPatch(drawing) {
+        if (!drawing || !drawing.type) return false;
+        return [
+            'trendline', 'horizontal', 'vertical', 'ray', 'horizontal-ray',
+            'extended-line', 'cross-line'
+        ].includes(drawing.type);
+    }
+
+    /** Multi-point / bezier tools need a full live re-render while dragging a handle. */
+    _needsFullRenderDuringHandleEdit(drawing) {
+        if (!drawing || !drawing.type) return false;
+        return ['path', 'polyline', 'curve', 'double-curve'].includes(drawing.type);
+    }
+
+    _getFullHandleEditRenderOpts(drawing) {
+        const destroyGroup = drawing && ['curve', 'double-curve'].includes(drawing.type);
+        return {
+            skipInteraction: true,
+            liveRender: true,
+            skipTimestampSync: true,
+            drawingRenderOpts: {
+                reuseGroup: !destroyGroup && !!(drawing && drawing.group && !drawing.group.empty()),
+                skipHandles: false
+            }
+        };
+    }
+
     scheduleRenderDrawing(drawing) {
         if (!drawing) return;
-        // Handle resize: patch only — never rebuild SVG during drag (prevents handle trails).
-        if (this.isResizing && this.resizingDrawing === drawing) {
+        const isActiveResize = !!(this.isResizing && this.resizingDrawing === drawing);
+        const isActiveCustom = !!(this.isCustomHandleDrag && this.customHandleDrawing === drawing);
+        // Handle resize / custom-handle edit: patch simple lines in place; full live render for path/curve/etc.
+        if (isActiveResize || isActiveCustom) {
             try {
                 const stillTracked = this.drawings.find(item => item === drawing || (item && drawing && item.id === drawing.id));
                 if (stillTracked && this.chart && this.chart.xScale && this.chart.yScale) {
@@ -439,13 +469,13 @@ class DrawingToolsManager {
                         yScale: this.chart.yScale,
                         chart: this.chart
                     };
-                    if (typeof stillTracked.patchLiveHandleResize === 'function'
+                    if (isActiveResize
+                        && this._supportsLiveHandleGeometryPatch(stillTracked)
+                        && typeof stillTracked.patchLiveHandleResize === 'function'
                         && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
                         return;
                     }
-                    if (typeof stillTracked.updateHandlePositions === 'function') {
-                        stillTracked.updateHandlePositions(scales);
-                    }
+                    this.renderDrawing(stillTracked, this._getFullHandleEditRenderOpts(stillTracked));
                 }
             } catch (_) { /* ignore */ }
             return;
@@ -474,11 +504,16 @@ class DrawingToolsManager {
                             yScale: this.chart.yScale,
                             chart: this.chart
                         };
-                        if (typeof stillTracked.patchLiveHandleResize === 'function') {
-                            stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex);
-                        } else if (typeof stillTracked.updateHandlePositions === 'function') {
-                            stillTracked.updateHandlePositions(scales);
+                        if (this._supportsLiveHandleGeometryPatch(stillTracked)
+                            && typeof stillTracked.patchLiveHandleResize === 'function'
+                            && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
+                            return;
                         }
+                        this.renderDrawing(stillTracked, this._getFullHandleEditRenderOpts(stillTracked));
+                        return;
+                    }
+                    if (this.isCustomHandleDrag && this.customHandleDrawing === stillTracked) {
+                        this.renderDrawing(stillTracked, this._getFullHandleEditRenderOpts(stillTracked));
                         return;
                     }
                     this.renderDrawing(stillTracked, this._liveRenderDrawingOpts(stillTracked));
@@ -5570,23 +5605,6 @@ class DrawingToolsManager {
             return;
         }
 
-        // Live resize-handle edit: patch geometry in place — never rebuild SVG (prevents handle trails).
-        if (this._isLiveHandleEditing() && this.resizingDrawing === drawing) {
-            const scales = {
-                xScale: this.chart.xScale,
-                yScale: this.chart.yScale,
-                chart: this.chart,
-                labelsGroup: this.labelsGroup
-            };
-            if (typeof drawing.patchLiveHandleResize === 'function') {
-                drawing.patchLiveHandleResize(scales, this.resizingPointIndex);
-            } else if (typeof drawing.updateHandlePositions === 'function') {
-                drawing.updateHandlePositions(scales);
-            }
-            if (this.chart) this.chart._isRendering = wasRendering;
-            return;
-        }
-
         // Ensure scales are available
         if (!this.chart.xScale || !this.chart.yScale) {
             console.warn('⚠️ Cannot render drawing - scales not ready');
@@ -7464,7 +7482,9 @@ class DrawingToolsManager {
         this.isResizing = true;
         this.resizingDrawing = drawing;
         this.resizingPointIndex = pointIndex;
-        this._resetResizeHandleDom(drawing);
+        if (this._supportsLiveHandleGeometryPatch(drawing)) {
+            this._resetResizeHandleDom(drawing);
+        }
         if (this._resizePointerSource === 'document') {
             if (drawing.group && !drawing.group.empty()) {
                 drawing.group.selectAll('.resize-handle-hit').on('.drag', null);

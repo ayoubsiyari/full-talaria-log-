@@ -3966,7 +3966,9 @@ class PathTool extends BaseDrawing {
         }
 
         // Draw resize handles (only visible when selected)
-        this.points.forEach((point, i) => {
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
+            this.points.forEach((point, i) => {
             const x = scales.chart && scales.chart.dataIndexToPixel ? 
                 scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
             const y = scales.yScale(point.y);
@@ -3999,7 +4001,8 @@ class PathTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
                 .style('opacity', (this.selected || isPreview) ? 1 : 0);
-        });
+            });
+        }
 
         return this.group;
     }
@@ -4224,7 +4227,9 @@ class PolylineTool extends BaseDrawing {
         }
 
         // Draw resize handles (only visible when selected)
-        this.points.forEach((point, i) => {
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
+            this.points.forEach((point, i) => {
             const x = scales.chart && scales.chart.dataIndexToPixel ? 
                 scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
             const y = scales.yScale(point.y);
@@ -4257,7 +4262,8 @@ class PolylineTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
                 .style('opacity', (this.selected || isPreview) ? 1 : 0);
-        });
+            });
+        }
 
         return this.group;
     }
