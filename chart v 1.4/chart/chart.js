@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b230';
+const CHART_ENGINE_BUILD = '20260602b231';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -18910,6 +18910,12 @@ class Chart {
     drawVolume(visible, opts = {}) {
         // Skip if volume is disabled
         if (!(typeof this._isVolumeDisplayEnabled === 'function' ? this._isVolumeDisplayEnabled() : this.chartSettings.showVolume)) return;
+        const volumeIndicator = typeof this._getActiveVolumeIndicator === 'function'
+            ? this._getActiveVolumeIndicator()
+            : (this.indicators && this.indicators.active
+                ? this.indicators.active.find(ind => ind.type === 'volume' || ind.isVolume)
+                : null);
+        if (!volumeIndicator) return;
         
         const m = this.margin;
         const plotLayout = typeof this._getMainPricePlotLayout === 'function'
@@ -18932,7 +18938,6 @@ class Chart {
             maLineDashStyle: 'Solid'
         };
         if (this.indicators && this.indicators.active) {
-            const volumeIndicator = this.indicators.active.find(ind => ind.type === 'volume' || ind.isVolume);
             if (volumeIndicator && typeof this._getVolumeRenderConfig === 'function') {
                 cfg = this._getVolumeRenderConfig(volumeIndicator);
             }

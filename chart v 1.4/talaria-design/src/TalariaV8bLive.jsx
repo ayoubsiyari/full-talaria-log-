@@ -3958,6 +3958,25 @@ function v9ParallelChannelMidLineRowIndex(chLines) {
   return idx >= 0 ? idx : (chLines.length >= 3 ? 2 : -1);
 }
 
+/** Style-tab label for a parallel-channel level row (middle line has its own section). */
+function v9ParallelChannelStyleRowLabel(filteredIdx, filteredLen, ln) {
+  if (filteredIdx === 0) return "Upper";
+  if (filteredIdx === filteredLen - 1) return "Lower";
+  return v9ParallelChannelAuxLevelLabel(ln, filteredIdx);
+}
+
+function v9ParallelChannelAuxLevelLabel(ln, fallbackIdx = 0) {
+  const raw = ln?.value;
+  if (raw != null && String(raw).trim() !== "") {
+    const v = parseFloat(String(raw).replace(/,/g, ""));
+    if (Number.isFinite(v)) {
+      return Number.isInteger(v) ? String(v) : String(v);
+    }
+    return String(raw);
+  }
+  return `Level ${fallbackIdx + 1}`;
+}
+
 function v9SyncParallelChannelMidLineToChLines(tlStyle) {
   const base = v9ResolveParallelChannelChLines(tlStyle, null);
   const idx = v9ParallelChannelMidLineRowIndex(base);
@@ -19639,7 +19658,7 @@ const TalariaV8bLive = () => {
                               </div>
                             : tlSubTool.icon === "channel" ? (
                               <div style={{ padding:"5px 0", alignSelf:"center" }}>
-                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : "", ()=>setTlStyle(s=>{
+                                {TlChk(ln.on, `tlchk-${cpKey}-${srcIdx}`, v9ParallelChannelStyleRowLabel(idx, lines.length, ln), ()=>setTlStyle(s=>{
                                   const nextLines = s.chLines.map((l,i)=>i===srcIdx?{...l,on:!l.on}:l);
                                   return { ...s, chLines: nextLines, ...v9ParallelChannelMidLinePatchFromChLines(nextLines) };
                                 }))}
@@ -21190,10 +21209,17 @@ const TalariaV8bLive = () => {
                 <>
                   <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"4px 0 10px" }}>LEVELS</div>
                   {lines.map((ln, idx) => {
-                    const isMiddle = idx === 2;
+                    const midIdx = v9ParallelChannelMidLineRowIndex(lines);
+                    const isMiddle = idx === midIdx;
                     const op = (isMiddle || ln.on) ? 1 : 0.38;
                     const pe = (isMiddle || ln.on) ? "auto" : "none";
-                    const lvlLabel = isMiddle ? "Middle" : idx === 0 ? "Upper" : idx === lines.length - 1 ? "Lower" : `Level ${idx + 1}`;
+                    const lvlLabel = isMiddle
+                      ? "Middle"
+                      : idx === 0
+                        ? "Upper"
+                        : idx === lines.length - 1
+                          ? "Lower"
+                          : v9ParallelChannelAuxLevelLabel(ln, idx);
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0" }}>
                         <div style={{ minWidth:72 }}>

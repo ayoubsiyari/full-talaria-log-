@@ -7364,9 +7364,11 @@ Chart.prototype._getActiveVolumeIndicator = function() {
     if (!this.indicators || !this.indicators.active) return null;
     for (let i = 0; i < this.indicators.active.length; i++) {
         const ind = this.indicators.active[i];
-        if ((ind.type === 'volume' || ind.isVolume) && ind.visible !== false) {
-            return ind;
-        }
+        if (ind.type !== 'volume' && !ind.isVolume) continue;
+        if (ind.visible === false) continue;
+        if (typeof this._indicatorVisibleForCurrentTimeframe === 'function'
+            && !this._indicatorVisibleForCurrentTimeframe(ind)) continue;
+        return ind;
     }
     return null;
 };
@@ -8203,6 +8205,19 @@ Chart.prototype.drawSeparatePanelCrosshair = function(ctx, m, panelTop, panelBot
 
 Chart.prototype._getCrosshairBarIndex = function() {
     if (!this.data || !this.data.length) return -1;
+    const replay = this.replaySystem;
+    if (replay && replay.isActive) {
+        const m = this.margin || { l: 0, r: 0, t: 0, b: 0 };
+        const mx = Number(this.mouseX);
+        const my = Number(this.mouseY);
+        const inPlot = Number.isFinite(mx) && Number.isFinite(my)
+            && mx >= m.l && mx <= this.w - m.r
+            && my >= m.t && my <= this.h - m.b;
+        if (inPlot && Number.isFinite(this.hoverIndex) && this.hoverIndex >= 0 && this.hoverIndex < this.data.length) {
+            return Math.floor(this.hoverIndex);
+        }
+        return this.data.length - 1;
+    }
     if (Number.isFinite(this.hoverIndex) && this.hoverIndex >= 0 && this.hoverIndex < this.data.length) {
         return Math.floor(this.hoverIndex);
     }
@@ -8211,6 +8226,16 @@ Chart.prototype._getCrosshairBarIndex = function() {
         if (idx >= 0 && idx < this.data.length) return idx;
     }
     return this.data.length - 1;
+};
+
+/** During replay, keep OHLC / volume legend values on the advancing playhead bar. */
+Chart.prototype._syncReplayPlayheadCrosshairValues = function() {
+    if (!this.replaySystem || !this.replaySystem.isActive) return;
+    if (!this.data || !this.data.length) return;
+    this.hoverIndex = this.data.length - 1;
+    if (typeof this.syncCrosshairIndicatorValues === 'function') {
+        this.syncCrosshairIndicatorValues();
+    }
 };
 
 Chart.prototype._pickFiniteSeriesValue = function(arr, barIdx) {
@@ -10535,13 +10560,15 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
 
         let displayValue = null;
         let displayColor = upColor;
-        const hoverIdx = Number.isFinite(this.hoverIndex) ? this.hoverIndex : (this.data.length - 1);
-        if (hoverIdx >= 0 && hoverIdx < this.data.length) {
-            const hb = this.data[hoverIdx];
+        const barIdx = typeof this._getCrosshairBarIndex === 'function'
+            ? this._getCrosshairBarIndex()
+            : (Number.isFinite(this.hoverIndex) ? this.hoverIndex : (this.data.length - 1));
+        if (barIdx >= 0 && barIdx < this.data.length) {
+            const hb = this.data[barIdx];
             const hv = Number(hb && hb.v);
             if (Number.isFinite(hv)) {
                 displayValue = hv;
-                displayColor = volumeBarIsGrowing(this, hoverIdx, hb, cfg.usePrevClose) ? upColor : downColor;
+                displayColor = volumeBarIsGrowing(this, barIdx, hb, cfg.usePrevClose) ? upColor : downColor;
             }
         }
         indicator._displayColor = displayColor;

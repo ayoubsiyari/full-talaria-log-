@@ -2630,6 +2630,10 @@ class ReplaySystem {
         
         this.chart.renderPending = true;
         this.chart.render();
+
+        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+            this.chart._syncReplayPlayheadCrosshairValues();
+        }
         
         // Force a reflow to commit the canvas changes
         if (this.chart.canvas) {
@@ -3806,6 +3810,10 @@ class ReplaySystem {
         }
         this.chart.renderPending = true;
         this.chart.render();
+
+        if (typeof this.chart._syncReplayPlayheadCrosshairValues === 'function') {
+            this.chart._syncReplayPlayheadCrosshairValues();
+        }
 
         // Same as updateChartData: floating PnL / SL-TP logic must track the latest candle.
         if (this.chart.orderManager && typeof this.chart.orderManager.updatePositions === 'function') {

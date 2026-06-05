@@ -2273,6 +2273,10 @@ function ensureTalariaIndLegendHoverCss() {
 
 function talariaCrosshairBarIndex(chart) {
     if (!chart || !chart.data || !chart.data.length) return -1;
+    if (typeof chart._getCrosshairBarIndex === 'function') {
+        const idx = chart._getCrosshairBarIndex();
+        if (idx >= 0) return idx;
+    }
     if (Number.isFinite(chart.hoverIndex) && chart.hoverIndex >= 0 && chart.hoverIndex < chart.data.length) {
         return Math.floor(chart.hoverIndex);
     }
@@ -2281,6 +2285,13 @@ function talariaCrosshairBarIndex(chart) {
         if (idx >= 0 && idx < chart.data.length) return idx;
     }
     return chart.data.length - 1;
+}
+
+function talariaIndicatorShownInLegend(chart, indicator) {
+    if (!indicator || indicator.visible === false) return false;
+    if (typeof chart._indicatorVisibleForCurrentTimeframe === 'function'
+        && !chart._indicatorVisibleForCurrentTimeframe(indicator)) return false;
+    return true;
 }
 
 function talariaPickFiniteSeriesValue(arr, barIdx) {
@@ -2367,6 +2378,7 @@ function talariaSyncOhlcIndicatorLegendValues(chart, div) {
         const isVolume = indicator.type === 'volume' || indicator.isVolume;
         const isOverlay = indicator.overlay !== false && !isVolume;
         if (!isVolume && !isOverlay) return;
+        if (!talariaIndicatorShownInLegend(chart, indicator)) return;
         let row = div.querySelector('[data-talaria-ind-id="' + indicator.id + '"]');
         if (!row && rows[rowIdx]) row = rows[rowIdx];
         rowIdx++;
@@ -2554,6 +2566,7 @@ function talariaRebuildOhlcIndicatorLegend(chart, div) {
     chart.indicators.active.forEach(function(indicator) {
         const isVolume = indicator.type === 'volume' || indicator.isVolume;
         const isOverlay = indicator.overlay !== false && !isVolume;
+        if (!talariaIndicatorShownInLegend(chart, indicator)) return;
         if (isVolume || isOverlay) {
             talariaAppendIndicatorLegendRow(chart, div, indicator);
         }
