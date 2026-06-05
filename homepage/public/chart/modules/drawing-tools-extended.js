@@ -1782,7 +1782,9 @@ class CurveTool extends BaseDrawing {
             this.renderTextLabel({ x1, y1, x2, y2, scales });
         }
 
-        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        if (!renderOpts.skipHandles) {
+            this.createHandles(this.group, scales);
+        }
         return this.group;
     }
 
@@ -2051,7 +2053,9 @@ class DoubleCurveTool extends BaseDrawing {
         }
 
         // Create handles for all points
-        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
+        if (!renderOpts.skipHandles) {
+            this.createHandles(this.group, scales);
+        }
         
         return this.group;
     }

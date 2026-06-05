@@ -223,9 +223,10 @@ class BaseDrawing {
     _shouldCreateHandles(opts = {}) {
         if (opts.skipHandles) return false;
         const mgr = this.chart && this.chart.drawingManager;
-        if (mgr && mgr._skipHandleSetup) return false;
-        if (mgr && typeof mgr._isLiveHandleEditing === 'function' && mgr._isLiveHandleEditing()
-            && mgr.resizingDrawing === this) {
+        // In-place patch resize (trendline, ray, …): handles move via updateHandlePositions.
+        if (mgr && mgr.isResizing && mgr.resizingDrawing === this
+            && typeof mgr._supportsLiveHandleGeometryPatch === 'function'
+            && mgr._supportsLiveHandleGeometryPatch(this)) {
             return false;
         }
         return true;

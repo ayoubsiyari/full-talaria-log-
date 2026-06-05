@@ -475,7 +475,9 @@ class DrawingToolsManager {
                         && stillTracked.patchLiveHandleResize(scales, this.resizingPointIndex)) {
                         return;
                     }
+                    this._skipHandleSetup = true;
                     this.renderDrawing(stillTracked, this._getFullHandleEditRenderOpts(stillTracked));
+                    this._skipHandleSetup = false;
                 }
             } catch (_) { /* ignore */ }
             return;
@@ -3845,7 +3847,28 @@ class DrawingToolsManager {
             );
         }
         this._syncHorizontalAnchorToolPointY(resizeDrawing);
-        this.scheduleRenderDrawing(resizeDrawing);
+
+        const scales = {
+            xScale: this.chart.xScale,
+            yScale: this.chart.yScale,
+            chart: this.chart
+        };
+        if (this._supportsLiveHandleGeometryPatch(resizeDrawing)
+            && typeof resizeDrawing.patchLiveHandleResize === 'function'
+            && resizeDrawing.patchLiveHandleResize(scales, this.resizingPointIndex)) {
+            // Simple line tools: geometry + handles patched in place (no SVG rebuild).
+        } else {
+            // Path, polyline, curve, etc.: full live re-render each frame (f619ece pattern).
+            this._skipHandleSetup = true;
+            const renderOpts = this._needsFullRenderDuringHandleEdit(resizeDrawing)
+                ? this._getFullHandleEditRenderOpts(resizeDrawing)
+                : { skipInteraction: true, liveRender: true, skipTimestampSync: true };
+            this.renderDrawing(resizeDrawing, renderOpts);
+            this._skipHandleSetup = false;
+            if (resizeDrawing.selected && typeof resizeDrawing.showAxisHighlights === 'function') {
+                resizeDrawing.showAxisHighlights();
+            }
+        }
         this._broadcastLiveEditUpdate(resizeDrawing);
     }
 
@@ -7632,8 +7655,15 @@ class DrawingToolsManager {
         }
         // Bar snap runs once on endCustomHandleDrag — not each frame (avoids "stuck" edit).
 
-        // Always re-render during drag
-        this.scheduleRenderDrawing(drawing);
+        // Always re-render during drag (f619ece: synchronous full render for bezier/path tools).
+        this._skipHandleSetup = true;
+        this.renderDrawing(
+            drawing,
+            this._needsFullRenderDuringHandleEdit(drawing)
+                ? this._getFullHandleEditRenderOpts(drawing)
+                : { skipInteraction: true, liveRender: true, skipTimestampSync: true }
+        );
+        this._skipHandleSetup = false;
         this._broadcastLiveEditUpdate(drawing);
         
         // Dispatch event to sync UI with drawing style changes (e.g., font size during text resize)

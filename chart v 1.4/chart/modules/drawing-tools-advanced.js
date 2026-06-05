@@ -3966,19 +3966,17 @@ class PathTool extends BaseDrawing {
         }
 
         // Draw resize handles (only visible when selected)
-        if (this._shouldCreateHandles(renderOpts)) {
+        if (!renderOpts.skipHandles) {
             this.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
             this.points.forEach((point, i) => {
-            const x = scales.chart && scales.chart.dataIndexToPixel ? 
+            const x = scales.chart && scales.chart.dataIndexToPixel ?
                 scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
             const y = scales.yScale(point.y);
-            
-            // Create handle group
+
             const handleGroup = this.group.append('g')
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', i);
-            
-            // Draw invisible larger hit area for easier clicking
+
             handleGroup.append('circle')
                 .attr('cx', x)
                 .attr('cy', y)
@@ -3988,8 +3986,7 @@ class PathTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('cursor', 'nwse-resize')
                 .style('pointer-events', this.selected ? 'all' : 'none');
-            
-            // Draw visible point circle on top (matches other tools' handle style)
+
             handleGroup.append('circle')
                 .attr('cx', x)
                 .attr('cy', y)
@@ -4001,7 +3998,7 @@ class PathTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
                 .style('opacity', (this.selected || isPreview) ? 1 : 0);
-            });
+        });
         }
 
         return this.group;
@@ -4227,19 +4224,17 @@ class PolylineTool extends BaseDrawing {
         }
 
         // Draw resize handles (only visible when selected)
-        if (this._shouldCreateHandles(renderOpts)) {
+        if (!renderOpts.skipHandles) {
             this.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group').remove();
             this.points.forEach((point, i) => {
-            const x = scales.chart && scales.chart.dataIndexToPixel ? 
+            const x = scales.chart && scales.chart.dataIndexToPixel ?
                 scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
             const y = scales.yScale(point.y);
-            
-            // Create handle group
+
             const handleGroup = this.group.append('g')
                 .attr('class', 'resize-handle-group')
                 .attr('data-point-index', i);
-            
-            // Draw invisible larger hit area for easier clicking
+
             handleGroup.append('circle')
                 .attr('cx', x)
                 .attr('cy', y)
@@ -4249,8 +4244,7 @@ class PolylineTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('cursor', 'nwse-resize')
                 .style('pointer-events', this.selected ? 'all' : 'none');
-            
-            // Draw visible point circle on top (matches other tools' handle style)
+
             handleGroup.append('circle')
                 .attr('cx', x)
                 .attr('cy', y)
@@ -4262,7 +4256,7 @@ class PolylineTool extends BaseDrawing {
                 .attr('data-point-index', i)
                 .style('pointer-events', 'none')
                 .style('opacity', (this.selected || isPreview) ? 1 : 0);
-            });
+        });
         }
 
         return this.group;
