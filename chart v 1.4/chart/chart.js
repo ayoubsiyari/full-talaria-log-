@@ -1843,6 +1843,17 @@ class Chart {
                         this._serverCursors.hasMoreRight = true;
                     }
                 }
+                if (this.isBacktestMode) {
+                    if (!this._serverCursors) this._serverCursors = {};
+                    this._serverCursors.hasMoreLeft = true;
+                    if (sessionStartTs != null && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                        const firstT = Number(this.rawData[0]?.t);
+                        const masterMs = this.parseTimeframe(masterTf) || 60_000;
+                        if (Number.isFinite(firstT) && firstT <= sessionStartTs + masterMs * 2) {
+                            this._serverCursors.hasMoreLeft = false;
+                        }
+                    }
+                }
 
                 const resolvedTicker = this.resolveSessionTickerForFileId(session, fileId);
                 if (resolvedTicker) this.currentSymbol = resolvedTicker;
@@ -1875,6 +1886,9 @@ class Chart {
                         });
                     } else if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
                         replay.scheduleReplayFollowOnceLayoutSettled();
+                    }
+                    if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
+                        this._syncReplayPanCursorsFromFullRaw();
                     }
                 }
 
@@ -2501,12 +2515,40 @@ class Chart {
         if (!this._serverCursors) this._serverCursors = {};
         this._serverCursors.firstTs = String(replay.fullRawData[0].t);
         this._serverCursors.lastTs = String(replay.fullRawData[replay.fullRawData.length - 1].t);
+        if (this.isBacktestMode && this._backtestReplayHasUnloadHistoryLeft()) {
+            this._serverCursors.hasMoreLeft = true;
+        }
         // Only clamp forward when the playhead (not just the buffer tail) has reached session end.
         if (this.isBacktestMode
             && typeof this._replayPlayheadReachedSessionEnd === 'function'
             && this._replayPlayheadReachedSessionEnd()) {
             this._serverCursors.hasMoreRight = false;
         }
+    }
+
+    /**
+     * True when replay fullRawData still has session history to the left of the first loaded bar.
+     * Playhead-centered iframe loads often report hasMoreLeft=false even mid-session.
+     */
+    _backtestReplayHasUnloadHistoryLeft() {
+        if (!this.isBacktestMode) return false;
+        const replay = this.replaySystem;
+        if (!replay?.isActive || !Array.isArray(replay.fullRawData) || !replay.fullRawData.length) {
+            return false;
+        }
+        const session = this.backtestingSession || {};
+        let sessionStartTs = null;
+        try {
+            const raw = session.startDate || session.start_date;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (Number.isFinite(t)) sessionStartTs = t;
+            }
+        } catch (_e) { /* ignore */ }
+        if (!Number.isFinite(sessionStartTs)) return true;
+        const stepMs = this._getNativeRawStepMs() || 60000;
+        const firstT = Number(replay.fullRawData[0]?.t);
+        return Number.isFinite(firstT) && firstT > sessionStartTs + stepMs * 2;
     }
 
     _smartPayloadFromBars(barsPayload) {
@@ -2553,7 +2595,7 @@ class Chart {
             return Number.isFinite(t) ? Math.floor(t) : null;
         })();
         const tfMs = this.parseTimeframe(replayRawTf) || 60_000;
-        const contextMs = 500 * tfMs;
+        let contextMs = 500 * tfMs;
         let forwardMs = 2500 * tfMs;
         try {
             const isMc = (typeof document !== 'undefined'
@@ -2564,6 +2606,8 @@ class Chart {
                 // Multichart: larger forward slice so play after TF changes does not
                 // immediately stall at the loaded window edge on every panel.
                 forwardMs = 6000 * tfMs;
+                // Wider backward preview on first load (~31h of 1m) without a full-session fetch.
+                contextMs = 1880 * tfMs;
             }
         } catch (_mc) { /* ignore */ }
         let fromMs;
@@ -15570,7 +15614,11 @@ class Chart {
         const tf = replayRawTf || this.currentTimeframe || '1m';
         
         // Check if there's more data in this direction
-        if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) return false;
+        if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) {
+            if (!(this.isBacktestMode && this._backtestReplayHasUnloadHistoryLeft())) {
+                return false;
+            }
+        }
         if (!force && direction === 'forward' && !this._serverCursors.hasMoreRight) return false;
 
         // Respect configured backtesting bounds — compare bar period END to inclusive session end.
@@ -15707,6 +15755,9 @@ class Chart {
                     if (typeof result.has_more_left === 'boolean') {
                         this._serverCursors.hasMoreLeft = result.has_more_left;
                     } else if (this.isBacktestMode) {
+                        this._serverCursors.hasMoreLeft = true;
+                    }
+                    if (this.isBacktestMode && this._backtestReplayHasUnloadHistoryLeft()) {
                         this._serverCursors.hasMoreLeft = true;
                     }
                 } else {
@@ -17159,7 +17210,10 @@ class Chart {
     /** True when replay viewport is near the left edge of loaded bars (or showing empty gap). */
     _needsReplayHistoryLoadLeft() {
         if (!this.replaySystem?.isActive || !this.data?.length) return false;
-        if (this._serverCursors && this._serverCursors.hasMoreLeft === false) return false;
+        if (this._serverCursors && this._serverCursors.hasMoreLeft === false
+            && !this._backtestReplayHasUnloadHistoryLeft()) {
+            return false;
+        }
         const spacing = this.getCandleSpacing();
         if (!Number.isFinite(spacing) || spacing <= 0) return false;
         const m = this.margin || { l: 60, r: 60 };
