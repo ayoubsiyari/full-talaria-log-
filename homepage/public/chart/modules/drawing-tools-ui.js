@@ -5761,7 +5761,7 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-        const noCoordinatesTabTypes = ['text', 'polyline', 'path', 'curve', 'double-curve', 'arc', 'ellipse', 'brush', 'highlighter', 'flat-top-bottom', 'disjoint-channel'];
+        const noCoordinatesTabTypes = ['text', 'polyline', 'path', 'double-curve', 'arc', 'ellipse', 'brush', 'highlighter', 'flat-top-bottom', 'disjoint-channel'];
 
         const hasCoordinatesTab = !noCoordinatesTabTypes.includes(drawing.type)
 
@@ -17518,21 +17518,22 @@ body.light-mode .template-save-dialog .dialog-title {
 
 
 
-    const pointsToShow = drawing.points.length >= 2
-
-        ? [
-
-            { label: 'Point 1', index: 0 },
-
-            { label: 'Point 2', index: 1 }
-
-        ]
-
-        : [
-
-            { label: 'Point 1', index: 0 }
-
-        ];
+    const pointsToShow = (() => {
+        if (drawing.type === 'curve' && drawing.points.length >= 3) {
+            return [
+                { label: 'Start', index: 0 },
+                { label: 'Control', index: 1 },
+                { label: 'End', index: 2 },
+            ];
+        }
+        if (drawing.points.length >= 2) {
+            return [
+                { label: 'Point 1', index: 0 },
+                { label: 'Point 2', index: 1 },
+            ];
+        }
+        return [{ label: 'Point 1', index: 0 }];
+    })();
 
 
 
@@ -17626,11 +17627,11 @@ body.light-mode .template-save-dialog .dialog-title {
 
         label.className = 'tv-coords-label';
 
-        label.textContent = (showPrice && showBarIndex)
-
+        label.textContent = pt.label
+            ? pt.label
+            : ((showPrice && showBarIndex)
             ? `#${pt.index + 1} (price, bar)`
-
-            : (showPrice ? `#${pt.index + 1} (price)` : `#${pt.index + 1} (bar)`);
+            : (showPrice ? `#${pt.index + 1} (price)` : `#${pt.index + 1} (bar)`));
 
 
 
