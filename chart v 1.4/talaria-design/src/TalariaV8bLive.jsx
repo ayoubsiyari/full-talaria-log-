@@ -23491,7 +23491,8 @@ const TalariaV8bLive = () => {
                 {section.rows && section.rows.map((row, ri) => renderPlotRow(row, ri, section))}
                 {section.levelRows && section.levelRows.map((row, ri) => renderLevelRow(row, ri, section))}
               </div>
-            ))}
+              );
+            })}
             {(layout.footers || []).map((f) => {
               if (f.type !== "checkbox") return null;
               return (
