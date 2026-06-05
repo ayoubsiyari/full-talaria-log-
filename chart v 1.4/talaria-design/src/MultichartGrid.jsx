@@ -1988,6 +1988,14 @@ export default function MultichartGrid({
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
+                            // Snap every panel to the parent's EXACT candle at
+                            // the instant play begins, so all charts start from
+                            // the identical bar (no panel one frame behind),
+                            // THEN start their local loops at the same speed.
+                            // After this, every parent candle advance fires a
+                            // replayTick that re-forces the seek, so the panels
+                            // move candle-for-candle with A — like one chart.
+                            forceAllPanelsToTimestamp(Number(this.replayTimestamp));
                             broadcastToIframes("replayPlay", { speed, mode });
                         } catch (_) {}
                         return result;
