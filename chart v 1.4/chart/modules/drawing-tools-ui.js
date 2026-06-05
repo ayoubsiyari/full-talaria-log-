@@ -6679,9 +6679,9 @@ body.light-mode .template-save-dialog .dialog-title {
 
         
 
-        // For polyline and shapes: show background color picker without checkbox
+        // For shapes and arrow markers: show background color picker without checkbox
 
-        if (isPolyline || isShapeTool || isArrowMarkerType) {
+        if (isShapeTool || isArrowMarkerType) {
 
             const bgRow = document.createElement('div');
 

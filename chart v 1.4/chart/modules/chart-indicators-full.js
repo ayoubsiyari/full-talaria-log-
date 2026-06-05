@@ -481,6 +481,18 @@
         return tokens;
     }
 
+    function buildVortexLegendTokens(plusVal, minusVal, style) {
+        const st = style || {};
+        const tokens = [];
+        if (st.showPlus !== false && plusVal !== null && Number.isFinite(plusVal)) {
+            tokens.push({ text: '+' + plusVal.toFixed(3), color: st.plusColor || '#00e676' });
+        }
+        if (st.showMinus !== false && minusVal !== null && Number.isFinite(minusVal)) {
+            tokens.push({ text: '-' + minusVal.toFixed(3), color: st.minusColor || '#f23645' });
+        }
+        return tokens;
+    }
+
     function applySupertrendStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
@@ -1506,17 +1518,18 @@
         indicator.params.period = params.period != null ? params.period : 14;
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
+        const plusS = params.plusLineStyle || legacyS;
         const minusS = params.minusLineStyle || legacyS;
         indicator.style.showPlus = params.showPlus !== false;
         indicator.style.plusColor = params.plusColor || '#00e676';
         indicator.style.plusOpacity = params.plusOpacity != null ? Number(params.plusOpacity) : 100;
-        indicator.style.plusLineWidth = legacyW;
+        indicator.style.plusLineWidth = params.plusLineWidth != null ? params.plusLineWidth : legacyW;
         indicator.style.showMinus = params.showMinus !== false;
         indicator.style.minusColor = params.minusColor || '#f23645';
         indicator.style.minusOpacity = params.minusOpacity != null ? Number(params.minusOpacity) : 100;
         indicator.style.minusLineWidth = params.minusLineWidth != null ? params.minusLineWidth : legacyW;
         applyPlotDashFieldsFromParams(indicator.style, params, [
-            ['plusLineStyle', 'plusLineDashStyle', 'Line'],
+            ['plusLineStyle', 'plusLineDashStyle', plusS],
             ['minusLineStyle', 'minusLineDashStyle', minusS]
         ]);
         indicator.overlay = false;
@@ -8222,6 +8235,7 @@ Chart.prototype._pickIndicatorPlotValue = function(indicator, barIdx) {
     if (type === 'macd' && store.macd) return this._pickFiniteSeriesValue(store.macd, barIdx);
     if ((type === 'stoch' || type === 'stochastic') && store.k) return this._pickFiniteSeriesValue(store.k, barIdx);
     if (type === 'aroon' && store.up) return this._pickFiniteSeriesValue(store.up, barIdx);
+    if (type === 'vortex' && store.viPlus) return this._pickFiniteSeriesValue(store.viPlus, barIdx);
     if (Array.isArray(store)) return this._pickFiniteSeriesValue(store, barIdx);
     const keys = ['cci', 'k', 'fast', 'upper', 'middle', 'lower'];
     for (let ki = 0; ki < keys.length; ki++) {
@@ -8397,6 +8411,18 @@ Chart.prototype._formatIndicatorValueAtBar = function(indicator, barIdx) {
         const upV = this._pickFiniteSeriesValue(store.up, barIdx);
         const downV = this._pickFiniteSeriesValue(store.down, barIdx);
         const tokens = buildAroonLegendTokens(upV, downV, st);
+        if (tokens.length) {
+            return {
+                text: tokens.map(function(t) { return t.text; }).join(' '),
+                color: tokens[0].color,
+                tokens: tokens
+            };
+        }
+    }
+    if (type === 'vortex' && store.viPlus && store.viMinus) {
+        const plusV = this._pickFiniteSeriesValue(store.viPlus, barIdx);
+        const minusV = this._pickFiniteSeriesValue(store.viMinus, barIdx);
+        const tokens = buildVortexLegendTokens(plusV, minusV, st);
         if (tokens.length) {
             return {
                 text: tokens.map(function(t) { return t.text; }).join(' '),
@@ -10865,18 +10891,49 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (lastMinus === null && b[i] !== null && !isNaN(b[i])) lastMinus = b[i];
             if (lastPlus !== null && lastMinus !== null) break;
         }
-        indicator._displayColor = plusColor;
-        const parts = [];
-        if (lastPlus !== null) parts.push('+' + lastPlus.toFixed(3));
-        if (lastMinus !== null) parts.push('-' + lastMinus.toFixed(3));
-        indicator._displayLabel = parts.length ? parts.join(' ') : 'VI';
-        if (lastPlus !== null && Number.isFinite(lastPlus)) {
-            const y = scaleY(lastPlus);
-            indicator._axisLabelY = y;
-            indicator._axisLabelText = '+' + lastPlus.toFixed(3);
-            indicator._axisLabelColor = plusColor;
-            indicator._axisLabelTags = [{ y: y, text: '+' + lastPlus.toFixed(3), color: plusColor }];
+
+        const legendTokens = buildVortexLegendTokens(lastPlus, lastMinus, style);
+        const vortexTags = [];
+        if (lastPlus !== null && Number.isFinite(lastPlus) && style.showPlus !== false) {
+            const yPlus = scaleY(lastPlus);
+            if (Number.isFinite(yPlus)) {
+                vortexTags.push({ y: yPlus, text: '+' + lastPlus.toFixed(3), color: plusColor });
+            }
         }
+        if (lastMinus !== null && Number.isFinite(lastMinus) && style.showMinus !== false) {
+            const yMinus = scaleY(lastMinus);
+            if (Number.isFinite(yMinus)) {
+                vortexTags.push({ y: yMinus, text: '-' + lastMinus.toFixed(3), color: minusColor });
+            }
+        }
+        vortexTags.sort(function(a, b) { return a.y - b.y; });
+        for (let ti = 1; ti < vortexTags.length; ti++) {
+            if (vortexTags[ti].y - vortexTags[ti - 1].y < 18) vortexTags[ti].y = vortexTags[ti - 1].y + 18;
+        }
+        for (let ti = vortexTags.length - 2; ti >= 0; ti--) {
+            if (vortexTags[ti + 1].y > panelBottom - 2) {
+                vortexTags[ti + 1].y = panelBottom - 2;
+                if (vortexTags[ti + 1].y - vortexTags[ti].y < 18) vortexTags[ti].y = vortexTags[ti + 1].y - 18;
+            }
+            if (vortexTags[ti].y < panelTop + 2) vortexTags[ti].y = panelTop + 2;
+        }
+        indicator._axisLabelTags = vortexTags;
+        if (vortexTags.length > 0) {
+            indicator._axisLabelY = vortexTags[0].y;
+            indicator._axisLabelText = vortexTags[0].text;
+            indicator._axisLabelColor = vortexTags[0].color;
+        } else {
+            indicator._axisLabelY = null;
+            indicator._axisLabelText = '';
+            indicator._axisLabelColor = '';
+        }
+        indicator._displayColor = plusColor;
+        indicator._legendValueTags = legendTokens.map(function(t) {
+            return { text: t.text, color: t.color };
+        });
+        indicator._displayLabel = legendTokens.length
+            ? legendTokens.map(function(t) { return t.text; }).join(' ')
+            : 'VI';
     };
 
     Chart.prototype._renderElderRayPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {

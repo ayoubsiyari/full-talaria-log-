@@ -2144,7 +2144,7 @@ const TalariaV8b = () => {
                              transition:"border-color 0.12s,box-shadow 0.12s" }}/>
                 );
                 const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","brush"].includes(tlSubTool.icon);
-                const hasBg = ["polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
+                const hasBg = ["triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
                 const isRegCh = tlSubTool.icon === "regressionCh";
@@ -6841,7 +6841,7 @@ const TalariaV8b = () => {
               </div>}
             </TlBtn>}
             {/* btn 2b: bg color — for non-rect, non-pattern applicable tools */}
-            {["polyline","triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
+            {["triangle","arcShape","arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <TlBtn id="tl-bgcol" isAct={colorPicker==="tlBgColor"}
               onClick={e=>{e.stopPropagation();if(colorPicker==="tlBgColor"){setColorPicker(null);cpBarAnchorRef.current=null;}else{if(tlBarDrop)closeTlBarDrop();if(tlSettOpen)closeTlSett();const r=e.currentTarget.getBoundingClientRect();const parsed=parseColor(tlStyle.bgColor);const hsv=rgbToHsv(parsed.r,parsed.g,parsed.b);setCpH(hsv.h);setCpS(hsv.s);setCpV(hsv.v);setCpA(parsed.a);setCpHex(toHex2(parsed.r)+toHex2(parsed.g)+toHex2(parsed.b));const pos=posFromRect(r,cpW);setCpPos(pos);cpBarAnchorRef.current={barX:tlBarPos.x,barY:tlBarPos.y,cpTop:pos.top,cpLeft:pos.left};setColorPicker("tlBgColor");}}}>
               {(_,isAct,col)=><svg width={16} height={16} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={col} strokeWidth="2"/><rect x="6" y="6" width="12" height="12" rx="1" fill={tlStyle.bgColor}/></svg>}
             </TlBtn>}

@@ -832,12 +832,14 @@ function vortexInputParams() {
     ];
 }
 
-/** Vortex Style — VI+ (color) + VI- (color, style, thickness); opacity in color picker. */
+/** Vortex Style — VI+ and VI- lines (color, style, thickness); opacity in color picker. */
 function vortexStyleParams() {
     return [
         { id: 'showPlus', label: 'VI+ line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'plusColor', label: 'VI+ color', type: 'color', default: '#00e676', tab: 'style' },
         { id: 'plusOpacity', label: 'VI+ opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'plusLineStyle', label: 'VI+ style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'plusLineWidth', label: 'VI+ thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
         { id: 'showMinus', label: 'VI- line', type: 'checkbox', default: true, tab: 'style' },
         { id: 'minusColor', label: 'VI- color', type: 'color', default: '#f23645', tab: 'style' },
         { id: 'minusOpacity', label: 'VI- opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
@@ -4666,18 +4668,13 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'vortex') {
         return {
-            sections: [
-                {
-                    title: 'VI+',
-                    bandStyleHeader: true,
-                    rows: [v9BandStyleRow('VI+', 'plusColor', 'plusOpacity', null, null, 'showPlus')]
-                },
-                {
-                    title: 'VI-',
-                    bandStyleHeader: true,
-                    rows: [v9BandStyleRow('VI-', 'minusColor', 'minusOpacity', 'minusLineStyle', 'minusLineWidth', 'showMinus')]
-                }
-            ],
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('VI+', 'plusColor', 'plusLineStyle', 'plusLineWidth', 'showPlus'),
+                    v9PlotRow('VI-', 'minusColor', 'minusLineStyle', 'minusLineWidth', 'showMinus')
+                ]
+            }],
             footers: footers
         };
     }
