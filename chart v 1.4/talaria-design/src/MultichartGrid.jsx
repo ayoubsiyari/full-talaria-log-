@@ -585,36 +585,36 @@ function buildIframeSrc({ panelId, fileId, tf, sessionId, mode }) {
     if (tf)        params.set("tf",        String(tf));
     if (sessionId) params.set("sessionId", String(sessionId));
     //
-    // Forward `mode=backtest|propfirm` so chart.js's checkBacktestingMode
-    // runs the canonical backtest pipeline inside the iframe. Without
-    // it, the iframe loads via the wrong code path:
+    // DELIBERATELY DO NOT forward `mode=backtest|propfirm` into panel
+    // iframes.
     //
-    //   • loadFileData uses _buildSmartWindowParams(fileId, '1m', session)
-    //     which builds {start_ts, end_ts} bounded to the session window
-    //     → fetches in-session 1m bars only.
-    //   • autoLoadBacktestingData uses _fetchSmartWindow(fileId, '1d', …,
-    //     'end', {endTs: sessionEndMs}, {skipSessionDates:true}) → fetches
-    //     up to 100k 1D bars ENDING at session end (year of context).
+    // Forwarding mode makes chart.js's constructor call
+    // `checkBacktestingMode` → `autoLoadBacktestingData` INSIDE every
+    // iframe. That pipeline is auth/session/redirect/timing sensitive,
+    // and when 3–4 iframes run it at once it frequently stalls before
+    // `window.chart` is usable — so the bridge never installs, the
+    // manager never sees `bridge-ready`, and panels stick on
+    // "Loading …" forever (this is the exact symptom the dist-v9 shim
+    // comment and `readUrlChartMode` both warn about).
     //
-    // The two paths fetch DIFFERENT slices, so panels visibly load
-    // different date ranges. Forwarding mode=backtest lets each iframe
-    // hit the same server endpoint as the parent.
+    // Without `mode`, chart.js does NO automatic load, and `embed-bridge`
+    // takes its deterministic panel path instead:
+    //   1. mirrors `window.parent.chart.backtestingSession` onto the
+    //      iframe's chart BEFORE loading (see embed-bridge.js
+    //      "mirrored parent backtestingSession"),
+    //   2. calls `chart.loadFileData(fileId)` once — which, for a
+    //      backtest-style session, builds the SAME end-anchored,
+    //      skipSessionDates smart-window the parent used, so the data
+    //      window matches.
+    // The host's visible range + replay position are then pushed to the
+    // panel via `_initialSyncToHost` and the replay command stream
+    // (`replayEnter` / `replayTick`), so any residual window difference
+    // is realigned immediately.
     //
-    // The visual side-effects (splash overlay, hidden #root) are
-    // suppressed by the dist-v9 multichart shim:
-    //   <style html.multichart-embed #backtestingLoader { display: none }>
-    //   <style html.multichart-embed #root { visibility: visible }>
-    // and the shim head-script strips the bt-preload class as soon as
-    // it sees ?multichart=1.
-    //
-    // The duplicated orderManager / propfirm-tracker setup happens but
-    // is harmless — every chrome element it touches is hidden by the
-    // shim's [data-v9-chrome="1"] rule, so the user sees only the
-    // price chart canvas + axes inside each panel.
-    if (mode === "backtest" || mode === "propfirm") {
-        params.set("mode", mode);
-    }
-    // BUT — we DO forward `sessionId` so the iframe's chart engine builds
+    // (The `mode` argument is still accepted for signature stability and
+    // possible future use, but is intentionally not written to the URL.)
+    void mode;
+    // We DO forward `sessionId` so the iframe's chart engine builds
     // the SAME drawings storage key as the parent (chart.js:2181 →
     // `chart_drawings_s<sessionId>_<fileId>` when a session is active).
     // Without sessionId, the iframe looks under `chart_drawings_<fileId>`
@@ -688,6 +688,47 @@ const LOADING_STYLE_CSS = `
     letter-spacing: 0.18em; text-transform: uppercase;
     color: rgba(255,255,255,0.32);
     font-family: 'Exo 2', system-ui, sans-serif;
+}
+.multichart-error-overlay {
+    gap: 8px;
+    padding: 16px;
+    text-align: center;
+}
+.multichart-error-overlay::after { display: none; }
+.multichart-error-title {
+    position: relative; z-index: 1;
+    font-size: 13px; font-weight: 700;
+    color: #ff7a85;
+    font-family: 'Exo 2', system-ui, sans-serif;
+}
+.multichart-error-reason {
+    position: relative; z-index: 1;
+    max-width: 90%;
+    font-size: 11px; line-height: 1.45;
+    color: rgba(255,255,255,0.55);
+    font-family: 'JetBrains Mono', monospace;
+}
+.multichart-error-actions {
+    position: relative; z-index: 1;
+    display: flex; gap: 8px; margin-top: 6px;
+}
+.multichart-error-btn {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(140,160,255,0.35);
+    background: rgba(74,106,255,0.14);
+    color: #c8d4ff;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: 'Exo 2', system-ui, sans-serif;
+    transition: background 0.15s, border-color 0.15s;
+}
+.multichart-error-btn:hover {
+    background: rgba(74,106,255,0.28);
+    border-color: rgba(140,160,255,0.6);
 }
 `;
 
@@ -931,6 +972,11 @@ export default function MultichartGrid({
     // drawings, indicators, replay state, etc.) since the user first
     // opened /chart/. No loading overlay needed.
     const [readyPanels, setReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
+    // panelId -> { reason, src }. Set by the manager's onChartBootFailed when an
+    // iframe never reaches `bridge-ready` (boot timeout) or its iframe errors.
+    // Drives a visible error overlay so a stuck panel no longer shows an
+    // endless "Loading …" spinner.
+    const [failedPanels, setFailedPanels] = useState(() => new Map());
 
     // Capture initial context in refs so the per-tile add closure always
     // uses the LATEST values when a new tile is added (e.g. user opens
@@ -1153,11 +1199,26 @@ export default function MultichartGrid({
                         try { fn(id, state); } catch (_) {}
                     }
                 },
+                onChartBootFailed: function (id, reason, src) {
+                    setFailedPanels((prev) => {
+                        const next = new Map(prev);
+                        next.set(id, { reason: reason || "boot failed", src: src || null });
+                        return next;
+                    });
+                },
                 onChartReady: function (id) {
                     setReadyPanels((prev) => {
                         if (prev.has(id)) return prev;
                         const next = new Set(prev);
                         next.add(id);
+                        return next;
+                    });
+                    // A panel that recovered after a prior boot failure clears
+                    // its error overlay here.
+                    setFailedPanels((prev) => {
+                        if (!prev.has(id)) return prev;
+                        const next = new Map(prev);
+                        next.delete(id);
                         return next;
                     });
                     // New iframe panels boot with default V9 settings; push the
@@ -1265,6 +1326,7 @@ export default function MultichartGrid({
             }
             setManagerReady(false);
             setReadyPanels(new Set());
+            setFailedPanels(new Map());
         };
         // Mount-once — never re-run.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1299,6 +1361,12 @@ export default function MultichartGrid({
                 setReadyPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
                     const next = new Set(prev);
+                    next.delete(existingId);
+                    return next;
+                });
+                setFailedPanels((prev) => {
+                    if (!prev.has(existingId)) return prev;
+                    const next = new Map(prev);
                     next.delete(existingId);
                     return next;
                 });
@@ -1346,6 +1414,12 @@ export default function MultichartGrid({
                     const m = managerRef.current;
                     if (!m || m !== mgr) return;
                     if (m.charts.has(tile.id)) return;
+                    setFailedPanels((prev) => {
+                        if (!prev.has(tile.id)) return prev;
+                        const next = new Map(prev);
+                        next.delete(tile.id);
+                        return next;
+                    });
                     m.addChart(cfg, cellEl);
                 } catch (e) {
                     console.error("[MultichartGrid] addChart failed for", tile.id, e);
@@ -3637,6 +3711,7 @@ export default function MultichartGrid({
                 // Host tile is always "ready" (it's the parent's already-loaded
                 // chart) — never show the loading overlay for it.
                 const isReady   = isHost || readyPanels.has(tile.id);
+                const failure   = isHost ? null : failedPanels.get(tile.id);
                 return (
                     <div
                         key={tile.id}
@@ -3688,12 +3763,65 @@ export default function MultichartGrid({
                              once `onChartReady(id)` adds id to readyPanels.
                              Skipped for the host cell — parent chart is
                              already loaded with full state. */}
-                        {!isReady && (
+                        {!isReady && !failure && (
                             <div className="multichart-loading-overlay" aria-hidden="true">
                                 <div className="multichart-loading-dots">
                                     <span/><span/><span/>
                                 </div>
                                 <div className="multichart-loading-label">Loading {tile.id}</div>
+                            </div>
+                        )}
+                        {!isReady && failure && (
+                            <div
+                                className="multichart-loading-overlay multichart-error-overlay"
+                                style={{ pointerEvents: "auto" }}
+                            >
+                                <div className="multichart-error-title">Panel {tile.id} failed to load</div>
+                                <div className="multichart-error-reason">{failure.reason}</div>
+                                <div className="multichart-error-actions">
+                                    <button
+                                        type="button"
+                                        className="multichart-error-btn"
+                                        onClick={() => {
+                                            const mgr = managerRef.current;
+                                            if (!mgr) return;
+                                            const cellEl = cellRefs.current[tile.id];
+                                            try { mgr.removeChart(tile.id); } catch (_) {}
+                                            setReadyPanels((prev) => {
+                                                if (!prev.has(tile.id)) return prev;
+                                                const n = new Set(prev); n.delete(tile.id); return n;
+                                            });
+                                            setFailedPanels((prev) => {
+                                                if (!prev.has(tile.id)) return prev;
+                                                const n = new Map(prev); n.delete(tile.id); return n;
+                                            });
+                                            const hostNt = readHostChartFileAndTf();
+                                            if (cellEl) {
+                                                try {
+                                                    mgr.addChart({
+                                                        id:        tile.id,
+                                                        tf:        (initialTimeframeRef.current || hostNt.tf || "1m"),
+                                                        fileId:    (initialFileIdRef.current || hostNt.fileId || null),
+                                                        sessionId: initialSessionIdRef.current || null,
+                                                        mode:      initialModeRef.current || readUrlChartMode(),
+                                                    }, cellEl);
+                                                } catch (_) {}
+                                            }
+                                        }}
+                                    >
+                                        Retry
+                                    </button>
+                                    {failure.src && (
+                                        <a
+                                            className="multichart-error-btn multichart-error-link"
+                                            href={failure.src}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            Open in new tab
+                                        </a>
+                                    )}
+                                </div>
                             </div>
                         )}
                         {/*

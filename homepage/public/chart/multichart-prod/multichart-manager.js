@@ -73,6 +73,13 @@
         this.onContextMenu = (typeof opts.onContextMenu === 'function')
             ? opts.onContextMenu
             : function () {};
+        // Fired with (panelId, reason) when an iframe panel fails to reach
+        // `bridge-ready` (boot timeout) or its iframe errors. Lets the React
+        // grid replace the endless "Loading …" overlay with a visible error
+        // state instead of leaving the user staring at a spinner forever.
+        this.onChartBootFailed = (typeof opts.onChartBootFailed === 'function')
+            ? opts.onChartBootFailed
+            : function () {};
         this.iframeSrcBuilder = (typeof opts.iframeSrcBuilder === 'function')
             ? opts.iframeSrcBuilder
             : null;
@@ -240,11 +247,15 @@
             setTimeout(function () {
                 const c = self.charts.get(cfg.id);
                 if (c && !c.ready) {
-                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but bridge never reported ready within '
-                        + BRIDGE_READY_TIMEOUT_MS + 'ms (chart.js init stalled or failed — open the iframe URL in a new tab to inspect its console)');
+                    const reason = 'bridge never reported ready within '
+                        + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's '
+                        + '(chart.js init stalled or failed)';
+                    self._log('error', 'TIMEOUT: ' + cfg.id + ' iframe loaded but '
+                        + reason + ' — open the iframe URL in a new tab to inspect its console: ' + frame.src);
                     const sm = overlay.querySelector('small');
                     if (sm) sm.textContent = 'iframe: LOADED — bridge: TIMEOUT (no ready after '
                         + Math.round(BRIDGE_READY_TIMEOUT_MS / 1000) + 's)';
+                    try { self.onChartBootFailed(cfg.id, reason, frame.src); } catch (_) {}
                 }
             }, BRIDGE_READY_TIMEOUT_MS);
         });
@@ -252,6 +263,7 @@
             self._log('error', 'iframe FAILED to load: ' + cfg.id + ' src=' + frame.src);
             const small = overlay.querySelector('small');
             if (small) small.textContent = 'iframe: LOAD FAILED';
+            try { self.onChartBootFailed(cfg.id, 'iframe failed to load', frame.src); } catch (_) {}
         });
         mountEl.appendChild(frame);
 
