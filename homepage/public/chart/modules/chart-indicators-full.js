@@ -2535,6 +2535,41 @@
         }
     }
 
+    function killzonesFindMidnightBarIndex(data, dayKey) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dayKey || ''));
+        if (!m || !data || !data.length) return -1;
+        const y = parseInt(m[1], 10);
+        const mo = parseInt(m[2], 10);
+        const d = parseInt(m[3], 10);
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        let targetMs = NaN;
+        if (tm && typeof tm.wallClockToUtcMillis === 'function') {
+            targetMs = tm.wallClockToUtcMillis(y, mo, d, 0, 0, 0, KILLZONES_TZ);
+        }
+        if (!Number.isFinite(targetMs)) return -1;
+        let idx = -1;
+        for (let i = 0; i < data.length; i++) {
+            if (!Number.isFinite(data[i].t)) continue;
+            if (data[i].t >= targetMs) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return -1;
+        let best = idx;
+        let bestDist = Infinity;
+        for (let j = Math.max(0, idx - 3); j <= Math.min(data.length - 1, idx + 3); j++) {
+            const w = killzonesBarWallClock(data[j].t);
+            if (w.dayKey !== dayKey) continue;
+            const dist = w.hours * 60 + w.minutes;
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = j;
+            }
+        }
+        return best;
+    }
+
     function killzonesParseSessionTime(timeStr) {
         if (!timeStr) return 0;
         const fn = typeof window !== 'undefined' ? window.__v9NormalizeIndicatorNumericString : null;
@@ -2603,23 +2638,13 @@
         
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
-        const nyMidnightByDay = Object.create(null);
+        const dayKeysInData = Object.create(null);
         
         for (let i = 0; i < data.length; i++) {
             const nyWall = killzonesBarWallClock(data[i].t);
             const nyTime = { hours: nyWall.hours, minutes: nyWall.minutes, decimal: nyWall.decimal };
-            
-            // One NY Open per NY calendar day — bar closest to 00:00 (not every dayKey edge transition).
-            if (params.showNYMidnight !== false && nyWall.dayKey && nyWall.dayKey !== '0') {
-                const prevMid = nyMidnightByDay[nyWall.dayKey];
-                if (!prevMid || nyWall.decimal < prevMid.decimal) {
-                    nyMidnightByDay[nyWall.dayKey] = {
-                        index: i,
-                        price: data[i].o,
-                        time: data[i].t,
-                        decimal: nyWall.decimal
-                    };
-                }
+            if (nyWall.dayKey && nyWall.dayKey !== '0') {
+                dayKeysInData[nyWall.dayKey] = true;
             }
             
             sessionOrder.forEach(function(key) {
@@ -2653,11 +2678,11 @@
         }
         
         if (params.showNYMidnight !== false) {
-            result.nyMidnight = Object.keys(nyMidnightByDay).sort().map(function (dk) {
-                const row = nyMidnightByDay[dk];
-                return { index: row.index, price: row.price, time: row.time };
-            });
-            // Guard: collapse spurious duplicates if day keys flicker within a few bars.
+            result.nyMidnight = Object.keys(dayKeysInData).sort().map(function (dk) {
+                const idx = killzonesFindMidnightBarIndex(data, dk);
+                if (idx < 0) return null;
+                return { index: idx, price: data[idx].o, time: data[idx].t };
+            }).filter(function (row) { return row != null; });
             const deduped = [];
             for (let mi = 0; mi < result.nyMidnight.length; mi++) {
                 const cur = result.nyMidnight[mi];
@@ -2676,7 +2701,7 @@
             result.boxes.push({...box});
         });
         
-        // NY Open horizontal line spans until the bar before the next NY day (not only to chart edge)
+        // Midnight open horizontal line spans until the bar before the next NY day (not only to chart edge)
         for (let j = 0; j < result.nyMidnight.length; j++) {
             const next = result.nyMidnight[j + 1];
             result.nyMidnight[j].endIndex = next ? next.index - 1 : data.length - 1;
@@ -10340,7 +10365,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
             ctx.setLineDash([]);
             ctx.globalAlpha = 1;
             
-            const priceText = 'NY Open ' + midnight.price.toFixed(prec);
+            const priceText = 'Midnight open ' + midnight.price.toFixed(prec);
             ctx.font = '600 11px Roboto, system-ui, sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'bottom';

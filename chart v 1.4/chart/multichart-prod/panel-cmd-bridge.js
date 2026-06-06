@@ -230,6 +230,24 @@
         rs.tickPathCacheBuilt = false;
     }
 
+    /** Seed iframe replay timestamp from parent tile A before pair fetch. */
+    function primeIframeReplayPlayheadFromParent(ch) {
+        if (!ch || !isMultichartIframePanel()) return null;
+        try {
+            var pc = global.parent && global.parent.chart;
+            var prs = pc && pc.replaySystem;
+            if (!prs || !prs.isActive) return null;
+            var ts = Number(prs.replayTimestamp);
+            if (!Number.isFinite(ts)) return null;
+            var rs = ch.replaySystem;
+            if (rs) rs.replayTimestamp = ts;
+            if (typeof pc.isBacktestMode === 'boolean') ch.isBacktestMode = pc.isBacktestMode;
+            return ts;
+        } catch (_) {
+            return null;
+        }
+    }
+
     function afterLoadFile(ch) {
         try { drainPendingReplay(); } catch (_d) {}
         reseedReplayFromChart(ch);
@@ -722,6 +740,7 @@
                     if (switchingPair || args.force) {
                         clearReplayBufferForPairSwitch(ch);
                     }
+                    primeIframeReplayPlayheadFromParent(ch);
                     ch._multichartPairLoadInFlight = true;
                     var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {

@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b245';
+const CHART_ENGINE_BUILD = '20260602b246';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1985,6 +1985,53 @@ class Chart {
         replay._fullRawDataMatchesTF = false;
         replay.tickPathCache = {};
         replay.tickPathCacheBuilt = false;
+        return true;
+    }
+
+    /**
+     * Parent tile A playhead (wall-clock replay time) for multichart iframe panels.
+     * @returns {number} ms timestamp, or NaN when unavailable
+     */
+    _readParentReplayTimestampForMultichart() {
+        try {
+            const isMce = typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed');
+            if (!isMce || !window.parent || window.parent === window) return NaN;
+            const pr = window.parent.chart?.replaySystem;
+            if (!pr?.isActive) return NaN;
+            const ts = Number(pr.replayTimestamp);
+            return Number.isFinite(ts) ? ts : NaN;
+        } catch (_e) {
+            return NaN;
+        }
+    }
+
+    /**
+     * Slice visible bars for an independent multichart panel at the shared replay time.
+     * @param {number} replayTs
+     * @returns {boolean}
+     */
+    _applyIndependentPanelReplaySlice(replayTs) {
+        if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) return false;
+        const ts = Number(replayTs);
+        if (!Number.isFinite(ts)) return false;
+        const replay = this.replaySystem;
+        let idx = 0;
+        if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
+            idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, ts);
+        } else {
+            for (let i = this._panelFullRawData.length - 1; i >= 0; i--) {
+                if (Number(this._panelFullRawData[i]?.t) <= ts) {
+                    idx = i;
+                    break;
+                }
+            }
+        }
+        const sliced = this._panelFullRawData.slice(0, idx + 1);
+        if (!sliced.length) return false;
+        this.rawData = sliced;
+        this.data = this.resampleData(sliced, this.currentTimeframe);
         return true;
     }
 
@@ -4164,14 +4211,20 @@ class Chart {
         let prevSymbol = this.currentSymbol;
 
         try {
-            // If replay is active, preserve the current wall-clock replay time and visible window.
-            // This prevents switching pairs from jumping to "latest" on the right edge.
+            // Preserve wall-clock replay time when switching pairs. Multichart iframe panels
+            // must anchor fetches to parent tile A's playhead even if local replay is not active yet.
             const replay = this.replaySystem;
             const replayActiveBefore = !!(replay && replay.isActive);
-        const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
-            const replayTargetTs = replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))
-                ? Number(replay.replayTimestamp)
-                : null;
+            const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
+            const parentReplayTs = this._readParentReplayTimestampForMultichart();
+            let replayTargetTs = null;
+            if (Number.isFinite(parentReplayTs)) {
+                replayTargetTs = parentReplayTs;
+                if (replay) replay.replayTimestamp = parentReplayTs;
+            } else if (replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))) {
+                replayTargetTs = Number(replay.replayTimestamp);
+            }
+            const fetchReplayAnchored = Number.isFinite(replayTargetTs);
 
             const symbolDisplay = document.getElementById('symbolDisplay');
 
@@ -4208,7 +4261,7 @@ class Chart {
                     return Number.isFinite(t) ? Math.floor(t) : null;
                 })();
                 let endAnchor = sessionEndMs;
-                if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                if (fetchReplayAnchored) {
                     endAnchor = Math.floor(replayTargetTs);
                 }
                 backtestHistoryRange = endAnchor != null ? { endTs: endAnchor } : null;
@@ -4223,9 +4276,8 @@ class Chart {
             } else {
                 requestTimeframe = this.currentTimeframe || '1m';
                 params = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
-                if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
-                    // Non-backtest replay pair switch: keep prior behavior — fetch a window
-                    // centered around the replay time so there's data to continue replay on.
+                if (fetchReplayAnchored) {
+                    // Non-backtest replay pair switch: fetch history leading up to the playhead.
                     const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
                     const contextBars = 4000;
                     const contextMs = contextBars * 60 * 1000;
@@ -4235,7 +4287,7 @@ class Chart {
             }
 
             let result = this._tryTakeSmartPrefetch(targetFileId, params);
-            if (!result) {
+            if (!result && !fetchReplayAnchored) {
                 const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
                 result = this._tryTakeSmartPrefetch(targetFileId, prefetchParams);
             }
@@ -4261,7 +4313,7 @@ class Chart {
                     }
                 } else {
                     let windowRange = null;
-                    if (replayActiveBefore && Number.isFinite(replayTargetTs)) {
+                    if (fetchReplayAnchored) {
                         const sessionStartMs = session?.startDate ? new Date(session.startDate).getTime() : 0;
                         const contextBars = 4000;
                         const contextMs = contextBars * 60 * 1000;
@@ -4354,6 +4406,10 @@ class Chart {
                 }
             } catch (_mcePfrd) { /* ignore */ }
 
+            if (fetchReplayAnchored && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
+                this._applyIndependentPanelReplaySlice(replayTargetTs);
+            }
+
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
 
             this.updateChartTitle(this.currentSymbol);
@@ -4422,41 +4478,29 @@ class Chart {
                 }
             }
 
-            // Multichart iframe: loadFileData can finish on a new pair before this tile's
-            // replaySystem was ever activated (replayEnter races chartDataLoaded, or the
-            // tile stayed on a placeholder symbol). Parent is already in replay — bootstrap
-            // this chart from the parent's playhead so placeAdvancedOrder's replay guard
-            // passes and orders work on the independently loaded instrument.
-            if (!replayActiveBefore) {
+            // Multichart iframe: pair switch can finish before local replay was entered.
+            // Parent is already in replay — bootstrap from the shared playhead captured above.
+            if (!replayActiveBefore && fetchReplayAnchored && replay && !replay.isActive
+                && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 try {
                     const isMce = typeof document !== 'undefined'
                         && document.documentElement
                         && document.documentElement.classList.contains('multichart-embed');
-                    let parentReplayTs = NaN;
-                    if (isMce && replay && !replay.isActive
-                        && window.parent && window.parent !== window) {
-                        try {
-                            const pch = window.parent.chart;
-                            const pr = pch && pch.replaySystem;
-                            if (pr && pr.isActive && Number.isFinite(Number(pr.replayTimestamp))) {
-                                parentReplayTs = Number(pr.replayTimestamp);
-                            }
-                        } catch (_p) { /* ignore */ }
-                    }
-                    if (isMce && replay && !replay.isActive
-                        && Number.isFinite(parentReplayTs)
-                        && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    if (isMce) {
                         if (typeof replay.enterReplayMode === 'function') {
                             replay.enterReplayMode({ suppressInitialUpdateChartData: true });
                         }
-                        if (replay.isActive && typeof replay.goToReplayTimestamp === 'function') {
-                            replay.goToReplayTimestamp(parentReplayTs, { centerOnCandle: true });
-                        }
-                        try {
-                            if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
-                                replay.scheduleReplayFollowOnceLayoutSettled();
+                        if (replay.isActive) {
+                            this._reseedReplayFullRawFromLoadedData();
+                            if (typeof replay.goToReplayTimestamp === 'function') {
+                                replay.goToReplayTimestamp(replayTargetTs, { centerOnCandle: true });
                             }
-                        } catch (_f) { /* ignore */ }
+                            try {
+                                if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                                    replay.scheduleReplayFollowOnceLayoutSettled();
+                                }
+                            } catch (_f) { /* ignore */ }
+                        }
                     }
                 } catch (_mcBoot) { /* ignore */ }
             }

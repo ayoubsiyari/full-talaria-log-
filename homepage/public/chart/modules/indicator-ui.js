@@ -1738,7 +1738,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'showNYAM', label: 'NY AM Session', type: 'checkbox', default: true },
             { id: 'showLC', label: 'London Close', type: 'checkbox', default: true },
             // Display Options
-            { id: 'showNYMidnight', label: 'NY Midnight Open', type: 'checkbox', default: true },
+            { id: 'showNYMidnight', label: 'Midnight Open', type: 'checkbox', default: true },
             { id: 'showMidline', label: 'Session Midline', type: 'checkbox', default: true },
             { id: 'showBoxInfo', label: 'Box Labels', type: 'checkbox', default: true },
             { id: 'showDeviations', label: 'Deviations', type: 'checkbox', default: false },
@@ -1761,7 +1761,7 @@ const INDICATOR_DEFINITIONS = {
             { id: 'londonColor', label: 'London Color', type: 'color', default: '#e90000' },
             { id: 'nyamColor', label: 'NY AM Color', type: 'color', default: '#00acb8' },
             { id: 'lcColor', label: 'London Close Color', type: 'color', default: '#434651' },
-            { id: 'nyMidnightColor', label: 'NY Midnight Color', type: 'color', default: '#2d62b6' },
+            { id: 'nyMidnightColor', label: 'Midnight Open Color', type: 'color', default: '#2d62b6' },
             { id: 'textColor', label: 'Text Color', type: 'color', default: '#5c71af' }
         ]
     },
@@ -5222,7 +5222,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9ColorRow('London', 'londonColor', null),
                     v9ColorRow('NY AM', 'nyamColor', null),
                     v9ColorRow('London Close', 'lcColor', null),
-                    v9ColorRow('NY Midnight', 'nyMidnightColor', null),
+                    v9ColorRow('Midnight Open', 'nyMidnightColor', null),
                     v9ColorRow('Text', 'textColor', null)
                 ]
             }],
