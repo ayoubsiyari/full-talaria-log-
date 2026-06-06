@@ -5525,12 +5525,8 @@ class ReplaySystem {
             if (!this.isActive) return;
             const detail = this._buildMultichartReplayFrameDetail();
             // Host tile A is already updated via updateChartData / updateChartWithAnimatedCandle.
-            // Re-applying the static (non-animated) mirror on the host regresses currentIndex
-            // after calculateNextIndex while iframes follow the broadcast — panel A lags B/C/D.
-            const hasAnim = !!(detail.animatedCandle && Number.isFinite(Number(detail.animatedCandle.t)));
-            if (hasAnim && typeof this.applyMultichartMirrorFrame === 'function') {
-                this.applyMultichartMirrorFrame(detail);
-            }
+            // Never re-apply applyMultichartMirrorFrame on the host here — it regresses
+            // currentIndex vs replayTimestamp while iframes follow the broadcast.
             window.dispatchEvent(new CustomEvent('replayMultichartFrame', { detail }));
         } catch (_e) { /* ignore */ }
     }
@@ -5997,6 +5993,12 @@ class ReplaySystem {
         }
         if (!this.fullRawData || this.fullRawData.length === 0) {
             return;
+        }
+
+        if (!mainAlreadyAligned && this.isActive
+            && Number.isFinite(this.replayTimestamp)
+            && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+            this.syncCurrentIndexFromReplayTimestamp(this.replayTimestamp);
         }
 
         const sliceEnd = Math.max(this.currentIndex + 1, 1);

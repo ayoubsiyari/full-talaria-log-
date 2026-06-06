@@ -248,12 +248,36 @@
         }
     }
 
+    /** Keep host tile A aligned when an iframe finishes an independent pair switch. */
+    function realignHostReplayFromPlayhead() {
+        if (!isMultichartIframePanel()) return;
+        try {
+            var pc = global.parent && global.parent.chart;
+            var prs = pc && pc.replaySystem;
+            if (!prs || !prs.isActive) return;
+            var ts = Number(prs.replayTimestamp);
+            if (!Number.isFinite(ts)) return;
+            if (typeof prs.syncCurrentIndexFromReplayTimestamp === 'function') {
+                prs.syncCurrentIndexFromReplayTimestamp(ts);
+            }
+            if (typeof prs.updateChartData === 'function') {
+                prs.updateChartData(false);
+            } else if (typeof prs.goToReplayTimestamp === 'function') {
+                prs.goToReplayTimestamp(ts, { centerOnCandle: true });
+            }
+        } catch (e) {
+            warn('realignHostReplayFromPlayhead failed', e && e.message);
+        }
+    }
+
     function afterLoadFile(ch) {
         try { drainPendingReplay(); } catch (_d) {}
         reseedReplayFromChart(ch);
         ensurePanelReplaySeries(ch);
+        realignHostReplayFromPlayhead();
         setTimeout(function () {
             try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
+            try { realignHostReplayFromPlayhead(); } catch (_rh) {}
         }, 0);
     }
 

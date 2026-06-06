@@ -2325,7 +2325,8 @@ function talariaCrosshairBarIndex(chart) {
 }
 
 function talariaIndicatorShownInLegend(chart, indicator) {
-    if (!indicator || indicator.visible === false) return false;
+    if (!indicator) return false;
+    // Eye toggle sets indicator.visible — legend row must stay so user can show again.
     if (typeof chart._indicatorVisibleForCurrentTimeframe === 'function'
         && !chart._indicatorVisibleForCurrentTimeframe(indicator)) return false;
     return true;
@@ -2476,7 +2477,7 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
 
     const valuesSpan = document.createElement('span');
     valuesSpan.setAttribute('data-talaria-ind-val', '1');
-    valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:1;';
+    valuesSpan.style.cssText = 'font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;text-align:left;min-width:auto;flex:0 0 auto;display:inline-flex;gap:3px;align-items:center;opacity:' + (indicator.visible !== false ? '1' : '0.55') + ';';
     const valueTokens = isVolume
         ? talariaFormatVolumeIndicatorValueTokens(chart, indicator)
         : talariaFormatOverlayIndicatorValueTokens(chart, indicator);
@@ -2511,11 +2512,13 @@ function talariaAppendIndicatorLegendRow(chart, div, indicator) {
         if (isVolume) {
             self.chartSettings.showVolume = indicator.visible !== false;
         }
-        visibilityBtn.innerHTML = indicator.visible ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+        const on = indicator.visible !== false;
+        visibilityBtn.innerHTML = on ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>' : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
         applyEyeState();
-        nameSpan.style.opacity = indicator.visible ? '1' : '0.55';
-        visibilityBtn.title = indicator.visible ? 'Click to hide' : 'Click to show';
-        if (indicator.visible && self.indicators && self.indicators.data) {
+        nameSpan.style.opacity = on ? '1' : '0.55';
+        valuesSpan.style.opacity = on ? '1' : '0.55';
+        visibilityBtn.title = on ? 'Click to hide' : 'Click to show';
+        if (on && self.indicators && self.indicators.data) {
             const store = self.indicators.data[id];
             const storeBroken = !store
                 || (Array.isArray(store) && store.length === 0)

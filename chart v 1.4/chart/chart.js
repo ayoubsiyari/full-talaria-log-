@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b246';
+const CHART_ENGINE_BUILD = '20260602b247';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1994,16 +1994,31 @@ class Chart {
      */
     _readParentReplayTimestampForMultichart() {
         try {
-            const isMce = typeof document !== 'undefined'
-                && document.documentElement
-                && document.documentElement.classList.contains('multichart-embed');
-            if (!isMce || !window.parent || window.parent === window) return NaN;
+            if (!this._isMultichartEmbedPanel()) return NaN;
+            if (!window.parent || window.parent === window) return NaN;
             const pr = window.parent.chart?.replaySystem;
             if (!pr?.isActive) return NaN;
             const ts = Number(pr.replayTimestamp);
             return Number.isFinite(ts) ? ts : NaN;
         } catch (_e) {
             return NaN;
+        }
+    }
+
+    /**
+     * Independent multichart iframe switching to a pair other than host tile A.
+     * @param {string|number} targetFileId
+     * @returns {boolean}
+     */
+    _shouldAnchorPairSwitchToHostPlayhead(targetFileId) {
+        if (!this._isMultichartEmbedPanel()) return false;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            const hostFid = window.parent.chart?.currentFileId;
+            if (hostFid == null || hostFid === '') return false;
+            return String(hostFid) !== String(targetFileId);
+        } catch (_e) {
+            return false;
         }
     }
 
@@ -4216,13 +4231,21 @@ class Chart {
             const replay = this.replaySystem;
             const replayActiveBefore = !!(replay && replay.isActive);
             const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
-            const parentReplayTs = this._readParentReplayTimestampForMultichart();
+            const anchorToHostPlayhead = this._shouldAnchorPairSwitchToHostPlayhead(targetFileId);
+            const parentReplayTs = anchorToHostPlayhead
+                ? this._readParentReplayTimestampForMultichart()
+                : NaN;
             let replayTargetTs = null;
-            if (Number.isFinite(parentReplayTs)) {
+            if (anchorToHostPlayhead && Number.isFinite(parentReplayTs)) {
                 replayTargetTs = parentReplayTs;
                 if (replay) replay.replayTimestamp = parentReplayTs;
             } else if (replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))) {
                 replayTargetTs = Number(replay.replayTimestamp);
+            } else if (this._isMultichartHostPanel()) {
+                const hostTs = Number(replay?.replayTimestamp);
+                if (replayActiveBefore && Number.isFinite(hostTs)) {
+                    replayTargetTs = hostTs;
+                }
             }
             const fetchReplayAnchored = Number.isFinite(replayTargetTs);
 
@@ -4415,10 +4438,14 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
-            this.fitToView();
-            this.render();
 
-            if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            const replayRepositionAfterLoad = !!(replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0);
+            if (!replayRepositionAfterLoad) {
+                this.fitToView();
+                this.render();
+            }
+
+            if (replayRepositionAfterLoad) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
                 // pause() → updateChartData() from overwriting the new pair's rawData
                 // with stale sliced data from the old pair's fullRawData.
@@ -4476,6 +4503,9 @@ class Chart {
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
                 }
+
+                this.fitToView();
+                this.render();
             }
 
             // Multichart iframe: pair switch can finish before local replay was entered.
@@ -4488,13 +4518,19 @@ class Chart {
                         && document.documentElement.classList.contains('multichart-embed');
                     if (isMce) {
                         if (typeof replay.enterReplayMode === 'function') {
-                            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
+                            replay.enterReplayMode({
+                                suppressInitialUpdateChartData: true,
+                                preservePlayhead: Number.isFinite(replayTargetTs),
+                                initialReplayTimestamp: replayTargetTs,
+                            });
                         }
                         if (replay.isActive) {
                             this._reseedReplayFullRawFromLoadedData();
                             if (typeof replay.goToReplayTimestamp === 'function') {
                                 replay.goToReplayTimestamp(replayTargetTs, { centerOnCandle: true });
                             }
+                            this.fitToView();
+                            this.render();
                             try {
                                 if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
                                     replay.scheduleReplayFollowOnceLayoutSettled();
