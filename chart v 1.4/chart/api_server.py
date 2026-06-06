@@ -19212,12 +19212,15 @@ def _build_bars_payload(
     source = "questdb"
 
     bars: list = []
-    if questdb_store.questdb_enabled():
+    # Only read from QuestDB when it is the designated read path. Previously this also
+    # used QuestDB whenever count_bars > 0, which meant every bars request ran a count()
+    # PLUS a runtime SAMPLE BY over the PARTITION BY YEAR table — multichart (many
+    # tickers × timeframes at once) turned that into a QuestDB CPU storm. With
+    # READ_PRIMARY=false we serve from the fast binary tiles below instead.
+    if questdb_store.questdb_enabled() and questdb_store.questdb_read_primary():
         try:
             questdb_store.ensure_schema()
-            use_qdb = questdb_store.questdb_read_primary() or questdb_store.count_bars(file_id, "ohlcv_1m") > 0
-            if use_qdb:
-                bars = questdb_store.query_bars(file_id, chosen, from_ms, to_ms, limit=limit)
+            bars = questdb_store.query_bars(file_id, chosen, from_ms, to_ms, limit=limit)
         except Exception as exc:
             print(f"[questdb] query_bars failed file_id={file_id} resolution={chosen}: {exc}")
             bars = []
