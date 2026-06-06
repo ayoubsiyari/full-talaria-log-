@@ -189,6 +189,14 @@
             }
             if (typeof pc.isBacktestMode === 'boolean') ch.isBacktestMode = pc.isBacktestMode;
             if (typeof pc.isPropFirmMode === 'boolean') ch.isPropFirmMode = pc.isPropFirmMode;
+            var poc = pc.orderManager && pc.orderManager.orderService;
+            var ioc = ch.orderManager && ch.orderManager.orderService;
+            if (poc && ioc && typeof ioc.setSessionInstruments === 'function') {
+                var inst = poc.multiInstrumentSession && poc.multiInstrumentSession.instruments;
+                if (inst && typeof inst === 'object') {
+                    ioc.setSessionInstruments(inst);
+                }
+            }
         } catch (_) {}
     }
 
@@ -701,10 +709,17 @@
                         }, 0);
                         return;
                     }
+                    // Iframe panels with an independent pair use loadPanelFileData so
+                    // _panelFullRawData is seeded for replay mirror + correct OHLC slice.
+                    // loadFileData is for host tile A (shared replay fullRawData path).
+                    var usePanelLoad = isMultichartIframePanel()
+                        && switchingPair
+                        && typeof ch.loadPanelFileData === 'function';
                     if (switchingPair || args.force) {
                         clearReplayBufferForPairSwitch(ch);
                     }
-                    var p = ch.loadFileData(fidStr);
+                    var loadFn = usePanelLoad ? ch.loadPanelFileData.bind(ch) : ch.loadFileData.bind(ch);
+                    var p = loadFn(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {
                             afterLoadFile(ch);

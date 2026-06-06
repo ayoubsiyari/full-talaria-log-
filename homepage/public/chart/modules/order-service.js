@@ -123,12 +123,17 @@ class OrderService {
     getInstrumentSettings(ticker, fallback = {}) {
         const rawKey = String(ticker || '').toUpperCase();
         const normKey = rawKey.replace(/\//g, '');
-        const map = this.multiInstrumentSession.instruments;
-        if (normKey && map[normKey]) {
-            return map[normKey];
-        }
-        if (rawKey && map[rawKey]) {
-            return map[rawKey];
+        const session = this.multiInstrumentSession;
+        const map = session && session.instruments && typeof session.instruments === 'object'
+            ? session.instruments
+            : null;
+        if (map) {
+            if (normKey && map[normKey]) {
+                return map[normKey];
+            }
+            if (rawKey && map[rawKey]) {
+                return map[rawKey];
+            }
         }
         return {
             ticker: normKey || rawKey || 'UNKNOWN',

@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b242';
+const CHART_ENGINE_BUILD = '20260602b243';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1162,6 +1162,25 @@ class Chart {
     resolveSessionTickerForFileId(session, fileId) {
         if (!session || !fileId) return null;
         const fileKey = String(fileId);
+        const isNumericOnly = (s) => /^\d+$/.test(String(s || '').trim());
+
+        if (Array.isArray(session.files)) {
+            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
+            if (file) {
+                const fromName = this._formatPairTicker(file.name || file.fileName, null);
+                if (fromName && !isNumericOnly(fromName)) return fromName;
+            }
+        }
+        if (Array.isArray(session.symbols)) {
+            const symRow = session.symbols.find((row) => row && String(row.fileId) === fileKey);
+            if (symRow) {
+                const fromSym = this._formatPairTicker(
+                    symRow.symbolName || symRow.symbol || symRow.ticker,
+                    symRow.fileName || symRow.name
+                );
+                if (fromSym && !isNumericOnly(fromSym)) return fromSym;
+            }
+        }
         if (session.instruments && typeof session.instruments === 'object') {
             const keys = Object.keys(session.instruments);
             for (let i = 0; i < keys.length; i += 1) {
@@ -1170,14 +1189,15 @@ class Chart {
                 if (!row) continue;
                 const rowFileId = row.fileId || row.datasetId || row.sourceFileId;
                 if (String(rowFileId) === fileKey) {
-                    return this._formatPairTicker(ticker, row.fileName || row.name);
+                    const fromRow = this._formatPairTicker(
+                        row.ticker || row.symbol || ticker,
+                        row.fileName || row.name
+                    );
+                    if (fromRow && !isNumericOnly(fromRow)) return fromRow;
+                    if (!isNumericOnly(ticker)) {
+                        return this._formatPairTicker(ticker, row.fileName || row.name);
+                    }
                 }
-            }
-        }
-        if (Array.isArray(session.files)) {
-            const file = session.files.find((f) => f && (String(f.id) === fileKey || String(f.fileId) === fileKey));
-            if (file && file.name) {
-                return this._formatPairTicker(file.name, null);
             }
         }
         return null;
@@ -1952,11 +1972,14 @@ class Chart {
     _reseedReplayFullRawFromLoadedData() {
         const replay = this.replaySystem;
         if (!replay || !replay.isActive) return false;
-        if (!Array.isArray(this.rawData) || this.rawData.length === 0) return false;
+        const seedSource = (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0)
+            ? this._panelFullRawData
+            : this.rawData;
+        if (!Array.isArray(seedSource) || seedSource.length === 0) return false;
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
-        replay.fullRawData = [...this.rawData];
+        replay.fullRawData = [...seedSource];
         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
         replay.rawTimeframe = this._nativeRawFetchTf || this.currentTimeframe;
         replay._fullRawDataMatchesTF = false;
@@ -4288,7 +4311,11 @@ class Chart {
                 hasMoreRight: result.has_more_right
             };
             this._panLoading = false;
-            this.loadedRanges.clear();
+            if (!this.loadedRanges || typeof this.loadedRanges.clear !== 'function') {
+                this.loadedRanges = new Map();
+            } else {
+                this.loadedRanges.clear();
+            }
 
             this.priceZoom = 1;
             this.priceOffset = 0;
@@ -4644,11 +4671,16 @@ class Chart {
                 hasMoreRight: result.has_more_right
             };
             this._panLoading = false;
-            this.loadedRanges.clear();
+            if (!this.loadedRanges || typeof this.loadedRanges.clear !== 'function') {
+                this.loadedRanges = new Map();
+            } else {
+                this.loadedRanges.clear();
+            }
 
             // Match main chart: file id + symbol before ingest so order/drawing logic never sees a mismatched pair.
             this.currentFileId = targetFileId;
-            this.currentSymbol = targetTicker || this.currentSymbol;
+            this.currentSymbol = targetTicker
+                || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
@@ -4680,6 +4712,9 @@ class Chart {
                 const sliced = this._panelFullRawData.slice(0, idx + 1);
                 this.rawData = sliced;
                 this.data = this.resampleData(sliced, this.currentTimeframe);
+                if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                    this._reseedReplayFullRawFromLoadedData();
+                }
             }
 
             this.updateChartOHLCSymbol(this.currentSymbol);

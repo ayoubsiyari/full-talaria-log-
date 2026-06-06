@@ -2563,17 +2563,15 @@
             }
         };
         
-        // Check if time is in session (handles overnight)
+        // Inclusive end on same-day windows so adjacent/overlapping sessions share the handoff candle.
         const isInSession = (decimal, session) => {
             if (session.start <= session.end) {
-                return decimal >= session.start && decimal < session.end;
-            } else {
-                // Overnight session (e.g., 20:00 - 00:00)
-                return decimal >= session.start || decimal < session.end;
+                return decimal >= session.start && decimal <= session.end;
             }
+            // Overnight window: inclusive start, exclusive end at the wrap (e.g. 00:00).
+            return decimal >= session.start || decimal < session.end;
         };
         
-        // One session per bar (priority) avoids stacked semi-transparent fills when windows overlap.
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
         let lastNyDayKey = null;
@@ -2591,21 +2589,10 @@
                 });
             }
             
-            let currentKey = null;
-            for (let si = 0; si < sessionOrder.length; si++) {
-                const key = sessionOrder[si];
-                const session = sessionDefs[key];
-                if (!session.enabled) continue;
-                if (isInSession(nyTime.decimal, session)) {
-                    currentKey = key;
-                    break;
-                }
-            }
-            
             sessionOrder.forEach(function(key) {
                 const session = sessionDefs[key];
                 if (!session.enabled) return;
-                if (key === currentKey) {
+                if (isInSession(nyTime.decimal, session)) {
                     if (!activeBoxes[key]) {
                         activeBoxes[key] = {
                             type: key,
@@ -6552,6 +6539,9 @@
     Chart.prototype.recalculateIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;
+        }
+        if (!this.indicators.data || typeof this.indicators.data !== 'object') {
+            this.indicators.data = {};
         }
         
         this.indicators.active.forEach(function(indicator) {

@@ -2184,7 +2184,8 @@ class OrderManager {
                 ? window.marketCalcEngine._resolveRegistryKey.bind(window.marketCalcEngine)
                 : (s) => (s || '').replace(/[/\-_\s]/g, '').toUpperCase();
             const norm = resolve(sym);
-            const specs = window.marketCalcEngine._registry[norm];
+            const registry = window.marketCalcEngine._registry;
+            const specs = registry && typeof registry === 'object' ? registry[norm] : null;
             if (specs) {
                 detectedType = specs.type;
                 inRegistry   = true;
