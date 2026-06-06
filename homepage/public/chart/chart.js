@@ -4438,14 +4438,10 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
+            this.fitToView();
+            this.render();
 
-            const replayRepositionAfterLoad = !!(replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0);
-            if (!replayRepositionAfterLoad) {
-                this.fitToView();
-                this.render();
-            }
-
-            if (replayRepositionAfterLoad) {
+            if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                 // Clear partial-tick animation state BEFORE pause() to prevent
                 // pause() → updateChartData() from overwriting the new pair's rawData
                 // with stale sliced data from the old pair's fullRawData.
@@ -4503,9 +4499,6 @@ class Chart {
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
                 }
-
-                this.fitToView();
-                this.render();
             }
 
             // Multichart iframe: pair switch can finish before local replay was entered.
@@ -4518,19 +4511,13 @@ class Chart {
                         && document.documentElement.classList.contains('multichart-embed');
                     if (isMce) {
                         if (typeof replay.enterReplayMode === 'function') {
-                            replay.enterReplayMode({
-                                suppressInitialUpdateChartData: true,
-                                preservePlayhead: Number.isFinite(replayTargetTs),
-                                initialReplayTimestamp: replayTargetTs,
-                            });
+                            replay.enterReplayMode({ suppressInitialUpdateChartData: true });
                         }
                         if (replay.isActive) {
                             this._reseedReplayFullRawFromLoadedData();
                             if (typeof replay.goToReplayTimestamp === 'function') {
                                 replay.goToReplayTimestamp(replayTargetTs, { centerOnCandle: true });
                             }
-                            this.fitToView();
-                            this.render();
                             try {
                                 if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
                                     replay.scheduleReplayFollowOnceLayoutSettled();
