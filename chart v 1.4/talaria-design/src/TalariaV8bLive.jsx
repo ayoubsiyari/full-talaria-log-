@@ -23698,6 +23698,24 @@ const TalariaV8bLive = () => {
               );
             })}
             {(layout.footers || []).map((f) => {
+              if (f.type === "number") {
+                const raw = val(f.id);
+                return (
+                  <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid ${c.br}`, gap: 12 }}>
+                    <span style={{ fontSize: 12, color: c.ts }}>{f.label}</span>
+                    <input type="text" inputMode="decimal" className="tlr-nospinner"
+                      value={v9IndNumericDisplayValue(raw)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => patchIndSettDraftLive((d) => ({ ...d, [f.id]: v9NormalizeIndNumericString(e.target.value) }))}
+                      style={v9IndNumericInputStyle({
+                        width: 56, height: 26, background: "rgba(140,160,255,0.05)", border: `1px solid rgba(140,160,255,0.2)`,
+                        color: c.tx, fontSize: 12, fontFamily: F, padding: "0 6px", outline: "none", boxSizing: "border-box",
+                      })} />
+                  </div>
+                );
+              }
               if (f.type !== "checkbox") return null;
               return (
                 <div key={f.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0 4px", marginTop: 8, borderTop: `1px solid ${c.br}` }}>

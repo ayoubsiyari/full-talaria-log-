@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b239';
+const CHART_ENGINE_BUILD = '20260602b240';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -612,6 +612,8 @@ class Chart {
         this._localBackupQuotaWarned = false;
         /** Incremented on each symbol switch; stale async responses must not overwrite the chart. */
         this._symbolLoadSeq = 0;
+        /** Multichart iframe pair load — supersede stale in-flight fetches when user picks another symbol. */
+        this._multichartPanelLoadSeq = 0;
         /** Coalesce high-frequency pan sync broadcasts to ~1/frame. */
         this._scrollSyncRaf = null;
         this._lastScrollSyncAt = 0;
@@ -1750,7 +1752,9 @@ class Chart {
         const rs0 = this.replaySystem;
         const aligned = !!(rs0 && rs0.isActive && replayTs != null
             && Math.abs(Number(rs0.replayTimestamp) - replayTs) <= tfMs * 2);
-        if (!o.force && sameFile && sameTf && hasData && rs0 && rs0.isActive
+        const switchingPair = !sameFile;
+        const mustLoad = o.force || switchingPair;
+        if (!mustLoad && sameFile && sameTf && hasData && rs0 && rs0.isActive
             && (replayTs == null || aligned)) {
             return;
         }
@@ -1759,11 +1763,24 @@ class Chart {
         if (this._tfDataCache) this._tfDataCache.clear();
         if (this._btTfDataCache) this._btTfDataCache.clear();
 
-        if (this._multichartPanelLoadInflight) {
-            return this._multichartPanelLoadInflight;
+        if (switchingPair) {
+            this.rawData = [];
+            this.data = [];
+            this._panelFullRawData = null;
+            if (rs0) {
+                rs0.animatingCandle = null;
+                rs0.tickProgress = 0;
+                rs0.tickElapsedMs = 0;
+                rs0.fullRawData = null;
+                rs0.fullData = null;
+                rs0.tickPathCache = {};
+                rs0.tickPathCacheBuilt = false;
+            }
         }
 
-        this._multichartPanelLoadInflight = (async () => {
+        const loadSeq = ++this._multichartPanelLoadSeq;
+
+        const run = (async () => {
             try {
                 const sessionStartTs = (() => {
                     const raw = session.startDate || session.start_date;
@@ -1810,6 +1827,10 @@ class Chart {
                 }
                 if (!this._smartResponseHasPayload(result)) {
                     throw new Error(this._smartEmptyResponseHint(result, fileId));
+                }
+
+                if (loadSeq !== this._multichartPanelLoadSeq) {
+                    return;
                 }
 
                 this.currentFileId = fileId;
@@ -1909,11 +1930,14 @@ class Chart {
                     }
                 }, 2000);
             } finally {
-                this._multichartPanelLoadInflight = null;
+                if (loadSeq === this._multichartPanelLoadSeq) {
+                    this._multichartPanelLoadInflight = null;
+                }
             }
         })();
 
-        return this._multichartPanelLoadInflight;
+        this._multichartPanelLoadInflight = run;
+        return run;
     }
 
     /**
@@ -1940,6 +1964,13 @@ class Chart {
         };
 
         if (covers(this.rawData)) return true;
+        const replayForCover = this.replaySystem;
+        if (replayForCover?.isActive
+            && Array.isArray(replayForCover.fullRawData)
+            && replayForCover.fullRawData.length
+            && covers(replayForCover.fullRawData)) {
+            return true;
+        }
 
         const session = this.backtestingSession;
         const fileId = this.currentFileId;

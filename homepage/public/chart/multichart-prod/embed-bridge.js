@@ -751,12 +751,21 @@
                     var pc = readParentChart();
                     var playheadTs = readParentPlayhead();
                     var hostTf = (pc && pc.currentTimeframe) || tf;
-                    var hostFid = (pc && pc.currentFileId) || fileId;
+                    // Prefer this panel's URL fileId — not host A's instrument — so
+                    // independent-symbol layouts can boot the correct pair.
+                    var loadFid = fileId;
+                    if (!loadFid && pc && pc.currentFileId) {
+                        loadFid = String(pc.currentFileId);
+                    }
+                    if (!loadFid) {
+                        reportToShell('warn', 'loadMultichartPanelFromHost: no fileId');
+                        return;
+                    }
                     reportToShell('info', 'loadMultichartPanelFromHost fileId='
-                        + hostFid + ' tf=' + (hostTf || '?')
+                        + loadFid + ' tf=' + (hostTf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
                     var lp = ch.loadMultichartPanelFromHost({
-                        fileId: String(hostFid),
+                        fileId: String(loadFid),
                         session: btSession,
                         timeframe: hostTf,
                         replayTimestamp: playheadTs,

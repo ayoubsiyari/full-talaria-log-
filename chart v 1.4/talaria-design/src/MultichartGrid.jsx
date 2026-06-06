@@ -1805,6 +1805,10 @@ export default function MultichartGrid({
         const onReplayTick = (ev) => {
             const mgr = managerRef.current;
             if (!mgr) return;
+            // During play, iframes mirror via replayMultichartFrame — replayTick
+            // seeks to a closed bar and can desync / stall tick animation.
+            const hostRs = window.chart && window.chart.replaySystem;
+            if (hostRs && hostRs.isActive && hostRs.isPlaying) return;
             const ts = ev && ev.detail && ev.detail.timestamp;
             if (!Number.isFinite(ts)) return;
             const idx = ev.detail && ev.detail.currentIndex;
@@ -2048,20 +2052,19 @@ export default function MultichartGrid({
                             broadcastToIframes("replaySetStepTf", {
                                 tf: stf == null ? null : stf,
                             });
-                            // Snap every panel to the parent's EXACT candle at
-                            // the instant play begins, so all charts start from
-                            // the identical bar (no panel one frame behind),
-                            // THEN start their local loops at the same speed.
-                            // After this, every parent candle advance fires a
-                            // replayTick that re-forces the seek, so the panels
-                            // move candle-for-candle with A — like one chart.
-                            forceAllPanelsToTimestamp(Number(this.replayTimestamp));
                             broadcastToIframes("replayPlay", { speed, mode });
-                            try {
-                                if (typeof this._multichartBroadcastReplayFrame === 'function') {
-                                    this._multichartBroadcastReplayFrame();
-                                }
-                            } catch (_) {}
+                            // Defer one frame so play() finishes arming the loop, then
+                            // mirror the exact host slice to iframes (not replayTick seek).
+                            const rsPlay = this;
+                            requestAnimationFrame(() => {
+                                requestAnimationFrame(() => {
+                                    try {
+                                        if (typeof rsPlay._multichartBroadcastReplayFrame === 'function') {
+                                            rsPlay._multichartBroadcastReplayFrame();
+                                        }
+                                    } catch (_) {}
+                                });
+                            });
                         } catch (_) {}
                         return result;
                     };

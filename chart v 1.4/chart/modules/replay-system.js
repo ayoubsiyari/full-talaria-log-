@@ -3013,6 +3013,13 @@ class ReplaySystem {
                 return;
             }
 
+            if (this.currentIndex >= this.fullRawData.length - 1) {
+                const waiting = this._handleForwardEdgeWhilePlaying(() => {
+                    if (this.isPlaying) this.simpleStepForward();
+                });
+                if (waiting) return;
+            }
+
             this.simpleStepForward();
         }, interval);
     }
@@ -5236,25 +5243,36 @@ class ReplaySystem {
                 if (chart.fitToView) chart.fitToView();
             }
         } else {
-            let idx = 0;
-            if (typeof chart.findGoToTargetIndex === 'function') {
-                idx = chart.findGoToTargetIndex(frd, ts);
+            const lastT = Number(frd[frd.length - 1]?.t);
+            if (Number.isFinite(lastT) && ts > lastT) {
+                return false;
             }
-            if (idx < 0) {
-                idx = frd.findIndex(c => c && Number(c.t) >= ts);
-            }
-            if (idx < 0) idx = frd.length - 1;
-            const minIdx = this.sessionStartIndex || 0;
-            idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
 
-            this.currentIndex = idx;
-            this.replayTimestamp = frd[idx]?.t ?? ts;
             this.tickElapsedMs = Number.isFinite(detail.tickElapsedMs)
                 ? Number(detail.tickElapsedMs) : 0;
             this.tickProgress = 0;
             this.animatingCandle = null;
 
-            const sliceEnd = Math.max(idx + 1, 1);
+            if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+                if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
+                    return false;
+                }
+            } else {
+                let idx = 0;
+                if (typeof chart.findGoToTargetIndex === 'function') {
+                    idx = chart.findGoToTargetIndex(frd, ts);
+                }
+                if (idx < 0) {
+                    idx = frd.findIndex(c => c && Number(c.t) >= ts);
+                }
+                if (idx < 0) idx = frd.length - 1;
+                const minIdx = this.sessionStartIndex || 0;
+                idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
+                this.currentIndex = idx;
+                this.replayTimestamp = frd[idx]?.t ?? ts;
+            }
+
+            const sliceEnd = Math.max(this.currentIndex + 1, 1);
             chart.rawData = frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {

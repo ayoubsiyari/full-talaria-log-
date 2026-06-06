@@ -5213,6 +5213,25 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
         };
     }
 
+    if (indicatorType === 'killzones') {
+        return {
+            sections: [{
+                rows: [
+                    v9ColorRow('CBDR', 'cbdrColor', null),
+                    v9ColorRow('Asia', 'asiaColor', null),
+                    v9ColorRow('London', 'londonColor', null),
+                    v9ColorRow('NY AM', 'nyamColor', null),
+                    v9ColorRow('London Close', 'lcColor', null),
+                    v9ColorRow('NY Midnight', 'nyMidnightColor', null),
+                    v9ColorRow('Text', 'textColor', null)
+                ]
+            }],
+            footers: [
+                { type: 'number', id: 'boxTransparency', label: 'Box Transparency', min: 0, max: 100, step: 1, default: 88 }
+            ].concat(footers)
+        };
+    }
+
     if (indicatorType === 'openingrange') {
         return {
             sections: [

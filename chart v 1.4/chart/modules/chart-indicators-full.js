@@ -2447,6 +2447,20 @@
     }
     
     // ICT Kill Zones indicator - session boxes with high/low, NY midnight line, deviations
+    function killzonesParseBoxTransparency(raw, fallback) {
+        fallback = fallback != null ? fallback : 88;
+        const fn = typeof window !== 'undefined' ? window.__v9NormalizeIndicatorNumericString : null;
+        const s = fn ? fn(raw) : String(raw != null ? raw : '');
+        const n = parseFloat(s);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(100, Math.max(0, n));
+    }
+
+    function killzonesBoxFillAlpha(transparency) {
+        const t = killzonesParseBoxTransparency(transparency, 88);
+        return Math.min(0.92, Math.max(0.02, (100 - t) / 100));
+    }
+
     function calculateKillzones(data, params) {
         const result = {
             sessions: [],
@@ -2613,7 +2627,7 @@
         result.deviationCount = params.deviationCount || 2;
         result.showMidline = params.showMidline !== false;
         result.showBoxInfo = params.showBoxInfo !== false;
-        result.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 88;
+        result.boxTransparency = killzonesParseBoxTransparency(params.boxTransparency, 88);
         result.showNYMidnight = params.showNYMidnight !== false;
         result.nyMidnightColor = params.nyMidnightColor || '#2d62b6';
         
@@ -4950,7 +4964,10 @@
                 indicator.params.showBoxInfo = params.showBoxInfo !== false;
                 indicator.params.showDeviations = params.showDeviations || false;
                 indicator.params.deviationCount = params.deviationCount || 2;
-                indicator.params.boxTransparency = params.boxTransparency !== undefined ? params.boxTransparency : 88;
+                indicator.params.boxTransparency = killzonesParseBoxTransparency(
+                    params.boxTransparency,
+                    indicator.params.boxTransparency != null ? indicator.params.boxTransparency : 88
+                );
                 // Session times (NY timezone)
                 indicator.params.cbdrStart = params.cbdrStart || '14:00';
                 indicator.params.cbdrEnd = params.cbdrEnd || '20:00';
@@ -6192,7 +6209,12 @@
                 if (newParams.showBoxInfo !== undefined) indicator.params.showBoxInfo = newParams.showBoxInfo;
                 if (newParams.showDeviations !== undefined) indicator.params.showDeviations = newParams.showDeviations;
                 if (newParams.deviationCount !== undefined) indicator.params.deviationCount = newParams.deviationCount;
-                if (newParams.boxTransparency !== undefined) indicator.params.boxTransparency = newParams.boxTransparency;
+                if (newParams.boxTransparency !== undefined) {
+                    indicator.params.boxTransparency = killzonesParseBoxTransparency(
+                        newParams.boxTransparency,
+                        indicator.params.boxTransparency
+                    );
+                }
                 // Update times
                 if (newParams.cbdrStart !== undefined) indicator.params.cbdrStart = newParams.cbdrStart;
                 if (newParams.cbdrEnd !== undefined) indicator.params.cbdrEnd = newParams.cbdrEnd;
@@ -10053,7 +10075,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     const priceAreaBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
     
     const transparency = data.boxTransparency !== undefined ? data.boxTransparency : 88;
-    const baseFillAlpha = Math.min(0.22, Math.max(0.04, (100 - transparency) / 100));
+    const baseFillAlpha = killzonesBoxFillAlpha(transparency);
     
     const colorToRgba = function(c, alpha) {
         if (alpha == null || isNaN(alpha)) alpha = 0.18;
@@ -10131,7 +10153,7 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
         if (boxWidth <= 0 || boxHeight <= 0) return;
         
         const fillCol = colorToRgba(box.color, baseFillAlpha);
-        const edgeCol = colorToRgba(box.color, Math.min(0.5, baseFillAlpha * 2.6));
+        const edgeCol = colorToRgba(box.color, Math.min(0.85, baseFillAlpha * 1.75 + 0.06));
         
         roundRectPath(ctx, drawX1, top, boxWidth, boxHeight, 3);
         ctx.fillStyle = fillCol;

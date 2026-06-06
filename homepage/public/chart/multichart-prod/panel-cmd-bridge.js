@@ -657,14 +657,15 @@
                             && parentPc.replaySystem.isActive) {
                             hostTs = Number(parentPc.replaySystem.replayTimestamp);
                         }
-                        var hostTf = (parentPc && parentPc.currentTimeframe)
-                            || ch.currentTimeframe;
+                        var panelTf = ch.currentTimeframe
+                            || (parentPc && parentPc.currentTimeframe);
+                        var switchingPair = String(ch.currentFileId || '') !== fidStr;
                         var lp = ch.loadMultichartPanelFromHost({
                             fileId: fidStr,
                             session: btSess,
-                            timeframe: hostTf,
+                            timeframe: panelTf,
                             replayTimestamp: hostTs,
-                            force: !!args.force,
+                            force: switchingPair || !!args.force,
                         });
                         if (lp && typeof lp.then === 'function') {
                             return lp.then(function () {
@@ -672,6 +673,18 @@
                                 setTimeout(function () {
                                     try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
                                 }, 0);
+                            }).catch(function (e) {
+                                warn('loadFile: loadMultichartPanelFromHost failed', e && e.message);
+                                var fb = ch.loadFileData(fidStr);
+                                if (fb && typeof fb.then === 'function') {
+                                    return fb.then(function () {
+                                        try { drainPendingReplay(); } catch (_d2) {}
+                                        setTimeout(function () {
+                                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_s2) {}
+                                        }, 0);
+                                    });
+                                }
+                                try { drainPendingReplay(); } catch (_d3) {}
                             });
                         }
                         try { drainPendingReplay(); } catch (_d2) {}
