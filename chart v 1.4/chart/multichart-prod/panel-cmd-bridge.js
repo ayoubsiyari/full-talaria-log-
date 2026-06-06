@@ -224,8 +224,8 @@
         rs.animatingCandle = null;
         rs.tickProgress = 0;
         rs.tickElapsedMs = 0;
-        rs.fullRawData = null;
-        rs.fullData = null;
+        // Keep fullRawData during async pair fetch — nulling it lets mirror/sync
+        // frames paint an empty slice and leaves offsetX pointing off-screen.
         rs.tickPathCache = {};
         rs.tickPathCacheBuilt = false;
     }
@@ -245,6 +245,7 @@
      */
     function applyReplayFrame(ch, args) {
         if (!ch || !args || typeof args !== 'object') return;
+        if (ch._multichartPairLoadInFlight) return;
         var rs = ch.replaySystem;
         if (!rs) return;
         var ts = Number(args.timestamp);
@@ -718,25 +719,22 @@
                         }, 0);
                         return;
                     }
-                    // Iframe panels with an independent pair use loadPanelFileData so
-                    // _panelFullRawData is seeded for replay mirror + correct OHLC slice.
-                    // loadFileData is for host tile A (shared replay fullRawData path).
-                    var usePanelLoad = isMultichartIframePanel()
-                        && switchingPair
-                        && typeof ch.loadPanelFileData === 'function';
                     if (switchingPair || args.force) {
                         clearReplayBufferForPairSwitch(ch);
                     }
-                    var loadFn = usePanelLoad ? ch.loadPanelFileData.bind(ch) : ch.loadFileData.bind(ch);
-                    var p = loadFn(fidStr);
+                    ch._multichartPairLoadInFlight = true;
+                    var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {
+                            ch._multichartPairLoadInFlight = false;
                             afterLoadFile(ch);
                         }).catch(function (e) {
+                            ch._multichartPairLoadInFlight = false;
                             warn('loadFile: loadFileData failed', e && e.message);
                             throw e;
                         });
                     }
+                    ch._multichartPairLoadInFlight = false;
                     afterLoadFile(ch);
                     return;
                 }
@@ -960,6 +958,7 @@
                     return;
                 }
                 case 'syncReplayFromHost': {
+                    if (ch._multichartPairLoadInFlight) return;
                     var pcReplay = null;
                     try {
                         pcReplay = (global.parent && global.parent !== global)

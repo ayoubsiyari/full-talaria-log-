@@ -2485,6 +2485,7 @@
         if (!Number.isFinite(utcMs)) {
             return { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
         }
+        const dayKey = killzonesNyDayKey(utcMs);
         const chart = typeof window !== 'undefined' ? window.chart : null;
         const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
         const chartTzId = tm && tm.getTimezone ? (tm.getTimezone().id || 'UTC') : 'UTC';
@@ -2498,8 +2499,7 @@
                     hours: hours,
                     minutes: minutes,
                     decimal: hours + minutes / 60,
-                    dayKey: tzDate.getUTCFullYear() + '-' + killzonesPad2(tzDate.getUTCMonth() + 1) + '-'
-                        + killzonesPad2(tzDate.getUTCDate())
+                    dayKey: dayKey
                 };
             } catch (e0) { /* fall through */ }
         }
@@ -2514,9 +2514,7 @@
                         hours: hours,
                         minutes: minutes,
                         decimal: hours + minutes / 60,
-                        dayKey: Number.isFinite(p.year) && Number.isFinite(p.month) && Number.isFinite(p.day)
-                            ? p.year + '-' + killzonesPad2(p.month) + '-' + killzonesPad2(p.day)
-                            : killzonesNyDayKey(utcMs)
+                        dayKey: dayKey
                     };
                 }
             } catch (e1) { /* fall through */ }
@@ -2530,7 +2528,7 @@
                 hours: hours,
                 minutes: minutes,
                 decimal: hours + minutes / 60,
-                dayKey: killzonesNyDayKey(utcMs)
+                dayKey: dayKey
             };
         } catch (e2) {
             return { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
@@ -2605,19 +2603,23 @@
         
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
-        let lastNyDayKey = null;
+        const nyMidnightByDay = Object.create(null);
         
         for (let i = 0; i < data.length; i++) {
             const nyWall = killzonesBarWallClock(data[i].t);
             const nyTime = { hours: nyWall.hours, minutes: nyWall.minutes, decimal: nyWall.decimal };
             
-            // First bar of each NY calendar day: NY Open (avoid firing on every bar in the 23:xx hour)
-            if (params.showNYMidnight !== false && lastNyDayKey && lastNyDayKey !== nyWall.dayKey) {
-                result.nyMidnight.push({
-                    index: i,
-                    price: data[i].o,
-                    time: data[i].t
-                });
+            // One NY Open per NY calendar day — bar closest to 00:00 (not every dayKey edge transition).
+            if (params.showNYMidnight !== false && nyWall.dayKey && nyWall.dayKey !== '0') {
+                const prevMid = nyMidnightByDay[nyWall.dayKey];
+                if (!prevMid || nyWall.decimal < prevMid.decimal) {
+                    nyMidnightByDay[nyWall.dayKey] = {
+                        index: i,
+                        price: data[i].o,
+                        time: data[i].t,
+                        decimal: nyWall.decimal
+                    };
+                }
             }
             
             sessionOrder.forEach(function(key) {
@@ -2648,8 +2650,22 @@
                     delete activeBoxes[key];
                 }
             });
-            
-            lastNyDayKey = nyWall.dayKey;
+        }
+        
+        if (params.showNYMidnight !== false) {
+            result.nyMidnight = Object.keys(nyMidnightByDay).sort().map(function (dk) {
+                const row = nyMidnightByDay[dk];
+                return { index: row.index, price: row.price, time: row.time };
+            });
+            // Guard: collapse spurious duplicates if day keys flicker within a few bars.
+            const deduped = [];
+            for (let mi = 0; mi < result.nyMidnight.length; mi++) {
+                const cur = result.nyMidnight[mi];
+                const prev = deduped[deduped.length - 1];
+                if (prev && cur.index - prev.index < 4) continue;
+                deduped.push(cur);
+            }
+            result.nyMidnight = deduped;
         }
         
         // Close any remaining active boxes

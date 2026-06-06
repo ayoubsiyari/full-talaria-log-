@@ -5171,6 +5171,10 @@ class ReplaySystem {
         const hostFid = detail && detail.hostFileId != null ? String(detail.hostFileId) : '';
         const panelFid = chart && chart.currentFileId != null ? String(chart.currentFileId) : '';
         if (hostFid && panelFid) return hostFid === panelFid;
+        if (panelFid
+            && Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
+            return false;
+        }
         return true;
     }
 
@@ -5283,6 +5287,36 @@ class ReplaySystem {
     _finishMultichartMirrorRender(chart) {
         if (!chart) return;
         chart.isLoading = false;
+
+        if (Array.isArray(chart.data) && chart.data.length > 0) {
+            const m = chart.margin || { l: 60, r: 70 };
+            const plotW = Math.max(1, (Number(chart.w) || 320) - m.l - m.r);
+            const cs = chart.getCandleSpacing
+                ? chart.getCandleSpacing()
+                : (chart.candleWidth + (chart.candleGap || 2));
+            const safeCs = Number.isFinite(cs) && cs > 0 ? cs : 8;
+            const i0 = Math.max(0, -Math.floor((chart.offsetX || 0) / safeCs) - 5);
+            const i1 = Math.min(
+                chart.data.length,
+                -Math.floor((chart.offsetX || 0) / safeCs) + Math.ceil(plotW / safeCs) + 5
+            );
+            const visibleBars = Math.max(0, i1 - i0);
+            const needsScroll = visibleBars === 0
+                || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
+            if (needsScroll || this.autoScrollEnabled) {
+                const st = typeof this.getReplayAutoScrollState === 'function'
+                    ? this.getReplayAutoScrollState(chart)
+                    : null;
+                if (st && Number.isFinite(st.offsetX)) {
+                    chart.offsetX = st.offsetX;
+                    chart._chartViewRestored = true;
+                } else if (needsScroll && typeof chart.fitToView === 'function') {
+                    chart._chartViewRestored = false;
+                    chart.fitToView();
+                }
+            }
+        }
+
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
         if (typeof chart.render === 'function') {
             chart.renderPending = true;
@@ -5314,10 +5348,15 @@ class ReplaySystem {
         if (hasAnim && !sharesHostDataset) {
             const indep = this._buildIndependentPairAnimatedCandle(frd, ts, detail);
             if (!indep || !indep.candle) {
+                if (detail._indepAnimFallback) return false;
                 return this.applyMultichartMirrorFrame({
-                    ...detail,
-                    animatedCandle: null,
+                    timestamp: detail.timestamp,
+                    tickElapsedMs: detail.tickElapsedMs,
                     tickProgress: 0,
+                    hostFileId: detail.hostFileId,
+                    isPlaying: detail.isPlaying,
+                    ticksPerCandle: detail.ticksPerCandle,
+                    _indepAnimFallback: true,
                 });
             }
             const baseIdx = Math.max(0, indep.formingIdx - 1);

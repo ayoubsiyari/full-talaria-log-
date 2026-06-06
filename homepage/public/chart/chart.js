@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b244';
+const CHART_ENGINE_BUILD = '20260602b245';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -4337,6 +4337,22 @@ class Chart {
             this._nativeRawFetchTf = requestTimeframe;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
+
+            // Multichart iframe on a different pair than host A: keep full series for replay mirror.
+            try {
+                const isMce = typeof document !== 'undefined'
+                    && document.documentElement
+                    && document.documentElement.classList.contains('multichart-embed');
+                if (isMce && window.parent && window.parent !== window) {
+                    const pch = window.parent.chart;
+                    const hostFid = pch && pch.currentFileId;
+                    if (hostFid != null && String(hostFid) !== String(targetFileId)) {
+                        this._panelFullRawData = Array.isArray(this.rawData) ? [...this.rawData] : null;
+                    } else {
+                        this._panelFullRawData = null;
+                    }
+                }
+            } catch (_mcePfrd) { /* ignore */ }
 
             this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
 
