@@ -3,6 +3,11 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Skip Next.js telemetry — avoids build-time network calls (a source of TLS-retry
+# stalls on the VPS) and shaves time off `next build`.
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CI=1
+
 # Copy package files
 COPY package*.json ./
 
