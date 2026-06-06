@@ -797,23 +797,6 @@
                     if (switchingPair || args.force) {
                         clearReplayBufferForPairSwitch(ch);
                     }
-                    // Fast boot: same pair as host A → copy A's in-memory master series
-                    // instead of a fresh server fetch. Eliminates the slow "LOADING B"
-                    // round-trip when splitting the layout onto the host's pair. Seed
-                    // returns false for a different pair (host has no such data) → fall
-                    // through to the normal network load below.
-                    if (typeof ch.seedMultichartPanelFromParentMemory === 'function') {
-                        try {
-                            if (ch.seedMultichartPanelFromParentMemory(fidStr, { timeframe: ch.currentTimeframe })) {
-                                ch._multichartPairLoadInFlight = false;
-                                try { scheduleMultichartPanelReplayFollow(ch); } catch (_sf2) {}
-                                afterLoadFile(ch);
-                                return;
-                            }
-                        } catch (eSeed) {
-                            warn('seedMultichartPanelFromParentMemory threw', eSeed && eSeed.message);
-                        }
-                    }
                     primeIframeReplayPlayheadFromParent(ch);
                     ch._multichartPairLoadInFlight = true;
                     var p = ch.loadFileData(fidStr);

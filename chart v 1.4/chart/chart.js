@@ -1733,100 +1733,55 @@ class Chart {
 
     /**
      * Multichart iframe FAST boot: when this panel shows the SAME pair host tile A already
-     * holds in memory, copy A's master series directly instead of re-fetching from the server.
-     * Eliminates the slow "LOADING B" round-trip when splitting the layout. Returns false
-     * (caller falls back to the network path) for a different pair or when A has no data yet.
+     * holds in memory, build a /smart-shaped result from A's bars so loadFileData can ingest
+     * it WITHOUT a network round-trip. Returns null (caller fetches from the server) for a
+     * different pair, a non-embed chart, or when A has no data yet.
      *
-     * @param {string|number} fileId
-     * @param {{ timeframe?: string }} [opts]
-     * @returns {boolean}
+     * The returned object intentionally matches the /file/:id/smart response shape so the
+     * REST of loadFileData (ingest, replay reseed, mirror follow) runs byte-for-byte the
+     * same as a normal network load — this is what keeps replay-follow working.
+     *
+     * @param {string} targetFileId
+     * @param {string} displayTf  timeframe to materialize bars at (chart.currentTimeframe)
+     * @returns {object|null}
      */
-    seedMultichartPanelFromParentMemory(fileId, opts = {}) {
+    _takeParentMemorySmartWindow(targetFileId, displayTf) {
         try {
-            if (!this._isMultichartEmbedPanel()) return false;
+            if (!this._isMultichartEmbedPanel()) return null;
             const parent = (typeof window !== 'undefined' && window.parent && window.parent !== window)
                 ? window.parent.chart
                 : null;
-            if (!parent) return false;
+            if (!parent) return null;
 
-            const fid = String(fileId || this.currentFileId || '').trim();
-            if (!fid) return false;
-            // Only safe for the SAME instrument the host already loaded.
-            if (String(parent.currentFileId || '') !== fid) return false;
+            const fid = String(targetFileId || '').trim();
+            if (!fid || String(parent.currentFileId || '') !== fid) return null;
 
+            // Prefer the host's full 1m replay master; fall back to its visible raw series.
             const prs = parent.replaySystem;
             const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
                 ? prs.fullRawData
                 : (Array.isArray(parent.rawData) && parent.rawData.length > 0 ? parent.rawData : null);
-            if (!masterRaw) return false;
+            if (!masterRaw || masterRaw.length === 0) return null;
 
-            const session = parent.backtestingSession || this.backtestingSession;
-            if (session) {
-                this.backtestingSession = session;
-                this.isBacktestMode = !!parent.isBacktestMode;
-            }
+            const tf = this._normalizeBacktestTimeframe(displayTf) || displayTf || '1m';
+            // Materialize at the panel's display TF — same bars the server would have returned.
+            const candles = this.resampleData(masterRaw, tf);
+            if (!Array.isArray(candles) || candles.length === 0) return null;
 
-            const displayTf = this._normalizeBacktestTimeframe(opts.timeframe || this.currentTimeframe)
-                || parent.currentTimeframe || '1m';
-            this.currentTimeframe = displayTf;
-            this.currentFileId = fid;
-            this.currentSymbol = parent.currentSymbol || this.currentSymbol;
-            this._nativeRawFetchTf = parent._nativeRawFetchTf || prs?.rawTimeframe || '1m';
-
-            const fullCopy = masterRaw.map((b) => ({ ...b }));
-            this.rawData = fullCopy;
-            this.data = this.resampleData(fullCopy, displayTf);
-            if (!this.loadedRanges || typeof this.loadedRanges.set !== 'function') {
-                this.loadedRanges = new Map();
-            }
-            this.loadedRanges.set(0, fullCopy.length);
-            this._serverCursors = parent._serverCursors
-                ? Object.assign({}, parent._serverCursors)
-                : { firstTs: null, lastTs: null, hasMoreLeft: true, hasMoreRight: true };
-
-            const playheadTs = (prs && prs.isActive && Number.isFinite(Number(prs.replayTimestamp)))
-                ? Number(prs.replayTimestamp)
-                : null;
-
-            if (!this.replaySystem && typeof this.initReplaySystem === 'function') {
-                this.initReplaySystem();
-            }
-            const replay = this.replaySystem;
-            if (replay) {
-                if (replay.isActive && typeof replay.exitReplayMode === 'function') {
-                    try { replay.exitReplayMode(); } catch (_e) { /* ignore */ }
-                }
-                if (typeof replay.enterReplayMode === 'function') {
-                    replay.enterReplayMode({
-                        preservePlayhead: Number.isFinite(playheadTs),
-                        initialReplayTimestamp: playheadTs,
-                        startAtBeginning: !Number.isFinite(playheadTs),
-                        suppressInitialUpdateChartData: Number.isFinite(playheadTs),
-                    });
-                }
-                replay.fullRawData = fullCopy;
-                replay.rawTimeframe = this._nativeRawFetchTf;
-                replay._fullRawDataMatchesTF = false;
-                if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
-                    replay.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
-                } else if (typeof replay.updateChartData === 'function') {
-                    replay.updateChartData(true);
-                }
-            }
-
-            this.updateChartTitle(this.currentSymbol || `FILE_${fid}`);
-            this.resize();
-            this.fitToView();
-            this.render();
-            try {
-                window.dispatchEvent(new CustomEvent('chartDataLoaded', {
-                    detail: { fileId: fid, source: 'seedMultichartPanelFromParentMemory' },
-                }));
-            } catch (_ev) { /* ignore */ }
-            return true;
+            const pc = parent._serverCursors || {};
+            return {
+                candles,
+                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : candles.length,
+                returned: candles.length,
+                first_cursor: candles[0] ? candles[0].t : (pc.firstTs ?? null),
+                last_cursor: candles[candles.length - 1] ? candles[candles.length - 1].t : (pc.lastTs ?? null),
+                has_more_left: pc.hasMoreLeft !== false,
+                has_more_right: pc.hasMoreRight === true,
+                source: 'parent-memory',
+            };
         } catch (e) {
-            console.warn('seedMultichartPanelFromParentMemory failed', e);
-            return false;
+            console.warn('_takeParentMemorySmartWindow failed', e);
+            return null;
         }
     }
 
@@ -4466,7 +4421,13 @@ class Chart {
                 }
             }
 
-            let result = this._tryTakeSmartPrefetch(targetFileId, params);
+            // FAST PATH: same pair host tile A already holds → ingest A's in-memory bars
+            // instead of a network fetch. Only fires for the host's current pair (different
+            // pairs still fetch). Falls through to the network path when A has no data yet.
+            let result = (!fetchReplayAnchored && !anchorToHostPlayhead)
+                ? this._takeParentMemorySmartWindow(targetFileId, requestTimeframe)
+                : null;
+            if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result && !fetchReplayAnchored) {
                 const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
                 result = this._tryTakeSmartPrefetch(targetFileId, prefetchParams);

@@ -755,21 +755,6 @@
                         reportToShell('warn', 'loadFileData: no fileId');
                         return;
                     }
-                    // Fast boot: same pair as host A → copy A's in-memory master series
-                    // instead of a fresh server fetch (kills the slow "LOADING B" round-trip).
-                    if (typeof ch.seedMultichartPanelFromParentMemory === 'function') {
-                        try {
-                            if (ch.seedMultichartPanelFromParentMemory(loadFid, { timeframe: tf })) {
-                                reportToShell('info', 'seeded panel from parent memory fileId=' + loadFid
-                                    + (playheadTs != null ? ' playhead=' + playheadTs : ''));
-                                afterLoad();
-                                return;
-                            }
-                        } catch (eSeed) {
-                            reportToShell('warn', 'seedMultichartPanelFromParentMemory threw: '
-                                + (eSeed && eSeed.message || eSeed));
-                        }
-                    }
                     reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
                     var lp = ch.loadFileData(String(loadFid));
