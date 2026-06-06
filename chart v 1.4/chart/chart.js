@@ -4284,7 +4284,11 @@ class Chart {
                     return Number.isFinite(t) ? Math.floor(t) : null;
                 })();
                 let endAnchor = sessionEndMs;
-                if (fetchReplayAnchored) {
+                // Independent multichart panels mirror host A's play loop, so they MUST keep
+                // forward bars (history → session end) to advance on play. Anchoring the fetch
+                // at the playhead would truncate the future and freeze the panel on Run.
+                // The visible window is still cut to the playhead via _applyIndependentPanelReplaySlice.
+                if (fetchReplayAnchored && !anchorToHostPlayhead) {
                     endAnchor = Math.floor(replayTargetTs);
                 }
                 backtestHistoryRange = endAnchor != null ? { endTs: endAnchor } : null;
