@@ -986,6 +986,24 @@ try:
 except Exception:
     pass
 
+# Safe migration: indexes for hot queue/poll paths.
+# The binary worker claims jobs every few seconds with
+#   WHERE status = 'queued' ORDER BY created_at, id
+# and reclaim/progress scans filter csv_aggregates by (file_id, status). Without
+# these composite indexes those queries seq-scan under sustained traffic.
+try:
+    with engine.connect() as _conn:
+        for _stmt in (
+            "CREATE INDEX IF NOT EXISTS ix_binary_build_jobs_status_created "
+            "ON binary_build_jobs (status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_csv_aggregates_file_status "
+            "ON csv_aggregates (file_id, status)",
+        ):
+            _conn.execute(text(_stmt))
+        _conn.commit()
+except Exception:
+    pass
+
 # Safe migration: support ticket helpdesk columns.
 try:
     with engine.connect() as _conn:

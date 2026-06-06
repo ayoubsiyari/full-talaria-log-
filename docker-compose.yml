@@ -12,6 +12,11 @@ services:
   questdb:
     image: questdb/questdb:8.2.2
     restart: unless-stopped
+    # QuestDB was the only steady-state CPU hog (~36% idle). Root cause: its worker
+    # pools auto-size to the host core count and busy-spin while idle. Capping the
+    # pools and forcing threads to sleep (yield/sleep threshold=1) drops idle CPU to
+    # low single digits without hurting ingest/query throughput at our volume.
+    mem_limit: ${QUESTDB_MEM_LIMIT:-2g}
     environment:
       QDB_PG_USER: ${QUESTDB_PG_USER:-admin}
       QDB_PG_PASSWORD: ${QUESTDB_PG_PASSWORD:-quest}
@@ -20,6 +25,21 @@ services:
       QDB_HTTP_MIN_ENABLED: "true"
       # PG wire can queue when large SAMPLE BY / rebuild jobs run — allow more concurrent clients.
       QDB_PG_NET_CONNECTION_LIMIT: "64"
+      # ── Idle-CPU containment (see https://github.com/questdb/questdb/issues/3512) ──
+      # Bound the shared pool instead of letting it grab every core, and make idle
+      # workers sleep instead of spin.
+      QDB_SHARED_WORKER_COUNT: ${QDB_SHARED_WORKER_COUNT:-2}
+      QDB_SHARED_WORKER_YIELD_THRESHOLD: "1"
+      QDB_SHARED_WORKER_SLEEP_THRESHOLD: "1"
+      QDB_PG_WORKER_COUNT: ${QDB_PG_WORKER_COUNT:-2}
+      QDB_HTTP_WORKER_COUNT: ${QDB_HTTP_WORKER_COUNT:-2}
+      # ILP/TCP ingest pool is the biggest idle spinner — pin it small and sleepy.
+      QDB_LINE_TCP_WRITER_WORKER_COUNT: "1"
+      QDB_LINE_TCP_WRITER_WORKER_YIELD_THRESHOLD: "1"
+      QDB_LINE_TCP_WRITER_WORKER_SLEEP_THRESHOLD: "1"
+      QDB_LINE_TCP_IO_WORKER_COUNT: "1"
+      QDB_LINE_TCP_IO_WORKER_YIELD_THRESHOLD: "1"
+      QDB_LINE_TCP_IO_WORKER_SLEEP_THRESHOLD: "1"
     volumes:
       - questdb_data:/var/lib/questdb
     healthcheck:
@@ -45,6 +65,9 @@ services:
       retries: 10
 
   journal-backend:
+    # Prefer a CI-built image (docker compose pull && up -d). `build:` stays as a
+    # local fallback; on the VPS deploy WITHOUT --build so no compile runs on the host.
+    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-journal-backend:${IMAGE_TAG:-latest}
     build:
       context: ./journal-backend
     restart: unless-stopped
@@ -72,7 +95,11 @@ services:
         condition: service_healthy
 
   # Context = repo root: Dockerfile runs `npm run build:live:chart` in talaria-design (V9 bundle + ?v= bump).
+  # IMPORTANT: the V9/Terser builds inside this image take ~15–20 min of CPU. Build them in
+  # CI (see .github/workflows/build-images.yml) and deploy with `docker compose pull && up -d`
+  # so this never compiles on the production VPS.
   trading-chart:
+    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-trading-chart:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
@@ -113,7 +140,9 @@ services:
       FIrstrate_SCHEDULE_AUTO_REPAIR: ${FIrstrate_SCHEDULE_AUTO_REPAIR:-true}
       FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-120}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
-      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      # 5s (was 2s): jobs still wake instantly via Redis BRPOP; this only widens the
+      # idle fallback poll so we issue fewer "claim next job" queries against Postgres.
+      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-5.0}
       BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}
       BACKTEST_SMART_RATE_PER_MINUTE: ${BACKTEST_SMART_RATE_PER_MINUTE:-90}
       BACKTEST_WHATIF_RATE_PER_MINUTE: ${BACKTEST_WHATIF_RATE_PER_MINUTE:-30}
@@ -137,6 +166,10 @@ services:
       QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
+      # Build higher-timeframe pre-aggregate tables once on ingest. Without this,
+      # every 5m/15m/1h/4h/1d/1w chart read runs a runtime SAMPLE BY over the
+      # PARTITION BY YEAR ohlcv_1m table — the main query-side QuestDB CPU driver.
+      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-true}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
@@ -161,6 +194,8 @@ services:
       start_period: 90s
 
   trading-chart-worker:
+    # Same image as trading-chart (only the command differs) — no separate build/compile.
+    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-trading-chart:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
@@ -195,7 +230,9 @@ services:
       FIrstrate_SCHEDULE_AUTO_REPAIR: ${FIrstrate_SCHEDULE_AUTO_REPAIR:-true}
       FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-120}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
-      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
+      BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-5.0}
+      # Single build thread keeps the worker off the CPU when traffic is sustained;
+      # raise only if the binary backlog grows and CPU headroom exists.
       BINARY_WORKER_THREADS: ${BINARY_WORKER_THREADS:-1}
       BINARY_JOB_MAX_MINUTES: ${BINARY_JOB_MAX_MINUTES:-120}
       BINARY_STUCK_PROCESSING_MINUTES: ${BINARY_STUCK_PROCESSING_MINUTES:-75}
@@ -206,6 +243,7 @@ services:
       QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
+      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-true}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
@@ -229,6 +267,7 @@ services:
       start_period: 45s
 
   homepage:
+    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-homepage:${IMAGE_TAG:-latest}
     build:
       context: ./homepage
       args:
