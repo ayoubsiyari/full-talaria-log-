@@ -1732,6 +1732,105 @@ class Chart {
     }
 
     /**
+     * Multichart iframe FAST boot: when this panel shows the SAME pair host tile A already
+     * holds in memory, copy A's master series directly instead of re-fetching from the server.
+     * Eliminates the slow "LOADING B" round-trip when splitting the layout. Returns false
+     * (caller falls back to the network path) for a different pair or when A has no data yet.
+     *
+     * @param {string|number} fileId
+     * @param {{ timeframe?: string }} [opts]
+     * @returns {boolean}
+     */
+    seedMultichartPanelFromParentMemory(fileId, opts = {}) {
+        try {
+            if (!this._isMultichartEmbedPanel()) return false;
+            const parent = (typeof window !== 'undefined' && window.parent && window.parent !== window)
+                ? window.parent.chart
+                : null;
+            if (!parent) return false;
+
+            const fid = String(fileId || this.currentFileId || '').trim();
+            if (!fid) return false;
+            // Only safe for the SAME instrument the host already loaded.
+            if (String(parent.currentFileId || '') !== fid) return false;
+
+            const prs = parent.replaySystem;
+            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+                ? prs.fullRawData
+                : (Array.isArray(parent.rawData) && parent.rawData.length > 0 ? parent.rawData : null);
+            if (!masterRaw) return false;
+
+            const session = parent.backtestingSession || this.backtestingSession;
+            if (session) {
+                this.backtestingSession = session;
+                this.isBacktestMode = !!parent.isBacktestMode;
+            }
+
+            const displayTf = this._normalizeBacktestTimeframe(opts.timeframe || this.currentTimeframe)
+                || parent.currentTimeframe || '1m';
+            this.currentTimeframe = displayTf;
+            this.currentFileId = fid;
+            this.currentSymbol = parent.currentSymbol || this.currentSymbol;
+            this._nativeRawFetchTf = parent._nativeRawFetchTf || prs?.rawTimeframe || '1m';
+
+            const fullCopy = masterRaw.map((b) => ({ ...b }));
+            this.rawData = fullCopy;
+            this.data = this.resampleData(fullCopy, displayTf);
+            if (!this.loadedRanges || typeof this.loadedRanges.set !== 'function') {
+                this.loadedRanges = new Map();
+            }
+            this.loadedRanges.set(0, fullCopy.length);
+            this._serverCursors = parent._serverCursors
+                ? Object.assign({}, parent._serverCursors)
+                : { firstTs: null, lastTs: null, hasMoreLeft: true, hasMoreRight: true };
+
+            const playheadTs = (prs && prs.isActive && Number.isFinite(Number(prs.replayTimestamp)))
+                ? Number(prs.replayTimestamp)
+                : null;
+
+            if (!this.replaySystem && typeof this.initReplaySystem === 'function') {
+                this.initReplaySystem();
+            }
+            const replay = this.replaySystem;
+            if (replay) {
+                if (replay.isActive && typeof replay.exitReplayMode === 'function') {
+                    try { replay.exitReplayMode(); } catch (_e) { /* ignore */ }
+                }
+                if (typeof replay.enterReplayMode === 'function') {
+                    replay.enterReplayMode({
+                        preservePlayhead: Number.isFinite(playheadTs),
+                        initialReplayTimestamp: playheadTs,
+                        startAtBeginning: !Number.isFinite(playheadTs),
+                        suppressInitialUpdateChartData: Number.isFinite(playheadTs),
+                    });
+                }
+                replay.fullRawData = fullCopy;
+                replay.rawTimeframe = this._nativeRawFetchTf;
+                replay._fullRawDataMatchesTF = false;
+                if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
+                    replay.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
+                } else if (typeof replay.updateChartData === 'function') {
+                    replay.updateChartData(true);
+                }
+            }
+
+            this.updateChartTitle(this.currentSymbol || `FILE_${fid}`);
+            this.resize();
+            this.fitToView();
+            this.render();
+            try {
+                window.dispatchEvent(new CustomEvent('chartDataLoaded', {
+                    detail: { fileId: fid, source: 'seedMultichartPanelFromParentMemory' },
+                }));
+            } catch (_ev) { /* ignore */ }
+            return true;
+        } catch (e) {
+            console.warn('seedMultichartPanelFromParentMemory failed', e);
+            return false;
+        }
+    }
+
+    /**
      * Multichart iframe entry: load the SAME backtest window + replay playhead
      * as host panel A. Does NOT use checkBacktestingMode / splash / alerts.
      * Safe to call repeatedly (idempotent when already aligned).
