@@ -393,13 +393,32 @@
         var rs = ch && ch.replaySystem;
         if (!rs || !rs.isActive || typeof rs.applyMultichartMirrorFrame !== 'function') return false;
         try {
-            return !!rs.applyMultichartMirrorFrame({
+            // Preserve the exact viewport the play stream left behind. The pause ts equals the
+            // last frame ts, so the slice is identical — re-deriving offset/zoom via the mirror's
+            // auto-scroll recompute is what makes the panel visibly jump and snap back.
+            var prevOffsetX = ch.offsetX;
+            var prevCandleWidth = ch.candleWidth;
+            var prevAutoScroll = rs.autoScrollEnabled;
+            // Freeze auto-scroll for this single static frame so it can't re-fit the viewport.
+            rs.autoScrollEnabled = false;
+            var ok = !!rs.applyMultichartMirrorFrame({
                 timestamp: ts,
                 isPlaying: false,
                 tickProgress: 0,
                 tickElapsedMs: 0,
                 hostFileId: readParentHostFileId(),
             });
+            rs.autoScrollEnabled = prevAutoScroll;
+            if (ok) {
+                if (Number.isFinite(prevOffsetX)) ch.offsetX = prevOffsetX;
+                if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
+                if (typeof ch.constrainOffset === 'function') {
+                    try { ch.constrainOffset(); } catch (_) {}
+                }
+                ch.renderPending = true;
+                if (typeof ch.render === 'function') ch.render();
+            }
+            return ok;
         } catch (e) {
             warn('applyStaticMirrorFrame threw', e && e.message);
             return false;
