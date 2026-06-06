@@ -1314,14 +1314,6 @@ select { cursor:default; }
   color: var(--text-secondary);
   margin-bottom: 18px;
 }
-.insight-spark svg {
-  width: 100%;
-  height: 52px;
-  display: block;
-  border-radius: var(--radius-sm);
-  background: rgba(0,0,0,.18);
-  border: 1px solid var(--border);
-}
 
 /* ── Toast ──────────────────────────────────────── */
 #toast {
@@ -3804,22 +3796,10 @@ select { cursor:default; }
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               <div class="card-title">Server (VPS)</div>
-              <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);font-weight:500;cursor:default">
-                <input type="checkbox" id="insightsLiveToggle" checked> Live poll (4s)
-              </label>
+              <button type="button" class="btn sm primary" onclick="loadInsightsSystemMetrics()" style="margin-left:auto">Refresh</button>
             </div>
             <div class="card-body" id="insightsSystemHost">
-              <p style="font-size:12px;color:var(--text-muted)">Loads CPU, memory, disks, and network counters from this host.</p>
-            </div>
-            <div style="padding:0 16px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-              <div>
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">CPU % (session)</div>
-                <div id="insightsCpuSparkWrap"></div>
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Memory %</div>
-                <div id="insightsMemSparkWrap"></div>
-              </div>
+              <p style="font-size:12px;color:var(--text-muted)">Click Refresh for a one-time CPU, memory, disk, and network snapshot (no background polling).</p>
             </div>
           </div>
         </div>
@@ -3829,10 +3809,9 @@ select { cursor:default; }
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
               <div class="card-title">What is using CPU?</div>
-              <button type="button" class="btn sm primary" onclick="loadInsightsSystemMetrics()" style="margin-left:auto">Refresh</button>
             </div>
             <div class="card-body" id="insightsTopProcessesHost">
-              <p style="font-size:12px;color:var(--text-muted)">Top processes load with the VPS panel above.</p>
+              <p style="font-size:12px;color:var(--text-muted)">Top processes load when you refresh the VPS panel above.</p>
             </div>
           </div>
           <div class="card">
@@ -5649,7 +5628,6 @@ function auditLogPrevPage() {
 }
 
 function navigate(section) {
-  stopInsightsSystemPoll();
   let dsTabOverride = null;
   if (section === 'dataset-registry') {
     section = 'datasets';
@@ -5711,9 +5689,6 @@ let dashboardModuleCatalog = [];
 let selectedDsId = null;
 let dsPollTimer = null;
 let datasetRegistrySnapshot = null;
-let insightsSystemPollTimer = null;
-let insightsCpuHistory = [];
-let insightsMemHistory = [];
 let insightsOverviewCache = null;
 
 // ═══════════════════════════════════════════════════════════
@@ -6690,13 +6665,6 @@ async function goToDatasetFromRegistry(fileId) {
   } catch (e) { toast(e.message || String(e), 'err'); }
 }
 
-function stopInsightsSystemPoll() {
-  if (insightsSystemPollTimer) {
-    clearInterval(insightsSystemPollTimer);
-    insightsSystemPollTimer = null;
-  }
-}
-
 function fmtInsightsUptime(sec) {
   sec = Math.max(0, Math.floor(Number(sec) || 0));
   var d = Math.floor(sec / 86400);
@@ -6716,25 +6684,6 @@ function fmtInsightsNetBytes(n) {
   return fmtN(n) + ' B';
 }
 
-function insightsSparklineSvg(points, strokeHex) {
-  strokeHex = strokeHex || '#8b5cf6';
-  if (!points || !points.length) return '<div class="insight-spark"></div>';
-  var W = 100, H = 36, pad = 2;
-  var minV = 0, maxV = 100;
-  var n = points.length;
-  var step = (W - pad * 2) / Math.max(n - 1, 1);
-  var pts = [];
-  for (var i = 0; i < n; i++) {
-    var v = Math.min(maxV, Math.max(minV, Number(points[i]) || 0));
-    var x = pad + i * step;
-    var t = (v - minV) / (maxV - minV);
-    var y = pad + (1 - t) * (H - pad * 2);
-    pts.push(x + ',' + y);
-  }
-  return '<div class="insight-spark"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
-    '<polyline fill="none" stroke="' + strokeHex + '" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points="' + pts.join(' ') + '"/></svg></div>';
-}
-
 function insightsGaugeBar(label, pct, colorVar) {
   var p = Math.min(100, Math.max(0, Number(pct) || 0));
   return '<div style="margin-bottom:12px">' +
@@ -6745,17 +6694,8 @@ function insightsGaugeBar(label, pct, colorVar) {
 }
 
 async function loadInsightsAnalyticsPage() {
-  insightsCpuHistory = [];
-  insightsMemHistory = [];
-  stopInsightsSystemPoll();
   await loadInsightsDatasetCharts();
-  loadInsightsSystemMetrics();
   loadInsightsSecurity();
-  insightsSystemPollTimer = setInterval(function () {
-    var box = $('insightsLiveToggle');
-    if (box && !box.checked) return;
-    loadInsightsSystemMetrics();
-  }, 4000);
 }
 
 function fmtInsightsBytes(n) {
@@ -6886,7 +6826,7 @@ function renderInsightsSystemHtml(m) {
     var dc = d.level === 'critical' ? 'var(--danger)' : d.level === 'warning' ? 'var(--warn)' : 'var(--text-muted)';
     parts.push('<p style="font-size:11px;color:' + dc + ';margin:0 0 6px">• ' + esc(d.text) + '</p>');
   });
-  parts.push(insightsGaugeBar('CPU (system)', m.cpu && m.cpu.percent, 'var(--accent)'));
+  parts.push(insightsGaugeBar('CPU (1s avg)', m.cpu && m.cpu.percent, 'var(--accent)'));
   parts.push(insightsGaugeBar('Memory', m.memory && m.memory.percent, 'var(--ok)'));
   if (m.swap && m.swap.total > 0) {
     parts.push(insightsGaugeBar('Swap', m.swap.percent, 'var(--warn)'));
@@ -7006,26 +6946,14 @@ function renderInsightsSecurityHtml(data) {
 async function loadInsightsSystemMetrics() {
   var host = $('insightsSystemHost');
   var procHost = $('insightsTopProcessesHost');
-  var cw = $('insightsCpuSparkWrap');
-  var mw = $('insightsMemSparkWrap');
   if (!host) return;
   try {
     var m = await api('/api/admin/system/metrics');
     if (!m.agent_available) {
-      if (cw) cw.innerHTML = '';
-      if (mw) mw.innerHTML = '';
       host.innerHTML = '<p style="color:var(--warn);font-size:13px">' + esc(m.message || 'Metrics unavailable.') + '</p>';
       if (procHost) procHost.innerHTML = '';
       return;
     }
-    var cpu = m.cpu && m.cpu.percent;
-    var mem = m.memory && m.memory.percent;
-    if (cpu != null) insightsCpuHistory.push(cpu);
-    if (mem != null) insightsMemHistory.push(mem);
-    while (insightsCpuHistory.length > 48) insightsCpuHistory.shift();
-    while (insightsMemHistory.length > 48) insightsMemHistory.shift();
-    if (cw) cw.innerHTML = insightsSparklineSvg(insightsCpuHistory, '#8b5cf6');
-    if (mw) mw.innerHTML = insightsSparklineSvg(insightsMemHistory, '#10b981');
     host.innerHTML = renderInsightsSystemHtml(m);
     if (procHost) procHost.innerHTML = renderInsightsTopProcessesHtml(m);
   } catch (e) {

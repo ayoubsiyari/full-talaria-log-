@@ -81,6 +81,12 @@ services:
     volumes:
       - chart_uploads:/app/uploads
       - chart_data:/app/data
+    command:
+      [
+        "sh",
+        "-c",
+        "exec gunicorn api_server:app -w $${WEB_CONCURRENCY:-2} -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 1800 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100",
+      ]
     environment:
       PYTHONUNBUFFERED: "1"
       DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
@@ -94,7 +100,7 @@ services:
       SESSION_COOKIE_NAME: "chart_session_id"
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       SESSION_COOKIE_SAMESITE: "lax"
-      WEB_CONCURRENCY: "4"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
       APP_ROLE: "api"
       # Skip scanning all datasets for missing binaries/tiles on every container restart (saves CPU on deploy).
       # Set false in .env when you need a full repair pass after data migration.
@@ -105,7 +111,7 @@ services:
       FIrstrate_SCHEDULE_PERIOD: ${FIrstrate_SCHEDULE_PERIOD:-week}
       FIrstrate_SCHEDULE_ADAPTIVE_PERIOD: ${FIrstrate_SCHEDULE_ADAPTIVE_PERIOD:-true}
       FIrstrate_SCHEDULE_AUTO_REPAIR: ${FIrstrate_SCHEDULE_AUTO_REPAIR:-true}
-      FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-30}
+      FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-120}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
       BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
       BINARY_ONLY_RUNTIME: ${BINARY_ONLY_RUNTIME:-false}
@@ -114,7 +120,7 @@ services:
       BACKTEST_SESSION_PATCH_RATE_PER_MINUTE: ${BACKTEST_SESSION_PATCH_RATE_PER_MINUTE:-60}
       BACKTEST_WHATIF_ASYNC: ${BACKTEST_WHATIF_ASYNC:-true}
       BACKTEST_WHATIF_CACHE_TTL_SEC: ${BACKTEST_WHATIF_CACHE_TTL_SEC:-900}
-      BACKTEST_WHATIF_DRAIN_ON_API: ${BACKTEST_WHATIF_DRAIN_ON_API:-true}
+      BACKTEST_WHATIF_DRAIN_ON_API: ${BACKTEST_WHATIF_DRAIN_ON_API:-false}
       SESSION_JOURNAL_SQL_PRIMARY: ${SESSION_JOURNAL_SQL_PRIMARY:-true}
       SESSION_STRIP_JOURNAL_FROM_STATE_JSON: ${SESSION_STRIP_JOURNAL_FROM_STATE_JSON:-true}
       MAX_JOURNAL_TRADES_PER_SESSION: ${MAX_JOURNAL_TRADES_PER_SESSION:-5000}
@@ -181,6 +187,13 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-talaria}:${POSTGRES_PASSWORD:-talaria}@db:5432/${POSTGRES_DB:-talaria}
       REDIS_URL: "redis://redis:6379"
       APP_ROLE: "worker"
+      SKIP_BINARY_BACKFILL_ON_STARTUP: "true"
+      FIrstrate_SCHEDULE_ENABLED: ${FIrstrate_SCHEDULE_ENABLED:-true}
+      FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR: ${FIrstrate_SCHEDULE_NIGHTLY_UTC_HOUR:-2}
+      FIrstrate_SCHEDULE_PERIOD: ${FIrstrate_SCHEDULE_PERIOD:-week}
+      FIrstrate_SCHEDULE_ADAPTIVE_PERIOD: ${FIrstrate_SCHEDULE_ADAPTIVE_PERIOD:-true}
+      FIrstrate_SCHEDULE_AUTO_REPAIR: ${FIrstrate_SCHEDULE_AUTO_REPAIR:-true}
+      FIrstrate_SCHEDULE_TICK_SEC: ${FIrstrate_SCHEDULE_TICK_SEC:-120}
       BINARY_BUILD_MODE: ${BINARY_BUILD_MODE:-queue}
       BINARY_QUEUE_POLL_SECONDS: ${BINARY_QUEUE_POLL_SECONDS:-2.0}
       BINARY_WORKER_THREADS: ${BINARY_WORKER_THREADS:-1}
@@ -197,6 +210,9 @@ services:
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
       QUESTDB_ILP_PORT: "9009"
+    env_file:
+      - path: "./chart v 1.4/chart/.env"
+        required: false
     depends_on:
       db:
         condition: service_healthy

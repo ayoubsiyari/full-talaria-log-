@@ -4163,9 +4163,10 @@ def _firstrate_scheduler_bootstrap() -> None:
 
 
 def _start_firstrate_scheduler_thread() -> None:
+    """Run FirstRate nightly/repair scheduler on the dedicated worker only (not per gunicorn API worker)."""
     if os.getenv("FIrstrate_SCHEDULE_DISABLE", "").strip().lower() in {"1", "true", "yes", "on"}:
         return
-    if APP_ROLE == "worker":
+    if APP_ROLE != "worker":
         return
     threading.Thread(target=_firstrate_scheduler_bootstrap, daemon=True, name="firstrate-bootstrap").start()
     threading.Thread(target=_firstrate_scheduler_loop, daemon=True, name="firstrate-scheduler").start()
@@ -16872,7 +16873,7 @@ def _admin_system_metrics_payload() -> dict:
             "message": "Install psutil on the server to enable system metrics.",
         }
 
-    cpu_pct = float(psutil.cpu_percent(interval=0.22))
+    cpu_pct = float(psutil.cpu_percent(interval=1.0))
     cpu_logical = psutil.cpu_count(logical=True) or 1
     cpu_physical = psutil.cpu_count(logical=False)
 
@@ -19881,7 +19882,7 @@ if homepage_dir.exists():
 
 @app.on_event("startup")
 async def _firstrate_scheduler_app_startup():
-    """Background thread: QuestDB schema + FirstRate scheduler — must not block healthchecks."""
+    """Background thread: QuestDB schema (+ FirstRate scheduler on worker role only)."""
     def _bootstrap() -> None:
         if questdb_store.questdb_enabled():
             try:
@@ -19889,7 +19890,8 @@ async def _firstrate_scheduler_app_startup():
                 print("✅ QuestDB schema ready")
             except Exception as exc:
                 print(f"⚠️ QuestDB schema init failed: {exc}")
-        _start_firstrate_scheduler_thread()
+        if APP_ROLE == "worker":
+            _start_firstrate_scheduler_thread()
 
     threading.Thread(target=_bootstrap, daemon=True, name="app-startup").start()
 
