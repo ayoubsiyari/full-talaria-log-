@@ -53,10 +53,20 @@ RUN test -f ./analytics_backend/backtest_whatif.py \
 # Overwrite committed dist-v9 with freshly built + bump-dist-v9-cache output.
 COPY --from=v9_react /build/chart/dist-v9 ./dist-v9
 
-RUN npm run build:chart-client
+# The legacy minified bundle (dist/) is ONLY a fallback for /chart/index.html when
+# dist-v9 is absent (see api_server.py). dist-v9 is always built above and is the
+# canonical served app, so skip the slow Terser minify (~7 min) by default.
+# Set --build-arg BUILD_LEGACY_BUNDLE=1 if you ever need the legacy fallback bundle.
+ARG BUILD_LEGACY_BUNDLE=0
+RUN if [ "$BUILD_LEGACY_BUNDLE" = "1" ]; then \
+        npm run build:chart-client; \
+    else \
+        echo "Skipping build:chart-client — dist-v9 is the canonical served app"; \
+    fi
 
-RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators && \
-    chmod -R 755 /app
+# Create runtime dirs. Do NOT `chmod -R /app`: recursing node_modules/site-packages
+# added ~50s, and the copied files are already readable (container runs as root).
+RUN mkdir -p uploads/bin uploads/tiles uploads/aggregates data db indicators
 
 EXPOSE 8000
 
