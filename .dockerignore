@@ -1,7 +1,59 @@
-# Keep `docker compose build` context small (context = repo root for chart image).
+# Keep `docker compose build trading-chart` context small (context = repo root).
+# Without these rules Docker can upload 10–100+ GB from uploads/CSV/tiles on the VPS.
+
 .git
+**/.git
 **/.DS_Store
 **/.next
 **/out
 **/node_modules
+**/.turbo
+**/.cache
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
 journal-backend/venv
+
+# Runtime / dataset data — never part of the image (lives in Docker volumes on VPS)
+**/uploads
+**/uploads/**
+**/data
+**/data/**
+**/*.csv
+**/*.bin
+**/tiles
+**/tiles/**
+
+# Chart artifacts rebuilt inside the Dockerfile (skip from context)
+chart v 1.4/chart/dist-v9
+chart v 1.4/chart/dist
+chart v 1.4/talaria-design/dist
+chart v 1.4/chart/db
+chart v 1.4/chart/*.log
+
+# Homepage: only analytics backend is COPY'd into the chart image
+homepage/**
+!homepage/src
+homepage/src/**
+!homepage/src/app
+homepage/src/app/**
+!homepage/src/app/dashboard
+homepage/src/app/dashboard/**
+!homepage/src/app/dashboard/analytics
+homepage/src/app/dashboard/analytics/**
+!homepage/src/app/dashboard/analytics/backend
+!homepage/src/app/dashboard/analytics/backend/**
+
+# Journal backend image builds from its own context
+journal-backend/**
+
+# Docs / IDE / env secrets
+**/*.md
+!README.md
+.idea
+.vscode
+.env
+**/.env
+**/.env.*
+!**/.env.example
