@@ -372,6 +372,40 @@
         log('order forwarders installed');
     }
 
+    /** Host tile A's current fileId, so mirror frames pick the shared vs independent path correctly. */
+    function readParentHostFileId() {
+        try {
+            var pc = global.parent && global.parent !== global ? global.parent.chart : null;
+            if (pc && pc.currentFileId != null && pc.currentFileId !== '') {
+                return String(pc.currentFileId);
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    /**
+     * Apply a static (no animation) mirror frame — identical render path to the play-time
+     * replayFrame stream. Used for pause / scrub / step so the panel does NOT jump to a
+     * different viewport (goToReplayTimestamp) and snap back when play resumes.
+     * @returns {boolean} true when the mirror frame rendered.
+     */
+    function applyStaticMirrorFrame(ch, ts) {
+        var rs = ch && ch.replaySystem;
+        if (!rs || !rs.isActive || typeof rs.applyMultichartMirrorFrame !== 'function') return false;
+        try {
+            return !!rs.applyMultichartMirrorFrame({
+                timestamp: ts,
+                isPlaying: false,
+                tickProgress: 0,
+                tickElapsedMs: 0,
+                hostFileId: readParentHostFileId(),
+            });
+        } catch (e) {
+            warn('applyStaticMirrorFrame threw', e && e.message);
+            return false;
+        }
+    }
+
     function scheduleCoalescedSeek(ch, ts) {
         coalescedSeekTs = ts;
         if (coalescedSeekScheduled) return;
@@ -384,6 +418,10 @@
             var seekTs = coalescedSeekTs;
             coalescedSeekTs = null;
             if (seekTs == null) return;
+            // Prefer the SAME render path as the play-time frame stream so pause/scrub
+            // doesn't visibly re-fit the viewport and snap back. Fall back to a full
+            // seek (which can refetch) only when the mirror can't render this ts.
+            if (applyStaticMirrorFrame(ch, seekTs)) return;
             forceReplaySeek(ch, seekTs, false);
         });
     }
