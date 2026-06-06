@@ -3121,6 +3121,7 @@ select { cursor:default; }
           </div>
           <div class="card-body" style="padding-top:0">
             <p class="ds-card-lead">Stats above refresh from the registry API. Jump to a task:</p>
+            <p class="ds-card-lead" style="margin-top:0;font-size:11px;color:var(--text-muted)">New imports and <strong>Rebuild</strong> automatically sync to QuestDB when <code style="font-size:10px">QUESTDB_ENABLED=true</code> on the server. Registry shows which tickers are already in QuestDB vs still tiles-only.</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px">
               <button type="button" class="btn sm primary" onclick="setDsHubTab('import')">Import data</button>
               <button type="button" class="btn sm" onclick="setDsHubTab('registry')">Open registry</button>
@@ -3730,6 +3731,7 @@ select { cursor:default; }
                 <div style="display:flex;gap:8px;margin-top:16px">
                   <button type="submit" class="btn primary">Save</button>
                   <button type="button" class="btn warn" onclick="rebuildDataset()">Rebuild</button>
+                  <button type="button" class="btn sm" onclick="syncDatasetQuestDB(selectedDsId, true)" title="Copy CSV candles into QuestDB (can take minutes on large files)">Sync QuestDB</button>
                   <button type="button" class="btn danger" onclick="deleteDataset()">Delete</button>
                 </div>
               </form>
@@ -3770,6 +3772,7 @@ select { cursor:default; }
                   <th style="text-align:right">Total</th>
                   <th style="text-align:center">TFs</th>
                   <th>Coverage</th>
+                  <th>QuestDB</th>
                   <th style="text-align:right">Actions</th>
                 </tr>
               </thead>
@@ -6505,6 +6508,40 @@ function drHealthBadgeStyle(health) {
   return '<span class="dr-health-badge" style="color:' + x.fg + ';background:' + x.bg + '">' + esc(x.label) + '</span>';
 }
 
+function drQuestDbBadgeStyle(qdb) {
+  qdb = qdb || {};
+  var st = qdb.status || 'missing';
+  var map = {
+    synced: { fg: 'var(--ok)', bg: 'rgba(16,185,129,.12)', label: 'In QDB' },
+    partial: { fg: 'var(--warn)', bg: 'rgba(245,158,11,.12)', label: 'Partial' },
+    missing: { fg: 'var(--danger)', bg: 'rgba(239,68,68,.1)', label: 'Not yet' },
+    disabled: { fg: 'var(--text-muted)', bg: 'rgba(255,255,255,.06)', label: 'Off' }
+  };
+  var x = map[st] || map.missing;
+  var title = qdb.label || x.label;
+  if (qdb.bars_1m != null && qdb.bars_1m > 0) title += ' · ' + fmtN(qdb.bars_1m) + ' bars';
+  if (qdb.pct != null && qdb.expected_1m) title += ' · ' + qdb.pct + '% of expected';
+  return '<span class="dr-health-badge" title="' + esc(title) + '" style="color:' + x.fg + ';background:' + x.bg + '">' + esc(x.label) + '</span>';
+}
+
+async function syncDatasetQuestDB(fileId, force) {
+  if (!fileId) return;
+  var msg = force
+    ? 'Sync this dataset into QuestDB from CSV? Large files (millions of rows) can take 10–30+ minutes and use heavy CPU.'
+    : 'Sync to QuestDB if not already present?';
+  if (!confirm(msg)) return;
+  try {
+    toast('QuestDB sync started — watch worker logs on large files', 'ok');
+    var q = force ? '?force=true' : '';
+    var out = await api('/api/admin/datasets/' + fileId + '/questdb-sync' + q, { method: 'POST' });
+    toast((out.status === 'skipped' ? 'Already in QuestDB (' + fmtN(out.existing || 0) + ' bars)' : 'QuestDB sync finished'), 'ok');
+    loadDatasetRegistry().catch(function () {});
+    if (selectedDsId === fileId) loadDatasets(true).catch(function () {});
+  } catch (e) {
+    toast(e.message || 'QuestDB sync failed', 'err');
+  }
+}
+
 async function loadDatasetRegistry() {
   const tbody = $('datasetRegistryBody');
   const sumEl = $('datasetRegistrySummary');
@@ -6512,7 +6549,7 @@ async function loadDatasetRegistry() {
   const badge = $('datasetRegistryCount');
   const tbl = $('datasetRegistryTable');
   const emptyEl = $('datasetRegistryEmpty');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="padding:24px;color:var(--text-muted)">Loading snapshot…</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="padding:24px;color:var(--text-muted)">Loading snapshot…</td></tr>';
   if (tbl) tbl.style.display = '';
   if (emptyEl) emptyEl.style.display = 'none';
   try {
@@ -6523,6 +6560,8 @@ async function loadDatasetRegistry() {
     if (badge) badge.textContent = String(s.dataset_count || 0);
     if (genEl) genEl.textContent = data.generated_at ? ('Snapshot: ' + data.generated_at) : '';
     if (sumEl) {
+      var qOn = s.questdb_enabled !== false;
+      var qRead = !!s.questdb_read_primary;
       sumEl.innerHTML =
         '<div class="stat-card accent"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>' +
         '<div class="label">Datasets</div><div class="value">' + fmtN(s.dataset_count || 0) + '</div></div>' +
@@ -6531,12 +6570,16 @@ async function loadDatasetRegistry() {
         '<div class="stat-card ok"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>' +
         '<div class="label">Healthy pipeline</div><div class="value">' + fmtN(s.healthy_count || 0) + '</div></div>' +
         '<div class="stat-card danger"><div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>' +
-        '<div class="label">Needs attention</div><div class="value">' + fmtN(s.needs_attention_count || 0) + '</div></div>';
+        '<div class="label">Needs attention</div><div class="value">' + fmtN(s.needs_attention_count || 0) + '</div></div>' +
+        (qOn
+          ? '<div class="stat-card ok"><div class="label">In QuestDB</div><div class="value">' + fmtN(s.questdb_synced_count || 0) + '</div><div class="sub">' + (qRead ? 'read primary' : 'tiles fallback') + '</div></div>' +
+            '<div class="stat-card warn"><div class="label">QuestDB pending</div><div class="value">' + fmtN((s.questdb_missing_count || 0) + (s.questdb_partial_count || 0)) + '</div><div class="sub">not synced / partial</div></div>'
+          : '<div class="stat-card"><div class="label">QuestDB</div><div class="value" style="font-size:14px">disabled</div></div>');
     }
     renderDatasetRegistryTable(data);
   } catch (e) {
     datasetRegistrySnapshot = null;
-    if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="padding:20px;color:var(--danger)">' + esc(e.message || String(e)) + '</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="padding:20px;color:var(--danger)">' + esc(e.message || String(e)) + '</td></tr>';
     toast(e.message || 'Failed to load registry', 'err');
   }
 }
@@ -6573,6 +6616,14 @@ function renderDatasetRegistryDetailHtml(ds) {
     ? '<p style="font-size:11px;margin:0 0 12px;color:var(--text-secondary)"><strong>Latest build</strong> #' + job.id + ' · ' + esc(job.status || '') +
       (job.error ? '<br><span style="color:var(--danger)">' + esc(job.error) + '</span>' : '') + '</p>'
     : '<p style="font-size:11px;color:var(--text-muted);margin:0 0 12px">No binary build job on file.</p>';
+  const qdb = ds.questdb || {};
+  const qdbLine = qdb.enabled === false
+    ? '<p style="font-size:11px;color:var(--text-muted);margin:0 0 12px"><strong>QuestDB</strong> disabled on server (<code style="font-size:10px">QUESTDB_ENABLED=false</code>).</p>'
+    : '<p style="font-size:11px;margin:0 0 8px;color:var(--text-secondary)"><strong>QuestDB</strong> · ' + drQuestDbBadgeStyle(qdb) +
+      (qdb.bars_1m ? ' · <span style="font-variant-numeric:tabular-nums">' + fmtN(qdb.bars_1m) + ' 1m bars</span>' : '') +
+      (qdb.pct != null && qdb.expected_1m ? ' · ' + qdb.pct + '% of ~' + fmtN(qdb.expected_1m) + ' expected' : '') +
+      (qdb.read_primary ? ' · <span style="color:var(--ok)">charts read QuestDB first</span>' : ' · charts fall back to tiles until synced') +
+      '</p><p style="margin:0 0 12px"><button type="button" class="btn sm primary" onclick="syncDatasetQuestDB(' + ds.id + ', true)">Sync to QuestDB</button></p>';
   const notes = ds.settings && ds.settings.notes ? '<p style="font-size:11px;color:var(--text-muted);margin:0 0 10px"><strong>Notes:</strong> ' + esc(ds.settings.notes) + '</p>' : '';
   const desc = ds.description ? '<p style="font-size:11px;color:var(--text-muted);margin:0 0 10px"><strong>Description:</strong> ' + esc(ds.description) + '</p>' : '';
   const csvOk = ds.csv && ds.csv.exists;
@@ -6580,7 +6631,7 @@ function renderDatasetRegistryDetailHtml(ds) {
     (csvOk ? esc(ds.csv.human || '—') + ' on disk' : '<span style="color:var(--danger)">missing</span>') +
     ' · rows stored <strong>' + fmtN(ds.csv_storage_rows_stored || 0) + '</strong> · file <code style="font-size:10px">' + esc(ds.filename || '') + '</code></p>';
 
-  return '<div class="dr-registry-detail-inner">' + desc + notes + csvLine + covLine + integLine + issueBlock + jobLine +
+  return '<div class="dr-registry-detail-inner">' + desc + notes + csvLine + covLine + integLine + issueBlock + jobLine + qdbLine +
     '<table class="dr-registry-mini"><thead><tr><th>TF</th><th>Status</th><th style="text-align:right">Rows</th><th style="text-align:right">.bin size</th></tr></thead><tbody>' +
     tfRows + '</tbody></table></div>';
 }
@@ -6607,6 +6658,7 @@ function renderDatasetRegistryTable(data) {
     const listingColor = (s.is_active !== false && s.is_active !== 0) ? 'var(--ok)' : 'var(--text-muted)';
     const cov = ds.coverage;
     const covShort = cov ? (esc(String(cov.span_days)) + ' d') : '—';
+    const qdb = ds.questdb || {};
     return '<tr class="dr-registry-main" onclick="toggleDatasetRegistryRow(' + ds.id + ')">' +
       '<td>' + drHealthBadgeStyle(ds.health) + '</td>' +
       '<td style="font-size:11px;color:var(--text-muted)">' + ds.id + '</td>' +
@@ -6618,10 +6670,12 @@ function renderDatasetRegistryTable(data) {
       '<td style="text-align:right;font-weight:700;font-variant-numeric: tabular-nums">' + esc(ds.total_storage_human || '—') + '</td>' +
       '<td style="text-align:center;font-size:12px">' + fmtN(ds.ready_timeframes || 0) + '/' + fmtN(ds.total_timeframes || 0) + '</td>' +
       '<td style="font-size:11px;color:var(--text-muted)">' + covShort + '</td>' +
+      '<td style="text-align:center">' + drQuestDbBadgeStyle(qdb) + '</td>' +
       '<td style="text-align:right" onclick="event.stopPropagation()">' +
+      '<button type="button" class="btn sm" onclick="syncDatasetQuestDB(' + ds.id + ', true)" style="margin-right:6px">QDB</button>' +
       '<button type="button" class="btn sm primary" onclick="goToDatasetFromRegistry(' + ds.id + ')">Manage</button></td></tr>' +
       '<tr class="dr-registry-detail" id="dr-detail-' + ds.id + '" style="display:none">' +
-      '<td colspan="11">' + renderDatasetRegistryDetailHtml(ds) + '</td></tr>';
+      '<td colspan="12">' + renderDatasetRegistryDetailHtml(ds) + '</td></tr>';
   }).join('');
 }
 

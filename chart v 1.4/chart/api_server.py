@@ -13227,15 +13227,35 @@ async def admin_datasets_overview(request: Request):
             if fid not in latest_job_by_file:
                 latest_job_by_file[fid] = job
 
+        qdb_counts = questdb_store.all_file_1m_counts() if questdb_store.questdb_enabled() else {}
+
         entries = []
         for f in files:
             sid = int(f.id)
             st = settings_by_file.get(sid)
             j = latest_job_by_file.get(sid)
-            entries.append(_dataset_overview_entry(db, f, st, j))
+            entry = _dataset_overview_entry(db, f, st, j)
+            exp_1m = 0
+            cov = entry.get("coverage") or {}
+            if cov.get("candle_count_1m"):
+                exp_1m = int(cov["candle_count_1m"])
+            elif entry.get("csv_storage_rows_stored"):
+                exp_1m = int(entry["csv_storage_rows_stored"])
+            else:
+                for tf in entry.get("timeframes") or []:
+                    if tf.get("timeframe") == "1m" and tf.get("row_count"):
+                        exp_1m = int(tf["row_count"])
+                        break
+            entry["questdb"] = questdb_store.classify_coverage(
+                sid, qdb_counts.get(sid, 0), exp_1m or None
+            )
+            entries.append(entry)
 
         total_disk = sum(int(x.get("total_storage_bytes") or 0) for x in entries)
         healthy_n = sum(1 for x in entries if x.get("health") == "healthy")
+        qdb_synced = sum(1 for x in entries if (x.get("questdb") or {}).get("status") == "synced")
+        qdb_partial = sum(1 for x in entries if (x.get("questdb") or {}).get("status") == "partial")
+        qdb_missing = sum(1 for x in entries if (x.get("questdb") or {}).get("status") == "missing")
         return {
             "success": True,
             "generated_at": datetime.utcnow().isoformat() + "Z",
@@ -13245,6 +13265,11 @@ async def admin_datasets_overview(request: Request):
                 "total_storage_human": _human_bytes(total_disk),
                 "healthy_count": healthy_n,
                 "needs_attention_count": len(entries) - healthy_n,
+                "questdb_enabled": questdb_store.questdb_enabled(),
+                "questdb_read_primary": questdb_store.questdb_read_primary(),
+                "questdb_synced_count": qdb_synced,
+                "questdb_partial_count": qdb_partial,
+                "questdb_missing_count": qdb_missing,
             },
             "datasets": entries,
             "timeframes": list(DATASET_TIMEFRAMES),

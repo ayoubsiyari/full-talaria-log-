@@ -223,6 +223,64 @@ def count_bars(file_id: int, table: str = "ohlcv_1m") -> int:
     return int(row[0]) if row else 0
 
 
+def all_file_1m_counts() -> dict[int, int]:
+    """Single GROUP BY query — row counts per file_id in ohlcv_1m (admin coverage view)."""
+    if not questdb_enabled():
+        return {}
+    ensure_schema()
+    try:
+        rows = _fetch_all("SELECT file_id, count() FROM ohlcv_1m GROUP BY file_id", ())
+    except Exception:
+        return {}
+    out: dict[int, int] = {}
+    for fid_raw, cnt in rows:
+        try:
+            out[int(str(fid_raw))] = int(cnt)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def classify_coverage(
+    file_id: int,
+    qdb_1m: int,
+    expected_1m: int | None,
+) -> dict[str, Any]:
+    """
+    Admin-facing QuestDB sync state for one dataset.
+    expected_1m: 1m row count from binaries/CSV metadata (reference for partial detection).
+    """
+    _ = file_id
+    if not questdb_enabled():
+        return {
+            "enabled": False,
+            "status": "disabled",
+            "label": "QuestDB off",
+            "bars_1m": 0,
+            "expected_1m": int(expected_1m) if expected_1m else None,
+            "pct": None,
+            "read_primary": False,
+        }
+    exp = max(0, int(expected_1m or 0))
+    qdb = max(0, int(qdb_1m or 0))
+    if qdb <= 0:
+        status, label = "missing", "Not in QuestDB"
+    elif exp > 0 and qdb < max(1000, int(exp * 0.95)):
+        status, label = "partial", "Partial sync"
+    else:
+        status, label = "synced", "In QuestDB"
+    pct = round(100.0 * qdb / exp, 1) if exp > 0 else (100.0 if qdb > 0 else 0.0)
+    return {
+        "enabled": True,
+        "status": status,
+        "label": label,
+        "bars_1m": qdb,
+        "expected_1m": exp if exp > 0 else None,
+        "pct": pct,
+        "read_primary": questdb_read_primary(),
+    }
+
+
 def preagg_is_incomplete(file_id: int, resolution: str) -> bool:
     """True when stored aggregate rows are far below what ohlcv_1m implies."""
     res = normalize_resolution(resolution)
