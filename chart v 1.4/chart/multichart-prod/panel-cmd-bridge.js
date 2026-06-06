@@ -639,57 +639,9 @@
                         throw new Error('chart.loadFileData is not a function');
                     }
                     var fidStr = String(fileId);
-                    var btSess = ch.backtestingSession;
-                    var parentPc = null;
-                    try {
-                        parentPc = (global.parent && global.parent !== global)
-                            ? global.parent.chart : null;
-                    } catch (_) {}
-                    if (!btSess && parentPc && parentPc.backtestingSession) {
-                        btSess = parentPc.backtestingSession;
-                        try { ch.backtestingSession = btSess; } catch (_) {}
-                    }
-                    var useHostLoad = btSess
-                        && typeof ch.loadMultichartPanelFromHost === 'function';
-                    if (useHostLoad) {
-                        var hostTs = pendingReplayTs;
-                        if (!Number.isFinite(hostTs) && parentPc && parentPc.replaySystem
-                            && parentPc.replaySystem.isActive) {
-                            hostTs = Number(parentPc.replaySystem.replayTimestamp);
-                        }
-                        var panelTf = ch.currentTimeframe
-                            || (parentPc && parentPc.currentTimeframe);
-                        var switchingPair = String(ch.currentFileId || '') !== fidStr;
-                        var lp = ch.loadMultichartPanelFromHost({
-                            fileId: fidStr,
-                            session: btSess,
-                            timeframe: panelTf,
-                            replayTimestamp: hostTs,
-                            force: switchingPair || !!args.force,
-                        });
-                        if (lp && typeof lp.then === 'function') {
-                            return lp.then(function () {
-                                try { drainPendingReplay(); } catch (_d) {}
-                                setTimeout(function () {
-                                    try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
-                                }, 0);
-                            }).catch(function (e) {
-                                warn('loadFile: loadMultichartPanelFromHost failed', e && e.message);
-                                var fb = ch.loadFileData(fidStr);
-                                if (fb && typeof fb.then === 'function') {
-                                    return fb.then(function () {
-                                        try { drainPendingReplay(); } catch (_d2) {}
-                                        setTimeout(function () {
-                                            try { scheduleMultichartPanelReplayFollow(ch); } catch (_s2) {}
-                                        }, 0);
-                                    });
-                                }
-                                try { drainPendingReplay(); } catch (_d3) {}
-                            });
-                        }
-                        try { drainPendingReplay(); } catch (_d2) {}
-                        return;
-                    }
+                    // Match host tile A: loadFileData handles backtest fetch shape,
+                    // replay.fullRawData seeding on pair switch, and multichart embed boot.
+                    // loadMultichartPanelFromHost is reserved for embed-bridge initial boot.
                     // Idempotency guard: when the parent fans out symbol
                     // sync to every panel, each panel echoes chart-state
                     // back; without this, the echo would re-trigger
@@ -887,36 +839,59 @@
                             ? global.parent.chart : null;
                     } catch (_) {}
                     if (!pcSync) return;
-                    var syncFid = pcSync.currentFileId;
-                    if (syncFid == null || syncFid === '') return;
-                    var syncSess = pcSync.backtestingSession || ch.backtestingSession;
                     var syncTs = null;
                     if (pcSync.replaySystem && pcSync.replaySystem.isActive) {
                         syncTs = Number(pcSync.replaySystem.replayTimestamp);
                     }
-                    // Interval sync ON → mirror host A's TF. OFF → keep this panel's TF
-                    // and only align file/session/replay playhead (see syncReplayFromHost).
+                    // Interval sync ON → mirror host A's TF. OFF → keep this panel's TF.
                     var syncTf = args.syncTimeframe
                         ? (pcSync.currentTimeframe || ch.currentTimeframe)
                         : (ch.currentTimeframe || pcSync.currentTimeframe);
-                    if (typeof ch.loadMultichartPanelFromHost !== 'function') {
+                    if (args.syncTimeframe && syncTf && ch.currentTimeframe !== syncTf
+                        && typeof ch.setTimeframe === 'function') {
+                        try { ch.setTimeframe(syncTf); } catch (_) {}
+                    }
+                    // Symbol sync OFF: align replay playhead only — never stamp host fileId
+                    // onto this tile (user may have GBP on B while A stays EUR/USD).
+                    if (!args.syncSymbol) {
+                        if (!Number.isFinite(syncTs)) return;
+                        if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                            return applyReplayEnter(ch, syncTs);
+                        }
+                        return forceReplaySeek(ch, syncTs, !!args.force);
+                    }
+                    var syncFid = pcSync.currentFileId;
+                    if (syncFid == null || syncFid === '') {
                         if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
                         return;
                     }
-                    var syncP = ch.loadMultichartPanelFromHost({
-                        fileId: String(syncFid),
-                        session: syncSess,
-                        timeframe: syncTf,
-                        replayTimestamp: Number.isFinite(syncTs) ? syncTs : null,
-                        force: !!args.force,
-                    });
-                    if (syncP && typeof syncP.then === 'function') {
-                        return syncP.then(function () {
-                            if (Number.isFinite(syncTs)) {
-                                try { drainPendingPlay(ch); } catch (_) {}
-                            }
-                        });
+                    var syncFidStr = String(syncFid);
+                    var afterReplaySync = function () {
+                        if (Number.isFinite(syncTs)) {
+                            try { drainPendingPlay(ch); } catch (_) {}
+                        }
+                    };
+                    if (typeof ch.loadFileData !== 'function') {
+                        if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);
+                        return;
                     }
+                    if (String(ch.currentFileId || '') === syncFidStr && ch.rawData
+                        && ch.rawData.length > 0) {
+                        if (Number.isFinite(syncTs)) {
+                            if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                                applyReplayEnter(ch, syncTs);
+                                afterReplaySync();
+                                return;
+                            }
+                            return forceReplaySeek(ch, syncTs, false);
+                        }
+                        return;
+                    }
+                    var syncP = ch.loadFileData(syncFidStr);
+                    if (syncP && typeof syncP.then === 'function') {
+                        return syncP.then(afterReplaySync);
+                    }
+                    afterReplaySync();
                     return;
                 }
                 case 'syncReplayFromHost': {

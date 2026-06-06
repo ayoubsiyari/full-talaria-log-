@@ -1479,7 +1479,11 @@ export default function MultichartGrid({
             if (!c || c.host || !c.ready) continue;
             try {
                 if (hostInBacktest) {
-                    mgr.sendCommand(c.id, "syncFromHost", { force: true, syncTimeframe: pushTf });
+                    mgr.sendCommand(c.id, "syncFromHost", {
+                        force: true,
+                        syncTimeframe: pushTf,
+                        syncSymbol: symFollow,
+                    });
                 } else if (forceHostFileOnEveryTile) {
                     mgr.sendCommandNoReply(c.id, "loadFile", { fileId: fid });
                 } else {
@@ -1761,7 +1765,12 @@ export default function MultichartGrid({
                     catch (_) {}
                     try {
                         const syncTf = !!(layoutSyncRef.current && layoutSyncRef.current.interval);
-                        mgr.sendCommand(c.id, "syncFromHost", { force: true, syncTimeframe: syncTf });
+                        const syncSym = !!(layoutSyncRef.current && layoutSyncRef.current.symbol);
+                        mgr.sendCommand(c.id, "syncFromHost", {
+                            force: true,
+                            syncTimeframe: syncTf,
+                            syncSymbol: syncSym,
+                        });
                     }
                     catch (_) {}
                     try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }

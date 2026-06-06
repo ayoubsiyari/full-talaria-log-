@@ -2461,6 +2461,55 @@
         return Math.min(0.92, Math.max(0.02, (100 - t) / 100));
     }
 
+    function killzonesNyWallFromUtc(utcMs) {
+        const d = new Date(utcMs);
+        if (!Number.isFinite(utcMs)) {
+            return { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
+        }
+        try {
+            const parts = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'America/New_York',
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }).formatToParts(d);
+            const get = function (type) {
+                const p = parts.find(function (x) { return x.type === type; });
+                return p ? parseInt(p.value, 10) : 0;
+            };
+            const y = get('year');
+            const mo = get('month');
+            const day = get('day');
+            const hours = get('hour') % 24;
+            const minutes = get('minute');
+            const pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
+            return {
+                hours: hours,
+                minutes: minutes,
+                decimal: hours + minutes / 60,
+                dayKey: y + '-' + pad2(mo) + '-' + pad2(day)
+            };
+        } catch (e) {
+            const nyOffset = -5;
+            const utcHours = d.getUTCHours();
+            const utcMinutes = d.getUTCMinutes();
+            let nyHours = utcHours + nyOffset;
+            if (nyHours < 0) nyHours += 24;
+            if (nyHours >= 24) nyHours -= 24;
+            const shifted = new Date(d.getTime() + nyOffset * 3600000);
+            const pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
+            return {
+                hours: nyHours,
+                minutes: utcMinutes,
+                decimal: nyHours + utcMinutes / 60,
+                dayKey: shifted.getUTCFullYear() + '-' + pad2(shifted.getUTCMonth() + 1) + '-' + pad2(shifted.getUTCDate())
+            };
+        }
+    }
+
     function calculateKillzones(data, params) {
         const result = {
             sessions: [],
@@ -2475,7 +2524,7 @@
             return parseInt(parts[0]) + (parseInt(parts[1] || 0) / 60);
         };
         
-        // Session definitions (in NY timezone, UTC-5)
+        // Session definitions (wall-clock times in America/New_York, DST-aware below)
         const sessionDefs = {
             cbdr: {
                 name: 'CBDR',
@@ -2514,29 +2563,6 @@
             }
         };
         
-        // NY timezone offset (UTC-5 for EST, UTC-4 for EDT)
-        // Default to EST (UTC-5)
-        const nyOffset = params.nyOffset !== undefined ? params.nyOffset : -5;
-        
-        // Helper to convert UTC time to NY time
-        const toNYTime = (date) => {
-            const utcHours = date.getUTCHours();
-            const utcMinutes = date.getUTCMinutes();
-            let nyHours = utcHours + nyOffset;
-            if (nyHours < 0) nyHours += 24;
-            if (nyHours >= 24) nyHours -= 24;
-            return { hours: nyHours, minutes: utcMinutes, decimal: nyHours + (utcMinutes / 60) };
-        };
-        
-        // Calendar day in NY (fixed offset, same basis as toNYTime) — one NY Open line per day
-        const nyDayKey = (date) => {
-            const shifted = new Date(date.getTime() + nyOffset * 3600000);
-            const y = shifted.getUTCFullYear();
-            const mo = shifted.getUTCMonth() + 1;
-            const d = shifted.getUTCDate();
-            return y + '-' + (mo < 10 ? '0' : '') + mo + '-' + (d < 10 ? '0' : '') + d;
-        };
-        
         // Check if time is in session (handles overnight)
         const isInSession = (decimal, session) => {
             if (session.start <= session.end) {
@@ -2550,14 +2576,14 @@
         // One session per bar (priority) avoids stacked semi-transparent fills when windows overlap.
         const sessionOrder = ['cbdr', 'asia', 'london', 'nyam', 'londonClose'];
         const activeBoxes = {};
-        let lastDate = null;
+        let lastNyDayKey = null;
         
         for (let i = 0; i < data.length; i++) {
-            const date = new Date(data[i].t);
-            const nyTime = toNYTime(date);
+            const nyWall = killzonesNyWallFromUtc(data[i].t);
+            const nyTime = { hours: nyWall.hours, minutes: nyWall.minutes, decimal: nyWall.decimal };
             
             // First bar of each NY calendar day: NY Open (avoid firing on every bar in the 23:xx hour)
-            if (params.showNYMidnight !== false && lastDate && nyDayKey(lastDate) !== nyDayKey(date)) {
+            if (params.showNYMidnight !== false && lastNyDayKey && lastNyDayKey !== nyWall.dayKey) {
                 result.nyMidnight.push({
                     index: i,
                     price: data[i].o,
@@ -2605,7 +2631,7 @@
                 }
             });
             
-            lastDate = date;
+            lastNyDayKey = nyWall.dayKey;
         }
         
         // Close any remaining active boxes
