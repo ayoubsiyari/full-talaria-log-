@@ -2461,53 +2461,91 @@
         return Math.min(0.92, Math.max(0.02, (100 - t) / 100));
     }
 
-    function killzonesNyWallFromUtc(utcMs) {
-        const d = new Date(utcMs);
+    const KILLZONES_TZ = 'America/New_York';
+
+    function killzonesPad2(n) {
+        return n < 10 ? '0' + n : String(n);
+    }
+
+    function killzonesNyDayKey(utcMs) {
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: KILLZONES_TZ,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(new Date(utcMs));
+        } catch (e) {
+            return '0';
+        }
+    }
+
+    /** NY wall clock for a bar — matches chart axis when chart TZ is America/New_York (DST-aware). */
+    function killzonesBarWallClock(utcMs) {
         if (!Number.isFinite(utcMs)) {
             return { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
         }
+        const chart = typeof window !== 'undefined' ? window.chart : null;
+        const tm = typeof window !== 'undefined' ? window.timezoneManager : null;
+        const chartTzId = tm && tm.getTimezone ? (tm.getTimezone().id || 'UTC') : 'UTC';
+
+        if (chartTzId === KILLZONES_TZ && chart && typeof chart.convertToTimezone === 'function') {
+            try {
+                const tzDate = chart.convertToTimezone(utcMs);
+                const hours = tzDate.getUTCHours();
+                const minutes = tzDate.getUTCMinutes();
+                return {
+                    hours: hours,
+                    minutes: minutes,
+                    decimal: hours + minutes / 60,
+                    dayKey: tzDate.getUTCFullYear() + '-' + killzonesPad2(tzDate.getUTCMonth() + 1) + '-'
+                        + killzonesPad2(tzDate.getUTCDate())
+                };
+            } catch (e0) { /* fall through */ }
+        }
+
+        if (tm && typeof tm._wallClockParts === 'function') {
+            try {
+                const p = tm._wallClockParts(utcMs, KILLZONES_TZ);
+                if (Number.isFinite(p.hour) && Number.isFinite(p.minute)) {
+                    const hours = p.hour % 24;
+                    const minutes = p.minute;
+                    return {
+                        hours: hours,
+                        minutes: minutes,
+                        decimal: hours + minutes / 60,
+                        dayKey: Number.isFinite(p.year) && Number.isFinite(p.month) && Number.isFinite(p.day)
+                            ? p.year + '-' + killzonesPad2(p.month) + '-' + killzonesPad2(p.day)
+                            : killzonesNyDayKey(utcMs)
+                    };
+                }
+            } catch (e1) { /* fall through */ }
+        }
+
         try {
-            const parts = new Intl.DateTimeFormat('en-GB', {
-                timeZone: 'America/New_York',
-                year: 'numeric',
-                month: 'numeric',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            }).formatToParts(d);
-            const get = function (type) {
-                const p = parts.find(function (x) { return x.type === type; });
-                return p ? parseInt(p.value, 10) : 0;
-            };
-            const y = get('year');
-            const mo = get('month');
-            const day = get('day');
-            const hours = get('hour') % 24;
-            const minutes = get('minute');
-            const pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
+            const dec = sessionWallDecimal(utcMs, KILLZONES_TZ);
+            const hours = Math.floor(dec);
+            const minutes = Math.round((dec - hours) * 60) % 60;
             return {
                 hours: hours,
                 minutes: minutes,
                 decimal: hours + minutes / 60,
-                dayKey: y + '-' + pad2(mo) + '-' + pad2(day)
+                dayKey: killzonesNyDayKey(utcMs)
             };
-        } catch (e) {
-            const nyOffset = -5;
-            const utcHours = d.getUTCHours();
-            const utcMinutes = d.getUTCMinutes();
-            let nyHours = utcHours + nyOffset;
-            if (nyHours < 0) nyHours += 24;
-            if (nyHours >= 24) nyHours -= 24;
-            const shifted = new Date(d.getTime() + nyOffset * 3600000);
-            const pad2 = function (n) { return n < 10 ? '0' + n : String(n); };
-            return {
-                hours: nyHours,
-                minutes: utcMinutes,
-                decimal: nyHours + utcMinutes / 60,
-                dayKey: shifted.getUTCFullYear() + '-' + pad2(shifted.getUTCMonth() + 1) + '-' + pad2(shifted.getUTCDate())
-            };
+        } catch (e2) {
+            return { hours: 0, minutes: 0, decimal: 0, dayKey: '0' };
         }
+    }
+
+    function killzonesParseSessionTime(timeStr) {
+        if (!timeStr) return 0;
+        const fn = typeof window !== 'undefined' ? window.__v9NormalizeIndicatorNumericString : null;
+        const s = fn ? fn(String(timeStr)) : String(timeStr);
+        const parts = s.split(':');
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1] || '0', 10);
+        if (!Number.isFinite(h)) return 0;
+        return h + (Number.isFinite(m) ? m : 0) / 60;
     }
 
     function calculateKillzones(data, params) {
@@ -2517,47 +2555,40 @@
             boxes: []
         };
         
-        // Parse time string "HH:MM" to decimal hours
-        const parseTime = (timeStr) => {
-            if (!timeStr) return 0;
-            const parts = timeStr.split(':');
-            return parseInt(parts[0]) + (parseInt(parts[1] || 0) / 60);
-        };
-        
         // Session definitions (wall-clock times in America/New_York, DST-aware below)
         const sessionDefs = {
             cbdr: {
                 name: 'CBDR',
-                start: parseTime(params.cbdrStart || '14:00'),
-                end: parseTime(params.cbdrEnd || '20:00'),
+                start: killzonesParseSessionTime(params.cbdrStart || '14:00'),
+                end: killzonesParseSessionTime(params.cbdrEnd || '20:00'),
                 color: params.cbdrColor || '#0064ff',
                 enabled: params.showCBDR !== false
             },
             asia: {
                 name: 'Asia',
-                start: parseTime(params.asiaStart || '20:00'),
-                end: parseTime(params.asiaEnd || '00:00'),
+                start: killzonesParseSessionTime(params.asiaStart || '20:00'),
+                end: killzonesParseSessionTime(params.asiaEnd || '00:00'),
                 color: params.asiaColor || '#7622ff',
                 enabled: params.showAsia !== false
             },
             london: {
                 name: 'London',
-                start: parseTime(params.londonStart || '02:00'),
-                end: parseTime(params.londonEnd || '05:00'),
+                start: killzonesParseSessionTime(params.londonStart || '02:00'),
+                end: killzonesParseSessionTime(params.londonEnd || '05:00'),
                 color: params.londonColor || '#e90000',
                 enabled: params.showLondon !== false
             },
             nyam: {
                 name: 'NY AM',
-                start: parseTime(params.nyamStart || '07:00'),
-                end: parseTime(params.nyamEnd || '10:00'),
+                start: killzonesParseSessionTime(params.nyamStart || '07:00'),
+                end: killzonesParseSessionTime(params.nyamEnd || '10:00'),
                 color: params.nyamColor || '#00acb8',
                 enabled: params.showNYAM !== false
             },
             londonClose: {
                 name: 'LC',
-                start: parseTime(params.lcStart || '10:00'),
-                end: parseTime(params.lcEnd || '12:00'),
+                start: killzonesParseSessionTime(params.lcStart || '10:00'),
+                end: killzonesParseSessionTime(params.lcEnd || '12:00'),
                 color: params.lcColor || '#434651',
                 enabled: params.showLC !== false
             }
@@ -2577,7 +2608,7 @@
         let lastNyDayKey = null;
         
         for (let i = 0; i < data.length; i++) {
-            const nyWall = killzonesNyWallFromUtc(data[i].t);
+            const nyWall = killzonesBarWallClock(data[i].t);
             const nyTime = { hours: nyWall.hours, minutes: nyWall.minutes, decimal: nyWall.decimal };
             
             // First bar of each NY calendar day: NY Open (avoid firing on every bar in the 23:xx hour)

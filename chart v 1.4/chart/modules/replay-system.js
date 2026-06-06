@@ -5165,6 +5165,135 @@ class ReplaySystem {
     }
 
     /**
+     * True when this chart tile shows the same dataset as multichart host A.
+     */
+    _mirrorSharesHostDataset(chart, detail) {
+        const hostFid = detail && detail.hostFileId != null ? String(detail.hostFileId) : '';
+        const panelFid = chart && chart.currentFileId != null ? String(chart.currentFileId) : '';
+        if (hostFid && panelFid) return hostFid === panelFid;
+        return true;
+    }
+
+    /**
+     * Raw OHLC series for multichart mirror: independent pair tiles use `_panelFullRawData`.
+     */
+    _resolveMirrorRawSeries(chart, detail) {
+        if (!chart) return null;
+        if (!this._mirrorSharesHostDataset(chart, detail)
+            && Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
+            return chart._panelFullRawData;
+        }
+        if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
+            return this.fullRawData;
+        }
+        if (Array.isArray(chart._panelFullRawData) && chart._panelFullRawData.length > 0) {
+            return chart._panelFullRawData;
+        }
+        return null;
+    }
+
+    /**
+     * Map wall-clock replay ts → index on an arbitrary raw series (not only fullRawData).
+     */
+    _syncMirrorPlayheadFromTimestamp(rawSeries, ts) {
+        if (!Number.isFinite(ts) || !Array.isArray(rawSeries) || !rawSeries.length) {
+            return false;
+        }
+        const hit = this._findLastRawIndexAtOrBefore(rawSeries, ts);
+        const floor = this.sessionStartIndex || 0;
+        if (hit >= floor) {
+            this.currentIndex = hit;
+            const bar = rawSeries[hit];
+            const next = rawSeries[hit + 1];
+            const barT = bar && Number.isFinite(bar.t) ? bar.t : null;
+            const barEnd = next && Number.isFinite(next.t) ? next.t : null;
+            if (barT != null && ts >= barT && (barEnd == null || ts < barEnd)) {
+                this.replayTimestamp = ts;
+            } else if (barT != null) {
+                this.replayTimestamp = barT;
+            }
+            return true;
+        }
+        if (hit >= 0) {
+            this.currentIndex = floor;
+            const bar = rawSeries[this.currentIndex];
+            if (bar && Number.isFinite(bar.t)) this.replayTimestamp = bar.t;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Tick-forming candle for a panel on its own pair during multichart play.
+     */
+    _buildIndependentPairAnimatedCandle(frd, ts, detail) {
+        if (!Array.isArray(frd) || !frd.length || !Number.isFinite(ts)) return null;
+
+        if (Number.isFinite(detail.tickElapsedMs)) {
+            this.tickElapsedMs = Number(detail.tickElapsedMs);
+        }
+        if (Number.isFinite(detail.tickProgress)) {
+            this.tickProgress = Number(detail.tickProgress);
+        }
+
+        const hit = this._findLastRawIndexAtOrBefore(frd, ts);
+        if (hit < 0) return null;
+
+        let formingIdx = hit;
+        const bar = frd[hit];
+        const next = frd[hit + 1];
+        if (next && Number.isFinite(bar.t) && Number.isFinite(next.t) && ts >= bar.t && ts < next.t) {
+            formingIdx = hit + 1;
+        } else if ((this.tickProgress || 0) > 0 && hit + 1 < frd.length) {
+            formingIdx = hit + 1;
+        }
+
+        const panelBar = frd[formingIdx];
+        if (!panelBar) return null;
+
+        this.currentIndex = Math.max(this.sessionStartIndex || 0, Math.max(0, formingIdx - 1));
+        this.replayTimestamp = ts;
+
+        const ticksNeeded = Number(detail.ticksPerCandle)
+            || this.currentTicksPerCandle
+            || this.ticksPerCandle
+            || 72;
+        const tp = Math.max(0, Math.min(Number(this.tickProgress) || 0, ticksNeeded));
+        const path = typeof this.getTickPath === 'function' ? this.getTickPath(panelBar) : null;
+        let currentPrice = Number(panelBar.c);
+        if (path && path.length > 0 && tp > 0) {
+            const pathIndex = Math.min(tp - 1, path.length - 1);
+            currentPrice = path[pathIndex];
+            currentPrice = Math.max(Number(panelBar.l), Math.min(Number(panelBar.h), currentPrice));
+        }
+
+        return {
+            formingIdx,
+            candle: {
+                t: panelBar.t,
+                o: Number(panelBar.o),
+                h: Math.max(Number(panelBar.o), Number(panelBar.h), currentPrice),
+                l: Math.min(Number(panelBar.o), Number(panelBar.l), currentPrice),
+                c: currentPrice,
+                v: Number(panelBar.v) || 0,
+            },
+        };
+    }
+
+    _finishMultichartMirrorRender(chart) {
+        if (!chart) return;
+        chart.isLoading = false;
+        if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+        if (typeof chart.render === 'function') {
+            chart.renderPending = true;
+            chart.render();
+        }
+        if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
+            try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
+        }
+    }
+
+    /**
      * Multichart V9: apply one replay frame from parent tile A on this panel.
      * Resolves playhead by timestamp / forming-candle time — never copies parent index.
      * @returns {boolean} false when target bar is not in loaded fullRawData (caller may refetch)
@@ -5172,14 +5301,50 @@ class ReplaySystem {
     applyMultichartMirrorFrame(detail) {
         if (!this.isActive || !detail || typeof detail !== 'object') return false;
         const chart = this.chart;
-        const frd = this.fullRawData;
+        const frd = this._resolveMirrorRawSeries(chart, detail);
         if (!chart || !Array.isArray(frd) || !frd.length) return false;
 
         const ts = Number(detail.timestamp);
         if (!Number.isFinite(ts)) return false;
 
+        const sharesHostDataset = this._mirrorSharesHostDataset(chart, detail);
         const anim = detail.animatedCandle;
         const hasAnim = !!(anim && Number.isFinite(Number(anim.t)));
+
+        if (hasAnim && !sharesHostDataset) {
+            const indep = this._buildIndependentPairAnimatedCandle(frd, ts, detail);
+            if (!indep || !indep.candle) {
+                return this.applyMultichartMirrorFrame({
+                    ...detail,
+                    animatedCandle: null,
+                    tickProgress: 0,
+                });
+            }
+            const baseIdx = Math.max(0, indep.formingIdx - 1);
+            const sliced = frd.slice(0, baseIdx);
+            sliced.push(indep.candle);
+            chart.rawData = sliced;
+            const tp = this.tickProgress || 0;
+            if (chart.data && chart.data.length > 0 && tp > 1) {
+                const last = chart.data[chart.data.length - 1];
+                last.h = Math.max(last.h, indep.candle.h);
+                last.l = Math.min(last.l, indep.candle.l);
+                last.c = indep.candle.c;
+                last.v = indep.candle.v;
+            } else {
+                chart.data = chart.resampleData(sliced, chart.currentTimeframe);
+                if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
+                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
+                    chart._trimLastDataBarToReplayPlayhead();
+                }
+            }
+            if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
+            if (this.autoScrollEnabled && tp > 0 && tp % 8 === 0 && chart.fitToView) {
+                chart.fitToView();
+            }
+            this._finishMultichartMirrorRender(chart);
+            return true;
+        }
 
         if (hasAnim) {
             const formTs = Number(anim.t);
@@ -5208,43 +5373,14 @@ class ReplaySystem {
                 this.tickProgress = Number(detail.tickProgress);
             }
 
-            const animatedCandle = (function () {
-                var hostFid = detail.hostFileId != null ? String(detail.hostFileId) : '';
-                var panelFid = chart.currentFileId != null ? String(chart.currentFileId) : '';
-                var sameInstrument = !hostFid || !panelFid || hostFid === panelFid;
-                if (sameInstrument) {
-                    return {
-                        t: formTs,
-                        o: Number(anim.o),
-                        h: Number(anim.h),
-                        l: Number(anim.l),
-                        c: Number(anim.c),
-                        v: Number(anim.v) || 0,
-                    };
-                }
-                // Independent symbol per tile: never paint host OHLC on this panel.
-                var panelBar = frd[targetIdx];
-                if (panelBar && Number.isFinite(Number(panelBar.t))
-                    && Math.abs(Number(panelBar.t) - formTs) < 1000) {
-                    return {
-                        t: formTs,
-                        o: Number(panelBar.o),
-                        h: Number(panelBar.h),
-                        l: Number(panelBar.l),
-                        c: Number(panelBar.c),
-                        v: Number(panelBar.v) || 0,
-                    };
-                }
-                if (targetIdx > 0) {
-                    var prevBar = frd[targetIdx - 1];
-                    var px = Number(prevBar && prevBar.c);
-                    if (Number.isFinite(px)) {
-                        return { t: formTs, o: px, h: px, l: px, c: px, v: 0 };
-                    }
-                }
-                return null;
-            })();
-            if (!animatedCandle) return false;
+            const animatedCandle = {
+                t: formTs,
+                o: Number(anim.o),
+                h: Number(anim.h),
+                l: Number(anim.l),
+                c: Number(anim.c),
+                v: Number(anim.v) || 0,
+            };
 
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
@@ -5282,26 +5418,23 @@ class ReplaySystem {
             this.tickProgress = 0;
             this.animatingCandle = null;
 
-            if (typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-                if (!this.syncCurrentIndexFromReplayTimestamp(ts)) {
-                    return false;
-                }
-            } else {
-                let idx = 0;
-                if (typeof chart.findGoToTargetIndex === 'function') {
-                    idx = chart.findGoToTargetIndex(frd, ts);
-                }
-                if (idx < 0) {
-                    idx = frd.findIndex(c => c && Number(c.t) >= ts);
-                }
-                if (idx < 0) idx = frd.length - 1;
-                const minIdx = this.sessionStartIndex || 0;
-                idx = Math.min(Math.max(idx, minIdx), frd.length - 1);
-                this.currentIndex = idx;
-                this.replayTimestamp = frd[idx]?.t ?? ts;
+            let synced = false;
+            if (sharesHostDataset && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+                synced = this.syncCurrentIndexFromReplayTimestamp(ts);
+            }
+            if (!synced) {
+                synced = this._syncMirrorPlayheadFromTimestamp(frd, ts);
+            }
+            if (!synced) {
+                return false;
             }
 
-            const sliceEnd = Math.max(this.currentIndex + 1, 1);
+            let sliceEnd;
+            if (!sharesHostDataset) {
+                sliceEnd = this._resolvePanelRawEndIndexForReplay(frd, ts) + 1;
+            } else {
+                sliceEnd = Math.max(this.currentIndex + 1, 1);
+            }
             chart.rawData = frd.slice(0, sliceEnd);
             chart.data = chart.resampleData(chart.rawData, chart.currentTimeframe);
             if (typeof chart._trimLastDataBarToReplayPlayhead === 'function') {
@@ -5310,15 +5443,7 @@ class ReplaySystem {
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
         }
 
-        chart.isLoading = false;
-        if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
-        if (typeof chart.render === 'function') {
-            chart.renderPending = true;
-            chart.render();
-        }
-        if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
-            try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
-        }
+        this._finishMultichartMirrorRender(chart);
         return true;
     }
 
@@ -5335,6 +5460,7 @@ class ReplaySystem {
             hostFileId: this.chart && this.chart.currentFileId != null
                 ? String(this.chart.currentFileId)
                 : null,
+            ticksPerCandle: this.currentTicksPerCandle || this.ticksPerCandle || 72,
         };
         if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
             const ac = this.animatingCandle;

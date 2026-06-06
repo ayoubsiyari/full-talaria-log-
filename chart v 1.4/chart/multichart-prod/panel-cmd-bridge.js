@@ -210,6 +210,14 @@
         try { ch._reseedReplayFullRawFromLoadedData(); } catch (_) {}
     }
 
+    function ensurePanelReplaySeries(ch) {
+        if (!ch || !isMultichartIframePanel()) return;
+        if (!Array.isArray(ch._panelFullRawData) || ch._panelFullRawData.length === 0) return;
+        var rs = ch.replaySystem;
+        if (!rs || !rs.isActive) return;
+        reseedReplayFromChart(ch);
+    }
+
     function clearReplayBufferForPairSwitch(ch) {
         var rs = ch && ch.replaySystem;
         if (!rs) return;
@@ -225,6 +233,7 @@
     function afterLoadFile(ch) {
         try { drainPendingReplay(); } catch (_d) {}
         reseedReplayFromChart(ch);
+        ensurePanelReplaySeries(ch);
         setTimeout(function () {
             try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
         }, 0);
@@ -1056,10 +1065,8 @@
                         warn('replayPlay: replaySystem not available');
                         return;
                     }
+                    ensurePanelReplaySeries(ch);
                     if (!rsP.isActive) {
-                        // Iframe hasn't entered replay yet. Intent is
-                        // stashed above — drainPendingPlay will fire
-                        // it the moment applyReplayEnter completes.
                         log('replayPlay stashed (not yet active)');
                         return;
                     }
