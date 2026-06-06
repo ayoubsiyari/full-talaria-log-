@@ -2022,6 +2022,57 @@ class Chart {
         }
     }
 
+    /** This iframe currently shows a pair different from host tile A. */
+    _isIndependentMultichartPair() {
+        return this._shouldAnchorPairSwitchToHostPlayhead(this.currentFileId);
+    }
+
+    /**
+     * Timeframe switch for an independent multichart panel: pure client re-resample from the
+     * 1m master in `_panelFullRawData` (no refetch). Avoids the host-mirror reload path that
+     * fetched a partial window and left `_panelFullRawData` at the previous display TF.
+     * @param {string} normalizedTf
+     * @returns {boolean} true when handled.
+     */
+    _independentPanelTimeframeSwitch(normalizedTf) {
+        const replay = this.replaySystem;
+        if (!replay || !replay.isActive) return false;
+        if (!Array.isArray(this._panelFullRawData) || this._panelFullRawData.length === 0) return false;
+
+        const playheadTs = Number.isFinite(Number(replay.replayTimestamp))
+            ? Number(replay.replayTimestamp)
+            : null;
+
+        this.currentTimeframe = normalizedTf;
+        this._nativeRawFetchTf = '1m';
+
+        replay.fullRawData = [...this._panelFullRawData];
+        replay.rawTimeframe = '1m';
+        replay._fullRawDataMatchesTF = false;
+        replay.animatingCandle = null;
+        replay.tickProgress = 0;
+        replay.tickElapsedMs = 0;
+        replay.tickPathCache = {};
+        replay.tickPathCacheBuilt = false;
+
+        if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
+            replay.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
+        } else if (typeof replay.updateChartData === 'function') {
+            replay.updateChartData(true);
+        }
+
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        if (this.priceScale) this.priceScale.autoScale = true;
+        this.fitToView();
+        this.render();
+
+        if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
+        this._scheduleIndicatorsAfterTimeframe();
+        return true;
+    }
+
     /**
      * Slice visible bars for an independent multichart panel at the shared replay time.
      * @param {number} replayTs
@@ -4276,7 +4327,10 @@ class Chart {
             let params;
             let backtestHistoryRange = null;
             if (isBacktestSession) {
-                requestTimeframe = this.currentTimeframe || '1d';
+                // Independent multichart panels keep a 1m MASTER in _panelFullRawData so any
+                // later timeframe switch is a clean client resample (1m → N). Fetching at the
+                // display TF would store coarse bars that cannot be upsampled to a finer TF.
+                requestTimeframe = anchorToHostPlayhead ? '1m' : (this.currentTimeframe || '1d');
                 const sessionEndMs = (() => {
                     const r = session.endDate || session.end_date;
                     if (!r) return null;
@@ -14853,6 +14907,11 @@ class Chart {
             // must refetch native bars at the replay playhead instead.
             if (this.isBacktestMode && this.currentFileId) {
                 if (this._isMultichartEmbedPanel()) {
+                    // Independent pair: client-resample from the 1m master (no refetch).
+                    if (this._isIndependentMultichartPair()
+                        && this._independentPanelTimeframeSwitch(normalizedTf)) {
+                        return Promise.resolve();
+                    }
                     return this._multichartReplayTimeframeSwitch(normalizedTf);
                 }
                 return this._applyBacktestTimeframeFromCache(normalizedTf)
