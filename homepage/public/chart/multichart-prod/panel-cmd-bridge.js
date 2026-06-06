@@ -178,6 +178,50 @@
         }
     }
 
+    function mirrorParentBacktestSession(ch) {
+        if (!ch) return;
+        try {
+            var pc = (global.parent && global.parent !== global) ? global.parent.chart : null;
+            if (!pc) return;
+            if (pc.backtestingSession) ch.backtestingSession = pc.backtestingSession;
+            if (pc.activeTradingSessionId && !ch.activeTradingSessionId) {
+                ch.activeTradingSessionId = pc.activeTradingSessionId;
+            }
+            if (typeof pc.isBacktestMode === 'boolean') ch.isBacktestMode = pc.isBacktestMode;
+            if (typeof pc.isPropFirmMode === 'boolean') ch.isPropFirmMode = pc.isPropFirmMode;
+        } catch (_) {}
+    }
+
+    function panelHasLoadedFile(ch, fidStr) {
+        return String(ch.currentFileId || '') === String(fidStr)
+            && ch.rawData && ch.rawData.length > 0;
+    }
+
+    function reseedReplayFromChart(ch) {
+        if (!ch || typeof ch._reseedReplayFullRawFromLoadedData !== 'function') return;
+        try { ch._reseedReplayFullRawFromLoadedData(); } catch (_) {}
+    }
+
+    function clearReplayBufferForPairSwitch(ch) {
+        var rs = ch && ch.replaySystem;
+        if (!rs) return;
+        rs.animatingCandle = null;
+        rs.tickProgress = 0;
+        rs.tickElapsedMs = 0;
+        rs.fullRawData = null;
+        rs.fullData = null;
+        rs.tickPathCache = {};
+        rs.tickPathCacheBuilt = false;
+    }
+
+    function afterLoadFile(ch) {
+        try { drainPendingReplay(); } catch (_d) {}
+        reseedReplayFromChart(ch);
+        setTimeout(function () {
+            try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
+        }, 0);
+    }
+
     /**
      * Apply one replay animation frame from parent tile A. Iframe panels stay
      * paused locally — parent is the single playhead driver.
@@ -639,6 +683,8 @@
                         throw new Error('chart.loadFileData is not a function');
                     }
                     var fidStr = String(fileId);
+                    mirrorParentBacktestSession(ch);
+                    var switchingPair = String(ch.currentFileId || '') !== fidStr;
                     // Match host tile A: loadFileData handles backtest fetch shape,
                     // replay.fullRawData seeding on pair switch, and multichart embed boot.
                     // loadMultichartPanelFromHost is reserved for embed-bridge initial boot.
@@ -646,33 +692,28 @@
                     // sync to every panel, each panel echoes chart-state
                     // back; without this, the echo would re-trigger
                     // loadFileData on every panel and loop. Same trick
-                    // setTimeframe uses above.
-                    if (String(ch.currentFileId || '') === fidStr) {
-                        // File already loaded (common when a new tile opens on the same
-                        // session instrument). Do NOT call scheduleMultichartPanelReplayFollow
-                        // synchronously: the parent's replayEnter often arrives in the next
-                        // macrotask (MultichartGrid setTimeout(0)). Running follow here first
-                        // triggers jumpToLatest/fitToView before goToReplayTimestamp — wrong
-                        // date range + Y-axis until the user hits play.
+                    // setTimeframe uses above. User-initiated picks pass force:true.
+                    if (!args.force && !switchingPair && panelHasLoadedFile(ch, fidStr)) {
                         try { drainPendingReplay(); } catch (_idr) {}
+                        reseedReplayFromChart(ch);
                         setTimeout(function () {
                             try { scheduleMultichartPanelReplayFollow(ch); } catch (_sf) {}
                         }, 0);
                         return;
                     }
+                    if (switchingPair || args.force) {
+                        clearReplayBufferForPairSwitch(ch);
+                    }
                     var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {
-                            try { drainPendingReplay(); } catch (_d) {}
-                            setTimeout(function () {
-                                try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
-                            }, 0);
+                            afterLoadFile(ch);
+                        }).catch(function (e) {
+                            warn('loadFile: loadFileData failed', e && e.message);
+                            throw e;
                         });
                     }
-                    try { drainPendingReplay(); } catch (_d2) {}
-                    setTimeout(function () {
-                        try { scheduleMultichartPanelReplayFollow(ch); } catch (_s2) {}
-                    }, 0);
+                    afterLoadFile(ch);
                     return;
                 }
 

@@ -734,7 +734,7 @@
                     + ' sessionId=' + (sessionId || '(none)'));
                 return;
             }
-            // ── Backtest / replay panel → load EXACTLY like host A ─────
+            // ── Backtest / replay panel → same path as host pair switch ──
             var btSession = ch.backtestingSession
                 || (function () {
                     try {
@@ -742,62 +742,61 @@
                         return pc && pc.backtestingSession ? pc.backtestingSession : null;
                     } catch (_) { return null; }
                 })();
-            var parentChart = readParentChart();
-            var useHostLoad = btSession
-                && typeof ch.loadMultichartPanelFromHost === 'function';
-
-            if (useHostLoad) {
-                var runHostLoad = function () {
+            if (btSession) {
+                try { ch.backtestingSession = btSession; } catch (_) {}
+                var runPanelLoad = function () {
                     var pc = readParentChart();
                     var playheadTs = readParentPlayhead();
-                    var hostTf = (pc && pc.currentTimeframe) || tf;
-                    // Prefer this panel's URL fileId — not host A's instrument — so
-                    // independent-symbol layouts can boot the correct pair.
                     var loadFid = fileId;
                     if (!loadFid && pc && pc.currentFileId) {
                         loadFid = String(pc.currentFileId);
                     }
                     if (!loadFid) {
-                        reportToShell('warn', 'loadMultichartPanelFromHost: no fileId');
+                        reportToShell('warn', 'loadFileData: no fileId');
                         return;
                     }
-                    reportToShell('info', 'loadMultichartPanelFromHost fileId='
-                        + loadFid + ' tf=' + (hostTf || '?')
+                    reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
-                    var lp = ch.loadMultichartPanelFromHost({
-                        fileId: String(loadFid),
-                        session: btSession,
-                        timeframe: hostTf,
-                        replayTimestamp: playheadTs,
-                        force: true,
-                    });
+                    var lp = ch.loadFileData(String(loadFid));
+                    var bootReplay = function () {
+                        if (!Number.isFinite(playheadTs)) {
+                            afterLoad();
+                            return;
+                        }
+                        try {
+                            var rs = ch.replaySystem;
+                            if (!rs && typeof ch.initReplaySystem === 'function') ch.initReplaySystem();
+                            rs = ch.replaySystem;
+                            if (rs && !rs.isActive && typeof rs.enterReplayMode === 'function') {
+                                rs.enterReplayMode({ suppressInitialUpdateChartData: true });
+                            }
+                            if (rs && rs.isActive && typeof rs.goToReplayTimestamp === 'function') {
+                                rs.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
+                            }
+                            if (typeof ch._reseedReplayFullRawFromLoadedData === 'function') {
+                                ch._reseedReplayFullRawFromLoadedData();
+                            }
+                        } catch (_) {}
+                        afterLoad();
+                    };
                     if (lp && typeof lp.then === 'function') {
-                        lp.then(function () { afterLoad(); }, function (err) {
-                            reportToShell('error', 'loadMultichartPanelFromHost failed: '
-                                + (err && err.message || err)
-                                + ' — falling back to loadFileData');
-                            try {
-                                var fp = ch.loadFileData(fileId);
-                                if (fp && typeof fp.then === 'function') fp.then(afterLoad, function () {});
-                                else afterLoad();
-                            } catch (_) {}
+                        lp.then(bootReplay, function (err) {
+                            reportToShell('error', 'loadFileData failed: '
+                                + (err && err.message || err));
                         });
                     } else {
-                        afterLoad();
+                        bootReplay();
                     }
                 };
-                // Load immediately — do NOT wait 15s for replay (panels
-                // showed "No data" while waiting). Re-read playhead on
-                // each attempt; parent guard re-syncs after load.
-                if (readParentPlayhead() != null || !parentChart) {
-                    runHostLoad();
+                if (readParentPlayhead() != null || !readParentChart()) {
+                    runPanelLoad();
                 } else {
                     pollFor(
                         function () { return readParentPlayhead() != null; },
                         80,
                         3000,
-                        runHostLoad,
-                        runHostLoad
+                        runPanelLoad,
+                        runPanelLoad
                     );
                 }
                 return;

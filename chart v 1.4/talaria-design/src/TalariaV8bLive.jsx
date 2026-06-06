@@ -326,6 +326,11 @@ function v9IndNumericInputStyle(base) {
   };
 }
 
+function v9ParseVisInt(raw, fallback) {
+  const n = parseInt(v9NormalizeIndNumericString(raw), 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function v9IsSimpleIndLineStyleParam(p) {
   if (!p || p.type !== "select" || !Array.isArray(p.options)) return false;
   return p.options.every((o) => V9_IND_SIMPLE_LINE_STYLES.has(String(o.value)));
@@ -8849,8 +8854,8 @@ const TalariaV8bLive = () => {
       // lands in the FOCUSED panel only — host A is loaded directly, iframe
       // panels receive a `panel-cmd` postMessage handled by panel-cmd-bridge.
       const grid = window.__multichartGrid;
-      if (grid && typeof grid.runCommand === "function") {
-        if (grid.runCommand("loadFile", { fileId: fid })) return;
+        if (grid && typeof grid.runCommand === "function") {
+        if (grid.runCommand("loadFile", { fileId: fid, force: true })) return;
       }
       const pm = window.panelManager;
       if (!pm || !v9IsMultiPanelLayoutActive()) {
@@ -24048,12 +24053,12 @@ const TalariaV8bLive = () => {
                         const onMove = (ev) => {
                           const nv = getVal(ev.clientX);
                           if (isMin) {
-                            patchIndSettDraft((s) => ({
+                            patchIndSettDraftLive((s) => ({
                               ...s,
                               [k]: { ...s[k], min: Math.max(1, Math.min(nv, s[k].max - 1)) },
                             }));
                           } else {
-                            patchIndSettDraft((s) => ({
+                            patchIndSettDraftLive((s) => ({
                               ...s,
                               [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(nv, hm)) },
                             }));
@@ -24075,16 +24080,16 @@ const TalariaV8bLive = () => {
                           )}
                           <span style={{ fontSize: 12, color: v.checked ? c.ts : c.tm }}>{lbl}</span>
                           <div style={{ display: "flex", justifyContent: "center" }}>
-                            <input type="number" min={1} max={v.max - 1} value={v.min} onClick={(e) => e.stopPropagation()}
+                            <input type="text" inputMode="numeric" value={v9IndNumericDisplayValue(v.min)} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
                                 patchIndSettDraftLive((s) => ({
                                   ...s,
-                                  [k]: { ...s[k], min: Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, s[k].max - 1)) },
+                                  [k]: { ...s[k], min: Math.max(1, Math.min(v9ParseVisInt(e.target.value, 1), s[k].max - 1)) },
                                 }))
                               }
                               className="tlr-nospinner"
-                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
-                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                              style={v9IndNumericInputStyle({ width: 38, height: 22, background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" })} />
                           </div>
                           <div onClick={(e) => e.stopPropagation()}
                             style={{ position: "relative", height: 28, display: "flex", alignItems: "center", cursor: "default" }}>
@@ -24121,16 +24126,16 @@ const TalariaV8bLive = () => {
                                 width: 28, height: 28, cursor: "default", zIndex: 2 }} />
                           </div>
                           <div style={{ display: "flex", justifyContent: "center" }}>
-                            <input type="number" min={v.min + 1} max={hm} value={v.max} onClick={(e) => e.stopPropagation()}
+                            <input type="text" inputMode="numeric" value={v9IndNumericDisplayValue(v.max)} onClick={(e) => e.stopPropagation()}
                               onChange={(e) =>
                                 patchIndSettDraftLive((s) => ({
                                   ...s,
-                                  [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(parseInt(e.target.value, 10) || 1, hm)) },
+                                  [k]: { ...s[k], max: Math.max(s[k].min + 1, Math.min(v9ParseVisInt(e.target.value, hm), hm)) },
                                 }))
                               }
                               className="tlr-nospinner"
-                              style={{ width: 38, height: 22, textAlign: "center", background: "rgba(140,160,255,0.06)",
-                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" }} />
+                              style={v9IndNumericInputStyle({ width: 38, height: 22, background: "rgba(140,160,255,0.06)",
+                                border: `1px solid ${c.brL}`, color: c.tx, fontSize: 11, fontFamily: F, outline: "none" })} />
                           </div>
                         </div>
                       );

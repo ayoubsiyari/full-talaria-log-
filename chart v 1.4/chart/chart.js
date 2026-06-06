@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b241';
+const CHART_ENGINE_BUILD = '20260602b242';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1911,6 +1911,9 @@ class Chart {
                     if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                         this._syncReplayPanCursorsFromFullRaw();
                     }
+                    if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                        this._reseedReplayFullRawFromLoadedData();
+                    }
                 }
 
                 this.resize();
@@ -1938,6 +1941,28 @@ class Chart {
 
         this._multichartPanelLoadInflight = run;
         return run;
+    }
+
+    /**
+     * Reseed replay.fullRawData from the chart's current rawData after a pair
+     * switch or reload. Multichart iframes mirror replay time from tile A but
+     * must keep their own instrument's OHLC in fullRawData.
+     * @returns {boolean}
+     */
+    _reseedReplayFullRawFromLoadedData() {
+        const replay = this.replaySystem;
+        if (!replay || !replay.isActive) return false;
+        if (!Array.isArray(this.rawData) || this.rawData.length === 0) return false;
+        replay.animatingCandle = null;
+        replay.tickProgress = 0;
+        replay.tickElapsedMs = 0;
+        replay.fullRawData = [...this.rawData];
+        replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+        replay.rawTimeframe = this._nativeRawFetchTf || this.currentTimeframe;
+        replay._fullRawDataMatchesTF = false;
+        replay.tickPathCache = {};
+        replay.tickPathCacheBuilt = false;
+        return true;
     }
 
     /**
@@ -4307,12 +4332,8 @@ class Chart {
                 }
 
                 // Now safe to seed replay with the new pair's data
-                replay.fullRawData = [...this.rawData];
-                replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+                this._reseedReplayFullRawFromLoadedData();
                 replay.rawTimeframe = requestTimeframe;
-                replay._fullRawDataMatchesTF = false;
-                replay.tickPathCache = {};
-                replay.tickPathCacheBuilt = false;
 
                 // Use the most reliable timestamp for positioning:
                 // 1. replayTargetTs (captured before the fetch)

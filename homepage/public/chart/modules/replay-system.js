@@ -5208,14 +5208,43 @@ class ReplaySystem {
                 this.tickProgress = Number(detail.tickProgress);
             }
 
-            const animatedCandle = {
-                t: formTs,
-                o: Number(anim.o),
-                h: Number(anim.h),
-                l: Number(anim.l),
-                c: Number(anim.c),
-                v: Number(anim.v) || 0,
-            };
+            const animatedCandle = (function () {
+                var hostFid = detail.hostFileId != null ? String(detail.hostFileId) : '';
+                var panelFid = chart.currentFileId != null ? String(chart.currentFileId) : '';
+                var sameInstrument = !hostFid || !panelFid || hostFid === panelFid;
+                if (sameInstrument) {
+                    return {
+                        t: formTs,
+                        o: Number(anim.o),
+                        h: Number(anim.h),
+                        l: Number(anim.l),
+                        c: Number(anim.c),
+                        v: Number(anim.v) || 0,
+                    };
+                }
+                // Independent symbol per tile: never paint host OHLC on this panel.
+                var panelBar = frd[targetIdx];
+                if (panelBar && Number.isFinite(Number(panelBar.t))
+                    && Math.abs(Number(panelBar.t) - formTs) < 1000) {
+                    return {
+                        t: formTs,
+                        o: Number(panelBar.o),
+                        h: Number(panelBar.h),
+                        l: Number(panelBar.l),
+                        c: Number(panelBar.c),
+                        v: Number(panelBar.v) || 0,
+                    };
+                }
+                if (targetIdx > 0) {
+                    var prevBar = frd[targetIdx - 1];
+                    var px = Number(prevBar && prevBar.c);
+                    if (Number.isFinite(px)) {
+                        return { t: formTs, o: px, h: px, l: px, c: px, v: 0 };
+                    }
+                }
+                return null;
+            })();
+            if (!animatedCandle) return false;
 
             const sliced = frd.slice(0, targetIdx);
             sliced.push(animatedCandle);
@@ -5303,6 +5332,9 @@ class ReplaySystem {
             tickProgress: this.tickProgress,
             tickElapsedMs: this.tickElapsedMs,
             isPlaying: !!this.isPlaying,
+            hostFileId: this.chart && this.chart.currentFileId != null
+                ? String(this.chart.currentFileId)
+                : null,
         };
         if (this.animatingCandle && !this.fastMode && this.getPlaybackMode() === 'tick') {
             const ac = this.animatingCandle;
