@@ -7308,7 +7308,7 @@ def build_binary_for_file(
                 db.commit()
                 return False
 
-            if questdb_store.questdb_enabled():
+            if questdb_store.sync_on_build():
                 try:
                     questdb_store.ensure_schema()
                     qsync = questdb_store.sync_file_candles(file_id, candles)
@@ -7321,6 +7321,11 @@ def build_binary_for_file(
                         and not questdb_store.questdb_tiles_fallback()
                     ):
                         all_ok = False
+            elif questdb_store.questdb_enabled():
+                print(
+                    f"  ⏭️ Skipping QuestDB sync for file {file_id} "
+                    "(QUESTDB_READ_PRIMARY=false; set QUESTDB_SYNC_ON_BUILD=true to backfill)"
+                )
 
             skip_tiles = (
                 questdb_store.questdb_enabled()

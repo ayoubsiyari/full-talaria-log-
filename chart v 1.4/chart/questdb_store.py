@@ -81,6 +81,23 @@ def questdb_tiles_fallback() -> bool:
     return os.getenv("QUESTDB_TILES_FALLBACK", "true").lower() in ("1", "true", "yes")
 
 
+def sync_on_build() -> bool:
+    """
+    Should the binary-build pipeline push 1m rows into QuestDB?
+
+    When QuestDB is NOT the primary read path (the chart reads from binary tiles),
+    ingesting every dataset's full 1m history on each build is pure overhead — it was
+    the dominant CPU/time cost (1m+ ILP rows + a 600s flush wait per file). We only do
+    it when QuestDB is actually read from, or when explicitly opted in for a one-off
+    backfill via QUESTDB_SYNC_ON_BUILD=true.
+    """
+    if not questdb_enabled():
+        return False
+    if questdb_read_primary():
+        return True
+    return os.getenv("QUESTDB_SYNC_ON_BUILD", "false").lower() in ("1", "true", "yes")
+
+
 def _pg_url() -> str | None:
     url = (os.getenv("QUESTDB_PG_URL") or "").strip()
     return url or None

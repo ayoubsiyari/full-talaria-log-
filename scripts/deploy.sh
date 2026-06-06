@@ -14,11 +14,20 @@ set -euo pipefail
 ROOT="${ROOT:-.}"
 cd "$ROOT"
 
+# Point compose at the CI-published registry images (overrides the local-build defaults
+# in docker-compose.yml). Override REGISTRY/IMAGE_TAG to pin a specific build.
+REGISTRY="${REGISTRY:-ghcr.io/ayoubsiyari}"
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+export TRADING_CHART_IMAGE="${TRADING_CHART_IMAGE:-${REGISTRY}/talaria-trading-chart:${IMAGE_TAG}}"
+export HOMEPAGE_IMAGE="${HOMEPAGE_IMAGE:-${REGISTRY}/talaria-homepage:${IMAGE_TAG}}"
+export JOURNAL_BACKEND_IMAGE="${JOURNAL_BACKEND_IMAGE:-${REGISTRY}/talaria-journal-backend:${IMAGE_TAG}}"
+
 echo "=== git pull (config only; no host build) ==="
 git pull --ff-only
 
 echo ""
 echo "=== docker compose pull (prebuilt images from registry) ==="
+echo "    trading-chart: $TRADING_CHART_IMAGE"
 docker compose pull questdb db redis trading-chart trading-chart-worker homepage journal-backend
 
 echo ""

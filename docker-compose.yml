@@ -67,9 +67,10 @@ services:
       retries: 10
 
   journal-backend:
-    # Prefer a CI-built image (docker compose pull && up -d). `build:` stays as a
-    # local fallback; on the VPS deploy WITHOUT --build so no compile runs on the host.
-    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-journal-backend:${IMAGE_TAG:-latest}
+    # Defaults to the locally-built image name (zero friction for `docker compose build`).
+    # For pull-based CI deploys, set JOURNAL_BACKEND_IMAGE=ghcr.io/<owner>/talaria-journal-backend:<tag>
+    # (scripts/deploy.sh does this) so the VPS pulls instead of compiling.
+    image: ${JOURNAL_BACKEND_IMAGE:-talaria-journal-backend:latest}
     build:
       context: ./journal-backend
     restart: unless-stopped
@@ -101,7 +102,9 @@ services:
   # CI (see .github/workflows/build-images.yml) and deploy with `docker compose pull && up -d`
   # so this never compiles on the production VPS.
   trading-chart:
-    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-trading-chart:${IMAGE_TAG:-latest}
+    # Local build name by default; set TRADING_CHART_IMAGE=ghcr.io/<owner>/talaria-trading-chart:<tag>
+    # for pull-based deploys (see scripts/deploy.sh).
+    image: ${TRADING_CHART_IMAGE:-talaria-trading-chart:latest}
     build:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
@@ -173,6 +176,11 @@ services:
       # no DELETE) on EVERY ingest — that compounds ingest CPU. Read-side SAMPLE BY is
       # cheaper here; the real read fix is repartitioning to MONTH/DAY (see notes).
       QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-false}
+      # Do NOT push 1m rows into QuestDB during binary builds while the chart reads from
+      # binary tiles (READ_PRIMARY=false). This ingest (1m+ ILP rows + a 600s flush wait
+      # per dataset) was the main worker/QuestDB CPU storm. Flip to true only for a
+      # deliberate one-off QuestDB backfill, or set QUESTDB_READ_PRIMARY=true.
+      QUESTDB_SYNC_ON_BUILD: ${QUESTDB_SYNC_ON_BUILD:-false}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
@@ -198,7 +206,7 @@ services:
 
   trading-chart-worker:
     # Same image as trading-chart (only the command differs) — no separate build/compile.
-    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-trading-chart:${IMAGE_TAG:-latest}
+    image: ${TRADING_CHART_IMAGE:-talaria-trading-chart:latest}
     build:
       context: .
       dockerfile: chart v 1.4/chart/Dockerfile.local
@@ -247,6 +255,7 @@ services:
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
       QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-false}
+      QUESTDB_SYNC_ON_BUILD: ${QUESTDB_SYNC_ON_BUILD:-false}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
@@ -270,7 +279,7 @@ services:
       start_period: 45s
 
   homepage:
-    image: ${REGISTRY:-ghcr.io/ayoubsiyari}/talaria-homepage:${IMAGE_TAG:-latest}
+    image: ${HOMEPAGE_IMAGE:-talaria-homepage:latest}
     build:
       context: ./homepage
       args:
