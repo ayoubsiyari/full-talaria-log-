@@ -16,7 +16,9 @@ services:
     # pools auto-size to the host core count and busy-spin while idle. Capping the
     # pools and forcing threads to sleep (yield/sleep threshold=1) drops idle CPU to
     # low single digits without hurting ingest/query throughput at our volume.
-    mem_limit: ${QUESTDB_MEM_LIMIT:-2g}
+    # 4g: QuestDB used ~2.6g under heavy ingest, so a 2g cap risks an OOM-kill /
+    # restart loop mid-ingest. Keep headroom; lower only if the host is memory-tight.
+    mem_limit: ${QUESTDB_MEM_LIMIT:-4g}
     environment:
       QDB_PG_USER: ${QUESTDB_PG_USER:-admin}
       QDB_PG_PASSWORD: ${QUESTDB_PG_PASSWORD:-quest}
@@ -166,10 +168,11 @@ services:
       QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
-      # Build higher-timeframe pre-aggregate tables once on ingest. Without this,
-      # every 5m/15m/1h/4h/1d/1w chart read runs a runtime SAMPLE BY over the
-      # PARTITION BY YEAR ohlcv_1m table — the main query-side QuestDB CPU driver.
-      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-true}
+      # Keep OFF on this ingest-heavy stack. Rebuilding aggregates runs a SAMPLE BY
+      # over the whole PARTITION BY YEAR ohlcv_1m PLUS a full table copy (QuestDB has
+      # no DELETE) on EVERY ingest — that compounds ingest CPU. Read-side SAMPLE BY is
+      # cheaper here; the real read fix is repartitioning to MONTH/DAY (see notes).
+      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-false}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
@@ -243,7 +246,7 @@ services:
       QUESTDB_ENABLED: ${QUESTDB_ENABLED:-true}
       QUESTDB_READ_PRIMARY: ${QUESTDB_READ_PRIMARY:-false}
       QUESTDB_TILES_FALLBACK: ${QUESTDB_TILES_FALLBACK:-true}
-      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-true}
+      QUESTDB_REBUILD_AGGREGATES: ${QUESTDB_REBUILD_AGGREGATES:-false}
       QUESTDB_PG_URL: postgresql://${QUESTDB_PG_USER:-admin}:${QUESTDB_PG_PASSWORD:-quest}@questdb:8812/qdb
       QUESTDB_PG_CONNECT_TIMEOUT: ${QUESTDB_PG_CONNECT_TIMEOUT:-30}
       QUESTDB_ILP_HOST: questdb
