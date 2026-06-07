@@ -145,6 +145,7 @@
         const prev = Object.assign({}, this.syncMode);
         Object.assign(this.syncMode, mode || {});
         this._log('info', 'syncMode = ' + JSON.stringify(this.syncMode));
+        this._pushSyncModeToAll();
 
         // When the user toggles visibleRange (Time / Date Range) sync ON
         // from OFF, immediately push the host's CURRENT view to every
@@ -162,6 +163,38 @@
                 }
             }, 0);
         }
+    };
+
+    /**
+     * Push current syncMode to every iframe bridge (postMessage cannot share
+     * object refs — iframes keep a local copy for outbound crosshair envelope
+     * and inbound viewport coupling).
+     */
+    MultichartManager.prototype._pushSyncModeToAll = function () {
+        const patch = {
+            syncMode: {
+                crosshair:    !!this.syncMode.crosshair,
+                visibleRange: !!this.syncMode.visibleRange,
+                symbol:       !!this.syncMode.symbol,
+                drawings:     !!this.syncMode.drawings,
+            },
+        };
+        for (const c of this.charts.values()) {
+            if (c.host || !c.ready) continue;
+            this.sendConfig(c.id, patch);
+        }
+    };
+
+    MultichartManager.prototype._pushSyncModeToChart = function (chartEntry) {
+        if (!chartEntry || chartEntry.host || !chartEntry.ready) return;
+        this.sendConfig(chartEntry.id, {
+            syncMode: {
+                crosshair:    !!this.syncMode.crosshair,
+                visibleRange: !!this.syncMode.visibleRange,
+                symbol:       !!this.syncMode.symbol,
+                drawings:     !!this.syncMode.drawings,
+            },
+        });
     };
 
     /**
@@ -412,6 +445,8 @@
             startIndex:  range.startIndex,
             endIndex:    range.endIndex,
             visibleBarCount: range.visibleBarCount,
+            rightEdgeBarIndex: range.rightEdgeBarIndex,
+            sourceTimeframe: range.sourceTimeframe,
             offsetX:     range.offsetX,
             candleWidth: range.candleWidth,
             zoomLevelIndex: range.zoomLevelIndex,
@@ -600,7 +635,10 @@
                     // settled (it just sent bridge-ready synchronously
                     // from inside its own message setup).
                     const self = this;
-                    setTimeout(function () { self._initialSyncToHost(sourceChart); }, 0);
+                    setTimeout(function () {
+                        self._pushSyncModeToChart(sourceChart);
+                        self._initialSyncToHost(sourceChart);
+                    }, 0);
                 }
                 return;
 
@@ -616,7 +654,17 @@
                         && !sourceChart._initialRangeSyncedAfterData) {
                         sourceChart._initialRangeSyncedAfterData = true;
                         const self = this;
-                        setTimeout(function () { self._initialSyncToHost(sourceChart); }, 0);
+                        setTimeout(function () {
+                            self._pushSyncModeToChart(sourceChart);
+                            self._initialSyncToHost(sourceChart);
+                        }, 0);
+                    } else if (!sourceChart.host && newCount > 0 && this.syncMode.visibleRange) {
+                        // Data refresh after TF/file load can reset viewport — re-snap to host.
+                        const self = this;
+                        clearTimeout(sourceChart._resyncAfterDataTimer);
+                        sourceChart._resyncAfterDataTimer = setTimeout(function () {
+                            self._initialSyncToHost(sourceChart);
+                        }, 80);
                     }
                 }
                 return;
@@ -807,7 +855,7 @@
             }
             const win = chartEntry.frame && chartEntry.frame.contentWindow;
             if (win && typeof win.__multichartSyncApply === 'function') {
-                if (msg && msg.panSync && msg.type === 'visibleRange') {
+                if (msg && msg.type === 'visibleRange') {
                     win.__multichartSyncApply(msg);
                     return;
                 }

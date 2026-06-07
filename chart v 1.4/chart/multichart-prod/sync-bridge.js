@@ -704,7 +704,8 @@
         let rafScheduled = false;
         function buildCrosshairEnvelope(timestampMs) {
             const payload = { type: 'crosshair', time: toSeconds(timestampMs) };
-            if (syncModeGate && syncModeGate.visibleRange) {
+            const sm = effectiveSyncMode();
+            if (sm && sm.visibleRange) {
                 const range = readVisibleTimeRange(chart);
                 if (range) {
                     payload.startTime = range.startSec;
@@ -1152,18 +1153,19 @@
             // respect its toggles. This prevents the raw message listener
             // (which bypasses the manager's _fanOut gate) from applying
             // sync messages that the user has explicitly turned off.
-            if (syncModeGate) {
+            const smGate = effectiveSyncMode();
+            if (smGate) {
                 var mt = msg.type;
-                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
-                if (mt === 'visibleRange' && !syncModeGate.visibleRange) {
-                    if (!m.forceInitialSync
-                        && !(m.causationId && String(m.causationId).indexOf('host-init-') === 0)) {
+                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !smGate.crosshair) return;
+                if (mt === 'visibleRange' && !smGate.visibleRange) {
+                    if (!msg.forceInitialSync
+                        && !(msg.causationId && String(msg.causationId).indexOf('host-init-') === 0)) {
                         return;
                     }
                 }
-                if (mt === 'symbol' && !syncModeGate.symbol) return;
+                if (mt === 'symbol' && !smGate.symbol) return;
                 if ((mt === 'drawing-add' || mt === 'drawing-update'
-                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;
+                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !smGate.drawings) return;
             }
 
             const cleaned = G.filterForbiddenFields(msg);
@@ -1430,12 +1432,24 @@
             }
         }
 
-        // Sync-mode gate: when set to a manager's syncMode object, applyInbound
-        // will skip messages whose category is toggled OFF. The host bridge
-        // sets this after the manager is created so that raw message-listener
-        // delivery respects the same gates as _fanOut. Iframe bridges leave
-        // it null (their inbound messages already passed the manager's gate).
+        // Host bridge: live reference to manager.syncMode (same object).
+        // Iframe bridges: local copy updated via bridge-config.syncMode.
         var syncModeGate = null;
+        var localSyncMode = {
+            crosshair: true,
+            visibleRange: false,
+            symbol: false,
+            drawings: true,
+        };
+
+        function effectiveSyncMode() {
+            return syncModeGate || localSyncMode;
+        }
+
+        function refreshChartSyncCrosshairFlag() {
+            const sm = effectiveSyncMode();
+            chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
+        }
 
         if (!opts.skipMessageListener) {
             global.addEventListener('message', function (ev) {
@@ -1447,18 +1461,24 @@
             state.applied.add(m.causationId);
             beginApplying(true);
 
-            if (syncModeGate && syncModeGate.visibleRange
-                && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)) {
+            const sm = effectiveSyncMode();
+            const coupleViewport = !!(sm && sm.visibleRange)
+                && Number.isFinite(m.startTime) && Number.isFinite(m.endTime);
+            if (coupleViewport) {
                 const sameTf = sameTimeframeMessage(chart, m);
-                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
-                    applyPanDragFollow(chart, m);
-                } else {
+                let aligned = false;
+                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.endTime)) {
+                    aligned = applyMatchedViewport(chart, m);
+                }
+                if (!aligned && sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
+                    aligned = applyPanDragFollow(chart, m);
+                }
+                if (!aligned && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)) {
                     applyMatchedViewport(chart, m);
                 }
             }
 
-            const usePlotFraction = !!(syncModeGate && syncModeGate.visibleRange
-                && Number.isFinite(m.plotFraction));
+            const usePlotFraction = coupleViewport && Number.isFinite(m.plotFraction);
             chart.receiveCrosshairSync(toMillis(m.time), null, null, {
                 usePlotFraction: usePlotFraction,
                 plotFraction: m.plotFraction,
@@ -1554,8 +1574,11 @@
         function applyBridgeConfig(m) {
             if (m.config && m.config.chartId) state.chartId = m.config.chartId;
             if (m.config && m.config.parentOrigin) state.parentOrigin = m.config.parentOrigin;
-            if (syncModeGate) {
-                chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
+            if (m.config && m.config.syncMode && typeof m.config.syncMode === 'object') {
+                Object.assign(localSyncMode, m.config.syncMode);
+                refreshChartSyncCrosshairFlag();
+            } else {
+                refreshChartSyncCrosshairFlag();
             }
         }
 
@@ -1617,9 +1640,7 @@
             // bridge's own message listener respects sync toggles.
             setSyncModeGate: function (ref) {
                 syncModeGate = ref || null;
-                if (syncModeGate) {
-                    chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
-                }
+                refreshChartSyncCrosshairFlag();
             },
         };
     }
