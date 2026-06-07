@@ -6,6 +6,7 @@ import { SparklesCore } from "@/components/ui/sparkles";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "./LanguageProvider";
 import SiteDisclosuresFooter from "@/components/SiteDisclosuresFooter";
+import { normalizeAuthUser } from "@/lib/authUser";
 import Image from "next/image";
 import {
   TrendingUp,
@@ -102,7 +103,7 @@ export default function HomePageClient({
       cache: "no-store",
     })
       .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data) => setUser(data.user || null))
+      .then((data) => setUser(normalizeAuthUser(data.user) || null))
       .catch(() => setUser(null));
   }, []);
 

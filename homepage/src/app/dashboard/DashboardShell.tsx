@@ -22,6 +22,7 @@ import {
   userIsDashboardAdmin,
 } from "@/lib/dashboardAccess";
 import { applyJournalTokenFromAuthResponse } from "@/lib/journalApi";
+import { isAnonymousPlaceholderUser } from "@/lib/authUser";
 import SubscriptionGateOverlay from "./SubscriptionGateOverlay";
 import DashboardAccessSkeleton from "./DashboardAccessSkeleton";
 import { StrategyLabV9BuilderProvider } from "./strategies/StrategyLabV9BuilderContext";
@@ -56,6 +57,7 @@ async function fetchMe(): Promise<User> {
   if (!res.ok) throw new Error("not_authenticated");
   const data = (await res.json()) as { user: User; journal_token?: string };
   applyJournalTokenFromAuthResponse(data);
+  if (isAnonymousPlaceholderUser(data.user)) throw new Error("not_authenticated");
   return data.user;
 }
 

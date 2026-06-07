@@ -10203,7 +10203,10 @@ def _enforce_session_limit_and_create(
 async def auth_config():
     """Public auth UI config (e.g. Google client id for Sign in with Google)."""
     cid = _google_client_id()
-    return {"google_client_id": cid if cid else None}
+    return {
+        "google_client_id": cid if cid else None,
+        "auth_enabled": AUTH_ENABLED,
+    }
 
 
 @app.get("/api/auth/me")

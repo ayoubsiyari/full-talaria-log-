@@ -137,14 +137,15 @@
     }
 
     /**
-     * Active pan drag: mirror leader zoom + scroll with minimal work (1:1 feel).
-     * Full time/bar realignment runs once on pan release (!panSync).
+     * Active pan drag: mirror leader zoom + right-edge time anchor (not raw
+     * offsetX scaling — that pushed follower panels off-screen when plot
+     * widths or loaded data slices differ).
+     * Full bar realignment runs once on pan release (!panSync).
      */
     function applyPanDragFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
-        const srcOffset = Number(m.offsetX);
         const srcCw = Number(m.candleWidth);
-        if (!Number.isFinite(srcOffset) || !Number.isFinite(srcCw) || srcCw <= 0) return false;
+        if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
 
         const plotW = resolvePlotWidthPx(chart);
         if (plotW <= 0) return false;
@@ -155,10 +156,35 @@
         }
         if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
 
-        const sw = Number(m.plotWidthPx);
-        chart.offsetX = (sw > 0) ? srcOffset * (plotW / sw) : srcOffset;
-        applyLightweightOffsetClamp(chart);
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
 
+        let positioned = false;
+        if (Number.isFinite(m.endTime)) {
+            const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+            if (Number.isFinite(idxAtRight)) {
+                chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+                positioned = true;
+            }
+        }
+        if (!positioned && Number.isFinite(m.offsetX)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+            positioned = true;
+        }
+        if (!positioned) return false;
+
+        if (typeof chart._constrainOffsetDuringDrag === 'function') {
+            try { chart._constrainOffsetDuringDrag(); } catch (_) {}
+        } else if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        } else {
+            applyLightweightOffsetClamp(chart);
+        }
+
+        chart._chartViewRestored = true;
         chart._panSyncBurstUntil = performance.now() + 64;
         if (typeof chart.render === 'function') chart.render();
         else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
@@ -208,6 +234,18 @@
         chart.offsetX = plotW - (idxAtRight + 1) * spacing;
         if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
+        }
+
+        // If time anchor left no bars visible (data slice mismatch), fall back to
+        // scaled offset from the leader rather than leaving a blank chart.
+        const visStart = Math.max(0, -Math.floor(chart.offsetX / spacing));
+        const visEnd = Math.min(chart.data.length, visStart + Math.ceil(plotW / spacing));
+        if (visEnd <= visStart && Number.isFinite(m.offsetX)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            }
         }
 
         if (!m.panSync && Number.isFinite(m.startTime)) {
@@ -337,6 +375,7 @@
     }
 
     function finishViewportApply(chart, panSync) {
+        chart._chartViewRestored = true;
         if (panSync) {
             chart._panSyncBurstUntil = performance.now() + 48;
             if (typeof chart.render === 'function') chart.render();
