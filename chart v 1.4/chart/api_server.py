@@ -19775,13 +19775,6 @@ async def admin_dashboard_underscore_redirect():
 @app.get("/chart/admin-dashboard.html")
 async def admin_dashboard_page(request: Request):
     _require_admin(request)
-    dist_admin_index = Path(__file__).resolve().parent / "dist-admin" / "index.html"
-    if dist_admin_index.is_file():
-        return FileResponse(str(dist_admin_index))
-    chart_root = Path(__file__).resolve().parent
-    legacy = chart_root / "admin-dashboard.legacy.html"
-    if legacy.is_file():
-        return FileResponse(str(legacy))
     return file_response_if_exists("admin-dashboard.html")
 
 @app.get("/dashboard/admin/datasets")
@@ -19811,7 +19804,7 @@ CHART_ROOT_FILES = {
     "index.v9.html",  # redirect stub → legacy-index.html (no second monolith)
     "backtesting.html",
     "propfirm-backtest.html",
-    "admin-dashboard.legacy.html",
+    "admin-dashboard.html",
     "styles.css",
     "propfirm-styles.css",
     "chart.js",
@@ -19837,7 +19830,6 @@ async def chart_root_redirect():
 _CHART_ROOT_PATH    = Path(__file__).resolve().parent
 _DIST_V9_INDEX_PATH = _CHART_ROOT_PATH / "dist-v9" / "index.html"
 _DIST_V9_DIR_PATH   = _CHART_ROOT_PATH / "dist-v9"
-_DIST_ADMIN_DIR_PATH = _CHART_ROOT_PATH / "dist-admin"
 _DIST_LEGACY_INDEX  = _CHART_ROOT_PATH / "dist" / "index.html"
 _DIST_LEGACY_DIR    = _CHART_ROOT_PATH / "dist"
 
@@ -19876,12 +19868,6 @@ if _DIST_V9_DIR_PATH.is_dir():
     print(f"✅ V9 build detected at {_DIST_V9_DIR_PATH}; /chart/index.html will serve V9.")
 else:
     print(f"ℹ️ No V9 build at {_DIST_V9_DIR_PATH}; falling back to legacy.")
-
-if _DIST_ADMIN_DIR_PATH.is_dir():
-    app.mount("/chart/dist-admin", StaticFiles(directory=str(_DIST_ADMIN_DIR_PATH)), name="chart_dist_admin")
-    print(f"✅ Admin SPA detected at {_DIST_ADMIN_DIR_PATH}; /chart/admin-dashboard.html serves HeroUI build.")
-else:
-    print(f"ℹ️ No admin SPA at {_DIST_ADMIN_DIR_PATH}; falling back to legacy admin-dashboard.html.")
 
 # Keep the legacy dist/ mount for the old minified bundle.
 if _DIST_LEGACY_DIR.is_dir():
