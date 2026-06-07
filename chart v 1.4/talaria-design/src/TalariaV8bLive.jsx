@@ -939,10 +939,10 @@ const V9_GROUP_DEFAULT = Object.freeze({
   eye: null, magnet: null, lock: null,
 });
 
-/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool` + spiral CCW). */
+/** V9 fib rail icons that expose an Input tab (matches legacy `isFibonacciInputTabTool`). */
 const V9_FIB_ICONS_WITH_INPUT_TAB = new Set([
   "fib", "fibExtension", "fibChannel", "fibTimeZone", "fibFan", "fibTime",
-  "fibCircles", "fibArcs", "fibWedge", "fibSpiral",
+  "fibCircles", "fibArcs", "fibWedge",
 ]);
 
 /** Rail icons with no settings Text tab (and no working quick-menu text color). Shared by settings tabs + floating bar. */
@@ -1827,6 +1827,30 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         : 0.12;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
   }
+  if (legacyTool && v9IsFibArcsType(legacyTool)) {
+    const arcsTrendDash =
+      tlStyle.fibArcsTrendType === "bold"
+        ? ""
+        : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType] !== undefined
+          ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
+          : "");
+    patch.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
+    patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
+    patch.trendLineWidth = parseInt(String(tlStyle.fibArcsTrendWidth), 10) || 1;
+    patch.trendLineDasharray = arcsTrendDash;
+  }
+  if (legacyTool && v9IsFibWedgeType(legacyTool)) {
+    const wedgeTrendDash =
+      tlStyle.fibWedgeTrendType === "bold"
+        ? ""
+        : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibWedgeTrendType] !== undefined
+          ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibWedgeTrendType]
+          : "");
+    patch.trendLineEnabled = tlStyle.fibWedgeTrendLine !== false;
+    patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
+    patch.trendLineWidth = parseInt(String(tlStyle.fibWedgeTrendWidth), 10) || 1;
+    patch.trendLineDasharray = wedgeTrendDash;
+  }
   if (
     legacyTool &&
     (v9IsFibCirclesType(legacyTool) || v9IsFibArcsType(legacyTool) || v9IsFibWedgeType(legacyTool)) &&
@@ -1844,30 +1868,6 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
         ? +tlStyle.fibBgOpacity
         : 0.12;
     patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
-    if (v9IsFibArcsType(legacyTool)) {
-      const arcsTrendDash =
-        tlStyle.fibArcsTrendType === "bold"
-          ? ""
-          : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType] !== undefined
-            ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibArcsTrendType]
-            : "");
-      patch.trendLineEnabled = tlStyle.fibArcsTrendLine !== false;
-      patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
-      patch.trendLineWidth = parseInt(String(tlStyle.fibArcsTrendWidth), 10) || 1;
-      patch.trendLineDasharray = arcsTrendDash;
-    }
-    if (v9IsFibWedgeType(legacyTool)) {
-      const wedgeTrendDash =
-        tlStyle.fibWedgeTrendType === "bold"
-          ? ""
-          : (V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibWedgeTrendType] !== undefined
-            ? V9_LINE_TYPE_TO_LEGACY_DASH[tlStyle.fibWedgeTrendType]
-            : "");
-      patch.trendLineEnabled = tlStyle.fibWedgeTrendLine !== false;
-      patch.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
-      patch.trendLineWidth = parseInt(String(tlStyle.fibWedgeTrendWidth), 10) || 1;
-      patch.trendLineDasharray = wedgeTrendDash;
-    }
   }
   if (
     legacyTool === "gann-box" ||
@@ -1980,6 +1980,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.fill = "none";
     patch.showBackground = false;
     patch.backgroundColor = "transparent";
+  }
+  if (legacyTool === "fib-spiral") {
+    patch.counterClockwise = !!tlStyle.fibSpiralCCW;
+    patch.v9FibSpiralCCW = patch.counterClockwise;
   }
   return patch;
 }
@@ -4967,6 +4971,24 @@ function v9IsFibCirclesType(t) {
   return t === "fib-circles";
 }
 
+function v9IsFibSpiralType(t) {
+  return t === "fib-spiral";
+}
+
+/** Fib Spiral: line color + counter-clockwise winding (`fibSpiralCCW` in V9 UI). */
+function v9ApplyFibSpiralFromTlStyle(d, tlStyle, widthFallback) {
+  if (!d || !d.style || !v9IsFibSpiralType(d.type)) return;
+  const st = d.style;
+  const ccw = !!tlStyle.fibSpiralCCW;
+  st.counterClockwise = ccw;
+  st.v9FibSpiralCCW = ccw;
+  st.stroke = tlStyle.lineColor || st.stroke || "#00bcd4";
+  st.strokeWidth =
+    parseInt(String(tlStyle.lineWidth), 10) ||
+    (typeof widthFallback === "number" ? widthFallback : parseInt(st.strokeWidth, 10)) ||
+    1;
+}
+
 function v9IsFibArcsType(t) {
   return t === "fib-arcs";
 }
@@ -6111,6 +6133,8 @@ function v9ApplyTlStyleExtrasToDrawing(d, tlStyle, dm) {
     v9ApplyFibArcsFromTlStyle(d, tlStyle, widthNum);
   } else if (v9IsFibWedgeType(d.type)) {
     v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthNum);
+  } else if (v9IsFibSpiralType(d.type)) {
+    v9ApplyFibSpiralFromTlStyle(d, tlStyle, widthNum);
   } else if (isFib) {
     d.style.trendLineColor = tlStyle.lineColor;
     d.style.trendLineWidth = widthNum;
@@ -6492,6 +6516,15 @@ function v9TlStylePatchFromDrawing(d) {
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
                 : 0.12,
             fibLevelsOn: s.levelsEnabled !== false,
+          };
+        })()
+      : {}),
+    ...(d.type === "fib-spiral"
+      ? (() => {
+          return {
+            fibSpiralCCW: s.counterClockwise === true || s.v9FibSpiralCCW === true,
+            lineColor: s.stroke || stroke,
+            lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
           };
         })()
       : {}),
@@ -17427,6 +17460,7 @@ const TalariaV8bLive = () => {
     tlStyle.gannLineWidth,
     tlStyle.gannBackground,
     tlStyle.gannBgOpacity,
+    tlStyle.fibSpiralCCW,
     tool, groupSelected,
   ]);
 
@@ -17700,6 +17734,22 @@ const TalariaV8bLive = () => {
     flushSync(() => {
       setTlStyle((s) => {
         const next = { ...s, ...patch };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  /** Fib wedge/arcs Input-tab Trend Line on/off — immediate chart sync (same stale-bridge race as pitchfork). */
+  const applyTlFibArcsWedgeTrendLineToggle = useCallback((isArcs) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = isArcs
+          ? { ...s, fibArcsTrendLine: !(s.fibArcsTrendLine !== false) }
+          : { ...s, fibWedgeTrendLine: !(s.fibWedgeTrendLine !== false) };
         v9FlushTlStyleToChartTargets(next, {
           editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
           resolveLegacyTool,
@@ -20756,11 +20806,6 @@ const TalariaV8bLive = () => {
                     hover: swHov === key,
                   })}/>
               );
-              if (fi === "fibSpiral") return (
-                <div style={{ padding:"8px 0" }}>
-                  {TlChk(tlStyle.fibSpiralCCW ?? false, "tlchk-fibSpiralCCW-in", "Counter Clockwise", () => setTlStyle(s => ({ ...s, fibSpiralCCW: !(s.fibSpiralCCW ?? false) })))}
-                </div>
-              );
               if (fi === "fibTimeZone") return <>
                 <div style={{ fontSize:9, fontWeight:800, color:c.tm, letterSpacing:"0.08em", padding:"8px 0 10px" }}>FIBONACCI NUMBERS</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", columnGap:12, alignItems:"end", paddingRight:24 }}>
@@ -21049,13 +21094,11 @@ const TalariaV8bLive = () => {
                   const widDk  = isArcs ? "fibArcsTrendWidth" : "fibWedgeTrendWidth";
                   const typeVal = isArcs ? tlStyle.fibArcsTrendType : tlStyle.fibWedgeTrendType;
                   const widVal  = isArcs ? tlStyle.fibArcsTrendWidth : tlStyle.fibWedgeTrendWidth;
-                  const toggleOn = isArcs
-                    ? ()=>setTlStyle(s=>({...s,fibArcsTrendLine:!s.fibArcsTrendLine}))
-                    : ()=>setTlStyle(s=>({...s,fibWedgeTrendLine:!s.fibWedgeTrendLine}));
+                  const toggleOn = () => applyTlFibArcsWedgeTrendLineToggle(isArcs);
                   const hkPfx = isArcs ? "fibATt" : "fibWTt";
                   const hkWPfx = isArcs ? "fibATw" : "fibWTw";
                   return <div style={{ display:"flex", alignItems:"center", padding:"8px 0 14px" }}>
-                    <div style={{ width:130 }}>{TlChk(on,`tlchk-${isArcs?"fibArcsTrend":"fibWedgeTrend"}`,"Trend Line",toggleOn,{ immediate:true })}</div>
+                    <div style={{ width:130 }}>{TlChk(on !== false,`tlchk-${isArcs?"fibArcsTrend":"fibWedgeTrend"}`,"Trend Line",toggleOn,{ immediate:true })}</div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:40, opacity:op, pointerEvents:pe, transition:"opacity 0.15s" }}>
                       {fibColorSwatch("fibTrendColor", tlStyle.lineColor)}
                       {/* Style */}

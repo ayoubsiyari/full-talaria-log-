@@ -1018,7 +1018,9 @@ export default function MultichartGrid({
     // existing #chartWrapper, which has been alive (with all the user's
     // drawings, indicators, replay state, etc.) since the user first
     // opened /chart/. No loading overlay needed.
+    // bridge-ready (commands/sync) vs data-ready (hide loading overlay)
     const [readyPanels, setReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
+    const [dataReadyPanels, setDataReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
     // panelId -> { reason, src }. Set by the manager's onChartBootFailed when an
     // iframe never reaches `bridge-ready` (boot timeout) or its iframe errors.
     // Drives a visible error overlay so a stuck panel no longer shows an
@@ -1292,14 +1294,22 @@ export default function MultichartGrid({
                 // clicks on B/C/D — we rely on the iframe to tell us
                 // explicitly via panel-cmd-bridge's focus broadcast.
                 onPanelFocus: function (id) {
+                    const prev = focusedPanelIdRef.current;
                     if (typeof setFocusedPanelId === "function") {
                         setFocusedPanelId(id);
                     }
-                    // Always clear peer tiles — focus may already equal `id` (e.g. host
-                    // stayed A while the user opened settings inside an iframe).
                     const grid = window.__multichartGrid;
-                    if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                        grid.clearDrawingUiOnOtherPanels(id);
+                    if (!grid) return;
+                    // Focus changed → full peer cleanup (deselect other tiles, close settings).
+                    // Same-panel click → only clear peer selections; do not close settings on
+                    // every chart mousedown (that armed suppressNextCanvasBackgroundClick and
+                    // blocked empty-area deselect on the focused tile).
+                    if (prev !== id) {
+                        if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                            grid.clearDrawingUiOnOtherPanels(id);
+                        }
+                    } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                        grid.deselectDrawingsOnNonFocusedPanels(id);
                     }
                 },
                 onContextMenu: function (panelId, msg) {
@@ -1379,6 +1389,7 @@ export default function MultichartGrid({
             }
             setManagerReady(false);
             setReadyPanels(new Set());
+            setDataReadyPanels(new Set([HOST_PANEL_ID]));
             setFailedPanels(new Map());
         };
         // Mount-once — never re-run.
@@ -1412,6 +1423,12 @@ export default function MultichartGrid({
             if (!desiredIframeIds.has(existingId)) {
                 try { mgr.removeChart(existingId); } catch (_) {}
                 setReadyPanels((prev) => {
+                    if (!prev.has(existingId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(existingId);
+                    return next;
+                });
+                setDataReadyPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
                     const next = new Set(prev);
                     next.delete(existingId);
@@ -1600,14 +1617,18 @@ export default function MultichartGrid({
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
         const onHostPointerDown = () => {
+            const prev = focusedPanelIdRef.current;
             if (typeof setFocusedPanelId === "function") {
                 setFocusedPanelId(HOST_PANEL_ID);
             }
-            // Always clear iframe chrome — focus may already be A while a peer
-            // still has its legacy settings modal open.
             const grid = window.__multichartGrid;
-            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
-                grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+            if (!grid) return;
+            if (prev !== HOST_PANEL_ID) {
+                if (typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+                }
+            } else if (typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                grid.deselectDrawingsOnNonFocusedPanels(HOST_PANEL_ID);
             }
         };
         if (wrapper) {
@@ -2517,6 +2538,17 @@ export default function MultichartGrid({
     //       (effect above); iframe tf/fileId arrive via sync-bridge
     //       `chart-state` postMessage.
     onStateAnyRef.current = (id, state) => {
+        // Hide the tile loading overlay only once bars exist — bridge-ready
+        // fires before loadFileData finishes and caused empty-chart flashes.
+        if (state && Number(state.candleCount) > 0) {
+            setDataReadyPanels((prev) => {
+                if (prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+        }
+
         // (a) focus mirror
         if (id === focusedPanelIdRef.current) {
             dispatchFocusChanged(id);
@@ -2719,24 +2751,28 @@ export default function MultichartGrid({
                     }
                     case "closeDrawingSettings": {
                         const dmSet = ch.drawingManager;
+                        let hadModal = false;
+                        try { hadModal = !!document.querySelector(".tv-settings-modal"); } catch (_) {}
                         if (dmSet) {
-                            if (dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === "function") {
+                            if (hadModal && dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === "function") {
                                 dmSet.settingsPanel.hide();
                             }
                             if (dmSet.contextMenu && typeof dmSet.contextMenu.hide === "function") {
                                 dmSet.contextMenu.hide();
                             }
                         }
-                        try {
-                            document.querySelectorAll(".tv-settings-modal").forEach((el) => {
-                                try {
-                                    if (el.externalDropdowns) {
-                                        el.externalDropdowns.forEach((d) => { try { d.remove(); } catch (_) {} });
-                                    }
-                                    el.remove();
-                                } catch (_) {}
-                            });
-                        } catch (_) {}
+                        if (hadModal) {
+                            try {
+                                document.querySelectorAll(".tv-settings-modal").forEach((el) => {
+                                    try {
+                                        if (el.externalDropdowns) {
+                                            el.externalDropdowns.forEach((d) => { try { d.remove(); } catch (_) {} });
+                                        }
+                                        el.remove();
+                                    } catch (_) {}
+                                });
+                            } catch (_) {}
+                        }
                         return Promise.resolve(null);
                     }
                     case "deselectDrawings": {
@@ -3953,6 +3989,13 @@ export default function MultichartGrid({
                 }
                 return;
             }
+            if (msg.type === "multichart-drawing-deselected") {
+                try {
+                    window.dispatchEvent(new CustomEvent("talaria:v9-cleared-selection"));
+                    window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
+                } catch (_) {}
+                return;
+            }
             if (msg.type === "multichart-open-drawing-settings") {
                 const grid = window.__multichartGrid;
                 const sourceId = msg.source != null ? String(msg.source) : null;
@@ -4378,7 +4421,7 @@ export default function MultichartGrid({
                 const isFocused = focusedPanelId === tile.id;
                 // Host tile is always "ready" (it's the parent's already-loaded
                 // chart) — never show the loading overlay for it.
-                const isReady   = isHost || readyPanels.has(tile.id);
+                const isReady   = isHost || dataReadyPanels.has(tile.id);
                 const failure   = isHost ? null : failedPanels.get(tile.id);
                 return (
                     <div
@@ -4432,7 +4475,7 @@ export default function MultichartGrid({
                              chart skeleton). Renders ABOVE the manager-spawned
                              iframe (z-index:5 > iframe default) until the
                              panel's bridge fires `bridge-ready`. Unmounted
-                             once `onChartReady(id)` adds id to readyPanels.
+                             once chart-state reports candleCount > 0.
                              Skipped for the host cell — parent chart is
                              already loaded with full state. */}
                         {!isReady && !failure && (
@@ -4460,6 +4503,10 @@ export default function MultichartGrid({
                                             const cellEl = cellRefs.current[tile.id];
                                             try { mgr.removeChart(tile.id); } catch (_) {}
                                             setReadyPanels((prev) => {
+                                                if (!prev.has(tile.id)) return prev;
+                                                const n = new Set(prev); n.delete(tile.id); return n;
+                                            });
+                                            setDataReadyPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;
                                                 const n = new Set(prev); n.delete(tile.id); return n;
                                             });

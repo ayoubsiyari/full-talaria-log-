@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Talaria admin — violet primary on HeroUI dark */
+:root,
+.dark {
+  --heroui-primary: 270 75% 58%;
+  --heroui-primary-foreground: 0 0% 100%;
+}

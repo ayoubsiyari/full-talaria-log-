@@ -1788,8 +1788,8 @@ class Chart {
     }
 
     /**
-     * Multichart backtest replay TF change: reload 1m master at playhead + resample display TF.
-     * Skips _refetchBacktestTimeframe native-TF windows that leave too little forward data.
+     * Multichart backtest replay TF change: prefer cache / client resample (same as
+     * tile A), then reload 1m master at playhead only when necessary.
      */
     async _multichartReplayTimeframeSwitch(normalizedTf) {
         const replay = this.replaySystem;
@@ -1797,8 +1797,11 @@ class Chart {
             this._endTimeframeSwitching();
             return;
         }
-        const playheadMs = this._captureReplayPlayheadMs(replay);
         try {
+            if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
+                return;
+            }
+            const playheadMs = this._captureReplayPlayheadMs(replay);
             await this.loadMultichartPanelFromHost({
                 fileId: String(this.currentFileId),
                 session: this.backtestingSession,
@@ -1811,6 +1814,112 @@ class Chart {
         } finally {
             this._endTimeframeSwitching();
         }
+    }
+
+    /**
+     * Fast TF paths for multichart iframe tiles (avoid network reload when possible).
+     * @returns {Promise<boolean>}
+     */
+    async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
+            return true;
+        }
+        if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
+            return true;
+        }
+        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
+            return true;
+        }
+        if (this._independentPanelTimeframeSwitch(normalizedTf)) {
+            return true;
+        }
+        if (this._canClientResampleToTimeframe(normalizedTf)) {
+            this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
+            return true;
+        }
+        return false;
+    }
+
+    /** Copy host tile A's 1m master into this iframe when showing the same pair. */
+    _multichartSeedPanelMasterFromParent() {
+        if (!this._isMultichartEmbedPanel()) return false;
+        let parent = null;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            parent = window.parent.chart;
+        } catch (_e) {
+            return false;
+        }
+        if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) {
+            return false;
+        }
+        const prs = parent.replaySystem;
+        const master = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+            ? prs.fullRawData
+            : null;
+        if (!master || master.length === 0) return false;
+        this._panelFullRawData = master.slice();
+        return true;
+    }
+
+    /**
+     * After a multichart TF switch: seek to playhead and align viewport like tile A
+     * (avoid centerOnCandle which zooms to a single bar on 1m).
+     * @param {object} replay
+     * @param {number|null} playheadTs
+     */
+    _syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs) {
+        if (!replay || !replay.isActive) return;
+        if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
+            replay.goToReplayTimestamp(playheadTs);
+        } else if (typeof replay.updateChartData === 'function') {
+            replay.updateChartData(true);
+        }
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+            replay.syncReplayViewportToPlayhead(this, {
+                centerPlayhead: true,
+                resetPriceScale: true,
+                render: true,
+            });
+        } else {
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            if (this.priceScale) this.priceScale.autoScale = true;
+            this.fitToView();
+            if (typeof this.render === 'function') this.render();
+        }
+    }
+
+    /**
+     * Same-pair iframe: resample from host's 1m master (no refetch).
+     * @param {string} normalizedTf
+     * @returns {boolean}
+     */
+    _multichartSamePairTimeframeResampleFromParent(normalizedTf) {
+        if (this._isIndependentMultichartPair()) return false;
+        if (!this._multichartSeedPanelMasterFromParent()) return false;
+        return this._independentPanelTimeframeSwitch(normalizedTf);
+    }
+
+    async _applyBacktestTimeframeFromParentCache(timeframe) {
+        if (!this._isMultichartEmbedPanel() || !this.isBacktestMode || !this.currentFileId) {
+            return false;
+        }
+        let parent = null;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            parent = window.parent.chart;
+        } catch (_e) {
+            return false;
+        }
+        if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) {
+            return false;
+        }
+        if (typeof parent._getBtTfDataCache !== 'function') return false;
+        const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
+        if (!entry) return false;
+        return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
     }
 
     /**
@@ -1838,11 +1947,12 @@ class Chart {
             const fid = String(targetFileId || '').trim();
             if (!fid || String(parent.currentFileId || '') !== fid) return null;
 
-            // Prefer the host's full 1m replay master; fall back to its visible raw series.
+            // Must use the host replay master — parent.rawData is only the visible
+            // playhead slice and would leave this tile on the wrong time range.
             const prs = parent.replaySystem;
             const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
                 ? prs.fullRawData
-                : (Array.isArray(parent.rawData) && parent.rawData.length > 0 ? parent.rawData : null);
+                : null;
             if (!masterRaw || masterRaw.length === 0) return null;
 
             const tf = this._normalizeBacktestTimeframe(displayTf) || displayTf || '1m';
@@ -2142,6 +2252,20 @@ class Chart {
     }
 
     /**
+     * Replay playhead for multichart iframe tiles showing the same pair as host A.
+     * Falls back to this panel's own playhead for independent pairs / host tile.
+     * @returns {number|null}
+     */
+    _resolveMultichartReplayPlayheadMs() {
+        if (this._isMultichartEmbedPanel() && !this._isIndependentMultichartPair()) {
+            const parentTs = this._readParentReplayTimestampForMultichart();
+            if (Number.isFinite(parentTs)) return parentTs;
+        }
+        const captured = this._captureReplayPlayheadMs(this.replaySystem);
+        return Number.isFinite(captured) ? captured : null;
+    }
+
+    /**
      * Independent multichart iframe switching to a pair other than host tile A.
      * @param {string|number} targetFileId
      * @returns {boolean}
@@ -2175,9 +2299,7 @@ class Chart {
         if (!replay || !replay.isActive) return false;
         if (!Array.isArray(this._panelFullRawData) || this._panelFullRawData.length === 0) return false;
 
-        const playheadTs = Number.isFinite(Number(replay.replayTimestamp))
-            ? Number(replay.replayTimestamp)
-            : null;
+        const playheadTs = this._resolveMultichartReplayPlayheadMs();
 
         this.currentTimeframe = normalizedTf;
         this._nativeRawFetchTf = '1m';
@@ -2191,18 +2313,7 @@ class Chart {
         replay.tickPathCache = {};
         replay.tickPathCacheBuilt = false;
 
-        if (Number.isFinite(playheadTs) && typeof replay.goToReplayTimestamp === 'function') {
-            replay.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
-        } else if (typeof replay.updateChartData === 'function') {
-            replay.updateChartData(true);
-        }
-
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        if (this.priceScale) this.priceScale.autoScale = true;
-        this.fitToView();
-        this.render();
+        this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
 
         if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
         this._scheduleIndicatorsAfterTimeframe();
@@ -4177,6 +4288,11 @@ class Chart {
         if (!this.isBacktestMode || !this.currentFileId) return false;
         const entry = this._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
+        return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'backtest-cache');
+    }
+
+    async _applyBacktestTimeframeCacheEntry(timeframe, entry, logTag = 'backtest-cache') {
+        if (!entry || !this.isBacktestMode || !this.currentFileId) return false;
 
         const replay = this.replaySystem;
         if (!replay) return false;
@@ -4204,7 +4320,8 @@ class Chart {
             }
         }
 
-        const savedReplayTimestamp = this._captureReplayPlayheadMs(replay);
+        const savedReplayTimestamp = this._resolveMultichartReplayPlayheadMs()
+            ?? this._captureReplayPlayheadMs(replay);
 
         this.rawData = entry.rawData;
         this.totalCandles = entry.totalCandles != null ? entry.totalCandles : this.rawData.length;
@@ -4226,7 +4343,7 @@ class Chart {
             sessionEndMs,
             coarsePeriodExclusiveEndTs,
         });
-        this._logTfSwitch('backtest-cache', {
+        this._logTfSwitch(logTag, {
             to: timeframe,
             bars: this.rawData.length,
             native: entry.nativeRawFetchTf || timeframe,
@@ -4419,11 +4536,11 @@ class Chart {
             const replayActiveBefore = !!(replay && replay.isActive);
             const replayWasPlayingBefore = !!(replayActiveBefore && replay.isPlaying);
             const anchorToHostPlayhead = this._shouldAnchorPairSwitchToHostPlayhead(targetFileId);
-            const parentReplayTs = anchorToHostPlayhead
-                ? this._readParentReplayTimestampForMultichart()
-                : NaN;
+            const parentReplayTs = this._readParentReplayTimestampForMultichart();
             let replayTargetTs = null;
-            if (anchorToHostPlayhead && Number.isFinite(parentReplayTs)) {
+            // Same-pair iframe tiles must mirror host A's playhead — local replayTimestamp
+            // can lag after a fast-path load and leaves panels on different time ranges.
+            if (Number.isFinite(parentReplayTs)) {
                 replayTargetTs = parentReplayTs;
                 if (replay) replay.replayTimestamp = parentReplayTs;
             } else if (replayActiveBefore && Number.isFinite(Number(replay.replayTimestamp))) {
@@ -4503,10 +4620,22 @@ class Chart {
                 }
             }
 
-            // FAST PATH: same pair host tile A already holds → ingest A's in-memory bars
-            // instead of a network fetch. Only fires for the host's current pair (different
-            // pairs still fetch). Falls through to the network path when A has no data yet.
-            let result = (!fetchReplayAnchored && !anchorToHostPlayhead)
+            // FAST PATH: same pair as host tile A → ingest A's in-memory bars
+            // instead of a network fetch (including during replay when both
+            // panels show the same instrument).
+            const samePairAsHost = this._isMultichartEmbedPanel()
+                && !anchorToHostPlayhead
+                && (() => {
+                    try {
+                        const pf = window.parent?.chart?.currentFileId;
+                        return pf != null && String(pf) === targetFileId;
+                    } catch (_e) {
+                        return false;
+                    }
+                })();
+            const canUseParentMemory = !anchorToHostPlayhead
+                && (!fetchReplayAnchored || samePairAsHost);
+            let result = canUseParentMemory
                 ? this._takeParentMemorySmartWindow(targetFileId, requestTimeframe)
                 : null;
             if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
@@ -27196,7 +27325,7 @@ class Chart {
      * @param {number} price - Price at cursor (optional)
      * @param {object} sourceCandle - Candle data from source chart (for OHLC display)
      */
-    receiveCrosshairSync(timestamp, price = null, sourceCandle = null) {
+    receiveCrosshairSync(timestamp, price = null, sourceCandle = null, opts = {}) {
         if (!this._crosshairPanelSyncAllowed()) return;
         
         const container = this.canvas.parentElement;
@@ -27213,6 +27342,7 @@ class Chart {
             if (priceLabel) priceLabel.style.display = 'none';
             if (timeLabel) timeLabel.style.display = 'none';
             this.currentCrosshairTimestamp = null;
+            this._syncedCrosshairPlotFraction = null;
             return;
         }
 
@@ -27223,6 +27353,8 @@ class Chart {
             if (timeLabel) timeLabel.style.display = 'none';
             return;
         }
+
+        const usePlotFraction = !!(opts && opts.usePlotFraction && Number.isFinite(opts.plotFraction));
         
         // Same wall-clock moment on every TF: use last bar with open time <= synced timestamp
         let candle = null;
@@ -27239,6 +27371,7 @@ class Chart {
         if (!candle && sourceCandle) {
             this.updateOHLCFromCandle(sourceCandle);
             this.currentCrosshairTimestamp = timestamp;
+            this._syncedCrosshairPlotFraction = usePlotFraction ? opts.plotFraction : null;
             // Hide crosshair since we can't position it without local data
             if (vLine) vLine.style.display = 'none';
             if (hLine) hLine.style.display = 'none';
@@ -27248,13 +27381,20 @@ class Chart {
         }
         
         // No data at all - nothing to show
-        if (!candle) return;
-        const x = this.dataIndexToPixel(candleIndex);
+        if (!candle && !usePlotFraction) return;
         const m = this.margin;
+        let x;
+        if (usePlotFraction) {
+            const plotW = Math.max(0, this.w - m.l - m.r);
+            x = m.l + opts.plotFraction * plotW;
+        } else {
+            x = this.dataIndexToPixel(candleIndex);
+        }
         
         // Check if x is within visible bounds
         const isXVisible = x >= m.l && x <= this.w - m.r;
         const crossWidth = Math.max(1, parseInt(this.chartSettings?.crosshairWidth, 10) || 2);
+        const lineLeft = x - crossWidth * 0.5;
         
         // Vertical line — same geometry as updateCrosshair (top:0 + height calc) so lines stay aligned after sync.
         const vBaseStyle = `
@@ -27269,7 +27409,7 @@ class Chart {
         
         if (vLine) {
             if (isXVisible) {
-                vLine.style.cssText = vBaseStyle + `left:${x}px;display:block;`;
+                vLine.style.cssText = vBaseStyle + `left:${lineLeft}px;display:block;`;
             } else {
                 // Hide if out of visible range
                 vLine.style.display = 'none';
@@ -27287,7 +27427,7 @@ class Chart {
             z-index: 100;
         `;
         
-        if (hLine && this.yScale) {
+        if (hLine && this.yScale && candle) {
             const displayPrice = price !== null ? price : (candle.h + candle.l) / 2;
             const y = this.yScale(displayPrice);
             
@@ -27316,9 +27456,12 @@ class Chart {
                 if (hLine) hLine.style.display = 'none';
                 if (priceLabel) priceLabel.style.display = 'none';
             }
+        } else {
+            if (hLine) hLine.style.display = 'none';
+            if (priceLabel) priceLabel.style.display = 'none';
         }
         
-        // Time label — use this panel candle time (target TF bucket), not source panel timestamp.
+        // Time label — synced wall-clock moment (same on every panel when date-range sync is on).
         if (timeLabel && isXVisible && Number.isFinite(timestamp) && timestamp > 0) {
             let timeframeMs = 60000;
             if (this.data && this.data.length >= 2) {
@@ -27370,9 +27513,11 @@ class Chart {
         }
         
         this.currentCrosshairTimestamp = timestamp;
+        this._syncedCrosshairPlotFraction = usePlotFraction ? opts.plotFraction : null;
         
-        // Update OHLC values for this panel based on the synced candle
-        this.updateOHLCFromCandle(candle);
+        if (candle) {
+            this.updateOHLCFromCandle(candle);
+        }
     }
     
     /**

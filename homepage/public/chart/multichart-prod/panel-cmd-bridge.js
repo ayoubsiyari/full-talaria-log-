@@ -918,24 +918,28 @@
                 }
                 case 'closeDrawingSettings': {
                     var dmSet = ch.drawingManager;
+                    var hadModal = false;
+                    try { hadModal = !!document.querySelector('.tv-settings-modal'); } catch (_) {}
                     if (dmSet) {
-                        if (dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === 'function') {
+                        if (hadModal && dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === 'function') {
                             dmSet.settingsPanel.hide();
                         }
                         if (dmSet.contextMenu && typeof dmSet.contextMenu.hide === 'function') {
                             dmSet.contextMenu.hide();
                         }
                     }
-                    try {
-                        document.querySelectorAll('.tv-settings-modal').forEach(function (el) {
-                            try {
-                                if (el.externalDropdowns) {
-                                    el.externalDropdowns.forEach(function (d) { try { d.remove(); } catch (_) {} });
-                                }
-                                el.remove();
-                            } catch (_) {}
-                        });
-                    } catch (_) {}
+                    if (hadModal) {
+                        try {
+                            document.querySelectorAll('.tv-settings-modal').forEach(function (el) {
+                                try {
+                                    if (el.externalDropdowns) {
+                                        el.externalDropdowns.forEach(function (d) { try { d.remove(); } catch (_) {} });
+                                    }
+                                    el.remove();
+                                } catch (_) {}
+                            });
+                        } catch (_) {}
+                    }
                     return;
                 }
                 case 'deselectDrawings': {

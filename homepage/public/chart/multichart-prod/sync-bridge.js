@@ -88,17 +88,96 @@
         return ans;
     }
 
+    function resolveFractionalRightIndex(chart, endTimeSec) {
+        if (!chart || !chart.data || chart.data.length === 0) return null;
+        const endMs = toMillis(endTimeSec);
+        const probeMs = Math.max(toMillis(chart.data[0]?.t || 0), endMs - 1);
+        let i0 = findLastAtOrBefore(chart.data, probeMs);
+        i0 = Math.max(0, Math.min(i0, chart.data.length - 1));
+        let frac = 0;
+        if (i0 < chart.data.length - 1) {
+            const t0 = Number(chart.data[i0]?.t);
+            const t1 = Number(chart.data[i0 + 1]?.t);
+            if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0 && endMs > t0) {
+                frac = Math.max(0, Math.min(1, (endMs - t0) / (t1 - t0)));
+            }
+        }
+        return i0 + frac;
+    }
+
+    function resolvePlotWidthPx(chart) {
+        const margin = chart.margin || { l: 60, r: 60 };
+        let plotW = (chart.w || 0) - margin.l - margin.r;
+        if (plotW > 0) return plotW;
+        try {
+            const canvas = chart.canvas;
+            const el = canvas && canvas.parentElement;
+            const rw = el ? el.getBoundingClientRect().width : 0;
+            if (Number.isFinite(rw) && rw > margin.l + margin.r) {
+                return rw - margin.l - margin.r;
+            }
+        } catch (_e) { /* ignore */ }
+        const fallback = (chart.canvas && chart.canvas.width) ? chart.canvas.width : 800;
+        return Math.max(0, fallback - margin.l - margin.r);
+    }
+
+    /** Cheap bounds clamp during live pan follow — skips history fetch side effects. */
+    function applyLightweightOffsetClamp(chart) {
+        if (!chart || !chart.data || chart.data.length === 0) return;
+        const plotW = resolvePlotWidthPx(chart);
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return;
+        const rightMargin = Math.max(0, (chart.timeScale?.rightOffsetCandles || 15)) * spacing;
+        const maxOffset = plotW - rightMargin;
+        const minOffset = -Math.max(0, chart.data.length - 1) * spacing;
+        if (chart.offsetX > maxOffset) chart.offsetX = maxOffset;
+        else if (chart.offsetX < minOffset) chart.offsetX = minOffset;
+    }
+
     /**
-     * Mirror solo-chart pan/zoom: same candleWidth + same right-edge bar anchor as chart.js wheel.
-     * @returns {boolean} true if applied
+     * Active pan drag: mirror leader zoom + scroll with minimal work (1:1 feel).
+     * Full time/bar realignment runs once on pan release (!panSync).
      */
-    function applyNativeChartViewport(chart, m) {
+    function applyPanDragFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
+        const srcOffset = Number(m.offsetX);
+        const srcCw = Number(m.candleWidth);
+        if (!Number.isFinite(srcOffset) || !Number.isFinite(srcCw) || srcCw <= 0) return false;
+
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        chart.candleWidth = srcCw;
+        if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+            chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+        }
+        if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+
+        const sw = Number(m.plotWidthPx);
+        chart.offsetX = (sw > 0) ? srcOffset * (plotW / sw) : srcOffset;
+        applyLightweightOffsetClamp(chart);
+
+        chart._panSyncBurstUntil = performance.now() + 64;
+        if (typeof chart.render === 'function') chart.render();
+        else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        return true;
+    }
+
+    /**
+     * Same-TF date-range sync: mirror source zoom (candleWidth) + visible bar
+     * count + right-edge time so pan/zoom feel like one chart (TradingView).
+     * @returns {boolean}
+     */
+    function applyMatchedViewport(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+        if (!Number.isFinite(m.endTime)) return false;
+
         const srcCw = Number(m.candleWidth);
         if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
 
-        const margin = chart.margin || { l: 60, r: 60 };
-        const plotW = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
+        const plotW = resolvePlotWidthPx(chart);
         if (plotW <= 0) return false;
 
         chart.candleWidth = srcCw;
@@ -112,17 +191,76 @@
             : chart.candleWidth;
         if (!(spacing > 0)) return false;
 
-        let iR = -1;
-        if (Number.isFinite(m.endTime)) {
-            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
-        } else if (Number.isFinite(m.endIndex)) {
-            iR = Math.max(0, Math.min(Math.floor(m.endIndex), chart.data.length - 1));
-        } else if (Number.isFinite(m.rightEdgeBarIndex)) {
-            iR = Math.max(0, Math.min(Math.floor(m.rightEdgeBarIndex), chart.data.length - 1));
+        let barCount = Number.isFinite(m.visibleBarCount)
+            ? Math.max(1, Math.floor(m.visibleBarCount))
+            : null;
+        if (!barCount && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+            && m.endTime > m.startTime) {
+            const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime));
+            const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+            barCount = Math.max(1, iR - iL + 1);
         }
-        if (iR < 0) return false;
+        if (!barCount) return false;
 
-        chart.offsetX = plotW - (iR + 1) * spacing;
+        const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        if (!Number.isFinite(idxAtRight)) return false;
+
+        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
+        if (typeof chart.constrainOffset === 'function') {
+            try { chart.constrainOffset(); } catch (_) {}
+        }
+
+        if (!m.panSync && Number.isFinite(m.startTime)) {
+            const startMs = toMillis(m.startTime);
+            const firstMs = toMillis(chart.data[0]?.t);
+            if (Number.isFinite(firstMs) && startMs < firstMs - 60_000) {
+                if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                    try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+                } else if (typeof chart.checkViewportLoadMore === 'function') {
+                    try { chart.checkViewportLoadMore('backward', true); } catch (_) {}
+                }
+            }
+        }
+
+        finishViewportApply(chart, !!m.panSync);
+        return true;
+    }
+
+    /**
+     * Mirror solo-chart pan/zoom: same candleWidth + same right-edge bar anchor as chart.js wheel.
+     * @returns {boolean} true if applied
+     */
+    function applyNativeChartViewport(chart, m) {
+        if (!chart || !chart.data || chart.data.length === 0) return false;
+
+        const plotW = resolvePlotWidthPx(chart);
+        if (plotW <= 0) return false;
+
+        const srcCw = Number(m.candleWidth);
+        if (Number.isFinite(srcCw) && srcCw > 0) {
+            chart.candleWidth = srcCw;
+            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
+                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
+            }
+            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
+        }
+
+        const spacing = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(spacing > 0)) return false;
+
+        let idxAtRight = null;
+        if (Number.isFinite(m.endTime)) {
+            idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
+        } else if (Number.isFinite(m.endIndex)) {
+            idxAtRight = Math.max(0, Math.min(Math.floor(m.endIndex), chart.data.length - 1));
+        } else if (Number.isFinite(m.rightEdgeBarIndex)) {
+            idxAtRight = Math.max(0, Math.min(Math.floor(m.rightEdgeBarIndex), chart.data.length - 1));
+        }
+        if (idxAtRight == null || !Number.isFinite(idxAtRight)) return false;
+
+        chart.offsetX = plotW - (idxAtRight + 1) * spacing;
         if (typeof chart.constrainOffset === 'function') {
             try { chart.constrainOffset(); } catch (_) {}
         }
@@ -195,34 +333,7 @@
 
     /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */
     function applyFastPanSync(chart, m) {
-        if (!chart || !chart.data || chart.data.length === 0) return false;
-        const srcOffset = Number(m.offsetX);
-        if (!Number.isFinite(srcOffset)) return false;
-
-        const margin = chart.margin || { l: 60, r: 60 };
-        const plotW = (chart.w || chart.canvas?.width || 800) - (margin.l + margin.r);
-        if (plotW <= 0) return false;
-
-        const srcCw = Number(m.candleWidth);
-        if (Number.isFinite(srcCw) && srcCw > 0) {
-            chart.candleWidth = srcCw;
-            if (Number.isFinite(m.zoomLevelIndex) && chart.zoomLevel) {
-                chart.zoomLevel.candleWidthIndex = m.zoomLevelIndex;
-            }
-            if (chart._candleWidthAtCache !== undefined) chart._candleWidthAtCache = null;
-        }
-
-        const sw = Number(m.plotWidthPx);
-        chart.offsetX = (sw > 0) ? srcOffset * (plotW / sw) : srcOffset;
-
-        if (typeof chart.constrainOffset === 'function') {
-            try { chart.constrainOffset(); } catch (_) {}
-        }
-
-        chart._panSyncBurstUntil = performance.now() + 48;
-        if (typeof chart.render === 'function') chart.render();
-        else if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
-        return true;
+        return applyPanDragFollow(chart, m);
     }
 
     function finishViewportApply(chart, panSync) {
@@ -313,7 +424,7 @@
             }
         }
 
-        finishViewportApply(chart, false);
+        finishViewportApply(chart, !!m.panSync);
         return true;
     }
 
@@ -543,9 +654,17 @@
 
         global.__multichartBridgeState = state;
 
-        function beginApplying() {
+        function beginApplying(fast) {
             state.applying = true;
             if (state.applyingClearRaf) cancelAnimationFrame(state.applyingClearRaf);
+            if (fast) {
+                // Live pan follow: single rAF echo guard — keeps peer panels responsive.
+                state.applyingClearRaf = requestAnimationFrame(function () {
+                    state.applying = false;
+                    state.applyingClearRaf = 0;
+                });
+                return;
+            }
             // Double rAF: chart.js's render is rAF-deferred and the
             // chartScrolled echo lands one more frame later.
             state.applyingClearRaf = requestAnimationFrame(function () {
@@ -583,6 +702,39 @@
         // value. Same for visible-range pan.
         const pending = { crosshair: null, crosshairClear: false, visibleRange: null };
         let rafScheduled = false;
+        function buildCrosshairEnvelope(timestampMs) {
+            const payload = { type: 'crosshair', time: toSeconds(timestampMs) };
+            if (syncModeGate && syncModeGate.visibleRange) {
+                const range = readVisibleTimeRange(chart);
+                if (range) {
+                    payload.startTime = range.startSec;
+                    payload.endTime = range.endSec;
+                    payload.startIndex = range.startIndex;
+                    payload.endIndex = range.endIndex;
+                    payload.visibleBarCount = range.visibleBarCount;
+                    payload.rightEdgeBarIndex = range.rightEdgeBarIndex;
+                    payload.sourceTimeframe = range.sourceTimeframe;
+                    payload.offsetX = range.offsetX;
+                    payload.candleWidth = range.candleWidth;
+                    payload.zoomLevelIndex = range.zoomLevelIndex;
+                    payload.plotWidthPx = range.plotWidthPx;
+                }
+                if (typeof chart.findLastDataIndexAtOrBeforeTime === 'function'
+                    && typeof chart.dataIndexToPixel === 'function') {
+                    const idx = chart.findLastDataIndexAtOrBeforeTime(timestampMs);
+                    if (idx >= 0) {
+                        const x = chart.dataIndexToPixel(idx);
+                        const pm = chart.margin || { l: 60, r: 60 };
+                        const plotW = resolvePlotWidthPx(chart);
+                        if (plotW > 0 && Number.isFinite(x)) {
+                            payload.plotFraction = Math.max(0, Math.min(1, (x - pm.l) / plotW));
+                        }
+                    }
+                }
+            }
+            return payload;
+        }
+
         function flushPending() {
             rafScheduled = false;
             if (pending.crosshairClear) {
@@ -590,7 +742,7 @@
                 send({ type: 'crosshair-clear' });
             } else if (pending.crosshair !== null) {
                 const t = pending.crosshair; pending.crosshair = null;
-                send({ type: 'crosshair', time: toSeconds(t) });
+                send(buildCrosshairEnvelope(t));
             }
             if (pending.visibleRange) {
                 const r = pending.visibleRange; pending.visibleRange = null;
@@ -667,8 +819,7 @@
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
-            const pm = chart.margin || { l: 60, r: 60 };
-            const plotWidthPx = (chart.w || 0) - pm.l - pm.r;
+            const plotWidthPx = resolvePlotWidthPx(chart);
             const si = Number.isFinite(d.startIndex) ? d.startIndex
                 : (typeof chart.getVisibleStartIndex === 'function' ? chart.getVisibleStartIndex() : 0);
             const ei = Number.isFinite(d.endIndex) ? d.endIndex
@@ -1293,24 +1444,30 @@
         }
 
         function applyCrosshair(m) {
-            const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            beginApplying();
-            // chart.js receiveCrosshairSync expects MILLISECONDS
-            chart.receiveCrosshairSync(toMillis(m.time), null, null);
-            const after = G.snapshotPriceState(chart);
-            const violations = G.diffPriceState(before, after, 'crosshair');
-            if (violations.length) {
-                console.error('[bridge:' + chartId + '] CROSSHAIR PRICE-AXIS LEAK:', violations);
-                reportAssertion('crosshair', violations);
-            } else {
-                reportAssertion('crosshair', null, before, after);
+            beginApplying(true);
+
+            if (syncModeGate && syncModeGate.visibleRange
+                && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)) {
+                const sameTf = sameTimeframeMessage(chart, m);
+                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
+                    applyPanDragFollow(chart, m);
+                } else {
+                    applyMatchedViewport(chart, m);
+                }
             }
+
+            const usePlotFraction = !!(syncModeGate && syncModeGate.visibleRange
+                && Number.isFinite(m.plotFraction));
+            chart.receiveCrosshairSync(toMillis(m.time), null, null, {
+                usePlotFraction: usePlotFraction,
+                plotFraction: m.plotFraction,
+            });
         }
 
         function applyCrosshairClear(m) {
             state.applied.add(m.causationId);
-            beginApplying();
+            beginApplying(true);
             chart.receiveCrosshairSync(null, null, null);
         }
 
@@ -1318,18 +1475,37 @@
             const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
-            beginApplying();
+            beginApplying(panSync);
 
             let applied = false;
+            const sameTf = sameTimeframeMessage(chart, m);
+            const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+                && m.endTime > m.startTime;
+            const canMatchViewport = sameTf && Number.isFinite(m.endTime)
+                && Number.isFinite(m.candleWidth)
+                && (Number.isFinite(m.visibleBarCount) || hasWallClock);
+
             if (panSync) {
-                applied = applyFastPanSync(chart, m)
-                    || (sameTimeframeMessage(chart, m) && applyNativeChartViewport(chart, m))
-                    || applyWallClockDateRange(chart, m);
-            } else if (sameTimeframeMessage(chart, m)) {
-                applied = applyNativeChartViewport(chart, m);
+                // Drag: lightweight offset mirror (same frame feel as leader).
+                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
+                    applied = applyPanDragFollow(chart, m);
+                } else if (hasWallClock && !sameTf) {
+                    applied = applyWallClockDateRange(chart, m);
+                }
+                if (!applied) {
+                    applied = applyFastPanSync(chart, m);
+                }
+            } else if (canMatchViewport) {
+                applied = applyMatchedViewport(chart, m);
             }
-            if (!applied) {
+            if (!applied && hasWallClock && !sameTf) {
                 applied = applyWallClockDateRange(chart, m);
+            }
+            if (!applied && hasWallClock) {
+                applied = applyWallClockDateRange(chart, m);
+            }
+            if (!applied && sameTf) {
+                applied = applyNativeChartViewport(chart, m);
             }
             if (!applied) {
                 applied = applyTradingViewVisibleRange(chart, m);
@@ -1347,8 +1523,8 @@
             var tSil = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            state.suppressRangeScrollEchoUntil = tSil + (panSync ? 48 : 200);
-            state.suppressRangeScrollEchoLeft = panSync ? 2 : 6;
+            state.suppressRangeScrollEchoUntil = tSil + (panSync ? 120 : 200);
+            state.suppressRangeScrollEchoLeft = panSync ? 4 : 6;
 
             if (panSync) return;
 
@@ -1421,6 +1597,10 @@
                 },
             }, parentOrigin);
         } catch (_) {}
+
+        // Same-origin fast path: parent manager can call this synchronously during
+        // panSync instead of postMessage (avoids one event-loop tick of lag).
+        global.__multichartSyncApply = applyInbound;
 
         return {
             state,

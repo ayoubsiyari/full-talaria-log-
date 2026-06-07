@@ -1386,6 +1386,9 @@ class FibSpiralTool extends BaseDrawing {
         this.requiredPoints = 2;
         this.style.stroke = style.stroke || '#00bcd4';
         this.style.strokeWidth = style.strokeWidth || 1;
+        if (this.style.counterClockwise === undefined) {
+            this.style.counterClockwise = style.counterClockwise === true || style.v9FibSpiralCCW === true;
+        }
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -1459,6 +1462,8 @@ class FibSpiralTool extends BaseDrawing {
         const k = Math.log(phi) / (Math.PI / 2);
         const a = baseLen; // r(0) = distance(point1, point2)
         const baseAngle = Math.atan2(dy, dx);
+        const ccw = this.style.counterClockwise === true || this.style.v9FibSpiralCCW === true;
+        const thetaSign = ccw ? -1 : 1;
 
         const maxR = Math.hypot(chartWidth, chartHeight) * 2;
         const thetaMin = -6 * Math.PI;
@@ -1471,7 +1476,7 @@ class FibSpiralTool extends BaseDrawing {
             const r = a * Math.exp(k * theta);
             if (!isFinite(r) || r <= 0 || r > maxR) continue;
 
-            const ang = baseAngle + theta;
+            const ang = baseAngle + (thetaSign * theta);
             const px = x1 + r * Math.cos(ang);
             const py = y1 + r * Math.sin(ang);
             if (!isFinite(px) || !isFinite(py)) continue;
@@ -1535,6 +1540,7 @@ class FibArcsTool extends BaseDrawing {
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
         if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
+        if (this.style.trendLineEnabled === undefined) this.style.trendLineEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },

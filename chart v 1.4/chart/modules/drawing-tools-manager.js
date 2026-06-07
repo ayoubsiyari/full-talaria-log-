@@ -66,6 +66,30 @@ function isMultichartIframeEmbed() {
     }
 }
 
+/** Tell the multichart parent shell to hide the V9 quick bar after empty-canvas deselect. */
+function notifyMultichartParentSelectionCleared(chartInstance) {
+    if (typeof window === 'undefined') return;
+    let panelId = null;
+    try {
+        if (chartInstance && typeof chartInstance._getMultichartPanelId === 'function') {
+            panelId = chartInstance._getMultichartPanelId();
+        }
+    } catch (_) { /* ignore */ }
+    try {
+        if (window.parent && window.parent !== window && isMultichartIframeEmbed()) {
+            window.parent.postMessage({
+                type: 'multichart-drawing-deselected',
+                source: panelId,
+            }, '*');
+        }
+    } catch (_) { /* ignore */ }
+    try {
+        if (window.__multichartGrid) {
+            window.dispatchEvent(new CustomEvent('talaria:v9-cleared-selection'));
+        }
+    } catch (_) { /* ignore */ }
+}
+
 function requestMultichartParentDrawingSettings(drawing, x, y) {
     let panelId = 'embed';
     try {
@@ -8371,6 +8395,9 @@ class DrawingToolsManager {
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
             this.chart.updateSVGPointerEvents();
+        }
+        if (fromCanvasBackground) {
+            notifyMultichartParentSelectionCleared(this.chart);
         }
     }
 

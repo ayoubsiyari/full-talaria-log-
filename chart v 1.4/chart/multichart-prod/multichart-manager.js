@@ -805,7 +805,20 @@
                 chartEntry.directDeliver(msg);
                 return;
             }
-            chartEntry.frame.contentWindow.postMessage(msg, '*');
+            const win = chartEntry.frame && chartEntry.frame.contentWindow;
+            if (win && typeof win.__multichartSyncApply === 'function') {
+                if (msg && msg.panSync && msg.type === 'visibleRange') {
+                    win.__multichartSyncApply(msg);
+                    return;
+                }
+                if (msg && (msg.type === 'crosshair' || msg.type === 'crosshair-clear')) {
+                    win.__multichartSyncApply(msg);
+                    return;
+                }
+            }
+            if (win) {
+                win.postMessage(msg, '*');
+            }
         } catch (e) {
             this._log('warn', 'send fail ' + chartEntry.id + ': ' + e.message);
         }

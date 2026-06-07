@@ -682,15 +682,15 @@
                     ro.observe(canvas);
                     ch.__multichartResizeObserver = ro;
                 }
-                // Belt-and-suspenders: schedule extra redraws at
-                // increasing delays to catch any edge case where the
-                // ResizeObserver does not fire before drawings are
-                // first rendered (e.g. canvas dims set synchronously
-                // before observer attaches, or browser batching).
-                [50, 200, 500, 1000].forEach(function (ms) {
-                    setTimeout(function () {
-                        scheduleMcRedraw('boot-delay ' + ms + 'ms');
-                    }, ms);
+                // One redraw after bars land — avoids 4 extra full redraw passes that
+                // made multichart tiles flash during boot.
+                var onDataRedraw = function () {
+                    global.removeEventListener('chartDataLoaded', onDataRedraw);
+                    scheduleMcRedraw('chartDataLoaded');
+                };
+                global.addEventListener('chartDataLoaded', onDataRedraw);
+                requestAnimationFrame(function () {
+                    scheduleMcRedraw('boot-raf');
                 });
             } catch (_) {}
             var afterLoad = function () {

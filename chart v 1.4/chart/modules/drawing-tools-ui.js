@@ -32758,11 +32758,22 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
         const drawingToRestore = this.currentDrawing;
 
+        // Only suppress the next empty-canvas deselect when a modal was actually open.
+        // Multichart panel-focus pings call hide() on every click even when nothing is
+        // visible — that used to arm suppress for 650ms and blocked background deselect.
+        let hadVisibleSettings = false;
+        try {
+            hadVisibleSettings = !!(
+                (this.panel && this.panel.parentNode)
+                || document.querySelector('.tv-settings-modal')
+            );
+        } catch (_vis) { /* ignore */ }
+
         try {
             const dm = this.drawingManager
                 || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager)
                 || (typeof window !== 'undefined' && window.drawingManager);
-            if (dm && typeof dm.suppressNextCanvasBackgroundClick === 'function') {
+            if (hadVisibleSettings && dm && typeof dm.suppressNextCanvasBackgroundClick === 'function') {
                 dm.suppressNextCanvasBackgroundClick();
             }
         } catch (_e) { /* ignore */ }
