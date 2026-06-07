@@ -373,8 +373,68 @@ function isMultichartGlobalParentShell() {
     if (window.parent !== window) return false;
     if (document.documentElement.classList.contains('multichart-embed')) return false;
     try {
-        return !!(window.__multichartGrid && window.__multichartGrid.isMounted);
+        return !!window.__multichartGrid;
     } catch (_) {
+        return false;
+    }
+}
+
+function shouldRouteDrawingSettingsToMultichartParent() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+    if (window.parent === window) return false;
+    try {
+        if (window.parent && window.parent.__multichartGrid) return true;
+    } catch (_) { /* cross-origin */ }
+    try {
+        if (document.documentElement.classList.contains('multichart-embed')) return true;
+        return new URLSearchParams(window.location.search || '').get('multichart') === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function postMultichartOpenDrawingSettings(drawing, x, y) {
+    let panelId = 'embed';
+    try {
+        panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
+    } catch (_pid) { /* ignore */ }
+    const drawId = drawing && drawing.id != null ? drawing.id : null;
+    const px = typeof x === 'number' && !isNaN(x) ? x : 0;
+    const py = typeof y === 'number' && !isNaN(y) ? y : 0;
+    try {
+        const parent = window.parent;
+        if (parent && parent !== window) {
+            if (typeof parent.__multichartOpenShapeSettings === 'function') {
+                parent.__multichartOpenShapeSettings(
+                    panelId,
+                    drawing && drawing.type ? drawing : drawId,
+                    px,
+                    py
+                );
+                return true;
+            }
+            const grid = parent.__multichartGrid;
+            if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                grid.openDrawingSettingsForPanel(
+                    panelId,
+                    drawing && drawing.type ? drawing : drawId,
+                    px,
+                    py
+                );
+                return true;
+            }
+        }
+    } catch (_) { /* cross-origin */ }
+    try {
+        window.parent.postMessage({
+            type: 'multichart-open-drawing-settings',
+            source: panelId,
+            drawingId: drawId,
+            x: px,
+            y: py,
+        }, '*');
+        return true;
+    } catch (_pm) {
         return false;
     }
 }
@@ -26039,28 +26099,9 @@ applyTemplate(drawing, templateId, modal) {
 
         // Multichart iframe tiles must never host legacy tv-settings-modal — it
         // would be clipped to the tile. Route every legacy open to the parent shell.
-        if (typeof document !== 'undefined' && typeof window !== 'undefined' && window.parent !== window) {
-            let isMcEmbed = false;
-            try {
-                isMcEmbed = document.documentElement.classList.contains('multichart-embed')
-                    || new URLSearchParams(window.location.search || '').get('multichart') === '1';
-            } catch (_mc) { /* ignore */ }
-            if (isMcEmbed) {
-                let panelId = 'embed';
-                try {
-                    panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
-                } catch (_pid) { /* ignore */ }
-                try {
-                    window.parent.postMessage({
-                        type: 'multichart-open-drawing-settings',
-                        source: panelId,
-                        drawingId: drawing && drawing.id != null ? drawing.id : null,
-                        x: x,
-                        y: y,
-                    }, '*');
-                } catch (_pm) { /* ignore */ }
-                return;
-            }
+        if (shouldRouteDrawingSettingsToMultichartParent()) {
+            postMultichartOpenDrawingSettings(drawing, x, y);
+            return;
         }
 
         this.currentDrawing = drawing;
@@ -35445,4 +35486,19 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 
 }
+
+// Belt-and-suspenders: re-wrap prototype.show so iframe tiles never build tv-settings-modal locally.
+(function installMultichartDrawingSettingsIframeGuard() {
+    if (typeof window === 'undefined' || typeof DrawingSettingsPanel === 'undefined') return;
+    if (DrawingSettingsPanel.prototype.__mcIframeGuardInstalled) return;
+    const origShow = DrawingSettingsPanel.prototype.show;
+    DrawingSettingsPanel.prototype.show = function mcGuardedShow(drawing, x, y, onSave, onDelete) {
+        if (shouldRouteDrawingSettingsToMultichartParent()) {
+            postMultichartOpenDrawingSettings(drawing, x, y);
+            return;
+        }
+        return origShow.call(this, drawing, x, y, onSave, onDelete);
+    };
+    DrawingSettingsPanel.prototype.__mcIframeGuardInstalled = true;
+})();
 

@@ -2194,64 +2194,79 @@
         return { plusDI: plusDI, minusDI: minusDI, adx: ADX };
     }
     
-    // ADR (Average Daily Range) - calculates average of daily high-low range
+    function adrCandleTimeMs(t) {
+        const n = Number(t);
+        if (!Number.isFinite(n)) return NaN;
+        return Math.abs(n) < 1e11 ? n * 1000 : n;
+    }
+
+    function adrDayKey(t) {
+        const ms = adrCandleTimeMs(t);
+        if (!Number.isFinite(ms)) return '';
+        return dayKeyInTimezone(ms, resolveChartWallTimezoneId());
+    }
+
+    // ADR (Average Daily Range) - average of daily high-low over N completed sessions
     function calculateADR(data, period) {
+        const p = Math.max(1, parseInt(period, 10) || 14);
         const result = [];
+        if (!data || !data.length) return result;
+
         const dailyRanges = [];
         let currentDay = null;
         let dayHigh = null;
         let dayLow = null;
-        
-        // First, calculate daily ranges from the candle data
+
         for (let i = 0; i < data.length; i++) {
-            const candleDate = new Date(data[i].t);
-            const dayKey = candleDate.toDateString();
-            
+            const dayKey = adrDayKey(data[i].t);
+            if (!dayKey) continue;
+
             if (currentDay !== dayKey) {
-                // New day - save previous day's range if exists
                 if (currentDay !== null && dayHigh !== null && dayLow !== null) {
-                    dailyRanges.push({ high: dayHigh, low: dayLow, range: dayHigh - dayLow });
+                    dailyRanges.push({ range: dayHigh - dayLow });
                 }
-                // Start new day
                 currentDay = dayKey;
                 dayHigh = data[i].h;
                 dayLow = data[i].l;
             } else {
-                // Same day - update high/low
                 dayHigh = Math.max(dayHigh, data[i].h);
                 dayLow = Math.min(dayLow, data[i].l);
             }
         }
-        // Don't forget the last day
         if (currentDay !== null && dayHigh !== null && dayLow !== null) {
-            dailyRanges.push({ high: dayHigh, low: dayLow, range: dayHigh - dayLow });
+            dailyRanges.push({ range: dayHigh - dayLow });
         }
-        
-        // Now calculate ADR for each candle
-        let currentDayIndex = -1;
+
         currentDay = null;
-        
+        let currentDayIndex = -1;
+
         for (let i = 0; i < data.length; i++) {
-            const candleDate = new Date(data[i].t);
-            const dayKey = candleDate.toDateString();
-            
+            const dayKey = adrDayKey(data[i].t);
+            if (!dayKey) {
+                result.push(null);
+                continue;
+            }
+
             if (currentDay !== dayKey) {
                 currentDay = dayKey;
                 currentDayIndex++;
             }
-            
-            // Calculate ADR as average of last 'period' daily ranges
-            if (currentDayIndex < period) {
+
+            // Use completed prior sessions only (exclude the in-progress day).
+            const priorCount = currentDayIndex;
+            if (priorCount < 1) {
                 result.push(null);
-            } else {
-                let sum = 0;
-                for (let j = 0; j < period && (currentDayIndex - j - 1) >= 0; j++) {
-                    sum += dailyRanges[currentDayIndex - j - 1].range;
-                }
-                result.push(sum / period);
+                continue;
             }
+
+            const lookback = Math.min(p, priorCount);
+            let sum = 0;
+            for (let j = 0; j < lookback; j++) {
+                sum += dailyRanges[currentDayIndex - j - 1].range;
+            }
+            result.push(sum / lookback);
         }
-        
+
         return result;
     }
     
@@ -2265,11 +2280,10 @@
         let dayOpen = null;
         
         for (let i = 0; i < data.length; i++) {
-            const candleDate = new Date(data[i].t);
-            const dayKey = candleDate.toDateString();
+            const dayKey = adrDayKey(data[i].t);
             
             // Track day open
-            if (currentDay !== dayKey) {
+            if (dayKey && currentDay !== dayKey) {
                 currentDay = dayKey;
                 dayOpen = data[i].o;
             }
@@ -5009,7 +5023,7 @@
                 break;
             
             case 'adr':
-                indicator.params.period = params.period || 14;
+                indicator.params.period = Math.max(1, parseInt(params.period, 10) || 14);
                 indicator.style.color = params.color || '#26a69a';
                 indicator.style.lineWidth = params.lineWidth || 2;
                 indicator.overlay = false;
@@ -6271,6 +6285,7 @@
                 this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
                 break;
             case 'adr':
+                indicator.params.period = Math.max(1, parseInt(indicator.params.period, 10) || 14);
                 indicator.name = 'ADR(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateADR(this.data, indicator.params.period);
                 break;
@@ -6677,6 +6692,8 @@
                     this.indicators.data[indicator.id] = calculateStochastic(this.data, indicator.params.period, indicator.params.smoothK, indicator.params.smoothD);
                     break;
                 case 'adr':
+                    indicator.params.period = Math.max(1, parseInt(indicator.params.period, 10) || 14);
+                    indicator.name = 'ADR(' + indicator.params.period + ')';
                     this.indicators.data[indicator.id] = calculateADR(this.data, indicator.params.period);
                     break;
                 case 'volume':

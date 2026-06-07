@@ -926,6 +926,16 @@
                             dmSet.contextMenu.hide();
                         }
                     }
+                    try {
+                        document.querySelectorAll('.tv-settings-modal').forEach(function (el) {
+                            try {
+                                if (el.externalDropdowns) {
+                                    el.externalDropdowns.forEach(function (d) { try { d.remove(); } catch (_) {} });
+                                }
+                                el.remove();
+                            } catch (_) {}
+                        });
+                    } catch (_) {}
                     return;
                 }
                 case 'deselectDrawings': {

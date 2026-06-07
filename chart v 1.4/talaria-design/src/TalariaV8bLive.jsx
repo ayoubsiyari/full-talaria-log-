@@ -540,6 +540,25 @@ function v9IsMultichartIframeEmbed() {
   }
 }
 
+/** Portal target for V9 floating settings — above multichart iframes when grid is active. */
+function v9SettingsPortalTarget() {
+  if (typeof document === "undefined") return null;
+  try {
+    if (window.__multichartGrid) {
+      let root = document.getElementById("multichart-global-settings-root");
+      if (!root) {
+        root = document.createElement("div");
+        root.id = "multichart-global-settings-root";
+        root.setAttribute("data-multichart-global-settings", "1");
+        root.style.cssText = "position:fixed;inset:0;z-index:2147483646;pointer-events:none;";
+        document.body.appendChild(root);
+      }
+      return root;
+    }
+  } catch (_) {}
+  return document.body;
+}
+
 /** Chart instance that should drive the V9 pair + timeframe display. */
 function v9ActiveChartInstance() {
   return typeof window !== "undefined" ? (window.chart || null) : null;
@@ -1730,6 +1749,10 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibLineWidth,
     );
     if (chartLevels.length) patch.levels = chartLevels;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
+    patch.levelsLabelMode = v9FibLevelsModeUiToChart(tlStyle.fibLevelsMode);
+    patch.showPrices = tlStyle.fibPrices !== false;
+    patch.extendLines = !!tlStyle.fibExtendLines;
   }
   if (legacyTool && v9IsFibTimeZoneType(legacyTool) && Array.isArray(tlStyle.fibTzLevels)) {
     const chartLevels = v9TlFibTzLevelsToChart(tlStyle.fibTzLevels);
@@ -1748,6 +1771,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineColor = tlStyle.lineColor;
     patch.trendLineWidth = trendW;
     patch.trendLineDasharray = trendDashStr;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
   }
   if (legacyTool && v9IsFibSpeedFanType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
     const chartLevels = v9TlFibSpeedFanLevelsToChart(
@@ -1767,6 +1791,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     patch.trendLineColor = tlStyle.lineColor;
     patch.trendLineWidth = fanTrendW;
     patch.trendLineDasharray = fanTrendDash;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
   }
   if (legacyTool && v9IsTrendFibTimeType(legacyTool)) {
     const fibDashStr =
@@ -1800,6 +1825,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
         ? +tlStyle.fibBgOpacity
         : 0.12;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
   }
   if (
     legacyTool &&
@@ -1817,6 +1843,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
         ? +tlStyle.fibBgOpacity
         : 0.12;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     if (v9IsFibArcsType(legacyTool)) {
       const arcsTrendDash =
         tlStyle.fibArcsTrendType === "bold"
@@ -1863,6 +1890,7 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
       tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
         ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
         : 0.12;
+    patch.levelsEnabled = tlStyle.fibLevelsOn !== false;
     if (legacyTool === "gann-box") {
       if (Array.isArray(tlStyle.gannPriceLevels)) {
         patch.priceLevels = v9GannTlLevelsToChartRatioLevels(tlStyle.gannPriceLevels);
@@ -2962,8 +2990,10 @@ function v9TxtStylePatchFromDrawing(d) {
     out.wrapText = !!s.wrapText;
     out.anchored = !!s.anchored;
   } else if (t === "notebox") {
-    out.bgColor = s.backgroundColor ?? out.bgColor;
-    out.bgOn = !!(s.backgroundColor && s.backgroundColor !== "transparent");
+    out.bgColor = (s.labelBackgroundColor || s.backgroundColor) ?? out.bgColor;
+    out.bgOn = s.showBackground !== false
+      && s.showLabelBackground !== false
+      && !!(s.backgroundColor && s.backgroundColor !== "transparent");
     const sw = s.strokeWidth != null ? Number(s.strokeWidth) : 0;
     out.borderOn = !!(s.stroke && s.stroke !== "none" && sw > 0);
     if (out.borderOn) out.borderColor = s.stroke;
@@ -2976,8 +3006,9 @@ function v9TxtStylePatchFromDrawing(d) {
     out.wrapText = !!s.wrapText;
   } else if (t === "note") {
     const fill = s.fill;
-    out.bgColor = fill ?? out.bgColor;
-    out.bgOn = !!(fill && fill !== "transparent" && fill !== "none");
+    out.bgColor = (s.labelBackgroundColor || fill) ?? out.bgColor;
+    out.bgOn = s.showLabelBackground !== false
+      && !!(fill && fill !== "transparent" && fill !== "none");
     const stroke = s.stroke;
     if (stroke && stroke !== "none") {
       out.borderColor = stroke;
@@ -3015,8 +3046,9 @@ function v9TxtStylePatchFromDrawing(d) {
     out.borderOn = !!(s.borderColor && s.borderColor !== "transparent" && s.borderColor !== "none");
     out.wrapText = !!s.wrapText;
   } else if (t === "signpost" || t === "signpost-2") {
-    out.bgColor = s.fill || "#2e3238";
-    out.bgOn = !!(s.fill && s.fill !== "transparent" && s.fill !== "none");
+    out.bgColor = s.labelBackgroundColor || s.fill || "#2e3238";
+    out.bgOn = s.showLabelBackground !== false
+      && !!(s.fill && s.fill !== "transparent" && s.fill !== "none");
     out.lineColor = s.stroke && s.stroke !== "none" ? s.stroke : "#787b86";
     const brd = s.borderColor;
     out.borderColor = brd ?? out.borderColor;
@@ -3170,7 +3202,10 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
   if (t === "notebox") {
     applyCommon();
     applyTextBlock();
+    s.showBackground = !!txt.bgOn;
+    s.showLabelBackground = !!txt.bgOn;
     s.backgroundColor = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.backgroundColor) : "transparent";
+    if (txt.bgColor != null) s.labelBackgroundColor = txt.bgColor;
     if (txt.borderOn) {
       s.stroke = txt.borderColor != null ? txt.borderColor : s.stroke || "#787b86";
       s.strokeWidth = Math.max(Number(s.strokeWidth) || 0, 1) || 1;
@@ -3240,7 +3275,9 @@ function v9ApplyTxtStyleToDrawing(d, txt, opts = {}) {
   }
   if (t === "signpost" || t === "signpost-2") {
     applyCommon();
+    s.showLabelBackground = !!txt.bgOn;
     s.fill = txt.bgOn ? (txt.bgColor != null ? txt.bgColor : s.fill) : "transparent";
+    if (txt.bgColor != null) s.labelBackgroundColor = txt.bgColor;
     if (txt.lineColor != null) {
       s.stroke = txt.lineColor;
       s.color = txt.lineColor;
@@ -3416,6 +3453,47 @@ function v9ResolveOpenDrawingSettingsHook() {
     }
   }
   return null;
+}
+
+/** True when the parent multichart shell owns selection UI — legacy iframe toolbar must not show. */
+function v9ShouldSkipLegacyDrawingToolbarShow() {
+  try {
+    if (typeof window !== "undefined" && window.__multichartGrid) return true;
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      if (window.parent.__multichartGrid) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+/** Move V9 tlBar/txtBar near the shape when drawing-tools-manager calls toolbar.show(x, y). */
+function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType) {
+  if (!br || typeof br.setTlBarPos !== "function") return;
+  if (typeof x !== "number" || typeof y !== "number" || Number.isNaN(x) || Number.isNaN(y)) return;
+  const dt = drawingType || "";
+  if (
+    dt === "volume-profile" || dt === "fixed-range-volume-profile"
+    || dt === "anchored-volume-profile" || dt === "anchored-vwap"
+  ) {
+    return;
+  }
+  const zz = br.Z || 1;
+  let vpW = 1920;
+  try {
+    const w =
+      typeof window !== "undefined" && window.parent && window.parent !== window
+        ? window.parent
+        : typeof window !== "undefined"
+          ? window
+          : null;
+    vpW = ((w && w.innerWidth) || 1920) / zz;
+  } catch (_) {}
+  const barW = 340;
+  const barH = 36;
+  const pad = 8;
+  const left = Math.max(pad, Math.min(x / zz - barW / 2, vpW - barW - pad));
+  const top = Math.max(pad, y / zz - barH - 14);
+  br.setTlBarPos({ x: left, y: top });
 }
 
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
@@ -4660,6 +4738,7 @@ function v9ApplyFibSpeedFanFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineColor = tlStyle.lineColor;
   st.trendLineWidth = fanTrendW;
   st.trendLineDasharray = fanTrendDash;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 function v9TrendFibTimeDefaultLevelsTl() {
@@ -4881,6 +4960,7 @@ function v9ApplyTrendFibTimeFromTlStyle(d, tlStyle, widthFallback) {
     tlStyle.fibBgOpacity != null && !Number.isNaN(+tlStyle.fibBgOpacity)
       ? +tlStyle.fibBgOpacity
       : 0.12;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 function v9IsFibCirclesType(t) {
@@ -4940,6 +5020,7 @@ function v9ApplyFibArcsFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineDasharray = trendDashStr;
 
   st.v9FibArcsFullCircle = !!tlStyle.fibArcsFullCircle;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 function v9IsFibWedgeType(t) {
@@ -4992,6 +5073,7 @@ function v9ApplyFibWedgeFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 /** Fib Circles: ratio rings + annulus background zones (`showZones` / `backgroundOpacity`). */
@@ -5027,6 +5109,7 @@ function v9ApplyFibCirclesFromTlStyle(d, tlStyle, widthFallback) {
       : 0.12;
   st.v9FibCirclesBackground = st.showZones;
   st.v9FibCirclesBgOpacity = st.backgroundOpacity;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
@@ -5257,6 +5340,7 @@ function v9ApplyFibTimeZoneFromTlStyle(d, tlStyle, widthFallback) {
   st.trendLineColor = tlStyle.fibTrendLineColor || tlStyle.lineColor;
   st.trendLineWidth = trendW;
   st.trendLineDasharray = trendDashStr;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 /** Rows for Fib Input tab — never mutate from a display-only fallback array. */
@@ -5928,6 +6012,7 @@ function v9ApplyGannSharedLevelsStyleFromTlStyle(d, tlStyle) {
     tlStyle.gannBgOpacity != null && !Number.isNaN(+tlStyle.gannBgOpacity)
       ? Math.max(0, Math.min(1, +tlStyle.gannBgOpacity))
       : 0.12;
+  st.levelsEnabled = tlStyle.fibLevelsOn !== false;
 }
 
 function v9ApplyGannBoxFromTlStyle(d, tlStyle) {
@@ -6406,6 +6491,7 @@ function v9TlStylePatchFromDrawing(d) {
               s.backgroundOpacity != null && !Number.isNaN(parseFloat(s.backgroundOpacity))
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
                 : 0.12,
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6431,6 +6517,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibLineType,
             fibBackground: bgOn,
             fibBgOpacity: bgOp,
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6456,6 +6543,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibArcsTrendType,
             fibArcsTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
             fibArcsFullCircle: !!s.v9FibArcsFullCircle,
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6480,6 +6568,7 @@ function v9TlStylePatchFromDrawing(d) {
             fibWedgeTrendLine: s.trendLineEnabled !== false,
             fibWedgeTrendType,
             fibWedgeTrendWidth: String(parseInt(s.trendLineWidth, 10) || 1),
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6521,6 +6610,7 @@ function v9TlStylePatchFromDrawing(d) {
             lineWidth: String(
               parseInt(s.trendLineWidth, 10) || parseInt(s.strokeWidth, 10) || 1,
             ),
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6542,6 +6632,7 @@ function v9TlStylePatchFromDrawing(d) {
             gannBgOpacity: bgOp,
             lineColor: s.stroke || s.color || stroke,
             lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6565,6 +6656,7 @@ function v9TlStylePatchFromDrawing(d) {
             gannBgOpacity: bgOp,
             lineColor: s.stroke || stroke,
             lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -6589,6 +6681,7 @@ function v9TlStylePatchFromDrawing(d) {
             gannBgOpacity: bgOp,
             lineColor: s.stroke || stroke,
             lineWidth: String(parseInt(s.strokeWidth, 10) || 1),
+            fibLevelsOn: s.levelsEnabled !== false,
           };
         })()
       : {}),
@@ -7752,6 +7845,7 @@ function patchOrderManagerJournalScreenshot(sessionTradeId, phasePreOrPost, imag
 const ColorPickerPopup = memo(function ColorPickerPopup({
   pos, h: hProp, s: sProp, v: vProp, a: aProp, hexStr: hexProp,
   c, F, onCommit, onHexCommit, onClose, onDragActiveChange, animation, hideAlpha,
+  zIndex = 11100,
 }) {
   const [drag, setDrag] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -7856,7 +7950,7 @@ const ColorPickerPopup = memo(function ColorPickerPopup({
   };
 
   return (
-    <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex:11100,width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
+    <div className="tlr-cp tlr-gloss" data-tlr-cp="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",top:pos.top,left:pos.left,zIndex,pointerEvents:"auto",width:210,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 20px 56px rgba(0,0,0,0.92), 0 0 20px rgba(38,67,247,0.1)`,fontFamily:F,animation:animation||"tlrPopIn 0.15s ease"}}>
       <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>
       <div style={{padding:10}}>
         <div
@@ -10940,7 +11034,6 @@ const TalariaV8bLive = () => {
     // Others
     { id:"ADX", type:"adx", name:"Average Directional Index", abbr:"ADX", cat:"others", desc:"Measures trend strength, not direction" },
     { id:"ADR", type:"adr", name:"Average Daily Range", abbr:"ADR", cat:"others", desc:"Average daily high-low range" },
-    { id:"SEASONALITY", type:"seasonality", name:"Seasonality", abbr:"SEAS", cat:"others", desc:"Seasonal tendency visualisation" },
     { id:"COT", type:"cotnet", name:"COT Net (Commercial vs Non-Commercial)", abbr:"COT", cat:"others", desc:"Commitments of Traders net positioning" },
   ];
   const ID_TO_TYPE = INDICATOR_CATALOG.reduce((acc, row) => {
@@ -11364,21 +11457,7 @@ const TalariaV8bLive = () => {
       window.__v9SuppressToolbarHideUntil = until;
     }
     try {
-      const charts = [];
-      if (typeof window.getActiveChart === "function") {
-        const ch = window.getActiveChart();
-        if (ch) charts.push(ch);
-      }
-      if (typeof window !== "undefined" && window.chart && !charts.includes(window.chart)) {
-        charts.push(window.chart);
-      }
-      if (typeof window !== "undefined" && Array.isArray(window.charts)) {
-        window.charts.forEach((ch) => {
-          if (ch && !charts.includes(ch)) charts.push(ch);
-        });
-      }
-      charts.forEach((ch) => {
-        const dm = ch && ch.drawingManager;
+      enumerateV9DrawingManagersFromWindow().forEach((dm) => {
         if (dm && typeof dm.suppressNextCanvasBackgroundClick === "function") {
           dm.suppressNextCanvasBackgroundClick(700);
         }
@@ -11440,10 +11519,23 @@ const TalariaV8bLive = () => {
       });
     }, 155);
   };
+  /** Close quick-bar color picker / dropdown chrome before opening shape settings (sync — no overlap). */
+  const v9DismissQuickBarPopoversSync = () => {
+    cpBarAnchorRef.current = null;
+    cpPickerDraggingRef.current = false;
+    flushSync(() => {
+      setColorPicker(null);
+      setClosing((s) => {
+        const n = new Set(s);
+        n.delete("cp");
+        return n;
+      });
+    });
+    if (tlBarDrop) closeTlBarDrop();
+  };
   /** Close every V9 drawing settings window synchronously (no 155ms overlap flash on dblclick). */
   const v9DismissAllDrawingSettingsImmediate = () => {
-    cpBarAnchorRef.current = null;
-    setColorPicker(null);
+    v9DismissQuickBarPopoversSync();
     setTlSettTplDrop(false);
     setTlSaveAsMode(false);
     setTlNewTplName("");
@@ -12366,11 +12458,13 @@ const TalariaV8bLive = () => {
       ? editingDrawingRef.current.panelGroup
       : null;
   const effectiveTlGroup =
-    tlBarDrawingGroup === "text"
+    settingsEditGroup
+    || (tlBarDrawingGroup === "text"
       ? null
-      : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null)
-      || settingsEditGroup
-      || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
+      : (tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) ? tlBarDrawingGroup : null))
+    || (TL_LINE_SHAPE_GROUPS.has(tool) ? tool : null);
+  /** Group used to mount the floating settings panel (must not be blocked by stale text-rail state). */
+  const tlSettPanelGroup = settingsEditGroup || effectiveTlGroup;
 
   // Active line/shape sub-tool (icon + label)
   const tlSubToolRail = effectiveTlGroup === "rect"
@@ -15343,6 +15437,20 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     const onDismissMcSettings = () => {
       try {
+        document.querySelectorAll(".tv-settings-modal").forEach((el) => {
+          try {
+            if (el.externalDropdowns) {
+              el.externalDropdowns.forEach((d) => { try { d.remove(); } catch (_) {} });
+            }
+            el.remove();
+          } catch (_) {}
+        });
+        const hostDm = window.chart && window.chart.drawingManager;
+        if (hostDm && hostDm.settingsPanel && typeof hostDm.settingsPanel.hide === "function") {
+          hostDm.settingsPanel.hide();
+        }
+      } catch (_) {}
+      try {
         if (editingDrawingRef.current) {
           dismissShapeSettingsForNewSelection();
         } else {
@@ -15710,6 +15818,42 @@ const TalariaV8bLive = () => {
     const hook = (drawing, x, y) => {
       try {
         if (!drawing || !drawing.type) return false;
+
+        // Iframe tiles must never host V9 settings — position:fixed is clipped to the tile.
+        // Forward to the parent multichart shell (same path as legacy tv-settings-modal).
+        if (v9IsMultichartIframeEmbed()) {
+          let panelId = "embed";
+          try {
+            panelId = new URLSearchParams(window.location.search).get("panelId") || panelId;
+          } catch (_) {}
+          try {
+            const parent = window.parent;
+            if (parent && parent !== window) {
+              if (typeof parent.__multichartOpenShapeSettings === "function") {
+                parent.__multichartOpenShapeSettings(panelId, drawing, x, y);
+                return true;
+              }
+              const grid = parent.__multichartGrid;
+              if (grid && typeof grid.openDrawingSettingsForPanel === "function") {
+                grid.openDrawingSettingsForPanel(panelId, drawing, x, y);
+                return true;
+              }
+              parent.postMessage(
+                {
+                  type: "multichart-open-drawing-settings",
+                  source: panelId,
+                  drawingId: drawing.id != null ? drawing.id : null,
+                  x,
+                  y,
+                },
+                "*"
+              );
+              return true;
+            }
+          } catch (_) {}
+          return false;
+        }
+
         const group = drawingTypeToPanelGroupRef.current(drawing.type);
         if (!group) return false; // Unknown type → legacy settings panel
 
@@ -15972,11 +16116,22 @@ const TalariaV8bLive = () => {
           }
         }
 
-        // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
-        // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
-        const zForPos = (typeof window !== 'undefined' && Number(window.__v9Zoom)) || 1;
-        const px = Math.max(20, Number(x) / zForPos - 220);
-        const py = Math.max(60, Number(y) / zForPos - 40);
+        // Multichart: one global panel centered on the parent viewport (not anchored to a tile).
+        let px;
+        let py;
+        if (sourcePanelId && typeof window !== "undefined" && window.__multichartGrid) {
+          px = Math.max(10, (window.innerWidth - 440) / 2);
+          py = Math.max(
+            60,
+            Math.min((window.innerHeight - 500) / 2, window.innerHeight - 500 - 50)
+          );
+        } else {
+          // Position panel near dblclick (clientX/Y are post-zoom; tlSettPos / txtSettPos
+          // are consumed inside the zoomed root, so divide by Z to get pre-zoom CSS pixels).
+          const zForPos = (typeof window !== "undefined" && Number(window.__v9Zoom)) || 1;
+          px = Math.max(20, Number(x) / zForPos - 220);
+          py = Math.max(60, Number(y) / zForPos - 40);
+        }
 
         if (dropdown) closeDropdown();
         v9SettingsChartDismissLockUntilRef.current = 0;
@@ -16107,31 +16262,13 @@ const TalariaV8bLive = () => {
     if (typeof window !== 'undefined') {
       window.__v9OpenDrawingSettings = hook;
       window.__v9OnDrawingDeleted = onDrawingDeleted;
-      try {
-        if (window.parent && window.parent !== window) {
-          window.parent.__v9OpenDrawingSettings = hook;
-          window.parent.__v9OnDrawingDeleted = onDrawingDeleted;
-        }
-        if (window.top && window.top !== window) {
-          window.top.__v9OpenDrawingSettings = hook;
-          window.top.__v9OnDrawingDeleted = onDrawingDeleted;
-        }
-      } catch (_) {}
+      // Do NOT assign hook to parent/top from iframe tiles — that overwrote the parent
+      // shell's hook and opened tlSettOpen inside the iframe (trapped/clipped to one panel).
     }
     return () => {
       if (typeof window !== 'undefined') {
         if (window.__v9OpenDrawingSettings === hook) window.__v9OpenDrawingSettings = null;
         if (window.__v9OnDrawingDeleted === onDrawingDeleted) window.__v9OnDrawingDeleted = null;
-        try {
-          if (window.parent && window.parent !== window) {
-            if (window.parent.__v9OpenDrawingSettings === hook) window.parent.__v9OpenDrawingSettings = null;
-            if (window.parent.__v9OnDrawingDeleted === onDrawingDeleted) window.parent.__v9OnDrawingDeleted = null;
-          }
-          if (window.top && window.top !== window) {
-            if (window.top.__v9OpenDrawingSettings === hook) window.top.__v9OpenDrawingSettings = null;
-            if (window.top.__v9OnDrawingDeleted === onDrawingDeleted) window.top.__v9OnDrawingDeleted = null;
-          }
-        } catch (_) {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -16221,6 +16358,7 @@ const TalariaV8bLive = () => {
     setVpBarPos,
     setAvBarPos,
     setVwapBarPos,
+    setTlBarPos,
     Z,
     v9SelectionToolbarSyncRef,
     drawingTypeToPanelGroupRef,
@@ -16258,6 +16396,8 @@ const TalariaV8bLive = () => {
             } else {
               br.setTlBarSelected(true);
               br.setTlBarSelectedType(drawing.type);
+              v9SyncQuickBarPosFromToolbarShow(br, x, y, drawing && drawing.type);
+              if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
               return origShow ? origShow(drawing, x, y) : undefined;
             }
           }
@@ -16468,7 +16608,9 @@ const TalariaV8bLive = () => {
               } catch (_) {}
             }
           }
+          v9SyncQuickBarPosFromToolbarShow(br, x, y, drawing && drawing.type);
         } catch (_) {}
+        if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
         return origShow ? origShow(drawing, x, y) : undefined;
       };
       tb.hide = function () {
@@ -18977,7 +19119,7 @@ const TalariaV8bLive = () => {
       `}</style>
 
       {/* ── Trend Line Settings Window (portal → body: legacy drawing-toolbar is appendChild(body) @ z-index 10000, paints above #root) ── */}
-      {effectiveTlGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
+      {tlSettPanelGroup && (tlSettOpen || closing.has("tlsett")) && typeof document !== "undefined" && createPortal(
         <div data-sdrop="1"
           onPointerDown={e => e.stopPropagation()}
           onMouseDown={e => e.stopPropagation()}
@@ -18986,7 +19128,8 @@ const TalariaV8bLive = () => {
             if (typeof e.target?.closest === "function" && e.target.closest("[data-tl-style-drop]")) return;
             setTlStyleDrop(null);
           }}
-          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:11000, width:440, fontFamily:F,
+          style={{ position:"fixed", left:tlSettPos.x, top:tlSettPos.y, zIndex:2147483647, width:440, fontFamily:F,
+                   pointerEvents:"auto",
                    background:c.sf, border:`1px solid ${c.brH}`,
                    boxShadow:"0 24px 64px rgba(0,0,0,0.85)",
                    display:"flex", flexDirection:"column",
@@ -20240,14 +20383,22 @@ const TalariaV8bLive = () => {
                       {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && <div style={{ padding:"6px 0" }}>
                         {TlChk(tlStyle.fibPrices,"tlchk-fibPrices","Show Prices",()=>setTlStyle(s=>({...s,fibPrices:!s.fibPrices})))}
                       </div>}
-                      {/* Levels + dropdown */}
-                      {tlSubTool.icon !== "fibFan" && tlSubTool.icon !== "fibTime" && tlSubTool.icon !== "fibTimeZone" && tlSubTool.icon !== "fibArcs" && tlSubTool.icon !== "fibWedge" && (()=>{
+                      {/* Level values */}
+                      {(() => {
+                        const fibSupportsLevelsMode = !["fibFan", "fibTime", "fibTimeZone", "fibArcs", "fibWedge", "fibCircles", "fibSpiral"].includes(tlSubTool.icon);
+                        if (!fibSupportsLevelsMode) {
+                          return (
+                            <div style={{ padding:"6px 0" }}>
+                              {TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}
+                            </div>
+                          );
+                        }
                         const dk = "fibLevelsMode";
                         const val = tlStyle.fibLevelsMode || "Value";
                         const options = ["Value","Percent","Value and Percent"];
                         return (
                           <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                            <div style={{ width:130 }}>{TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Levels",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}</div>
+                            <div style={{ width:130 }}>{TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}</div>
                             <div style={{ position:"relative", marginLeft:78, opacity:tlStyle.fibLevelsOn?1:0.38, pointerEvents:tlStyle.fibLevelsOn?"auto":"none", transition:"opacity 0.15s" }}>
                               <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
@@ -20329,6 +20480,9 @@ const TalariaV8bLive = () => {
                               style={{ position:"absolute", left:-6, right:-6, width:"calc(100% + 12px)", height:"100%", opacity:0, cursor:"default", margin:0 }}/>
                           </div>
                         </div>
+                      </div>
+                      <div style={{ padding:"6px 0" }}>
+                        {TlChk(tlStyle.fibLevelsOn,"tlchk-gannLvlVal","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}
                       </div>
                     </>;
                   })()}
@@ -21876,7 +22030,7 @@ const TalariaV8bLive = () => {
             <B primary hk="tl-ok" fireOnPointerDown onClick={confirmTlSett}>OK</B>
           </div>
         </div>
-      , document.body)}
+      , v9SettingsPortalTarget() || document.body)}
 
       {/* ── Text Tool mini-bar ──
           Active text tool OR a text/label drawing selected on the chart (toolbar.show
@@ -22063,7 +22217,7 @@ const TalariaV8bLive = () => {
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TxBtn>
           <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>
-          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;const d=getSelectedDrawingForTemplate();const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,r.left+r.width/2,r.bottom+8))return;}catch(_){}}setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
+          <TxBtn id="txt-sett" isAct={txtSettOpen||closing.has("txtsett")} onClick={e=>{e.stopPropagation();v9SuppressNextChartDeselect();if(dropdown)closeDropdown();setColorPicker(null);setTxtBarSizeOpen(false);setTxtBarDrop(null);if(txtSettOpen||closing.has("txtsett")){closeTxtSett();}else{if(tlSettOpen)closeTlSett();if(vwapSettOpen)closeVwapSett();if(vpSettOpen)closeVpSett();if(avSettOpen)closeAvSett();if(indSettOpen)closeIndSett();const r=e.currentTarget.getBoundingClientRect();const anchorX=r.left+r.width/2;const anchorY=r.bottom+8;let d=getSelectedDrawingForTemplate();if(!d){try{d=getSelectedDrawingAcrossCharts(null);}catch(_){}}try{const grid=typeof window!=="undefined"?window.__multichartGrid:null;if(grid&&typeof grid.openDrawingSettingsForPanel==="function"&&d){const panelId=typeof grid.getFocusedPanelId==="function"?(grid.getFocusedPanelId()||grid.hostPanelId||"A"):"A";grid.openDrawingSettingsForPanel(panelId,d,anchorX,anchorY).catch(()=>{});return;}}catch(_){}const hook=v9ResolveOpenDrawingSettingsHook();if(d&&hook){try{if(hook(d,anchorX,anchorY))return;}catch(_){}}const vpW=window.innerWidth/Z;const x=Math.max(8,Math.min(r.left/Z,vpW-398));const y=r.bottom/Z+8;setTxtSettPos({x,y});setTxtSettOpen(true);}}}>
             {(_,isAct,col)=><I n="settings" s={16} cl={col}/>}
           </TxBtn>
           {/* three dots — more options (menu portaled below) */}
@@ -26587,9 +26741,10 @@ const TalariaV8bLive = () => {
           {/* btn 7: settings */}
           <TlBtn id="tl-sett" isAct={tlSettOpen||closing.has("tlsett")}
             onClick={e=>{
+              e.stopPropagation();
+              v9SuppressNextChartDeselect();
               if (dropdown) closeDropdown();
-              if (tlBarDrop) closeTlBarDrop();
-              setColorPicker(null);
+              v9DismissQuickBarPopoversSync();
               if (tlSettOpen || closing.has("tlsett")) { closeTlSett(); return; }
               if (txtSettOpen) closeTxtSett();
               if (vwapSettOpen) closeVwapSett();
@@ -26597,14 +26752,24 @@ const TalariaV8bLive = () => {
               if (avSettOpen) closeAvSett();
               if (indSettOpen) closeIndSett();
               const r = e.currentTarget.getBoundingClientRect();
-              const vpW = window.innerWidth / Z;
-              const xFallback = Math.max(8, Math.min(r.left / Z, vpW - 498));
-              const yFallback = r.bottom / Z + 8;
-              const d = getSelectedDrawingForTemplate();
+              const anchorX = r.left + r.width / 2;
+              const anchorY = r.bottom + 8;
+              let d = getSelectedDrawingForTemplate();
+              if (!d) {
+                try { d = getSelectedDrawingAcrossCharts(null); } catch (_) {}
+              }
+              try {
+                const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+                if (grid && typeof grid.openDrawingSettingsForPanel === "function" && d) {
+                  const panelId = typeof grid.getFocusedPanelId === "function"
+                    ? (grid.getFocusedPanelId() || grid.hostPanelId || "A")
+                    : "A";
+                  grid.openDrawingSettingsForPanel(panelId, d, anchorX, anchorY).catch(() => {});
+                  return;
+                }
+              } catch (_) {}
               const hook = v9ResolveOpenDrawingSettingsHook();
               if (d && typeof hook === "function") {
-                const anchorX = r.left + r.width / 2;
-                const anchorY = r.bottom + 8;
                 try {
                   if (hook(d, anchorX, anchorY)) return;
                 } catch (_) {}

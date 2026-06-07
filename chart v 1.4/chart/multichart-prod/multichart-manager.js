@@ -417,6 +417,7 @@
             zoomLevelIndex: range.zoomLevelIndex,
             plotWidthPx: range.plotWidthPx,
             source:      host.id,
+            forceInitialSync: true,
             causationId: 'host-init-' + Date.now() + '-' + (Math.random() * 1e6 | 0).toString(16),
         });
         this._log('info', 'initial-sync ' + host.id + ' → ' + newChart.id
@@ -605,8 +606,18 @@
 
             case 'chart-state':
                 if (sourceChart && msg.state) {
+                    const prevCount = Number(sourceChart.state.candleCount) || 0;
                     Object.assign(sourceChart.state, msg.state);
                     this.onState(sourceId, sourceChart.state);
+                    // bridge-ready often fires before loadFileData finishes — re-align
+                    // the visible range once bars actually land on the iframe chart.
+                    const newCount = Number(msg.state.candleCount) || 0;
+                    if (!sourceChart.host && prevCount === 0 && newCount > 0
+                        && !sourceChart._initialRangeSyncedAfterData) {
+                        sourceChart._initialRangeSyncedAfterData = true;
+                        const self = this;
+                        setTimeout(function () { self._initialSyncToHost(sourceChart); }, 0);
+                    }
                 }
                 return;
 

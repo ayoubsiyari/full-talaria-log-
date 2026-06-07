@@ -1752,8 +1752,22 @@ class DrawingToolbar {
                 const r = this.toolbar.getBoundingClientRect();
                 const anchorX = r.left + r.width / 2;
                 const anchorY = r.bottom + 10;
-                this.hide(); // Hide toolbar when opening settings
-                this.onSettings(drawing, anchorX, anchorY);
+                const liveDrawing = this.currentDrawing || drawing;
+                // Parent V9 wraps toolbar.hide and clears tlBarSelected — suppress that while
+                // opening settings so multichart gear matches dblclick (settings + quick bar).
+                try {
+                    const until = Date.now() + 700;
+                    if (typeof window !== 'undefined') {
+                        window.__v9SuppressToolbarHideUntil = until;
+                    }
+                    if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+                        window.parent.__v9SuppressToolbarHideUntil = until;
+                    }
+                } catch (_) { /* ignore */ }
+                if (this.onSettings) {
+                    this.onSettings(liveDrawing, anchorX, anchorY);
+                }
+                this.hide();
             });
         }
         

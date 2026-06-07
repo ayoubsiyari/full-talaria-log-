@@ -1004,7 +1004,12 @@
             if (syncModeGate) {
                 var mt = msg.type;
                 if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
-                if (mt === 'visibleRange' && !syncModeGate.visibleRange) return;
+                if (mt === 'visibleRange' && !syncModeGate.visibleRange) {
+                    if (!m.forceInitialSync
+                        && !(m.causationId && String(m.causationId).indexOf('host-init-') === 0)) {
+                        return;
+                    }
+                }
                 if (mt === 'symbol' && !syncModeGate.symbol) return;
                 if ((mt === 'drawing-add' || mt === 'drawing-update'
                   || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;

@@ -28,6 +28,13 @@
 /** V9 React shell may live on parent/top while chart.js runs in an iframe — resolve hook across windows. */
 function resolveV9OpenDrawingSettings() {
     if (typeof window === 'undefined') return null;
+    // Iframe tiles must never open V9 settings locally (position:fixed is clipped to the tile).
+    if (isMultichartIframeEmbed()) {
+        return function multichartForwardV9DrawingSettings(drawing, x, y) {
+            requestMultichartParentDrawingSettings(drawing, x, y);
+            return true;
+        };
+    }
     const wins = [window];
     try {
         if (window.parent && window.parent !== window) wins.push(window.parent);
@@ -48,6 +55,9 @@ function resolveV9OpenDrawingSettings() {
 function isMultichartIframeEmbed() {
     if (typeof document === 'undefined' || typeof window === 'undefined') return false;
     if (window.parent === window) return false;
+    try {
+        if (window.parent && window.parent.__multichartGrid) return true;
+    } catch (_) { /* cross-origin */ }
     if (document.documentElement.classList.contains('multichart-embed')) return true;
     try {
         return new URLSearchParams(window.location.search || '').get('multichart') === '1';
@@ -61,13 +71,40 @@ function requestMultichartParentDrawingSettings(drawing, x, y) {
     try {
         panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
     } catch (_q) { /* ignore */ }
+    const drawId = drawing && drawing.id != null ? drawing.id : null;
+    const px = typeof x === 'number' && !isNaN(x) ? x : 0;
+    const py = typeof y === 'number' && !isNaN(y) ? y : 0;
+    try {
+        const parent = window.parent;
+        if (parent && parent !== window) {
+            if (typeof parent.__multichartOpenShapeSettings === 'function') {
+                parent.__multichartOpenShapeSettings(
+                    panelId,
+                    drawing && drawing.type ? drawing : drawId,
+                    px,
+                    py
+                );
+                return true;
+            }
+            const grid = parent.__multichartGrid;
+            if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                grid.openDrawingSettingsForPanel(
+                    panelId,
+                    drawing && drawing.type ? drawing : drawId,
+                    px,
+                    py
+                );
+                return true;
+            }
+        }
+    } catch (_) { /* cross-origin */ }
     try {
         window.parent.postMessage({
             type: 'multichart-open-drawing-settings',
             source: panelId,
-            drawingId: drawing && drawing.id != null ? drawing.id : null,
-            x: x,
-            y: y,
+            drawingId: drawId,
+            x: px,
+            y: py,
         }, '*');
         return true;
     } catch (_pm) {
@@ -455,6 +492,32 @@ class DrawingToolsManager {
     _consumeCanvasBackgroundDeselectSuppress() {
         if (!this._shouldSuppressCanvasBackgroundDeselect()) return false;
         this._suppressNextCanvasBgClick = false;
+        return true;
+    }
+
+    _isBoxShapeType(type) {
+        return type === 'rectangle' || type === 'triangle' || type === 'circle' || type === 'ellipse'
+            || type === 'rotated-rectangle';
+    }
+
+    /**
+     * Deselect when the pointer is on true chart background (no drawing stroke under cursor).
+     * @returns {boolean} true when deselect ran
+     */
+    _tryDeselectOnBackgroundPointer(event, mouseX, mouseY) {
+        if (event?.shiftKey) return false;
+        if (this._consumeCanvasBackgroundDeselectSuppress()) return false;
+        if (!this.selectedDrawings?.length) return false;
+
+        const hits = this.findDrawingsAtPoint(mouseX, mouseY, { includeVolumeProfileBodyHit: true }) || [];
+        if (hits.length > 0) return false;
+
+        const onSelectedHandle = (this.selectedDrawings || []).some((d) =>
+            d && this._isPointOnResizeHandle(d, mouseX, mouseY)
+        );
+        if (onSelectedHandle) return false;
+
+        this.deselectAll({ fromCanvasBackground: true });
         return true;
     }
 
@@ -1359,6 +1422,18 @@ class DrawingToolsManager {
         
         // Settings callback - opens settings panel (same V9 hook as editDrawing / dblclick)
         this.toolbar.onSettings = (drawing, anchorX, anchorY) => {
+            let liveDrawing = drawing;
+            try {
+                if (self.selectedDrawing) {
+                    liveDrawing = self.selectedDrawing;
+                } else if (drawing && drawing.id != null && Array.isArray(self.drawings)) {
+                    const want = String(drawing.id);
+                    const found = self.drawings.find(
+                        (d) => d && d.id != null && String(d.id) === want
+                    );
+                    if (found) liveDrawing = found;
+                }
+            } catch (_) { /* ignore */ }
             const rect = self.toolbar.toolbar.getBoundingClientRect();
             const x =
                 typeof anchorX === 'number' && !Number.isNaN(anchorX)
@@ -1369,41 +1444,42 @@ class DrawingToolsManager {
                     ? anchorY
                     : rect.bottom + 10;
             if (isMultichartIframeEmbed()) {
-                self.editDrawing(drawing, x, y);
+                self.editDrawing(liveDrawing, x, y);
                 return;
             }
-            // Multichart host tile A: same global settings surface as iframe postMessage path.
+            // Multichart (any tile): same code path as dblclick / main-chart gear.
             try {
-                const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
-                if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
-                    const panelId = grid.hostPanelId || 'A';
-                    grid.openDrawingSettingsForPanel(panelId, drawing, x, y);
+                if (typeof window !== 'undefined' && window.__multichartGrid) {
+                    self.editDrawing(liveDrawing, x, y);
                     return;
                 }
-            } catch (_grid) { /* ignore */ }
+            } catch (_mc) { /* ignore */ }
             const v9Open = resolveV9OpenDrawingSettings();
             if (v9Open) {
                 try {
-                    const handled = v9Open(drawing, x, y);
+                    const handled = v9Open(liveDrawing, x, y);
                     if (handled) {
                         if (self.toolbar && typeof self.toolbar.hide === 'function') self.toolbar.hide();
                         if (self.settingsPanel && typeof self.settingsPanel.hide === 'function') {
                             self.settingsPanel.hide();
                         }
-                        if (drawing && drawing.type === 'image') drawing._keepEmpty = true;
+                        if (liveDrawing && liveDrawing.type === 'image') liveDrawing._keepEmpty = true;
                         return;
                     }
                 } catch (err) {
                     console.warn('[V9 toolbar settings] hook threw, falling back to legacy panel:', err);
                 }
-                if (drawing && self._isTextDrawingType(drawing.type)) {
+                if (liveDrawing && self._isTextDrawingType(liveDrawing.type)) {
                     console.warn('[V9] Text settings hook did not handle this drawing; legacy modal suppressed.');
                     return;
                 }
             }
-            const beforeState = self.history ? self.history.captureState(drawing) : null;
+            if (typeof window !== 'undefined' && window.__multichartGrid) {
+                return;
+            }
+            const beforeState = self.history ? self.history.captureState(liveDrawing) : null;
             self.settingsPanel.show(
-                drawing,
+                liveDrawing,
                 x,
                 y,
                 (updatedDrawing) => {
@@ -1887,6 +1963,9 @@ class DrawingToolsManager {
                 if (!drawingsAtPoint || drawingsAtPoint.length === 0) {
                     // Armed draw tool on empty chart — let SVG placement layer handle the click.
                     if (this.currentTool) return;
+                    if (this._tryDeselectOnBackgroundPointer(event, mouseX, mouseY)) {
+                        suppressNextCanvasClick = true;
+                    }
                     return;
                 }
                 const isVolumeProfileLevelLineHit = drawingsAtPoint.some((d) =>
@@ -2911,7 +2990,10 @@ class DrawingToolsManager {
                     type.startsWith('fib-') ||
                     type.startsWith('trend-fib-') ||
                     type === 'pitchfork' ||
-                    type === 'pitchfan'
+                    type === 'pitchfan' ||
+                    type === 'gann-box' ||
+                    type === 'gann-square-fixed' ||
+                    type === 'gann-fan'
                 );
 
                 const isPatternLikeType = (type) => !!type && (
@@ -3325,10 +3407,8 @@ class DrawingToolsManager {
                     event.stopPropagation();
                 }
             } else {
-                // Clicked on empty space - deselect all (unless Shift is held)
-                if (!event.shiftKey && !this._consumeCanvasBackgroundDeselectSuppress()) {
-                    this.deselectAll({ fromCanvasBackground: true });
-                }
+                // Clicked on empty space - deselect on mousedown (one click; do not wait for click after pan)
+                this._tryDeselectOnBackgroundPointer(event, mouseX, mouseY);
                 // Ensure SVG is transparent so canvas can receive panning events
                 this.svg.style('pointer-events', 'none');
             }
@@ -5716,7 +5796,11 @@ class DrawingToolsManager {
         }
 
         if (!opts.skipTimestampSync && !this._isDrawingLiveEditing(drawing)) {
-            this._syncDrawingPointsFromTimestamps(drawing);
+            const hasDragTransform = !!(drawing.group && drawing.group.attr('transform'));
+            const skipSyncDuringCssMove = hasDragTransform && this._isDrawingGeometryMoveActive();
+            if (!skipSyncDuringCssMove) {
+                this._syncDrawingPointsFromTimestamps(drawing);
+            }
         }
 
         const scales = {
@@ -5744,6 +5828,9 @@ class DrawingToolsManager {
                 drawing._syncBoxHandlePositions(drawing.group, scales);
             } else if (typeof drawing.updateHandlePositions === 'function') {
                 drawing.updateHandlePositions(scales);
+            }
+            if (this._isLiveHandleEditing()) {
+                this._raiseResizeHandles(drawing);
             }
         }
         
@@ -6008,7 +6095,7 @@ class DrawingToolsManager {
         if (this._isFibLikeDrawingType(drawing.type)) {
             drawing.group.style('pointer-events', 'none');
             interactiveElements.style('pointer-events', 'stroke');
-            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .fib-wedge-hitbox')
+            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox')
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
         }
@@ -6089,6 +6176,9 @@ class DrawingToolsManager {
             if (self._isFibLikeDrawingType(drawing.type)) {
                 const onFibStroke = targetSel.classed('fib-level-hit')
                     || targetSel.classed('gann-level-hit')
+                    || targetSel.classed('gann-fan-hitbox')
+                    || targetSel.classed('gann-box-hitbox')
+                    || targetSel.classed('gann-square-fixed-hitbox')
                     || targetSel.classed('pitchfork-level-hit')
                     || targetSel.classed('pitchfork-handle-hit')
                     || targetSel.classed('fib-circles-axis')
@@ -6099,8 +6189,9 @@ class DrawingToolsManager {
                     || targetSel.classed('fib-wedge-trend')
                     || targetSel.classed('fib-wedge-trend-hit')
                     || targetSel.classed('fib-fan-anchor');
-                const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
+                const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan')
                     && (targetSel.classed('gann-box-hitbox') || targetSel.classed('gann-square-fixed-hitbox')
+                        || targetSel.classed('gann-fan-hitbox')
                         || self._isPointOnGannToolBody(drawing, mouseX, mouseY))
                     && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
                 const onFibWedgeBody = drawing.type === 'fib-wedge'
@@ -6343,6 +6434,16 @@ class DrawingToolsManager {
             .on('contextmenu', handleContextMenu)
             .on('mouseenter', handleMouseEnter)
             .on('mouseleave', handleMouseLeave);
+
+        // Gann / fib wedge body hitboxes use shape-border-hit and are excluded from interactiveElements.
+        if (this._isFibLikeDrawingType(drawing.type)) {
+            drawing.group.selectAll('.gann-box-hitbox, .gann-square-fixed-hitbox, .gann-fan-hitbox, .fib-wedge-hitbox')
+                .on('click', handleClick)
+                .on('dblclick', handleDblClick)
+                .on('contextmenu', handleContextMenu)
+                .on('mouseenter', handleMouseEnter)
+                .on('mouseleave', handleMouseLeave);
+        }
         
         // Setup drag to move entire drawing (not when locked)
         if (!drawing.locked) {
@@ -6504,6 +6605,12 @@ class DrawingToolsManager {
                     }
 
                     const isAnyHandle = !!(targetEl && targetEl.closest && targetEl.closest('.resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle'));
+                    if (!self.currentTool && !isAnyHandle && src && typeof src.clientX === 'number' && typeof src.clientY === 'number') {
+                        const [mx, my] = self._eventCanvasLocalXY(src);
+                        if (self._isPointOnResizeHandle(drawing, mx, my)) {
+                            return false;
+                        }
+                    }
                     if (targetEl && targetEl.closest && targetEl.closest('.rr-plus-btn')) {
                         return false;
                     }
@@ -6551,13 +6658,14 @@ class DrawingToolsManager {
                     // Exception: position-zone elements, emoji/text elements can be dragged
                     const tagName = event.target.tagName.toLowerCase();
                     const isGannBoxBodyHit = targetSelection.classed('gann-box-hitbox')
-                        || targetSelection.classed('gann-square-fixed-hitbox');
+                        || targetSelection.classed('gann-square-fixed-hitbox')
+                        || targetSelection.classed('gann-fan-hitbox');
                     const isFibWedgeBodyHit = targetSelection.classed('fib-wedge-hitbox');
                     if (!self.currentTool && self._isFibLikeDrawingType(drawing.type) && !isAnyHandle && !isGannBoxBodyHit && !isFibWedgeBodyHit) {
                         const srcEvent = event.sourceEvent || event;
                         if (srcEvent && typeof srcEvent.clientX === 'number' && typeof srcEvent.clientY === 'number') {
                             const [mouseX, mouseY] = self._eventCanvasLocalXY(srcEvent);
-                            const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed')
+                            const onGannBody = (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan')
                                 && self._isPointOnGannToolBody(drawing, mouseX, mouseY)
                                 && !self._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY);
                             const onFibWedgeBody = drawing.type === 'fib-wedge'
@@ -6569,7 +6677,7 @@ class DrawingToolsManager {
                     }
 
                     if (targetSelection.classed('gann-fan-hitbox')) {
-                        return false;
+                        return !self.currentTool;
                     }
 
                     const isFibLevelHit = targetSelection.classed('fib-level-hit');
@@ -6695,6 +6803,7 @@ class DrawingToolsManager {
                             self.selectDrawing(drawing, event.sourceEvent.shiftKey);
                         }
                         dragStartPoints = drawing.points.map(p => ({ ...p }));
+                        self._bodyDragActiveDrawings = [drawing];
                         setAnchoredVWAPMovingState(drawing, true);
                         if (drawing.type === 'anchored-vwap') {
                             self._hideAnchoredVwapCurvesDuringMove(drawing);
@@ -6728,8 +6837,10 @@ class DrawingToolsManager {
                             beforeState: self.history ? self.history.captureState(d) : null,
                             startTransform: self._parseGroupTranslate(d.group ? d.group.attr('transform') : null)
                         }));
+                        self._bodyDragActiveDrawings = multiDragStartPoints.map((item) => item.drawing);
                     } else {
                         multiDragStartPoints = null;
+                        self._bodyDragActiveDrawings = [drawing];
                         // Capture state for undo (single drawing)
                         if (self.history) {
                             beforeState = self.history.captureState(drawing);
@@ -6739,8 +6850,8 @@ class DrawingToolsManager {
                     rrLastByDrawingId = Object.create(null);
                     if (self._isTextDrawingType(drawing.type)) {
                         textBodyDragOverflowActive = true;
-                        self._beginDrawingLiveInteraction();
                     }
+                    self._beginDrawingLiveInteraction();
                 })
                 .on('drag', function(event) {
                     if (horizontalAnchorPointDrag) {
@@ -6801,7 +6912,6 @@ class DrawingToolsManager {
                 })
                 .on('end', function(event) {
                     self._clearAxisHighlightDragState();
-                    self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
                     if (self.chart && typeof self.chart.updateCrosshair === 'function' && event.sourceEvent) {
                         self.chart.updateCrosshair(event.sourceEvent);
                     }
@@ -6812,6 +6922,8 @@ class DrawingToolsManager {
                         if (self.history && beforeState) {
                             self.history.recordModify(drawing, beforeState);
                         }
+                        self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
+                        self._bodyDragActiveDrawings = null;
                         self._endDrawingLiveInteraction();
                         if (typeof drawing.recalculateTimestamps === 'function') {
                             drawing.recalculateTimestamps();
@@ -6876,10 +6988,10 @@ class DrawingToolsManager {
                     startDataPoint = null;
                     bodyDragStartScreen = null;
                     bodyDragStartTransform = null;
-                    if (textBodyDragOverflowActive) {
-                        textBodyDragOverflowActive = false;
-                        self._endDrawingLiveInteraction();
-                    }
+                    textBodyDragOverflowActive = false;
+                    self._bodyDragDepth = Math.max(0, (self._bodyDragDepth || 0) - 1);
+                    self._bodyDragActiveDrawings = null;
+                    self._endDrawingLiveInteraction();
                     self.saveDrawings();
                     
                     // Broadcast update to other panels
@@ -6902,6 +7014,7 @@ class DrawingToolsManager {
 
     _isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY) {
         if (!drawing?.group || !this._isGannLevelAdjustDrawingType(drawing.type)) return false;
+        if (drawing.type === 'gann-fan') return false;
 
         const svgPoint = this.svg?.node?.()?.createSVGPoint?.();
         if (svgPoint) {
@@ -6939,10 +7052,29 @@ class DrawingToolsManager {
         return drawing.isPointInsideBody(mouseX, mouseY, scales);
     }
 
-    /** True when pointer is inside the Gann Box / Square body (whole-tool move, not level drag). */
+    /** True when pointer is inside the Gann Box / Square / Fan body (whole-tool move, not level drag). */
     _isPointOnGannToolBody(drawing, mouseX, mouseY) {
         if (!drawing || !this._getGannDrawingScales()) return false;
         const scales = this._getGannDrawingScales();
+        if (drawing.type === 'gann-fan') {
+            const layout = typeof drawing.getPixelLayout === 'function'
+                ? drawing.getPixelLayout(scales)
+                : null;
+            if (!layout) return false;
+            const { x1, y1, xBound, yMin, yMax } = layout;
+            if (![x1, y1, xBound, yMin, yMax].every(Number.isFinite)) return false;
+            const px = mouseX;
+            const py = mouseY;
+            const inTri = (ax, ay, bx, by, cx, cy) => {
+                const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+                const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+                const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+                const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+                const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+                return !(hasNeg && hasPos);
+            };
+            return inTri(x1, y1, xBound, yMin, xBound, yMax);
+        }
         if (drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') {
             const layout = typeof drawing.getPixelLayout === 'function'
                 ? drawing.getPixelLayout(scales)
@@ -7030,6 +7162,8 @@ class DrawingToolsManager {
 
     _setupGannLevelDrag(drawing) {
         if (!this._isGannLevelAdjustDrawingType(drawing.type) || !drawing.group) return;
+        // Gann Fan: only anchor handles + settings adjust levels (per-ray drag skews all rays).
+        if (drawing.type === 'gann-fan') return;
 
         const self = this;
         const levelHits = drawing.group.selectAll('.gann-level-hit[data-gann-level-array]');
@@ -7131,8 +7265,7 @@ class DrawingToolsManager {
 
         drawings.forEach((d) => {
             if (d?.group?.attr('transform')) {
-                this._clearDrawingDragTransform(d);
-                this.renderDrawing(d);
+                this._commitStaleDrawingGroupTransform(d);
             }
         });
 
@@ -7182,6 +7315,7 @@ class DrawingToolsManager {
         this._directMoveDrawings = drawings;
         this._directMovePendingFrame = false;
         this._directMoveLastEvent = null;
+        this._beginDrawingLiveInteraction();
         let moved = false;
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -7231,7 +7365,7 @@ class DrawingToolsManager {
             if (this._directMovePendingFrame && this._directMoveLastEvent) {
                 applyDirectMoveTransform(this._directMoveLastEvent);
             }
-            this._stopDirectMoveDrag();
+            this._stopDirectMoveDrag({ skipLiveInteractionEnd: true });
 
             if (this.chart && typeof this.chart.updateCrosshair === 'function') {
                 this.chart.updateCrosshair(e);
@@ -7263,6 +7397,7 @@ class DrawingToolsManager {
             if (moved) {
                 this.saveDrawings();
             }
+            this._endDrawingLiveInteraction();
         };
 
         document.addEventListener('mousemove', this._directMoveMoveHandler, true);
@@ -7340,6 +7475,56 @@ class DrawingToolsManager {
         return hits[0].role;
     }
 
+    /** Keep resize targets above rebuilt shape borders during live edits / hover. */
+    _raiseResizeHandles(drawing) {
+        if (!drawing?.group || drawing.group.empty()) return;
+        drawing.group.selectAll('.resize-handle-group').raise();
+        drawing.group.selectAll('.custom-handle').raise();
+    }
+
+    /** True when (mouseX, mouseY) is inside a visible resize-handle hit disc. */
+    _isPointOnResizeHandle(drawing, mouseX, mouseY) {
+        if (!drawing?.group || drawing.group.empty()) return false;
+        const nodes = drawing.group.selectAll('.resize-handle-hit').nodes();
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            if (!node || !node.getAttribute) continue;
+            const pe = node.style && node.style.pointerEvents;
+            if (pe === 'none') continue;
+            const cx = parseFloat(node.getAttribute('cx'));
+            const cy = parseFloat(node.getAttribute('cy'));
+            const r = parseFloat(node.getAttribute('r')) || 14;
+            if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r)) continue;
+            const dx = mouseX - cx;
+            const dy = mouseY - cy;
+            if ((dx * dx) + (dy * dy) <= r * r) return true;
+        }
+        return false;
+    }
+
+    _prepareDrawingForHandleDrag(drawing, event) {
+        if (!drawing) return;
+        if (!drawing.selected
+            || this.selectedDrawings.length !== 1
+            || this.selectedDrawings[0] !== drawing) {
+            this.deselectAll({ forSelectionChange: true });
+            drawing.select({ skipAxisHighlights: true });
+            this.selectedDrawing = drawing;
+            this.selectedDrawings = [drawing];
+        }
+        if (drawing.group && !drawing.group.empty()) {
+            drawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
+            drawing.group.selectAll('.resize-handle-hit, .custom-handle').style('pointer-events', 'all');
+            drawing.group.selectAll('.shape-border-hit').style('pointer-events', 'none');
+            this._raiseResizeHandles(drawing);
+        }
+        if (this._hoveredDrawing === drawing) {
+            this._hoveredDrawing = null;
+            this._hoverHandleBoundDrawingId = null;
+            this._hoverHandleBoundGroupNode = null;
+        }
+    }
+
     /**
      * Setup drag behavior for resize handles
      */
@@ -7393,9 +7578,7 @@ class DrawingToolsManager {
                     event.sourceEvent.stopPropagation();
                     const isFreehandStroke = drawing.type === 'brush' || drawing.type === 'highlighter';
                     if (isFreehandStroke) {
-                        if (!drawing.selected) {
-                            self.selectDrawing(drawing, event.sourceEvent.shiftKey);
-                        }
+                        self._prepareDrawingForHandleDrag(drawing, event);
                         self._beginDrawingLiveInteraction();
                         self._freehandHandleWholeMove = {
                             drawing,
@@ -7420,6 +7603,7 @@ class DrawingToolsManager {
                         ? drawing.onPointHandleDrag !== baseProto.onPointHandleDrag
                         : (typeof drawing.onPointHandleDrag === 'function');
 
+                    self._prepareDrawingForHandleDrag(drawing, event);
                     if (handleRole && hasCustomOverride) {
                         self.resizingHandleRole = handleRole || null;
                         self._customHandlePointerSource = 'd3';
@@ -7638,6 +7822,11 @@ class DrawingToolsManager {
         if (canvas) canvas.style.cursor = '';
         this.svg.style('cursor', '');
 
+        if (drawing?.group && !drawing.group.empty()) {
+            drawing.group.selectAll('.shape-border-hit')
+                .style('pointer-events', 'stroke');
+        }
+
         this.renderDrawing(drawing, { skipTimestampSync: true });
 
         this.persistPositionToolDefaults(drawing);
@@ -7761,6 +7950,11 @@ class DrawingToolsManager {
         this._clearShiftResizeAnchorPoints();
         this._endDrawingLiveInteraction();
 
+        if (drawing?.group && !drawing.group.empty()) {
+            drawing.group.selectAll('.shape-border-hit')
+                .style('pointer-events', 'stroke');
+        }
+
         this.renderDrawing(drawing, { skipTimestampSync: true });
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -7811,9 +8005,7 @@ class DrawingToolsManager {
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
         this._commitInlineTextEditorBeforeGeometryEdit();
-        if (this._isTextDrawingType(drawing.type)) {
-            this._beginDrawingLiveInteraction();
-        }
+        this._beginDrawingLiveInteraction();
         this.isDragging = true;
         this.draggingDrawing = drawing;
         this.dragStartPoint = this.getDataPoint(event);
@@ -8466,6 +8658,17 @@ class DrawingToolsManager {
         // If user opens settings for an empty image, keep it (don't auto-delete on deselect).
         if (drawing && drawing.type === 'image') {
             drawing._keepEmpty = true;
+        }
+
+        if (typeof window !== 'undefined' && window.__multichartGrid) {
+            try {
+                const grid = window.__multichartGrid;
+                if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                    const hostId = grid.hostPanelId || 'A';
+                    grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
+                }
+            } catch (_grid) { /* ignore */ }
+            return;
         }
         
         this.settingsPanel.show(
@@ -9426,6 +9629,9 @@ class DrawingToolsManager {
     /** True while the user is dragging/resizing — do not snap points back to stale timestamps. */
     _isDrawingLiveEditing(drawing) {
         if (!drawing) return false;
+        if (Array.isArray(this._bodyDragActiveDrawings) && this._bodyDragActiveDrawings.includes(drawing)) {
+            return true;
+        }
         const liveDepth = this._drawingLiveInteractionDepth || 0;
         if (liveDepth > 0) {
             if (this.resizingDrawing === drawing) return true;
@@ -10661,6 +10867,10 @@ class DrawingToolsManager {
             if (d.type === 'anchored-volume-profile') {
                 return this.isVolumeProfileAnchorBoundaryHit(d, mx, my);
             }
+            if (this._isBoxShapeType(d.type)) {
+                return this._isPointOnDrawingVisibleStroke(d, mx, my)
+                    || this._isPointOnResizeHandle(d, mx, my);
+            }
             if (this._drawingRequiresStrokeOnlyDrag(d.type)) {
                 if (d.type === 'fib-wedge' && this._isPointInFibWedgeBody(d, mx, my)) return true;
                 return this._isPointOnDrawingVisibleStroke(d, mx, my);
@@ -10708,8 +10918,9 @@ class DrawingToolsManager {
         });
     }
 
-    _stopDirectMoveDrag() {
+    _stopDirectMoveDrag(options = {}) {
         this._clearAxisHighlightDragState();
+        const hadDirectMove = !!(this._directMoveMoveHandler || this._directMoveUpHandler);
         if (this._directMoveMoveHandler) {
             document.removeEventListener('mousemove', this._directMoveMoveHandler, true);
             this._directMoveMoveHandler = null;
@@ -10719,6 +10930,9 @@ class DrawingToolsManager {
             this._directMoveUpHandler = null;
         }
         this._directMoveDrawings = null;
+        if (!options.skipLiveInteractionEnd && hadDirectMove && (this._drawingLiveInteractionDepth || 0) > 0) {
+            this._endDrawingLiveInteraction();
+        }
         this._directMovePendingFrame = false;
         this._directMoveLastEvent = null;
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
@@ -11191,7 +11405,7 @@ class DrawingToolsManager {
                 hitsById.set(drawing.id, { drawing, distance: 0, z });
                 continue;
             }
-            if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed') && !hitsById.has(drawing.id)) {
+            if ((drawing.type === 'gann-box' || drawing.type === 'gann-square-fixed' || drawing.type === 'gann-fan') && !hitsById.has(drawing.id)) {
                 if (this._isPointOnGannToolBody(drawing, mouseX, mouseY)
                     && !this._isPointOnGannLevelAdjustHit(drawing, mouseX, mouseY)) {
                     hitsById.set(drawing.id, { drawing, distance: 0, z });
@@ -12543,7 +12757,9 @@ class DrawingToolsManager {
         if (drawingsAtPoint.length > 0) {
             const hoveredDrawing = drawingsAtPoint[0];
             let cursorStyle = 'move';
-            if (hoveredDrawing && hoveredDrawing.type === 'anchored-volume-profile') {
+            if (hoveredDrawing && this._isPointOnResizeHandle(hoveredDrawing, mouseX, mouseY)) {
+                cursorStyle = 'nwse-resize';
+            } else if (hoveredDrawing && hoveredDrawing.type === 'anchored-volume-profile') {
                 if (this.isVolumeProfileAnchorBoundaryHit(hoveredDrawing, mouseX, mouseY)
                     || this.isVolumeProfileAnchoredAnchorLineHit(hoveredDrawing, mouseX, mouseY)) {
                     cursorStyle = 'ew-resize';
@@ -12568,6 +12784,8 @@ class DrawingToolsManager {
                             this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
                             this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
                                 .style('pointer-events', 'none');
+                            this._hoveredDrawing.group.selectAll('.shape-border-hit')
+                                .style('pointer-events', 'stroke');
                         }
                     }
                 }
@@ -12599,6 +12817,9 @@ class DrawingToolsManager {
                             hoveredDrawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
                             hoveredDrawing.group.selectAll('.resize-handle-hit, .custom-handle')
                                 .style('pointer-events', 'all');
+                            hoveredDrawing.group.selectAll('.shape-border-hit')
+                                .style('pointer-events', 'none');
+                            this._raiseResizeHandles(hoveredDrawing);
                         }
                     }
                 } else if (hoveredDrawing.type === 'anchored-volume-profile') {
@@ -12648,6 +12869,8 @@ class DrawingToolsManager {
                         this._hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 0);
                         this._hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
                             .style('pointer-events', 'none');
+                        this._hoveredDrawing.group.selectAll('.shape-border-hit')
+                            .style('pointer-events', 'stroke');
                     }
                 }
                 this._hoveredDrawing = null;

@@ -88,7 +88,91 @@
             return;
         }
 
+        installSettingsParentProxy();
+        installMultichartSettingsModalGuard();
+        pollFor(
+            function () { return installSettingsParentProxy(); },
+            100,
+            60000,
+            function () {},
+            function () {}
+        );
+
         applyInitialContext();
+    }
+
+    /**
+     * Iframe tiles must never host tv-settings-modal locally. Forward every
+     * settings open to the parent main-chart shell (same UX as panel A).
+     */
+    function forwardDrawingSettingsToParent(drawing, x, y) {
+        var drawId = drawing && drawing.id != null ? drawing.id : null;
+        var px = typeof x === 'number' && !isNaN(x) ? x : 0;
+        var py = typeof y === 'number' && !isNaN(y) ? y : 0;
+        try {
+            var parent = window.parent;
+            if (parent && parent !== window) {
+                if (typeof parent.__multichartOpenShapeSettings === 'function') {
+                    parent.__multichartOpenShapeSettings(chartId, drawing && drawing.type ? drawing : drawId, px, py);
+                    return true;
+                }
+                var grid = parent.__multichartGrid;
+                if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                    grid.openDrawingSettingsForPanel(chartId, drawing && drawing.type ? drawing : drawId, px, py);
+                    return true;
+                }
+            }
+        } catch (_) {}
+        try {
+            window.parent.postMessage({
+                type: 'multichart-open-drawing-settings',
+                source: chartId,
+                drawingId: drawId,
+                x: px,
+                y: py,
+            }, '*');
+            return true;
+        } catch (_pm) {}
+        return false;
+    }
+
+    function installMultichartSettingsModalGuard() {
+        if (window.__mcSettingsModalGuardInstalled) return;
+        window.__mcSettingsModalGuardInstalled = true;
+        try {
+            var guardStyle = document.createElement('style');
+            guardStyle.id = 'multichart-settings-modal-guard';
+            guardStyle.textContent = [
+                'html.multichart-embed .tv-settings-modal {',
+                '  display: none !important;',
+                '  visibility: hidden !important;',
+                '  pointer-events: none !important;',
+                '}',
+            ].join('\n');
+            document.head.appendChild(guardStyle);
+        } catch (_) {}
+    }
+
+    function installSettingsParentProxy() {
+        var ch = window.chart;
+        var dm = ch && ch.drawingManager;
+        if (!dm || !dm.settingsPanel) return false;
+        if (dm.settingsPanel.__mcParentProxyInstalled) return true;
+
+        dm.settingsPanel.show = function (drawing, x, y /*, onSave, onDelete */) {
+            forwardDrawingSettingsToParent(drawing, x, y);
+        };
+        dm.settingsPanel.__mcParentProxyInstalled = true;
+
+        if (window.DrawingSettingsPanel
+            && window.DrawingSettingsPanel.prototype
+            && !window.DrawingSettingsPanel.prototype.__mcParentProxyInstalled) {
+            window.DrawingSettingsPanel.prototype.show = function (drawing, x, y) {
+                forwardDrawingSettingsToParent(drawing, x, y);
+            };
+            window.DrawingSettingsPanel.prototype.__mcParentProxyInstalled = true;
+        }
+        return true;
     }
 
     // Apply the file/tf the parent told us to boot with.
@@ -618,6 +702,15 @@
                     && ch.currentTimeframe !== tf) {
                     try { ch.setTimeframe(tf); } catch (_) {}
                 }
+                try {
+                    if (typeof ch.render === 'function') ch.render();
+                } catch (_) {}
+                try {
+                    if (ch.drawingManager && typeof ch.drawingManager.redrawAll === 'function'
+                        && ch.xScale && ch.yScale) {
+                        ch.drawingManager.redrawAll();
+                    }
+                } catch (_) {}
                 // DO NOT call ch.drawingManager.loadDrawings() here.
                 //
                 // chart.js's loadFileData already invokes loadDrawings on

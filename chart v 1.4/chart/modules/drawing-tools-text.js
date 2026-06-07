@@ -79,16 +79,24 @@ function resolveAnnotationTextFill(textColor, backgroundColor, isPlaceholder) {
     return fg;
 }
 
+/** Label/box fill for text tools when background toggle is off → transparent (no gray fallback). */
+function resolveTextToolLabelBackgroundFill(style = {}) {
+    if (!style || style.showLabelBackground === false || style.showBackground === false) {
+        return 'transparent';
+    }
+    const candidate = style.labelBackgroundColor || style.fill || style.backgroundColor;
+    if (candidate && candidate !== 'none' && candidate !== 'transparent') {
+        return candidate;
+    }
+    return 'transparent';
+}
+
 /** Resolved line/box colors for Note (SVG + inline editor must match). */
 function resolveNoteBoxStyle(style = {}) {
     const lineStroke = (style.stroke && style.stroke !== 'none')
         ? style.stroke
         : '#787b86';
-    const boxFill = (style.fill && style.fill !== 'none' && style.fill !== 'transparent')
-        ? style.fill
-        : ((style.backgroundColor && style.backgroundColor !== 'transparent')
-            ? style.backgroundColor
-            : 'rgba(50, 50, 50, 0.9)');
+    const boxFill = resolveTextToolLabelBackgroundFill(style);
     const borderOn = !!(style.stroke && style.stroke !== 'none' && (Number(style.strokeWidth) || 1) > 0);
     const boxStroke = borderOn ? lineStroke : 'none';
     return { lineStroke, boxFill, boxStroke, borderOn };
@@ -1332,7 +1340,7 @@ class NoteBoxTool extends BaseDrawing {
             .attr('y', boxY)
             .attr('width', boxWidth)
             .attr('height', boxHeight)
-            .attr('fill', this.style.backgroundColor)
+            .attr('fill', resolveTextToolLabelBackgroundFill(this.style))
             .attr('rx', this.style.borderRadius)
             .attr('stroke', this.style.stroke || 'none')
             .attr('stroke-width', this.style.strokeWidth || 0)
@@ -1352,11 +1360,12 @@ class NoteBoxTool extends BaseDrawing {
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
+        const noteboxFill = resolveTextToolLabelBackgroundFill(this.style);
         const textElement = this.group.append('text')
             .attr('class', 'inline-editable-text')
             .attr('x', boxX + padding)
             .attr('y', boxY + padding + scaledFontSize)
-            .attr('fill', resolveAnnotationTextFill(this.style.textColor, this.style.backgroundColor, noteboxDisplay.isPlaceholder))
+            .attr('fill', resolveAnnotationTextFill(this.style.textColor, noteboxFill, noteboxDisplay.isPlaceholder))
             .attr('font-size', `${scaledFontSize}px`)
             .attr('font-family', this.style.fontFamily)
             .attr('font-weight', this.style.fontWeight || 'normal')
@@ -4392,6 +4401,10 @@ class PriceLabel2Tool extends BaseDrawing {
 // ============================================================================
 // Signpost 2 Tool - Vertical line with text label below
 // ============================================================================
+function resolveSignpostLabelFill(style) {
+    return resolveTextToolLabelBackgroundFill(style);
+}
+
 class Signpost2Tool extends BaseDrawing {
     constructor(points = [], style = {}, text = '') {
         super('signpost-2', points, style);
@@ -4409,6 +4422,12 @@ class Signpost2Tool extends BaseDrawing {
         this.style.lineLength = style.lineLength || 100;
         if (this.style.wrapText === undefined) this.style.wrapText = !!style.wrapText;
         if (this.style.maxWidth === undefined) this.style.maxWidth = style.maxWidth || 180;
+        if (this.style.showLabelBackground === undefined) {
+            this.style.showLabelBackground = style.showLabelBackground !== false;
+        }
+        if (!this.style.labelBackgroundColor) {
+            this.style.labelBackgroundColor = style.labelBackgroundColor || style.fill || 'rgba(30, 34, 45, 0.95)';
+        }
     }
 
     render(container, scales, renderOptsArg = {}) {
@@ -4431,9 +4450,7 @@ class Signpost2Tool extends BaseDrawing {
         const x1 = scales.chart?.dataIndexToPixel ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
         const y1 = scales.yScale(p1.y);
         const lineColor = this.style.stroke || '#787b86';
-        const labelFill = (this.style.fill && this.style.fill !== 'none' && this.style.fill !== 'transparent')
-            ? this.style.fill
-            : '#2e3238';
+        const labelFill = resolveSignpostLabelFill(this.style);
         const rawTextBorderColor = this.style.borderColor;
         const textBorderColor = (rawTextBorderColor === undefined || rawTextBorderColor === null || rawTextBorderColor === '')
             ? 'none'

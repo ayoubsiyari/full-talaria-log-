@@ -2727,6 +2727,16 @@ export default function MultichartGrid({
                                 dmSet.contextMenu.hide();
                             }
                         }
+                        try {
+                            document.querySelectorAll(".tv-settings-modal").forEach((el) => {
+                                try {
+                                    if (el.externalDropdowns) {
+                                        el.externalDropdowns.forEach((d) => { try { d.remove(); } catch (_) {} });
+                                    }
+                                    el.remove();
+                                } catch (_) {}
+                            });
+                        } catch (_) {}
                         return Promise.resolve(null);
                     }
                     case "deselectDrawings": {
@@ -3166,14 +3176,16 @@ export default function MultichartGrid({
          */
         function openDrawingSettingsForPanel(sourceId, drawingOrId, x, y) {
             let source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            let drawing = null;
+            if (drawingOrId && typeof drawingOrId === "object" && drawingOrId.type) {
+                drawing = drawingOrId;
+            }
+
             let ch = getChartForPanelId(source);
             let dm = ch && ch.drawingManager;
-            let drawing = drawingOrId;
-            if (drawing && typeof drawing === "object" && drawing.type) {
-                // live object passed from host chart
-            } else {
+
+            if (!drawing) {
                 const drawId = drawingOrId;
-                drawing = null;
                 if (dm && Array.isArray(dm.drawings) && drawId != null) {
                     const want = String(drawId);
                     drawing = dm.drawings.find((d) => d && d.id != null && String(d.id) === want) || null;
@@ -3181,96 +3193,114 @@ export default function MultichartGrid({
                 if (!drawing && dm && dm.selectedDrawing) {
                     drawing = dm.selectedDrawing;
                 }
-                // Scan iframe tiles if panel id / chart lookup failed.
-                if (!drawing && drawId != null) {
-                    const want = String(drawId);
-                    const mgr = managerRef.current;
-                    if (mgr && mgr.charts && typeof mgr.charts.entries === "function") {
-                        for (const [pid, entry] of mgr.charts.entries()) {
-                            if (!entry || entry.host || !entry.frame) continue;
-                            try {
-                                const cw = entry.frame.contentWindow;
-                                const ch2 = cw && cw.chart;
-                                const dm2 = ch2 && ch2.drawingManager;
-                                if (!dm2 || !Array.isArray(dm2.drawings)) continue;
-                                const found = dm2.drawings.find(
-                                    (d) => d && d.id != null && String(d.id) === want
-                                );
-                                if (found) {
-                                    source = pid;
-                                    ch = ch2;
-                                    dm = dm2;
-                                    drawing = found;
-                                    break;
-                                }
-                            } catch (_) {}
-                        }
+            }
+
+            const wantId = drawing && drawing.id != null
+                ? String(drawing.id)
+                : (drawingOrId != null && typeof drawingOrId !== "object" ? String(drawingOrId) : null);
+
+            // Resolve chart/dm from iframe tiles when panel lookup failed or drawing came from an iframe.
+            if (!drawing || !dm || (wantId && drawing && !dm.drawings?.some((d) => d && String(d.id) === wantId))) {
+                const mgr = managerRef.current;
+                if (mgr && mgr.charts && typeof mgr.charts.entries === "function") {
+                    for (const [pid, entry] of mgr.charts.entries()) {
+                        if (!entry || entry.host || !entry.frame) continue;
+                        try {
+                            const cw = entry.frame.contentWindow;
+                            const ch2 = cw && cw.chart;
+                            const dm2 = ch2 && ch2.drawingManager;
+                            if (!dm2 || !Array.isArray(dm2.drawings)) continue;
+                            let found = null;
+                            if (wantId) {
+                                found = dm2.drawings.find(
+                                    (d) => d && d.id != null && String(d.id) === wantId
+                                ) || null;
+                            }
+                            if (!found && drawing && drawing.type) {
+                                found = dm2.drawings.find((d) => d === drawing) || null;
+                            }
+                            if (!found && dm2.selectedDrawing) {
+                                found = dm2.selectedDrawing;
+                            }
+                            if (found) {
+                                source = pid;
+                                ch = ch2;
+                                dm = dm2;
+                                drawing = found;
+                                break;
+                            }
+                        } catch (_) {}
                     }
                 }
             }
+
             if (!drawing || !dm) return Promise.resolve(false);
 
-            let px = typeof x === "number" ? x : 0;
-            let py = typeof y === "number" ? y : 0;
-            const mgr = managerRef.current;
-            if (source !== HOST_PANEL_ID && mgr && mgr.charts) {
-                const entry = mgr.charts.get(source);
-                if (entry && entry.frame) {
-                    try {
-                        const r = entry.frame.getBoundingClientRect();
-                        px = r.left + px;
-                        py = r.top + py;
-                    } catch (_) {}
-                }
+            ensureMultichartGlobalSettingsRoot();
+
+            // Close stale legacy modals only — do NOT fire multichart-dismiss here;
+            // that event closes the parent V9 panel synchronously and races with open.
+            closeGlobalLegacyDrawingSettings();
+
+            if (dm.toolbar && typeof dm.toolbar.hide === "function") {
+                dm.toolbar.hide();
             }
 
-            return closeDrawingSettingsOnAllPanels().then(() => {
-                if (dm.toolbar && typeof dm.toolbar.hide === "function") {
-                    dm.toolbar.hide();
-                }
-                const v9Open = typeof window.__v9OpenDrawingSettings === "function"
-                    ? window.__v9OpenDrawingSettings
-                    : null;
+            // One global dialog centered on the parent viewport (all multichart tiles).
+            let px = Math.max(10, (window.innerWidth - 440) / 2);
+            let py = Math.max(
+                60,
+                Math.min((window.innerHeight - 500) / 2, window.innerHeight - 500 - 50)
+            );
+
+            try {
+                window.__v9MultichartSettingsPanelId = source;
+            } catch (_) {}
+            const v9Open = typeof window.__v9OpenDrawingSettings === "function"
+                ? window.__v9OpenDrawingSettings
+                : null;
+            if (v9Open) {
                 try {
-                    window.__v9MultichartSettingsPanelId = source;
-                } catch (_) {}
-                if (v9Open) {
-                    try {
-                        if (v9Open(drawing, px, py)) return true;
-                    } catch (e) {
-                        console.warn("[MultichartGrid] openDrawingSettingsForPanel V9 failed", e && e.message || e);
-                    }
-                }
-                try {
-                    delete window.__v9MultichartSettingsPanelId;
-                } catch (_) {
-                    window.__v9MultichartSettingsPanelId = null;
-                }
-                // Legacy tv-settings-modal: render on the HOST document (global/centered)
-                // but apply save/delete callbacks to the source tile's drawingManager.
-                const modalHostDm = source === HOST_PANEL_ID
-                    ? dm
-                    : (window.chart && window.chart.drawingManager);
-                if (modalHostDm && modalHostDm.settingsPanel && typeof modalHostDm.settingsPanel.show === "function") {
-                    modalHostDm.settingsPanel.show(
-                        drawing,
-                        px,
-                        py,
-                        (updatedDrawing) => {
-                            if (typeof dm.renderDrawing === "function") dm.renderDrawing(updatedDrawing);
-                            if (typeof dm.persistPositionToolDefaults === "function") {
-                                dm.persistPositionToolDefaults(updatedDrawing);
-                            }
-                            if (typeof dm.saveDrawings === "function") dm.saveDrawings();
-                        },
-                        (drawingToDelete) => {
-                            if (typeof dm.deleteDrawing === "function") dm.deleteDrawing(drawingToDelete);
+                    if (v9Open(drawing, px, py)) {
+                        try { delete window.__v9MultichartSettingsPanelId; } catch (_) {
+                            window.__v9MultichartSettingsPanelId = null;
                         }
-                    );
-                    return true;
+                        closeDrawingSettingsOnAllPanels().catch(() => {});
+                        return Promise.resolve(true);
+                    }
+                } catch (e) {
+                    console.warn("[MultichartGrid] openDrawingSettingsForPanel V9 failed", e && e.message || e);
                 }
-                return false;
-            });
+            }
+            try {
+                delete window.__v9MultichartSettingsPanelId;
+            } catch (_) {
+                window.__v9MultichartSettingsPanelId = null;
+            }
+
+            const hostDm = window.chart && window.chart.drawingManager;
+            if (!hostDm || !hostDm.settingsPanel || typeof hostDm.settingsPanel.show !== "function") {
+                console.warn("[MultichartGrid] openDrawingSettingsForPanel: legacy settingsPanel unavailable");
+                return Promise.resolve(false);
+            }
+
+            hostDm.settingsPanel.show(
+                drawing,
+                px,
+                py,
+                (updatedDrawing) => {
+                    if (typeof dm.renderDrawing === "function") dm.renderDrawing(updatedDrawing);
+                    if (typeof dm.persistPositionToolDefaults === "function") {
+                        dm.persistPositionToolDefaults(updatedDrawing);
+                    }
+                    if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+                },
+                (drawingToDelete) => {
+                    if (typeof dm.deleteDrawing === "function") dm.deleteDrawing(drawingToDelete);
+                }
+            );
+            closeDrawingSettingsOnAllPanels().catch(() => {});
+            return Promise.resolve(true);
         }
 
         /**
@@ -3437,9 +3467,19 @@ export default function MultichartGrid({
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
         };
+        window.__multichartOpenShapeSettings = function multichartOpenShapeSettings(sourceId, drawingOrId, x, y) {
+            return openDrawingSettingsForPanel(sourceId, drawingOrId, x, y);
+        };
         ensureMultichartGlobalSettingsRoot();
 
         return () => {
+            try {
+                if (window.__multichartOpenShapeSettings === multichartOpenShapeSettings) {
+                    delete window.__multichartOpenShapeSettings;
+                }
+            } catch (_) {
+                window.__multichartOpenShapeSettings = null;
+            }
             clearMultichartGlobalSettingsRoot();
             if (prevGetActiveChart) window.getActiveChart = prevGetActiveChart;
             else {

@@ -273,6 +273,7 @@ class FibTimeZoneTool extends BaseDrawing {
         this.requiredPoints = 2;
         this.style.stroke = style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
         this.style.strokeWidth = style.strokeWidth || 1;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         const defaultLevels = [
             { value: 0, enabled: true, color: '#787b86' },
             { value: 1, enabled: true, color: '#f23645' },
@@ -337,6 +338,8 @@ class FibTimeZoneTool extends BaseDrawing {
         const getY = (p) => scales.yScale(p.y);
         const chartHeight = scales.chart?.h || 500;
         const chartWidth = scales.chart?.w || 2000;
+
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const xIndex1 = this.points[0].x;
         const xIndex2 = this.points[1].x;
@@ -425,15 +428,17 @@ class FibTimeZoneTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                this.group.append('text')
-                    .attr('class', 'fib-tz-label')
-                    .attr('data-fib-tz', fib)
-                    .attr('x', x + 3)
-                    .attr('y', 15)
-                    .attr('fill', color)
-                    .attr('font-size', '10px')
-                    .style('pointer-events', 'none')
-                    .text(fib);
+                if (showLevelValues) {
+                    this.group.append('text')
+                        .attr('class', 'fib-tz-label')
+                        .attr('data-fib-tz', fib)
+                        .attr('x', x + 3)
+                        .attr('y', 15)
+                        .attr('fill', color)
+                        .attr('font-size', '10px')
+                        .style('pointer-events', 'none')
+                        .text(fib);
+                }
             }
         });
 
@@ -473,6 +478,7 @@ class FibSpeedFanTool extends BaseDrawing {
         if (this.style.gridOpacity === undefined) this.style.gridOpacity = 0.35;
         if (this.style.gridLineWidth === undefined) this.style.gridLineWidth = 1;
         if (this.style.gridLineDasharray === undefined) this.style.gridLineDasharray = '';
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         this.levels = style.levels || [
             { value: 1, enabled: true, color: '#2962ff' },
             { value: 0.75, enabled: true, color: '#00bcd4' },
@@ -510,6 +516,8 @@ class FibSpeedFanTool extends BaseDrawing {
         const x2 = getX(p2);
         const y2 = getY(p2);
         const chartWidth = scales.chart?.w || 2000;
+
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         // Anchor / trend segment between the two anchor points
         const fanTrendEnabled = this.style.trendLineEnabled !== false;
@@ -624,15 +632,17 @@ class FibSpeedFanTool extends BaseDrawing {
                     .attr('opacity', gridOpacity)
                     .style('pointer-events', 'none');
 
-                const labelX = dx >= 0 ? (x1 - 8) : (x1 + 8);
-                this.group.append('text')
-                    .attr('x', labelX)
-                    .attr('y', y + 3)
-                    .attr('fill', l.color)
-                    .attr('font-size', '10px')
-                    .attr('text-anchor', dx >= 0 ? 'end' : 'start')
-                    .style('pointer-events', 'none')
-                    .text(formatRatioLabel(l.value));
+                if (showLevelValues) {
+                    const labelX = dx >= 0 ? (x1 - 8) : (x1 + 8);
+                    this.group.append('text')
+                        .attr('x', labelX)
+                        .attr('y', y + 3)
+                        .attr('fill', l.color)
+                        .attr('font-size', '10px')
+                        .attr('text-anchor', dx >= 0 ? 'end' : 'start')
+                        .style('pointer-events', 'none')
+                        .text(formatRatioLabel(l.value));
+                }
             });
 
             gridLevels.forEach(l => {
@@ -667,14 +677,16 @@ class FibSpeedFanTool extends BaseDrawing {
         enabledForLabels.forEach(l => {
             const xLabel = x1 + (dx * (1 - l.value));
             if (xLabel > 0 && xLabel < chartWidth) {
-                this.group.append('text')
-                    .attr('x', xLabel)
-                    .attr('y', topLabelY)
-                    .attr('fill', l.color)
-                    .attr('font-size', '10px')
-                    .attr('text-anchor', 'middle')
-                    .style('pointer-events', 'none')
-                    .text(l.value);
+                if (showLevelValues) {
+                    this.group.append('text')
+                        .attr('x', xLabel)
+                        .attr('y', topLabelY)
+                        .attr('fill', l.color)
+                        .attr('font-size', '10px')
+                        .attr('text-anchor', 'middle')
+                        .style('pointer-events', 'none')
+                        .text(l.value);
+                }
             }
         });
 
@@ -724,21 +736,23 @@ class FibSpeedFanTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             // Labels on rays (TradingView-like)
-            const labelText = formatRatioLabel(ratio);
-            const labelX = (ratio === 0)
-                ? x2
-                : (x1 + (dx * 0.72));
-            const labelY = (ratio === 0)
-                ? y2
-                : (y1 + ((targetY - y1) / dx) * (labelX - x1));
-            this.group.append('text')
-                .attr('x', labelX)
-                .attr('y', labelY - 4)
-                .attr('fill', color)
-                .attr('font-size', '10px')
-                .attr('text-anchor', 'middle')
-                .style('pointer-events', 'none')
-                .text(labelText);
+            if (showLevelValues) {
+                const labelText = formatRatioLabel(ratio);
+                const labelX = (ratio === 0)
+                    ? x2
+                    : (x1 + (dx * 0.72));
+                const labelY = (ratio === 0)
+                    ? y2
+                    : (y1 + ((targetY - y1) / dx) * (labelX - x1));
+                this.group.append('text')
+                    .attr('x', labelX)
+                    .attr('y', labelY - 4)
+                    .attr('fill', color)
+                    .attr('font-size', '10px')
+                    .attr('text-anchor', 'middle')
+                    .style('pointer-events', 'none')
+                    .text(labelText);
+            }
         });
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -997,6 +1011,7 @@ class FibCirclesTool extends BaseDrawing {
         if (this.style.backgroundOpacity === undefined || this.style.backgroundOpacity === null) {
             this.style.backgroundOpacity = 0.12;
         }
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1102,6 +1117,8 @@ class FibCirclesTool extends BaseDrawing {
 
         this._prepareRenderGroup(container, 'drawing fib-circles', renderOpts);
         this._clearDrawingLabels(scales);
+
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const getX = (p) => scales.chart?.dataIndexToPixel ? 
             scales.chart.dataIndexToPixel(p.x) : scales.xScale(p.x);
@@ -1263,14 +1280,16 @@ class FibCirclesTool extends BaseDrawing {
             const rayS = rayScaleForLevel(level);
             const lx = x1 + dx * rayS;
             const ly = y1 + dy * rayS;
-            this.group.append('text')
-                .attr('x', lx + labelOffsetX)
-                .attr('y', ly + labelOffsetY)
-                .attr('fill', color)
-                .attr('font-size', '10px')
-                .attr('dominant-baseline', 'middle')
-                .style('pointer-events', 'none')
-                .text(level.toFixed(3));
+            if (showLevelValues) {
+                this.group.append('text')
+                    .attr('x', lx + labelOffsetX)
+                    .attr('y', ly + labelOffsetY)
+                    .attr('fill', color)
+                    .attr('font-size', '10px')
+                    .attr('dominant-baseline', 'middle')
+                    .style('pointer-events', 'none')
+                    .text(level.toFixed(3));
+            }
         });
 
         const showTrendLine = this.style.trendLineEnabled !== false
@@ -1515,6 +1534,7 @@ class FibArcsTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         this.levels = style.levels || [
             { value: 0.236, enabled: true, color: '#f23645' },
             { value: 0.382, enabled: true, color: '#ff9800' },
@@ -1576,6 +1596,7 @@ class FibArcsTool extends BaseDrawing {
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
         const fullCirc = this.style.v9FibArcsFullCircle === true || this.style.fullCircle === true;
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const hexToRgba = (hex, alpha) => {
             if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
@@ -1683,13 +1704,15 @@ class FibArcsTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            this.group.append('text')
-                .attr('x', x1 + r + 5)
-                .attr('y', y1)
-                .attr('fill', color)
-                .attr('font-size', '10px')
-                .style('pointer-events', 'none')
-                .text(level.toFixed(3));
+            if (showLevelValues) {
+                this.group.append('text')
+                    .attr('x', x1 + r + 5)
+                    .attr('y', y1)
+                    .attr('fill', color)
+                    .attr('font-size', '10px')
+                    .style('pointer-events', 'none')
+                    .text(level.toFixed(3));
+            }
         });
 
         if (this.style.trendLineEnabled !== false) {
@@ -1765,6 +1788,7 @@ class FibWedgeTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         this.levels = style.levels || [
             { value: 0, enabled: false, color: '#787b86' },
             { value: 0.236, enabled: true, color: '#f23645' },
@@ -1917,6 +1941,7 @@ class FibWedgeTool extends BaseDrawing {
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const enabledLevelsSorted = this.levels
             .map(l => ({
@@ -2017,14 +2042,16 @@ class FibWedgeTool extends BaseDrawing {
 
             const labelR = Math.max(0, r - 10);
             const lp = polar(midAngle, labelR);
-            this.group.append('text')
-                .attr('x', lp.x)
-                .attr('y', lp.y)
-                .attr('fill', color)
-                .attr('font-size', '10px')
-                .attr('text-anchor', 'middle')
-                .style('pointer-events', 'none')
-                .text(level.toString());
+            if (showLevelValues) {
+                this.group.append('text')
+                    .attr('x', lp.x)
+                    .attr('y', lp.y)
+                    .attr('fill', color)
+                    .attr('font-size', '10px')
+                    .attr('text-anchor', 'middle')
+                    .style('pointer-events', 'none')
+                    .text(level.toString());
+            }
         });
 
         // Outer boundary arc — only when at least one level is on (skip if level 1 arc already drawn).
@@ -3557,6 +3584,7 @@ class GannFanTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
 
         const defaultFanLevels = GannFanTool.defaultFanLevels();
 
@@ -3708,6 +3736,7 @@ class GannFanTool extends BaseDrawing {
 
         const showZones = this.style.showZones !== false;
         const zonesOpacity = (this.style.backgroundOpacity != null) ? this.style.backgroundOpacity : 0.12;
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const toRgba = (color, alpha) => {
             if (!color) return `rgba(120, 123, 134, ${alpha})`;
@@ -3785,20 +3814,22 @@ class GannFanTool extends BaseDrawing {
             })
             .sort((a, b) => a.slope - b.slope);
 
-        // Hitbox (big wedge) for easy selection + dblclick settings
-        const hit = [
-            { x: x1, y: y1 },
-            { x: xBound, y: yMin },
-            { x: xBound, y: yMax }
-        ];
-        this.group.append('path')
-            .attr('class', 'shape-border-hit gann-fan-hitbox')
-            .attr('d', `M ${hit[0].x} ${hit[0].y} L ${hit[1].x} ${hit[1].y} L ${hit[2].x} ${hit[2].y} Z`)
-            .attr('fill', 'transparent')
-            .attr('stroke', 'transparent')
-            .attr('stroke-width', Math.max(16, 18 * scaleFactor))
-            .style('pointer-events', 'none')
-            .style('cursor', 'default');
+        // Hitbox (big wedge) for easy selection + dblclick settings — drawn last so it sits above rays/zones.
+        const appendFanHitbox = () => {
+            const hit = [
+                { x: x1, y: y1 },
+                { x: xBound, y: yMin },
+                { x: xBound, y: yMax }
+            ];
+            this.group.append('path')
+                .attr('class', 'shape-border-hit gann-fan-hitbox')
+                .attr('d', `M ${hit[0].x} ${hit[0].y} L ${hit[1].x} ${hit[1].y} L ${hit[2].x} ${hit[2].y} Z`)
+                .attr('fill', 'rgba(255,255,255,0.001)')
+                .attr('stroke', 'transparent')
+                .attr('stroke-width', Math.max(16, 18 * scaleFactor))
+                .style('pointer-events', 'all')
+                .style('cursor', 'move');
+        };
 
         // Zones (between consecutive rays)
         if (showZones && rays.length >= 2) {
@@ -3840,7 +3871,7 @@ class GannFanTool extends BaseDrawing {
 
             const labelX = Math.max(xMin, Math.min(xMax, x1 + labelDx));
             const labelY = y1 + (ray.slope * (labelX - x1));
-            if (isFinite(labelX) && isFinite(labelY) && labelX >= xMin && labelX <= xMax && labelY >= yMin && labelY <= yMax) {
+            if (showLevelValues && isFinite(labelX) && isFinite(labelY) && labelX >= xMin && labelX <= xMax && labelY >= yMin && labelY <= yMax) {
                 this.group.append('text')
                     .attr('x', Math.max(xMin, Math.min(xMax, labelX + 6)))
                     .attr('y', labelY)
@@ -3853,33 +3884,9 @@ class GannFanTool extends BaseDrawing {
             }
         });
 
-        // Level hit targets (indexed by style.fanLevels for drag + settings sync)
-        fanLevelsRaw.forEach((rawLevel, idx) => {
-            if (rawLevel && rawLevel.enabled === false) return;
-            const v = rawLevel && rawLevel.value != null ? parseFloat(rawLevel.value) : NaN;
-            if (!isFinite(v)) return;
-            const slope = baseSlope * v;
-            const end = rayEndToBounds(slope);
-            const color = (rawLevel && rawLevel.color) ? rawLevel.color : (this.style.stroke || '#4caf50');
-            const perLevelWidth = (rawLevel.lineWidth != null && !isNaN(parseInt(rawLevel.lineWidth))) ? parseInt(rawLevel.lineWidth) : null;
-            const widthPx = (globalWidth !== null ? globalWidth : (perLevelWidth !== null ? perLevelWidth : baseLineWidth));
-            const w = (v === 1) ? Math.max(0.5, (widthPx * scaleFactor) * 1.6) : Math.max(0.5, widthPx * scaleFactor);
-            const hitW = Math.max(10, w * 6);
-
-            this.group.append('line')
-                .attr('class', 'gann-level-hit')
-                .attr('x1', x1).attr('y1', y1)
-                .attr('x2', end.x).attr('y2', end.y)
-                .attr('stroke', 'rgba(255,255,255,0.001)')
-                .attr('stroke-width', hitW)
-                .attr('stroke-dasharray', '')
-                .attr('opacity', 1)
-                .style('pointer-events', 'stroke')
-                .style('cursor', 'move')
-                .attr('data-gann-level-array', 'fanLevels')
-                .attr('data-gann-level-index', idx)
-                .attr('data-gann-level-orient', 'fan-multiplier');
-        });
+        // Level values are edited in settings only — no per-ray drag (avoids whole-fan skew on mouse move).
+        // Whole-tool move uses gann-fan-hitbox; direction/scale uses the two anchor handles.
+        appendFanHitbox();
 
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
         return this.group;

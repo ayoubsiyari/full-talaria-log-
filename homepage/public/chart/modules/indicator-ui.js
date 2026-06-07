@@ -3121,7 +3121,7 @@ function createIndicatorSelectionMenu(chartInstance) {
                 'sma', 'ema', 'wma', 'dema', 'tema', 'hma', 'bb', 'envelope', 'vwap', 'donchian', 'keltner', 'psar', 'supertrend', 'stddev',
                 'roc', 'mom',
                 'rsi', 'macd', 'stoch', 'stochrsi', 'atr', 'cci', 'adx', 'willr', 'mfi', 'aroon', 'cmf', 'trix', 'ao', 'uo', 'vortex', 'dpo',
-                'massindex', 'coppock', 'rvi', 'elderray', 'seasonality', 'cotnet',
+                'massindex', 'coppock', 'rvi', 'elderray', 'cotnet',
                 'obv', 'adr', 'volume'
             ]
         },
