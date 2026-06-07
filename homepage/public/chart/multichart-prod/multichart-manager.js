@@ -658,13 +658,6 @@
                             self._pushSyncModeToChart(sourceChart);
                             self._initialSyncToHost(sourceChart);
                         }, 0);
-                    } else if (!sourceChart.host && newCount > 0 && this.syncMode.visibleRange) {
-                        // Data refresh after TF/file load can reset viewport — re-snap to host.
-                        const self = this;
-                        clearTimeout(sourceChart._resyncAfterDataTimer);
-                        sourceChart._resyncAfterDataTimer = setTimeout(function () {
-                            self._initialSyncToHost(sourceChart);
-                        }, 80);
                     }
                 }
                 return;
@@ -855,7 +848,7 @@
             }
             const win = chartEntry.frame && chartEntry.frame.contentWindow;
             if (win && typeof win.__multichartSyncApply === 'function') {
-                if (msg && msg.type === 'visibleRange') {
+                if (msg && msg.panSync && msg.type === 'visibleRange') {
                     win.__multichartSyncApply(msg);
                     return;
                 }

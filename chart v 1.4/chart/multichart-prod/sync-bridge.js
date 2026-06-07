@@ -1153,19 +1153,22 @@
             // respect its toggles. This prevents the raw message listener
             // (which bypasses the manager's _fanOut gate) from applying
             // sync messages that the user has explicitly turned off.
-            const smGate = effectiveSyncMode();
-            if (smGate) {
+            // Sync-mode gate: only the host bridge wires syncModeGate. Iframe
+            // bridges must NOT gate inbound — the manager already filtered at
+            // fan-out; gating here with a default-false localSyncMode broke
+            // Date Range pan/zoom on iframe panels.
+            if (syncModeGate) {
                 var mt = msg.type;
-                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !smGate.crosshair) return;
-                if (mt === 'visibleRange' && !smGate.visibleRange) {
+                if ((mt === 'crosshair' || mt === 'crosshair-clear') && !syncModeGate.crosshair) return;
+                if (mt === 'visibleRange' && !syncModeGate.visibleRange) {
                     if (!msg.forceInitialSync
                         && !(msg.causationId && String(msg.causationId).indexOf('host-init-') === 0)) {
                         return;
                     }
                 }
-                if (mt === 'symbol' && !smGate.symbol) return;
+                if (mt === 'symbol' && !syncModeGate.symbol) return;
                 if ((mt === 'drawing-add' || mt === 'drawing-update'
-                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !smGate.drawings) return;
+                  || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;
             }
 
             const cleaned = G.filterForbiddenFields(msg);
@@ -1447,8 +1450,11 @@
         }
 
         function refreshChartSyncCrosshairFlag() {
-            const sm = effectiveSyncMode();
-            chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
+            if (syncModeGate) {
+                chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
+            } else {
+                chart.syncCrosshair = !!(localSyncMode.crosshair || localSyncMode.visibleRange);
+            }
         }
 
         if (!opts.skipMessageListener) {
@@ -1460,25 +1466,9 @@
         function applyCrosshair(m) {
             state.applied.add(m.causationId);
             beginApplying(true);
-
-            const sm = effectiveSyncMode();
-            const coupleViewport = !!(sm && sm.visibleRange)
-                && Number.isFinite(m.startTime) && Number.isFinite(m.endTime);
-            if (coupleViewport) {
-                const sameTf = sameTimeframeMessage(chart, m);
-                let aligned = false;
-                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.endTime)) {
-                    aligned = applyMatchedViewport(chart, m);
-                }
-                if (!aligned && sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
-                    aligned = applyPanDragFollow(chart, m);
-                }
-                if (!aligned && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)) {
-                    applyMatchedViewport(chart, m);
-                }
-            }
-
-            const usePlotFraction = coupleViewport && Number.isFinite(m.plotFraction);
+            // Viewport alignment is owned by visibleRange sync — do not refit
+            // here on every mouse move (that fought Date Range pan/zoom).
+            const usePlotFraction = Number.isFinite(m.plotFraction);
             chart.receiveCrosshairSync(toMillis(m.time), null, null, {
                 usePlotFraction: usePlotFraction,
                 plotFraction: m.plotFraction,
