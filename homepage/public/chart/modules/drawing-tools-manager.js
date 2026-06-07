@@ -44,6 +44,37 @@ function resolveV9OpenDrawingSettings() {
     return null;
 }
 
+/** Multichart iframe tiles must never show legacy modals locally — parent opens settings. */
+function isMultichartIframeEmbed() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+    if (window.parent === window) return false;
+    if (document.documentElement.classList.contains('multichart-embed')) return true;
+    try {
+        return new URLSearchParams(window.location.search || '').get('multichart') === '1';
+    } catch (_q) {
+        return false;
+    }
+}
+
+function requestMultichartParentDrawingSettings(drawing, x, y) {
+    let panelId = 'embed';
+    try {
+        panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
+    } catch (_q) { /* ignore */ }
+    try {
+        window.parent.postMessage({
+            type: 'multichart-open-drawing-settings',
+            source: panelId,
+            drawingId: drawing && drawing.id != null ? drawing.id : null,
+            x: x,
+            y: y,
+        }, '*');
+        return true;
+    } catch (_pm) {
+        return false;
+    }
+}
+
 class DrawingToolsManager {
     constructor(chartInstance) {
         this.chart = chartInstance;
@@ -1337,6 +1368,19 @@ class DrawingToolsManager {
                 typeof anchorY === 'number' && !Number.isNaN(anchorY)
                     ? anchorY
                     : rect.bottom + 10;
+            if (isMultichartIframeEmbed()) {
+                self.editDrawing(drawing, x, y);
+                return;
+            }
+            // Multichart host tile A: same global settings surface as iframe postMessage path.
+            try {
+                const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+                if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                    const panelId = grid.hostPanelId || 'A';
+                    grid.openDrawingSettingsForPanel(panelId, drawing, x, y);
+                    return;
+                }
+            } catch (_grid) { /* ignore */ }
             const v9Open = resolveV9OpenDrawingSettings();
             if (v9Open) {
                 try {
@@ -2298,8 +2342,10 @@ class DrawingToolsManager {
                 // Keep group pointer-events none
                 drawing.group.style('pointer-events', 'none');
                 // Lines, text, handles use 'all'
-                drawing.group.selectAll('line, polyline, text, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle')
+                drawing.group.selectAll('line, polyline, text, .resize-handle-hit, .resize-handle-group, .custom-handle')
                     .style('pointer-events', 'all');
+                drawing.group.selectAll('.resize-handle')
+                    .style('pointer-events', 'none');
                 // Shape borders use visibleStroke to ignore transparent fill
                 drawing.group.selectAll('.shape-border')
                     .style('pointer-events', 'visibleStroke');
@@ -5227,6 +5273,11 @@ class DrawingToolsManager {
             if (typeof window !== 'undefined' && typeof window.syncMagnetButton === 'function') {
                 window.syncMagnetButton();
             }
+            // Multichart: mirror post-draw deselect to every tile (legacy panelManager
+            // path in clearTool() does not cover iframe peers).
+            if (this.chart && typeof this.chart._broadcastMultichartClearDrawingTool === 'function') {
+                this.chart._broadcastMultichartClearDrawingTool();
+            }
             // Don't set cursor tool as active - let user click it to reactivate the last tool
         } else {
             this._applyPlacementModePointerEvents();
@@ -5801,8 +5852,10 @@ class DrawingToolsManager {
         
         // Enable pointer events on STROKE elements only (not fills)
         // For lines and text, use 'all'; for shape borders, use 'stroke' to ONLY detect stroke clicks
-        drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke):not(.rr-avg-zone-edge), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
+        drawing.group.selectAll('line:not(.shape-border-hit):not(.rr-entry-stroke):not(.rr-avg-zone-edge), polyline, text, circle:not(.pin-center-hole), ellipse, .resize-handle-hit, .resize-handle-group, .custom-handle, .image-content, .image-placeholder')
             .style('pointer-events', 'all');
+        drawing.group.selectAll('.resize-handle')
+            .style('pointer-events', 'none');
         // Channel tools with fill: move only from lines, not filled interior.
         if (this._isWedgeChannelStrokeOnlyType(drawing.type)) {
             drawing.group.selectAll('line:not(.shape-border-hit)')
@@ -5907,8 +5960,10 @@ class DrawingToolsManager {
                     .style('pointer-events', 'all')
                     .style('cursor', 'default');
 
-                drawing.group.selectAll('.resize-handle, .resize-handle-hit, .resize-handle-group')
+                drawing.group.selectAll('.resize-handle-hit, .resize-handle-group')
                     .style('pointer-events', 'all');
+                drawing.group.selectAll('.resize-handle')
+                    .style('pointer-events', 'none');
 
                 drawing.group.selectAll('.volume-profile-values-label')
                     .style('pointer-events', 'all')
@@ -7327,8 +7382,8 @@ class DrawingToolsManager {
         };
 
         const handles = drawing.type === 'anchored-volume-profile'
-            ? drawing.group.selectAll('.resize-handle-hit[data-point-index="0"]')
-            : drawing.group.selectAll('.resize-handle-hit');
+            ? drawing.group.selectAll('.resize-handle-hit[data-point-index="0"], .resize-handle[data-point-index="0"]')
+            : drawing.group.selectAll('.resize-handle-hit, .resize-handle');
         handles.on('.drag', null);
 
         handles.call(
@@ -7514,7 +7569,7 @@ class DrawingToolsManager {
         }
         if (this._resizePointerSource === 'document') {
             if (drawing.group && !drawing.group.empty()) {
-                drawing.group.selectAll('.resize-handle-hit').on('.drag', null);
+                drawing.group.selectAll('.resize-handle-hit, .resize-handle').on('.drag', null);
             }
         } else {
             this.setupHandleDrag(drawing);
@@ -7989,6 +8044,9 @@ class DrawingToolsManager {
                 return;
             }
             // Single selection - deselect all others
+            if (this.chart && typeof this.chart._requestMultichartClearDrawingUiOnOtherPanels === 'function') {
+                this.chart._requestMultichartClearDrawingUiOnOtherPanels();
+            }
             this.deselectAll({ forSelectionChange: true });
             drawing.select();
             this.selectedDrawing = drawing;
@@ -8114,6 +8172,9 @@ class DrawingToolsManager {
         this.selectedDrawing = null;
         this.selectedDrawings = [];
         this.toolbar.hide(); // Hide toolbar
+        if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
+            this.settingsPanel.hide();
+        }
         this.redrawAll();
         this._updateAxisZonePointerEvents();
         if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
@@ -8356,12 +8417,28 @@ class DrawingToolsManager {
      * Edit drawing settings
      */
     editDrawing(drawing, x, y) {
-        // V9 hook: if TalariaV8bLive has registered an opener, use the V9
-        // floating panel instead of the legacy tv-settings-modal. The hook
-        // returns true if it handled the drawing, false to fall through.
         if (this.settingsPanel && typeof this.settingsPanel.hide === 'function') {
             this.settingsPanel.hide();
         }
+
+        // Multichart iframe: legacy modals are trapped inside the tile — ask the
+        // parent shell to open the same global settings surface as the main chart.
+        if (isMultichartIframeEmbed()) {
+            requestMultichartParentDrawingSettings(drawing, x, y);
+            return;
+        }
+
+        // Multichart host tile A: route through the grid so coords + dismiss match iframe path.
+        try {
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (grid && typeof grid.openDrawingSettingsForPanel === 'function') {
+                const hostId = grid.hostPanelId || 'A';
+                grid.openDrawingSettingsForPanel(hostId, drawing, x, y);
+                return;
+            }
+        } catch (_grid) { /* ignore */ }
+
+        // Single-chart / fallback: V9 hook then legacy modal on this document.
         const v9Open = resolveV9OpenDrawingSettings();
         if (v9Open && drawing) {
             try {
@@ -12503,8 +12580,10 @@ class DrawingToolsManager {
                             hoveredDrawing.group.selectAll('.resize-handle[data-point-index="0"], .custom-handle')
                                 .style('opacity', 1);
                             if (!this._isPlacementModeActive()) {
+                                hoveredDrawing.group.selectAll('.resize-handle[data-point-index="0"]')
+                                    .style('pointer-events', 'none');
                                 hoveredDrawing.group.selectAll(
-                                    '.resize-handle[data-point-index="0"], .resize-handle-hit[data-point-index="0"], .custom-handle'
+                                    '.resize-handle-hit[data-point-index="0"], .custom-handle'
                                 ).style('pointer-events', 'all');
                             }
                         } else {
@@ -12517,7 +12596,8 @@ class DrawingToolsManager {
                     } else {
                         hoveredDrawing.group.selectAll('.resize-handle, .custom-handle').style('opacity', 1);
                         if (!this._isPlacementModeActive()) {
-                            hoveredDrawing.group.selectAll('.resize-handle, .resize-handle-hit, .custom-handle')
+                            hoveredDrawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
+                            hoveredDrawing.group.selectAll('.resize-handle-hit, .custom-handle')
                                 .style('pointer-events', 'all');
                         }
                     }

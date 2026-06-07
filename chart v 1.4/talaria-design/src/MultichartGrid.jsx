@@ -48,6 +48,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 //     cleared, restoring #chartWrapper to its CSS default fill behavior
 const HOST_PANEL_ID = "A";
 const HOST_WRAPPER_ID = "chartWrapper";
+const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
 // ─── parent-side bridge loader ──────────────────────────────────────────────
@@ -741,6 +742,52 @@ function ensureLoadingStyleInjected() {
     document.head.appendChild(s);
 }
 
+function ensureMultichartGlobalSettingsRoot() {
+    if (typeof document === "undefined") return null;
+    let el = document.getElementById(MULTICHART_GLOBAL_SETTINGS_ROOT_ID);
+    if (!el) {
+        el = document.createElement("div");
+        el.id = MULTICHART_GLOBAL_SETTINGS_ROOT_ID;
+        el.setAttribute("data-multichart-global-settings", "1");
+        el.style.cssText = "position:fixed;inset:0;z-index:2147483646;pointer-events:none;";
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
+function clearMultichartGlobalSettingsRoot() {
+    if (typeof document === "undefined") return;
+    closeGlobalLegacyDrawingSettings();
+    const el = document.getElementById(MULTICHART_GLOBAL_SETTINGS_ROOT_ID);
+    if (el) {
+        try { el.remove(); } catch (_) {}
+    }
+}
+
+/** Remove every legacy tv-settings-modal from the parent shell. */
+function closeGlobalLegacyDrawingSettings() {
+    if (typeof document === "undefined") return;
+    try {
+        document.querySelectorAll(".tv-settings-modal").forEach((el) => {
+            try {
+                if (el.externalDropdowns) {
+                    el.externalDropdowns.forEach((d) => { try { d.remove(); } catch (_) {} });
+                }
+                el.remove();
+            } catch (_) {}
+        });
+        document.querySelectorAll(".tv-external-dropdown").forEach((d) => {
+            try { d.remove(); } catch (_) {}
+        });
+    } catch (_) {}
+    try {
+        const hostDm = window.chart && window.chart.drawingManager;
+        if (hostDm && hostDm.settingsPanel && typeof hostDm.settingsPanel.hide === "function") {
+            hostDm.settingsPanel.hide();
+        }
+    } catch (_) {}
+}
+
 // ─── host-slot positioning ──────────────────────────────────────────────────
 //
 // applyHostSlot: position the parent's #chartWrapper to overlay cell A's grid
@@ -1248,6 +1295,12 @@ export default function MultichartGrid({
                     if (typeof setFocusedPanelId === "function") {
                         setFocusedPanelId(id);
                     }
+                    // Always clear peer tiles — focus may already equal `id` (e.g. host
+                    // stayed A while the user opened settings inside an iframe).
+                    const grid = window.__multichartGrid;
+                    if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                        grid.clearDrawingUiOnOtherPanels(id);
+                    }
                 },
                 onContextMenu: function (panelId, msg) {
                     const ch = window.chart;
@@ -1546,13 +1599,20 @@ export default function MultichartGrid({
         // instead — clicking anywhere on the parent chart means the
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
-        const onWrapperDown = () => {
+        const onHostPointerDown = () => {
             if (typeof setFocusedPanelId === "function") {
                 setFocusedPanelId(HOST_PANEL_ID);
             }
+            // Always clear iframe chrome — focus may already be A while a peer
+            // still has its legacy settings modal open.
+            const grid = window.__multichartGrid;
+            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                grid.clearDrawingUiOnOtherPanels(HOST_PANEL_ID);
+            }
         };
         if (wrapper) {
-            wrapper.addEventListener("mousedown", onWrapperDown, { capture: true });
+            wrapper.addEventListener("mousedown", onHostPointerDown, { capture: true });
+            wrapper.addEventListener("pointerdown", onHostPointerDown, { capture: true });
         }
 
         return () => {
@@ -1561,7 +1621,8 @@ export default function MultichartGrid({
             window.removeEventListener("resize", onWin);
             window.removeEventListener("scroll", onWin, { capture: true });
             if (wrapper) {
-                wrapper.removeEventListener("mousedown", onWrapperDown, { capture: true });
+                wrapper.removeEventListener("mousedown", onHostPointerDown, { capture: true });
+                wrapper.removeEventListener("pointerdown", onHostPointerDown, { capture: true });
             }
             clearHostSlot();
         };
@@ -2418,7 +2479,15 @@ export default function MultichartGrid({
         // chart event handler, which may then post a fresh chart-state
         // a moment later. Microtask defer means we publish AFTER state
         // has settled if both arrive in the same frame.
-        const t = setTimeout(() => dispatchFocusChanged(focusedPanelId), 0);
+        const t = setTimeout(() => {
+            dispatchFocusChanged(focusedPanelId);
+            const grid = window.__multichartGrid;
+            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                grid.clearDrawingUiOnOtherPanels(focusedPanelId);
+            } else if (grid && typeof grid.deselectDrawingsOnNonFocusedPanels === "function") {
+                grid.deselectDrawingsOnNonFocusedPanels(focusedPanelId);
+            }
+        }, 0);
         return () => clearTimeout(t);
     }, [focusedPanelId]);
 
@@ -2590,7 +2659,8 @@ export default function MultichartGrid({
                     case "clearActiveDrawingTool": {
                         const dmc = ch.drawingManager;
                         if (!dmc) return Promise.resolve(null);
-                        if (typeof dmc.clearTool === "function") dmc.clearTool();
+                        const mirroredClear = !!(args && args.mirrored);
+                        if (typeof dmc.clearTool === "function") dmc.clearTool(mirroredClear);
                         else dmc.currentTool = null;
                         return Promise.resolve(null);
                     }
@@ -2630,6 +2700,68 @@ export default function MultichartGrid({
                         return Promise.resolve({
                             indicators: list.map((i) => ({ id: i.id, type: i.type || i.name || null })),
                         });
+                    }
+                    case "clearOnlyDrawings": {
+                        if (typeof ch.clearOnlyDrawings === "function") {
+                            ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
+                        } else if (ch.drawingManager && typeof ch.drawingManager.clearDrawings === "function") {
+                            ch.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        return Promise.resolve(null);
+                    }
+                    case "clearOnlyIndicators": {
+                        if (typeof ch.clearOnlyIndicators === "function") {
+                            ch.clearOnlyIndicators({ confirmPrompt: false });
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        return Promise.resolve(null);
+                    }
+                    case "closeDrawingSettings": {
+                        const dmSet = ch.drawingManager;
+                        if (dmSet) {
+                            if (dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === "function") {
+                                dmSet.settingsPanel.hide();
+                            }
+                            if (dmSet.contextMenu && typeof dmSet.contextMenu.hide === "function") {
+                                dmSet.contextMenu.hide();
+                            }
+                        }
+                        return Promise.resolve(null);
+                    }
+                    case "deselectDrawings": {
+                        const dmDes = ch.drawingManager;
+                        if (!dmDes) return Promise.resolve(null);
+                        if (typeof dmDes.deselectAll === "function") {
+                            dmDes.deselectAll({ forSelectionChange: true });
+                        } else {
+                            dmDes.selectedDrawing = null;
+                            if (Array.isArray(dmDes.selectedDrawings)) dmDes.selectedDrawings = [];
+                            if (dmDes.toolbar && typeof dmDes.toolbar.hide === "function") {
+                                dmDes.toolbar.hide();
+                            }
+                            if (dmDes.settingsPanel && typeof dmDes.settingsPanel.hide === "function") {
+                                dmDes.settingsPanel.hide();
+                            }
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        return Promise.resolve(null);
+                    }
+                    case "clearDrawingsAndIndicators": {
+                        if (typeof ch.clearDrawingsAndIndicators === "function") {
+                            ch.clearDrawingsAndIndicators({ confirmPrompt: false, skipBroadcast: true });
+                        } else {
+                            if (typeof ch.clearOnlyDrawings === "function") {
+                                ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
+                            } else if (ch.drawingManager && typeof ch.drawingManager.clearDrawings === "function") {
+                                ch.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                            }
+                            if (typeof ch.clearOnlyIndicators === "function") {
+                                ch.clearOnlyIndicators({ confirmPrompt: false });
+                            }
+                        }
+                        try { if (typeof ch.render === "function") ch.render(); } catch (_) {}
+                        return Promise.resolve(null);
                     }
                     case "getOrderPanelPriceSnapshot": {
                         const omSnap = ch.orderManager;
@@ -2931,6 +3063,242 @@ export default function MultichartGrid({
             }
         }
 
+        function forEachIframePanelExcept(sourceId, fn) {
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts || typeof mgr.charts.values !== "function") return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || c.id === sourceId) continue;
+                fn(c.id, c);
+            }
+        }
+
+        /**
+         * Close legacy settings modals on EVERY tile (host + all iframes).
+         * Only one global shape settings dialog may exist at a time.
+         */
+        function closeDrawingSettingsOnAllPanels() {
+            closeGlobalLegacyDrawingSettings();
+            const mgr = managerRef.current;
+            const proms = [
+                applyHostCommand("closeDrawingSettings", null).catch((e) => {
+                    console.warn("[MultichartGrid] closeDrawingSettings host failed", e && e.message || e);
+                }),
+            ];
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue;
+                    if (typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(c.id, "closeDrawingSettings", null);
+                    } else {
+                        proms.push(
+                            mgr.sendCommand(c.id, "closeDrawingSettings", null).catch((e) => {
+                                console.warn("[MultichartGrid] closeDrawingSettings", c.id, "failed", e && e.message || e);
+                            })
+                        );
+                    }
+                }
+            }
+            return Promise.all(proms);
+        }
+
+        /**
+         * @deprecated use closeDrawingSettingsOnAllPanels — kept for callers that
+         * previously closed "other" panels only; settings are now globally exclusive.
+         */
+        function closeDrawingSettingsOnOtherPanels(sourceId) {
+            void sourceId;
+            return closeDrawingSettingsOnAllPanels();
+        }
+
+        /**
+         * Deselect shapes + hide floating toolbars on every tile EXCEPT the
+         * focused one. TradingView-style: clicking another panel clears the
+         * previous panel's selection chrome.
+         */
+        function deselectDrawingsOnNonFocusedPanels(focusedId) {
+            const focus = focusedId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            const mgr = managerRef.current;
+            const proms = [];
+            if (focus !== HOST_PANEL_ID) {
+                proms.push(
+                    applyHostCommand("deselectDrawings", null).catch((e) => {
+                        console.warn("[MultichartGrid] deselect host failed", e && e.message || e);
+                    })
+                );
+            }
+            forEachIframePanelExcept(focus, (id) => {
+                if (mgr && typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(id, "deselectDrawings", null);
+                } else if (mgr) {
+                    proms.push(
+                        mgr.sendCommand(id, "deselectDrawings", null).catch((e) => {
+                            console.warn("[MultichartGrid] deselect", id, "failed", e && e.message || e);
+                        })
+                    );
+                }
+            });
+            return Promise.all(proms);
+        }
+
+        /**
+         * TradingView-style exclusive drawing UI: deselect shapes, hide floating
+         * toolbars, and close settings/context menus on every tile except `sourceId`.
+         */
+        function clearDrawingUiOnOtherPanels(sourceId, opts) {
+            const source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            const skipDismiss = !!(opts && opts.skipV9Dismiss);
+            if (!skipDismiss) {
+                closeGlobalLegacyDrawingSettings();
+                try {
+                    window.dispatchEvent(new CustomEvent("talaria:v9-cleared-selection"));
+                    window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
+                } catch (_) {}
+            }
+            return Promise.all([
+                deselectDrawingsOnNonFocusedPanels(source),
+                closeDrawingSettingsOnAllPanels(),
+            ]);
+        }
+
+        /**
+         * Open shape settings globally on the parent shell (V9 panel or legacy modal
+         * on the host document) for one tile. Iframe tiles postMessage here.
+         */
+        function openDrawingSettingsForPanel(sourceId, drawingOrId, x, y) {
+            let source = sourceId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            let ch = getChartForPanelId(source);
+            let dm = ch && ch.drawingManager;
+            let drawing = drawingOrId;
+            if (drawing && typeof drawing === "object" && drawing.type) {
+                // live object passed from host chart
+            } else {
+                const drawId = drawingOrId;
+                drawing = null;
+                if (dm && Array.isArray(dm.drawings) && drawId != null) {
+                    const want = String(drawId);
+                    drawing = dm.drawings.find((d) => d && d.id != null && String(d.id) === want) || null;
+                }
+                if (!drawing && dm && dm.selectedDrawing) {
+                    drawing = dm.selectedDrawing;
+                }
+                // Scan iframe tiles if panel id / chart lookup failed.
+                if (!drawing && drawId != null) {
+                    const want = String(drawId);
+                    const mgr = managerRef.current;
+                    if (mgr && mgr.charts && typeof mgr.charts.entries === "function") {
+                        for (const [pid, entry] of mgr.charts.entries()) {
+                            if (!entry || entry.host || !entry.frame) continue;
+                            try {
+                                const cw = entry.frame.contentWindow;
+                                const ch2 = cw && cw.chart;
+                                const dm2 = ch2 && ch2.drawingManager;
+                                if (!dm2 || !Array.isArray(dm2.drawings)) continue;
+                                const found = dm2.drawings.find(
+                                    (d) => d && d.id != null && String(d.id) === want
+                                );
+                                if (found) {
+                                    source = pid;
+                                    ch = ch2;
+                                    dm = dm2;
+                                    drawing = found;
+                                    break;
+                                }
+                            } catch (_) {}
+                        }
+                    }
+                }
+            }
+            if (!drawing || !dm) return Promise.resolve(false);
+
+            let px = typeof x === "number" ? x : 0;
+            let py = typeof y === "number" ? y : 0;
+            const mgr = managerRef.current;
+            if (source !== HOST_PANEL_ID && mgr && mgr.charts) {
+                const entry = mgr.charts.get(source);
+                if (entry && entry.frame) {
+                    try {
+                        const r = entry.frame.getBoundingClientRect();
+                        px = r.left + px;
+                        py = r.top + py;
+                    } catch (_) {}
+                }
+            }
+
+            return closeDrawingSettingsOnAllPanels().then(() => {
+                if (dm.toolbar && typeof dm.toolbar.hide === "function") {
+                    dm.toolbar.hide();
+                }
+                const v9Open = typeof window.__v9OpenDrawingSettings === "function"
+                    ? window.__v9OpenDrawingSettings
+                    : null;
+                try {
+                    window.__v9MultichartSettingsPanelId = source;
+                } catch (_) {}
+                if (v9Open) {
+                    try {
+                        if (v9Open(drawing, px, py)) return true;
+                    } catch (e) {
+                        console.warn("[MultichartGrid] openDrawingSettingsForPanel V9 failed", e && e.message || e);
+                    }
+                }
+                try {
+                    delete window.__v9MultichartSettingsPanelId;
+                } catch (_) {
+                    window.__v9MultichartSettingsPanelId = null;
+                }
+                // Legacy tv-settings-modal: render on the HOST document (global/centered)
+                // but apply save/delete callbacks to the source tile's drawingManager.
+                const modalHostDm = source === HOST_PANEL_ID
+                    ? dm
+                    : (window.chart && window.chart.drawingManager);
+                if (modalHostDm && modalHostDm.settingsPanel && typeof modalHostDm.settingsPanel.show === "function") {
+                    modalHostDm.settingsPanel.show(
+                        drawing,
+                        px,
+                        py,
+                        (updatedDrawing) => {
+                            if (typeof dm.renderDrawing === "function") dm.renderDrawing(updatedDrawing);
+                            if (typeof dm.persistPositionToolDefaults === "function") {
+                                dm.persistPositionToolDefaults(updatedDrawing);
+                            }
+                            if (typeof dm.saveDrawings === "function") dm.saveDrawings();
+                        },
+                        (drawingToDelete) => {
+                            if (typeof dm.deleteDrawing === "function") dm.deleteDrawing(drawingToDelete);
+                        }
+                    );
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        /**
+         * Run a panel-cmd on host tile A AND every iframe peer. Used for
+         * toolbar "Delete drawings / indicators / all objects" so the action
+         * applies to the whole multichart layout, not only the focused panel.
+         */
+        function runCommandOnAllPanels(cmd, args) {
+            args = args || {};
+            const mgr = managerRef.current;
+            const proms = [
+                applyHostCommand(cmd, args).catch((e) => {
+                    console.warn("[MultichartGrid] runCommandOnAllPanels host", cmd, e && e.message || e);
+                }),
+            ];
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue;
+                    proms.push(
+                        mgr.sendCommand(c.id, cmd, args).catch((e) => {
+                            console.warn("[MultichartGrid] runCommandOnAllPanels", c.id, cmd, e && e.message || e);
+                        })
+                    );
+                }
+            }
+            return Promise.all(proms).then(() => undefined);
+        }
+
         /** chart.js legacy ids for continuous freehand (see drawing-tools-manager). */
         function isPersistentFreehandLegacyTool(lt) {
             const x = String(lt || "").toLowerCase();
@@ -2992,19 +3360,93 @@ export default function MultichartGrid({
             });
         }
 
+        function getChartForPanelId(panelId) {
+            const pid = panelId || focusedPanelIdRef.current || HOST_PANEL_ID;
+            if (pid === HOST_PANEL_ID) {
+                return (typeof window !== "undefined" && window.chart) || null;
+            }
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return null;
+            const entry = mgr.charts.get(pid);
+            if (!entry || entry.host || !entry.frame) return null;
+            try {
+                const cw = entry.frame.contentWindow;
+                return (cw && cw.chart) || null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function getActiveChartForMultichart() {
+            return getChartForPanelId(focusedPanelIdRef.current || HOST_PANEL_ID);
+        }
+
+        function enumerateMultichartDrawingManagers() {
+            const out = [];
+            const seen = new Set();
+            const addChart = (ch) => {
+                const dm = ch && ch.drawingManager;
+                if (!dm || seen.has(dm)) return;
+                seen.add(dm);
+                out.push(dm);
+            };
+            addChart(window.chart);
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue;
+                    try {
+                        const cw = c.frame && c.frame.contentWindow;
+                        addChart(cw && cw.chart);
+                    } catch (_) {}
+                }
+            }
+            return out;
+        }
+
+        const prevGetActiveChart = typeof window.getActiveChart === "function"
+            ? window.getActiveChart
+            : null;
+        window.getActiveChart = function multichartGetActiveChart() {
+            const ch = getActiveChartForMultichart();
+            if (ch) return ch;
+            if (prevGetActiveChart) {
+                try { return prevGetActiveChart(); } catch (_) {}
+            }
+            return window.chart || null;
+        };
+
         window.__multichartGrid = {
             isMounted,
             runCommand,
+            runCommandOnAllPanels,
+            deselectDrawingsOnNonFocusedPanels,
+            closeDrawingSettingsOnOtherPanels,
+            closeDrawingSettingsOnAllPanels,
+            closeGlobalLegacyDrawingSettings,
+            clearDrawingUiOnOtherPanels,
+            openDrawingSettingsForPanel,
             runCommandIframes,
             broadcastToIframesNoReply,
             syncDrawingToolAcrossPanels,
             isPersistentFreehandLegacyTool,
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
+            getChartForPanel: getChartForPanelId,
+            getActiveChart: getActiveChartForMultichart,
+            enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
         };
+        ensureMultichartGlobalSettingsRoot();
 
         return () => {
+            clearMultichartGlobalSettingsRoot();
+            if (prevGetActiveChart) window.getActiveChart = prevGetActiveChart;
+            else {
+                try { delete window.getActiveChart; } catch (_) {
+                    window.getActiveChart = function () { return window.chart || null; };
+                }
+            }
             if (window.__multichartGrid && window.__multichartGrid.runCommand === runCommand) {
                 delete window.__multichartGrid;
             }
@@ -3440,6 +3882,50 @@ export default function MultichartGrid({
                 if (msg.source != null) broadcastClearDraftPreview(String(msg.source));
                 return;
             }
+            if (msg.type === "multichart-clear-drawing-tool") {
+                const grid = window.__multichartGrid;
+                if (grid && typeof grid.runCommandOnAllPanels === "function") {
+                    grid.runCommandOnAllPanels("clearActiveDrawingTool", { mirrored: true })
+                        .then(() => {
+                            try {
+                                window.dispatchEvent(new CustomEvent("multichartDrawingToolCleared"));
+                            } catch (_) {}
+                        })
+                        .catch(() => {});
+                }
+                return;
+            }
+            if (msg.type === "multichart-close-drawing-settings") {
+                const grid = window.__multichartGrid;
+                const sourceId = msg.source != null ? String(msg.source) : null;
+                if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    grid.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
+                } else if (grid && typeof grid.closeDrawingSettingsOnOtherPanels === "function") {
+                    grid.closeDrawingSettingsOnOtherPanels(sourceId).catch(() => {});
+                }
+                return;
+            }
+            if (msg.type === "multichart-clear-drawing-ui") {
+                const grid = window.__multichartGrid;
+                const sourceId = msg.source != null ? String(msg.source) : null;
+                if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                    grid.clearDrawingUiOnOtherPanels(sourceId).catch(() => {});
+                }
+                return;
+            }
+            if (msg.type === "multichart-open-drawing-settings") {
+                const grid = window.__multichartGrid;
+                const sourceId = msg.source != null ? String(msg.source) : null;
+                if (grid && typeof grid.openDrawingSettingsForPanel === "function") {
+                    grid.openDrawingSettingsForPanel(
+                        sourceId,
+                        msg.drawingId != null ? msg.drawingId : null,
+                        msg.x,
+                        msg.y
+                    ).catch(() => {});
+                }
+                return;
+            }
             if (msg.type !== "iframe-order") return;
             const sourceId = msg.source;
             const kind     = msg.kind;
@@ -3866,6 +4352,10 @@ export default function MultichartGrid({
                         onMouseDownCapture={() => {
                             if (typeof setFocusedPanelId === "function") {
                                 setFocusedPanelId(tile.id);
+                            }
+                            const grid = window.__multichartGrid;
+                            if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
+                                grid.clearDrawingUiOnOtherPanels(tile.id);
                             }
                         }}
                         style={{

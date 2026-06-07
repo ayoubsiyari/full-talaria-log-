@@ -830,7 +830,7 @@ class RectangleTool extends BaseDrawing {
         const widthPx = Math.abs(x2 - x1);
         const heightPx = Math.abs(scales.yScale(p2.y) - scales.yScale(p1.y));
         const handleRadius = (widthPx < 8 || heightPx < 8) ? 4 : 3;
-        const hitRadius = Math.max(10, handleRadius + 7);
+        const hitRadius = Math.max(14, handleRadius + 9);
 
         this.handles = [];
         
@@ -862,13 +862,15 @@ class RectangleTool extends BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', pos.cursor)
-                .style('pointer-events', 'all')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
             
             this.handles.push(handleGroup);
         });
+
+        group.selectAll('.resize-handle-group').raise();
     }
 
     beginHandleDrag(handleRole, context = {}) {
@@ -1136,11 +1138,13 @@ class EllipseTool extends BaseDrawing {
      */
     createBoxHandles(group, scales) {
         const handleRadius = 3;
+        const hitRadius = 14;
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
 
         group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-hit').remove();
         group.selectAll('.resize-handle-group').remove();
 
         const handlePositions = this._computeEllipseHandlePositions(scales);
@@ -1152,8 +1156,21 @@ class EllipseTool extends BaseDrawing {
                 .attr('class', 'resize-handle-group')
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'all')
+                .style('opacity', 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
             
-            const handle = handleGroup.append('circle')
+            handleGroup.append('circle')
                 .attr('class', 'resize-handle')
                 .attr('cx', pos.x)
                 .attr('cy', pos.y)
@@ -1162,13 +1179,15 @@ class EllipseTool extends BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', pos.cursor)
-                .style('pointer-events', 'all')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
             
             this.handles.push(handleGroup);
         });
+
+        group.selectAll('.resize-handle-group').raise();
     }
 
     beginHandleDrag(handleRole, context = {}) {

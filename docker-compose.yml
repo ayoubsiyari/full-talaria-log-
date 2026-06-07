@@ -96,6 +96,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health')\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # Context = repo root: Dockerfile runs `npm run build:live:chart` in talaria-design (V9 bundle + ?v= bump).
   # IMPORTANT: the V9/Terser builds inside this image take ~15–20 min of CPU. Build them in
@@ -196,6 +206,8 @@ services:
         condition: service_healthy
       questdb:
         condition: service_healthy
+      journal-backend:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
@@ -269,6 +281,8 @@ services:
       redis:
         condition: service_healthy
       questdb:
+        condition: service_healthy
+      journal-backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

@@ -13,6 +13,8 @@ ENV BUILD_ID=${GIT_COMMIT}
 
 COPY ["chart v 1.4/talaria-design/package.json", "chart v 1.4/talaria-design/package-lock.json", "./talaria-design/"]
 WORKDIR /build/talaria-design
+# esbuild postinstall can hit ETXTBSY when npm runs lifecycle scripts in parallel (BuildKit).
+ENV npm_config_foreground_scripts=true
 RUN npm ci
 WORKDIR /build
 COPY ["chart v 1.4/talaria-design", "./talaria-design/"]

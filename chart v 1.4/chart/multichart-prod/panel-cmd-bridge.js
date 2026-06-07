@@ -840,7 +840,8 @@
                 case 'clearActiveDrawingTool': {
                     var dmc = ch.drawingManager;
                     if (!dmc) return;
-                    if (typeof dmc.clearTool === 'function') dmc.clearTool();
+                    var mirroredClear = !!(args && args.mirrored);
+                    if (typeof dmc.clearTool === 'function') dmc.clearTool(mirroredClear);
                     else dmc.currentTool = null;
                     return;
                 }
@@ -898,6 +899,68 @@
                         return { id: i.id, type: i.type || i.name || null };
                     });
                     return { indicators: items };
+                }
+                case 'clearOnlyDrawings': {
+                    if (typeof ch.clearOnlyDrawings === 'function') {
+                        ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
+                    } else if (ch.drawingManager && typeof ch.drawingManager.clearDrawings === 'function') {
+                        ch.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                    }
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    return;
+                }
+                case 'clearOnlyIndicators': {
+                    if (typeof ch.clearOnlyIndicators === 'function') {
+                        ch.clearOnlyIndicators({ confirmPrompt: false });
+                    }
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    return;
+                }
+                case 'closeDrawingSettings': {
+                    var dmSet = ch.drawingManager;
+                    if (dmSet) {
+                        if (dmSet.settingsPanel && typeof dmSet.settingsPanel.hide === 'function') {
+                            dmSet.settingsPanel.hide();
+                        }
+                        if (dmSet.contextMenu && typeof dmSet.contextMenu.hide === 'function') {
+                            dmSet.contextMenu.hide();
+                        }
+                    }
+                    return;
+                }
+                case 'deselectDrawings': {
+                    var dmDes = ch.drawingManager;
+                    if (!dmDes) return;
+                    if (typeof dmDes.deselectAll === 'function') {
+                        dmDes.deselectAll({ forSelectionChange: true });
+                    } else {
+                        dmDes.selectedDrawing = null;
+                        if (Array.isArray(dmDes.selectedDrawings)) dmDes.selectedDrawings = [];
+                        if (dmDes.toolbar && typeof dmDes.toolbar.hide === 'function') {
+                            dmDes.toolbar.hide();
+                        }
+                        if (dmDes.settingsPanel && typeof dmDes.settingsPanel.hide === 'function') {
+                            dmDes.settingsPanel.hide();
+                        }
+                    }
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    return;
+                }
+                case 'clearDrawingsAndIndicators': {
+                    if (typeof ch.clearDrawingsAndIndicators === 'function') {
+                        ch.clearDrawingsAndIndicators({ confirmPrompt: false, skipBroadcast: true });
+                    } else {
+                        if (typeof ch.clearOnlyDrawings === 'function') {
+                            ch.clearOnlyDrawings({ confirmPrompt: false, skipBroadcast: true });
+                        } else if (ch.drawingManager && typeof ch.drawingManager.clearDrawings === 'function') {
+                            ch.drawingManager.clearDrawings({ confirmPrompt: false, skipBroadcast: true });
+                        }
+                        if (typeof ch.clearOnlyIndicators === 'function') {
+                            ch.clearOnlyIndicators({ confirmPrompt: false });
+                        }
+                    }
+                    try { if (typeof ch.render === 'function') ch.render(); } catch (_) {}
+                    return;
                 }
                 case 'getOrderPanelPriceSnapshot': {
                     var omSnap = ch.orderManager;

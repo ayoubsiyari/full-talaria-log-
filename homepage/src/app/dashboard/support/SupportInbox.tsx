@@ -44,6 +44,7 @@ function statusLabel(status: string): string {
     open: "Open",
     pending: "Awaiting your reply",
     resolved: "Resolved",
+    user_replied: "Follow-up sent",
     closed: "Closed",
   };
   return map[status] ?? status;
@@ -330,7 +331,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   const sendReply = async () => {
     const body = reply.trim();
     if ((!body && !replyFile) || !selectedId || selected?.status === "closed") return;
-    // resolved tickets accept replies (reopens on server)
+    // resolved tickets accept replies (moves to admin user-replied queue on server)
     if (replyFile && replyFile.size > SUPPORT_IMAGE_MAX_BYTES) {
       setUploadErr("Image must be 2 MB or smaller.");
       return;
@@ -440,6 +441,7 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
   const ownerId = selected ? selected.user_id : null;
   const isClosed = selected?.status === "closed";
   const isResolved = selected?.status === "resolved";
+  const isUserReplied = selected?.status === "user_replied";
 
   return (
     <div className={embedded ? "prof-settings__support-embed db-page" : "db-page"}>
@@ -687,7 +689,20 @@ export function SupportInbox({ embedded = false, initialThreadId }: SupportInbox
                 background: "rgba(163,230,53,0.08)",
               }}
             >
-              This ticket is marked resolved. Send a reply to reopen it if you still need help.
+              This ticket is marked resolved. Send a reply if you still need help — support will review your follow-up.
+            </div>
+          )}
+          {isUserReplied && (
+            <div
+              style={{
+                padding: "10px 18px",
+                fontSize: 12,
+                color: "#e9d5ff",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(168,85,247,0.1)",
+              }}
+            >
+              Your follow-up was sent. Support will review it and get back to you.
             </div>
           )}
           <div

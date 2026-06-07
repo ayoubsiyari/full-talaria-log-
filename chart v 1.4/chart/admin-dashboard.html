@@ -1558,7 +1558,32 @@ select { cursor:default; }
   align-items: stretch;
   overflow: hidden;
 }
+.support-inbox-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.support-inbox-card {
+  flex: 1 1 58%;
+  min-height: 0;
+}
+.support-user-replies-card {
+  flex: 0 1 38%;
+  min-height: 120px;
+  max-height: 42%;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  overflow: hidden;
+}
+.support-user-replies-card .support-thread-list {
+  max-height: none;
+}
 .support-inbox-card,
+.support-user-replies-card,
 .card.support-main {
   display: flex;
   flex-direction: column;
@@ -2050,6 +2075,7 @@ select { cursor:default; }
 .support-thread-pill.status-open { color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
 .support-thread-pill.status-pending { color: #fde047; border-color: rgba(251, 191, 36, 0.35); }
 .support-thread-pill.status-resolved { color: #86efac; border-color: rgba(34, 197, 94, 0.35); }
+.support-thread-pill.status-user_replied { color: #f0abfc; border-color: rgba(217, 70, 239, 0.35); background: rgba(217, 70, 239, 0.1); }
 .support-thread-pill.status-closed { color: var(--text-muted); }
 .support-thread-pill.pri-urgent { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
 .support-thread-pill.pri-high { color: #fdba74; border-color: rgba(251, 146, 60, 0.35); }
@@ -4169,6 +4195,7 @@ select { cursor:default; }
           <div id="supportTicketStats"></div>
         </div>
         <div class="support-layout">
+          <div class="support-inbox-column">
           <div class="card support-inbox-card">
             <div class="card-hdr">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
@@ -4243,6 +4270,19 @@ select { cursor:default; }
               </div>
             </div>
           </div>
+          <div class="card support-user-replies-card">
+            <div class="card-hdr">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+              <div class="card-title">User replies after resolve</div>
+              <span class="card-badge" id="supportUserRepliesCount">0</span>
+            </div>
+            <div class="card-body" style="padding:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+              <div class="support-thread-list" id="supportUserRepliesList">
+                <div class="support-thread-empty">Loading…</div>
+              </div>
+            </div>
+          </div>
+          </div>
           <div class="support-chat-column">
             <div class="card support-main">
               <div class="card support-user-card is-collapsed" id="supportUserCard" style="margin:0;display:none">
@@ -4255,6 +4295,7 @@ select { cursor:default; }
               </div>
               <div class="card-hdr support-main-header">
                 <div class="card-title" id="supportThreadTitle">Select a ticket</div>
+                <button type="button" class="btn sm" id="supportAddToQueueBtn" style="display:none" onclick="supportSetStatus('open')">Add to queue</button>
                 <button type="button" class="btn sm" id="supportResolveBtn" style="display:none" onclick="supportSetStatus('resolved')">Resolve</button>
                 <button type="button" class="btn sm" id="supportReopenBtn" style="display:none" onclick="supportSetStatus('open')">Reopen</button>
                 <button type="button" class="btn sm" id="supportCloseBtn" style="display:none" onclick="supportSetStatus('closed')">Close</button>
@@ -4612,6 +4653,30 @@ function clearDsHubRegistryPanel() {
 }
 
 let supportThreads = [];
+let supportUserReplyThreads = [];
+
+function supportFindThread(id) {
+  return supportThreads.find(function (x) { return x.id === id; })
+    || supportUserReplyThreads.find(function (x) { return x.id === id; });
+}
+
+function supportUpsertThread(thread) {
+  if (!thread) return;
+  let idx = supportThreads.findIndex(function (t) { return t.id === thread.id; });
+  if (idx >= 0) {
+    if (thread.status === 'user_replied') supportThreads.splice(idx, 1);
+    else supportThreads[idx] = thread;
+  } else if (thread.status !== 'user_replied') {
+    supportThreads.push(thread);
+  }
+  idx = supportUserReplyThreads.findIndex(function (t) { return t.id === thread.id; });
+  if (thread.status === 'user_replied') {
+    if (idx >= 0) supportUserReplyThreads[idx] = thread;
+    else supportUserReplyThreads.push(thread);
+  } else if (idx >= 0) {
+    supportUserReplyThreads.splice(idx, 1);
+  }
+}
 
 const SUPPORT_CATEGORY_OPTIONS = [
   { value: 'billing', label: 'Billing' },
@@ -4778,7 +4843,7 @@ function ensureLiveSupportSocket() {
 function applySupportReadReceipt(d) {
   const req = d.requester_read_upto || 0;
   const stf = d.staff_read_upto || 0;
-  const th = supportThreads.find(function (x) { return x.id === d.thread_id; });
+  const th = supportFindThread(d.thread_id);
   const ownerId = th ? th.user_id : null;
   if (ownerId == null) return;
   supportMessages.forEach(function (m) {
@@ -4823,8 +4888,9 @@ function supportRefreshToolbarQuick(th) {
     el.innerHTML = '';
     return;
   }
+  const statusText = th.status === 'user_replied' ? 'user reply' : (th.status || 'open');
   const parts = [
-    '<span class="support-thread-pill status-' + esc(th.status || 'open') + '">' + esc(th.status || 'open') + '</span>'
+    '<span class="support-thread-pill status-' + esc(th.status || 'open') + '">' + esc(statusText) + '</span>'
   ];
   if (th.priority && th.priority !== 'normal') {
     parts.push('<span class="support-thread-pill pri-' + esc(th.priority) + '">' + esc(th.priority) + '</span>');
@@ -4873,7 +4939,7 @@ function renderSupportUserCRM(req) {
       <div class="crm-item" style="grid-column:1/-1"><div class="k">Subscription</div><div class="v">${esc(subLine)}</div></div>
       <div class="crm-item" style="grid-column:1/-1"><div class="k">Stripe customer</div><div class="v">${esc(req.stripe_customer_id || '—')}</div></div>
     </div>`;
-  const th = supportThreads.find(function (x) { return x.id === selectedSupportId; });
+  const th = supportFindThread(selectedSupportId);
   if (th) {
     let extra = '';
     if (th.tags && th.tags.length) {
@@ -4900,8 +4966,7 @@ async function loadSupportRequesterProfile() {
   try {
     const data = await api('/api/support/threads/' + selectedSupportId);
     if (data.thread) {
-      const idx = supportThreads.findIndex(function (x) { return x.id === selectedSupportId; });
-      if (idx >= 0) supportThreads[idx] = data.thread;
+      supportUpsertThread(data.thread);
       supportUpdateTicketControls(data.thread);
     }
     renderSupportUserCRM(data.requester || null);
@@ -4986,6 +5051,7 @@ async function loadSupportTicketStats() {
     const queueRow = [
       supportStatsKpi('Open', s.open || 0),
       supportStatsKpi('Pending', s.pending || 0),
+      supportStatsKpi('User replied', s.user_replied || 0, 'warn'),
       supportStatsKpi('Unassigned', s.unassigned || 0),
       supportStatsKpi('SLA overdue', s.sla_overdue || 0, 'warn'),
       supportStatsKpi('Closed today', s.closed_today || 0, 'ok')
@@ -5161,7 +5227,7 @@ async function loadSupportCannedReplies() {
 function supportRefreshCannedSelect() {
   const sel = $('supportCannedSelect');
   if (!sel) return;
-  const th = supportThreads.find(function (x) { return x.id === selectedSupportId; });
+  const th = supportFindThread(selectedSupportId);
   const cat = th && th.category ? th.category : '';
   const matched = supportCannedReplies.filter(function (r) {
     return !r.category || r.category === cat;
@@ -5210,7 +5276,51 @@ function supportBuildThreadQuery() {
   if (needs) params.set('needs_reply', 'true');
   if (sla) params.set('sla_overdue', 'true');
   if (sort) params.set('sort', sort);
+  params.set('exclude_status', 'user_replied');
   return params.toString();
+}
+
+function supportRenderThreadRow(t) {
+  const active = t.id === selectedSupportId ? ' active' : '';
+  const who = esc(t.user_name || t.user_email || 'User #' + t.user_id);
+  const ref = esc(t.ticket_ref || ('TAL-' + String(t.id).padStart(5, '0')));
+  const status = esc(t.status || 'open');
+  const priority = esc(t.priority || 'normal');
+  const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : 'Unassigned';
+  const badges = [
+    t.staff_unread ? '<span class="support-thread-pill unread">Unread</span>' : '',
+    t.needs_staff_reply ? '<span class="support-thread-pill reply">Reply</span>' : '',
+    t.admin_yes_no === 'yes' ? '<span class="support-thread-pill verdict-yes">Yes</span>' : '',
+    t.admin_yes_no === 'no' ? '<span class="support-thread-pill verdict-no">No</span>' : '',
+    supportCategoryBadgeHtml(t.category),
+    t.sla_overdue ? '<span class="support-thread-pill sla">SLA</span>' : ''
+  ].filter(Boolean).join('');
+  const priPill = priority !== 'normal'
+    ? '<span class="support-thread-pill pri-' + priority + '">' + priority + '</span>'
+    : '';
+  return `<div class="support-thread-row${active}" data-id="${t.id}">
+    <div class="support-thread-top">
+      <div class="support-thread-badges">${badges}</div>
+      <span class="support-thread-time">${timeAgo(t.last_message_at)}</span>
+    </div>
+    <div class="support-thread-ref">${ref}</div>
+    <div class="support-thread-subj">${esc(t.subject)}</div>
+    <div class="support-thread-meta-row">
+      <span class="support-thread-pill status-${status}">${status === 'user_replied' ? 'user reply' : status}</span>
+      ${priPill}
+      <span class="support-thread-user">${who}</span>
+      <span class="support-thread-assignee">${assignee}</span>
+    </div>
+  </div>`;
+}
+
+function supportBindThreadRows(box) {
+  if (!box) return;
+  box.querySelectorAll('.support-thread-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      selectSupportThread(parseInt(row.getAttribute('data-id'), 10));
+    });
+  });
 }
 
 function supportExportCsv(ev) {
@@ -5224,56 +5334,47 @@ function supportExportCsv(ev) {
   return false;
 }
 
+async function loadSupportUserReplyThreads() {
+  const box = $('supportUserRepliesList');
+  const countEl = $('supportUserRepliesCount');
+  if (!box) return;
+  try {
+    const params = new URLSearchParams();
+    params.set('limit', '200');
+    params.set('status', 'user_replied');
+    params.set('sort', 'activity');
+    const data = await api('/api/admin/support/threads?' + params.toString());
+    supportUserReplyThreads = data.threads || [];
+    if (countEl) countEl.textContent = String(supportUserReplyThreads.length);
+    if (!supportUserReplyThreads.length) {
+      box.innerHTML = '<div class="support-thread-empty">No user replies after resolve</div>';
+      return;
+    }
+    box.innerHTML = supportUserReplyThreads.map(supportRenderThreadRow).join('');
+    supportBindThreadRows(box);
+  } catch (e) {
+    if (countEl) countEl.textContent = '0';
+    box.innerHTML = '<div class="support-thread-empty">' + esc(e.message || 'Failed to load') + '</div>';
+  }
+}
+
 async function loadSupportThreads() {
   const box = $('supportThreadList');
   const countEl = $('supportInboxCount');
   try {
     const [data] = await Promise.all([
       api('/api/admin/support/threads?' + supportBuildThreadQuery()),
-      loadSupportTicketStats()
+      loadSupportTicketStats(),
+      loadSupportUserReplyThreads()
     ]);
     supportThreads = data.threads || [];
     if (countEl) countEl.textContent = String(supportThreads.length);
     if (!supportThreads.length) {
       box.innerHTML = '<div class="support-thread-empty">No tickets match filters</div>';
-      return;
+    } else {
+      box.innerHTML = supportThreads.map(supportRenderThreadRow).join('');
+      supportBindThreadRows(box);
     }
-    box.innerHTML = supportThreads.map(t => {
-      const active = t.id === selectedSupportId ? ' active' : '';
-      const who = esc(t.user_name || t.user_email || 'User #' + t.user_id);
-      const ref = esc(t.ticket_ref || ('TAL-' + String(t.id).padStart(5, '0')));
-      const status = esc(t.status || 'open');
-      const priority = esc(t.priority || 'normal');
-      const assignee = t.assignee ? esc((t.assignee.name || t.assignee.email || '').split('@')[0]) : 'Unassigned';
-      const badges = [
-        t.staff_unread ? '<span class="support-thread-pill unread">Unread</span>' : '',
-        t.needs_staff_reply ? '<span class="support-thread-pill reply">Reply</span>' : '',
-        t.admin_yes_no === 'yes' ? '<span class="support-thread-pill verdict-yes">Yes</span>' : '',
-        t.admin_yes_no === 'no' ? '<span class="support-thread-pill verdict-no">No</span>' : '',
-        supportCategoryBadgeHtml(t.category),
-        t.sla_overdue ? '<span class="support-thread-pill sla">SLA</span>' : ''
-      ].filter(Boolean).join('');
-      const priPill = priority !== 'normal'
-        ? '<span class="support-thread-pill pri-' + priority + '">' + priority + '</span>'
-        : '';
-      return `<div class="support-thread-row${active}" data-id="${t.id}">
-        <div class="support-thread-top">
-          <div class="support-thread-badges">${badges}</div>
-          <span class="support-thread-time">${timeAgo(t.last_message_at)}</span>
-        </div>
-        <div class="support-thread-ref">${ref}</div>
-        <div class="support-thread-subj">${esc(t.subject)}</div>
-        <div class="support-thread-meta-row">
-          <span class="support-thread-pill status-${status}">${status}</span>
-          ${priPill}
-          <span class="support-thread-user">${who}</span>
-          <span class="support-thread-assignee">${assignee}</span>
-        </div>
-      </div>`;
-    }).join('');
-    box.querySelectorAll('.support-thread-row').forEach(row => {
-      row.addEventListener('click', () => selectSupportThread(parseInt(row.getAttribute('data-id'), 10)));
-    });
   } catch (e) {
     if (countEl) countEl.textContent = '0';
     box.innerHTML = '<div class="support-thread-empty">' + esc(e.message || 'Failed to load') + '</div>';
@@ -5282,7 +5383,7 @@ async function loadSupportThreads() {
 
 function renderSupportMessages() {
   const box = $('supportMessages');
-  const th = supportThreads.find(x => x.id === selectedSupportId);
+  const th = supportFindThread(selectedSupportId);
   const ownerId = th ? th.user_id : null;
   if (!supportMessages.length) {
     box.innerHTML = '<div class="support-messages-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><p>No messages yet</p><span>Replies will appear here</span></div>';
@@ -5329,6 +5430,7 @@ function supportUpdateTicketControls(th) {
   const resolveBtn = $('supportResolveBtn');
   const closeBtn = $('supportCloseBtn');
   const reopenBtn = $('supportReopenBtn');
+  const addQueueBtn = $('supportAddToQueueBtn');
   if (!th) {
     if (ctrl) ctrl.style.display = 'none';
     supportUpdateVerdictButtons(null);
@@ -5338,8 +5440,8 @@ function supportUpdateTicketControls(th) {
   if (ctrl) ctrl.style.display = 'block';
   const stSel = $('supportTicketStatus');
   if (stSel) {
-    stSel.innerHTML = ['open', 'pending', 'resolved', 'closed'].map(s =>
-      '<option value="' + s + '"' + (th.status === s ? ' selected' : '') + '>' + s + '</option>'
+    stSel.innerHTML = ['open', 'pending', 'resolved', 'user_replied', 'closed'].map(s =>
+      '<option value="' + s + '"' + (th.status === s ? ' selected' : '') + '>' + (s === 'user_replied' ? 'user replied' : s) + '</option>'
     ).join('');
   }
   const prSel = $('supportTicketPriority');
@@ -5370,6 +5472,8 @@ function supportUpdateTicketControls(th) {
   supportRefreshCannedSelect();
   const closed = th.status === 'closed';
   const resolved = th.status === 'resolved';
+  const userReplied = th.status === 'user_replied';
+  if (addQueueBtn) addQueueBtn.style.display = userReplied ? '' : 'none';
   if (resolveBtn) resolveBtn.style.display = (!closed && !resolved) ? '' : 'none';
   if (closeBtn) closeBtn.style.display = (!closed) ? '' : 'none';
   if (reopenBtn) reopenBtn.style.display = (closed || resolved) ? '' : 'none';
@@ -5416,7 +5520,7 @@ async function selectSupportThread(id) {
   $('supportSendBtn').disabled = false;
   const sfi = $('supportFileInput');
   if (sfi) sfi.disabled = isInternal;
-  const th = supportThreads.find(x => x.id === id);
+  const th = supportFindThread(id);
   const ref = th && th.ticket_ref ? th.ticket_ref : ('TAL-' + String(id).padStart(5, '0'));
   const titleEl = $('supportThreadTitle');
   if (titleEl) {
@@ -5477,8 +5581,7 @@ async function supportPatchTicketField(field, value) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    const idx = supportThreads.findIndex(t => t.id === selectedSupportId);
-    if (idx >= 0 && data.thread) supportThreads[idx] = data.thread;
+    if (data.thread) supportUpsertThread(data.thread);
     supportUpdateTicketControls(data.thread);
     await loadSupportThreads();
     await loadSupportTicketStats();
@@ -5539,7 +5642,7 @@ function bindSupportComposerHandlers() {
     internalCb.dataset.bound = '1';
     internalCb.addEventListener('change', () => {
       const sfi = $('supportFileInput');
-      const th = supportThreads.find(x => x.id === selectedSupportId);
+      const th = supportFindThread(selectedSupportId);
       const closed = th && th.status === 'closed';
       if (sfi) sfi.disabled = closed || internalCb.checked;
     });

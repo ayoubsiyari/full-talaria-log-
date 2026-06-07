@@ -507,6 +507,23 @@ function v9IsMultiPanelLayoutActive() {
   return !!(g && typeof g.runCommand === "function");
 }
 
+/** Delete drawings / indicators / both on every multichart tile (host + iframes). */
+function v9ClearObjectsOnAllPanels(action) {
+  const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+  if (!grid || typeof grid.runCommandOnAllPanels !== "function" || !v9IsMultiPanelLayoutActive()) {
+    return false;
+  }
+  const cmdByAction = {
+    drawings: "clearOnlyDrawings",
+    indicators: "clearOnlyIndicators",
+    both: "clearDrawingsAndIndicators",
+  };
+  const cmd = cmdByAction[action];
+  if (!cmd) return false;
+  grid.runCommandOnAllPanels(cmd, {}).catch(() => {});
+  return true;
+}
+
 /**
  * True when this document is a multichart tile iframe (`?multichart=1` /
  * `html.multichart-embed`). UI like Settings must not open modals here —
@@ -2333,6 +2350,15 @@ function enumerateV9DrawingManagersFromWindow() {
   };
   if (typeof window === "undefined") return out;
   try {
+    const grid = window.__multichartGrid;
+    if (grid && typeof grid.enumerateDrawingManagers === "function") {
+      grid.enumerateDrawingManagers().forEach((dm) => {
+        if (!dm || seen.has(dm)) return;
+        seen.add(dm);
+        out.push(dm);
+      });
+      return out;
+    }
     add(window.chart);
     if (typeof window.getActiveChart === "function") add(window.getActiveChart());
     const pm = window.panelManager;
@@ -15224,7 +15250,12 @@ const TalariaV8bLive = () => {
         // finishing a stroke on a background chart must not reset V9 while a panel is active.
         if (activeDm && dm !== activeDm) return;
         if (!dm || dm.currentTool) return;
-        if (g && typeof g.runCommandIframes === "function") {
+        if (g && typeof g.runCommandOnAllPanels === "function") {
+          try {
+            if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
+          } catch (_) {}
+          void g.runCommandOnAllPanels("clearActiveDrawingTool", { mirrored: true }).catch(() => {});
+        } else if (g && typeof g.runCommandIframes === "function") {
           try {
             if (typeof window !== "undefined") window.__v9BlockFocusToolArmOnce = true;
           } catch (_) {}
@@ -15306,6 +15337,37 @@ const TalariaV8bLive = () => {
         } catch (_) {}
       });
     };
+  }, []);
+
+  // Multichart: close parent V9 settings when another panel takes focus or opens its own.
+  useEffect(() => {
+    const onDismissMcSettings = () => {
+      try {
+        if (editingDrawingRef.current) {
+          dismissShapeSettingsForNewSelection();
+        } else {
+          v9DismissAllDrawingSettingsImmediate();
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("multichart-dismiss-drawing-settings", onDismissMcSettings);
+    return () => window.removeEventListener("multichart-dismiss-drawing-settings", onDismissMcSettings);
+  }, []);
+
+  // Iframe panel finished a stroke → parent fans out clearActiveDrawingTool to every
+  // tile; snap the V9 left rail back to crosshair (host finalizeDrawing uses syncRailIfCursor).
+  useEffect(() => {
+    const onMcDrawToolCleared = () => {
+      try {
+        if (editingDrawingRef.current) return;
+        v9UserExplicitToolRef.current = false;
+        setTool("crosshair");
+        setDropdown(null);
+        setBtnPressed(null);
+      } catch (_) {}
+    };
+    window.addEventListener("multichartDrawingToolCleared", onMcDrawToolCleared);
+    return () => window.removeEventListener("multichartDrawingToolCleared", onMcDrawToolCleared);
   }, []);
 
   // Legacy chart.js finishes many drag tools in chart.js (SVG path) via Chart#setTool('cursor'),
@@ -15653,24 +15715,58 @@ const TalariaV8bLive = () => {
 
         v9DismissAllDrawingSettingsImmediate();
 
-        let drawingForStyle = drawing;
+        let sourcePanelId = null;
         try {
-          const dmStyle =
-            typeof window !== "undefined" && typeof window.getActiveChart === "function"
-              ? window.getActiveChart()?.drawingManager
-              : window.chart?.drawingManager;
-          if (dmStyle && Array.isArray(dmStyle.drawings) && drawing.id != null) {
-            const liveStyle = dmStyle.drawings.find((x) => x && x.id === drawing.id);
-            if (liveStyle) drawingForStyle = liveStyle;
+          if (typeof window.__v9MultichartSettingsPanelId === "string" && window.__v9MultichartSettingsPanelId) {
+            sourcePanelId = window.__v9MultichartSettingsPanelId;
           }
         } catch (_) {}
+        let sourceChart = null;
+        if (!sourcePanelId) {
+          try {
+            const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+            sourcePanelId = grid && typeof grid.getFocusedPanelId === "function"
+              ? (grid.getFocusedPanelId() || grid.hostPanelId || "A")
+              : null;
+          } catch (_) {}
+        }
+
+        let drawingForStyle = drawing;
+        try {
+          for (const dm of enumerateV9DrawingManagersFromWindow()) {
+            const live = resolveLiveDrawingInDm(dm, drawing);
+            if (live) {
+              drawingForStyle = live;
+              sourceChart = dm.chart || null;
+              break;
+            }
+          }
+        } catch (_) {}
+        if (!sourceChart) {
+          try {
+            const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+            if (grid && typeof grid.getChartForPanel === "function" && sourcePanelId) {
+              sourceChart = grid.getChartForPanel(sourcePanelId);
+            }
+          } catch (_) {}
+        }
+        if (!sourceChart) {
+          try {
+            sourceChart = typeof window.getActiveChart === "function"
+              ? window.getActiveChart()
+              : window.chart;
+          } catch (_) {}
+        }
+        if (sourceChart === window.chart && sourcePanelId == null) {
+          sourcePanelId = "A";
+        }
 
         // Sync: abort half-started placement + disarm draw tool before React effects run.
         try {
-          const ch =
-            typeof window.getActiveChart === "function"
+          const ch = sourceChart
+            || (typeof window.getActiveChart === "function"
               ? window.getActiveChart()
-              : window.chart;
+              : window.chart);
           const dm = ch && ch.drawingManager;
           if (dm) {
             dm._suppressDrawingStartUntil = Date.now() + 900;
@@ -15688,7 +15784,13 @@ const TalariaV8bLive = () => {
         const s = drawing.style || {};
         // Stash the drawing so the tool bridge keeps chart.js in cursor mode
         // and so closeTlSett (Esc / outside-click) can clear this on close.
-        editingDrawingRef.current = { drawing, prevTool: tool, prevGroupSelected: groupSelected, panelGroup: group };
+        editingDrawingRef.current = {
+          drawing: drawingForStyle,
+          prevTool: tool,
+          prevGroupSelected: groupSelected,
+          panelGroup: group,
+          panelId: sourcePanelId,
+        };
 
         // Match `toolbar.show`: map this drawing to the correct rail icon. Without this,
         // dblclick/gear opens the panel while `groupSelected` still reflects the last line
@@ -15724,9 +15826,11 @@ const TalariaV8bLive = () => {
         suppressForwardBridge.current = true;
         let dmEd = null;
         try {
-          dmEd = typeof window !== "undefined" && typeof window.getActiveChart === "function"
-            ? window.getActiveChart()?.drawingManager
-            : window.chart?.drawingManager;
+          const chEd = sourceChart
+            || (typeof window !== "undefined" && typeof window.getActiveChart === "function"
+              ? window.getActiveChart()
+              : window.chart);
+          dmEd = chEd && chEd.drawingManager;
         } catch (_) {}
         if (dmEd && Array.isArray(dmEd.drawings) && drawing.id != null) {
           try {
@@ -26663,9 +26767,15 @@ const TalariaV8bLive = () => {
                       return;
                     }
                     if (activeKey === "trash") {
-                      if (item.icon === "trashDraw") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
-                      else if (item.icon === "trashInd") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
-                      else if (item.icon === "trash") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                      let clearAction = null;
+                      if (item.icon === "trashDraw") clearAction = "drawings";
+                      else if (item.icon === "trashInd") clearAction = "indicators";
+                      else if (item.icon === "trash") clearAction = "both";
+                      if (!clearAction || !v9ClearObjectsOnAllPanels(clearAction)) {
+                        if (clearAction === "drawings") ch?.clearOnlyDrawings?.({ confirmPrompt: false });
+                        else if (clearAction === "indicators") ch?.clearOnlyIndicators?.({ confirmPrompt: false });
+                        else if (clearAction === "both") ch?.clearDrawingsAndIndicators?.({ confirmPrompt: false });
+                      }
                       setGroupSelected(p => v9SanitizeGroupSelected({ ...p, trash: item }));
                       closeDropdown();
                       return;

@@ -894,7 +894,7 @@ class BaseDrawing {
     createHandles(group, scales) {
         this.handles = []; // Reset handles array
         const handleRadius = 3;  // Visual handle size
-        const hitRadius = 12;    // Larger hit area for easier clicking
+        const hitRadius = 14;    // Larger hit area for easier clicking
         const handleFill = 'transparent';  // No background
         const handleStroke = '#2962FF';  // Blue stroke
         const handleStrokeWidth = 2;  // Thinner border
@@ -939,7 +939,7 @@ class BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', 'nwse-resize')
-                .style('pointer-events', this.selected ? 'all' : 'none')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-point-index', index);
             
@@ -1009,8 +1009,9 @@ class BaseDrawing {
         this.selected = true;
         if (this.group) {
             this.group.selectAll('.resize-handle').style('opacity', 1);
-            this.group.selectAll('.resize-handle').style('pointer-events', 'all');
+            this.group.selectAll('.resize-handle').style('pointer-events', 'none');
             this.group.selectAll('.resize-handle-hit').style('pointer-events', 'all');
+            this.group.selectAll('.resize-handle-group').raise();
             this.group.selectAll('.resize-handle-glow-outer').style('opacity', 0.15);
             this.group.selectAll('.resize-handle-glow').style('opacity', 0.3);
             this.group.selectAll('.resize-handle-shadow').style('opacity', 0.3);

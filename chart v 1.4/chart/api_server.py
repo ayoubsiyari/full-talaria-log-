@@ -773,7 +773,7 @@ class SupportThread(Base):
     user_id = Column(Integer, index=True, nullable=False)
     subject = Column(String(500), nullable=False)
     category = Column(String(32), nullable=False, default="other")
-    status = Column(String(32), nullable=False, default="open")  # open | pending | resolved | closed
+    status = Column(String(32), nullable=False, default="open")  # open | pending | resolved | user_replied | closed
     priority = Column(String(16), nullable=False, default="normal")  # low | normal | high | urgent
     assigned_to_user_id = Column(Integer, index=True, nullable=True)
     first_response_due_at = Column(DateTime, nullable=True, index=True)
@@ -1323,7 +1323,7 @@ SUPPORT_CATEGORIES = frozenset(
         "other",
     }
 )
-SUPPORT_STATUSES = frozenset({"open", "pending", "resolved", "closed"})
+SUPPORT_STATUSES = frozenset({"open", "pending", "resolved", "user_replied", "closed"})
 SUPPORT_PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
 _support_msg_times: dict[int, deque] = {}
 _support_thread_times: dict[int, deque] = {}
@@ -10655,6 +10655,8 @@ def _support_apply_status_timestamps(t: SupportThread, new_status: str, now: dat
     elif new_status in ("open", "pending"):
         if new_status == "open":
             t.resolved_at = None
+    elif new_status == "user_replied":
+        pass
 
 
 def _support_thread_sla_overdue(t: SupportThread, now: datetime | None = None) -> bool:
@@ -10928,14 +10930,14 @@ def _support_last_public_message(db, thread_id: int) -> SupportMessage | None:
 
 
 def _support_needs_staff_reply(db, t: SupportThread) -> bool:
-    if t.status not in ("open", "pending"):
+    if t.status not in ("open", "pending", "user_replied"):
         return False
     last = _support_last_public_message(db, t.id)
     return bool(last and int(last.sender_user_id) == int(t.user_id))
 
 
 def _support_staff_unread(db, t: SupportThread, staff_upto: int) -> bool:
-    if t.status not in ("open", "pending"):
+    if t.status not in ("open", "pending", "user_replied"):
         return False
     last = _support_last_public_message(db, t.id)
     return bool(
@@ -11488,8 +11490,7 @@ async def support_post_message(thread_id: int, request: Request):
             raise HTTPException(status_code=400, detail="Ticket is closed")
         now = datetime.utcnow()
         if t.status == "resolved" and user.role != "admin":
-            t.status = "open"
-            t.resolved_at = None
+            t.status = "user_replied"
             t.updated_at = now
         m = SupportMessage(thread_id=t.id, sender_user_id=user.id, body=body, is_internal=False)
         db.add(m)
@@ -11586,6 +11587,7 @@ def _admin_support_query_threads(
     db,
     *,
     status: str | None,
+    exclude_status: str | None,
     priority: str | None,
     category: str | None,
     assigned_to: int | None,
@@ -11600,6 +11602,8 @@ def _admin_support_query_threads(
     query = db.query(SupportThread)
     if status:
         query = query.filter(SupportThread.status == _support_validate_status(status))
+    if exclude_status:
+        query = query.filter(SupportThread.status != _support_validate_status(exclude_status))
     if priority:
         query = query.filter(SupportThread.priority == _support_validate_priority(priority))
     if category:
@@ -11657,7 +11661,7 @@ def _admin_support_query_threads(
             query.join(last_pub, SupportThread.id == last_pub.c.tid)
             .join(LastM, LastM.id == last_pub.c.max_id)
             .filter(
-                SupportThread.status.in_(("open", "pending")),
+                SupportThread.status.in_(("open", "pending", "user_replied")),
                 LastM.sender_user_id == SupportThread.user_id,
             )
         )
@@ -11712,8 +11716,9 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
             .filter(SupportThread.status == "closed", SupportThread.closed_at >= today_start)
             .count()
         )
+        user_replied_n = base_q().filter(SupportThread.status == "user_replied").count()
         total_active = open_n + pending_n
-        resolved_statuses = ("resolved", "closed")
+        resolved_statuses = ("resolved", "closed", "user_replied")
         bug_error_cats = ("bug", "error")
         product_resolve_cats = bug_error_cats + ("modifications", "feature", "suggestions")
 
@@ -11769,6 +11774,7 @@ async def admin_support_stats(request: Request, user_id: int | None = None):
         return {
             "open": open_n,
             "pending": pending_n,
+            "user_replied": user_replied_n,
             "unassigned": unassigned_n,
             "sla_overdue": overdue_n,
             "closed_today": closed_today,
@@ -11929,6 +11935,7 @@ async def admin_support_requesters(request: Request):
 async def admin_support_list_threads(
     request: Request,
     status: str | None = None,
+    exclude_status: str | None = None,
     priority: str | None = None,
     category: str | None = None,
     assigned_to: int | None = None,
@@ -11950,6 +11957,7 @@ async def admin_support_list_threads(
         total, rows = _admin_support_query_threads(
             db,
             status=status,
+            exclude_status=exclude_status,
             priority=priority,
             category=category,
             assigned_to=assignee_filter,

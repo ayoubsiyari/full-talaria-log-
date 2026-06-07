@@ -367,6 +367,75 @@ function attachTvNumberSpinnerButton(btn, input, direction, onAfterStep) {
 
 
 
+/** Parent multichart shell: legacy tv-settings-modal must sit above iframes + host slot. */
+function isMultichartGlobalParentShell() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+    if (window.parent !== window) return false;
+    if (document.documentElement.classList.contains('multichart-embed')) return false;
+    try {
+        return !!window.__multichartGrid;
+    } catch (_) {
+        return false;
+    }
+}
+
+function shouldRouteDrawingSettingsToMultichartParent() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+    if (window.parent === window) return false;
+    try {
+        if (window.parent && window.parent.__multichartGrid) return true;
+    } catch (_) { /* cross-origin */ }
+    try {
+        if (document.documentElement.classList.contains('multichart-embed')) return true;
+        return new URLSearchParams(window.location.search || '').get('multichart') === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function postMultichartOpenDrawingSettings(drawing, x, y) {
+    let panelId = 'embed';
+    try {
+        panelId = new URLSearchParams(window.location.search).get('panelId') || panelId;
+    } catch (_pid) { /* ignore */ }
+    try {
+        window.parent.postMessage({
+            type: 'multichart-open-drawing-settings',
+            source: panelId,
+            drawingId: drawing && drawing.id != null ? drawing.id : null,
+            x: x,
+            y: y,
+        }, '*');
+        return true;
+    } catch (_pm) {
+        return false;
+    }
+}
+
+function centerMultichartGlobalSettingsModal(modal) {
+    if (!modal) return;
+    const w = modal.offsetWidth || modal.getBoundingClientRect().width || 400;
+    const h = modal.offsetHeight || modal.getBoundingClientRect().height || 500;
+    modal.style.position = 'fixed';
+    modal.style.transform = 'none';
+    modal.style.left = Math.max(10, (window.innerWidth - w) / 2) + 'px';
+    modal.style.top = Math.max(60, Math.min((window.innerHeight - h) / 2, window.innerHeight - h - 50)) + 'px';
+}
+
+function mountMultichartGlobalSettingsModal(modal) {
+    const root = document.getElementById('multichart-global-settings-root');
+    if (root) {
+        root.appendChild(modal);
+    } else {
+        document.body.appendChild(modal);
+    }
+    modal.style.pointerEvents = 'auto';
+    modal.style.zIndex = '2147483647';
+    modal.dataset.multichartGlobalSettings = '1';
+}
+
+
+
 class DrawingSettingsPanel {
 
     constructor() {
@@ -26001,6 +26070,13 @@ applyTemplate(drawing, templateId, modal) {
 
     show(drawing, x, y, onSave, onDelete) {
 
+        // Multichart iframe tiles must never host legacy tv-settings-modal — it
+        // would be clipped to the tile. Route every legacy open to the parent shell.
+        if (shouldRouteDrawingSettingsToMultichartParent()) {
+            postMultichartOpenDrawingSettings(drawing, x, y);
+            return;
+        }
+
         this.currentDrawing = drawing;
 
         this.onSave = onSave;
@@ -26093,7 +26169,11 @@ applyTemplate(drawing, templateId, modal) {
 
         const modal = this.buildTVModal(drawing);
 
-        document.body.appendChild(modal);
+        if (isMultichartGlobalParentShell()) {
+            mountMultichartGlobalSettingsModal(modal);
+        } else {
+            document.body.appendChild(modal);
+        }
 
         this.panel = modal;
 
@@ -26102,6 +26182,10 @@ applyTemplate(drawing, templateId, modal) {
         // Show modal after positioning (use requestAnimationFrame for smooth appearance)
 
         requestAnimationFrame(() => {
+
+            if (isMultichartGlobalParentShell()) {
+                centerMultichartGlobalSettingsModal(modal);
+            }
 
             modal.style.opacity = '1';
 

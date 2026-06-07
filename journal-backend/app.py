@@ -24,6 +24,8 @@ jwt = JWTManager(app)
 
 # DB setup
 db.init_app(app)
+with app.app_context():
+    db.create_all()
 ensure_users_schema(app)
 
 # Email setup

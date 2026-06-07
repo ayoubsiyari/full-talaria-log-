@@ -1700,6 +1700,88 @@ class Chart {
         } catch (_e) { return false; }
     }
 
+    /**
+     * After a completed stroke auto-deselects the draw tool on this tile, clear the same
+     * armed tool on every other multichart panel (host + iframes). Matches single-chart
+     * behaviour where finalizeDrawing leaves only cursor mode active.
+     */
+    _getMultichartPanelId() {
+        try {
+            if (this._isMultichartHostPanel()) {
+                const grid = window.__multichartGrid;
+                return (grid && grid.hostPanelId) ? grid.hostPanelId : 'A';
+            }
+            if (this._isMultichartEmbedPanel()) {
+                return new URLSearchParams(window.location.search).get('panelId') || 'embed';
+            }
+        } catch (_e) { /* ignore */ }
+        return null;
+    }
+
+    /**
+     * Deselect shapes, hide toolbars, and close settings on every OTHER multichart
+     * tile so only one panel has active drawing UI (TradingView quick-settings style).
+     */
+    _requestMultichartClearDrawingUiOnOtherPanels() {
+        try {
+            const panelId = this._getMultichartPanelId();
+            if (!panelId) return;
+            if (this._isMultichartHostPanel()) {
+                const grid = window.__multichartGrid;
+                if (grid && typeof grid.clearDrawingUiOnOtherPanels === 'function') {
+                    grid.clearDrawingUiOnOtherPanels(panelId).catch(() => {});
+                }
+                return;
+            }
+            if (this._isMultichartEmbedPanel() && window.parent && window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'multichart-clear-drawing-ui',
+                    source: panelId,
+                }, '*');
+            }
+        } catch (e) {
+            console.warn('_requestMultichartClearDrawingUiOnOtherPanels failed', e);
+        }
+    }
+
+    /**
+     * Close legacy drawing settings / context menus on every OTHER multichart tile
+     * so only one shape settings dialog is visible at a time.
+     */
+    _requestMultichartCloseDrawingSettingsOnOtherPanels() {
+        this._requestMultichartClearDrawingUiOnOtherPanels();
+    }
+
+    _broadcastMultichartClearDrawingTool() {
+        try {
+            if (this._isMultichartHostPanel()) {
+                const grid = window.__multichartGrid;
+                if (grid && typeof grid.runCommandOnAllPanels === 'function') {
+                    grid.runCommandOnAllPanels('clearActiveDrawingTool', { mirrored: true })
+                        .then(() => {
+                            try {
+                                window.dispatchEvent(new CustomEvent('multichartDrawingToolCleared'));
+                            } catch (_ev) { /* ignore */ }
+                        })
+                        .catch(() => {});
+                }
+                return;
+            }
+            if (this._isMultichartEmbedPanel() && window.parent && window.parent !== window) {
+                let source = 'embed';
+                try {
+                    source = new URLSearchParams(window.location.search).get('panelId') || source;
+                } catch (_q) { /* ignore */ }
+                window.parent.postMessage({
+                    type: 'multichart-clear-drawing-tool',
+                    source,
+                }, '*');
+            }
+        } catch (e) {
+            console.warn('_broadcastMultichartClearDrawingTool failed', e);
+        }
+    }
+
     /** Host tile A or iframe B/C/D — share one 1m replay master during backtest. */
     _usesMultichartReplayMaster() {
         return this._isMultichartEmbedPanel() || this._isMultichartHostPanel();
@@ -7551,6 +7633,32 @@ class Chart {
         const counts = this.getDrawingAndIndicatorCounts();
         let drawingsCleared = false;
         let indicatorsCleared = false;
+
+        // Multichart host: fan out delete to every tile (A + B/C/D iframes).
+        try {
+            const grid = typeof window !== 'undefined' ? window.__multichartGrid : null;
+            if (grid && typeof grid.runCommandOnAllPanels === 'function' && this._isMultichartHostPanel()) {
+                const cmdByAction = {
+                    drawings: 'clearOnlyDrawings',
+                    indicators: 'clearOnlyIndicators',
+                    both: 'clearDrawingsAndIndicators',
+                };
+                const cmd = cmdByAction[action];
+                if (cmd) {
+                    grid.runCommandOnAllPanels(cmd, {}).catch(() => {});
+                    this.updateClearObjectsMenuCounts();
+                    this.hideClearObjectsMenu();
+                    if (action === 'drawings') {
+                        this.showNotification('All drawings removed on all charts ✓');
+                    } else if (action === 'indicators') {
+                        this.showNotification('All indicators removed on all charts ✓');
+                    } else if (action === 'both') {
+                        this.showNotification('Drawings & indicators removed on all charts ✓');
+                    }
+                    return;
+                }
+            }
+        } catch (_mcClear) { /* fall through to single-panel path */ }
 
         if (action === 'drawings') {
             drawingsCleared = this.clearOnlyDrawings({ confirmPrompt: false });
@@ -21933,6 +22041,9 @@ class Chart {
         }, true);
 
         this.canvas.addEventListener('mousedown', e => {
+            if (e.button === 0 && this._isMultichartHostPanel()) {
+                this._requestMultichartClearDrawingUiOnOtherPanels();
+            }
             if (tryStartCtrlMarqueeSelect.call(this, e)) {
                 return;
             }
@@ -23161,7 +23272,10 @@ class Chart {
         
         // Handle SVG mousedown for drawing and selection
         this.svg.on('mousedown', (event) => {
-            
+            if (event && event.button === 0 && this._isMultichartHostPanel()) {
+                this._requestMultichartClearDrawingUiOnOtherPanels();
+            }
+
             // SKIP if in eraser mode - let eraser handler handle it
             if (this.drawingManager && this.drawingManager.eraserMode) {
                 return;
