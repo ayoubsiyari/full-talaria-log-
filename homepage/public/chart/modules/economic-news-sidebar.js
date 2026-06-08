@@ -438,6 +438,83 @@
         return eventMatchesChartPair(e, pair);
     }
 
+    function isMultichartEmbedIframe() {
+        try {
+            if (window.parent === window) return false;
+            return new URLSearchParams(window.location.search || '').get('multichart') === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function canUseParentCalendarSource() {
+        if (!isMultichartEmbedIframe()) return false;
+        try {
+            var parentApi = window.parent.__economicCalendarForChart;
+            return !!(parentApi && typeof parentApi.getSourceEvents === 'function');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getParentNewsFilters() {
+        try {
+            var ui = window.parent.__economicCalendarUi;
+            if (ui && typeof ui.getStatus === 'function') {
+                var st = ui.getStatus();
+                if (st && st.filters) {
+                    var pf = st.filters;
+                    return {
+                        impactHigh: pf.impactHigh,
+                        impactMedium: pf.impactMedium,
+                        impactLow: pf.impactLow,
+                        pairOnly: pf.pairOnly,
+                        countryCodes: pf.countryCodes ? pf.countryCodes.slice() : []
+                    };
+                }
+            }
+        } catch (e2) {}
+        return null;
+    }
+
+    /** Raw marker rows (before user filters) from the local Finnhub cache. */
+    function collectMarkerSourceEvents() {
+        var source = [];
+        var keys = Object.keys(chartMarkerEventByKey);
+        if (keys.length > 0) {
+            for (var ki = 0; ki < keys.length; ki++) {
+                source.push(chartMarkerEventByKey[keys[ki]]);
+            }
+        } else if (state.events && state.events.length) {
+            source = state.events.slice();
+        }
+        if (source.length) {
+            source.sort(function (a, b) { return a.t - b.t; });
+        }
+        return source;
+    }
+
+    function filterSourceEvents(source, filters) {
+        if (!source || !source.length) return [];
+        var f = filters || state.filters;
+        var saved = state.filters;
+        state.filters = f;
+        var out = source.filter(passesUserFilters);
+        state.filters = saved;
+        return out;
+    }
+
+    /** Host-only: tell multichart iframe tiles to repaint time-axis news markers. */
+    function requestMultichartNewsMarkerRedraw() {
+        if (isMultichartEmbedIframe()) return;
+        try {
+            var grid = window.__multichartGrid;
+            if (grid && typeof grid.broadcastToIframesNoReply === 'function') {
+                grid.broadcastToIframesNoReply('redrawEconomicNewsMarkers', {});
+            }
+        } catch (e) {}
+    }
+
     function escapeHtml(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -793,6 +870,7 @@
             render();
             startCountdownLoop();
             requestChartMarkerRedraw();
+            requestMultichartNewsMarkerRedraw();
             syncFilterControlsToDom();
         }
     }
@@ -960,29 +1038,28 @@
      * Pair-filtered releases for the loaded range — used on the time axis, not search/tab.
      */
     window.__economicCalendarForChart = {
+        /** Unfiltered Finnhub rows for multichart iframe tiles (host is source of truth). */
+        getSourceEvents: function () {
+            return collectMarkerSourceEvents();
+        },
         getEvents: function () {
+            if (canUseParentCalendarSource()) {
+                try {
+                    var parentSource = window.parent.__economicCalendarForChart.getSourceEvents();
+                    return filterSourceEvents(parentSource, getParentNewsFilters());
+                } catch (eEmbed) {}
+            }
             var fp = axisEventsCacheFingerprint();
             if (fp === _axisEventsCacheFp && _axisEventsCacheArr) {
                 return _axisEventsCacheArr;
             }
-            var source = [];
-            var keys = Object.keys(chartMarkerEventByKey);
-            if (keys.length > 0) {
-                for (var ki = 0; ki < keys.length; ki++) {
-                    source.push(chartMarkerEventByKey[keys[ki]]);
-                }
-            } else if (state.events && state.events.length) {
-                source = state.events.slice();
-            }
+            var source = collectMarkerSourceEvents();
             if (!source.length) {
                 _axisEventsCacheFp = fp;
                 _axisEventsCacheArr = [];
                 return _axisEventsCacheArr;
             }
-            source.sort(function (a, b) { return a.t - b.t; });
-            var out = source.filter(function (e) {
-                return passesUserFilters(e);
-            });
+            var out = filterSourceEvents(source, state.filters);
             _axisEventsCacheFp = fp;
             _axisEventsCacheArr = out;
             return out;
@@ -1064,6 +1141,10 @@
     });
 
     function onChartContextReady() {
+        if (canUseParentCalendarSource()) {
+            requestChartMarkerRedraw();
+            return;
+        }
         var rng = getCalendarFetchRange();
         // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
         if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
@@ -1163,6 +1244,7 @@
             syncFilterControlsToDom();
             render();
             requestChartMarkerRedraw();
+            requestMultichartNewsMarkerRedraw();
         },
         displayForEvent: function (e) {
             if (!e || !Number.isFinite(e.t)) return null;

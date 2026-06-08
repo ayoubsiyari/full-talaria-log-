@@ -445,7 +445,9 @@
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
                 var keepOffset = Number.isFinite(prevOffsetX);
-                if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                if (rs.userHasPanned || !rs.autoScrollEnabled) {
+                    keepOffset = true;
+                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
                     && ch._multichartViewportNeedsRecovery()) {
                     keepOffset = false;
                 }
@@ -512,15 +514,16 @@
         function doSeek() {
             if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
+            var preserveViewport = !isEnter && !!(rs.userHasPanned || !rs.autoScrollEnabled);
             try {
                 rs.goToReplayTimestamp(ts, {
-                    preserveVisibleWindow: false,
-                    centerOnCandle: !!isEnter,
+                    preserveVisibleWindow: preserveViewport || !isEnter,
+                    centerOnCandle: !!isEnter && !preserveViewport,
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
             }
-            if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+            if (!rs.userHasPanned && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({
                         resetPriceScale: !!isEnter,
@@ -1087,6 +1090,14 @@
                     return;
                 }
 
+                // Host calendar/filter change → repaint time-axis news flags on this tile.
+                case 'redrawEconomicNewsMarkers': {
+                    if (ch && typeof ch.scheduleRender === 'function') {
+                        ch.scheduleRender();
+                    }
+                    return;
+                }
+
                 // ─── replay sync ───────────────────────────────────────
                 //
                 // Parent broadcasts the host's replay state so every
@@ -1229,7 +1240,8 @@
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
                     if (!args.force && replayAligned) {
-                        if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                        if (!ch.replaySystem.userHasPanned
+                            && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                             try {
                                 ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
                             } catch (_) {}

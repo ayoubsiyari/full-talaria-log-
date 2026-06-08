@@ -5306,7 +5306,8 @@ class ReplaySystem {
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
-            if (needsScroll || this.autoScrollEnabled) {
+            const userOwnsViewport = this.userHasPanned || !this.autoScrollEnabled;
+            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;
@@ -5329,6 +5330,9 @@ class ReplaySystem {
         if (typeof chart.render === 'function') {
             chart.renderPending = true;
             chart.render();
+        }
+        if (typeof chart._syncReplayPlayheadCrosshairValues === 'function') {
+            chart._syncReplayPlayheadCrosshairValues();
         }
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
             try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }
