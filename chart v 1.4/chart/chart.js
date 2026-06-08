@@ -3326,17 +3326,12 @@ class Chart {
         }, 150);
     }
 
-    /** Timeframe-aware in-memory bar cap. */
+    /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
     _getRawDataCap() {
         const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        // LOD rendering (added in zoom-perf work) makes large bar counts free at render
-        // time — the chart draws at most ~450 pixel slots regardless of how many bars
-        // are loaded.  Increase caps so zoom-out can cover weeks/months of history.
-        // Memory cost: 100k bars × ~200 bytes ≈ 20 MB — acceptable for modern browsers.
-        if (tf === '1m')  return 100000;   // ~70 calendar days of 24h market
-        if (tf === '5m')  return  60000;   // ~6 months of 24h market
-        if (tf === '15m' || tf === '30m') return 20000;
-        return this._RAW_DATA_CAP || 10000;
+        if (tf === '1m' || tf === '5m') return 5000;
+        if (tf === '15m' || tf === '30m') return 6000;
+        return this._RAW_DATA_CAP || 8000;
     }
 
     _markScalesDirty() {
@@ -3420,14 +3415,7 @@ class Chart {
     async _fillVisibleWindowAfterZoomOut() {
         if (this._zoomOutFillInflight || this._panLoading || this._timeframeSwitching) return;
         if (!this.currentFileId || !this.data || this.data.length === 0) return;
-        // Allow replay mode to fill historical bars (bars BEFORE the earliest loaded bar).
-        // We only skip if replay is active AND there is no gap to the left of loaded data
-        // (i.e. hasMoreLeft is false — all history is already loaded).
-        if (this.replaySystem && this.replaySystem.isActive) {
-            const cursors = this._serverCursors;
-            if (!cursors || cursors.hasMoreLeft === false) return;
-            // Fall through: there IS more historical data to the left — fill it.
-        }
+        if (this.replaySystem && this.replaySystem.isActive) return;
 
         const win = this._getVisibleFetchWindowFromPixels();
         if (!win) {
@@ -3446,13 +3434,12 @@ class Chart {
 
         this._zoomOutFillInflight = true;
         try {
-            // Fetch up to 10 000 bars per zoom-fill pass so large zoom-outs fill quickly.
             const payload = await this._fetchBarsWindow(
                 this.currentFileId,
                 win.fromMs,
                 win.toMs,
                 'auto',
-                10000,
+                2000,
             );
             let bars = Array.isArray(payload?.bars)
                 ? this._normalizeCandlesFromApi(payload.bars)
