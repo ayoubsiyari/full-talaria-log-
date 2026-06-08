@@ -1687,9 +1687,7 @@ class ReplaySystem {
         this.tickElapsedMs = 0;
         
         // Lazy tick paths — same as enterReplayMode (no upfront full-session build).
-        this.tickPathCache = new Map();
-        this.tickPathCacheBuilt = false;
-        this._tickPathCachePinned.clear();
+        this.resetTickPathCache();
 
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
@@ -2266,9 +2264,7 @@ class ReplaySystem {
         } catch (e) {}
         
         // Tick path cache is built lazily on demand via getTickPath()
-        this.tickPathCache = new Map();
-        this.tickPathCacheBuilt = false;
-        this._tickPathCachePinned.clear();
+        this.resetTickPathCache();
         
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
@@ -3932,12 +3928,26 @@ class ReplaySystem {
      * @deprecated Use lazy getTickPath() — kept for callers that still invoke it.
      */
     buildTickPathCache() {
+        this.resetTickPathCache();
+    }
+
+    /** Reset lazy tick-path LRU (Map). Safe to call from chart.js on TF / pair switch. */
+    resetTickPathCache() {
         this.tickPathCache = new Map();
         this.tickPathCacheBuilt = false;
-        this._tickPathCachePinned.clear();
+        if (!this._tickPathCachePinned) this._tickPathCachePinned = new Set();
+        else this._tickPathCachePinned.clear();
+    }
+
+    /** chart.js legacy paths assigned `{}` — coerce back to Map before .get/.set. */
+    _ensureTickPathCacheMap() {
+        if (!this.tickPathCache || typeof this.tickPathCache.get !== 'function') {
+            this.resetTickPathCache();
+        }
     }
 
     _evictTickPathCacheIfNeeded() {
+        this._ensureTickPathCacheMap();
         const max = this._tickPathCacheMax || 2000;
         if (!this.tickPathCache || this.tickPathCache.size <= max) return;
         for (const key of this.tickPathCache.keys()) {
@@ -3948,7 +3958,7 @@ class ReplaySystem {
     }
 
     _rememberTickPath(key, path) {
-        if (!this.tickPathCache) this.tickPathCache = new Map();
+        this._ensureTickPathCacheMap();
         if (this.tickPathCache.has(key)) this.tickPathCache.delete(key);
         this.tickPathCache.set(key, path);
         this._evictTickPathCacheIfNeeded();
@@ -3962,14 +3972,14 @@ class ReplaySystem {
     getTickPath(candle) {
         if (!candle || !candle.t) return null;
 
+        this._ensureTickPathCacheMap();
+
         const n = this.ticksPerCandle || 72;
         const key = candle.t;
-        const cached = this.tickPathCache && this.tickPathCache.get(key);
+        const cached = this.tickPathCache.get(key);
         if (cached && cached.length === n) {
-            if (this.tickPathCache.has(key)) {
-                this.tickPathCache.delete(key);
-                this.tickPathCache.set(key, cached);
-            }
+            this.tickPathCache.delete(key);
+            this.tickPathCache.set(key, cached);
             return cached;
         }
 

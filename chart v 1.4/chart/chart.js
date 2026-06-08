@@ -2049,8 +2049,8 @@ class Chart {
                 rs0.tickElapsedMs = 0;
                 rs0.fullRawData = null;
                 rs0.fullData = null;
-                rs0.tickPathCache = {};
-                rs0.tickPathCacheBuilt = false;
+                if (typeof rs0.resetTickPathCache === 'function') rs0.resetTickPathCache();
+                else { rs0.tickPathCache = new Map(); rs0.tickPathCacheBuilt = false; }
             }
         }
 
@@ -2239,8 +2239,8 @@ class Chart {
         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
         replay.rawTimeframe = this._nativeRawFetchTf || this.currentTimeframe;
         replay._fullRawDataMatchesTF = false;
-        replay.tickPathCache = {};
-        replay.tickPathCacheBuilt = false;
+        if (typeof replay.resetTickPathCache === 'function') replay.resetTickPathCache();
+        else { replay.tickPathCache = new Map(); replay.tickPathCacheBuilt = false; }
         return true;
     }
 
@@ -2320,8 +2320,8 @@ class Chart {
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
-        replay.tickPathCache = {};
-        replay.tickPathCacheBuilt = false;
+        if (typeof replay.resetTickPathCache === 'function') replay.resetTickPathCache();
+        else { replay.tickPathCache = new Map(); replay.tickPathCacheBuilt = false; }
 
         this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
 
@@ -2466,8 +2466,8 @@ class Chart {
                     replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
                     replay.rawTimeframe = replayRawTf;
                     replay._fullRawDataMatchesTF = false;
-                    replay.tickPathCache = {};
-                    replay.tickPathCacheBuilt = false;
+                    if (typeof replay.resetTickPathCache === 'function') replay.resetTickPathCache();
+                    else { replay.tickPathCache = new Map(); replay.tickPathCacheBuilt = false; }
                     let sessionStartMs = null;
                     try {
                         const rawStart = session.startDate || session.start_date;
@@ -4158,8 +4158,8 @@ class Chart {
                 replay.fullData = Array.isArray(this.data) ? this.data : null;
                 replay.rawTimeframe = normalizedTf;
                 replay._fullRawDataMatchesTF = true;
-                replay.tickPathCache = {};
-                replay.tickPathCacheBuilt = false;
+                if (typeof replay.resetTickPathCache === 'function') replay.resetTickPathCache();
+                else { replay.tickPathCache = new Map(); replay.tickPathCacheBuilt = false; }
                 replay.replayStartTimestamp = replay.fullRawData[0]?.t ?? replay.replayStartTimestamp;
                 replay.replayEndTimestamp = replay.fullRawData[replay.fullRawData.length - 1]?.t ?? replay.replayEndTimestamp;
                 this._syncReplayPanCursorsFromFullRaw();

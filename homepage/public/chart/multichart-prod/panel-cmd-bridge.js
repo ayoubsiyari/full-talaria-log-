@@ -226,8 +226,8 @@
         rs.tickElapsedMs = 0;
         // Keep fullRawData during async pair fetch — nulling it lets mirror/sync
         // frames paint an empty slice and leaves offsetX pointing off-screen.
-        rs.tickPathCache = {};
-        rs.tickPathCacheBuilt = false;
+        if (typeof rs.resetTickPathCache === 'function') rs.resetTickPathCache();
+        else { rs.tickPathCache = new Map(); rs.tickPathCacheBuilt = false; }
     }
 
     /** Seed iframe replay timestamp from parent tile A before pair fetch. */
