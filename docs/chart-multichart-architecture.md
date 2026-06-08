@@ -4,8 +4,11 @@ This document describes how the live chart, backtest replay, multichart grid, da
 
 **Related docs:**
 
+- [chart-zoom-pan-load-flow.md](./chart-zoom-pan-load-flow.md) — zoom in/out, pan, and candle loading flows
 - [backtest-scaling-checklist.md](./backtest-scaling-checklist.md) — implementation tracks A/B/C
 - [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) — how to verify changes
+- [talaria-performance-fixes.md](./talaria-performance-fixes.md) — server CPU/RAM fixes
+- [talaria-zoom-pan-fixes.md](./talaria-zoom-pan-fixes.md) — client zoom/pan lag fixes
 
 ---
 

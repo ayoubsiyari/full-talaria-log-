@@ -569,7 +569,9 @@ class Chart {
         // we drop the cached precision so the registry is re-queried for the new tick
         // size (prevents NQ inheriting EURUSD's 5dp when switching symbols mid-session).
         this._symbolPrecisionResolvedFor = null;
-        this._RAW_DATA_CAP = 8000; // ring buffer: max candles in memory
+        this._RAW_DATA_CAP = 8000; // default; use _getRawDataCap() for timeframe-aware limit
+        this._scalesDirty = true;
+        this._panScalesCalculated = false;
         this._REPLAY_RAW_CAP = 5000;
         /**
          * Backtest: first GET /smart batch size (capped 5k–100k server-side).
@@ -3324,15 +3326,40 @@ class Chart {
         }, 150);
     }
 
-    _deferIndicatorRecalcAfterZoomFill() {
+    /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
+    _getRawDataCap() {
+        const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        if (tf === '1m' || tf === '5m') return 5000;
+        if (tf === '15m' || tf === '30m') return 6000;
+        return this._RAW_DATA_CAP || 8000;
+    }
+
+    _markScalesDirty() {
+        this._scalesDirty = true;
+        this._panScalesCalculated = false;
+    }
+
+    _deferIndicatorRecalcAfterZoomFill(delayMs) {
         clearTimeout(this._deferredIndicatorTimer);
+        const waitMs = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 100;
         this._deferredIndicatorTimer = setTimeout(() => {
             this._deferredIndicatorTimer = null;
             if (typeof this.recalculateIndicators === 'function') {
                 this.recalculateIndicators();
             }
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
-        }, 450);
+        }, waitMs);
+    }
+
+    /** Defer indicator work while panning/zooming; sync only when interaction settled. */
+    _scheduleIndicatorRecalcAfterInteraction() {
+        if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
+            this._deferIndicatorRecalcAfterZoomFill(100);
+            return;
+        }
+        if (typeof this.recalculateIndicators === 'function') {
+            this.recalculateIndicators();
+        }
     }
 
     _applyZoomOutBars(incoming, win, serverTf) {
@@ -3355,7 +3382,7 @@ class Chart {
             const unique = sorted.filter((c) => !tsSet.has(c.t));
             if (!unique.length) return false;
             let merged = existing.concat(unique).sort((a, b) => a.t - b.t);
-            const cap = this._RAW_DATA_CAP || 8000;
+            const cap = this._getRawDataCap();
             if (merged.length > cap) {
                 const centerT = (win.fromMs + win.toMs) / 2;
                 merged = merged
@@ -3365,11 +3392,16 @@ class Chart {
                     .sort((a, b) => a.t - b.t);
             }
             this.rawData = merged;
-            this.data = this.resampleData(this.rawData, chartTf);
+            this.data = this.dataPipeline
+                ? this.dataPipeline.getResampledSeries(this.rawData, chartTf, this.dataVersion)
+                : this.resampleData(this.rawData, chartTf);
         }
 
         if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
             this.dataPipeline.invalidateResampleCache();
+        }
+        if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
+            this.dataPipeline.invalidatePanDisplayCache();
         }
         if (this._serverCursors) {
             this._serverCursors.firstTs = String(this.rawData[0].t);
@@ -3395,7 +3427,7 @@ class Chart {
             this._zoomOutFillPending = false;
             return;
         }
-        if (win.loadedBarCount >= win.visibleBarCount * 0.82) {
+        if (win.loadedBarCount >= win.visibleBarCount * 0.90) {
             this._zoomOutFillPending = false;
             return;
         }
@@ -3422,14 +3454,14 @@ class Chart {
             if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
                 this.dataPipeline.bumpDisplayVersion();
             }
-            this._deferIndicatorRecalcAfterZoomFill();
+            this._deferIndicatorRecalcAfterZoomFill(100);
             this.scheduleRender();
 
             const winAfter = this._getVisibleFetchWindowFromPixels();
             if (
                 winAfter
                 && winAfter.visibleBarCount >= 96
-                && winAfter.loadedBarCount < winAfter.visibleBarCount * 0.82
+                && winAfter.loadedBarCount < winAfter.visibleBarCount * 0.90
             ) {
                 setTimeout(() => this._fillVisibleWindowAfterZoomOut().catch(() => {}), 250);
             } else {
@@ -4594,20 +4626,59 @@ class Chart {
     _commitLoadedBars(newData, startIndex, options = {}) {
         if (!newData || newData.length === 0) return;
 
-        if (startIndex === 0) {
+        const mergeDirection = options.mergeDirection || null;
+        const tf = this.currentTimeframe || '1m';
+
+        if (mergeDirection === 'backward' && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            this.rawData = newData.concat(this.rawData);
+            const cap = this._getRawDataCap();
+            if (this.rawData.length > cap) {
+                this.rawData = this.rawData.slice(0, cap);
+            }
+            const chunk = this.dataPipeline
+                ? this.dataPipeline.getResampledSeries(newData, tf, this.dataVersion)
+                : this.resampleData(newData, tf);
+            this.data = Array.isArray(this.data) && this.data.length > 0
+                ? chunk.concat(this.data).slice(0, cap)
+                : (this.dataPipeline
+                    ? this.dataPipeline.getResampledSeries(this.rawData, tf, this.dataVersion)
+                    : this.resampleData(this.rawData, tf));
+        } else if (mergeDirection === 'forward' && Array.isArray(this.rawData) && this.rawData.length > 0) {
+            this.rawData = this.rawData.concat(newData);
+            const cap = this._getRawDataCap();
+            if (this.rawData.length > cap) {
+                this.rawData = this.rawData.slice(-cap);
+            }
+            const chunk = this.dataPipeline
+                ? this.dataPipeline.getResampledSeries(newData, tf, this.dataVersion)
+                : this.resampleData(newData, tf);
+            this.data = Array.isArray(this.data) && this.data.length > 0
+                ? this.data.concat(chunk).slice(-cap)
+                : (this.dataPipeline
+                    ? this.dataPipeline.getResampledSeries(this.rawData, tf, this.dataVersion)
+                    : this.resampleData(this.rawData, tf));
+        } else if (startIndex === 0) {
             this.rawData = newData;
+            this.data = this.dataPipeline
+                ? this.dataPipeline.getResampledSeries(this.rawData, tf, this.dataVersion)
+                : this.resampleData(this.rawData, tf);
         } else {
             this.rawData = this.rawData.slice(0, startIndex).concat(newData, this.rawData.slice(startIndex + newData.length));
+            this.data = this.dataPipeline
+                ? this.dataPipeline.getResampledSeries(this.rawData, tf, this.dataVersion)
+                : this.resampleData(this.rawData, tf);
         }
 
-        this.data = this.resampleData(this.rawData, this.currentTimeframe);
         if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
             this.dataPipeline.invalidateResampleCache();
         }
+        if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
+            this.dataPipeline.invalidatePanDisplayCache();
+        }
         this.bumpDataVersion();
 
-        if (!options.skipIndicators && typeof this.recalculateIndicators === 'function') {
-            this.recalculateIndicators();
+        if (!options.skipIndicators) {
+            this._scheduleIndicatorRecalcAfterInteraction();
         }
 
         // GET /sessions/:id/state often finishes before the first OHLC ingest. In that case
@@ -12994,7 +13065,7 @@ class Chart {
         const zoomFillActive = !!(this._zoomOutFillInflight || this._zoomOutFillPending);
         if (!wheelActive && !zoomFillActive) {
             const isReplayActive = this.replaySystem && this.replaySystem.isActive;
-            const nearEdgeThreshold = 500 * candleSpacing;
+            const nearEdgeThreshold = Math.max(200, Math.min(600, cw * 0.3));
             if (isReplayActive) {
                 // Replay mode: load older history when scrolled near the left edge of loaded data.
                 const replayNearLeft = this.offsetX > maxOffset - nearEdgeThreshold;
@@ -16729,8 +16800,9 @@ class Chart {
                     }
                     // ── Ring buffer: cap rawData to avoid unbounded memory growth ──
                     let trimmed = merged;
-                    const cap = this._RAW_DATA_CAP || 8000;
-                    if (merged.length > cap) {
+                    const cap = this._getRawDataCap();
+                    const capTrimmed = merged.length > cap;
+                    if (capTrimmed) {
                         if (direction === 'backward') {
                             // Loading older data → evict from the right (newest)
                             const evicted = merged.length - cap;
@@ -16746,7 +16818,26 @@ class Chart {
                         }
                     }
                     this.rawData = trimmed;
-                    this.data = [...this.rawData];
+                    const chartTf = this.currentTimeframe || '1m';
+                    if (!capTrimmed && uniqueNew.length > 0 && Array.isArray(this.data) && this.data.length > 0) {
+                        const chunk = this.dataPipeline
+                            ? this.dataPipeline.getResampledSeries(uniqueNew, chartTf, this.dataVersion)
+                            : this.resampleData(uniqueNew, chartTf);
+                        if (direction === 'backward') {
+                            this.data = chunk.concat(this.data);
+                        } else {
+                            this.data = this.data.concat(chunk);
+                        }
+                        if (this.data.length > cap) {
+                            this.data = direction === 'backward'
+                                ? this.data.slice(0, cap)
+                                : this.data.slice(-cap);
+                        }
+                    } else {
+                        this.data = this.dataPipeline
+                            ? this.dataPipeline.getResampledSeries(this.rawData, chartTf, this.dataVersion)
+                            : this.resampleData(this.rawData, chartTf);
+                    }
                 }
 
                 // ── Prefetch next batch while user is still panning ──
@@ -16775,9 +16866,7 @@ class Chart {
                 const replayPlaying = !!(isReplay && this.replaySystem && this.replaySystem.isPlaying);
                 if (!replayPlaying) {
                     if (!(isReplay && direction === 'backward')) {
-                        if (typeof this.recalculateIndicators === 'function') {
-                            this.recalculateIndicators();
-                        }
+                        this._scheduleIndicatorRecalcAfterInteraction();
                     }
                     this.scheduleRender();
                 }
@@ -17137,6 +17226,10 @@ class Chart {
         if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
             this._normalizeVolumeIndicatorLayout();
         }
+        // Horizontal pan does not change price range — skip repeat OHLC scans (ZOOM-FIX-9).
+        if (this._chartPanRenderLoopActive && this._panScalesCalculated && this.yScale && this.xScale) {
+            return;
+        }
         const m = this.margin;
 
         // Price-axis drag only changes Y zoom/offset — skip pipeline + OHLC scan (same idea as wheel burst).
@@ -17367,7 +17460,10 @@ class Chart {
             xScale: this.xScale,
             volumeScale: this.volumeScale
         };
-        
+
+        if (this._chartPanRenderLoopActive) {
+            this._panScalesCalculated = true;
+        }
     }
 
     /**
@@ -17468,9 +17564,6 @@ class Chart {
         this.visibleEndIndex = ve;
 
         if (this._shouldUseDisplayPipeline()) {
-            if (this.dataPipeline && this.dataPipeline._displayCache) {
-                this.dataPipeline._displayCache.key = '';
-            }
             const disp = this.getDisplaySeries();
             if (Array.isArray(disp) && disp.length > 0) {
                 if (Number.isFinite(disp[0]._pixelX)) {
@@ -17734,6 +17827,7 @@ class Chart {
     }
 
     _snapshotPanDrawingsLayer() {
+        this._panScalesCalculated = false;
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
         if (this.yScale) {
@@ -18021,7 +18115,7 @@ class Chart {
             if (forceProbe || this._needsReplayHistoryLoadLeft()) {
                 this.checkViewportLoadMore('backward', forceProbe);
             }
-        }, 90);
+        }, 200);
     }
 
     /** Coalesce paints to one render per animation frame while panning. */
@@ -18100,6 +18194,7 @@ class Chart {
 
     bumpDataVersion() {
         this.dataVersion = (this.dataVersion ?? 0) + 1;
+        this._markScalesDirty();
         if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
             this.dataPipeline.bumpDisplayVersion();
         }
@@ -18397,9 +18492,11 @@ class Chart {
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            // Drawings must track every interaction frame — wheel burst used to skip them and they snapped on release.
-            this.redrawDrawings();
-            this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
+            // ZOOM-FIX-5: skip SVG drawings during pan loop — _finishPanDrawingRedraw restores on mouseup.
+            if (!this._chartPanRenderLoopActive) {
+                this.redrawDrawings();
+                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
+            }
             if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
             }
@@ -22148,9 +22245,10 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         const handleWheel = (e) => {
             e.preventDefault();
-            // 200ms so back-to-back wheel ticks stay inside a single burst.
+            // 350ms so back-to-back wheel ticks stay inside a single burst (ZOOM-FIX-7).
             const burstWasActive = this._isWheelZoomBurst();
-            this._wheelBurstUntil = performance.now() + 200;
+            this._wheelBurstUntil = performance.now() + 350;
+            this._markScalesDirty();
             this._clearPanTimeTickCache();
             this._cachedInteractionTimeTicks = null;
             if (!burstWasActive && this.drawingManager?.drawings?.length) {
@@ -22182,7 +22280,7 @@ class Chart {
                 if (typeof this._finishPanDrawingRedraw === 'function') {
                     this._finishPanDrawingRedraw();
                 }
-            }, 260);
+            }, 400);
 
             // No zoom if we have no data
             if (!this.data || this.data.length === 0) return;
