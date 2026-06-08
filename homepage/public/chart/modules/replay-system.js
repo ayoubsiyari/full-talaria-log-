@@ -5306,7 +5306,12 @@ class ReplaySystem {
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
-            if (needsScroll || this.autoScrollEnabled) {
+            // Match main chart: once the user manually pans (userHasPanned →
+            // autoScrollEnabled=false), never re-scroll/recenter the viewport.
+            // Only force a recovery when the panel is genuinely empty (0 bars),
+            // which is a broken render, not a deliberate pan.
+            const userOwnsViewport = this.userHasPanned && visibleBars > 0;
+            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;

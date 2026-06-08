@@ -4177,7 +4177,7 @@
         };
     }
 
-    /** Per-day opening range in chart wall-clock window; null gaps before range settles each day. */
+    /** Per-day opening range in chart wall-clock window; bands appear only after the window closes (flat final high/low). */
     function calculateOpeningRange(data, params) {
         const resolved = typeof params === 'number'
             ? { rangeStart: '00:00', rangeEnd: (function (m) {
@@ -4189,33 +4189,48 @@
         const startDec = parseSessionTimeStr(resolved.rangeStart);
         const endDec = parseSessionTimeStr(resolved.rangeEnd);
         const session = { start: startDec, end: endDec };
-        const upper = [];
-        const lower = [];
-        const middle = [];
+        const n = data.length;
+        const upper = new Array(n).fill(null);
+        const lower = new Array(n).fill(null);
+        const middle = new Array(n).fill(null);
+
         let dayKey = null;
-        let forming = false;
-        let settled = false;
-        let extendForDay = false;
         let rangeStartIdx = null;
         let dayHigh = null;
         let dayLow = null;
+        let settledStartIdx = null;
+        let settledHigh = null;
+        let settledLow = null;
+        let dayEndIdx = -1;
 
-        for (let i = 0; i < data.length; i++) {
+        function flushDayExtension(endIdx) {
+            if (settledStartIdx == null || settledHigh == null || settledLow == null) return;
+            const mid = (settledHigh + settledLow) / 2;
+            for (let j = settledStartIdx; j <= endIdx; j++) {
+                upper[j] = settledHigh;
+                lower[j] = settledLow;
+                middle[j] = mid;
+            }
+        }
+
+        for (let i = 0; i < n; i++) {
             const dk = dayKeyInTimezone(data[i].t, tz);
             const dec = sessionWallDecimal(data[i].t, tz);
             if (dk !== dayKey) {
+                if (dayKey != null) flushDayExtension(dayEndIdx);
                 dayKey = dk;
-                forming = false;
-                settled = false;
-                extendForDay = false;
                 rangeStartIdx = null;
                 dayHigh = null;
                 dayLow = null;
+                settledStartIdx = null;
+                settledHigh = null;
+                settledLow = null;
             }
+            dayEndIdx = i;
+
             const inWin = isInSessionDecimal(dec, session);
             if (inWin) {
                 if (rangeStartIdx == null) rangeStartIdx = i;
-                forming = true;
                 if (dayHigh == null) {
                     dayHigh = data[i].h;
                     dayLow = data[i].l;
@@ -4223,22 +4238,14 @@
                     dayHigh = Math.max(dayHigh, data[i].h);
                     dayLow = Math.min(dayLow, data[i].l);
                 }
-            } else if (forming && !settled) {
-                settled = true;
-                extendForDay = true;
-            }
-            const showBand = rangeStartIdx != null && dayHigh != null && dayLow != null
-                && i >= rangeStartIdx && (inWin || extendForDay);
-            if (showBand) {
-                upper.push(dayHigh);
-                lower.push(dayLow);
-                middle.push((dayHigh + dayLow) / 2);
-            } else {
-                upper.push(null);
-                lower.push(null);
-                middle.push(null);
+            } else if (rangeStartIdx != null && dayHigh != null && settledHigh == null) {
+                settledHigh = dayHigh;
+                settledLow = dayLow;
+                settledStartIdx = rangeStartIdx;
             }
         }
+        if (dayKey != null) flushDayExtension(dayEndIdx);
+
         return { upper: upper, lower: lower, middle: middle };
     }
 
