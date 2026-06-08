@@ -3384,16 +3384,6 @@ class Chart {
         if (this._zoomOutFillInflight || this._panLoading || this._timeframeSwitching) return;
         if (!this.currentFileId || !this.data || this.data.length === 0) return;
         if (this.replaySystem && this.replaySystem.isActive) return;
-        // Do not compete with pan/wheel for main-thread paint budget.
-        if (this._isChartViewPanning?.() || this._isWheelZoomBurst?.()) {
-            this._zoomOutFillPending = true;
-            clearTimeout(this._zoomOutFillTimer);
-            this._zoomOutFillTimer = setTimeout(() => {
-                this._zoomOutFillTimer = null;
-                this._fillVisibleWindowAfterZoomOut().catch(() => {});
-            }, 220);
-            return;
-        }
 
         const win = this._getVisibleFetchWindowFromPixels();
         if (!win) {
@@ -17455,14 +17445,7 @@ class Chart {
         if (dataLen <= 0) return { visStart: 0, visEnd: 0 };
         if (ve > vs) return { visStart: vs, visEnd: ve };
         const buf = bufferBars != null ? bufferBars : 48;
-        let span = Math.max(2, Math.ceil(plotWidth / Math.max(spacing, 1e-6)) + buf);
-        // Zoomed-out pan/wheel: uncapped span can be 3000+ bars/frame — pixel LOD only needs ~plotPx slots.
-        if (typeof this._isInteractionFastRender === 'function' && this._isInteractionFastRender()) {
-            const lodCap = typeof this._getPanLodCap === 'function'
-                ? this._getPanLodCap()
-                : Math.ceil(plotWidth / TV_ZOOMED_OUT_SLOT_PX);
-            span = Math.min(span, lodCap + buf);
-        }
+        const span = Math.max(2, Math.ceil(plotWidth / Math.max(spacing, 1e-6)) + buf);
         vs = Math.max(0, Math.min(dataLen - 1, vs));
         ve = Math.min(dataLen, vs + span);
         if (ve <= vs) ve = Math.min(dataLen, vs + 1);
@@ -17485,6 +17468,9 @@ class Chart {
         this.visibleEndIndex = ve;
 
         if (this._shouldUseDisplayPipeline()) {
+            if (this.dataPipeline && this.dataPipeline._displayCache) {
+                this.dataPipeline._displayCache.key = '';
+            }
             const disp = this.getDisplaySeries();
             if (Array.isArray(disp) && disp.length > 0) {
                 if (Number.isFinite(disp[0]._pixelX)) {
@@ -17588,21 +17574,6 @@ class Chart {
     _shouldUsePixelColumnCandleLod(visibleCount, plotPx) {
         const spacing = this.getCandleSpacing();
         return spacing < TV_ZOOMED_OUT_SLOT_PX || visibleCount > plotPx;
-    }
-
-    /** Skip overlay indicators during zoomed-out pan/wheel — they iterate thousands of bar indices per frame. */
-    _shouldSkipOverlayIndicatorsDuringFastPaint() {
-        if (typeof this._isInteractionFastRender !== 'function' || !this._isInteractionFastRender()) {
-            return false;
-        }
-        const spacing = this.getCandleSpacing();
-        if (spacing < TV_ZOOMED_OUT_SLOT_PX) return true;
-        const vs = Number(this.visibleStartIndex);
-        const ve = Number(this.visibleEndIndex);
-        if (!Number.isFinite(vs) || !Number.isFinite(ve) || ve <= vs) return false;
-        const m = this.margin || { l: 60, r: 60 };
-        const plotPx = Math.max(1, this.w - m.l - m.r);
-        return (ve - vs) > plotPx * 2;
     }
 
     _getCandleRenderMaxBuckets(visibleCount, plotPx, opts = {}) {
@@ -18399,7 +18370,7 @@ class Chart {
             this.drawVolume(visible, panOpts);
             this.drawCandles(visible, panOpts);
             this.drawPriceLine(visible);
-            if (typeof this.drawIndicators === 'function' && !this._shouldSkipOverlayIndicatorsDuringFastPaint()) {
+            if (typeof this.drawIndicators === 'function') {
                 this.drawIndicators();
             }
             if (typeof this.renderSeparatePanelIndicators === 'function') {
