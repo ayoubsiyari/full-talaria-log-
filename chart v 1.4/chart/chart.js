@@ -12692,6 +12692,7 @@ class Chart {
      */
     dispatchScrollSync(force = false) {
         if (!this.data || this.data.length === 0) return;
+        if (this._timeframeSwitching) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
         const syncSettings = window.panelManager && window.panelManager.syncSettings;
@@ -17245,11 +17246,25 @@ class Chart {
             '6h': 1300, '8h': 1200, '12h': 1100,
             '1d': 1200, '1w': 900, '1wk': 900,
         };
-        const tfCap = limits[tf];
-        if (Number.isFinite(tfCap)) return tfCap;
-        const mo = tf.match(/^(\d+)mo$/);
-        if (mo) return 800;
-        return 2400;
+        let cap = limits[tf];
+        if (!Number.isFinite(cap)) {
+            const mo = tf.match(/^(\d+)mo$/);
+            cap = mo ? 800 : 2400;
+        }
+
+        // Replay/backtest: the zoom-out auto-fill is disabled (see
+        // _fillVisibleWindowAfterZoomOut), so only the candles between the loaded
+        // history start and the playhead exist. Allowing the screen to show more
+        // bars than are loaded just shrinks them into a sliver and leaves the sides
+        // blank ("candles hide when zoomed out"). Clamp the cap to the loaded bar
+        // count (+ a small margin) so the available candles always fill the plot.
+        // The cap still grows as backward history streams in, so deeper zoom-out
+        // becomes available once more bars are actually loaded.
+        if (this.replaySystem && this.replaySystem.isActive
+            && Array.isArray(this.data) && this.data.length > 0) {
+            cap = Math.min(cap, this.data.length + 30);
+        }
+        return cap;
     }
 
     /**
@@ -21502,7 +21517,7 @@ class Chart {
             }
 
             this.ctx.restore();
-            if (drawn === 0 && drawSeries.length > 0) {
+            if (drawn === 0 && drawSeries.length > 0 && !this._timeframeSwitching) {
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
             }
             return;
@@ -21625,7 +21640,7 @@ class Chart {
 
         this.ctx.restore();
         
-        if (drawn === 0 && drawSeries.length > 0) {
+        if (drawn === 0 && drawSeries.length > 0 && !this._timeframeSwitching) {
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
         }
     }

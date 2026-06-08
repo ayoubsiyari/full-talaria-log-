@@ -753,7 +753,9 @@
                             ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
                         }
                     } catch (_) {}
+                    ch._suppressIntervalSync = true;
                     var sw = ch.setTimeframe(tf);
+                    ch._suppressIntervalSync = false;
                     if (sw && typeof sw.then === 'function') {
                         return sw.then(function () {
                             try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}

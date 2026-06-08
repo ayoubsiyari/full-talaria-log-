@@ -1016,6 +1016,7 @@
                         fileId: d.fileId || null,
                         symbol: d.symbol || chart.currentSymbol || null,
                         timeframe: d.timeframe || chart.currentTimeframe || null,
+                        timeframeSwitching: !!chart._timeframeSwitching,
                         candleCount: chart.data ? chart.data.length : 0,
                         firstBarMs: firstBarMs,
                         lastBarMs: lastBarMs,
@@ -1035,7 +1036,7 @@
                 // state.symbol stuck on the initial "—" placeholder — then
                 // findPanelsForSymbol never matched iframe peers after a host
                 // placeOrder even though every panel showed the same pair.
-                var st = { timeframe: d.timeframe };
+                var st = { timeframe: d.timeframe, timeframeSwitching: !!chart._timeframeSwitching };
                 if (chart.currentSymbol != null && String(chart.currentSymbol) !== '') {
                     st.symbol = chart.currentSymbol;
                 }
