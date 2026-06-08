@@ -2730,7 +2730,7 @@ function v9ApplyImageDataUrlToDrawingStyle(style, dataUrl, { resetSize = false }
     return;
   }
   style.imageUrl = dataUrl;
-  style.maintainAspectRatio = true;
+  style.maintainAspectRatio = false;
   if (resetSize) {
     style.width = 200;
     style.height = 150;

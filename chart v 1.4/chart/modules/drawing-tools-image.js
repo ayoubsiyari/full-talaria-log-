@@ -49,7 +49,7 @@ class ImageTool extends BaseDrawing {
         if (!this.style.height) this.style.height = IMAGE_TOOL_DEFAULT_HEIGHT;
         if (typeof this.style.opacity !== 'number') this.style.opacity = 1;
         if (typeof this.style.maintainAspectRatio !== 'boolean') {
-            this.style.maintainAspectRatio = true;
+            this.style.maintainAspectRatio = false;
         }
         if (!this.style.originalAspectRatio) this.style.originalAspectRatio = null;
     }
@@ -131,7 +131,6 @@ class ImageTool extends BaseDrawing {
             const img = new Image();
             img.onload = () => {
                 this.style.originalAspectRatio = img.width / img.height;
-                this.style.maintainAspectRatio = true;
                 this._detectingAspectRatio = false;
                 if (this.chart && typeof this.chart.scheduleRender === 'function') {
                     this.chart.scheduleRender();
@@ -574,7 +573,6 @@ class ImageTool extends BaseDrawing {
                     try {
                         if (img.width > 0 && img.height > 0) {
                             this.style.originalAspectRatio = img.width / img.height;
-                            this.style.maintainAspectRatio = true;
                         } else {
                             this.style.originalAspectRatio = null;
                         }
