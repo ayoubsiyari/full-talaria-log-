@@ -58,8 +58,24 @@ function localChartModulesPlugin() {
     }
 }
 
+/** Iframe panels (?multichart=1) skip the 1.4MB React bundle — static boot in index.html. */
+function multichartConditionalReactPlugin() {
+    return {
+        name: 'multichart-conditional-react',
+        transformIndexHtml: {
+            order: 'post',
+            handler(html) {
+                return html.replace(
+                    /<script type="module" crossorigin src="(\/chart\/dist-v9\/assets\/talaria-v9-live\.js\?v=[^"]+)"><\/script>/,
+                    `<script type="module">\nif (!window.__TALARIA_MULTICHART_EMBED_ONLY) {\n  import('$1');\n}\n</script>`
+                );
+            },
+        },
+    };
+}
+
 export default defineConfig({
-    plugins: [react(), localChartModulesPlugin()],
+    plugins: [react(), localChartModulesPlugin(), multichartConditionalReactPlugin()],
 
     // Use live/ as the project root; live/index.html is the entry,
     // live/main.jsx imports ../src/TalariaV8bLive.jsx.

@@ -1086,10 +1086,30 @@ function v9DefaultShowInfoTypesForRangeType(rangeType) {
   if (rangeType === "Price") {
     return ["Price range", "Percent change", "Change in pips"];
   }
-  if (rangeType === "Date and time") {
+  if (rangeType === "Date and time" || rangeType === "Date & time") {
     return ["Bars range", "Date/time range"];
   }
   return ["Price range", "Percent change", "Change in pips", "Bars range", "Date/time range", "Volume"];
+}
+
+function v9DefaultShowInfoTypesForTlStyle(tlStyle, opts = {}) {
+  if (opts.isRangeStats || tlStyle?.rangeType) {
+    return v9DefaultShowInfoTypesForRangeType(tlStyle?.rangeType || "Date & Price");
+  }
+  return ["Price range"];
+}
+
+/** Master Show Info checkbox — restore defaults when re-enabled after all metrics were cleared. */
+function v9PatchTlShowInfoMasterToggle(prev, opts = {}) {
+  const nextShow = !prev.showInfo;
+  if (!nextShow) {
+    return { ...prev, showInfo: false };
+  }
+  const types =
+    Array.isArray(prev.showInfoTypes) && prev.showInfoTypes.length > 0
+      ? [...prev.showInfoTypes]
+      : v9DefaultShowInfoTypesForTlStyle(prev, opts);
+  return { ...prev, showInfo: true, showInfoTypes: types };
 }
 
 function v9TlStylePatchForRangeType(prev, nextRangeType) {
@@ -8474,7 +8494,10 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
-    const MAX_ATTEMPTS = 100; // ~10s at 100ms
+    const MAX_ATTEMPTS = (typeof document !== "undefined"
+      && document.documentElement.classList.contains("multichart-embed"))
+      ? 350
+      : 100;
 
     const tryInit = async () => {
       if (cancelled) return;
@@ -17573,6 +17596,15 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Show Info master toggle — repopulates defaults when nothing was selected. */
+  const toggleTlShowInfo = useCallback((opts = {}) => {
+    flushSync(() => setTlStyle((s) => v9PatchTlShowInfoMasterToggle(s, opts)));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Middle-line dash style — immediate repaint (rect / ellipse / circle / parallel channel). */
   const applyTlMidLineType = useCallback((midLineType) => {
     flushSync(() => setTlStyle((s) => {
@@ -19609,7 +19641,7 @@ const TalariaV8bLive = () => {
                     {/* Separator spanning all columns */}
                     <div style={{gridColumn:"1 / -1",height:1,background:c.br,margin:"2px 0 4px"}}/>
                     {/* Stats row: checkbox col1, dropdown spanning cols 2-4 */}
-                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",()=>setTlStyle(s=>({...s,showInfo:!s.showInfo})))}</div>
+                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",()=>toggleTlShowInfo({ isRangeStats: true }))}</div>
                     <div style={{gridColumn:"2 / -1",padding:"8px 0",opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
                       <div style={{position:"relative"}}>
                         <div {...modalPointerActivate((e) => {
@@ -20644,7 +20676,7 @@ const TalariaV8bLive = () => {
               ))}
                             {/* Show Info row — dropdown always visible, dimmed when off (hidden for hline) */}
               {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",()=>setTlStyle(s=>({...s,showInfo:!s.showInfo})))}
+                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",()=>toggleTlShowInfo())}
                 <div style={{ position:"relative", marginLeft:"auto" }}>
                   <div onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
                     onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
