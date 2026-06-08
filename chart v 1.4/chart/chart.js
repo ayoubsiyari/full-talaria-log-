@@ -4679,8 +4679,22 @@ class Chart {
         if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
             this.dataPipeline.invalidatePanDisplayCache();
         }
-        // Rebuild the zoomed-out LOD cache now that data has changed.
-        this._buildZoomedOutLodCache();
+        // ── LOD cache refresh ────────────────────────────────────────────────
+        // For backward merges (pan-left loads) use a fast O(newBars) incremental
+        // prepend instead of rebuilding the full O(totalBars) cache.
+        // For initial loads (startIndex=0) defer the build one frame so the render
+        // loop gets a chance to draw before we spend ~20ms on O(50k) aggregation.
+        if (mergeDirection === 'backward') {
+            this._prependToZoomedOutLodCache(newData);
+        } else if (startIndex === 0) {
+            // Yield to the browser — the first render of new data doesn't need
+            // the LOD cache (there are no pending pan frames yet at this point).
+            // _startChartPanRenderLoop will rebuild it synchronously on first drag.
+            this._zoomedOutLodCache = null;
+            setTimeout(() => { this._buildZoomedOutLodCache(); }, 0);
+        } else {
+            this._buildZoomedOutLodCache();
+        }
         this.bumpDataVersion();
 
         if (!options.skipIndicators) {
@@ -15655,13 +15669,16 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
-        // Snapshot the current visible wall-clock window so the new timeframe can
-        // land on the same chart position (TradingView parity). Skipped during
-        // replay — replay paths drive their own playhead-anchored viewport.
+        // Snapshot the current visible window so the new timeframe lands on the
+        // same chart position (TradingView parity). Live charts preserve the
+        // wall-clock window; during replay we instead anchor the playhead pixel +
+        // zoom so a panel TF switch doesn't shake/recenter.
         if (!(this.replaySystem && this.replaySystem.isActive)) {
+            this._replayTfAnchor = null;
             try { this._captureTfSwitchViewport(); } catch (e) { /* ignore */ }
         } else {
             this._tfSwitchViewport = null;
+            try { this._replayTfAnchor = this._captureReplayTfAnchor(); } catch (e) { this._replayTfAnchor = null; }
         }
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
@@ -15686,6 +15703,9 @@ class Chart {
         this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
+        // Consumed by replay onTimeframeChange before this runs; clear so a stale
+        // anchor never leaks into a later (possibly non-replay) switch.
+        this._replayTfAnchor = null;
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
         if (!wasSwitching) {
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
@@ -15715,12 +15735,17 @@ class Chart {
     /**
      * Take a bitmap snapshot of the current canvas and overlay it on top of the
      * canvas so the previous frame stays visible while we fetch / commit the new
-     * timeframe's bars. The overlay is a plain <img> sized to match the canvas;
-     * removing or hiding it reveals whatever the canvas painted while it was up.
+     * timeframe's bars. Removing or hiding it reveals whatever the canvas painted
+     * while it was up.
      *
-     * Falls back gracefully if toDataURL() throws (tainted canvas, no parent yet,
-     * 0×0 canvas before first layout, etc.) — the freeze flag alone still skips
-     * render() so we don't actively make things worse in that edge case.
+     * The snapshot is a sibling <canvas> filled via ctx.drawImage(this.canvas).
+     * This is deliberately NOT toDataURL()+<img>: PNG-encoding the whole canvas on
+     * every timeframe switch is slow and, with 3–4 multichart panels under replay
+     * load, can return an empty string — which previously hid the overlay and let
+     * the user see the blank (resized) canvas = the "chart hides then shows again"
+     * flash. canvas→canvas drawImage is cheap, synchronous, and never taints, so
+     * the frozen frame is reliable across panels. A previously valid snapshot is
+     * kept on the rare draw failure so we never reveal a blank frame.
      */
     _captureFreezeOverlay() {
         if (!this.canvas || !this.canvas.parentElement) return;
@@ -15732,10 +15757,10 @@ class Chart {
             parent.style.position = 'relative';
         }
         let overlay = parent.querySelector(':scope > .tf-freeze-overlay');
-        if (!overlay) {
-            overlay = document.createElement('img');
+        if (!overlay || overlay.tagName !== 'CANVAS') {
+            if (overlay) { try { overlay.remove(); } catch (_e) { /* ignore */ } }
+            overlay = document.createElement('canvas');
             overlay.className = 'tf-freeze-overlay';
-            overlay.alt = '';
             // z-index sits above #drawingSvg (z:2) so the snapshot also covers
             // drawings (which would otherwise pop to new positions when
             // _commitLoadedBars changes bar indices). Stays below crosshair (z:10)
@@ -15751,19 +15776,23 @@ class Chart {
                 'pointer-events:none',
                 'z-index:3',
                 'display:block',
-                'object-fit:fill',
                 'user-select:none'
             ].join(';');
             parent.appendChild(overlay);
         }
-        let dataUrl = '';
-        try { dataUrl = this.canvas.toDataURL('image/png'); } catch (e) { dataUrl = ''; }
-        if (dataUrl) {
-            overlay.src = dataUrl;
+        try {
+            // Match the live canvas backing-store size; style stays 100% so the
+            // device-pixel bitmap scales to the same CSS box as the canvas.
+            if (overlay.width !== this.canvas.width) overlay.width = this.canvas.width;
+            if (overlay.height !== this.canvas.height) overlay.height = this.canvas.height;
+            const octx = overlay.getContext('2d');
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            octx.drawImage(this.canvas, 0, 0);
             overlay.style.display = 'block';
-        } else {
-            // Couldn't snapshot — hide overlay so a stale image doesn't linger.
-            overlay.style.display = 'none';
+            this._freezeOverlayValid = true;
+        } catch (e) {
+            // Keep any previously valid snapshot visible; only hide if we have none.
+            if (!this._freezeOverlayValid) overlay.style.display = 'none';
         }
     }
 
@@ -15773,8 +15802,15 @@ class Chart {
         const overlay = this.canvas.parentElement.querySelector(':scope > .tf-freeze-overlay');
         if (overlay) {
             overlay.style.display = 'none';
-            overlay.removeAttribute('src');
+            if (overlay.tagName === 'CANVAS') {
+                // Release the backing-store memory between switches.
+                overlay.width = 0;
+                overlay.height = 0;
+            } else {
+                overlay.removeAttribute('src');
+            }
         }
+        this._freezeOverlayValid = false;
     }
 
     /**
@@ -17959,6 +17995,66 @@ class Chart {
         return out.length ? out : null;
     }
 
+    /**
+     * Incremental LOD cache update for pan-left (backward) data loads.
+     *
+     * When bars are prepended during pan-left loading, rebuilding the full cache
+     * from all O(totalBars) is expensive and causes a visible freeze. Instead:
+     *   1. Build slots for the new prefix bars only — O(newBars).
+     *   2. Shift the baseBarIdx / midBarIdx of existing slots by newCount.
+     *   3. Concatenate: newSlots + shiftedOldSlots.
+     *
+     * Total work: O(newBars/barsPerSlot + existingSlots) ≈ O(50 + 500) = O(550)
+     * instead of O(50 000). Runs during active pan without freezing the rAF loop.
+     *
+     * @param {Array} newRawBars  The newly prepended raw bars (oldest-first).
+     */
+    _prependToZoomedOutLodCache(newRawBars) {
+        if (!newRawBars || !newRawBars.length) return;
+        // Fall back to full rebuild if there is no existing cache (e.g. zoom changed).
+        if (!this._zoomedOutLodCache) {
+            this._buildZoomedOutLodCache();
+            return;
+        }
+        const { slots: existingSlots, barsPerSlot, spacing, n: oldN } = this._zoomedOutLodCache;
+        const newCount = newRawBars.length;
+
+        // Shift all existing slot indices to account for the prepended bars.
+        const shiftedSlots = existingSlots.map((s) => ({
+            o: s.o, h: s.h, l: s.l, c: s.c, vSum: s.vSum,
+            baseBarIdx: s.baseBarIdx + newCount,
+            midBarIdx: s.midBarIdx + newCount,
+        }));
+
+        // Build new virtual slots for the prepended bars.
+        const numNewSlots = Math.ceil(newCount / barsPerSlot);
+        const newSlots = new Array(numNewSlots);
+        for (let s = 0; s < numNewSlots; s++) {
+            const i0 = Math.floor(s * barsPerSlot);
+            const i1 = Math.min(newCount - 1, Math.floor((s + 1) * barsPerSlot) - 1);
+            const first = newRawBars[i0];
+            let h = first.h, l = first.l, vSum = 0;
+            for (let k = i0; k <= i1; k++) {
+                const b = newRawBars[k];
+                if (b.h > h) h = b.h;
+                if (b.l < l) l = b.l;
+                vSum += Number(b.v) || 0;
+            }
+            newSlots[s] = {
+                o: first.o, h, l, c: newRawBars[i1].c, vSum,
+                baseBarIdx: i0,
+                midBarIdx: Math.floor((i0 + i1) / 2),
+            };
+        }
+
+        this._zoomedOutLodCache = {
+            slots: newSlots.concat(shiftedSlots),
+            barsPerSlot,
+            spacing,
+            n: newCount + oldN,
+        };
+    }
+
     /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
     _canPanTransformDrawings() {
         return false;
@@ -18129,6 +18225,14 @@ class Chart {
 
     _startChartPanRenderLoop() {
         if (this._chartPanRenderLoopActive) return;
+        // Ensure the LOD pixel-column cache exists before the first pan frame fires.
+        // It is normally built after zoom/data-load, but the user may pan before ever
+        // touching the scroll wheel (e.g. right after page load at zoom-out level).
+        // Building it here is O(n) once and prevents the first drag from falling
+        // through to the slow O(n)-per-frame full scan.
+        if (!this._zoomedOutLodCache) {
+            this._buildZoomedOutLodCache();
+        }
         this._chartPanRenderLoopActive = true;
         const tick = () => {
             if (!this._isChartPanDragging()) {
@@ -21925,6 +22029,61 @@ class Chart {
             this._chartViewRestored = false;
             this.fitToView();
         }
+    }
+
+    /**
+     * Find the visible data-index of the replay playhead bar (the last bar at or
+     * before the current replay time). Shared by the replay TF-switch anchor.
+     */
+    _replayPlayheadViewIndex() {
+        if (!Array.isArray(this.data) || !this.data.length) return -1;
+        const ts = (typeof this._getReplayPlayheadMs === 'function') ? this._getReplayPlayheadMs() : null;
+        if (!Number.isFinite(ts)) return this.data.length - 1;
+        let idx = this.data.length - 1;
+        for (let i = 0; i < this.data.length; i++) {
+            const t = Number(this.data[i] && this.data[i].t);
+            if (!Number.isFinite(t)) continue;
+            if (t <= ts) idx = i; else break;
+        }
+        return idx;
+    }
+
+    /**
+     * Snapshot, before a replay timeframe switch, the on-screen pixel X of the
+     * replay playhead plus the current candle zoom. Restoring it after the new
+     * bars land keeps the playhead in the SAME spot at the SAME zoom (FXReplay /
+     * TradingView parity) instead of snapping zoom to default + re-centering,
+     * which is the visible "shake/jump" on a multichart panel TF switch.
+     */
+    _captureReplayTfAnchor() {
+        if (!(this.replaySystem && this.replaySystem.isActive)) return null;
+        const idx = this._replayPlayheadViewIndex();
+        if (idx < 0) return null;
+        const spacing = this.getCandleSpacing();
+        if (!Number.isFinite(spacing) || spacing <= 0) return null;
+        const pixelX = (idx * spacing) + (this.offsetX || 0) + (spacing / 2);
+        return { pixelX, candleWidth: this.candleWidth };
+    }
+
+    /**
+     * Restore the playhead pixel + zoom captured by _captureReplayTfAnchor onto
+     * the freshly resampled data. Returns true on success; false (→ caller keeps
+     * its existing center/auto-scroll behavior) when no anchor or no data.
+     */
+    _restoreReplayTfAnchor(anchor) {
+        const a = anchor || this._replayTfAnchor;
+        if (!a || !Number.isFinite(a.pixelX)) return false;
+        if (!Array.isArray(this.data) || !this.data.length) return false;
+        if (Number.isFinite(a.candleWidth) && a.candleWidth > 0) {
+            this.candleWidth = a.candleWidth;
+        }
+        const spacing = this.getCandleSpacing();
+        if (!Number.isFinite(spacing) || spacing <= 0) return false;
+        const idx = this._replayPlayheadViewIndex();
+        if (idx < 0) return false;
+        this.offsetX = a.pixelX - (idx * spacing) - (spacing / 2);
+        if (typeof this.constrainOffset === 'function') this.constrainOffset();
+        return true;
     }
 
     /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
