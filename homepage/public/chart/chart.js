@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b247';
+const CHART_ENGINE_BUILD = '20260602b249';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -12598,6 +12598,29 @@ class Chart {
         this.scheduleRender();
         
     }
+
+    /**
+     * Self-heal when bars exist but none are in the visible viewport (multichart
+     * sync can leave offsetX pointing at the wrong era). Mirrors time-axis dbl-click.
+     */
+    _scheduleViewportEmptyRecovery() {
+        if (this._viewportEmptyRecoverPending) return;
+        this._viewportEmptyRecoverPending = true;
+        requestAnimationFrame(() => {
+            this._viewportEmptyRecoverPending = false;
+            if (!this.data || this.data.length === 0) return;
+            const m = this.margin;
+            const plotW = this.w - m.l - m.r;
+            if (plotW <= 0) return;
+            const spacing = this.getCandleSpacing();
+            if (!(spacing > 0)) return;
+            const i0 = Math.max(0, -Math.floor(this.offsetX / spacing));
+            const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
+            if (i1 > i0) return;
+            this._chartViewRestored = false;
+            this.jumpToLatest();
+        });
+    }
     
     /**
      * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
@@ -17627,7 +17650,60 @@ class Chart {
             if (ve > vs) return this.data.slice(vs, ve);
             return [];
         }
-        return ve > vs ? this.data.slice(vs, ve) : [];
+
+        const rawCount = ve - vs;
+        if (rawCount <= 0) return [];
+
+        // ── Zoomed-out LOD pre-sample ────────────────────────────────────────
+        // When spacing < TV_ZOOMED_OUT_SLOT_PX (pixel-column mode), every
+        // render function receives a full raw slice (up to 50 000+ bars) and
+        // iterates the entire array — candles, volume, indicators, axes.
+        // At 60 fps this becomes the sole frame-time bottleneck.
+        //
+        // Fix: stride-sample the data down to ≤ maxPreSampleBars BEFORE passing
+        // it downstream. All render functions work on the reduced array; the
+        // correct global bar indices are preserved via the `midIdx` field so
+        // indicator lookups stay accurate.  `_aggregateVisibleOhlcvByPixelColumn`
+        // still merges overlapping slots, but now loops over ~900 items instead
+        // of 50 000.  Visual fidelity is unchanged: at sub-pixel spacing the
+        // individual skipped bars are physically invisible.
+        if (spacing > 0 && spacing < TV_ZOOMED_OUT_SLOT_PX) {
+            // Keep ~3 samples per 2-px slot for solid H/L fidelity.
+            const slotsOnScreen = Math.ceil(plotPx / TV_ZOOMED_OUT_SLOT_PX);
+            const maxPreSampleBars = Math.max(slotsOnScreen * 3, 600);
+            if (rawCount > maxPreSampleBars) {
+                const stride = Math.max(1, Math.floor(rawCount / maxPreSampleBars));
+                const sampled = [];
+                for (let i = vs; i < ve; i += stride) {
+                    // Merge H/L across the stride window so wicks stay accurate.
+                    const end = Math.min(ve, i + stride);
+                    const bar = this.data[i];
+                    let h = bar.h, l = bar.l;
+                    for (let j = i + 1; j < end; j++) {
+                        const bj = this.data[j];
+                        if (bj.h > h) h = bj.h;
+                        if (bj.l < l) l = bj.l;
+                    }
+                    // Reuse the bar object when stride = 1 (no copy needed).
+                    if (stride === 1) {
+                        sampled.push(bar);
+                    } else {
+                        sampled.push({
+                            o: bar.o,
+                            h,
+                            l,
+                            c: this.data[end - 1].c,
+                            v: bar.v,
+                            t: bar.t,
+                            midIdx: Math.floor((i + end - 1) / 2), // true global bar index
+                        });
+                    }
+                }
+                return sampled;
+            }
+        }
+
+        return this.data.slice(vs, ve);
     }
 
     _isPriceAxisZoomDragging() {
@@ -17738,7 +17814,14 @@ class Chart {
         const spacing = this.getCandleSpacing();
         const offsetX = this.offsetX || 0;
 
-        for (let i = 0; i < visible.length; i++) {
+        // Safety-net stride: when this function is called with a very large array
+        // (e.g. from a display pipeline that skipped the pre-sample), skip bars that
+        // are guaranteed to map to the same pixel slot as the previous one.
+        // At spacing=0.02 and slotPx=2, stride=25 → 40× fewer iterations.
+        const barsPerSlot = spacing > 0 ? slotPx / spacing : 1;
+        const stride = barsPerSlot >= 8 ? Math.max(1, Math.floor(barsPerSlot / 4)) : 1;
+
+        for (let i = 0; i < visible.length; i += stride) {
             const d = visible[i];
             if (!d) continue;
             const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
@@ -17746,20 +17829,32 @@ class Chart {
             const slot = Math.floor((x - m.l) / slotPx);
             if (slot < 0 || slot >= numSlots) continue;
 
+            // Merge H/L across the stride window before writing the slot.
+            let dh = d.h, dl = d.l;
+            if (stride > 1) {
+                const iEnd = Math.min(visible.length, i + stride);
+                for (let j = i + 1; j < iEnd; j++) {
+                    const dj = visible[j];
+                    if (!dj) continue;
+                    if (dj.h > dh) dh = dj.h;
+                    if (dj.l < dl) dl = dj.l;
+                }
+            }
+
             let bucket = slots[slot];
             if (!bucket) {
                 slots[slot] = {
                     o: d.o,
-                    h: d.h,
-                    l: d.l,
+                    h: dh,
+                    l: dl,
                     c: d.c,
                     vSum: Number(d.v) || 0,
                     midIdx: idx,
                     _pixelX: m.l + slot * slotPx,
                 };
             } else {
-                if (d.h > bucket.h) bucket.h = d.h;
-                if (d.l < bucket.l) bucket.l = d.l;
+                if (dh > bucket.h) bucket.h = dh;
+                if (dl < bucket.l) bucket.l = dl;
                 bucket.c = d.c;
                 bucket.vSum += Number(d.v) || 0;
             }
@@ -21176,6 +21271,7 @@ class Chart {
 
             this.ctx.restore();
             if (drawn === 0 && drawSeries.length > 0) {
+                this._scheduleViewportEmptyRecovery();
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
             }
             return;
@@ -21299,6 +21395,7 @@ class Chart {
         this.ctx.restore();
         
         if (drawn === 0 && drawSeries.length > 0) {
+            this._scheduleViewportEmptyRecovery();
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
         }
     }

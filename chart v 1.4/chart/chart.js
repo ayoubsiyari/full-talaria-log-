@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b247';
+const CHART_ENGINE_BUILD = '20260602b249';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -12598,6 +12598,29 @@ class Chart {
         this.scheduleRender();
         
     }
+
+    /**
+     * Self-heal when bars exist but none are in the visible viewport (multichart
+     * sync can leave offsetX pointing at the wrong era). Mirrors time-axis dbl-click.
+     */
+    _scheduleViewportEmptyRecovery() {
+        if (this._viewportEmptyRecoverPending) return;
+        this._viewportEmptyRecoverPending = true;
+        requestAnimationFrame(() => {
+            this._viewportEmptyRecoverPending = false;
+            if (!this.data || this.data.length === 0) return;
+            const m = this.margin;
+            const plotW = this.w - m.l - m.r;
+            if (plotW <= 0) return;
+            const spacing = this.getCandleSpacing();
+            if (!(spacing > 0)) return;
+            const i0 = Math.max(0, -Math.floor(this.offsetX / spacing));
+            const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
+            if (i1 > i0) return;
+            this._chartViewRestored = false;
+            this.jumpToLatest();
+        });
+    }
     
     /**
      * Bar duration (ms) from series or current timeframe — used for visible time-range sync across panels.
@@ -21248,6 +21271,7 @@ class Chart {
 
             this.ctx.restore();
             if (drawn === 0 && drawSeries.length > 0) {
+                this._scheduleViewportEmptyRecovery();
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
             }
             return;
@@ -21371,6 +21395,7 @@ class Chart {
         this.ctx.restore();
         
         if (drawn === 0 && drawSeries.length > 0) {
+            this._scheduleViewportEmptyRecovery();
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
         }
     }

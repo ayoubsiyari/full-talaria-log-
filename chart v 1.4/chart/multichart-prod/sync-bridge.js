@@ -236,15 +236,18 @@
             try { chart.constrainOffset(); } catch (_) {}
         }
 
-        // If time anchor left no bars visible (data slice mismatch), fall back to
-        // scaled offset from the leader rather than leaving a blank chart.
+        // If time anchor left no bars visible (data slice mismatch), recover
+        // to the panel's own data window instead of mirroring a stale offsetX.
         const visStart = Math.max(0, -Math.floor(chart.offsetX / spacing));
         const visEnd = Math.min(chart.data.length, visStart + Math.ceil(plotW / spacing));
-        if (visEnd <= visStart && Number.isFinite(m.offsetX)) {
-            const sw = Number(m.plotWidthPx);
-            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-            if (typeof chart.constrainOffset === 'function') {
-                try { chart.constrainOffset(); } catch (_) {}
+        if (visEnd <= visStart) {
+            if (!recoverViewportIfEmpty(chart) && Number.isFinite(m.offsetX)) {
+                const sw = Number(m.plotWidthPx);
+                chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+                if (typeof chart.constrainOffset === 'function') {
+                    try { chart.constrainOffset(); } catch (_) {}
+                }
+                recoverViewportIfEmpty(chart);
             }
         }
 
@@ -374,8 +377,54 @@
         return applyPanDragFollow(chart, m);
     }
 
+    function countVisibleBars(chart) {
+        if (!chart || !chart.data || !chart.data.length) return 0;
+        const m = chart.margin || { l: 60, r: 60 };
+        const plotW = (chart.w || chart.canvas?.width || 0) - (m.l + m.r);
+        if (plotW <= 0) return chart.data.length;
+        const cs = (typeof chart.getCandleSpacing === 'function')
+            ? chart.getCandleSpacing()
+            : chart.candleWidth;
+        if (!(cs > 0)) return chart.data.length;
+        const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
+        const i1 = Math.min(chart.data.length, i0 + Math.ceil(plotW / cs));
+        return Math.max(0, i1 - i0);
+    }
+
+    /** When sync leaves zero bars on screen, jump to latest (TradingView dbl-click parity). */
+    function recoverViewportIfEmpty(chart) {
+        if (!chart || !chart.data || !chart.data.length) return false;
+        if (countVisibleBars(chart) > 0) return false;
+
+        chart._chartViewRestored = false;
+
+        const replay = chart.replaySystem;
+        if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+            try {
+                const st = replay.getReplayAutoScrollState(chart);
+                if (st && Number.isFinite(st.offsetX)) {
+                    chart.offsetX = st.offsetX;
+                    if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+                    if (countVisibleBars(chart) > 0) {
+                        if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+                        return true;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (typeof chart.jumpToLatest === 'function') {
+            chart.jumpToLatest();
+        } else if (typeof chart.fitToView === 'function') {
+            chart.fitToView();
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        }
+        return countVisibleBars(chart) > 0;
+    }
+
     function finishViewportApply(chart, panSync) {
-        chart._chartViewRestored = true;
+        recoverViewportIfEmpty(chart);
+        chart._chartViewRestored = countVisibleBars(chart) > 0;
         if (panSync) {
             chart._panSyncBurstUntil = performance.now() + 48;
             if (typeof chart.render === 'function') chart.render();
@@ -520,7 +569,7 @@
             if (Number.isFinite(r0) && Number.isFinite(r1) && r1 >= r0) {
                 const recEndExclusive = r1 + barSec;
                 if (!(startSec < recEndExclusive && r0 < endSec)) {
-                    try { chart.fitToView && chart.fitToView(); } catch (_) {}
+                    recoverViewportIfEmpty(chart);
                     if (chart.priceScale) chart.priceScale.autoScale = true;
                     chart.autoScale = true;
                     if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
@@ -587,19 +636,9 @@
             }
         }
 
-        // Safety net (mirrors chart.js:2050-2053): if our alignment left zero
-        // bars on screen, fall back to fitToView so we never produce a blank
-        // chart. This is the actual fix for the "jump and hide" report.
-        const visibleBarCount = function () {
-            const cs = (typeof chart.getCandleSpacing === 'function')
-                ? chart.getCandleSpacing() : chart.candleWidth;
-            if (cs <= 0 || cwDraw <= 0) return chart.data.length;
-            const i0 = Math.max(0, -Math.floor(chart.offsetX / cs));
-            const i1 = Math.min(chart.data.length, i0 + Math.ceil(cwDraw / cs));
-            return Math.max(0, i1 - i0);
-        };
-        if (visibleBarCount() === 0) {
-            try { chart.fitToView && chart.fitToView(); } catch (_) {}
+        // Safety net: if alignment left zero bars on screen, jump to latest.
+        if (countVisibleBars(chart) === 0) {
+            recoverViewportIfEmpty(chart);
         }
 
         // Force price autoScale ON so the recipient's price axis recomputes
