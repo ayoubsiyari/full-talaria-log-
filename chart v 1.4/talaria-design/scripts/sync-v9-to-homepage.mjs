@@ -65,6 +65,21 @@ if (fs.existsSync(modulesSrc)) {
   console.warn("[sync-v9-to-homepage] chart/modules not found, skip:", modulesSrc);
 }
 
+// Web Worker scripts: indicator-worker.js (Track A) is loaded by the chart at
+// runtime from /chart/workers/indicator-worker.js. Copy the full workers/
+// directory so changes are picked up on every build+sync without manual steps.
+const workersSrc = path.resolve(__dirname, "../../chart/workers");
+const workersDest = path.resolve(__dirname, "../../../homepage/public/chart/workers");
+if (fs.existsSync(workersSrc)) {
+  if (fs.existsSync(workersDest)) {
+    fs.rmSync(workersDest, { recursive: true, force: true });
+  }
+  fs.cpSync(workersSrc, workersDest, { recursive: true });
+  console.log("[sync-v9-to-homepage] Copied chart/workers", workersSrc, "→", workersDest);
+} else {
+  console.warn("[sync-v9-to-homepage] chart/workers not found, skip:", workersSrc);
+}
+
 // Phase 7.2.x multichart bridge scripts: dist-v9 shim loads these at runtime
 // from /chart/multichart-prod/ (sync-bridge.js, multichart-manager.js,
 // engine-api-guards.js, embed-bridge.js, panel-cmd-bridge.js). Copy the

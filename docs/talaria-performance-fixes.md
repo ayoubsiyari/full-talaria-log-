@@ -3,7 +3,7 @@
 > Generated from architecture audit of `chart-multichart-architecture.md`  
 > Fix these in order — top items have the highest impact.
 
-## Implementation status (2026-06-06)
+## Implementation status (2026-06-08)
 
 | Fix | Status | Notes |
 |-----|--------|-------|
@@ -11,14 +11,18 @@
 | FIX-2 | ✅ Done | `REDIS_URL` + `BACKTEST_BARS_CACHE_*` in compose; `bar_window_cache.py` wired in `api_server.py`. Run `./scripts/verify-bar-cache-env.sh` on VPS. |
 | FIX-3 | ✅ Done | Compose mounts `homepage/nginx.local.conf`; `homepage/Dockerfile` copies same file for image builds. |
 | FIX-4 | ✅ Done | `chart.scheduleSessionStateSave()` (4s debounce) used from `replay-system.js`, `propfirm-tracker.js`, etc.; replay persist while playing **8s** interval. |
-| FIX-5 | ✅ Done | `MultichartGrid.jsx` — rAF coalesce + **30 fps** cap on `replayFrame` fan-out. Cache bust `?v=20260602a464`. |
+| FIX-5 | ✅ Done | `MultichartGrid.jsx` — rAF coalesce + **30 fps** cap on `replayFrame` fan-out. |
 | FIX-6 | ✅ Done | `_ensureReplayDataGeneration` guard in `chart.js` (`ensureReplayDataCoversTimestamp`, TF switch, `_beginTimeframeSwitching`). |
 | FIX-7 | ✅ Done | `_evictPanelMasterData()` on pair switch in `loadFileData()`. |
 | FIX-8 | ✅ Done | Tile cache + static `/chart/` in `homepage/nginx.local.conf` (Dockerfile aligned). |
+| TF-VIEWPORT | ✅ Done | **Same chart position across timeframes** — `_captureTfSwitchViewport` / `_tryRestoreTfSwitchViewport` preserve wall-clock window across all TF switch paths. Built `?v=20260602a478`. |
+| TV-PARITY-A | ✅ Done | **Track A — Web Worker indicators**: `chart v 1.4/chart/workers/indicator-worker.js` (self-contained pure calc for all 30+ indicator types). `IndicatorWorkerManager` singleton + `recalculateIndicatorsAsync()` added to `chart-indicators-full.js`. `_deferRecalculateIndicators` + `_scheduleIndicatorsAfterTimeframe` in `chart.js` now call async path first; worker failure auto-falls-back to sync. Cache-bust `?v=20260602a480`. |
+| TV-PARITY-B | ✅ Done | **Track B — Pre-built TF tiles**: tile build for all 9 TFs already ran at upload time (verified `DATASET_TIMEFRAMES`). `/smart` API already serves pre-built tiles. Added TF-aware Redis TTL to `bar_window_cache.py` (`_ttl_sec(timeframe)` → 5m+ gets 3600s vs 1m's 300s, env-overridable via `BACKTEST_BARS_CACHE_TTL_PREBUILT_SEC`). Wired `timeframe=` kwarg into all three `set_smart` callsites in `api_server.py`. Background tile rebuild on CSV upload already in place (lines 7362–7395). |
+| TV-PARITY-C | ✅ Done | **Track C flag** — `USE_SINGLE_RUNTIME` feature gate added to `TalariaV8bLive.jsx` (reads `localStorage.talaria_single_runtime=true` or `?runtime=single`). Placeholder logs when flag active; falls through to iframe grid until `MultichartRuntimeContainer` is built. `sync-v9-to-homepage.mjs` now also copies `chart/workers/` to `homepage/public/chart/workers/`. Built + deployed `?v=20260602a480`. |
 
-**Deploy:** rebuild `homepage` + `trading-chart`, set `WEB_CONCURRENCY=2` in server `.env` if still 4, hard-refresh browser after deploy.
+**Deploy:** `npm run build:chart-v9` from repo root → `docker compose build homepage` → `docker compose up -d homepage`. Hard-refresh browser (Ctrl+Shift+R).
 
-**Build (local):** `npm run build:chart-v9` from repo root syncs `dist-v9`, `chart.js`, and `chart/modules/` to `homepage/public/chart/`.
+**New env var (optional):** `BACKTEST_BARS_CACHE_TTL_PREBUILT_SEC` — TTL for 5m/15m/30m/1h/4h/1d/1w/1mo tiles (default 3600s).
 
 ---
 

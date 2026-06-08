@@ -5767,15 +5767,13 @@ class ReplaySystem {
             this.updateChartData(false);
             this.chart.priceOffset = savedPriceOffset;
             this.chart.priceZoom = savedPriceZoom;
-            const restoredViewport = typeof this.chart._tryRestoreTfSwitchViewport === 'function'
-                && this.chart._tryRestoreTfSwitchViewport({ resetPriceScale: false });
-            if (!restoredViewport && typeof this.syncReplayViewportToPlayhead === 'function') {
+            if (typeof this.syncReplayViewportToPlayhead === 'function') {
                 this.syncReplayViewportToPlayhead(this.chart, {
                     centerPlayhead: true,
                     resetPriceScale: false,
                     render: true,
                 });
-            } else if (!restoredViewport && typeof this.chart.render === 'function') {
+            } else if (typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
                 this.chart.render();
             }

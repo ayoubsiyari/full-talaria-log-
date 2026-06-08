@@ -26,11 +26,26 @@ def _enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
-def _ttl_sec() -> int:
+def _ttl_sec(timeframe: str | None = None) -> int:
+    """Return TTL in seconds.
+
+    Pre-built tiles for higher timeframes (5m+) are aggregated once at upload
+    time and never change — cache them much longer than 1m windows.
+    Override with BACKTEST_BARS_CACHE_TTL_SEC (applies to 1m / default).
+    Override pre-built TTL with BACKTEST_BARS_CACHE_TTL_PREBUILT_SEC.
+    """
     try:
-        return max(30, int(os.getenv("BACKTEST_BARS_CACHE_TTL_SEC", "300")))
+        base = max(30, int(os.getenv("BACKTEST_BARS_CACHE_TTL_SEC", "300")))
     except (TypeError, ValueError):
-        return 300
+        base = 300
+
+    _PREBUILT_TFS = {"5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"}
+    if timeframe and str(timeframe).lower().strip() in _PREBUILT_TFS:
+        try:
+            return max(base, int(os.getenv("BACKTEST_BARS_CACHE_TTL_PREBUILT_SEC", "3600")))
+        except (TypeError, ValueError):
+            return max(base, 3600)
+    return base
 
 
 def _max_bytes() -> int:
@@ -84,16 +99,16 @@ def get_bars(key: str) -> dict | None:
     return _get(_BARS_PREFIX, key)
 
 
-def set_bars(key: str, payload: dict) -> None:
-    _set(_BARS_PREFIX, key, payload)
+def set_bars(key: str, payload: dict, *, timeframe: str | None = None) -> None:
+    _set(_BARS_PREFIX, key, payload, timeframe=timeframe)
 
 
 def get_smart(key: str) -> dict | None:
     return _get(_SMART_PREFIX, key)
 
 
-def set_smart(key: str, payload: dict) -> None:
-    _set(_SMART_PREFIX, key, payload)
+def set_smart(key: str, payload: dict, *, timeframe: str | None = None) -> None:
+    _set(_SMART_PREFIX, key, payload, timeframe=timeframe)
 
 
 def invalidate_file(file_id: int) -> None:
@@ -132,7 +147,7 @@ def _get(prefix: str, key: str) -> dict | None:
         return None
 
 
-def _set(prefix: str, key: str, payload: dict) -> None:
+def _set(prefix: str, key: str, payload: dict, *, timeframe: str | None = None) -> None:
     if not _enabled() or not key or not isinstance(payload, dict):
         return
     if not payload.get("bars") and not payload.get("candles") and not payload.get("data"):
@@ -144,6 +159,6 @@ def _set(prefix: str, key: str, payload: dict) -> None:
         body = json.dumps(payload, separators=(",", ":"), default=str)
         if len(body) > _max_bytes():
             return
-        c.setex(f"{prefix}{key}", _ttl_sec(), body)
+        c.setex(f"{prefix}{key}", _ttl_sec(timeframe), body)
     except Exception:
         pass

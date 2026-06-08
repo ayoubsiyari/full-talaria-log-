@@ -6623,6 +6623,131 @@
         return indicator;
     };
     
+    // ── Indicator Web Worker manager ──────────────────────────────────────
+    // Singleton: first chart instance to call recalculateIndicators spins up
+    // the worker; all subsequent chart instances share it.
+    var _indicatorWorkerSingleton = null;
+    var _workerLoadFailed = false;
+    var _workerPending = new Map(); // id → { resolve, reject }
+    var _workerNextId = 0;
+
+    function _getIndicatorWorker() {
+        if (_workerLoadFailed) return null;
+        if (_indicatorWorkerSingleton) return _indicatorWorkerSingleton;
+        if (typeof Worker === 'undefined') { _workerLoadFailed = true; return null; }
+        try {
+            var w = new Worker('/chart/workers/indicator-worker.js');
+            w.onmessage = function(e) {
+                var msg = e.data;
+                var pending = _workerPending.get(msg.id);
+                if (!pending) return;
+                _workerPending.delete(msg.id);
+                if (msg.type === 'ERROR') {
+                    pending.reject(new Error(msg.error || 'worker error'));
+                } else if (msg.type === 'ALL_RESULTS') {
+                    pending.resolve(msg.results);
+                }
+            };
+            w.onerror = function(err) {
+                console.warn('[indicator-worker] load/runtime error — falling back to sync', err);
+                _workerLoadFailed = true;
+                _indicatorWorkerSingleton = null;
+                // Reject all pending
+                _workerPending.forEach(function(p) { p.reject(new Error('worker failed')); });
+                _workerPending.clear();
+            };
+            _indicatorWorkerSingleton = w;
+            return w;
+        } catch (e) {
+            _workerLoadFailed = true;
+            return null;
+        }
+    }
+
+    /**
+     * Calculate all active indicators in a background Web Worker.
+     * Falls back to synchronous recalculateIndicators() if worker is unavailable.
+     * Safe to call fire-and-forget (scheduleRender called on completion).
+     */
+    Chart.prototype.recalculateIndicatorsAsync = function() {
+        if (!this.indicators || !this.indicators.active || !this.indicators.active.length) return;
+        if (!Array.isArray(this.data) || !this.data.length) return;
+
+        var chart = this;
+        var worker = _getIndicatorWorker();
+
+        // If worker unavailable or already mid-sync fallback, run sync
+        if (!worker) {
+            try { chart.recalculateIndicators(); } catch (_) {}
+            return;
+        }
+
+        // Debounce: cancel any pending async calc for this chart instance
+        if (chart._indicatorWorkerSeq == null) chart._indicatorWorkerSeq = 0;
+        var mySeq = ++chart._indicatorWorkerSeq;
+
+        // Build indicator config map for worker
+        var indicators = {};
+        chart.indicators.active.forEach(function(ind) {
+            // cotnet / ICT complex types are skipped in worker — run sync for those
+            var workerSkip = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
+            if (workerSkip.indexOf(ind.type) >= 0) return;
+            indicators[ind.id] = { type: ind.type, params: ind.params || {} };
+        });
+
+        // Run sync fallback for skipped indicators immediately
+        var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
+        chart.indicators.active.forEach(function(ind) {
+            if (syncOnlyTypes.indexOf(ind.type) < 0) return;
+            try {
+                if (!chart.indicators.data) chart.indicators.data = {};
+                var tempRecalc = chart._syncRecalcSingle(ind);
+                if (tempRecalc !== undefined) chart.indicators.data[ind.id] = tempRecalc;
+            } catch (_) {}
+        });
+
+        if (Object.keys(indicators).length === 0) {
+            // All indicators were sync-only
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            return;
+        }
+
+        var id = _workerNextId++;
+        new Promise(function(resolve, reject) {
+            _workerPending.set(id, { resolve: resolve, reject: reject });
+            worker.postMessage({
+                type: 'CALCULATE_ALL',
+                id: id,
+                payload: { bars: chart.data, indicators: indicators }
+            });
+        }).then(function(results) {
+            if (chart._indicatorWorkerSeq !== mySeq) return; // superseded
+            if (!chart.indicators) chart.indicators = {};
+            if (!chart.indicators.data) chart.indicators.data = {};
+            Object.assign(chart.indicators.data, results);
+            if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+        }).catch(function(err) {
+            if (chart._indicatorWorkerSeq !== mySeq) return;
+            console.warn('[indicator-worker] async calc failed, falling back to sync:', err);
+            try { chart.recalculateIndicators(); } catch (_) {}
+        });
+    };
+
+    /** Run recalculation for a single indicator synchronously (used for worker-skipped types). */
+    Chart.prototype._syncRecalcSingle = function(indicator) {
+        // Minimal inline dispatch for complex indicator types that require DOM context
+        // or large state not worth serialising. Returns the result or undefined.
+        try {
+            if (!this.indicators || !this.indicators.data) this.indicators = this.indicators || {};
+            switch (indicator.type) {
+                case 'cotnet':
+                    if (typeof this._scheduleCotNetLoad === 'function') this._scheduleCotNetLoad(indicator);
+                    return { loading: true, error: null };
+                default: return undefined; // fall through to full recalculateIndicators
+            }
+        } catch (_) { return undefined; }
+    };
+
     Chart.prototype.recalculateIndicators = function() {
         if (!this.indicators || !this.indicators.active || this.indicators.active.length === 0) {
             return;

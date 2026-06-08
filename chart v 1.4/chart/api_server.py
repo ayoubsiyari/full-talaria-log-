@@ -18639,7 +18639,7 @@ async def get_file_smart(
                 end_ts=end_ts,
             )
             if smart_resp and (payload.get("bars") or not questdb_store.questdb_tiles_fallback()):
-                bar_window_cache.set_smart(smart_cache_key, smart_resp)
+                bar_window_cache.set_smart(smart_cache_key, smart_resp, timeframe=timeframe)
                 return smart_resp
 
         # ── Find binary file for this timeframe ──
@@ -18820,7 +18820,7 @@ async def get_file_smart(
         if rf == "candles":
             base["candles"] = candles
             if candles:
-                bar_window_cache.set_smart(smart_cache_key, base)
+                bar_window_cache.set_smart(smart_cache_key, base, timeframe=timeframe)
             return base
 
         # ── Legacy: CSV string in JSON (extra stringify + client parse) ──
@@ -18830,7 +18830,7 @@ async def get_file_smart(
             output.write(f"{c['t']},{c['o']},{c['h']},{c['l']},{c['c']},{c['v']}\n")
         base["data"] = output.getvalue()
         if candles:
-            bar_window_cache.set_smart(smart_cache_key, base)
+            bar_window_cache.set_smart(smart_cache_key, base, timeframe=timeframe)
         return base
     finally:
         db.close()

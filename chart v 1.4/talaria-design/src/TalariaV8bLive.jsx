@@ -30080,6 +30080,35 @@ const TalariaV8bLive = () => {
                 {mainOhlcInfoEl}
               </div>
 
+              {/* ── C-4: Single-runtime migration flag ───────────────────────
+                   Enable with:  localStorage.setItem('talaria_single_runtime','true')
+                   or URL param: ?runtime=single
+                   When single-runtime is stable, flip USE_SINGLE_RUNTIME default
+                   to true and keep the iframe fallback for 30 days.
+                   The MultichartRuntimeContainer component (Track C-2) is not
+                   yet implemented — this flag wires the switch point so Track C
+                   work can be merged safely when ready. */}
+              {layoutPanels.n > 1 && (() => {
+                // Single-runtime toggle: read from localStorage or URL param.
+                // When 'talaria_single_runtime' is 'true' OR ?runtime=single,
+                // future code here will render <MultichartRuntimeContainer>
+                // instead of <MultichartGrid>. Currently renders iframe fallback.
+                const USE_SINGLE_RUNTIME =
+                  (typeof localStorage !== "undefined" &&
+                    localStorage.getItem("talaria_single_runtime") === "true") ||
+                  new URLSearchParams(
+                    (typeof location !== "undefined" && location.search) || ""
+                  ).get("runtime") === "single";
+
+                if (USE_SINGLE_RUNTIME) {
+                  // Track C-2 placeholder: MultichartRuntimeContainer not yet built.
+                  // Falls through to iframe grid until Track C is complete.
+                  if (typeof console !== "undefined") {
+                    console.info("[Talaria] single-runtime flag set — awaiting Track C implementation");
+                  }
+                }
+              })()}
+
               {/* Phase 7.2.2: in-page iframe grid for multi-panel layouts.
                    Mounts ONLY when layoutPanels.n > 1 — single-chart UX is
                    identical to before this component existed. The grid sits

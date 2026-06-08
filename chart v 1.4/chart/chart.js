@@ -3668,7 +3668,12 @@ class Chart {
         ric(() => {
             try {
                 if (Array.isArray(this.data) && this.data.length) {
-                    this.recalculateIndicators();
+                    // Prefer async (Web Worker) path; fallback to sync handled inside
+                    if (typeof this.recalculateIndicatorsAsync === 'function') {
+                        this.recalculateIndicatorsAsync();
+                    } else {
+                        this.recalculateIndicators();
+                    }
                 }
             } catch (e) { /* ignore */ }
         });
@@ -3716,8 +3721,13 @@ class Chart {
 
                 this._tfIndicatorRefreshScheduled = false;
                 try {
-                    this.recalculateIndicators();
-                    if (typeof this.render === 'function') this.render();
+                    if (typeof this.recalculateIndicatorsAsync === 'function') {
+                        // async version calls scheduleRender on completion
+                        this.recalculateIndicatorsAsync();
+                    } else {
+                        this.recalculateIndicators();
+                        if (typeof this.render === 'function') this.render();
+                    }
                 } catch (_) { /* ignore */ }
             });
         };
@@ -3836,12 +3846,9 @@ class Chart {
         }
         if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
         this.resize();
-        if (this.data && this.data.length > 0) {
-            this._chartViewRestored = false;
-            this.jumpToLatest();
-        } else {
-            this.fitToView();
-        }
+        // Keep the previous visible window on the new TF (falls back to latest
+        // when the captured center isn't in the cached data).
+        this._restoreOrJumpAfterTfSwitch();
         this._deferRecalculateIndicators();
         this._endTimeframeSwitching();
         this._fireChartDataLoaded();
@@ -3878,12 +3885,7 @@ class Chart {
         } else {
             this._deferRecalculateIndicators();
             this.resize();
-            if (this.data && this.data.length > 0) {
-                this.jumpToLatest();
-            } else {
-                this._chartViewRestored = false;
-                this.fitToView();
-            }
+            this._restoreOrJumpAfterTfSwitch();
             this._fireChartDataLoaded();
         }
         this._endTimeframeSwitching();
@@ -15590,19 +15592,11 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
-        // TradingView-style reset on every TF switch: same effect as the user
-        // double-clicking the time axis (default candleWidth, autoScale ON,
-        // latest data visible). Replaces the previous "preserve the visible
-        // center timestamp + previous candleWidth" logic, which would land the
-        // user on an arbitrary region of the new TF and required a manual
-        // double-click to get back to a usable view.
+        // TradingView parity: keep the same visible wall-clock window across the
+        // TF switch (snapshot taken in _beginTimeframeSwitching). Falls back to
+        // the latest candle only when the previous center isn't in the new data.
         this.resize();
-        if (this.data && this.data.length > 0) {
-            this.jumpToLatest();
-        } else {
-            this._chartViewRestored = false;
-            this.fitToView();
-        }
+        this._restoreOrJumpAfterTfSwitch();
         this._endTimeframeSwitching();
         this.scheduleRender();
         this._fireChartDataLoaded();
@@ -15656,6 +15650,14 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
+        // Snapshot the current visible wall-clock window so the new timeframe can
+        // land on the same chart position (TradingView parity). Skipped during
+        // replay — replay paths drive their own playhead-anchored viewport.
+        if (!(this.replaySystem && this.replaySystem.isActive)) {
+            try { this._captureTfSwitchViewport(); } catch (e) { /* ignore */ }
+        } else {
+            this._tfSwitchViewport = null;
+        }
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
@@ -15877,11 +15879,7 @@ class Chart {
                     if (loadId !== this._timeframeLoadSeq) return;
                     if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                     this.resize();
-                    if (this.data && this.data.length > 0) {
-                        this.jumpToLatest();
-                    } else {
-                        this.fitToView();
-                    }
+                    this._restoreOrJumpAfterTfSwitch();
                     this._deferRecalculateIndicators();
                     this._endTimeframeSwitching();
                     this.render();
@@ -15954,21 +15952,13 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
-                // TradingView-style reset on every TF switch: identical to the
-                // user double-clicking the time axis (default candleWidth,
-                // autoScale ON, latest candle at the right edge). Previously we
-                // tried to preserve the visible center timestamp + previous
-                // candleWidth across the switch, but that often landed the user
-                // on an arbitrary region of the new TF and required a manual
-                // double-click to get a usable view. jumpToLatest is also
-                // self-healing for the offscreen-viewport edge case the old
-                // sanity-check guarded against.
-                if (this.data && this.data.length > 0) {
-                    this.jumpToLatest();
-                } else {
-                    this._chartViewRestored = false;
-                    this.fitToView();
-                }
+                // TradingView parity: restore the same visible wall-clock window
+                // captured before the switch. The server /smart window is
+                // end-anchored, so when the user was viewing recent data the
+                // captured center is inside the fetched bars and the view is
+                // preserved; when it isn't (scrolled far back), restore returns
+                // false and we self-heal to the latest candle instead.
+                this._restoreOrJumpAfterTfSwitch();
                 // Lift the visual freeze + loading dots BEFORE calling render(), otherwise
                 // the render-skip guard at the top of render() would no-op this final paint.
                 this._endTimeframeSwitching();
@@ -21620,6 +21610,134 @@ class Chart {
 
         // Apply constraints
         this.constrainOffset();
+    }
+
+    /**
+     * Approximate the candleWidth that yields a given on-screen candle spacing.
+     * Inverts _getSpacingForCandleWidth via binary search (spacing is monotonic
+     * in candleWidth). Used when switching timeframe so the same wall-clock
+     * window keeps filling the plot width on the new TF.
+     */
+    _candleWidthForSpacing(targetSpacing) {
+        const s = Number(targetSpacing);
+        if (!Number.isFinite(s) || s <= 0) return this.candleWidth;
+        let lo = 0.05;
+        let hi = 200;
+        let best = this.candleWidth;
+        for (let i = 0; i < 40; i++) {
+            const mid = (lo + hi) / 2;
+            if (this._getSpacingForCandleWidth(mid) >= s) {
+                best = mid;
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Snapshot the current visible wall-clock window before a timeframe switch.
+     * Captured while `this.data` still holds the OLD timeframe so the new TF can
+     * be positioned on the same time region (TradingView-style "same chart
+     * position across timeframes"), instead of resetting to the latest candle.
+     * Stored on `this._tfSwitchViewport`; consumed by _restoreTfSwitchViewport().
+     */
+    _captureTfSwitchViewport() {
+        this._tfSwitchViewport = null;
+        if (!this.data || this.data.length === 0) return;
+        const m = this.margin;
+        const plotW = this.w - m.l - m.r;
+        if (!(plotW > 0)) return;
+        const centerTs = this._getVisibleCenterTimestamp();
+        if (!Number.isFinite(centerTs)) return;
+        const barMs = this._estimateTimeframeStepMs();
+        const leftIdx = this.pixelToDataIndex(m.l);
+        const rightIdx = this.pixelToDataIndex(m.l + plotW);
+        const visibleBars = Math.abs(rightIdx - leftIdx);
+        const spanMs = (Number.isFinite(visibleBars) && visibleBars > 0 && Number.isFinite(barMs) && barMs > 0)
+            ? visibleBars * barMs
+            : null;
+        this._tfSwitchViewport = {
+            centerTs,
+            spanMs,
+            candleWidth: this.candleWidth,
+            autoScale: this.autoScale !== false,
+            priceZoom: this.priceZoom,
+            priceOffset: this.priceOffset
+        };
+    }
+
+    /**
+     * Restore the wall-clock window captured by _captureTfSwitchViewport() onto
+     * the freshly loaded timeframe. Returns true when the position was restored,
+     * false when it could not be (no snapshot, no data, or the snapshot's center
+     * timestamp is outside the loaded window — e.g. a server fetch returned only
+     * the latest slice). Callers fall back to jumpToLatest() on false so loading
+     * is never broken.
+     */
+    _restoreTfSwitchViewport() {
+        const vp = this._tfSwitchViewport;
+        this._tfSwitchViewport = null;
+        if (!vp || !Number.isFinite(vp.centerTs)) return false;
+        if (!this.data || this.data.length === 0) return false;
+
+        const firstTs = this.data[0] && this.data[0].t;
+        const lastTs = this.data[this.data.length - 1] && this.data[this.data.length - 1].t;
+        if (!Number.isFinite(firstTs) || !Number.isFinite(lastTs)) return false;
+
+        const newBarMs = this._estimateTimeframeStepMs();
+        const margin = (Number.isFinite(newBarMs) && newBarMs > 0) ? newBarMs : 0;
+        // Bail out (→ jumpToLatest) when the captured center isn't in the new
+        // data window; restoring there would land on an empty region.
+        if (vp.centerTs < firstTs - margin || vp.centerTs > lastTs + margin) {
+            return false;
+        }
+
+        const m = this.margin;
+        const plotW = this.w - m.l - m.r;
+        if (!(plotW > 0)) return false;
+
+        // Recompute candleWidth so the SAME wall-clock span fills the plot on the
+        // new timeframe (keeps the visible time range identical, like TradingView).
+        let targetCandleWidth = vp.candleWidth;
+        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
+            const barsAcross = vp.spanMs / newBarMs;
+            if (Number.isFinite(barsAcross) && barsAcross >= 1) {
+                targetCandleWidth = this._candleWidthForSpacing(plotW / barsAcross);
+            }
+        }
+
+        // Preserve the user's manual Y scale; otherwise let autoScale refit.
+        if (vp.autoScale === false) {
+            this.autoScale = false;
+            if (Number.isFinite(vp.priceZoom)) this.priceZoom = vp.priceZoom;
+            if (Number.isFinite(vp.priceOffset)) this.priceOffset = vp.priceOffset;
+        } else {
+            this.autoScale = true;
+        }
+
+        this._restorePositionToTimestamp(vp.centerTs, targetCandleWidth);
+        return true;
+    }
+
+    /**
+     * Position the chart after a timeframe switch: keep the previous visible
+     * window when possible (TradingView parity), else fall back to the latest
+     * candle so the chart is never left on an empty/offscreen region.
+     */
+    _restoreOrJumpAfterTfSwitch() {
+        if (this.data && this.data.length > 0) {
+            if (this._restoreTfSwitchViewport()) {
+                this.scheduleRender();
+                return;
+            }
+            this.jumpToLatest();
+        } else {
+            this._tfSwitchViewport = null;
+            this._chartViewRestored = false;
+            this.fitToView();
+        }
     }
 
     /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
