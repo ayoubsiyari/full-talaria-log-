@@ -59349,37 +59349,21 @@ window._wireProfileAccountOverview=function(content,restoreAccountTab){
 
         try{
 
-            var c=(typeof window.getActiveChart==='function'?window.getActiveChart():null)||window.chart||window.mainChart;
+            var p=new URLSearchParams(window.location.search);
 
-            if(c&&typeof c.getActiveTradingSessionId==='function')sid=c.getActiveTradingSessionId();
+            sid=p.get('sessionId')||p.get('session_id')||null;
 
         }catch(e){}
 
-        if(!sid){
+        var n=sid!=null?Number(sid):NaN;
 
-            try{sid=userStorage.getItem('active_trading_session_id');}catch(e2){}
+        if(Number.isFinite(n)&&n>0){
 
-        }
-
-        if(!sid){
-
-            try{
-
-                var p=new URLSearchParams(window.location.search);
-
-                sid=p.get('sessionId')||p.get('session_id')||null;
-
-            }catch(e3){}
-
-        }
-
-        if(sid){
-
-            window.location.href='/dashboard/sessions/analytics/?id='+encodeURIComponent(String(sid));
+            window.location.href='/dashboard/?sessionId='+encodeURIComponent(String(Math.trunc(n)));
 
         }else{
 
-            window.location.href='/dashboard/sessions/';
+            window.location.href='/dashboard/';
 
         }
 

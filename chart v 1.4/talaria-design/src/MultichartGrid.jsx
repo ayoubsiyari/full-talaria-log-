@@ -853,6 +853,45 @@ function applyHostSlotPositionOnly(cellEl) {
     wrapper.style.bottom = "auto";
     wrapper.style.zIndex = "13";
     wrapper.dataset.multichartHost = "1";
+    // Stretch the canvas via CSS only (no buffer realloc) so the host
+    // panel tracks splitter drag fluidly until mouseup repaint.
+    try {
+        const ch = window.chart;
+        if (ch && ch.canvas) {
+            const w = Math.max(1, width);
+            const h = Math.max(1, height);
+            ch.canvas.style.width = w + "px";
+            ch.canvas.style.height = h + "px";
+            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
+            if (svgNode) {
+                svgNode.style.width = w + "px";
+                svgNode.style.height = h + "px";
+            }
+        }
+    } catch (_) {}
+}
+
+/** CSS-only stretch for iframe charts during splitter drag (no resize()). */
+function previewIframeChartsInContainer(container) {
+    if (!container) return;
+    container.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+            const ch = ifr.contentWindow && ifr.contentWindow.chart;
+            if (!ch || !ch.canvas) return;
+            const parent = ch.canvas.parentElement;
+            if (!parent) return;
+            const rect = parent.getBoundingClientRect();
+            const w = Math.max(1, Math.round(rect.width));
+            const h = Math.max(1, Math.round(rect.height));
+            ch.canvas.style.width = w + "px";
+            ch.canvas.style.height = h + "px";
+            const svgNode = ch.svg && ch.svg.node ? ch.svg.node() : null;
+            if (svgNode) {
+                svgNode.style.width = w + "px";
+                svgNode.style.height = h + "px";
+            }
+        } catch (_) {}
+    });
 }
 
 function clearHostSlot() {
@@ -884,6 +923,152 @@ function clearHostSlot() {
             if (typeof ch.render === "function") ch.render();
         }
     } catch (_) {}
+}
+
+/** Suppress chart.resize() storms while the user drags panel splitters. */
+function setLayoutDragActive(active) {
+    try {
+        window.__multichartLayoutDragging = !!active;
+        const ch = window.chart;
+        if (ch) ch._multichartLayoutDragging = !!active;
+    } catch (_) {}
+}
+
+/**
+ * Pause iframe pointer input and suppress chart.resize() inside iframe
+ * panels during splitter drag. Iframes stay at width/height 100% so they
+ * track their grid cell fluidly (same UX as the host #chartWrapper).
+ * Full chart.resize() runs once on thaw when the drag ends.
+ */
+function freezePanelSurfaces(container) {
+    const locked = { iframes: [] };
+    if (container) {
+        container.querySelectorAll("iframe").forEach((ifr) => {
+            locked.iframes.push({
+                el: ifr,
+                pe: ifr.style.pointerEvents,
+            });
+            ifr.style.pointerEvents = "none";
+            ifr.style.position = "";
+            ifr.style.left = "";
+            ifr.style.top = "";
+            ifr.style.width = "100%";
+            ifr.style.height = "100%";
+            try {
+                const w = ifr.contentWindow;
+                if (w) w.__multichartLayoutDragging = true;
+                const ch = w && w.chart;
+                if (ch) ch._multichartLayoutDragging = true;
+            } catch (_) {}
+        });
+    }
+    setLayoutDragActive(true);
+    return locked;
+}
+
+function clearIframeLayoutDragFlags(ifr) {
+    try {
+        const w = ifr.contentWindow;
+        if (w) w.__multichartLayoutDragging = false;
+        const ch = w && w.chart;
+        if (ch) ch._multichartLayoutDragging = false;
+    } catch (_) {}
+}
+
+function thawPanelSurfaces(locked, cellA, container) {
+    setLayoutDragActive(false);
+    if (locked && locked.iframes) {
+        locked.iframes.forEach(({ el, pe }) => {
+            el.style.pointerEvents = pe || "";
+            clearIframeLayoutDragFlags(el);
+        });
+    }
+    if (container) {
+        normalizeIframeStyles(container);
+        container.querySelectorAll("iframe").forEach(clearIframeLayoutDragFlags);
+    }
+    if (cellA) applyHostSlot(cellA);
+    if (container) {
+        resizeAllIframesInContainer(container);
+    } else if (locked && locked.iframes) {
+        locked.iframes.forEach(({ el }) => {
+            try {
+                const ch = el.contentWindow && el.contentWindow.chart;
+                if (ch && typeof ch.resize === "function") {
+                    ch._lastResizeDpr = 0;
+                    ch.resize();
+                    if (typeof ch.render === "function") ch.render();
+                }
+            } catch (_) {}
+        });
+    }
+}
+
+function normalizeIframeStyles(container) {
+    if (!container) return;
+    container.querySelectorAll("iframe").forEach((ifr) => {
+        ifr.style.position = "";
+        ifr.style.left = "";
+        ifr.style.top = "";
+        ifr.style.width = "100%";
+        ifr.style.height = "100%";
+        ifr.style.maxWidth = "";
+        ifr.style.maxHeight = "";
+    });
+}
+
+function resizeIframeInCell(cell) {
+    if (!cell) return;
+    const ifr = cell.querySelector("iframe");
+    if (!ifr) return;
+    ifr.style.position = "";
+    ifr.style.left = "";
+    ifr.style.top = "";
+    ifr.style.width = "100%";
+    ifr.style.height = "100%";
+    try {
+        const ch = ifr.contentWindow && ifr.contentWindow.chart;
+        if (ch && typeof ch.resize === "function") {
+            ch._lastResizeDpr = 0;
+            ch.resize();
+            if (typeof ch.render === "function") ch.render();
+        }
+    } catch (_) {}
+}
+
+function resizeAllIframesInContainer(container) {
+    if (!container) return;
+    normalizeIframeStyles(container);
+    container.querySelectorAll("iframe").forEach((ifr) => {
+        try {
+            const ch = ifr.contentWindow && ifr.contentWindow.chart;
+            if (ch && typeof ch.resize === "function") {
+                ch._lastResizeDpr = 0;
+                ch.resize();
+                if (typeof ch.render === "function") ch.render();
+            }
+        } catch (_) {}
+    });
+}
+
+function repaintAllPanelSurfaces(container, cellA) {
+    normalizeIframeStyles(container);
+    if (cellA) applyHostSlot(cellA);
+    resizeAllIframesInContainer(container);
+}
+
+function updateFocusFrameDom(panelId, cellRefs) {
+    if (typeof document === "undefined" || !panelId) return;
+    const frame = document.querySelector("[data-multichart-focus-frame=\"1\"]");
+    const cell = cellRefs && cellRefs[panelId];
+    const parent = document.getElementById(HOST_CONTAINER_ID);
+    if (!frame || !cell || !parent) return;
+    const cellRect = cell.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    frame.style.left = Math.round(cellRect.left - parentRect.left) + "px";
+    frame.style.top = Math.round(cellRect.top - parentRect.top) + "px";
+    frame.style.width = Math.round(cellRect.width) + "px";
+    frame.style.height = Math.round(cellRect.height) + "px";
 }
 
 // Apply / clear the per-tile FOCUSED border on an iframe cell.
@@ -1103,12 +1288,24 @@ export default function MultichartGrid({
     const initialRowFracs = useMemo(() => parseFrTemplate(layout.rows), [layout.rows]);
     const [colFractions, setColFractions] = useState(initialColFracs);
     const [rowFractions, setRowFractions] = useState(initialRowFracs);
-    // Reset fractions whenever the layout TEMPLATE (not just id) changes
-    // so a layout switch always opens with even splits.
+    const isDraggingRef = useRef(false);
+    const liveDragRef = useRef(null); // { axis: 'col'|'row', fracs: number[] }
+    // Reset fractions whenever the layout changes. Must key on layoutId —
+    // many layouts share identical cols/rows strings (3l, 3r, 4 all use
+    // "1fr 1fr" × "1fr 1fr"); without layoutId, uneven splits from a
+    // prior layout persist and squash the right-hand panels in 4-up view.
     useEffect(() => {
-        setColFractions(parseFrTemplate(layout.cols));
-        setRowFractions(parseFrTemplate(layout.rows));
-    }, [layout.cols, layout.rows]);
+        const cols = parseFrTemplate(layout.cols);
+        const rows = parseFrTemplate(layout.rows);
+        liveDragRef.current = null;
+        setColFractions(cols);
+        setRowFractions(rows);
+        const container = containerRef.current;
+        if (container) {
+            container.style.gridTemplateColumns = cols.map((f) => f.toFixed(4) + "fr").join(" ");
+            container.style.gridTemplateRows = rows.map((f) => f.toFixed(4) + "fr").join(" ");
+        }
+    }, [layoutId, layout.cols, layout.rows]);
 
     // Live container size (in CSS px). Declared HERE — high in the
     // component body — so any later useEffect / useLayoutEffect /
@@ -1136,22 +1333,22 @@ export default function MultichartGrid({
     // deferred until mouseup — without this gate every mousemove
     // would queue a 5–20ms resize, pegging the main thread and
     // making the drag visibly "stutter".
-    const isDraggingRef = useRef(false);
     // liveDragRef holds the IN-FLIGHT drag's latest fractions. Set
     // each rAF flush during drag, cleared on mouseup. The
     // useLayoutEffect below reads it on every render — if a render
     // happens mid-drag for unrelated reasons (focus change, replay
     // tick, etc.) the effect re-applies our drag's inline style so
     // the splitter doesn't snap back to the React-state position.
-    const liveDragRef = useRef(null); // { axis: 'col'|'row', fracs: number[] }
     useEffect(() => {
         if (isDraggingRef.current) return;
+        const container = containerRef.current;
         const cellA = cellRefs.current[HOST_PANEL_ID];
-        if (cellA) {
-            // Defer one rAF so the grid has actually committed the new
-            // template before we measure the cell bbox.
-            requestAnimationFrame(() => applyHostSlot(cellA));
-        }
+        const t = setTimeout(() => {
+            requestAnimationFrame(() => {
+                repaintAllPanelSurfaces(container, cellA);
+            });
+        }, 60);
+        return () => clearTimeout(t);
     }, [colFractions, rowFractions]);
 
     // Re-apply the live drag's inline style after EVERY render. This
@@ -1509,6 +1706,79 @@ export default function MultichartGrid({
         };
     }, [layout.tiles, managerReady]);
 
+    // When layout shape changes (2v → 4, etc.), every cell gets new
+    // dimensions — iframe charts must resize or they render at the old
+    // pixel width (price axis clipped / black void beside the chart).
+    useEffect(() => {
+        if (!managerReady) return;
+        const container = containerRef.current;
+        const cellA = cellRefs.current[HOST_PANEL_ID];
+        const iframeCount = layout.tiles.filter((t) => t.id !== HOST_PANEL_ID).length;
+        let raf1 = 0;
+        let raf2 = 0;
+        // Repaint as soon as the grid reflows with reset fractions.
+        raf1 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(() => {
+                if (isDraggingRef.current) return;
+                repaintAllPanelSurfaces(container, cellA);
+            });
+        });
+        const delay = 100 + iframeCount * 320;
+        const t = setTimeout(() => {
+            if (isDraggingRef.current) return;
+            requestAnimationFrame(() => {
+                repaintAllPanelSurfaces(container, cellA);
+                const mgr = managerRef.current;
+                if (mgr && mgr.syncMode && mgr.syncMode.visibleRange) {
+                    try {
+                        for (const c of mgr.charts.values()) {
+                            if (c.host || !c.ready) continue;
+                            mgr._initialSyncToHost(c);
+                        }
+                    } catch (_) {}
+                }
+                if (computeFocusedRectRef.current) {
+                    computeFocusedRectRef.current();
+                }
+            });
+        }, delay);
+        return () => {
+            if (raf1) cancelAnimationFrame(raf1);
+            if (raf2) cancelAnimationFrame(raf2);
+            clearTimeout(t);
+        };
+    }, [layoutId, layout.cols, layout.rows, managerReady]);
+
+    // Per-iframe cell ResizeObserver — debounced resize when any panel
+    // cell changes size (splitter release, layout switch, sidebar, etc.).
+    useLayoutEffect(() => {
+        if (!managerReady) return;
+        const timers = new Map();
+        const observers = [];
+
+        for (const tile of layout.tiles) {
+            if (tile.id === HOST_PANEL_ID) continue;
+            const cell = cellRefs.current[tile.id];
+            if (!cell) continue;
+            const panelId = tile.id;
+            const ro = new ResizeObserver(() => {
+                if (isDraggingRef.current) return;
+                clearTimeout(timers.get(panelId));
+                timers.set(panelId, setTimeout(() => {
+                    if (isDraggingRef.current) return;
+                    resizeIframeInCell(cellRefs.current[panelId]);
+                }, 100));
+            });
+            ro.observe(cell);
+            observers.push(ro);
+        }
+
+        return () => {
+            timers.forEach((tid) => clearTimeout(tid));
+            observers.forEach((ro) => ro.disconnect());
+        };
+    }, [layout.tiles, managerReady, layoutId]);
+
     // When a NEW iframe becomes bridge-ready, push the host's current
     // file + timeframe so it boots with data even if the iframe URL was
     // missing a fileId (e.g. props were empty on first paint).
@@ -1593,15 +1863,26 @@ export default function MultichartGrid({
         if (!cellA) return;
 
         let raf = 0;
+        let settleTimer = 0;
+        const positionHostOnly = () => {
+            applyHostSlotPositionOnly(cellA);
+        };
+        const repaintHost = () => {
+            applyHostSlot(cellA);
+        };
         const schedule = () => {
-            if (raf) return;
-            raf = window.requestAnimationFrame(() => {
-                raf = 0;
-                applyHostSlot(cellA);
-            });
+            if (isDraggingRef.current) return;
+            if (!raf) {
+                raf = window.requestAnimationFrame(() => {
+                    raf = 0;
+                    positionHostOnly();
+                });
+            }
+            clearTimeout(settleTimer);
+            settleTimer = window.setTimeout(repaintHost, 150);
         };
 
-        applyHostSlot(cellA);
+        repaintHost();
 
         const ro = new ResizeObserver(schedule);
         ro.observe(cellA);
@@ -1638,6 +1919,7 @@ export default function MultichartGrid({
 
         return () => {
             if (raf) window.cancelAnimationFrame(raf);
+            clearTimeout(settleTimer);
             ro.disconnect();
             window.removeEventListener("resize", onWin);
             window.removeEventListener("scroll", onWin, { capture: true });
@@ -2401,19 +2683,32 @@ export default function MultichartGrid({
     const computeFocusedRect = () => {
         if (typeof document === "undefined") return;
         if (!focusedPanelId) { setFocusedRect(null); return; }
-        // Both host AND iframe paths read from the cell <div> — the
-        // host wrapper is sized to cell A, so the cell's bbox is the
-        // correct rect for either case. This keeps the math uniform.
         const cell = cellRefs.current[focusedPanelId];
         const parent = document.getElementById(HOST_CONTAINER_ID);
         if (!cell || !parent) { setFocusedRect(null); return; }
         const cellRect = cell.getBoundingClientRect();
         const parentRect = parent.getBoundingClientRect();
-        setFocusedRect({
+        const next = {
             left:   Math.round(cellRect.left   - parentRect.left),
             top:    Math.round(cellRect.top    - parentRect.top),
             width:  Math.round(cellRect.width),
             height: Math.round(cellRect.height),
+        };
+        // During splitter drag, move the focus frame via DOM only — avoid
+        // setState every rAF (was re-rendering the whole grid at 60Hz).
+        if (isDraggingRef.current) {
+            updateFocusFrameDom(focusedPanelId, cellRefs.current);
+            return;
+        }
+        setFocusedRect((prev) => {
+            if (prev
+                && prev.left === next.left
+                && prev.top === next.top
+                && prev.width === next.width
+                && prev.height === next.height) {
+                return prev;
+            }
+            return next;
         });
     };
     // Recompute on every input that can move/resize cells.
@@ -4120,6 +4415,10 @@ export default function MultichartGrid({
         return function onDown(ev) {
             ev.preventDefault();
             ev.stopPropagation();
+            const captureEl = ev.currentTarget;
+            if (captureEl && captureEl.setPointerCapture && ev.pointerId != null) {
+                try { captureEl.setPointerCapture(ev.pointerId); } catch (_) {}
+            }
             const container = containerRef.current;
             if (!container) return;
             const rect = container.getBoundingClientRect();
@@ -4140,22 +4439,7 @@ export default function MultichartGrid({
             // expensive chart.resize() chain until we release.
             isDraggingRef.current = true;
 
-            // CRITICAL: iframes capture mouse events from their own
-            // window. Once the cursor crosses into an iframe during a
-            // drag, the parent document's mousemove listener simply
-            // stops firing — that's the #1 reason splitter drags
-            // feel "stuck" or stuttery. Disabling pointer-events on
-            // every iframe lets the cursor glide over them while the
-            // parent keeps receiving mousemove. We restore the
-            // original value on mouseup.
-            const lockedIframes = [];
-            try {
-                const ifrs = container.querySelectorAll("iframe");
-                ifrs.forEach((ifr) => {
-                    lockedIframes.push({ el: ifr, prev: ifr.style.pointerEvents });
-                    ifr.style.pointerEvents = "none";
-                });
-            } catch (_) {}
+            const lockedSurfaces = freezePanelSurfaces(container);
 
             const styleProp = (axis === "col")
                 ? "gridTemplateColumns"
@@ -4200,15 +4484,11 @@ export default function MultichartGrid({
                 // on a busy main thread.
                 container.style[styleProp] = fracsToTemplate(updated);
                 liveDragRef.current = { axis, fracs: updated };
-                // Cheap host reposition (no chart.resize()).
                 const cellA = cellRefs.current[HOST_PANEL_ID];
                 if (cellA) applyHostSlotPositionOnly(cellA);
-                // Keep the focus frame glued to the focused cell as
-                // the splitter moves — without this the blue border
-                // would stay frozen at the pre-drag bbox and snap
-                // only on mouseup.
-                if (computeFocusedRectRef.current) {
-                    computeFocusedRectRef.current();
+                previewIframeChartsInContainer(container);
+                if (focusedPanelId) {
+                    updateFocusFrameDom(focusedPanelId, cellRefs.current);
                 }
             }
 
@@ -4217,38 +4497,39 @@ export default function MultichartGrid({
                 if (raf) return;
                 raf = requestAnimationFrame(flush);
             }
-            function onUp() {
+            function onPointerMove(e) { onMove(e); }
+            function onUp(e) {
+                if (captureEl && captureEl.releasePointerCapture && e && e.pointerId != null) {
+                    try { captureEl.releasePointerCapture(e.pointerId); } catch (_) {}
+                }
                 if (raf) {
                     cancelAnimationFrame(raf);
-                    flush(); // ensure the very last position is applied
+                    flush();
                 }
                 document.removeEventListener("mousemove", onMove);
-                document.removeEventListener("mouseup",   onUp);
+                document.removeEventListener("mouseup", onUp);
+                document.removeEventListener("pointermove", onPointerMove);
+                document.removeEventListener("pointerup", onUp);
+                document.removeEventListener("pointercancel", onUp);
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
-                // Restore iframe pointer-events so user interaction
-                // resumes inside the panels.
-                lockedIframes.forEach(({ el, prev }) => {
-                    el.style.pointerEvents = prev || "";
-                });
-                // Release the drag gate FIRST and clear the live
-                // drag stash, then commit final state to React. After
-                // this point unrelated re-renders won't snap back
-                // because the JSX template now matches what we wrote.
                 isDraggingRef.current = false;
-                liveDragRef.current  = null;
+                liveDragRef.current = null;
                 if (axis === "col") setColFractions(lastApplied);
-                else                setRowFractions(lastApplied);
-                // Force final crisp repaint regardless of React
-                // bailout (same-reference state would skip the
-                // useEffect that normally drives applyHostSlot).
+                else setRowFractions(lastApplied);
+                const cellA = cellRefs.current[HOST_PANEL_ID];
                 requestAnimationFrame(() => {
-                    const cellA = cellRefs.current[HOST_PANEL_ID];
-                    if (cellA) applyHostSlot(cellA);
+                    thawPanelSurfaces(lockedSurfaces, cellA, container);
+                    if (focusedPanelId && computeFocusedRectRef.current) {
+                        computeFocusedRectRef.current();
+                    }
                 });
             }
             document.addEventListener("mousemove", onMove);
-            document.addEventListener("mouseup",   onUp);
+            document.addEventListener("mouseup", onUp);
+            document.addEventListener("pointermove", onPointerMove);
+            document.addEventListener("pointerup", onUp);
+            document.addEventListener("pointercancel", onUp);
             // Keep the resize cursor while dragging even if the mouse
             // leaves the splitter strip.
             document.body.style.cursor = (axis === "col") ? "col-resize" : "row-resize";
@@ -4289,9 +4570,22 @@ export default function MultichartGrid({
     useEffect(() => {
         const el = containerRef.current;
         if (!el || typeof ResizeObserver === "undefined") return;
+        let raf = 0;
+        let lastW = 0;
+        let lastH = 0;
         const update = () => {
             const r = el.getBoundingClientRect();
-            setContainerSize({ w: r.width, h: r.height });
+            const w = Math.round(r.width);
+            const h = Math.round(r.height);
+            if (w === lastW && h === lastH) return;
+            if (raf) return;
+            raf = requestAnimationFrame(() => {
+                raf = 0;
+                const r2 = el.getBoundingClientRect();
+                lastW = Math.round(r2.width);
+                lastH = Math.round(r2.height);
+                setContainerSize({ w: lastW, h: lastH });
+            });
         };
         update();
         const ro = new ResizeObserver(update);

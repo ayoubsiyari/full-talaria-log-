@@ -4,7 +4,7 @@ import React from "react";
 
 export default function RedirectClient({ id }: { id: string }) {
   React.useEffect(() => {
-    const target = `/dashboard/sessions/analytics/?id=${encodeURIComponent(id)}`;
+    const target = `/dashboard/?sessionId=${encodeURIComponent(id)}`;
     window.location.replace(target);
   }, [id]);
 

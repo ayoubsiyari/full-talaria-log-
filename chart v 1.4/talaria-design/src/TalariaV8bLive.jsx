@@ -29273,26 +29273,18 @@ const TalariaV8bLive = () => {
                 return (
                   <div onClick={()=>{
                     setLogoMenu(false);
-                    // Mirrors legacy "Go to dashboard" button (index.html ~59239):
-                    // resolve active trading session id from chart, then storage,
-                    // then URL query — and navigate to /dashboard/sessions/...
+                    // Main performance dashboard at /dashboard/.
+                    // Only honor ?sessionId= from the chart URL (positive server id).
+                    // Do not use chart localStorage — it may point at an empty/ephemeral session.
                     let sid = null;
                     try {
-                      const c = (typeof window.getActiveChart === 'function' ? window.getActiveChart() : null) || window.chart || window.mainChart;
-                      if (c && typeof c.getActiveTradingSessionId === 'function') sid = c.getActiveTradingSessionId();
+                      const p = new URLSearchParams(window.location.search);
+                      sid = p.get('sessionId') || p.get('session_id') || null;
                     } catch(_){}
-                    if (!sid) {
-                      try { sid = window.userStorage?.getItem?.('active_trading_session_id') || localStorage.getItem('active_trading_session_id'); } catch(_){}
-                    }
-                    if (!sid) {
-                      try {
-                        const p = new URLSearchParams(window.location.search);
-                        sid = p.get('sessionId') || p.get('session_id') || null;
-                      } catch(_){}
-                    }
-                    window.location.href = sid
-                      ? '/dashboard/sessions/analytics/?id=' + encodeURIComponent(String(sid))
-                      : '/dashboard/sessions/';
+                    const n = sid != null ? Number(sid) : NaN;
+                    window.location.href = (Number.isFinite(n) && n > 0)
+                      ? '/dashboard/?sessionId=' + encodeURIComponent(String(Math.trunc(n)))
+                      : '/dashboard/';
                   }}
                     onMouseEnter={()=>setSwHov("lm-dash")} onMouseLeave={()=>setSwHov(null)}
                     onMouseDown={()=>setSwHov("lm-dash_dn")} onMouseUp={()=>setSwHov("lm-dash")}
@@ -31273,7 +31265,7 @@ const TalariaV8bLive = () => {
             </div>
           </div>
         </div>
-        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, position: "relative", zIndex: 30, overflow: "hidden", transition: "width 0.2s ease" }}>
+        <div data-v9-chrome="1" data-sdrop="1" onPointerDown={(e)=>e.stopPropagation()} onMouseDown={(e)=>e.stopPropagation()} onClick={(e)=>e.stopPropagation()} style={{ width: (rightPanel || (orderPanelOpen && !panelDetached)) ? 336 : 0, flexShrink: 0, position: "relative", zIndex: 30, overflow: "hidden" }}>
         {rightPanel ? (()=>{
           // Phase 7.2.3: lyLines + syncItems are now lifted to module
           // scope (LAYOUT_LY_LINES / LAYOUT_SYNC_ITEMS) so the topbar

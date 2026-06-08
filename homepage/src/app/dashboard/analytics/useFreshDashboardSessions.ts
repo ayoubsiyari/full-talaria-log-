@@ -6,6 +6,7 @@ import { JOURNAL_API_BASE } from "@/lib/journalApi";
 import { authHeaders, getToken } from "@/app/dashboard/strategies/strategyLabV9Auth";
 import { fetchJson, type Session } from "./SessionAnalyticsPanel";
 import {
+  isUsableDashboardSessionId,
   parseStrategyFilterParam,
   resolveSessionIdForUser,
   type DashboardStrategy,
@@ -29,6 +30,24 @@ export function useFreshDashboardSessions() {
   const [strategyFilter, setStrategyFilterState] = useState("ALL");
   const [listError, setListError] = useState<string | null>(null);
   const [refreshNonce, setRefreshNonce] = useState(0);
+
+  const replaceSearch = useCallback(
+    (patch: { sessionId?: string; strategy?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (patch.sessionId !== undefined) {
+        if (patch.sessionId) params.set("sessionId", patch.sessionId);
+        else params.delete("sessionId");
+      }
+      if (patch.strategy !== undefined) {
+        if (patch.strategy && patch.strategy !== "ALL") params.set("strategy", patch.strategy);
+        else params.delete("strategy");
+      }
+      const q = params.toString();
+      const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
+      router.replace(q ? `${base}?${q}` : base, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   const loadStrategies = useCallback(async () => {
     const token = getToken();
@@ -54,20 +73,30 @@ export function useFreshDashboardSessions() {
   }, []);
 
   const loadSessions = useCallback(async () => {
-    const data = await fetchJson<{ sessions: Session[] }>("/api/sessions");
+    const [data, kpisPayload] = await Promise.all([
+      fetchJson<{ sessions: Session[] }>("/api/sessions"),
+      fetchJson<{ kpis_by_session_id?: Record<string, { trades?: number }> }>("/api/sessions/kpis").catch(
+        () => ({ kpis_by_session_id: {} })
+      ),
+    ]);
     const list = data.sessions ?? [];
+    const kpisBySessionId = kpisPayload.kpis_by_session_id ?? {};
     setSessions(list);
-    setSelectedSessionIdState(
-      resolveSessionIdForUser(list, {
-        urlSessionId,
-        urlStrategyFilter,
-        useChartStorage: false,
-      })
-    );
+    const resolved = resolveSessionIdForUser(list, {
+      urlSessionId,
+      urlStrategyFilter,
+      useChartStorage: false,
+      kpisBySessionId,
+    });
+    setSelectedSessionIdState(resolved);
     setStrategyFilterState(urlStrategyFilter);
     setListError(null);
-    return list;
-  }, [urlSessionId, urlStrategyFilter]);
+    const urlKey = urlSessionId != null ? String(urlSessionId).trim() : "";
+    if (resolved && urlKey && urlKey !== resolved && !isUsableDashboardSessionId(urlKey)) {
+      replaceSearch({ sessionId: resolved });
+    }
+    return { list, resolved, kpisBySessionId };
+  }, [urlSessionId, urlStrategyFilter, replaceSearch]);
 
   useEffect(() => {
     let mounted = true;
@@ -91,35 +120,6 @@ export function useFreshDashboardSessions() {
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
-
-  useEffect(() => {
-    if (!sessions.length) return;
-    const resolved = resolveSessionIdForUser(sessions, {
-      urlSessionId,
-      urlStrategyFilter,
-      useChartStorage: false,
-    });
-    if (resolved) setSelectedSessionIdState(resolved);
-    setStrategyFilterState(urlStrategyFilter);
-  }, [urlSessionId, urlStrategyFilter, sessions]);
-
-  const replaceSearch = useCallback(
-    (patch: { sessionId?: string; strategy?: string }) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (patch.sessionId !== undefined) {
-        if (patch.sessionId) params.set("sessionId", patch.sessionId);
-        else params.delete("sessionId");
-      }
-      if (patch.strategy !== undefined) {
-        if (patch.strategy && patch.strategy !== "ALL") params.set("strategy", patch.strategy);
-        else params.delete("strategy");
-      }
-      const q = params.toString();
-      const base = pathname.endsWith("/") ? pathname : `${pathname}/`;
-      router.replace(q ? `${base}?${q}` : base, { scroll: false });
-    },
-    [pathname, router, searchParams]
-  );
 
   const setSelectedSessionId = useCallback(
     (id: string) => {

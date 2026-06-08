@@ -19766,7 +19766,7 @@ async def talaria_chart_image_with_space():
 @app.get("/dashboard/sessions/{session_id}/analytics")
 @app.get("/dashboard/sessions/{session_id}/analytics/")
 async def dashboard_session_analytics_redirect(session_id: int):
-    return RedirectResponse(url=f"/dashboard/sessions/analytics/?id={session_id}")
+    return RedirectResponse(url=f"/dashboard/?sessionId={session_id}")
 
 @app.get("/chart/admin_dashboard.html")
 async def admin_dashboard_underscore_redirect():

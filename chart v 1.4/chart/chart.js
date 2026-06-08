@@ -835,8 +835,18 @@ class Chart {
 
             if (!this._handleViewportRefresh) {
                 this._handleViewportRefresh = () => {
-                    this.resize();
-                    this.scheduleRender();
+                    if (this._multichartLayoutDragging) return;
+                    try {
+                        if (typeof window !== "undefined" && window.__multichartLayoutDragging) return;
+                        if (window.parent && window.parent !== window
+                            && window.parent.__multichartLayoutDragging) return;
+                    } catch (_) {}
+                    if (this._viewportRefreshRaf) return;
+                    this._viewportRefreshRaf = requestAnimationFrame(() => {
+                        this._viewportRefreshRaf = 0;
+                        this.resize();
+                        this.scheduleRender();
+                    });
                 };
                 this._handleVisibilityRefresh = () => {
                     if (document.hidden) return;

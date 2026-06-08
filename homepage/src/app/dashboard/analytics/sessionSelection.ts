@@ -109,6 +109,15 @@ export function readActiveTradingSessionIdFromBrowser(): string | null {
   }
 }
 
+export type SessionKpisLite = { trades?: number };
+
+/** Server-backed session ids only (skip chart/local ephemeral negative ids). */
+export function isUsableDashboardSessionId(id: string | number | null | undefined): boolean {
+  if (id == null) return false;
+  const n = typeof id === "number" ? id : Number.parseInt(String(id).trim(), 10);
+  return Number.isFinite(n) && n > 0;
+}
+
 export type ResolveSessionOptions = {
   /** `?sessionId=` — explicit deep link (e.g. from Backtest “Dashboard” on a session). */
   urlSessionId?: string | null;
@@ -118,7 +127,28 @@ export type ResolveSessionOptions = {
   preferred?: string | null;
   /** Default false on dashboard analytics. */
   useChartStorage?: boolean;
+  /** Prefer a session that already has journal trades when no explicit link applies. */
+  kpisBySessionId?: Record<string, SessionKpisLite>;
 };
+
+function pickSessionWithTrades(
+  sessions: Session[],
+  kpisBySessionId?: Record<string, SessionKpisLite>
+): string {
+  if (!sessions.length || !kpisBySessionId) return "";
+  let best = "";
+  let bestTrades = -1;
+  for (const s of sessions) {
+    if (!isUsableDashboardSessionId(s.id)) continue;
+    const id = String(s.id);
+    const trades = Number(kpisBySessionId[id]?.trades ?? 0);
+    if (trades > bestTrades) {
+      bestTrades = trades;
+      best = id;
+    }
+  }
+  return bestTrades > 0 ? best : "";
+}
 
 /** Pick a session id that exists in `sessions` (never returns a foreign/stale id). */
 export function resolveSessionIdForUser(
@@ -129,7 +159,8 @@ export function resolveSessionIdForUser(
   const allowed = new Set(sessions.map((s) => String(s.id)));
   const pick = (id: string | null | undefined) => {
     const key = id != null ? String(id).trim() : "";
-    return key && allowed.has(key) ? key : "";
+    if (!key || !isUsableDashboardSessionId(key) || !allowed.has(key)) return "";
+    return key;
   };
 
   const fromUrl = pick(options.urlSessionId);
@@ -138,7 +169,7 @@ export function resolveSessionIdForUser(
   const strategyFilter = parseStrategyFilterParam(options.urlStrategyFilter);
   if (strategyFilter !== "ALL") {
     const match = sessions.find((s) => sessionMatchesStrategyFilter(s, strategyFilter));
-    if (match) return String(match.id);
+    if (match && isUsableDashboardSessionId(match.id)) return String(match.id);
   }
 
   const fromPreferred = pick(options.preferred);
@@ -149,5 +180,9 @@ export function resolveSessionIdForUser(
     if (fromChart) return fromChart;
   }
 
-  return String(sessions[0].id);
+  const withTrades = pickSessionWithTrades(sessions, options.kpisBySessionId);
+  if (withTrades) return withTrades;
+
+  const firstPositive = sessions.find((s) => isUsableDashboardSessionId(s.id));
+  return firstPositive ? String(firstPositive.id) : String(sessions[0].id);
 }
