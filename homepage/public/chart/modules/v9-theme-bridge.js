@@ -44,12 +44,13 @@
     }
 
     var pMap = { solid: 'solid', dashed: 'dashed', dotted: 'dotted', longDash: 'longDash' };
-    var pPat = pMap[settings.priceLineStyle] || 'solid';
+    var pPat = pMap[settings.priceLineStyle] || 'dashed';
     if (targetCs.priceLinePattern !== pPat) {
       targetCs.priceLinePattern = pPat;
       c = true;
     }
-    var pLw = Math.max(1, parseInt(settings.priceLineThickness, 10) || 1);
+    var pLwRaw = Number(settings.priceLineThickness);
+    var pLw = Number.isFinite(pLwRaw) && pLwRaw > 0 ? pLwRaw : 1;
     if (targetCs.priceLineWidth !== pLw) {
       targetCs.priceLineWidth = pLw;
       c = true;

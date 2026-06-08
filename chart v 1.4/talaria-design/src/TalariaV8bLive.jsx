@@ -10850,7 +10850,7 @@ const TalariaV8bLive = () => {
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
     gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
     crosshairOn: true, crosshairStyle: "dashed",
-    priceLineStyle: "solid", priceLineThickness: 1,
+    priceLineStyle: "dashed", priceLineThickness: 1,
     chartTemplate: "Talaria Dark",
   };
   const [settings, setSettings] = useState(DEFAULT_CHART_SETTINGS);
@@ -28152,7 +28152,7 @@ const TalariaV8bLive = () => {
               </div>
               {/* Price Line row */}
               {(()=>{
-                const pStyle=settings.priceLineStyle||"solid", pThick=settings.priceLineThickness||1;
+                const pStyle=settings.priceLineStyle||"dashed", pThick=settings.priceLineThickness||1;
                 const pDash={solid:"none",dashed:"5,4",dotted:"1.5,4",longDash:"10,5"}[pStyle]||"none";
                 const pH=Math.max(pThick*1.8+4,8);
                 return (

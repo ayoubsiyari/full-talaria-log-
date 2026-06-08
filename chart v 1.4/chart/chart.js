@@ -20955,7 +20955,8 @@ class Chart {
         this.ctx.save();
 
         const plPat = this.chartSettings.priceLinePattern || 'dashed';
-        const plW = Math.max(1, parseInt(this.chartSettings.priceLineWidth, 10) || 1);
+        const plWRaw = Number(this.chartSettings.priceLineWidth);
+        const plW = Number.isFinite(plWRaw) && plWRaw > 0 ? plWRaw : 1;
         this.ctx.strokeStyle = color;
         this.ctx.lineWidth = plW;
         if (plPat === 'solid') this.ctx.setLineDash([]);
