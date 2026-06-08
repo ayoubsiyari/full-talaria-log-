@@ -3585,7 +3585,10 @@ export default function MultichartGrid({
                     return Promise.reject(new Error("panel chart not ready"));
                 }
                 return mgr.sendCommand(pid, "loadFile", { fileId: fid, force: true }).then((data) => {
-                    finalizeIframePanelAfterPairLoad(pid);
+                    const ch2 = getChartForPanelId(pid);
+                    if (ch2 && typeof ch2._finalizeMultichartPanelAfterPairLoad === "function") {
+                        try { ch2._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
+                    }
                     return data;
                 });
             }
@@ -3623,7 +3626,6 @@ export default function MultichartGrid({
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
-                finalizeIframePanelAfterPairLoad(pid);
                 if (focusedPanelIdRef.current === pid) {
                     dispatchFocusChanged(pid);
                 }
@@ -3634,53 +3636,6 @@ export default function MultichartGrid({
             }
             finish();
             return Promise.resolve(null);
-        }
-
-        function syncIframeReplayInProcess(panelId) {
-            const ch = getChartForPanelId(panelId);
-            const ts = resolveHostReplayPlayheadMs();
-            if (!ch || !Number.isFinite(ts)) return;
-            try {
-                mirrorHostSessionOntoChart(ch);
-                const rs = ch.replaySystem;
-                if (!rs && typeof ch.initReplaySystem === "function") ch.initReplaySystem();
-                const rs2 = ch.replaySystem;
-                if (rs2 && !rs2.isActive && typeof rs2.enterReplayMode === "function") {
-                    rs2.enterReplayMode({
-                        suppressInitialUpdateChartData: true,
-                        initialReplayTimestamp: ts,
-                    });
-                }
-                if (rs2 && rs2.isActive && typeof rs2.goToReplayTimestamp === "function") {
-                    rs2.goToReplayTimestamp(ts, { centerOnCandle: true });
-                }
-                if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
-                    ch._finalizeMultichartPanelAfterPairLoad();
-                } else if (rs2 && typeof rs2.syncReplayViewportToPlayhead === "function") {
-                    rs2.syncReplayViewportToPlayhead(ch, {
-                        centerPlayhead: true,
-                        resetPriceScale: true,
-                        render: true,
-                    });
-                }
-            } catch (_) {}
-        }
-
-        function finalizeIframePanelAfterPairLoad(panelId) {
-            if (!panelId || panelId === HOST_PANEL_ID) return;
-            const push = function () {
-                syncIframeReplayInProcess(panelId);
-                const mgr = managerRef.current;
-                if (!mgr) return;
-                try {
-                    if (typeof mgr.sendCommandNoReply === "function") {
-                        mgr.sendCommandNoReply(panelId, "syncReplayFromHost", { force: true });
-                    }
-                } catch (_) {}
-            };
-            setTimeout(push, 80);
-            setTimeout(push, 450);
-            setTimeout(push, 1000);
         }
 
         function runCommand(cmd, args, opts) {

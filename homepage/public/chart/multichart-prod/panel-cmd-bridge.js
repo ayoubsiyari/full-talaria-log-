@@ -251,17 +251,12 @@
     function afterLoadFile(ch, usedMultichartLoader) {
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now() + 1000;
+                ch._multichartViewportSettleUntil = performance.now() + 550;
             } catch (_) {}
         }
         if (usedMultichartLoader) {
-            try {
-                if (typeof ch._finalizeMultichartPanelAfterPairLoad === 'function') {
-                    ch._finalizeMultichartPanelAfterPairLoad();
-                } else if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
-                    ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: true, render: true });
-                }
-            } catch (_) {}
+            // Loader already synced replay viewport; parent in-process path runs one
+            // coalesced finalize — avoid stacked passes that flash candles on/off.
             return;
         }
         try { drainPendingReplay(); } catch (_d) {}

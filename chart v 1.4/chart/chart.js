@@ -2309,9 +2309,6 @@ class Chart {
 
                 this.resize();
                 this.render();
-                if (typeof this._finalizeMultichartPanelAfterPairLoad === 'function') {
-                    this._finalizeMultichartPanelAfterPairLoad();
-                }
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
@@ -2538,46 +2535,59 @@ class Chart {
     }
 
     /**
-     * Post pair-switch passes: resize + replay viewport follow (iframe B/C/D often
-     * have chart.w=0 on first paint — without deferred passes the chart stays blank
-     * until host tile A triggers a global replay sync).
+     * One coalesced post pair-switch pass: resize after layout, recover viewport
+     * only when playhead is outside the visible window (iframe B/C/D often have
+     * chart.w=0 on first paint). Repeated calls within the settle window merge.
      */
     _finalizeMultichartPanelAfterPairLoad() {
-        const replay = this.replaySystem;
-        const settleMs = this._isMultichartEmbedPanel?.() ? 1000 : 400;
+        const settleMs = this._isMultichartEmbedPanel?.() ? 550 : 300;
         try {
             this._multichartViewportSettleUntil = performance.now() + settleMs;
         } catch (_) {}
 
-        const pass = (passOpts = {}) => {
+        if (this._finalizePairLoadTimer) {
+            clearTimeout(this._finalizePairLoadTimer);
+            this._finalizePairLoadTimer = null;
+        }
+        if (this._finalizePairLoadRaf) {
+            cancelAnimationFrame(this._finalizePairLoadRaf);
+            this._finalizePairLoadRaf = null;
+        }
+
+        const runOnce = () => {
+            this._finalizePairLoadTimer = null;
+            this._finalizePairLoadRaf = null;
             try {
                 if (typeof this.resize === 'function') this.resize();
-                if (replay?.isActive) {
+                const replay = this.replaySystem;
+                const needsRecovery = typeof this._multichartViewportNeedsRecovery === 'function'
+                    && this._multichartViewportNeedsRecovery();
+                if (needsRecovery && replay?.isActive) {
                     if (typeof this._syncIndependentPanelViewportIfNeeded === 'function') {
                         this._syncIndependentPanelViewportIfNeeded({
-                            resetPriceScale: passOpts.resetPriceScale !== false,
+                            resetPriceScale: false,
                             render: true,
                         });
                     } else if (typeof replay.syncReplayViewportToPlayhead === 'function') {
                         replay.syncReplayViewportToPlayhead(this, {
                             centerPlayhead: true,
-                            resetPriceScale: passOpts.resetPriceScale !== false,
+                            resetPriceScale: false,
                             render: true,
                         });
-                    } else if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
-                        replay.scheduleReplayFollowOnceLayoutSettled();
                     }
+                } else if (typeof this.render === 'function') {
+                    this.render();
                 }
-                if (typeof this.render === 'function') this.render();
             } catch (_e) { /* ignore */ }
         };
 
-        pass({ resetPriceScale: true });
         if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => requestAnimationFrame(() => pass({ resetPriceScale: false })));
+            this._finalizePairLoadRaf = requestAnimationFrame(() => {
+                this._finalizePairLoadRaf = requestAnimationFrame(runOnce);
+            });
+        } else {
+            this._finalizePairLoadTimer = setTimeout(runOnce, 50);
         }
-        setTimeout(() => pass({ resetPriceScale: false }), 120);
-        setTimeout(() => pass({ resetPriceScale: false }), 450);
     }
 
     /**
