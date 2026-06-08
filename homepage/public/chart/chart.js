@@ -1811,14 +1811,7 @@ class Chart {
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
-            const playheadMs = this._captureReplayPlayheadMs(replay);
-            await this.loadMultichartPanelFromHost({
-                fileId: String(this.currentFileId),
-                session: this.backtestingSession,
-                timeframe: normalizedTf,
-                replayTimestamp: playheadMs,
-                force: true,
-            });
+            await this._refetchBacktestTimeframeCore(normalizedTf, { logTag: 'multichart-server' });
         } catch (e) {
             console.warn('[multichart] replay timeframe switch failed', e);
         } finally {
@@ -1831,6 +1824,9 @@ class Chart {
      * @returns {Promise<boolean>}
      */
     async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            this._warmBtTfCacheFromParent(normalizedTf);
+        }
         if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
             return true;
         }
@@ -1908,6 +1904,15 @@ class Chart {
      */
     _multichartSamePairTimeframeResampleFromParent(normalizedTf) {
         if (this._isIndependentMultichartPair()) return false;
+        const prevTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevMs = this.parseTimeframe(prevTf);
+        const newMs = this.parseTimeframe(normalizedTf);
+        // Finer TF needs native bars (parent cache or server refetch), not resample from display master.
+        if (Number.isFinite(prevMs) && prevMs > 0
+            && Number.isFinite(newMs) && newMs > 0
+            && newMs < prevMs) {
+            return false;
+        }
         if (!this._multichartSeedPanelMasterFromParent()) return false;
         return this._independentPanelTimeframeSwitch(normalizedTf);
     }
@@ -1930,6 +1935,46 @@ class Chart {
         const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
+    }
+
+    /** Same-pair iframe: mirror host tile A's session TF cache (no duplicate network). */
+    _warmBtTfCacheFromParent(specificTf) {
+        if (!this._isMultichartEmbedPanel() || !this.isBacktestMode || !this.currentFileId) return;
+        if (this._isIndependentMultichartPair()) return;
+        let parent = null;
+        try {
+            if (!window.parent || window.parent === window) return;
+            parent = window.parent.chart;
+        } catch (_e) {
+            return;
+        }
+        if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) return;
+        if (!parent._btTfDataCache || typeof parent._getBtTfDataCache !== 'function') return;
+
+        const fid = String(this.currentFileId);
+        const perFile = parent._btTfDataCache.get(fid);
+        if (!perFile) return;
+
+        const warmOne = (tf) => {
+            const normalized = String(tf || '').toLowerCase().trim();
+            if (!normalized || this._getBtTfDataCache(fid, normalized)) return;
+            const entry = parent._getBtTfDataCache(fid, normalized);
+            if (!entry) return;
+            this._storeBtTfDataCacheEntry(fid, normalized, entry.rawData, {
+                totalCandles: entry.totalCandles,
+                serverCursors: entry.serverCursors,
+                nativeRawFetchTf: entry.nativeRawFetchTf,
+                reuseArrayReference: true,
+            });
+        };
+
+        if (specificTf) {
+            warmOne(specificTf);
+            return;
+        }
+        for (const tf of perFile.keys()) {
+            warmOne(tf);
+        }
     }
 
     /**
@@ -2202,12 +2247,15 @@ class Chart {
                 const selfMc = this;
                 const fidMc = fileId;
                 const sessMc = session;
+                const samePairEmbed = !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
-                    if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
+                    if (samePairEmbed && typeof selfMc._warmBtTfCacheFromParent === 'function') {
+                        selfMc._warmBtTfCacheFromParent();
+                    } else if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
                         selfMc._scheduleBacktestTimeframePrefetch(fidMc, sessMc);
                     }
-                }, 2000);
+                }, 400);
             } finally {
                 if (loadSeq === this._multichartPanelLoadSeq) {
                     this._multichartPanelLoadInflight = null;
@@ -3545,6 +3593,9 @@ class Chart {
             out.push('15m', '5m', '1m');
         } else if (curMs >= 900000) {
             out.push('5m', '1m', '15m');
+        } else if (curMs >= 300000) {
+            // 5m: always warm 1m first — switching 5m→1m during replay is common.
+            out.push('1m', '15m', '1h');
         } else {
             out.push('5m', '15m', '1h');
         }
@@ -3962,19 +4013,39 @@ class Chart {
             ? window.requestIdleCallback
             : (cb) => setTimeout(cb, 400);
         const self = this;
-        ric(() => {
+        const runPrefetch = () => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
             if (self._timeframeSwitching) return;
-            if (self.replaySystem && self.replaySystem.isPlaying) return;
+
+            if (self._isMultichartEmbedPanel()
+                && !self._isIndependentMultichartPair()
+                && typeof self._warmBtTfCacheFromParent === 'function') {
+                self._warmBtTfCacheFromParent();
+            }
 
             const playheadMs = self._captureReplayPlayheadMs(self.replaySystem);
             const sessionEndMs = self._getBacktestSessionEndMs(session);
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
-            const targets = typeof self._getBacktestTimeframesToPrefetch === 'function'
+            const curMs = self.parseTimeframe(cur) || 86400000;
+            let targets = typeof self._getBacktestTimeframesToPrefetch === 'function'
                 ? self._getBacktestTimeframesToPrefetch(cur)
                 : [];
             if (!targets.length) return;
+
+            // While tick replay runs, still warm the next FINER tf only (e.g. 1m on 5m)
+            // so the first 5m→1m switch hits _btTfDataCache instead of a cold refetch.
+            const playing = !!(self.replaySystem && self.replaySystem.isPlaying);
+            if (playing) {
+                targets = targets
+                    .filter((tf) => {
+                        const ms = self.parseTimeframe(tf) || 0;
+                        return ms > 0 && ms < curMs;
+                    })
+                    .sort((a, b) => (self.parseTimeframe(a) || 0) - (self.parseTimeframe(b) || 0));
+                if (!targets.length) return;
+                targets = targets.slice(0, 1);
+            }
 
             const sess = session || self.backtestingSession || {};
             let chain = Promise.resolve();
@@ -4018,7 +4089,16 @@ class Chart {
                         .catch(() => {});
                 });
             });
-        }, { timeout: 3000 });
+        };
+        let prefetchStarted = false;
+        const runPrefetchOnce = () => {
+            if (prefetchStarted) return;
+            prefetchStarted = true;
+            runPrefetch();
+        };
+        // Warm finer TF soon after landing on 5m/15m (don't wait for long idle).
+        setTimeout(runPrefetchOnce, 1200);
+        ric(runPrefetchOnce, { timeout: 3000 });
     }
 
     /**
@@ -15936,7 +16016,23 @@ class Chart {
             return;
         }
 
-        this._logTfSwitch('backtest-server', { to: timeframe });
+        return this._refetchBacktestTimeframeCore(timeframe, { logTag: 'backtest-server' });
+    }
+
+    /**
+     * Shared backtest TF refetch + replay hot-swap (host tile A and multichart iframes).
+     * @param {string} timeframe
+     * @param {{ logTag?: string }} options
+     */
+    async _refetchBacktestTimeframeCore(timeframe, options = {}) {
+        const replay = this.replaySystem;
+        if (!replay || !this.currentFileId) {
+            this._endTimeframeSwitching();
+            return;
+        }
+
+        const logTag = options.logTag || 'backtest-server';
+        this._logTfSwitch(logTag, { to: timeframe });
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
@@ -16029,6 +16125,10 @@ class Chart {
                 );
             }
         } catch (e) {
+            if (e && (e.name === 'AbortError' || e.code === 20)) {
+                this._endTimeframeSwitching();
+                return;
+            }
             console.error('[backtest] timeframe refetch fetch failed', e);
             this._endTimeframeSwitching();
             return;
