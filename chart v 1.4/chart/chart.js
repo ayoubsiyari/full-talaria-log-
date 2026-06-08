@@ -17884,6 +17884,9 @@ class Chart {
 
     _snapshotPanDrawingsLayer() {
         this._panScalesCalculated = false;
+        if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
+            this.dataPipeline.invalidatePanDisplayCache();
+        }
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
         this._panSnapPriceZoom = this.priceZoom;

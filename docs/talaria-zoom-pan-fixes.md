@@ -9,13 +9,13 @@
 |-----|--------|-------|
 | ZOOM-FIX-1 | ✅ Done | Indicator recalc deferred 100ms; `_scheduleIndicatorRecalcAfterInteraction()` skips sync recalc during pan/wheel |
 | ZOOM-FIX-2 | ✅ Done | Incremental resample on pan merge + `_commitLoadedBars` mergeDirection paths |
-| ZOOM-FIX-3 | ✅ Done | Removed per-frame display cache bust; pan offset shift cache in `chart-data-pipeline.js` |
+| ZOOM-FIX-3 | ✅ Fixed | Display cache kept; **pan pixel-shift cache removed** (shifted buckets without rebuilding = candles vanish on pan) |
 | ZOOM-FIX-4 | ✅ Done | Zoom-out fill threshold **82% → 90%** |
 | ZOOM-FIX-5 | ✅ Adjusted | `panFast` drawings during pan (skip-only reverted — caused stuck vertical feel) |
 | ZOOM-FIX-6 | ✅ Done | Near-edge threshold: `max(200, min(600, plotWidth * 0.3))` |
 | ZOOM-FIX-7 | ✅ Done | Wheel burst **350ms**; post-burst timer **400ms** |
 | ZOOM-FIX-8 | ✅ Done | Replay pan load debounce **90ms → 200ms** |
-| ZOOM-FIX-9 | ✅ Done | `calculateScales` skipped after first pan-loop frame (`_panScalesCalculated`) |
+| ZOOM-FIX-9 | ✅ Fixed | Cheap X path (horizontal) + Y snap+offset path (vertical drag); no blind skip of scales |
 | ZOOM-FIX-10 | ✅ Done | `_getRawDataCap()` — 5000 for 1m/5m, 6000 for 15m/30m, 8000 above |
 
 **Deploy:** `npm run build:chart-v9` → rebuild `homepage` → hard refresh.

@@ -338,30 +338,6 @@
                 return this._displayCache.series;
             }
 
-            const panLoop = !!(chart._chartPanRenderLoopActive);
-            if (panLoop && this._panDisplayCache) {
-                const pdc = this._panDisplayCache;
-                if (
-                    pdc.dataVersion === dv
-                    && pdc.tf === tf
-                    && pdc.sourceLen === source.length
-                    && pdc.spacingKey === spacing.toFixed(4)
-                    && pdc.candleWidth === chart.candleWidth
-                    && pdc.plotWidth === plotWidth
-                    && pdc.pixelLod === pixelLod
-                    && Array.isArray(pdc.series)
-                ) {
-                    const dx = offsetX - pdc.baseOffsetX;
-                    if (Math.abs(dx) < 0.001) {
-                        return pdc.series;
-                    }
-                    return pdc.series.map((b) => ({
-                        ...b,
-                        _pixelX: Number.isFinite(b._pixelX) ? b._pixelX + dx : b._pixelX,
-                    }));
-                }
-            }
-
             const resampled = this.getResampledSeries(source, tf, dv);
             let visStart = Math.max(0, -Math.floor(offsetX / spacing) - VIEWPORT_BUFFER_BARS);
             let visEnd = Math.min(
@@ -399,19 +375,6 @@
 
             this._displayCache.key = cacheKey;
             this._displayCache.series = display;
-            if (panLoop) {
-                this._panDisplayCache = {
-                    dataVersion: dv,
-                    tf,
-                    sourceLen: source.length,
-                    spacingKey: spacing.toFixed(4),
-                    candleWidth: chart.candleWidth,
-                    plotWidth,
-                    pixelLod,
-                    baseOffsetX: offsetX,
-                    series: display.map((b) => ({ ...b })),
-                };
-            }
             chart.displaySeries = display;
             return display;
         }
