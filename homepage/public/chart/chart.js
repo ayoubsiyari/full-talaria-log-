@@ -2503,7 +2503,6 @@ class Chart {
         if (!Array.isArray(this.data) || !this.data.length) return true;
         const vis = this._countVisiblePlotBars();
         if (vis <= 1) return true;
-        const rs = this.replaySystem;
         if (!rs?.isActive || !Number.isFinite(rs.replayTimestamp)) return false;
         const ts = rs.replayTimestamp;
         const spacing = typeof this.getCandleSpacing === 'function'
