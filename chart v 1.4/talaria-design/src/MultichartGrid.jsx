@@ -1668,7 +1668,7 @@ export default function MultichartGrid({
         // Stagger spawns slightly: each iframe loads the full dist-v9 bundle;
         // firing 3× addChart in one tick makes B/C/D fight for CPU + HTTP/2
         // streams so the last panel often misses the old 5s bridge-ready gate.
-        const IFRAME_ADD_STAGGER_MS = 280;
+        const IFRAME_ADD_STAGGER_MS = 700;
         const hostNt = readHostChartFileAndTf();
         const propFid = initialFileIdRef.current && String(initialFileIdRef.current).trim();
         const propTf = initialTimeframeRef.current && String(initialTimeframeRef.current).trim();

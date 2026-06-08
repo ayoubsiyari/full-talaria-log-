@@ -1082,6 +1082,7 @@
                     // to skip load entirely (replayEnter deferred forever → loading overlay
                     // never clears because candleCount stays 0).
                     if ((!ch.rawData || ch.rawData.length === 0)
+                        && !ch._multichartPairLoadInFlight
                         && typeof ch.loadFileData === 'function') {
                         var bootFid = pcSync.currentFileId;
                         if (bootFid != null && bootFid !== '') {

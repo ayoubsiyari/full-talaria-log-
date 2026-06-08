@@ -850,8 +850,10 @@
                     }
                     reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
+                    ch._multichartPairLoadInFlight = true;
                     var lp = ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
+                        ch._multichartPairLoadInFlight = false;
                         if (!Number.isFinite(playheadTs)) {
                             afterLoad();
                             return;
@@ -874,6 +876,7 @@
                     };
                     if (lp && typeof lp.then === 'function') {
                         lp.then(bootReplay, function (err) {
+                            ch._multichartPairLoadInFlight = false;
                             reportToShell('error', 'loadFileData failed: '
                                 + (err && err.message || err));
                         });

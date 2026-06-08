@@ -3966,6 +3966,14 @@ class Chart {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
             if (self._timeframeSwitching) return;
+            // Same-pair multichart iframes: host tile A already prefetches — skip
+            // duplicate /api/file/:id/smart storms from B/C/D (saturates 2 gunicorn workers).
+            if (typeof self._isMultichartEmbedPanel === 'function'
+                && self._isMultichartEmbedPanel()
+                && typeof self._isIndependentMultichartPair === 'function'
+                && !self._isIndependentMultichartPair()) {
+                return;
+            }
             if (self.replaySystem && self.replaySystem.isPlaying) return;
 
             const playheadMs = self._captureReplayPlayheadMs(self.replaySystem);
