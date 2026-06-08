@@ -463,18 +463,56 @@
             if (ui && typeof ui.getStatus === 'function') {
                 var st = ui.getStatus();
                 if (st && st.filters) {
-                    var pf = st.filters;
-                    return {
-                        impactHigh: pf.impactHigh,
-                        impactMedium: pf.impactMedium,
-                        impactLow: pf.impactLow,
-                        pairOnly: pf.pairOnly,
-                        countryCodes: pf.countryCodes ? pf.countryCodes.slice() : []
-                    };
+                    return cloneNewsFilters(st.filters);
                 }
             }
         } catch (e2) {}
         return null;
+    }
+
+    function cloneNewsFilters(f) {
+        if (!f || typeof f !== 'object') return null;
+        return {
+            impactHigh: !!f.impactHigh,
+            impactMedium: !!f.impactMedium,
+            impactLow: !!f.impactLow,
+            pairOnly: !!f.pairOnly,
+            countryCodes: Array.isArray(f.countryCodes) ? f.countryCodes.slice() : []
+        };
+    }
+
+    /** Live parent filters, else last host broadcast snapshot (multichart iframe). */
+    function getEffectiveNewsFiltersForEmbed() {
+        var pf = getParentNewsFilters();
+        if (pf) return pf;
+        try {
+            if (window.__multichartMirroredNewsFilters) {
+                return cloneNewsFilters(window.__multichartMirroredNewsFilters);
+            }
+        } catch (e0) {}
+        return null;
+    }
+
+    function snapshotNewsFilters() {
+        return cloneNewsFilters(state.filters);
+    }
+
+    function invalidateAxisEventsCache() {
+        _axisEventsCacheFp = '';
+        _axisEventsCacheArr = null;
+    }
+
+    /** Apply host filter snapshot on iframe tiles — no Finnhub refetch or rebroadcast. */
+    function applyMirroredNewsFilters(filters) {
+        var f = cloneNewsFilters(filters);
+        if (!f) return;
+        try { window.__multichartMirroredNewsFilters = f; } catch (e0) {}
+        state.filters.impactHigh = f.impactHigh;
+        state.filters.impactMedium = f.impactMedium;
+        state.filters.impactLow = f.impactLow;
+        state.filters.pairOnly = f.pairOnly;
+        state.filters.countryCodes = f.countryCodes.slice();
+        invalidateAxisEventsCache();
     }
 
     /** Raw marker rows (before user filters) from the local Finnhub cache. */
@@ -496,9 +534,9 @@
 
     function filterSourceEvents(source, filters) {
         if (!source || !source.length) return [];
-        var f = filters || state.filters;
+        if (!filters) return [];
         var saved = state.filters;
-        state.filters = f;
+        state.filters = filters;
         var out = source.filter(passesUserFilters);
         state.filters = saved;
         return out;
@@ -510,7 +548,9 @@
         try {
             var grid = window.__multichartGrid;
             if (grid && typeof grid.broadcastToIframesNoReply === 'function') {
-                grid.broadcastToIframesNoReply('redrawEconomicNewsMarkers', {});
+                grid.broadcastToIframesNoReply('redrawEconomicNewsMarkers', {
+                    filters: snapshotNewsFilters()
+                });
             }
         } catch (e) {}
     }
@@ -1046,8 +1086,12 @@
             if (canUseParentCalendarSource()) {
                 try {
                     var parentSource = window.parent.__economicCalendarForChart.getSourceEvents();
-                    return filterSourceEvents(parentSource, getParentNewsFilters());
-                } catch (eEmbed) {}
+                    var embedFilters = getEffectiveNewsFiltersForEmbed();
+                    if (!embedFilters) return [];
+                    return filterSourceEvents(parentSource, embedFilters);
+                } catch (eEmbed) {
+                    return [];
+                }
             }
             var fp = axisEventsCacheFingerprint();
             if (fp === _axisEventsCacheFp && _axisEventsCacheArr) {
@@ -1243,8 +1287,12 @@
             saveFiltersToStorage();
             syncFilterControlsToDom();
             render();
+            invalidateAxisEventsCache();
             requestChartMarkerRedraw();
             requestMultichartNewsMarkerRedraw();
+        },
+        applyMirroredFilters: function (filters) {
+            applyMirroredNewsFilters(filters);
         },
         displayForEvent: function (e) {
             if (!e || !Number.isFinite(e.t)) return null;
