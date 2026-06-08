@@ -18427,16 +18427,8 @@ class Chart {
         this.drag.lastX = clientX;
         this.drag.lastY = clientY;
         this._constrainOffsetDuringDrag();
-        if (this.replaySystem?.isActive) {
-            if (effectiveDx > 0.5) {
-                this._scheduleReplayPanLoadLeft();
-            }
-        } else if (this.currentFileId && Math.abs(effectiveDx) > 0.5) {
-            // Live / non-replay: constrainOffset() skips pan-loading while a drag
-            // is active, so without this the old candles on the left only start
-            // loading AFTER the drag ends. Trigger it mid-drag so dragging right
-            // streams in history immediately (multichart panels included).
-            this._schedulePanLoadDuringDrag(effectiveDx);
+        if (this.replaySystem?.isActive && effectiveDx > 0.5) {
+            this._scheduleReplayPanLoadLeft();
         }
     }
 
@@ -18457,46 +18449,6 @@ class Chart {
         const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
         const gapOnLeft = leftIdx < 6;
         return nearLoadedLeft || gapOnLeft;
-    }
-
-    /**
-     * Debounced history fetch while dragging a live (non-replay) file-backed chart.
-     * Dragging RIGHT (dx > 0) pushes content right and reveals OLDER candles on the
-     * left → backward load. Dragging LEFT reveals newer candles → forward load.
-     * Mirrors the near-edge thresholds in constrainOffset() but, unlike that path,
-     * is allowed to fire mid-drag so panels stream history in as you scroll.
-     */
-    _schedulePanLoadDuringDrag(dx) {
-        if (this._panLoading) return;
-        if (!this.currentFileId || !this._serverCursors) return;
-        if (!Array.isArray(this.data) || this.data.length === 0) return;
-        const spacing = this.getCandleSpacing();
-        if (!Number.isFinite(spacing) || spacing <= 0) return;
-        const m = this.margin || { l: 60, r: 60 };
-        const cw = Math.max(1, this.w - m.l - m.r);
-        const rightMarginCandles = Number.isFinite(this.timeScale?.rightOffsetCandles)
-            ? this.timeScale.rightOffsetCandles
-            : 15;
-        const rightMargin = Math.max(0, rightMarginCandles) * spacing;
-        const maxOffset = cw - rightMargin;
-        const lastCandleX = (this.data.length - 1) * spacing;
-        const minOffset = -lastCandleX;
-        const nearEdgeThreshold = Math.max(200, Math.min(600, cw * 0.3));
-        const wantBackward = dx > 0;
-        clearTimeout(this._dragPanLoadTimer);
-        this._dragPanLoadTimer = setTimeout(() => {
-            this._dragPanLoadTimer = null;
-            if (this._panLoading) return;
-            if (wantBackward) {
-                if (this._serverCursors.hasMoreLeft !== false
-                    && this.offsetX > maxOffset - nearEdgeThreshold) {
-                    this.checkViewportLoadMore('backward');
-                }
-            } else if (this._serverCursors.hasMoreRight !== false
-                && this.offsetX < minOffset + nearEdgeThreshold) {
-                this.checkViewportLoadMore('forward');
-            }
-        }, 90);
     }
 
     /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
