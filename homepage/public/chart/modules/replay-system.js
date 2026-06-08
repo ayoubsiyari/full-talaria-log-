@@ -5697,16 +5697,7 @@ class ReplaySystem {
                 if (typeof this.syncPanelCharts === 'function') {
                     this.syncPanelCharts(true);
                 }
-                // Prefer the playhead anchor (same place + zoom) captured on this
-                // panel before the switch; fall back to auto-scroll follow.
-                let __anchoredFollower = false;
-                try {
-                    if (initiator._replayTfAnchor
-                        && typeof initiator._restoreReplayTfAnchor === 'function') {
-                        __anchoredFollower = initiator._restoreReplayTfAnchor();
-                    }
-                } catch (_followerAnchorErr) { __anchoredFollower = false; }
-                if (!__anchoredFollower && this.autoScrollEnabled) {
+                if (this.autoScrollEnabled) {
                     const st = this.getReplayAutoScrollState(initiator);
                     if (st) initiator.offsetX = st.offsetX;
                 }
@@ -5776,32 +5767,15 @@ class ReplaySystem {
             this.updateChartData(false);
             this.chart.priceOffset = savedPriceOffset;
             this.chart.priceZoom = savedPriceZoom;
-            // FXReplay/TradingView parity: if setTimeframe captured a playhead
-            // anchor (pixel X + zoom) before the switch, restore it so the chart
-            // stays in the SAME place at the SAME zoom — no shake/recenter. Falls
-            // back to the legacy centre-playhead behavior when no anchor exists.
-            let __anchoredView = false;
-            try {
-                if (this.chart._replayTfAnchor
-                    && typeof this.chart._restoreReplayTfAnchor === 'function') {
-                    __anchoredView = this.chart._restoreReplayTfAnchor();
-                    if (__anchoredView && typeof this.chart.render === 'function') {
-                        this.chart.renderPending = true;
-                        this.chart.render();
-                    }
-                }
-            } catch (_anchorErr) { __anchoredView = false; }
-            if (!__anchoredView) {
-                if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                    this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: true,
-                        resetPriceScale: false,
-                        render: true,
-                    });
-                } else if (typeof this.chart.render === 'function') {
-                    this.chart.renderPending = true;
-                    this.chart.render();
-                }
+            if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                this.syncReplayViewportToPlayhead(this.chart, {
+                    centerPlayhead: true,
+                    resetPriceScale: false,
+                    render: true,
+                });
+            } else if (typeof this.chart.render === 'function') {
+                this.chart.renderPending = true;
+                this.chart.render();
             }
             this.updateSlider();
             this.updateTimeDisplay();

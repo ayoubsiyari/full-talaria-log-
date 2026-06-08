@@ -245,13 +245,7 @@
             const i0 = Math.max(0, visStart | 0);
             const i1 = sliceMode ? Math.min(source.length, visEnd | 0) : Math.min(source.length, visEnd | 0);
 
-            // Stride: at sub-pixel spacing, many consecutive bars map to the same
-            // pixel slot. Skip every barsPerSlot/4 bars — 4–100× fewer iterations
-            // while still correctly merging H/L via the slot bucket above.
-            const barsPerSlot = spacing > 0 ? slotPx / spacing : 1;
-            const stride = barsPerSlot >= 8 ? Math.max(1, Math.floor(barsPerSlot / 4)) : 1;
-
-            for (let idx = i0; idx < i1; idx += stride) {
+            for (let idx = i0; idx < i1; idx++) {
                 const d = sliceMode ? source[idx - i0] : source[idx];
                 if (!d) continue;
                 const dataIdx = sliceMode ? (visStart + (idx - i0)) : idx;
@@ -327,20 +321,6 @@
                 : (chart.isBacktestMode
                     ? RENDER_BAR_BUDGET
                     : Math.min(RENDER_BAR_BUDGET * 2, RENDER_BAR_BUDGET + 400));
-
-            // ── Pixel-LOD fast path (TradingView technique) ──────────────────
-            // When spacing < 2px every pan frame had a different offsetX, causing
-            // a full O(n_bars) _pixelSlotAggregateFromRange on every render tick.
-            // Instead, delegate to the chart's pre-built virtual-slot cache which
-            // re-projects the screen view in O(numScreenSlots) ≈ O(450).
-            // The cache is built once after zoom settles; pan only re-indexes it.
-            if (pixelLod && typeof chart._getZoomedOutLodForRender === 'function') {
-                const lodResult = chart._getZoomedOutLodForRender(plotWidth);
-                if (lodResult && lodResult.length > 0) {
-                    chart.displaySeries = lodResult;
-                    return lodResult;
-                }
-            }
 
             const cacheKey = [
                 dv,

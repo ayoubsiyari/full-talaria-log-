@@ -34,7 +34,7 @@
  *     right-panel layout tab.
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -2002,18 +2002,19 @@ export default function MultichartGrid({
             if (!(layoutSync && layoutSync.interval)) {
                 return;
             }
-            if (!mgr || typeof mgr.sendCommandNoReply !== "function") return;
+            if (!mgr || typeof mgr.sendCommand !== "function") return;
             const tf = (ev && ev.detail && ev.detail.timeframe)
                 || (window.chart && window.chart.currentTimeframe)
                 || null;
             if (!tf) return;
-            const normalized = String(tf).trim().toLowerCase();
-            if (layoutTargetTfRef.current === normalized) return;
-            broadcastIntervalToLayout(normalized, HOST_PANEL_ID, mgr, { skipHost: true });
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host) continue; // host already changed; iframes only
+                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+            }
         };
         window.addEventListener("timeframeChanged", onTfChanged);
         return () => window.removeEventListener("timeframeChanged", onTfChanged);
-    }, [layoutSync, broadcastIntervalToLayout]);
+    }, [layoutSync]);
 
     // ─── Symbol/file sync ───────────────────────────────────────────────
     //
@@ -2856,45 +2857,6 @@ export default function MultichartGrid({
     // (chart-state from iframes can re-fire many times per pan).
     const lastBroadcastTfRef = useRef({});       // panelId -> tf
     const lastBroadcastFileRef = useRef({});     // panelId -> fileId
-    // Interval-sync loop guards. Without these, a panel mid-TF-switch can
-    // post chart-state with its OLD timeframe; onStateAny treats that as a
-    // new user pick and pulls the whole layout back → oscillation between
-    // the two TFs the user toggled.
-    const layoutTargetTfRef = useRef(null);      // tf the layout is syncing toward
-    const commandedTfRef = useRef({});         // panelId -> { tf, at }
-
-    /** Fan out one interval sync from `sourceId` without ping-pong. */
-    const broadcastIntervalToLayout = useCallback((tf, sourceId, mgr, opts = {}) => {
-        if (!mgr || typeof mgr.sendCommandNoReply !== "function") return;
-        const normalized = String(tf || "").trim().toLowerCase();
-        if (!normalized) return;
-        const skipHost = !!opts.skipHost;
-        const now = Date.now();
-        layoutTargetTfRef.current = normalized;
-        if (sourceId) lastBroadcastTfRef.current[sourceId] = normalized;
-
-        if (!skipHost) {
-            try {
-                const ch = window.chart;
-                if (ch && typeof ch.setTimeframe === "function" && ch.currentTimeframe !== normalized) {
-                    ch._suppressIntervalSync = true;
-                    ch.setTimeframe(normalized);
-                    ch._suppressIntervalSync = false;
-                }
-                lastBroadcastTfRef.current[HOST_PANEL_ID] = normalized;
-                commandedTfRef.current[HOST_PANEL_ID] = { tf: normalized, at: now };
-            } catch (_) {}
-        } else {
-            lastBroadcastTfRef.current[HOST_PANEL_ID] = normalized;
-        }
-
-        for (const c of mgr.charts.values()) {
-            if (!c || c.host || c.id === sourceId) continue;
-            lastBroadcastTfRef.current[c.id] = normalized;
-            commandedTfRef.current[c.id] = { tf: normalized, at: now };
-            try { mgr.sendCommandNoReply(c.id, "setTimeframe", { tf: normalized }); } catch (_) {}
-        }
-    }, []);
 
     // Fire when ANY panel's state updates. Two responsibilities:
     //
@@ -2959,28 +2921,24 @@ export default function MultichartGrid({
         }
 
         if (state && state.timeframe && sync.interval) {
-            const tf = String(state.timeframe).trim().toLowerCase();
-            if (!tf) return;
-
-            // Panel still switching — chart-state can report the OLD tf for seconds.
-            if (state.timeframeSwitching) return;
-
-            const commanded = commandedTfRef.current[id];
-            if (commanded && commanded.tf !== tf && (Date.now() - commanded.at) < 120000) {
-                return;
-            }
-
-            // Already synced to this tf — confirmation only, no fan-out.
-            if (layoutTargetTfRef.current === tf) {
+            const tf = String(state.timeframe);
+            if (lastBroadcastTfRef.current[id] !== tf) {
                 lastBroadcastTfRef.current[id] = tf;
-                return;
+                // 1) push to the host (in-process call) — host doesn't
+                // run panel-cmd-bridge, so we hit window.chart directly.
+                try {
+                    if (window.chart && typeof window.chart.setTimeframe === "function"
+                        && window.chart.currentTimeframe !== tf) {
+                        window.chart.setTimeframe(tf);
+                        lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
+                    }
+                } catch (_) {}
+                // 2) push to every other iframe panel
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host || c.id === id) continue;
+                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
+                }
             }
-
-            // Only the focused iframe's tf pick should drive layout-wide sync.
-            // Lagging chart-state from other tiles must not pull everyone back.
-            if (id !== focusedPanelIdRef.current) return;
-
-            broadcastIntervalToLayout(tf, id, mgr);
         }
         if (state && state.fileId && sync.symbol) {
             const fid = String(state.fileId);
