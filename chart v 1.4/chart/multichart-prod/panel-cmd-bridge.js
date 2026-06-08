@@ -248,18 +248,24 @@
         }
     }
 
-    function afterLoadFile(ch) {
+    function afterLoadFile(ch, usedMultichartLoader) {
         if (ch) {
             try {
                 ch._multichartViewportSettleUntil = performance.now() + 400;
             } catch (_) {}
         }
         try { drainPendingReplay(); } catch (_d) {}
+        if (usedMultichartLoader) return;
         reseedReplayFromChart(ch);
         ensurePanelReplaySeries(ch);
         setTimeout(function () {
             try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
         }, 0);
+    }
+
+    function shouldUseMultichartPanelLoader(ch) {
+        if (!ch || typeof ch.loadMultichartPanelFromHost !== 'function') return false;
+        return !!(ch.isBacktestMode || ch.backtestingSession);
     }
 
     /**
@@ -777,15 +783,13 @@
                         throw new Error('loadFile: missing args.fileId');
                     }
                     if (typeof ch.loadFileData !== 'function'
-                        && typeof ch.loadMultichartPanelFromHost !== 'function') {
+                        && typeof ch.loadMultichartPanelFromHost !== 'function'
+                        && typeof ch.loadMultichartPanelFile !== 'function') {
                         throw new Error('chart.loadFileData is not a function');
                     }
                     var fidStr = String(fileId);
                     mirrorParentBacktestSession(ch);
                     var switchingPair = String(ch.currentFileId || '') !== fidStr;
-                    // Match host tile A: loadFileData handles backtest fetch shape,
-                    // replay.fullRawData seeding on pair switch, and multichart embed boot.
-                    // loadMultichartPanelFromHost is reserved for embed-bridge initial boot.
                     // Idempotency guard: when the parent fans out symbol
                     // sync to every panel, each panel echoes chart-state
                     // back; without this, the echo would re-trigger
@@ -804,19 +808,32 @@
                     }
                     primeIframeReplayPlayheadFromParent(ch);
                     ch._multichartPairLoadInFlight = true;
-                    var p = ch.loadFileData(fidStr);
-                    if (p && typeof p.then === 'function') {
-                        return p.then(function () {
+                    var useMcLoader = shouldUseMultichartPanelLoader(ch);
+                    var loadPromise;
+                    if (useMcLoader) {
+                        if (typeof ch.loadMultichartPanelFile === 'function') {
+                            loadPromise = ch.loadMultichartPanelFile(fidStr, { force: !!args.force });
+                        } else {
+                            loadPromise = ch.loadMultichartPanelFromHost({
+                                fileId: fidStr,
+                                force: !!args.force,
+                            });
+                        }
+                    } else {
+                        loadPromise = ch.loadFileData(fidStr);
+                    }
+                    if (loadPromise && typeof loadPromise.then === 'function') {
+                        return loadPromise.then(function () {
                             ch._multichartPairLoadInFlight = false;
-                            afterLoadFile(ch);
+                            afterLoadFile(ch, useMcLoader);
                         }).catch(function (e) {
                             ch._multichartPairLoadInFlight = false;
-                            warn('loadFile: loadFileData failed', e && e.message);
+                            warn('loadFile: load failed', e && e.message);
                             throw e;
                         });
                     }
                     ch._multichartPairLoadInFlight = false;
-                    afterLoadFile(ch);
+                    afterLoadFile(ch, useMcLoader);
                     return;
                 }
 

@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260602a488";
+const BRIDGE_VERSION = "20260602a495";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -3052,9 +3052,12 @@ export default function MultichartGrid({
             if (lastBroadcastFileRef.current[id] !== fid) {
                 lastBroadcastFileRef.current[id] = fid;
                 try {
-                    if (window.chart && typeof window.chart.loadFileData === "function"
-                        && String(window.chart.currentFileId || "") !== fid) {
-                        window.chart.loadFileData(fid);
+                    if (window.chart && String(window.chart.currentFileId || "") !== fid) {
+                        const ch = window.chart;
+                        const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
+                            && typeof ch.loadMultichartPanelFile === "function";
+                        if (useMc) ch.loadMultichartPanelFile(fid, { force: true });
+                        else if (typeof ch.loadFileData === "function") ch.loadFileData(fid);
                         lastBroadcastFileRef.current[HOST_PANEL_ID] = fid;
                     }
                 } catch (_) {}
@@ -3112,15 +3115,28 @@ export default function MultichartGrid({
                     }
                     case "loadFile": {
                         if (typeof ch.loadFileData !== "function"
+                            && typeof ch.loadMultichartPanelFromHost !== "function"
                             && typeof ch.loadMultichartPanelFile !== "function") {
                             return Promise.reject(new Error("chart.loadFileData is not a function"));
                         }
                         if (args.fileId === undefined || args.fileId === null || args.fileId === "") {
                             return Promise.reject(new Error("loadFile: missing fileId"));
                         }
-                        const loadFn = typeof ch.loadMultichartPanelFile === "function"
-                            ? () => ch.loadMultichartPanelFile(String(args.fileId), { force: !!args.force })
-                            : () => ch.loadFileData(String(args.fileId));
+                        const fid = String(args.fileId);
+                        const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
+                            && typeof ch.loadMultichartPanelFile === "function";
+                        const loadFn = useMc
+                            ? () => ch.loadMultichartPanelFile(fid, { force: !!args.force })
+                            : (typeof ch.loadMultichartPanelFromHost === "function"
+                                && (ch.isBacktestMode || ch.backtestingSession))
+                                ? () => ch.loadMultichartPanelFromHost({
+                                    fileId: fid,
+                                    force: !!args.force,
+                                    replayTimestamp: typeof ch._resolveMultichartReplayPlayheadMs === "function"
+                                        ? ch._resolveMultichartReplayPlayheadMs()
+                                        : undefined,
+                                })
+                                : () => ch.loadFileData(fid);
                         const r = loadFn();
                         if (r && typeof r.then === "function") return r.then(() => null);
                         return Promise.resolve(null);

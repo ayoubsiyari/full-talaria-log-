@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b252';
+const CHART_ENGINE_BUILD = '20260602b253';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2213,6 +2213,25 @@ class Chart {
                     skipTimeframePrefetch: true,
                 });
                 this.currentTimeframe = displayTf;
+
+                // Independent iframe pair: keep full 1m master before replay slices visible bars.
+                try {
+                    const isMce = typeof document !== 'undefined'
+                        && document.documentElement
+                        && document.documentElement.classList.contains('multichart-embed');
+                    if (isMce && window.parent && window.parent !== window) {
+                        const pch = window.parent.chart;
+                        const hostFid = pch && pch.currentFileId;
+                        if (hostFid != null && String(hostFid) !== String(fileId)) {
+                            this._panelFullRawData = Array.isArray(this.rawData)
+                                ? [...this.rawData]
+                                : null;
+                        } else if (typeof this._multichartSeedPanelMasterFromParent === 'function') {
+                            this._multichartSeedPanelMasterFromParent();
+                        }
+                    }
+                } catch (_mceMaster) { /* ignore */ }
+
                 if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, displayTf);
                     if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
@@ -2388,12 +2407,40 @@ class Chart {
      * @returns {number|null}
      */
     _resolveMultichartReplayPlayheadMs() {
-        if (this._isMultichartEmbedPanel() && !this._isIndependentMultichartPair()) {
+        if (this._isMultichartEmbedPanel()) {
             const parentTs = this._readParentReplayTimestampForMultichart();
             if (Number.isFinite(parentTs)) return parentTs;
         }
         const captured = this._captureReplayPlayheadMs(this.replaySystem);
         return Number.isFinite(captured) ? captured : null;
+    }
+
+    /**
+     * Unified multichart pair switch (host A + iframe B/C/D). Same fetch/replay/viewport
+     * path as tile A's smooth backtest loader — use instead of raw loadFileData().
+     * @param {string|number} fileId
+     * @param {{ force?: boolean, replayTimestamp?: number, timeframe?: string }} [opts]
+     */
+    async loadMultichartPanelFile(fileId, opts = {}) {
+        const o = opts && typeof opts === 'object' ? { ...opts } : {};
+        const fid = String(fileId || o.fileId || '').trim();
+        if (!fid) throw new Error('loadMultichartPanelFile: missing fileId');
+        o.fileId = fid;
+
+        const prevFid = this.currentFileId != null ? String(this.currentFileId) : '';
+        if (prevFid && prevFid !== fid
+            && this.drawingManager
+            && typeof this.drawingManager.saveDrawings === 'function') {
+            try { this.drawingManager.saveDrawings(prevFid); } catch (_e) { /* ignore */ }
+        }
+
+        const replayTs = Number.isFinite(Number(o.replayTimestamp))
+            ? Number(o.replayTimestamp)
+            : this._resolveMultichartReplayPlayheadMs();
+        if (Number.isFinite(replayTs)) o.replayTimestamp = replayTs;
+        if (!o.timeframe && this.currentTimeframe) o.timeframe = this.currentTimeframe;
+
+        return this.loadMultichartPanelFromHost(o);
     }
 
     /**
@@ -11370,7 +11417,10 @@ class Chart {
 
             const loadPromise = (targetChart.isPanel && targetChart !== window.chart && typeof targetChart.loadPanelFileData === 'function')
                 ? targetChart.loadPanelFileData(nextFileId)
-                : this.loadFileData(nextFileId);
+                : ((targetChart.isBacktestMode || targetChart.backtestingSession)
+                    && typeof targetChart.loadMultichartPanelFile === 'function')
+                    ? targetChart.loadMultichartPanelFile(nextFileId, { force: true })
+                    : this.loadFileData(nextFileId);
 
             loadPromise
                 .then(() => {

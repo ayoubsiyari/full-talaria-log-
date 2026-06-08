@@ -866,13 +866,23 @@
                         && pcBoot.replaySystem.fullRawData.length > 0) {
                         reportToShell('info', 'boot: parent native master (no /smart) fileId=' + loadFid);
                     }
-                    reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
+                    reportToShell('info', 'loadMultichartPanelFile fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
                     ch._multichartPairLoadInFlight = true;
-                    var lp = ch.loadFileData(String(loadFid));
+                    var useMcBoot = typeof ch.loadMultichartPanelFile === 'function';
+                    var lp = useMcBoot
+                        ? ch.loadMultichartPanelFile(String(loadFid), {
+                            timeframe: tf || undefined,
+                            replayTimestamp: playheadTs,
+                        })
+                        : ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
                         ch._multichartPairLoadInFlight = false;
                         markViewportBootSettle(ch, 500);
+                        if (useMcBoot) {
+                            afterLoad();
+                            return;
+                        }
                         if (!Number.isFinite(playheadTs)) {
                             afterLoad();
                             return;
