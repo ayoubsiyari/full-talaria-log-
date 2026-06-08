@@ -3837,10 +3837,8 @@ class Chart {
         if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
         this.resize();
         if (this.data && this.data.length > 0) {
-            if (!this._tryRestoreTfSwitchViewport()) {
-                this._chartViewRestored = false;
-                this.jumpToLatest();
-            }
+            this._chartViewRestored = false;
+            this.jumpToLatest();
         } else {
             this.fitToView();
         }
@@ -3866,6 +3864,11 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
+            this.candleWidth = DEFAULT_CANDLE_WIDTH;
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            this._chartViewRestored = false;
             this.replaySystem.onTimeframeChange(this);
             requestAnimationFrame(() => {
                 if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
@@ -3876,10 +3879,7 @@ class Chart {
             this._deferRecalculateIndicators();
             this.resize();
             if (this.data && this.data.length > 0) {
-                if (!this._tryRestoreTfSwitchViewport()) {
-                    this._chartViewRestored = false;
-                    this.jumpToLatest();
-                }
+                this.jumpToLatest();
             } else {
                 this._chartViewRestored = false;
                 this.fitToView();
@@ -4037,21 +4037,6 @@ class Chart {
         if (!Array.isArray(rawData) || rawData.length < 2) return NaN;
         const step = Number(rawData[1].t) - Number(rawData[0].t);
         return Number.isFinite(step) && step > 0 ? step : NaN;
-    }
-
-    _btTfCacheCoversViewport(entry, viewportSnap) {
-        if (!viewportSnap || !entry || !Array.isArray(entry.rawData) || !entry.rawData.length) {
-            return true;
-        }
-        const startTs = viewportSnap.startTimestamp;
-        const endTs = viewportSnap.endTimestamp;
-        if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return true;
-        const first = Number(entry.rawData[0]?.t);
-        const last = Number(entry.rawData[entry.rawData.length - 1]?.t);
-        if (!Number.isFinite(first) || !Number.isFinite(last)) return true;
-        const stepMs = this._measureRawDataStepMs(entry.rawData)
-            || this.parseTimeframe(entry.nativeRawFetchTf || '') || 60000;
-        return first <= startTs && (last + stepMs) >= (endTs - 1);
     }
 
     /** True when cached rawData bar period matches the cache slot timeframe (1d slot ≠ 1m bars). */
@@ -4394,6 +4379,13 @@ class Chart {
         this._panLoading = false;
         this._chartViewRestored = false;
 
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        this.manualCenterPrice = null;
+        this.manualRange = null;
+
         if (replay.isActive) {
             // Display TF switch during replay: keep finer native master; resample display only when possible.
             if (ctx.replaceReplayMaster === true) {
@@ -4497,12 +4489,11 @@ class Chart {
                 try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
             }
 
-            if (!this._tryRestoreTfSwitchViewport({ resetPriceScale: false })
-                && typeof replay.syncReplayViewportToPlayhead === 'function') {
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
                 replay.syncReplayViewportToPlayhead(this, {
                     resetPriceScale: true,
                     render: true,
-                    centerPlayhead: false,
+                    centerPlayhead: true,
                 });
             }
 
@@ -4544,7 +4535,6 @@ class Chart {
         if (!this.isBacktestMode || !this.currentFileId) return false;
         const entry = this._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
-        if (!this._btTfCacheCoversViewport(entry, this._tfSwitchViewportSnapshot)) return false;
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'backtest-cache');
     }
 
@@ -15514,13 +15504,6 @@ class Chart {
                     }
                     return this._multichartReplayTimeframeSwitch(normalizedTf);
                 }
-                const replayForTf = this.replaySystem;
-                const prevTfForSwitch = String(this.currentTimeframe || '1m').toLowerCase().trim();
-                if (replayForTf?.isActive
-                    && !this._shouldReplaceReplayMasterForTfSwitch(prevTfForSwitch, normalizedTf, replayForTf)) {
-                    this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true });
-                    return Promise.resolve();
-                }
                 return this._applyBacktestTimeframeFromCache(normalizedTf)
                     .then((hit) => {
                         if (hit) return;
@@ -15550,8 +15533,14 @@ class Chart {
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
-            // Preserve visible wall-clock window across TF switch (TradingView-style).
-            // onTimeframeChange restores viewport from snapshot captured in _beginTimeframeSwitching.
+            // TradingView-style reset on every TF switch (double-click parity).
+            // Reset BEFORE onTimeframeChange so the replay viewport is computed
+            // against default candleWidth + autoScale, identical to a fresh load.
+            this.candleWidth = DEFAULT_CANDLE_WIDTH;
+            this.priceZoom = 1;
+            this.priceOffset = 0;
+            this.autoScale = true;
+            this._chartViewRestored = false;
             let replayTfEnded = false;
             const finishReplayTfSwitch = () => {
                 if (replayTfEnded) return;
@@ -15601,13 +15590,15 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
 
-        // Preserve the visible wall-clock window (same dates on 1m, 5m, 15m, …).
+        // TradingView-style reset on every TF switch: same effect as the user
+        // double-clicking the time axis (default candleWidth, autoScale ON,
+        // latest data visible). Replaces the previous "preserve the visible
+        // center timestamp + previous candleWidth" logic, which would land the
+        // user on an arbitrary region of the new TF and required a manual
+        // double-click to get back to a usable view.
         this.resize();
         if (this.data && this.data.length > 0) {
-            if (!this._tryRestoreTfSwitchViewport()) {
-                this._chartViewRestored = false;
-                this.jumpToLatest();
-            }
+            this.jumpToLatest();
         } else {
             this._chartViewRestored = false;
             this.fitToView();
@@ -15674,7 +15665,6 @@ class Chart {
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;
-        this._tfSwitchViewportSnapshot = this._captureTfSwitchViewport();
         try { this._showTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
     }
 
@@ -15888,10 +15878,7 @@ class Chart {
                     if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                     this.resize();
                     if (this.data && this.data.length > 0) {
-                        if (!this._tryRestoreTfSwitchViewport()) {
-                            this._chartViewRestored = false;
-                            this.jumpToLatest();
-                        }
+                        this.jumpToLatest();
                     } else {
                         this.fitToView();
                     }
@@ -15945,7 +15932,13 @@ class Chart {
             this._ingestSmartWindowResult(result, { skipFitToView: true, skipIndicators: true });
             this._deferRecalculateIndicators();
 
-            // Interim position until rAF restore (listeners may render mid-ingest).
+            // Immediately put the chart into a renderable state.
+            // _commitLoadedBars (inside ingest) synchronously dispatches `chartDataLoaded`
+            // which some listeners react to with a render. Without a valid offsetX for
+            // the NEW dataset, those intermediate renders produce
+            // "No candles drawn! All N candles are outside viewport" warnings and a
+            // blank chart on smaller-data timeframes (e.g. 1h with only a few bars).
+            // The rAF below refines the view (restore center timestamp) once dimensions settle.
             if (Array.isArray(this.data) && this.data.length > 0) {
                 this._chartViewRestored = false;
                 this.fitToView();
@@ -15961,11 +15954,17 @@ class Chart {
                 if (this._lastResizeDpr !== undefined) this._lastResizeDpr = 0;
                 this.resize();
 
+                // TradingView-style reset on every TF switch: identical to the
+                // user double-clicking the time axis (default candleWidth,
+                // autoScale ON, latest candle at the right edge). Previously we
+                // tried to preserve the visible center timestamp + previous
+                // candleWidth across the switch, but that often landed the user
+                // on an arbitrary region of the new TF and required a manual
+                // double-click to get a usable view. jumpToLatest is also
+                // self-healing for the offscreen-viewport edge case the old
+                // sanity-check guarded against.
                 if (this.data && this.data.length > 0) {
-                    if (!this._tryRestoreTfSwitchViewport()) {
-                        this._chartViewRestored = false;
-                        this.jumpToLatest();
-                    }
+                    this.jumpToLatest();
                 } else {
                     this._chartViewRestored = false;
                     this.fitToView();
@@ -16100,7 +16099,7 @@ class Chart {
      * Backtest replay TF fetch window centered on the playhead (fine TFs) so switching
      * 1D→1m at April 2015 does not pull only the last N minutes before session end.
      */
-    _getBacktestReplayFetchRange(timeframe, session, playheadMs, viewportSnap) {
+    _getBacktestReplayFetchRange(timeframe, session, playheadMs) {
         const sessionEndMs = this._getBacktestSessionEndMs(session);
         let sessionStartMs = null;
         try {
@@ -16122,12 +16121,7 @@ class Chart {
             ? Math.min(120, Math.max(24, Math.floor(barLimit * 0.06)))
             : Math.min(200, Math.max(40, Math.floor(barLimit * 0.12)));
         const backwardBars = Math.max(1, barLimit - forwardBars);
-        const visCenter = viewportSnap && Number.isFinite(viewportSnap.centerTimestamp)
-            ? viewportSnap.centerTimestamp
-            : null;
-        const anchor = Number.isFinite(visCenter)
-            ? visCenter
-            : (Number.isFinite(playheadMs) ? playheadMs : sessionEndMs);
+        const anchor = Number.isFinite(playheadMs) ? playheadMs : sessionEndMs;
         if (!Number.isFinite(anchor)) {
             return this._getBacktestSessionEndFetchRange(sessionEndMs);
         }
@@ -16139,20 +16133,6 @@ class Chart {
         let startTs = anchor - backwardBars * tfMs;
         if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
             startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
-        }
-
-        if (viewportSnap
-            && Number.isFinite(viewportSnap.startTimestamp)
-            && Number.isFinite(viewportSnap.endTimestamp)) {
-            const pad = Math.max(120, Math.floor(barLimit * 0.08)) * tfMs;
-            startTs = Math.min(startTs, viewportSnap.startTimestamp - pad);
-            endTs = Math.max(endTs, viewportSnap.endTimestamp + pad);
-            if (sessionEndMs != null && Number.isFinite(sessionEndMs)) {
-                endTs = Math.min(endTs, sessionEndMs);
-            }
-            if (sessionStartMs != null && Number.isFinite(sessionStartMs)) {
-                startTs = Math.max(startTs, sessionStartMs - 200 * tfMs);
-            }
         }
 
         return {
@@ -16172,8 +16152,7 @@ class Chart {
     _snapReplayViewportAfterTfSwitch(replay, options = {}) {
         if (!replay || !replay.isActive) return;
 
-        if (!this._chartViewRestored
-            && typeof replay.syncReplayViewportToPlayhead === 'function') {
+        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
             replay.syncReplayViewportToPlayhead(this, {
                 resetPriceScale: true,
                 render: false,
@@ -16314,12 +16293,11 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const viewportSnap = this._tfSwitchViewportSnapshot;
         const historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
             ? (this._getBacktestInitialFetchRange(timeframe, session)
                 || this._getBacktestSessionEndFetchRange(sessionEndMs))
             : (Number.isFinite(playheadMs)
-                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs, viewportSnap)
+                ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
                 : this._getBacktestSessionEndFetchRange(sessionEndMs));
         const fetchOpts = {
             skipSessionDates: true,
@@ -21592,106 +21570,6 @@ class Chart {
         // Return timestamp at that index
         const candle = this.data[clampedIndex];
         return candle && candle.t ? candle.t : null;
-    }
-
-    /** Last data index with candle time <= ts (ascending by .t). */
-    _findLastIndexAtOrBeforeTs(ts) {
-        const data = this.data;
-        if (!data || !data.length || !Number.isFinite(ts)) return 0;
-        let lo = 0;
-        let hi = data.length - 1;
-        let ans = 0;
-        while (lo <= hi) {
-            const mid = (lo + hi) >>> 1;
-            const t = data[mid]?.t || 0;
-            if (t <= ts) {
-                ans = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return Math.max(0, Math.min(ans, data.length - 1));
-    }
-
-    /** Capture visible wall-clock window before a TF switch (TradingView-style range preserve). */
-    _captureTfSwitchViewport() {
-        if (!this.data || this.data.length === 0) return null;
-        const startIdx = typeof this.getVisibleStartIndex === 'function'
-            ? this.getVisibleStartIndex()
-            : 0;
-        const endIdx = typeof this.getVisibleEndIndex === 'function'
-            ? this.getVisibleEndIndex()
-            : this.data.length - 1;
-        const barMs = typeof this.inferBarDurationMs === 'function' ? this.inferBarDurationMs() : 60000;
-        const startTimestamp = this.data[startIdx]?.t;
-        const endTimestamp = (this.data[endIdx]?.t ?? 0) + barMs;
-        if (!Number.isFinite(startTimestamp)) return null;
-        return {
-            startTimestamp,
-            endTimestamp,
-            centerTimestamp: this._getVisibleCenterTimestamp(),
-            candleWidth: this.candleWidth,
-            priceZoom: this.priceZoom,
-            priceOffset: this.priceOffset,
-            autoScale: this.autoScale,
-            manualCenterPrice: this.manualCenterPrice,
-            manualRange: this.manualRange ? { ...this.manualRange } : null,
-        };
-    }
-
-    /**
-     * Restore the wall-clock window captured before a TF switch.
-     * @param {Object} snapshot - From _captureTfSwitchViewport()
-     * @param {{ resetPriceScale?: boolean }} [opts]
-     */
-    _restoreTfSwitchViewport(snapshot, opts = {}) {
-        if (!snapshot || !this.data || this.data.length === 0) return false;
-        const { startTimestamp, endTimestamp, candleWidth, autoScale } = snapshot;
-        if (!Number.isFinite(startTimestamp)) return false;
-
-        if (Number.isFinite(candleWidth) && candleWidth > 0) {
-            const widths = (this.zoomLevel && Array.isArray(this.zoomLevel.allowedWidths) && this.zoomLevel.allowedWidths.length)
-                ? this.zoomLevel.allowedWidths
-                : [0.1, 0.2, 0.35, 0.5, 0.75, 1, 2, 3, 5, 6, 8, 13, 21, 34, 55, 89];
-            const minWidth = this._getEffectiveMinCandleWidth(widths);
-            const maxWidth = widths[widths.length - 1];
-            this.candleWidth = Math.max(minWidth, Math.min(maxWidth, candleWidth));
-            if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
-        }
-
-        if (autoScale === false && opts.resetPriceScale === false) {
-            this.autoScale = false;
-            this.priceZoom = snapshot.priceZoom ?? 1;
-            this.priceOffset = snapshot.priceOffset ?? 0;
-            this.manualCenterPrice = snapshot.manualCenterPrice ?? null;
-            this.manualRange = snapshot.manualRange ?? null;
-        } else if (opts.resetPriceScale !== false && autoScale !== false) {
-            this.autoScale = true;
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.manualCenterPrice = null;
-            this.manualRange = null;
-        }
-
-        const rangeEndTs = Number.isFinite(endTimestamp) ? endTimestamp - 1 : startTimestamp;
-        const iL = this._findLastIndexAtOrBeforeTs(startTimestamp);
-        const iR = this._findLastIndexAtOrBeforeTs(rangeEndTs);
-        if (iL > iR) return false;
-
-        const spacing = this.getCandleSpacing();
-        this.offsetX = -iL * spacing;
-        this._chartViewRestored = true;
-        if (typeof this.constrainOffset === 'function') this.constrainOffset();
-        return true;
-    }
-
-    /** Apply viewport snapshot from _beginTimeframeSwitching; clears the pending snapshot. */
-    _tryRestoreTfSwitchViewport(opts = {}) {
-        const snap = this._tfSwitchViewportSnapshot;
-        this._tfSwitchViewportSnapshot = null;
-        if (!snap) return false;
-        return this._restoreTfSwitchViewport(snap, opts);
     }
 
     /**
