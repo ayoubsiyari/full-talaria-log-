@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260520a27";
+const BRIDGE_VERSION = "20260602a481";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -805,6 +805,32 @@ function closeGlobalLegacyDrawingSettings() {
 // canvas dimensions immediately. We zero `_lastResizeDpr` first because
 // chart.js bails out of resize() when DPR is unchanged, and only the size
 // changed here.
+function syncHostReplayViewport(ch) {
+    if (!ch) return;
+    try {
+        const rs = ch.replaySystem;
+        if (rs && rs.isActive) {
+            if (typeof rs.syncReplayViewportToPlayhead === "function") {
+                rs.syncReplayViewportToPlayhead(ch, {
+                    centerPlayhead: true,
+                    resetPriceScale: true,
+                    render: true,
+                });
+                return;
+            }
+            if (typeof rs.scheduleReplayFollowOnceLayoutSettled === "function") {
+                rs.scheduleReplayFollowOnceLayoutSettled();
+                return;
+            }
+        }
+        if (typeof ch.fitToView === "function") {
+            ch._chartViewRestored = false;
+            ch.fitToView();
+            if (typeof ch.render === "function") ch.render();
+        }
+    } catch (_) {}
+}
+
 function applyHostSlot(cellEl) {
     if (!cellEl) return;
     if (typeof document === "undefined") return;
@@ -816,6 +842,7 @@ function applyHostSlot(cellEl) {
             ch._lastResizeDpr = 0;
             ch.resize();
             if (typeof ch.render === "function") ch.render();
+            syncHostReplayViewport(ch);
         }
     } catch (_) {}
 }
@@ -1492,10 +1519,7 @@ export default function MultichartGrid({
                     // pass on the HOST replaySystem (shared with in-page panels).
                     setTimeout(function () {
                         try {
-                            var rs = window.chart && window.chart.replaySystem;
-                            if (rs && rs.isActive && typeof rs.scheduleReplayFollowOnceLayoutSettled === "function") {
-                                rs.scheduleReplayFollowOnceLayoutSettled();
-                            }
+                            syncHostReplayViewport(window.chart);
                         } catch (_) { /* ignore */ }
                     }, 0);
                 },
@@ -3004,13 +3028,17 @@ export default function MultichartGrid({
                         return Promise.resolve(null);
                     }
                     case "loadFile": {
-                        if (typeof ch.loadFileData !== "function") {
+                        if (typeof ch.loadFileData !== "function"
+                            && typeof ch.loadMultichartPanelFile !== "function") {
                             return Promise.reject(new Error("chart.loadFileData is not a function"));
                         }
                         if (args.fileId === undefined || args.fileId === null || args.fileId === "") {
                             return Promise.reject(new Error("loadFile: missing fileId"));
                         }
-                        const r = ch.loadFileData(String(args.fileId));
+                        const loadFn = typeof ch.loadMultichartPanelFile === "function"
+                            ? () => ch.loadMultichartPanelFile(String(args.fileId), { force: !!args.force })
+                            : () => ch.loadFileData(String(args.fileId));
+                        const r = loadFn();
                         if (r && typeof r.then === "function") return r.then(() => null);
                         return Promise.resolve(null);
                     }

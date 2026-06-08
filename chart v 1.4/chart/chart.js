@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b247';
+const CHART_ENGINE_BUILD = '20260602b248';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2212,6 +2212,10 @@ class Chart {
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
+                if (this._isMultichartEmbedPanel()
+                    && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this._panelFullRawData = [...this.rawData];
+                }
                 this.currentTimeframe = displayTf;
                 if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, displayTf);
@@ -2315,6 +2319,43 @@ class Chart {
 
         this._multichartPanelLoadInflight = run;
         return run;
+    }
+
+    /**
+     * Multichart iframe / panel file load — prefers loadMultichartPanelFromHost
+     * (playhead-centered backtest fetch + viewport sync) over loadFileData.
+     * @param {string|number} fileId
+     * @param {{ force?: boolean, timeframe?: string, replayTimestamp?: number, session?: object }} [opts]
+     */
+    async loadMultichartPanelFile(fileId, opts = {}) {
+        const fid = String(fileId || '').trim();
+        if (!fid) return false;
+        const o = opts && typeof opts === 'object' ? opts : {};
+        const session = o.session || this.backtestingSession;
+        const isBacktest = session && (this._isSessionBacktestStyle(session)
+            || this._isMultichartEmbedPanel());
+        if (this._isMultichartEmbedPanel()
+            && isBacktest
+            && typeof this.loadMultichartPanelFromHost === 'function') {
+            let replayTs = Number(o.replayTimestamp);
+            if (!Number.isFinite(replayTs)) {
+                replayTs = this._readParentReplayTimestampForMultichart();
+            }
+            if (!Number.isFinite(replayTs) && this.replaySystem) {
+                replayTs = Number(this.replaySystem.replayTimestamp);
+            }
+            return this.loadMultichartPanelFromHost({
+                fileId: fid,
+                session,
+                timeframe: o.timeframe || this.currentTimeframe,
+                replayTimestamp: Number.isFinite(replayTs) ? replayTs : null,
+                force: !!o.force,
+            });
+        }
+        if (typeof this.loadFileData === 'function') {
+            return this.loadFileData(fid);
+        }
+        return false;
     }
 
     /**
