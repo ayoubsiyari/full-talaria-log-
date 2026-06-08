@@ -190,6 +190,58 @@ function patchTwoPointLineElements(group, x1, y1, x2, y2) {
     });
 }
 
+/** Extend / centered label split cannot be patched with a single segment — needs full re-render. */
+function trendlineNeedsFullLivePatch(style, drawing) {
+    if (!style) return true;
+    if (style.extendLeft || style.extendRight) return true;
+    const hasText = drawing && drawing.text && String(drawing.text).trim();
+    const textVAlign = style.textVAlign || style.textPosition || 'top';
+    if (hasText && textVAlign === 'middle') return true;
+    return false;
+}
+
+function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke, strokeWidth, scaleFactor, startStyle, endStyle) {
+    if (!group || group.empty()) return;
+    if (startStyle !== 'arrow' && endStyle !== 'arrow') return;
+
+    const adx = origX2 - origX1;
+    const ady = origY2 - origY1;
+    const alen = Math.sqrt(adx * adx + ady * ady) || 1;
+    const ux = adx / alen;
+    const uy = ady / alen;
+    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
+    const aLen = Math.max(8, scaledStrokeWidth * 5);
+    const aHalf = Math.max(4, scaledStrokeWidth * 2.5);
+    const fill = stroke || '#787b86';
+
+    if (startStyle === 'arrow') {
+        group.selectAll('polygon.trendline-arrow-start').remove();
+        const bx = origX1 + ux * aLen;
+        const by = origY1 + uy * aLen;
+        const points = `${origX1},${origY1} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`;
+        group.append('polygon')
+            .attr('class', 'trendline-arrow-start')
+            .attr('points', points)
+            .attr('fill', fill)
+            .style('pointer-events', 'none');
+    }
+
+    if (endStyle === 'arrow') {
+        group.selectAll('polygon.trendline-arrow-end').remove();
+        const bx = origX2 - ux * aLen;
+        const by = origY2 - uy * aLen;
+        const points = `${origX2},${origY2} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`;
+        group.append('polygon')
+            .attr('class', 'trendline-arrow-end')
+            .attr('points', points)
+            .attr('fill', fill)
+            .style('pointer-events', 'none');
+    }
+
+    // Legacy saves may have unclassed arrow polygons — remove so only one head shows.
+    group.selectAll('polygon:not(.trendline-arrow-start):not(.trendline-arrow-end)').remove();
+}
+
 const TEXT_ALIGN_TO_ANCHOR = {
     left: 'start',
     center: 'middle',
@@ -514,6 +566,7 @@ class TrendlineTool extends BaseDrawing {
                 const bx = origX1 + ux * aLen;
                 const by = origY1 + uy * aLen;
                 this.group.append('polygon')
+                    .attr('class', 'trendline-arrow-start')
                     .attr('points', `${origX1},${origY1} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
                     .attr('fill', this.style.stroke)
                     .style('pointer-events', 'none');
@@ -524,6 +577,7 @@ class TrendlineTool extends BaseDrawing {
                 const bx = origX2 - ux * aLen;
                 const by = origY2 - uy * aLen;
                 this.group.append('polygon')
+                    .attr('class', 'trendline-arrow-end')
                     .attr('points', `${origX2},${origY2} ${bx - uy * aHalf},${by + ux * aHalf} ${bx + uy * aHalf},${by - ux * aHalf}`)
                     .attr('fill', this.style.stroke)
                     .style('pointer-events', 'none');
@@ -543,35 +597,11 @@ class TrendlineTool extends BaseDrawing {
 
     patchPanZoomGeometry(scales) {
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
-        if (this.style.extendLeft || this.style.extendRight) return false;
-        const hasText = this.text && String(this.text).trim();
-        const textVAlign = this.style.textVAlign || this.style.textPosition || 'top';
-        if (hasText && textVAlign === 'middle') return false;
-        if ((this.style.startStyle || 'normal') === 'arrow' || (this.style.endStyle || 'normal') === 'arrow') return false;
-
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const x1 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const y1 = scales.yScale(p1.y);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel
-            ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        const y2 = scales.yScale(p2.y);
-        if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
-
-        this.group.selectAll('line').each(function () {
-            const el = d3.select(this);
-            if (el.attr('x1') == null) return;
-            el.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
-        });
-
-        if (typeof this.updateHandlePositions === 'function') {
-            this.updateHandlePositions(scales);
-        }
-        return true;
+        return this._patchLiveTwoPointGeometry(scales);
     }
 
     _patchLiveTwoPointGeometry(scales) {
+        if (trendlineNeedsFullLivePatch(this.style, this)) return false;
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
         const p1 = this.points[0];
         const p2 = this.points[1];
@@ -582,8 +612,27 @@ class TrendlineTool extends BaseDrawing {
             ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
         const y2 = scales.yScale(p2.y);
         if (![x1, y1, x2, y2].every(Number.isFinite)) return false;
+
         patchTwoPointLineElements(this.group, x1, y1, x2, y2);
-        this.updateHandlePositions(scales);
+
+        const startStyle = this.style.startStyle || 'normal';
+        const endStyle = this.style.endStyle || 'normal';
+        const scaleFactor = typeof this.getZoomScaleFactor === 'function'
+            ? this.getZoomScaleFactor(scales)
+            : 1;
+        patchTrendlineArrowHeads(
+            this.group,
+            x1, y1, x2, y2,
+            this.style.stroke,
+            this.style.strokeWidth,
+            scaleFactor,
+            startStyle,
+            endStyle
+        );
+
+        if (typeof this.updateHandlePositions === 'function') {
+            this.updateHandlePositions(scales);
+        }
         return true;
     }
     

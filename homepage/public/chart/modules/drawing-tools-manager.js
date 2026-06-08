@@ -8028,6 +8028,7 @@ class DrawingToolsManager {
     startDrag(drawing, event) {
         this._ensureDrawingId(drawing);
         this._commitInlineTextEditorBeforeGeometryEdit();
+        this._commitStaleDrawingGroupTransform(drawing);
         this._beginDrawingLiveInteraction();
         this.isDragging = true;
         this.draggingDrawing = drawing;
