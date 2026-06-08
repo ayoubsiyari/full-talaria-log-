@@ -359,11 +359,20 @@ class PropFirmTracker {
         if (key === this._lastPersistKey) return;
         this._lastPersistKey = key;
 
+        const patch = { propfirm_challenge: snapshot };
+        try {
+            const chart = typeof window !== 'undefined' ? window.chart : null;
+            if (chart && typeof chart.scheduleSessionStateSave === 'function') {
+                chart.scheduleSessionStateSave(patch);
+                return;
+            }
+        } catch (_e) { /* ignore */ }
+
         fetch('/api/sessions/' + encodeURIComponent(sessionId) + '/state', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ propfirm_challenge: snapshot })
+            body: JSON.stringify(patch)
         }).catch(function (err) {
             console.warn('Prop firm challenge snapshot persist failed', err);
         });

@@ -34,8 +34,8 @@ FROM nginx:alpine
 # Copy built static files
 COPY --from=builder /app/out /usr/share/nginx/html
 
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx config (static /chart/ + tile cache — see nginx.local.conf)
+COPY nginx.local.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 

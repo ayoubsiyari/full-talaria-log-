@@ -115,6 +115,7 @@ import _analytics_bootstrap
 _analytics_bootstrap.install()
 
 import chart_redis
+import bar_window_cache
 import backtest_whatif as bw
 import session_journal_store as sjs
 import bar_budget
@@ -7352,6 +7353,7 @@ def build_binary_for_file(
                     })
                 db.commit()
                 print(f"✅ QuestDB-only build complete for file {file_id} (tiles skipped)")
+                bar_window_cache.invalidate_file(file_id)
                 if all_ok:
                     _archive_source_csv_if_ready(file_id, Path(file_path))
                 return all_ok
@@ -7414,6 +7416,7 @@ def build_binary_for_file(
 
             print(f"✅ Binary conversion complete for file {file_id} ({original_filename})")
             if all_ok:
+                bar_window_cache.invalidate_file(file_id)
                 _archive_source_csv_if_ready(file_id, Path(file_path))
             return all_ok
         except Exception as exc:
@@ -18598,6 +18601,20 @@ async def get_file_smart(
         if not db_file:
             raise HTTPException(status_code=404, detail="File not found")
 
+        smart_cache_key = bar_window_cache.smart_cache_key(
+            file_id,
+            timeframe=timeframe,
+            limit=limit,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            anchor=anchor,
+            response_format=response_format,
+            resolution=resolution,
+        )
+        cached_smart = bar_window_cache.get_smart(smart_cache_key)
+        if cached_smart is not None:
+            return cached_smart
+
         use_auto = resolution and str(resolution).lower() in ("auto", "")
         if questdb_store.questdb_read_primary() or use_auto:
             res_for_bars = "auto" if use_auto else timeframe
@@ -18622,6 +18639,7 @@ async def get_file_smart(
                 end_ts=end_ts,
             )
             if smart_resp and (payload.get("bars") or not questdb_store.questdb_tiles_fallback()):
+                bar_window_cache.set_smart(smart_cache_key, smart_resp)
                 return smart_resp
 
         # ── Find binary file for this timeframe ──
@@ -18801,6 +18819,8 @@ async def get_file_smart(
         rf = (response_format or "csv").lower().strip()
         if rf == "candles":
             base["candles"] = candles
+            if candles:
+                bar_window_cache.set_smart(smart_cache_key, base)
             return base
 
         # ── Legacy: CSV string in JSON (extra stringify + client parse) ──
@@ -18809,6 +18829,8 @@ async def get_file_smart(
         for c in candles:
             output.write(f"{c['t']},{c['o']},{c['h']},{c['l']},{c['c']},{c['v']}\n")
         base["data"] = output.getvalue()
+        if candles:
+            bar_window_cache.set_smart(smart_cache_key, base)
         return base
     finally:
         db.close()
@@ -19213,6 +19235,16 @@ def _build_bars_payload(
     import time as _time
 
     limit = max(1, min(int(limit), bar_budget.MAX_BARS))
+    bars_cache_key = bar_window_cache.bars_cache_key(
+        file_id,
+        from_ms=from_ms,
+        to_ms=to_ms,
+        resolution=resolution,
+        limit=limit,
+    )
+    cached_bars = bar_window_cache.get_bars(bars_cache_key)
+    if cached_bars is not None:
+        return cached_bars
     now_ms = int(_time.time() * 1000)
     window_from = int(from_ms) if from_ms is not None else 0
     window_to = int(to_ms) if to_ms is not None else now_ms
@@ -19261,7 +19293,7 @@ def _build_bars_payload(
                 len(bars) >= limit
                 or (to_ms is not None and last_t < int(to_ms))
             )
-    return {
+    result = {
         "file_id": file_id,
         "resolution": chosen,
         "bars": bars,
@@ -19270,6 +19302,9 @@ def _build_bars_payload(
         "has_more_right": has_more_right,
         "source": source,
     }
+    if bars:
+        bar_window_cache.set_bars(bars_cache_key, result)
+    return result
 
 
 def _bars_to_smart_candles_response(

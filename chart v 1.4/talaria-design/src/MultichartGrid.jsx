@@ -2236,31 +2236,50 @@ export default function MultichartGrid({
 
         // Parent tile A streams every replay animation frame (tick-by-tick
         // forming candle, fast mode, candle mode). Coalesce to one postMessage
-        // per display frame so B/C/D mirror A's exact speed + rendering.
+        // per display frame, capped at 30fps to iframes (reduces client CPU).
         let coalescedFrameDetail = null;
         let coalescedFrameScheduled = false;
+        let lastReplayFrameBroadcastAt = 0;
+        const REPLAY_BROADCAST_MIN_MS = 1000 / 30;
+
+        const broadcastReplayFrameToIframes = (detail) => {
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts || !detail) return;
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                try {
+                    if (typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(c.id, "replayFrame", detail);
+                    } else {
+                        mgr.sendCommand(c.id, "replayFrame", detail);
+                    }
+                } catch (_) {}
+            }
+        };
+
+        const flushCoalescedReplayFrame = () => {
+            coalescedFrameScheduled = false;
+            const detail = coalescedFrameDetail;
+            if (!detail || !Number.isFinite(Number(detail.timestamp))) {
+                coalescedFrameDetail = null;
+                return;
+            }
+            const now = performance.now();
+            if (now - lastReplayFrameBroadcastAt < REPLAY_BROADCAST_MIN_MS) {
+                coalescedFrameScheduled = true;
+                window.requestAnimationFrame(flushCoalescedReplayFrame);
+                return;
+            }
+            coalescedFrameDetail = null;
+            lastReplayFrameBroadcastAt = now;
+            broadcastReplayFrameToIframes(detail);
+        };
+
         const onMultichartReplayFrame = (ev) => {
             coalescedFrameDetail = ev && ev.detail;
             if (coalescedFrameScheduled) return;
             coalescedFrameScheduled = true;
-            window.requestAnimationFrame(() => {
-                coalescedFrameScheduled = false;
-                const detail = coalescedFrameDetail;
-                coalescedFrameDetail = null;
-                if (!detail || !Number.isFinite(Number(detail.timestamp))) return;
-                const mgr = managerRef.current;
-                if (!mgr || !mgr.charts) return;
-                for (const c of mgr.charts.values()) {
-                    if (!c || c.host || !c.ready) continue;
-                    try {
-                        if (typeof mgr.sendCommandNoReply === "function") {
-                            mgr.sendCommandNoReply(c.id, "replayFrame", detail);
-                        } else {
-                            mgr.sendCommand(c.id, "replayFrame", detail);
-                        }
-                    } catch (_) {}
-                }
-            });
+            window.requestAnimationFrame(flushCoalescedReplayFrame);
         };
         window.addEventListener("replayMultichartFrame", onMultichartReplayFrame);
 

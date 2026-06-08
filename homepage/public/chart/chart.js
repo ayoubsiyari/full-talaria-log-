@@ -2341,6 +2341,29 @@ class Chart {
     }
 
     /**
+     * Drop per-panel 1m master and client prefetch caches before loading a new pair.
+     * Prevents multiple full datasets accumulating in the JS heap after pair switches.
+     */
+    _evictPanelMasterData() {
+        this._panelFullRawData = null;
+        if (this._smartPrefetchCache && typeof this._smartPrefetchCache.clear === 'function') {
+            this._smartPrefetchCache.clear();
+        }
+        if (this._barsInflight && typeof this._barsInflight.clear === 'function') {
+            this._barsInflight.clear();
+        }
+        const prevFid = this.currentFileId != null ? String(this.currentFileId) : '';
+        if (prevFid && this._tfDataCache && typeof this._tfDataCache.delete === 'function') {
+            this._tfDataCache.delete(prevFid);
+        }
+        if (prevFid && this._btTfDataCache && typeof this._btTfDataCache.delete === 'function') {
+            this._btTfDataCache.delete(prevFid);
+        }
+        this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
+        this._ensureReplayDataInflight = null;
+    }
+
+    /**
      * Parent tile A playhead (wall-clock replay time) for multichart iframe panels.
      * @returns {number} ms timestamp, or NaN when unavailable
      */
@@ -4758,6 +4781,10 @@ class Chart {
                     if (prevSymbol) this.updateChartTitle(prevSymbol);
                     return false;
                 }
+            }
+            const switchingPair = String(this.currentFileId || '') !== targetFileId;
+            if (switchingPair) {
+                this._evictPanelMasterData();
             }
             const isBacktestSession = this._isSessionBacktestStyle(session);
             // Backtest pair-switch must use the SAME fetch shape as autoLoadBacktestingData

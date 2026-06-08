@@ -4,7 +4,7 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 
 **Recommended order:** Track A → Track B → Track C (use Phase 0 metrics to confirm each step).
 
-**How to test:** see [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) (steps + expected HTTP/UI output).
+**Related docs:** [chart-multichart-architecture.md](./chart-multichart-architecture.md) (full system map), [backtest-scaling-test-guide.md](./backtest-scaling-test-guide.md) (steps + expected HTTP/UI output).
 
 | Track | Focus | Main win |
 |-------|--------|----------|
@@ -53,6 +53,17 @@ Plan to support many concurrent backtest users: stable chart loads, reliable ses
 - [x] TTL **120s**, LRU max **8** entries; non-destructive read in `_fetchSmartWindowWithParams`
 - [x] Used by all `_fetchSmartWindowWithParams` callers (incl. backtest load)
 - [ ] Verify backtest open doesn’t refetch identical window on remount
+
+### A3b — Backend: Redis bar window cache (shared across workers)
+
+- [x] Module `bar_window_cache.py` — keys for `/bars` and `/smart` (`file_id|range|tf|limit|…`)
+- [x] TTL **300s** default (`BACKTEST_BARS_CACHE_TTL_SEC`); invalidate on binary rebuild
+- [x] Wired in `_build_bars_payload` and `GET /api/file/{id}/smart`
+- [x] Env: `BACKTEST_BARS_CACHE_ENABLED`, `BACKTEST_BARS_CACHE_MAX_BYTES`
+- [x] Tests: `chart v 1.4/chart/tests/test_bar_window_cache.py`
+- [x] Architecture doc: `docs/chart-multichart-architecture.md`
+- [ ] Load test: 4-panel same-pair load → 1st panel misses, 2nd–4th hit Redis (check logs / Redis `KEYS chart:bars:win:*`)
+- [ ] Deploy with `REDIS_URL` set; confirm CPU drop vs uncached multichart boot
 
 ### A4 — Backend: per-user rate limits (Redis)
 

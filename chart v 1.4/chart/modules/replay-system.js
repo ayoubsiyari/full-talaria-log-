@@ -3878,7 +3878,7 @@ class ReplaySystem {
     _persistReplayStateThrottled() {
         if (!this.chart || !this.isActive) return;
         const now = Date.now();
-        const intervalMs = this.isPlaying ? 5000 : 2500;
+        const intervalMs = this.isPlaying ? 8000 : 2500;
         if (this._lastReplayPersistAt && now - this._lastReplayPersistAt < intervalMs) {
             return;
         }
