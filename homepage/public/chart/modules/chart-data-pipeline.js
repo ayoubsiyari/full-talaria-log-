@@ -337,7 +337,14 @@
                 resampled.length,
                 -Math.floor(offsetX / spacing) + Math.ceil(plotWidth / spacing) + VIEWPORT_BUFFER_BARS
             );
-            if (typeof chart._normalizeViewportBarRange === 'function') {
+            const fastInteraction = typeof chart._isInteractionFastRender === 'function'
+                && chart._isInteractionFastRender();
+            if (fastInteraction && pixelLod) {
+                const lodCap = Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX) + VIEWPORT_BUFFER_BARS;
+                const center = Math.floor((visStart + visEnd) / 2);
+                visStart = Math.max(0, center - lodCap);
+                visEnd = Math.min(resampled.length, center + lodCap);
+            } else if (typeof chart._normalizeViewportBarRange === 'function') {
                 const norm = chart._normalizeViewportBarRange(visStart, visEnd, resampled.length, plotWidth, spacing, VIEWPORT_BUFFER_BARS);
                 visStart = norm.visStart;
                 visEnd = norm.visEnd;
