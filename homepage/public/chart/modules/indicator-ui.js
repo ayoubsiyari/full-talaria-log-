@@ -412,7 +412,7 @@ function openingRangeStyleParams() {
         .concat(openingRangeBandStyleFields('middle', 'Middle line', '#787b86'))
         .concat(openingRangeBandStyleFields('lower', 'Lower band', '#2962ff'))
         .concat([
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+            { id: 'showLabel', label: 'Show Label (Price)', type: 'checkbox', default: true, tab: 'style' }
         ]);
 }
 
@@ -5254,7 +5254,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     rows: [v9BandStyleRow('Lower Band', 'lowerColor', 'lowerOpacity', 'lowerLineStyle', 'lowerLineWidth', 'showLower')]
                 }
             ],
-            footers: footers
+            footers: [{ type: 'checkbox', id: 'showLabel', label: 'Show Label (Price)' }]
         };
     }
 

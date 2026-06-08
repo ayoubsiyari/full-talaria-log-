@@ -4267,6 +4267,7 @@
         indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
         indicator.style.showFill = false;
         indicator.style.showLabel = params.showLabel !== false;
+        indicator.style.showTimeLabel = false;
         applyPlotDashFieldsFromParams(indicator.style, params, [
             ['upperLineStyle', 'upperLineDashStyle', legacyS],
             ['middleLineStyle', 'middleLineDashStyle', legacyS],
