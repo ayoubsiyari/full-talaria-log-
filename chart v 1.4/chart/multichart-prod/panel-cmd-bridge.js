@@ -1087,6 +1087,25 @@
                     return;
                 }
 
+                // Host calendar/filter change → repaint time-axis news flags on this tile.
+                case 'redrawEconomicNewsMarkers': {
+                    var ef = args.filters;
+                    if (ef && typeof ef === 'object') {
+                        try {
+                            var uiMir = global.__economicCalendarUi;
+                            if (uiMir && typeof uiMir.applyMirroredFilters === 'function') {
+                                uiMir.applyMirroredFilters(ef);
+                            } else {
+                                global.__multichartMirroredNewsFilters = ef;
+                            }
+                        } catch (_eMir) {}
+                    }
+                    if (ch && typeof ch.scheduleRender === 'function') {
+                        ch.scheduleRender();
+                    }
+                    return;
+                }
+
                 // ─── replay sync ───────────────────────────────────────
                 //
                 // Parent broadcasts the host's replay state so every

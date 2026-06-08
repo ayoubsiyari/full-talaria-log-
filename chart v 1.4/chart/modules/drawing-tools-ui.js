@@ -13823,8 +13823,6 @@ body.light-mode .template-save-dialog .dialog-title {
 
                                 drawing.style.originalAspectRatio = img.width / img.height;
 
-                                drawing.style.maintainAspectRatio = true;
-
                             } else {
 
                                 drawing.style.originalAspectRatio = null;
@@ -27448,8 +27446,6 @@ applyTemplate(drawing, templateId, modal) {
 
                                 drawing.style.originalAspectRatio = img.width / img.height;
 
-                                drawing.style.maintainAspectRatio = true;
-
                             } else {
 
                                 drawing.style.originalAspectRatio = null;
@@ -27694,7 +27690,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 <div style="display: flex; align-items: center; gap: 8px; cursor: default;">
 
-                    <div class="tv-checkbox ${drawing.style.maintainAspectRatio !== false ? 'checked' : ''}">
+                    <div class="tv-checkbox ${drawing.style.maintainAspectRatio === true ? 'checked' : ''}">
 
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
 
@@ -27998,7 +27994,7 @@ applyTemplate(drawing, templateId, modal) {
 
                 <div style="display: flex; align-items: center; gap: 8px; cursor: default;">
 
-                    <div class="tv-checkbox ${drawing.style.maintainAspectRatio !== false ? 'checked' : ''}">
+                    <div class="tv-checkbox ${drawing.style.maintainAspectRatio === true ? 'checked' : ''}">
 
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
 
