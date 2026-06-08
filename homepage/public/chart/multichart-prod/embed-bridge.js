@@ -848,6 +848,14 @@
                         reportToShell('warn', 'loadFileData: no fileId');
                         return;
                     }
+                    var pcBoot = readParentChart();
+                    var samePairBoot = pcBoot && String(pcBoot.currentFileId || '') === String(loadFid);
+                    if (samePairBoot
+                        && pcBoot.replaySystem
+                        && Array.isArray(pcBoot.replaySystem.fullRawData)
+                        && pcBoot.replaySystem.fullRawData.length > 0) {
+                        reportToShell('info', 'boot: parent native master (no /smart) fileId=' + loadFid);
+                    }
                     reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
                     ch._multichartPairLoadInFlight = true;
@@ -884,16 +892,18 @@
                         bootReplay();
                     }
                 };
-                if (readParentPlayhead() != null || !readParentChart()) {
+                var hostReadyForMirror = function () {
+                    var pc = readParentChart();
+                    if (!pc) return true;
+                    var fid = fileId || (pc.currentFileId != null ? String(pc.currentFileId) : '');
+                    if (!fid || String(pc.currentFileId || '') !== String(fid)) return true;
+                    var prs = pc.replaySystem;
+                    return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
+                };
+                if (hostReadyForMirror()) {
                     runPanelLoad();
                 } else {
-                    pollFor(
-                        function () { return readParentPlayhead() != null; },
-                        80,
-                        3000,
-                        runPanelLoad,
-                        runPanelLoad
-                    );
+                    pollFor(hostReadyForMirror, 100, 5000, runPanelLoad, runPanelLoad);
                 }
                 return;
             }

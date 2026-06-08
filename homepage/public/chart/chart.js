@@ -1811,14 +1811,7 @@ class Chart {
             if (await this._tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf)) {
                 return;
             }
-            const playheadMs = this._captureReplayPlayheadMs(replay);
-            await this.loadMultichartPanelFromHost({
-                fileId: String(this.currentFileId),
-                session: this.backtestingSession,
-                timeframe: normalizedTf,
-                replayTimestamp: playheadMs,
-                force: true,
-            });
+            await this._refetchBacktestTimeframeCore(normalizedTf, { logTag: 'multichart-server' });
         } catch (e) {
             console.warn('[multichart] replay timeframe switch failed', e);
         } finally {
@@ -1831,6 +1824,9 @@ class Chart {
      * @returns {Promise<boolean>}
      */
     async _tryMultichartEmbedBacktestTimeframeFastPath(normalizedTf) {
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            this._warmBtTfCacheFromParent(normalizedTf);
+        }
         if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
             return true;
         }
@@ -1908,8 +1904,28 @@ class Chart {
      */
     _multichartSamePairTimeframeResampleFromParent(normalizedTf) {
         if (this._isIndependentMultichartPair()) return false;
+        const prevTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        const prevMs = this.parseTimeframe(prevTf);
+        const newMs = this.parseTimeframe(normalizedTf);
+        if (Number.isFinite(prevMs) && prevMs > 0
+            && Number.isFinite(newMs) && newMs > 0
+            && newMs < prevMs) {
+            return false;
+        }
         if (!this._multichartSeedPanelMasterFromParent()) return false;
         return this._independentPanelTimeframeSwitch(normalizedTf);
+    }
+
+    /** Same-pair iframe B/C/D — same fileId as host tile A. */
+    _multichartSamePairAsHost(targetFileId) {
+        if (!this._isMultichartEmbedPanel()) return false;
+        try {
+            const pf = window.parent?.chart?.currentFileId;
+            const fid = targetFileId != null ? String(targetFileId) : String(this.currentFileId || '');
+            return pf != null && fid !== '' && String(pf) === fid;
+        } catch (_e) {
+            return false;
+        }
     }
 
     async _applyBacktestTimeframeFromParentCache(timeframe) {
@@ -1930,6 +1946,84 @@ class Chart {
         const entry = parent._getBtTfDataCache(this.currentFileId, timeframe);
         if (!entry) return false;
         return this._applyBacktestTimeframeCacheEntry(timeframe, entry, 'parent-bt-cache');
+    }
+
+    /** Same-pair iframe: mirror host tile A's session TF cache (no duplicate /smart). */
+    _warmBtTfCacheFromParent(specificTf) {
+        if (!this._isMultichartEmbedPanel() || !this.isBacktestMode || !this.currentFileId) return;
+        if (this._isIndependentMultichartPair()) return;
+        let parent = null;
+        try {
+            if (!window.parent || window.parent === window) return;
+            parent = window.parent.chart;
+        } catch (_e) {
+            return;
+        }
+        if (!parent || String(parent.currentFileId || '') !== String(this.currentFileId || '')) return;
+        if (!parent._btTfDataCache || typeof parent._getBtTfDataCache !== 'function') return;
+
+        const fid = String(this.currentFileId);
+        const perFile = parent._btTfDataCache.get(fid);
+        if (!perFile) return;
+
+        const warmOne = (tf) => {
+            const normalized = String(tf || '').toLowerCase().trim();
+            if (!normalized || this._getBtTfDataCache(fid, normalized)) return;
+            const entry = parent._getBtTfDataCache(fid, normalized);
+            if (!entry) return;
+            this._storeBtTfDataCacheEntry(fid, normalized, entry.rawData, {
+                totalCandles: entry.totalCandles,
+                serverCursors: entry.serverCursors,
+                nativeRawFetchTf: entry.nativeRawFetchTf,
+                reuseArrayReference: true,
+            });
+        };
+
+        if (specificTf) {
+            warmOne(specificTf);
+            return;
+        }
+        for (const tf of perFile.keys()) {
+            warmOne(tf);
+        }
+    }
+
+    /**
+     * Same-pair backtest boot: copy host's native 1m replay master (no /smart, no resample).
+     * @param {string} targetFileId
+     * @returns {object|null}
+     */
+    _takeParentNativeMasterSmartWindow(targetFileId) {
+        try {
+            if (!this._multichartSamePairAsHost(targetFileId)) return null;
+            const parent = (typeof window !== 'undefined' && window.parent && window.parent !== window)
+                ? window.parent.chart
+                : null;
+            if (!parent) return null;
+
+            const prs = parent.replaySystem;
+            const masterRaw = (prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0)
+                ? prs.fullRawData
+                : null;
+            if (!masterRaw || masterRaw.length === 0) return null;
+
+            this._panelFullRawData = masterRaw;
+            const pc = parent._serverCursors || {};
+            return {
+                candles: masterRaw,
+                total: Number.isFinite(parent.totalCandles) ? parent.totalCandles : masterRaw.length,
+                returned: masterRaw.length,
+                first_cursor: masterRaw[0]?.t ?? (pc.firstTs ?? null),
+                last_cursor: masterRaw[masterRaw.length - 1]?.t ?? (pc.lastTs ?? null),
+                has_more_left: pc.hasMoreLeft !== false,
+                has_more_right: pc.hasMoreRight === true,
+                source: 'parent-native-master',
+                nativeRawFetchTf: '1m',
+            };
+        } catch (e) {
+            console.warn('_takeParentNativeMasterSmartWindow failed', e);
+            return null;
+        }
     }
 
     /**
@@ -2201,13 +2295,15 @@ class Chart {
                 } catch (_ev) { /* ignore */ }
                 const selfMc = this;
                 const fidMc = fileId;
-                const sessMc = session;
+                const samePairEmbed = !this._isIndependentMultichartPair();
                 setTimeout(function () {
                     if (String(selfMc.currentFileId) !== String(fidMc)) return;
-                    if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
-                        selfMc._scheduleBacktestTimeframePrefetch(fidMc, sessMc);
+                    if (samePairEmbed && typeof selfMc._warmBtTfCacheFromParent === 'function') {
+                        selfMc._warmBtTfCacheFromParent();
+                    } else if (typeof selfMc._scheduleBacktestTimeframePrefetch === 'function') {
+                        selfMc._scheduleBacktestTimeframePrefetch(fidMc, selfMc.backtestingSession);
                     }
-                }, 2000);
+                }, 400);
             } finally {
                 if (loadSeq === this._multichartPanelLoadSeq) {
                     this._multichartPanelLoadInflight = null;
@@ -3545,6 +3641,8 @@ class Chart {
             out.push('15m', '5m', '1m');
         } else if (curMs >= 900000) {
             out.push('5m', '1m', '15m');
+        } else if (curMs >= 300000) {
+            out.push('1m', '15m', '1h');
         } else {
             out.push('5m', '15m', '1h');
         }
@@ -3962,27 +4060,40 @@ class Chart {
             ? window.requestIdleCallback
             : (cb) => setTimeout(cb, 400);
         const self = this;
-        ric(() => {
+        const runPrefetch = () => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
             if (self._timeframeSwitching) return;
-            // Same-pair multichart iframes: host tile A already prefetches — skip
-            // duplicate /api/file/:id/smart storms from B/C/D (saturates 2 gunicorn workers).
+
             if (typeof self._isMultichartEmbedPanel === 'function'
                 && self._isMultichartEmbedPanel()
                 && typeof self._isIndependentMultichartPair === 'function'
-                && !self._isIndependentMultichartPair()) {
+                && !self._isIndependentMultichartPair()
+                && typeof self._warmBtTfCacheFromParent === 'function') {
+                self._warmBtTfCacheFromParent();
                 return;
             }
-            if (self.replaySystem && self.replaySystem.isPlaying) return;
 
             const playheadMs = self._captureReplayPlayheadMs(self.replaySystem);
             const sessionEndMs = self._getBacktestSessionEndMs(session);
             const cur = String(self.currentTimeframe || '1d').toLowerCase().trim();
-            const targets = typeof self._getBacktestTimeframesToPrefetch === 'function'
+            const curMs = self.parseTimeframe(cur) || 86400000;
+            let targets = typeof self._getBacktestTimeframesToPrefetch === 'function'
                 ? self._getBacktestTimeframesToPrefetch(cur)
                 : [];
             if (!targets.length) return;
+
+            const playing = !!(self.replaySystem && self.replaySystem.isPlaying);
+            if (playing) {
+                targets = targets
+                    .filter((tf) => {
+                        const ms = self.parseTimeframe(tf) || 0;
+                        return ms > 0 && ms < curMs;
+                    })
+                    .sort((a, b) => (self.parseTimeframe(a) || 0) - (self.parseTimeframe(b) || 0));
+                if (!targets.length) return;
+                targets = targets.slice(0, 1);
+            }
 
             const sess = session || self.backtestingSession || {};
             let chain = Promise.resolve();
@@ -4026,7 +4137,15 @@ class Chart {
                         .catch(() => {});
                 });
             });
-        }, { timeout: 3000 });
+        };
+        let prefetchStarted = false;
+        const runPrefetchOnce = () => {
+            if (prefetchStarted) return;
+            prefetchStarted = true;
+            runPrefetch();
+        };
+        setTimeout(runPrefetchOnce, 1200);
+        ric(runPrefetchOnce, { timeout: 3000 });
     }
 
     /**
@@ -4602,6 +4721,9 @@ class Chart {
                 // later timeframe switch is a clean client resample (1m → N). Fetching at the
                 // display TF would store coarse bars that cannot be upsampled to a finer TF.
                 requestTimeframe = anchorToHostPlayhead ? '1m' : (this.currentTimeframe || '1d');
+                if (this._multichartSamePairAsHost(targetFileId)) {
+                    requestTimeframe = '1m';
+                }
                 const sessionEndMs = (() => {
                     const r = session.endDate || session.end_date;
                     if (!r) return null;
@@ -4641,21 +4763,19 @@ class Chart {
             // FAST PATH: same pair as host tile A → ingest A's in-memory bars
             // instead of a network fetch (including during replay when both
             // panels show the same instrument).
-            const samePairAsHost = this._isMultichartEmbedPanel()
-                && !anchorToHostPlayhead
-                && (() => {
-                    try {
-                        const pf = window.parent?.chart?.currentFileId;
-                        return pf != null && String(pf) === targetFileId;
-                    } catch (_e) {
-                        return false;
-                    }
-                })();
+            const samePairAsHost = this._multichartSamePairAsHost(targetFileId);
             const canUseParentMemory = !anchorToHostPlayhead
                 && (!fetchReplayAnchored || samePairAsHost);
-            let result = canUseParentMemory
-                ? this._takeParentMemorySmartWindow(targetFileId, requestTimeframe)
-                : null;
+            if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                this._warmBtTfCacheFromParent();
+            }
+            let result = null;
+            if (canUseParentMemory && isBacktestSession && samePairAsHost) {
+                result = this._takeParentNativeMasterSmartWindow(targetFileId);
+            }
+            if (!result && canUseParentMemory) {
+                result = this._takeParentMemorySmartWindow(targetFileId, requestTimeframe);
+            }
             if (!result) result = this._tryTakeSmartPrefetch(targetFileId, params);
             if (!result && !fetchReplayAnchored) {
                 const prefetchParams = this._buildSmartWindowParams(targetFileId, requestTimeframe, session);
@@ -4756,7 +4876,7 @@ class Chart {
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
-            this._nativeRawFetchTf = requestTimeframe;
+            this._nativeRawFetchTf = result.nativeRawFetchTf || requestTimeframe;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
 
@@ -4770,8 +4890,8 @@ class Chart {
                     const hostFid = pch && pch.currentFileId;
                     if (hostFid != null && String(hostFid) !== String(targetFileId)) {
                         this._panelFullRawData = Array.isArray(this.rawData) ? [...this.rawData] : null;
-                    } else {
-                        this._panelFullRawData = null;
+                    } else if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) {
+                        this._multichartSeedPanelMasterFromParent();
                     }
                 }
             } catch (_mcePfrd) { /* ignore */ }
@@ -4780,7 +4900,9 @@ class Chart {
                 this._applyIndependentPanelReplaySlice(replayTargetTs);
             }
 
-            this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
+            if (!(this._multichartSamePairAsHost(targetFileId) && result.source === 'parent-native-master')) {
+                this._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
+            }
 
             this.updateChartTitle(this.currentSymbol);
 
@@ -15944,7 +16066,23 @@ class Chart {
             return;
         }
 
-        this._logTfSwitch('backtest-server', { to: timeframe });
+        return this._refetchBacktestTimeframeCore(timeframe, { logTag: 'backtest-server' });
+    }
+
+    /**
+     * Shared backtest TF refetch + replay hot-swap (host tile A and multichart iframes).
+     * @param {string} timeframe
+     * @param {{ logTag?: string }} options
+     */
+    async _refetchBacktestTimeframeCore(timeframe, options = {}) {
+        const replay = this.replaySystem;
+        if (!replay || !this.currentFileId) {
+            this._endTimeframeSwitching();
+            return;
+        }
+
+        const logTag = options.logTag || 'backtest-server';
+        this._logTfSwitch(logTag, { to: timeframe });
 
         const wasActive = !!replay.isActive;
         const wasPlaying = !!replay.isPlaying;
@@ -16037,6 +16175,10 @@ class Chart {
                 );
             }
         } catch (e) {
+            if (e && (e.name === 'AbortError' || e.code === 20)) {
+                this._endTimeframeSwitching();
+                return;
+            }
             console.error('[backtest] timeframe refetch fetch failed', e);
             this._endTimeframeSwitching();
             return;
