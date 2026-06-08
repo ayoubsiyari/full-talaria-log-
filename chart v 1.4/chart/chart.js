@@ -2483,10 +2483,37 @@ class Chart {
         if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) return false;
         const ts = Number(replayTs);
         if (!Number.isFinite(ts)) return false;
+
+        const firstBarTs = Number(this._panelFullRawData[0]?.t);
+        let barMs = 60_000;
+        try {
+            const parsed = this.parseTimeframe(this.currentTimeframe);
+            if (Number.isFinite(parsed) && parsed > 0) barMs = parsed;
+        } catch (_) {}
+
+        // Shared replay clock from host tile A can sit before this instrument's
+        // loaded range after a pair switch. Clamping to index 0 leaves one fat
+        // candle and a misaligned time axis — show the full fetched window instead.
         const replay = this.replaySystem;
+        const lastAtOrBefore = replay && typeof replay._findLastRawIndexAtOrBefore === 'function'
+            ? replay._findLastRawIndexAtOrBefore(this._panelFullRawData, ts)
+            : null;
+        if (Number.isFinite(firstBarTs) && ts + barMs < firstBarTs) {
+            this.rawData = [...this._panelFullRawData];
+            this.data = this.resampleData(this.rawData, this.currentTimeframe);
+            return true;
+        }
+        if (lastAtOrBefore != null && lastAtOrBefore < 0) {
+            this.rawData = [...this._panelFullRawData];
+            this.data = this.resampleData(this.rawData, this.currentTimeframe);
+            return true;
+        }
+
         let idx = 0;
         if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
             idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, ts);
+        } else if (lastAtOrBefore != null && lastAtOrBefore >= 0) {
+            idx = lastAtOrBefore;
         } else {
             for (let i = this._panelFullRawData.length - 1; i >= 0; i--) {
                 if (Number(this._panelFullRawData[i]?.t) <= ts) {
@@ -2497,6 +2524,11 @@ class Chart {
         }
         const sliced = this._panelFullRawData.slice(0, idx + 1);
         if (!sliced.length) return false;
+        if (sliced.length <= 1 && this._panelFullRawData.length > 1 && lastAtOrBefore != null && lastAtOrBefore < 0) {
+            this.rawData = [...this._panelFullRawData];
+            this.data = this.resampleData(this.rawData, this.currentTimeframe);
+            return true;
+        }
         this.rawData = sliced;
         this.data = this.resampleData(sliced, this.currentTimeframe);
         return true;
@@ -2615,6 +2647,10 @@ class Chart {
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
+                if (this._isIndependentMultichartPair()
+                    && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this._panelFullRawData = [...this.rawData];
+                }
                 const finishDisplayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || displayTf;
                 if (finishDisplayTf !== replayRawTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, finishDisplayTf);
@@ -5052,6 +5088,12 @@ class Chart {
             } catch (_mcePfrd) { /* ignore */ }
 
             if (fetchReplayAnchored && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
+                if (this._isIndependentMultichartPair() && Number.isFinite(replayTargetTs)
+                    && typeof this.ensureReplayDataCoversTimestamp === 'function') {
+                    try {
+                        await this.ensureReplayDataCoversTimestamp(replayTargetTs);
+                    } catch (_erc) { /* ignore */ }
+                }
                 this._applyIndependentPanelReplaySlice(replayTargetTs);
             }
 
@@ -5401,24 +5443,14 @@ class Chart {
             this._panelFullRawData = [...this.rawData];
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
-                let idx;
-                if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
-                    idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, replayTs);
-                } else {
-                    idx = -1;
-                    if (typeof this.findGoToTargetIndex === 'function') {
-                        idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
-                    }
-                    if (idx < 0) {
-                        idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
-                    }
-                    if (idx < 0) idx = this._panelFullRawData.length - 1;
-                    idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
+                if (typeof this.ensureReplayDataCoversTimestamp === 'function') {
+                    try {
+                        await this.ensureReplayDataCoversTimestamp(replayTs);
+                    } catch (_erc) { /* ignore */ }
                 }
-
-                const sliced = this._panelFullRawData.slice(0, idx + 1);
-                this.rawData = sliced;
-                this.data = this.resampleData(sliced, this.currentTimeframe);
+                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+                    this._applyIndependentPanelReplaySlice(replayTs);
+                }
                 if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                     this._reseedReplayFullRawFromLoadedData();
                 }
