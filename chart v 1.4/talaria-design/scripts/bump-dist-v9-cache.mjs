@@ -22,19 +22,6 @@ const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
 const INLINE_MULTICHART_V_RE = /var V = '\d{8}a\d+';/g;
-/** Conditional React bundle import in dist-v9/index.html (multichart iframes skip it). */
-const REACT_IMPORT_RE = /import\('(\/chart\/dist-v9\/assets\/talaria-v9-live\.js)(?:\?[^']*)?'\)/g;
-const REACT_BUNDLE_TAG_RE =
-  /<script type="module" crossorigin src="(\/chart\/dist-v9\/assets\/talaria-v9-live\.js\?v=[^"]+)"><\/script>/;
-
-function conditionalizeReactBundleInDist(html, buildId) {
-  if (!REACT_BUNDLE_TAG_RE.test(html)) return html;
-  const src = `/chart/dist-v9/assets/talaria-v9-live.js?v=${buildId}`;
-  return html.replace(
-    REACT_BUNDLE_TAG_RE,
-    `<script type="module">\nif (!window.__TALARIA_MULTICHART_EMBED_ONLY) {\n  import('${src}');\n}\n</script>`
-  );
-}
 
 function defaultBuildId() {
   const d = new Date();
@@ -75,10 +62,6 @@ function bumpChartScriptsInHtml(filePath, { required, buildId: buildIdOverride }
   const buildId = buildIdOverride ?? resolveBuildId(before);
   let after = before.replace(SCRIPT_SRC_RE, `$1$2?v=${buildId}$3`);
   after = after.replace(INLINE_MULTICHART_V_RE, `var V = '${buildId}';`);
-  after = after.replace(REACT_IMPORT_RE, `import('$1?v=${buildId}')`);
-  if (filePath === distIndexPath) {
-    after = conditionalizeReactBundleInDist(after, buildId);
-  }
 
   if (after === before) {
     console.warn("[bump-dist-v9-cache] No /chart/ script src= matched in", filePath);

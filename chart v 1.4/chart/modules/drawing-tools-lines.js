@@ -190,17 +190,6 @@ function patchTwoPointLineElements(group, x1, y1, x2, y2) {
     });
 }
 
-/** Trendline live-handle patch only moves <line> nodes — arrows / extend / split text need full re-render. */
-function trendlineSimplePatchBlocked(style, drawing) {
-    if (!style) return true;
-    if (style.extendLeft || style.extendRight) return true;
-    if ((style.startStyle || 'normal') === 'arrow' || (style.endStyle || 'normal') === 'arrow') return true;
-    const hasText = drawing && drawing.text && String(drawing.text).trim();
-    const textVAlign = style.textVAlign || style.textPosition || 'top';
-    if (hasText && textVAlign === 'middle') return true;
-    return false;
-}
-
 const TEXT_ALIGN_TO_ANCHOR = {
     left: 'start',
     center: 'middle',
@@ -583,7 +572,6 @@ class TrendlineTool extends BaseDrawing {
     }
 
     _patchLiveTwoPointGeometry(scales) {
-        if (trendlineSimplePatchBlocked(this.style, this)) return false;
         if (!this.group || this.group.empty() || !this.points || this.points.length < 2) return false;
         const p1 = this.points[0];
         const p2 = this.points[1];

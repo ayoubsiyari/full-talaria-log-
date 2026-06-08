@@ -512,16 +512,15 @@
         function doSeek() {
             if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
-            var preserveViewport = !isEnter && !!(rs.userHasPanned || !rs.autoScrollEnabled);
             try {
                 rs.goToReplayTimestamp(ts, {
-                    preserveVisibleWindow: preserveViewport || !isEnter,
-                    centerOnCandle: !!isEnter && !preserveViewport,
+                    preserveVisibleWindow: false,
+                    centerOnCandle: !!isEnter,
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
             }
-            if (!rs.userHasPanned && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+            if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({
                         resetPriceScale: !!isEnter,
@@ -1088,23 +1087,6 @@
                     return;
                 }
 
-                // Host News panel filter changes → same markers on every iframe tile.
-                case 'setEconomicNewsFilters': {
-                    var econFilters = args.filters;
-                    if (!econFilters || typeof econFilters !== 'object') return;
-                    var econUi = global.__economicCalendarUi;
-                    if (!econUi || typeof econUi.setFilters !== 'function') return;
-                    try {
-                        global.__multichartEconNewsMirroring = true;
-                        econUi.setFilters(econFilters);
-                    } catch (eEcon) {
-                        warn('setEconomicNewsFilters threw', eEcon && eEcon.message);
-                    } finally {
-                        try { global.__multichartEconNewsMirroring = false; } catch (_eMir) {}
-                    }
-                    return;
-                }
-
                 // ─── replay sync ───────────────────────────────────────
                 //
                 // Parent broadcasts the host's replay state so every
@@ -1247,8 +1229,7 @@
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
                     if (!args.force && replayAligned) {
-                        if (!ch.replaySystem.userHasPanned
-                            && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                        if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                             try {
                                 ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
                             } catch (_) {}

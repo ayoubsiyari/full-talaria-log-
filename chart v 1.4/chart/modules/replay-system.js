@@ -5306,8 +5306,7 @@ class ReplaySystem {
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
-            const userOwnsViewport = this.userHasPanned || !this.autoScrollEnabled;
-            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
+            if (needsScroll || this.autoScrollEnabled) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;

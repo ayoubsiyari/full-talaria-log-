@@ -953,19 +953,6 @@
             clearInterval(heartbeatId);
             return;
         }
-        // Fallback: if React/chart.js init stalled, bootstrap chart directly once canvas exists.
-        if (!window.chart && typeof window.initializeChart === 'function'
-            && document.getElementById('chartCanvas')) {
-            try {
-                window.initializeChart().catch(function (e) {
-                    reportToShell('warn', 'heartbeat initializeChart: '
-                        + (e && e.message || e));
-                });
-            } catch (e) {
-                reportToShell('warn', 'heartbeat initializeChart threw: '
-                    + (e && e.message || e));
-            }
-        }
         reportToShell('info', 'waiting for window.chart to appear (' + elapsed + 's elapsed, '
             + 'document.readyState=' + document.readyState + ')');
     }, 5000);

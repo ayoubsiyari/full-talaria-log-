@@ -2496,13 +2496,10 @@ class Chart {
         if (typeof this._isMultichartEmbedPanel === 'function' && !this._isMultichartEmbedPanel()) {
             return false;
         }
-        const rs = this.replaySystem;
-        if (rs && (rs.userHasPanned || !rs.autoScrollEnabled)) {
-            return false;
-        }
         if (!Array.isArray(this.data) || !this.data.length) return true;
         const vis = this._countVisiblePlotBars();
         if (vis <= 1) return true;
+        const rs = this.replaySystem;
         if (!rs?.isActive || !Number.isFinite(rs.replayTimestamp)) return false;
         const ts = rs.replayTimestamp;
         const spacing = typeof this.getCandleSpacing === 'function'
@@ -2525,11 +2522,8 @@ class Chart {
      * @returns {boolean}
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
-        const replay = this.replaySystem;
-        if (replay && (replay.userHasPanned || !replay.autoScrollEnabled)) {
-            return false;
-        }
         if (!this._multichartViewportNeedsRecovery()) return false;
+        const replay = this.replaySystem;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
         }

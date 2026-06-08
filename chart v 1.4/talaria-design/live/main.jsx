@@ -1,28 +1,13 @@
 /**
  * Entry for the LIVE V9 build.
  *
- * Multichart iframe panels (?multichart=1) load a minimal chart-only shell so
- * B/C/D boot in seconds instead of parsing the full TalariaV8bLive bundle.
+ * Imports TalariaV8bLive (real-data version with chart.js wired in) instead
+ * of the original TalariaV8b mockup. Original mockup stays untouched in
+ * src/TalariaV8b.jsx as the design reference.
+ *
+ * Loaded by live/index.html, which is the entry for vite.config.live.js.
  */
-import { createRoot } from "react-dom/client";
+import { createRoot } from 'react-dom/client'
+import TalariaV8bLive from '../src/TalariaV8bLive.jsx'
 
-function isMultichartEmbedUrl() {
-  try {
-    return new URLSearchParams(window.location.search).get("multichart") === "1";
-  } catch (_) {
-    return false;
-  }
-}
-
-const rootEl = document.getElementById("root");
-if (rootEl) {
-  if (isMultichartEmbedUrl()) {
-    import("../src/MultichartEmbedShell.jsx").then(({ default: MultichartEmbedShell }) => {
-      createRoot(rootEl).render(<MultichartEmbedShell />);
-    });
-  } else {
-    import("../src/TalariaV8bLive.jsx").then(({ default: TalariaV8bLive }) => {
-      createRoot(rootEl).render(<TalariaV8bLive />);
-    });
-  }
-}
+createRoot(document.getElementById('root')).render(<TalariaV8bLive />)
