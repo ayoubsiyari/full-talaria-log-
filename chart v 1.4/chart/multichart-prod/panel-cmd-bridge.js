@@ -1067,15 +1067,41 @@
                         && typeof ch.setTimeframe === 'function') {
                         try { ch.setTimeframe(syncTf); } catch (_) {}
                     }
-                    // Symbol sync OFF: align replay playhead only — never stamp host fileId
-                    // onto this tile (user may have GBP on B while A stays EUR/USD).
-                    if (!args.syncSymbol) {
-                        if (!Number.isFinite(syncTs)) return;
-                        if (!ch.replaySystem || !ch.replaySystem.isActive) {
-                            return applyReplayEnter(ch, syncTs);
+                    var alignReplayFromHost = function () {
+                        if (!args.syncSymbol) {
+                            if (!Number.isFinite(syncTs)) return;
+                            if (!ch.replaySystem || !ch.replaySystem.isActive) {
+                                return applyReplayEnter(ch, syncTs);
+                            }
+                            return forceReplaySeek(ch, syncTs, !!args.force);
                         }
-                        return forceReplaySeek(ch, syncTs, !!args.force);
+                        return null;
+                    };
+                    // Empty iframe still needs its first loadFileData — embed-bridge
+                    // can lose the race with this command, and Symbol sync OFF used
+                    // to skip load entirely (replayEnter deferred forever → loading overlay
+                    // never clears because candleCount stays 0).
+                    if ((!ch.rawData || ch.rawData.length === 0)
+                        && typeof ch.loadFileData === 'function') {
+                        var bootFid = pcSync.currentFileId;
+                        if (bootFid != null && bootFid !== '') {
+                            mirrorParentBacktestSession(ch);
+                            var bootP = ch.loadFileData(String(bootFid));
+                            var afterBoot = function () {
+                                try { drainPendingReplay(); } catch (_) {}
+                                var sym = alignReplayFromHost();
+                                if (sym !== null) return sym;
+                            };
+                            if (bootP && typeof bootP.then === 'function') {
+                                return bootP.then(afterBoot);
+                            }
+                            return afterBoot();
+                        }
                     }
+                    // Symbol sync OFF: align replay playhead only — never stamp host fileId
+                    // onto this tile once bars are loaded (user may have GBP on B while A stays EUR/USD).
+                    var symOnly = alignReplayFromHost();
+                    if (symOnly !== null) return symOnly;
                     var syncFid = pcSync.currentFileId;
                     if (syncFid == null || syncFid === '') {
                         if (Number.isFinite(syncTs)) return applyReplayEnter(ch, syncTs);

@@ -47,15 +47,11 @@ class ReplaySystem {
         this.ticksPerCandle = 72;
         this.realTimeMode = true; // Real-time mode: 1min candle = 60 seconds at 1x speed
         
-        // === DETERMINISTIC TICK PATH CACHE (lazy + bounded) ===
-        // Generated on demand via getTickPath(); LRU evicts old bars so long
-        // backtest sessions do not allocate tick paths for every candle upfront.
-        this.tickPathCache = new Map(); // timestamp -> float[]
+        // === DETERMINISTIC TICK PATH CACHE ===
+        // Pre-generated tick paths for each candle, keyed by timestamp
+        // This ensures consistent tick animation across all timeframes
+        this.tickPathCache = {};  // { timestamp: [price0, ... priceN-1] } length === ticksPerCandle
         this.tickPathCacheBuilt = false;
-        /** Max cached tick paths (~2000 bars × 72 floats ≈ modest vs full session). */
-        this._tickPathCacheMax = 2000;
-        /** Timestamps that must not be evicted (current animating bar). */
-        this._tickPathCachePinned = new Set();
         this.stepTimeframeOverride = null; // 'sync' | '1m' | '5m' | ...
         this._prngSeed = 12345; // Seeded PRNG state
         this._nextCandleTimer = null; // Tracks the between-candle timer so it can be cancelled
@@ -1686,9 +1682,11 @@ class ReplaySystem {
         this.replayTimestamp = (startBar && Number.isFinite(startBar.t)) ? startBar.t : this.replayStartTimestamp;
         this.tickElapsedMs = 0;
         
-        // Lazy tick paths — same as enterReplayMode (no upfront full-session build).
-        this.resetTickPathCache();
-
+        // === BUILD DETERMINISTIC TICK PATH CACHE ===
+        // Pre-generate tick paths for all candles using seeded random
+        // This ensures consistent tick animation across all timeframes
+        this.buildTickPathCache();
+        
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
             this.speed = this.normalizeSpeed(window._pendingReplaySpeed);
@@ -2264,7 +2262,8 @@ class ReplaySystem {
         } catch (e) {}
         
         // Tick path cache is built lazily on demand via getTickPath()
-        this.resetTickPathCache();
+        this.tickPathCache = {};
+        this.tickPathCacheBuilt = false;
         
         // Apply any pending speed set before replay was entered
         if (window._pendingReplaySpeed != null) {
@@ -2533,11 +2532,7 @@ class ReplaySystem {
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
-        if (typeof this._pinTickPathNearPlayhead === 'function') {
-            this._pinTickPathNearPlayhead();
-        }
-
-        // Keep virtual replay time aligned with the current bar.
+        // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
         // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in
         // syncPanelCharts() until the next play/tick advances it — so "go back" looked correct on
         // the main chart but other pairs kept future candles until play.
@@ -3925,45 +3920,29 @@ class ReplaySystem {
     }
     
     /**
-     * @deprecated Use lazy getTickPath() — kept for callers that still invoke it.
+     * Build tick path cache for all candles in fullRawData
+     * This pre-generates deterministic tick paths so they're consistent across timeframes
      */
     buildTickPathCache() {
-        this.resetTickPathCache();
-    }
-
-    /** Reset lazy tick-path LRU (Map). Safe to call from chart.js on TF / pair switch. */
-    resetTickPathCache() {
-        this.tickPathCache = new Map();
-        this.tickPathCacheBuilt = false;
-        if (!this._tickPathCachePinned) this._tickPathCachePinned = new Set();
-        else this._tickPathCachePinned.clear();
-    }
-
-    /** chart.js legacy paths assigned `{}` — coerce back to Map before .get/.set. */
-    _ensureTickPathCacheMap() {
-        if (!this.tickPathCache || typeof this.tickPathCache.get !== 'function') {
-            this.resetTickPathCache();
+        if (!this.fullRawData || this.fullRawData.length === 0) {
+            console.warn('⚠️ Cannot build tick path cache - no raw data');
+            return;
         }
-    }
-
-    _evictTickPathCacheIfNeeded() {
-        this._ensureTickPathCacheMap();
-        const max = this._tickPathCacheMax || 2000;
-        if (!this.tickPathCache || this.tickPathCache.size <= max) return;
-        for (const key of this.tickPathCache.keys()) {
-            if (this.tickPathCache.size <= max) break;
-            if (this._tickPathCachePinned && this._tickPathCachePinned.has(key)) continue;
-            this.tickPathCache.delete(key);
+        
+        const startTime = performance.now();
+        
+        this.tickPathCache = {};
+        
+        const n = this.ticksPerCandle || 72;
+        for (const candle of this.fullRawData) {
+            const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
+            this.tickPathCache[candle.t] = path;
         }
+        
+        this.tickPathCacheBuilt = true;
+        const elapsed = performance.now() - startTime;
     }
-
-    _rememberTickPath(key, path) {
-        this._ensureTickPathCacheMap();
-        if (this.tickPathCache.has(key)) this.tickPathCache.delete(key);
-        this.tickPathCache.set(key, path);
-        this._evictTickPathCacheIfNeeded();
-    }
-
+    
     /**
      * Get tick path for a candle, using cache if available
      * @param {object} candle - The candle object with o,h,l,c,t
@@ -3972,40 +3951,13 @@ class ReplaySystem {
     getTickPath(candle) {
         if (!candle || !candle.t) return null;
 
-        this._ensureTickPathCacheMap();
-
         const n = this.ticksPerCandle || 72;
-        const key = candle.t;
-        const cached = this.tickPathCache.get(key);
-        if (cached && cached.length === n) {
-            this.tickPathCache.delete(key);
-            this.tickPathCache.set(key, cached);
-            return cached;
-        }
+        const cached = this.tickPathCache[candle.t];
+        if (cached && cached.length === n) return cached;
 
-        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, key);
-        this._rememberTickPath(key, path);
+        const path = this.generateRandomPath(candle.o, candle.h, candle.l, candle.c, n, candle.t);
+        this.tickPathCache[candle.t] = path;
         return path;
-    }
-
-    /** Pin tick paths near the playhead so scrub/play does not churn the LRU. */
-    _pinTickPathNearPlayhead() {
-        if (!this._tickPathCachePinned) this._tickPathCachePinned = new Set();
-        this._tickPathCachePinned.clear();
-        const idx = this.currentIndex;
-        if (!Number.isFinite(idx) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
-            return;
-        }
-        const lo = Math.max(0, idx - 32);
-        const hi = Math.min(this.fullRawData.length - 1, idx + 32);
-        for (let i = lo; i <= hi; i++) {
-            const bar = this.fullRawData[i];
-            if (bar && Number.isFinite(bar.t)) this._tickPathCachePinned.add(bar.t);
-        }
-        if (this.animatingCandle) {
-            const ac = this.animatingCandle.target || this.animatingCandle;
-            if (ac && Number.isFinite(ac.t)) this._tickPathCachePinned.add(ac.t);
-        }
     }
     
     /**

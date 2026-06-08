@@ -1210,6 +1210,14 @@
                   || mt === 'drawing-remove' || mt === 'drawing-clear') && !syncModeGate.drawings) return;
             }
 
+            // bridge-config carries syncMode toggles (including drawings), not chart
+            // drawing payloads — must not pass through FORBIDDEN_SYNC_FIELDS filter
+            // (which strips nested `drawings` and spams console errors).
+            if (msg.type === 'bridge-config') {
+                applyBridgeConfig(msg);
+                return;
+            }
+
             const cleaned = G.filterForbiddenFields(msg);
             if (cleaned.dropped.length) {
                 console.error('[bridge:' + chartId + '] inbound forbidden fields dropped:', cleaned.dropped);

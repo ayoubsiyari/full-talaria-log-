@@ -1206,6 +1206,8 @@ export default function MultichartGrid({
     // bridge-ready (commands/sync) vs data-ready (hide loading overlay)
     const [readyPanels, setReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
     const [dataReadyPanels, setDataReadyPanels] = useState(() => new Set([HOST_PANEL_ID]));
+    // Fallback when chart-state never reports candleCount (partial deploy / load race).
+    const [overlayFallbackPanels, setOverlayFallbackPanels] = useState(() => new Set([HOST_PANEL_ID]));
     // panelId -> { reason, src }. Set by the manager's onChartBootFailed when an
     // iframe never reaches `bridge-ready` (boot timeout) or its iframe errors.
     // Drives a visible error overlay so a stuck panel no longer shows an
@@ -1459,6 +1461,18 @@ export default function MultichartGrid({
                         next.add(id);
                         return next;
                     });
+                    // Safety net: if chart-state never reports bars (mixed old/new deploy),
+                    // dismiss the loading overlay so panels are not stuck forever.
+                    if (id !== HOST_PANEL_ID) {
+                        setTimeout(function () {
+                            setOverlayFallbackPanels((prev) => {
+                                if (prev.has(id)) return prev;
+                                const next = new Set(prev);
+                                next.add(id);
+                                return next;
+                            });
+                        }, 12000);
+                    }
                     // A panel that recovered after a prior boot failure clears
                     // its error overlay here.
                     setFailedPanels((prev) => {
@@ -1587,6 +1601,7 @@ export default function MultichartGrid({
             setManagerReady(false);
             setReadyPanels(new Set());
             setDataReadyPanels(new Set([HOST_PANEL_ID]));
+            setOverlayFallbackPanels(new Set([HOST_PANEL_ID]));
             setFailedPanels(new Map());
         };
         // Mount-once — never re-run.
@@ -1626,6 +1641,12 @@ export default function MultichartGrid({
                     return next;
                 });
                 setDataReadyPanels((prev) => {
+                    if (!prev.has(existingId)) return prev;
+                    const next = new Set(prev);
+                    next.delete(existingId);
+                    return next;
+                });
+                setOverlayFallbackPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
                     const next = new Set(prev);
                     next.delete(existingId);
@@ -2837,6 +2858,12 @@ export default function MultichartGrid({
         // fires before loadFileData finishes and caused empty-chart flashes.
         if (state && Number(state.candleCount) > 0) {
             setDataReadyPanels((prev) => {
+                if (prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.add(id);
+                return next;
+            });
+            setOverlayFallbackPanels((prev) => {
                 if (prev.has(id)) return prev;
                 const next = new Set(prev);
                 next.add(id);
@@ -4715,7 +4742,8 @@ export default function MultichartGrid({
                 const isFocused = focusedPanelId === tile.id;
                 // Host tile is always "ready" (it's the parent's already-loaded
                 // chart) — never show the loading overlay for it.
-                const isReady   = isHost || dataReadyPanels.has(tile.id);
+                const isReady   = isHost || dataReadyPanels.has(tile.id)
+                    || overlayFallbackPanels.has(tile.id);
                 const failure   = isHost ? null : failedPanels.get(tile.id);
                 return (
                     <div
@@ -4801,6 +4829,10 @@ export default function MultichartGrid({
                                                 const n = new Set(prev); n.delete(tile.id); return n;
                                             });
                                             setDataReadyPanels((prev) => {
+                                                if (!prev.has(tile.id)) return prev;
+                                                const n = new Set(prev); n.delete(tile.id); return n;
+                                            });
+                                            setOverlayFallbackPanels((prev) => {
                                                 if (!prev.has(tile.id)) return prev;
                                                 const n = new Set(prev); n.delete(tile.id); return n;
                                             });
