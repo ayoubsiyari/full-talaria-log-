@@ -9130,6 +9130,9 @@ class DrawingToolsManager {
             if (this.toolbar && (!hasRemainingSelection || trackedDeleted)) {
                 this.toolbar.hide();
             }
+            if (!hasRemainingSelection) {
+                notifyMultichartParentSelectionCleared(this.chart);
+            }
             
             // Clear all axis highlights after deletion
             if (this.chart?.svg) {

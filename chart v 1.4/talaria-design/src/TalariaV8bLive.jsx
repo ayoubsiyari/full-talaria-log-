@@ -22283,6 +22283,8 @@ const TalariaV8bLive = () => {
               });
             } catch (err) { console.warn("[V9 txt delete] failed:", err); }
             if (deletedText) {
+              setTlBarSelected(false);
+              setTlBarSelectedType(null);
               v9ClearTxtPlacementInput(
                 setTxtStyle,
                 suppressTxtForwardBridge,
@@ -26810,6 +26812,9 @@ const TalariaV8bLive = () => {
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
             } catch(err){ console.warn('[V9 delete] failed:', err); }
+            setTlBarSelected(false);
+            setTlBarSelectedType(null);
+            v9SyncQuickBarLockFromDrawing(null, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TlBtn>
