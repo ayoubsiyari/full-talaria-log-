@@ -2254,6 +2254,13 @@ export default function MultichartGrid({
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "replayEnter", { timestamp: ts });
+                        } else {
+                            mgr.sendCommand(c.id, "replayEnter", { timestamp: ts });
+                        }
+                    } catch (_) {}
+                    try {
                         const stf = rs.stepTimeframeOverride;
                         mgr.sendCommand(c.id, "replaySetStepTf", {
                             tf: stf == null ? null : stf,
@@ -2358,7 +2365,7 @@ export default function MultichartGrid({
             const mgr = managerRef.current;
             if (!mgr || !mgr.charts || !detail) return;
             for (const c of mgr.charts.values()) {
-                if (!c || c.host || !c.ready) continue;
+                if (!c || c.host || !c.frame) continue;
                 try {
                     if (typeof mgr.sendCommandNoReply === "function") {
                         mgr.sendCommandNoReply(c.id, "replayFrame", detail);
@@ -2444,10 +2451,9 @@ export default function MultichartGrid({
         // session start" — no tick will fire until they hit play).
         _primeReplayFromParent();
 
-        // Hard guard: while parent is in replay, re-align playhead every 1.5s
-        // without touching each panel's timeframe (Interval sync off = independent TF).
-        const replayAlignGuardMs = 1500;
-        const replayAlignGuard = setInterval(() => {
+        // Hard guard: while parent is in replay, re-align iframe playheads.
+        const replayAlignGuardMs = 800;
+        const runReplayAlignGuard = () => {
             try {
                 const mgr = managerRef.current;
                 if (!mgr || !mgr.charts) return;
@@ -2456,17 +2462,19 @@ export default function MultichartGrid({
                 if (!rs || !rs.isActive) return;
                 const ts = Number(rs.replayTimestamp);
                 if (!Number.isFinite(ts)) return;
+                const hostPlaying = !!rs.isPlaying;
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
                 replayStateRef.current.parentEverEntered = true;
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
-                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: false });
+                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: hostPlaying });
                     } catch (_) {}
                 }
             } catch (_) {}
-        }, replayAlignGuardMs);
+        };
+        const replayAlignGuard = setInterval(runReplayAlignGuard, replayAlignGuardMs);
 
         // Helper: broadcast a replay command to every non-host iframe.
         // Used by all the playback-state monkey-patches below.
@@ -3556,6 +3564,37 @@ export default function MultichartGrid({
             userPairLoadGuardRef.current[panelId] = performance.now() + 4000;
         }
 
+        /** One-shot: align panel-cmd replay state (pendingPlayDesired) with host A. */
+        function syncIframeReplayPlaybackOnce(panelId) {
+            const mgr = managerRef.current;
+            if (!mgr || !panelId || panelId === HOST_PANEL_ID) return;
+            const host = window.chart;
+            const hostRs = host && host.replaySystem;
+            if (!hostRs || !hostRs.isActive) return;
+            const ts = Number(hostRs.replayTimestamp);
+            if (!Number.isFinite(ts)) return;
+            const speed = Number(hostRs.speed) || 1;
+            const mode = (typeof hostRs.getPlaybackMode === "function")
+                ? hostRs.getPlaybackMode()
+                : (hostRs.playbackMode || "tick");
+            try {
+                if (typeof mgr.sendCommandNoReply === "function") {
+                    mgr.sendCommandNoReply(panelId, "replayEnter", { timestamp: ts });
+                } else {
+                    mgr.sendCommand(panelId, "replayEnter", { timestamp: ts });
+                }
+            } catch (_) {}
+            if (hostRs.isPlaying) {
+                try {
+                    if (typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(panelId, "replayPlay", { speed, mode });
+                    } else {
+                        mgr.sendCommand(panelId, "replayPlay", { speed, mode });
+                    }
+                } catch (_) {}
+            }
+        }
+
         /**
          * Load a session file on one tile — same in-process path as panel A.
          * Iframe B/C/D: call contentWindow.chart.loadMultichartPanelFile directly
@@ -3626,6 +3665,7 @@ export default function MultichartGrid({
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
+                syncIframeReplayPlaybackOnce(pid);
                 if (focusedPanelIdRef.current === pid) {
                     dispatchFocusChanged(pid);
                 }

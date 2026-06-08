@@ -267,8 +267,21 @@
         }, 0);
     }
 
+    function isParentReplayPlaying() {
+        try {
+            var pc = (global.parent && global.parent !== global)
+                ? global.parent.chart : null;
+            var prs = pc && pc.replaySystem;
+            return !!(prs && prs.isActive && prs.isPlaying);
+        } catch (_) {
+            return false;
+        }
+    }
+
     function isViewportSettling(ch) {
         if (!ch) return false;
+        // Viewport settle must not stall replay mirror while parent tile A is playing.
+        if (isParentReplayPlaying()) return false;
         var until = ch._multichartViewportSettleUntil;
         return Number.isFinite(until) && performance.now() < until;
     }
