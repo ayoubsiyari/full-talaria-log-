@@ -249,6 +249,11 @@
     }
 
     function afterLoadFile(ch) {
+        if (ch) {
+            try {
+                ch._multichartViewportSettleUntil = performance.now() + 400;
+            } catch (_) {}
+        }
         try { drainPendingReplay(); } catch (_d) {}
         reseedReplayFromChart(ch);
         ensurePanelReplaySeries(ch);

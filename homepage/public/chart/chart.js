@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b251';
+const CHART_ENGINE_BUILD = '20260602b252';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2494,6 +2494,16 @@ class Chart {
                     break;
                 }
             }
+        }
+        const firstT = Number(this._panelFullRawData[0]?.t);
+        if (Number.isFinite(firstT) && ts < firstT) {
+            idx = Math.min(
+                this._panelFullRawData.length - 1,
+                Math.max(30, Math.floor(this._panelFullRawData.length * 0.05))
+            );
+        }
+        if (idx <= 0 && this._panelFullRawData.length > 1) {
+            idx = Math.min(this._panelFullRawData.length - 1, 30);
         }
         const sliced = this._panelFullRawData.slice(0, idx + 1);
         if (!sliced.length) return false;
@@ -5062,7 +5072,12 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
-            this.fitToView();
+            const deferFitForIndependentReplay = this._isIndependentMultichartPair()
+                && fetchReplayAnchored
+                && this.replaySystem;
+            if (!deferFitForIndependentReplay) {
+                this.fitToView();
+            }
             this.render();
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
@@ -19848,19 +19863,25 @@ class Chart {
     }
 
     /**
-     * Close of the last bar actually painted (matches drawCandles / price line).
+     * Close of the latest bar in the full series (live / replay head).
+     * Stays fixed when the viewport is scrolled back — not tied to the rightmost visible candle.
      */
     _getPaintedLastClose(visible) {
         const chartType = this.chartSettings?.chartType || 'candles';
         const lastDataIdx = this.data && this.data.length > 0 ? this.data.length - 1 : -1;
 
-        if (chartType === 'heikinashi' && lastDataIdx >= 0) {
-            if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
-                this._haCache = this.calculateHeikinAshi(this.data);
-                this._haCacheVersion = this.dataVersion;
+        if (lastDataIdx >= 0) {
+            if (chartType === 'heikinashi') {
+                if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
+                    this._haCache = this.calculateHeikinAshi(this.data);
+                    this._haCacheVersion = this.dataVersion;
+                }
+                const ha = this._haCache[lastDataIdx];
+                if (ha && Number.isFinite(ha.c)) return ha.c;
             }
-            const ha = this._haCache[lastDataIdx];
-            if (ha && Number.isFinite(ha.c)) return ha.c;
+
+            const lastData = this.data[lastDataIdx];
+            if (lastData && Number.isFinite(lastData.c)) return lastData.c;
         }
 
         const lastVisible = (Array.isArray(visible) && visible.length > 0)
@@ -19868,10 +19889,6 @@ class Chart {
             : null;
         if (lastVisible && Number.isFinite(lastVisible.c)) return lastVisible.c;
 
-        if (lastDataIdx >= 0) {
-            const lastData = this.data[lastDataIdx];
-            if (lastData && Number.isFinite(lastData.c)) return lastData.c;
-        }
         return null;
     }
 
@@ -19915,7 +19932,6 @@ class Chart {
      * Draw current price label on the right side (live price indicator)
      */
     drawCurrentPriceLabel(visible) {
-        if (!visible || visible.length === 0) return;
         if (!this.yScale) return;
 
         const m = this.margin;
@@ -19923,37 +19939,8 @@ class Chart {
             ? this._getMainPricePlotLayout()
             : null;
         const pricePlotBottom = plotLayout ? plotLayout.plotBottom : (this.h - m.b);
-        
-        // Find the last candle index that is actually visible (not in price axis area)
-        let lastVisibleIdx = -1;
-        const rightBound = this.w - m.r - this.candleWidth;
-        for (let i = visible.length - 1; i >= 0; i--) {
-            const idx = this.visibleStartIndex + i;
-            const x = this.dataIndexToPixel(idx);
-            if (x <= rightBound) {
-                lastVisibleIdx = i; // Index within visible array
-                break;
-            }
-        }
-        if (lastVisibleIdx < 0) return;
 
-        // Get the display data using cached HA from full data
-        let displayCandle = visible[lastVisibleIdx];
-        if (this.chartSettings.chartType === 'heikinashi') {
-            if (!this._haCache || this._haCacheVersion !== this.dataVersion) {
-                this._haCache = this.calculateHeikinAshi(this.data);
-                this._haCacheVersion = this.dataVersion;
-            }
-            const dataIdx = (this.visibleStartIndex || 0) + lastVisibleIdx;
-            displayCandle = this._haCache[dataIdx] || visible[lastVisibleIdx];
-        }
-        if (!displayCandle) return;
-        
-        let currentPrice = this._getPaintedLastClose(visible);
-        if (!Number.isFinite(currentPrice)) {
-            currentPrice = this.resolveEffectiveCurrentPrice(visible);
-        }
-
+        const currentPrice = this.resolveEffectiveCurrentPrice(visible);
         if (!Number.isFinite(currentPrice)) return;
         const y = this.yScale(currentPrice);
 

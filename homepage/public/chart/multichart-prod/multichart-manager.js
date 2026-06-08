@@ -431,6 +431,26 @@
             if (c.host) { host = c; break; }
         }
         if (!host || typeof host.directRead !== 'function') return;
+
+        // Never mirror host pixel viewport onto a tile showing a different
+        // instrument when Symbol sync is off — host offsetX is calibrated for
+        // host bars only and produces blank / one-candle charts on other pairs.
+        if (!this.syncMode.symbol) {
+            let hostFid = '';
+            try {
+                if (typeof window !== 'undefined' && window.chart
+                    && window.chart.currentFileId != null) {
+                    hostFid = String(window.chart.currentFileId).trim();
+                }
+            } catch (_) {}
+            const panelFid = newChart.state && newChart.state.fileId != null
+                ? String(newChart.state.fileId).trim()
+                : '';
+            if (hostFid && panelFid && panelFid !== hostFid) {
+                return;
+            }
+        }
+
         let range = null;
         try { range = host.directRead(); } catch (_) { range = null; }
         if (!range || !Number.isFinite(range.startSec) || !Number.isFinite(range.endSec)) return;

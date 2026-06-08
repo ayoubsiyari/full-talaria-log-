@@ -703,7 +703,7 @@
                 });
             } catch (_) {}
             var afterLoad = function () {
-                markViewportBootSettle(ch, 1600);
+                markViewportBootSettle(ch, 500);
                 // Only switch tf when it actually differs — calling
                 // setTimeframe with the already-loaded tf would trigger a
                 // redundant re-fetch that, in replay, can re-anchor the
@@ -872,7 +872,7 @@
                     var lp = ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
                         ch._multichartPairLoadInFlight = false;
-                        markViewportBootSettle(ch, 1600);
+                        markViewportBootSettle(ch, 500);
                         if (!Number.isFinite(playheadTs)) {
                             afterLoad();
                             return;

@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260602a487";
+const BRIDGE_VERSION = "20260602a488";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -809,6 +809,9 @@ function resolveHostReplayPlayheadMs(ch, mgr) {
     if (!ch) return null;
     try {
         const rs = ch.replaySystem;
+        if (rs && rs.isActive && Number.isFinite(rs.replayTimestamp)) {
+            return rs.replayTimestamp;
+        }
         if (rs && Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
         const sid = (typeof ch.getActiveTradingSessionId === "function")
             ? ch.getActiveTradingSessionId()
@@ -819,30 +822,8 @@ function resolveHostReplayPlayheadMs(ch, mgr) {
             if (Number.isFinite(ts)) return ts;
         }
     } catch (_) {}
-    if (mgr && mgr.charts) {
-        for (const c of mgr.charts.values()) {
-            if (!c || c.host || !c.ready || !c.frame) continue;
-            try {
-                const ic = c.frame.contentWindow && c.frame.contentWindow.chart;
-                const irs = ic && ic.replaySystem;
-                if (irs && irs.isActive && Number.isFinite(irs.replayTimestamp)) {
-                    return irs.replayTimestamp;
-                }
-            } catch (_) {}
-        }
-    }
-    if (typeof document !== "undefined") {
-        try {
-            const iframes = document.querySelectorAll("iframe");
-            for (let i = 0; i < iframes.length; i++) {
-                const ic = iframes[i].contentWindow && iframes[i].contentWindow.chart;
-                const irs = ic && ic.replaySystem;
-                if (irs && irs.isActive && Number.isFinite(irs.replayTimestamp)) {
-                    return irs.replayTimestamp;
-                }
-            }
-        } catch (_) {}
-    }
+    // Do not pull playhead from iframe peers while host replay is active — a
+    // user pair switch on B/C/D must not re-seek host A to another instrument's slice.
     return null;
 }
 
@@ -901,24 +882,36 @@ function syncHostReplayViewport(ch) {
 
 function syncAllIframesToHost(mgr) {
     if (!mgr || typeof mgr._initialSyncToHost !== "function") return;
+    let hostFid = "";
+    try {
+        if (window.chart && window.chart.currentFileId != null) {
+            hostFid = String(window.chart.currentFileId).trim();
+        }
+    } catch (_) {}
+    const symSync = !!(mgr.syncMode && mgr.syncMode.symbol);
     try {
         for (const c of mgr.charts.values()) {
             if (!c || c.host || !c.ready) continue;
+            if (!symSync && hostFid) {
+                const panelFid = c.state && c.state.fileId != null
+                    ? String(c.state.fileId).trim()
+                    : "";
+                if (panelFid && panelFid !== hostFid) continue;
+            }
             mgr._initialSyncToHost(c);
         }
     } catch (_) {}
 }
 
-/** Coalesce host align + iframe viewport snap (avoids shake when B/C/D boot staggered). */
+/** Coalesce host replay/viewport align only (no viewport stamp onto other pairs). */
 let _alignHostSyncTimer = 0;
-function scheduleAlignHostAndSyncPeers(mgr, delayMs) {
+function scheduleAlignHostOnly(mgr, delayMs) {
     if (_alignHostSyncTimer) clearTimeout(_alignHostSyncTimer);
     const wait = Number.isFinite(delayMs) ? delayMs : 220;
     _alignHostSyncTimer = setTimeout(function () {
         _alignHostSyncTimer = 0;
         try {
             alignHostChartForMultichart(window.chart, mgr);
-            syncAllIframesToHost(mgr);
         } catch (_) {}
     }, wait);
 }
@@ -1611,7 +1604,7 @@ export default function MultichartGrid({
                     // pass on the HOST replaySystem (shared with in-page panels).
                     setTimeout(function () {
                         try {
-                            scheduleAlignHostAndSyncPeers(managerRef.current, 220);
+                            scheduleAlignHostOnly(managerRef.current, 220);
                         } catch (_) { /* ignore */ }
                     }, 0);
                 },
@@ -1699,7 +1692,7 @@ export default function MultichartGrid({
                     }
                     setTimeout(function () {
                         try {
-                            scheduleAlignHostAndSyncPeers(managerRef.current, 200);
+                            scheduleAlignHostOnly(managerRef.current, 200);
                         } catch (_) {}
                     }, 50);
                 } catch (e) {
@@ -1871,7 +1864,7 @@ export default function MultichartGrid({
             requestAnimationFrame(() => {
                 repaintAllPanelSurfaces(container, cellA);
                 const mgr = managerRef.current;
-                scheduleAlignHostAndSyncPeers(mgr, 280);
+                scheduleAlignHostOnly(mgr, 280);
                 if (computeFocusedRectRef.current) {
                     computeFocusedRectRef.current();
                 }
