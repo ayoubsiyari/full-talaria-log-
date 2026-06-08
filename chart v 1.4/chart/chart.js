@@ -3864,6 +3864,7 @@ class Chart {
         this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
+        this._buildZoomedOutLodCache();
         if (this.currentFileId) {
             this._saveTfDataCache(this.currentFileId, normalizedTf);
         }
@@ -4377,6 +4378,7 @@ class Chart {
         // Replay must not paint the full cached series — updateChartData slices to playhead.
         if (!replay.isActive) {
             this.data = this.resampleData(this.rawData, normalizedTf);
+            this._buildZoomedOutLodCache();
         }
         this._panLoading = false;
         this._chartViewRestored = false;
@@ -4677,6 +4679,8 @@ class Chart {
         if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
             this.dataPipeline.invalidatePanDisplayCache();
         }
+        // Rebuild the zoomed-out LOD cache now that data has changed.
+        this._buildZoomedOutLodCache();
         this.bumpDataVersion();
 
         if (!options.skipIndicators) {
@@ -15587,6 +15591,7 @@ class Chart {
         this._logTfSwitch('local-resample', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
+        this._buildZoomedOutLodCache();
         this._deferRecalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -17560,9 +17565,109 @@ class Chart {
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
         this._wheelBurstFinalPass = true;
+        // Rebuild the zoomed-out LOD cache at the new zoom level so subsequent
+        // pan frames are O(numScreenSlots) ≈ O(450) instead of O(n_bars).
+        this._buildZoomedOutLodCache();
         this.renderPending = false;
         this.render();
         this._wheelBurstFinalPass = false;
+    }
+
+    // ── Zoomed-out LOD column cache — the TradingView trick ───────────────────
+    //
+    // TradingView never iterates raw bars during pan. Instead they pre-compute
+    // a "virtual slot" array (one OHLC entry per 2-px slot) when the zoom level
+    // changes. During pan, they just re-project these ~450 virtual slots onto
+    // the current screen position — O(numScreenSlots) per frame.
+    //
+    // We do the same:
+    //   _buildZoomedOutLodCache()  — O(n) once, called after zoom settles
+    //   _getZoomedOutLodForRender() — O(numScreenSlots) per frame during pan
+
+    /**
+     * Pre-compute one OHLC entry per 2-px pixel slot for the full dataset.
+     * Called once after zoom changes (wheel settle, axis drag end, data load).
+     * O(n_bars) — acceptable as a one-time cost. Invalidated on spacing change.
+     */
+    _buildZoomedOutLodCache() {
+        if (!this.data || !this.data.length) { this._zoomedOutLodCache = null; return; }
+        const spacing = this.getCandleSpacing();
+        if (!Number.isFinite(spacing) || spacing >= TV_ZOOMED_OUT_SLOT_PX) {
+            this._zoomedOutLodCache = null;
+            return;
+        }
+        const slotPx = TV_ZOOMED_OUT_SLOT_PX;
+        const n = this.data.length;
+        // How many raw bars fit into one 2-px screen slot at this zoom level
+        const barsPerSlot = Math.max(1, slotPx / spacing);
+        const numVirtualSlots = Math.ceil(n / barsPerSlot);
+
+        const slots = new Array(numVirtualSlots);
+        for (let s = 0; s < numVirtualSlots; s++) {
+            const i0 = Math.floor(s * barsPerSlot);
+            const i1 = Math.min(n - 1, Math.floor((s + 1) * barsPerSlot) - 1);
+            const first = this.data[i0];
+            let h = first.h, l = first.l, vSum = 0;
+            for (let k = i0; k <= i1; k++) {
+                const b = this.data[k];
+                if (b.h > h) h = b.h;
+                if (b.l < l) l = b.l;
+                vSum += Number(b.v) || 0;
+            }
+            slots[s] = {
+                o: first.o,
+                h,
+                l,
+                c: this.data[i1].c,
+                vSum,
+                baseBarIdx: i0,
+                midBarIdx: Math.floor((i0 + i1) / 2),
+            };
+        }
+        this._zoomedOutLodCache = { slots, barsPerSlot, spacing, n };
+    }
+
+    /**
+     * Re-project the pre-built LOD cache onto the current screen position.
+     * O(numScreenSlots) ≈ O(plotPx / 2) per call — constant regardless of data size.
+     * Returns null when cache is stale or spacing changed (falls back to full scan).
+     */
+    _getZoomedOutLodForRender(plotPx) {
+        const cache = this._zoomedOutLodCache;
+        if (!cache) return null;
+        const spacing = this.getCandleSpacing();
+        // Invalidate if spacing changed by more than 1% (zoom has changed since cache was built)
+        if (!Number.isFinite(spacing) || spacing >= TV_ZOOMED_OUT_SLOT_PX ||
+            Math.abs(spacing - cache.spacing) / cache.spacing > 0.01) {
+            this._zoomedOutLodCache = null;
+            return null;
+        }
+        const m = this.margin || { l: 60, r: 60 };
+        const slotPx = TV_ZOOMED_OUT_SLOT_PX;
+        const numScreenSlots = Math.max(1, Math.ceil(plotPx / slotPx));
+        const offsetX = this.offsetX || 0;
+        const { slots, barsPerSlot } = cache;
+
+        // Skip virtual slots that are fully left of the screen.
+        // Screen X of virtual slot s: m.l + slots[s].baseBarIdx * spacing + offsetX
+        // We want: m.l + baseBarIdx * spacing + offsetX >= m.l → baseBarIdx >= -offsetX / spacing
+        const minVirtual = Math.max(0, Math.floor(-offsetX / (barsPerSlot * spacing)) - 2);
+
+        const out = [];
+        for (let s = minVirtual; s < slots.length; s++) {
+            const vs = slots[s];
+            const pixelX = m.l + vs.baseBarIdx * spacing + offsetX;
+            const screenSlot = Math.floor((pixelX - m.l) / slotPx);
+            if (screenSlot < 0) continue;
+            if (screenSlot >= numScreenSlots) break;
+            out.push({
+                o: vs.o, h: vs.h, l: vs.l, c: vs.c,
+                vSum: vs.vSum,
+                midIdx: vs.midBarIdx,
+                _pixelX: m.l + screenSlot * slotPx,
+            });
+        }
+        return out.length ? out : null;
     }
 
     /** True while dragging the price or time axis to zoom (not chart-body pan). */
@@ -17723,6 +17828,8 @@ class Chart {
         if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
             this.drawingManager.redrawAll({ forceFull: true });
         }
+        // Rebuild LOD cache at the new zoom level (axis drag changes spacing).
+        this._buildZoomedOutLodCache();
         this._axisZoomFinalizePass = true;
         this.renderPending = false;
         this.render();
@@ -17783,6 +17890,14 @@ class Chart {
      * Prevents zoomed-out candles from stacking into a solid line.
      */
     _aggregateVisibleOhlcvByPixelColumn(visible, plotPx) {
+        // ── Fast path: pre-computed LOD cache (TradingView technique) ──────────
+        // After zoom settles, _buildZoomedOutLodCache() pre-aggregates the full
+        // dataset into ~450 virtual slots. Re-projecting them onto the current
+        // screen takes O(numScreenSlots) ≈ O(450) regardless of dataset size —
+        // vs O(n_bars) for the raw scan below. This is the primary pan path.
+        const cachedLod = this._getZoomedOutLodForRender(plotPx);
+        if (cachedLod) return cachedLod;
+
         const m = this.margin || { l: 60, r: 60 };
         const slotPx = TV_ZOOMED_OUT_SLOT_PX;
         const numSlots = Math.max(1, Math.ceil(plotPx / slotPx));
@@ -22497,6 +22612,10 @@ class Chart {
             this._wheelBurstUntil = performance.now() + 350;
             this._markScalesDirty();
             this._clearPanTimeTickCache();
+            // Invalidate LOD cache while zooming — spacing is changing.
+            // _buildZoomedOutLodCache() is called in _finishWheelBurstInteraction()
+            // once the burst settles, so pan after zoom picks up the fresh cache.
+            this._zoomedOutLodCache = null;
             this._cachedInteractionTimeTicks = null;
             if (!burstWasActive && this.drawingManager?.drawings?.length) {
                 const dm = this.drawingManager;
