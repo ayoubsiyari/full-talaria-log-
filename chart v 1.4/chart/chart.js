@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b253';
+const CHART_ENGINE_BUILD = '20260602b254';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2465,6 +2465,75 @@ class Chart {
         return this._shouldAnchorPairSwitchToHostPlayhead(this.currentFileId);
     }
 
+    /** Bars currently visible in the plot (used for multichart viewport recovery). */
+    _countVisiblePlotBars() {
+        if (!Array.isArray(this.data) || !this.data.length) return 0;
+        const spacing = typeof this.getCandleSpacing === 'function'
+            ? this.getCandleSpacing()
+            : (this.candleWidth + (this.candleGap || 2));
+        if (!Number.isFinite(spacing) || spacing <= 0) return 0;
+        const m = this.margin || { l: 0, r: 70 };
+        let effectiveW = Number(this.w) || 0;
+        if (effectiveW < 80) {
+            try {
+                const el = this.canvas && this.canvas.parentElement;
+                const rw = el ? el.getBoundingClientRect().width : 0;
+                if (Number.isFinite(rw) && rw >= 80) effectiveW = rw;
+            } catch (_e) { /* ignore */ }
+        }
+        if (effectiveW < 80) effectiveW = 320;
+        const plotW = Math.max(1, effectiveW - (m.l || 0) - (m.r || 0));
+        const i0 = Math.max(0, -Math.floor((this.offsetX || 0) / spacing));
+        const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing) + 1);
+        return Math.max(0, i1 - i0);
+    }
+
+    /**
+     * True when replay playhead time is outside the visible window or only one bar shows
+     * (stretched-candle / wrong date-axis symptom after pair switch).
+     */
+    _multichartViewportNeedsRecovery() {
+        if (typeof this._isMultichartEmbedPanel === 'function' && !this._isMultichartEmbedPanel()) {
+            return false;
+        }
+        if (!Array.isArray(this.data) || !this.data.length) return true;
+        const vis = this._countVisiblePlotBars();
+        if (vis <= 1) return true;
+        const rs = this.replaySystem;
+        if (!rs?.isActive || !Number.isFinite(rs.replayTimestamp)) return false;
+        const ts = rs.replayTimestamp;
+        const spacing = typeof this.getCandleSpacing === 'function'
+            ? this.getCandleSpacing()
+            : (this.candleWidth + (this.candleGap || 2));
+        if (!Number.isFinite(spacing) || spacing <= 0) return false;
+        const i0 = Math.max(0, -Math.floor((this.offsetX || 0) / spacing));
+        const i1 = Math.min(this.data.length - 1, i0 + Math.max(vis, 1) - 1);
+        const t0 = Number(this.data[i0]?.t);
+        const t1 = Number(this.data[i1]?.t);
+        if (!Number.isFinite(t0) || !Number.isFinite(t1)) return false;
+        const tfMs = this.parseTimeframe(this.currentTimeframe) || 300_000;
+        const margin = Math.max(tfMs * 2, 120_000);
+        return ts < t0 - margin || ts > t1 + margin;
+    }
+
+    /**
+     * Re-center viewport on replay playhead when data/time are correct but offsetX is stale.
+     * @param {{ resetPriceScale?: boolean, render?: boolean }} [opts]
+     * @returns {boolean}
+     */
+    _syncIndependentPanelViewportIfNeeded(opts = {}) {
+        if (!this._multichartViewportNeedsRecovery()) return false;
+        const replay = this.replaySystem;
+        if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
+            return false;
+        }
+        return replay.syncReplayViewportToPlayhead(this, {
+            centerPlayhead: true,
+            resetPriceScale: opts.resetPriceScale !== false,
+            render: opts.render !== false,
+        });
+    }
+
     /**
      * Timeframe switch for an independent multichart panel: pure client re-resample from the
      * 1m master in `_panelFullRawData` (no refetch). Avoids the host-mirror reload path that
@@ -2556,6 +2625,9 @@ class Chart {
         if (!sliced.length) return false;
         this.rawData = sliced;
         this.data = this.resampleData(sliced, this.currentTimeframe);
+        if (replay?.isActive && typeof this._syncIndependentPanelViewportIfNeeded === 'function') {
+            this._syncIndependentPanelViewportIfNeeded({ resetPriceScale: true, render: false });
+        }
         return true;
     }
 

@@ -251,16 +251,29 @@
     function afterLoadFile(ch, usedMultichartLoader) {
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now() + 400;
+                ch._multichartViewportSettleUntil = performance.now() + 800;
             } catch (_) {}
         }
+        if (usedMultichartLoader) {
+            try {
+                if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                    ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: true, render: true });
+                }
+            } catch (_) {}
+            return;
+        }
         try { drainPendingReplay(); } catch (_d) {}
-        if (usedMultichartLoader) return;
         reseedReplayFromChart(ch);
         ensurePanelReplaySeries(ch);
         setTimeout(function () {
             try { scheduleMultichartPanelReplayFollow(ch); } catch (_s) {}
         }, 0);
+    }
+
+    function isViewportSettling(ch) {
+        if (!ch) return false;
+        var until = ch._multichartViewportSettleUntil;
+        return Number.isFinite(until) && performance.now() < until;
     }
 
     function shouldUseMultichartPanelLoader(ch) {
@@ -421,8 +434,18 @@
             });
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
-                if (Number.isFinite(prevOffsetX)) ch.offsetX = prevOffsetX;
+                var keepOffset = Number.isFinite(prevOffsetX);
+                if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                    && ch._multichartViewportNeedsRecovery()) {
+                    keepOffset = false;
+                }
+                if (keepOffset) ch.offsetX = prevOffsetX;
                 if (Number.isFinite(prevCandleWidth) && prevCandleWidth > 0) ch.candleWidth = prevCandleWidth;
+                if (!keepOffset && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                    try {
+                        ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false, render: false });
+                    } catch (_) {}
+                }
                 if (typeof ch.constrainOffset === 'function') {
                     try { ch.constrainOffset(); } catch (_) {}
                 }
@@ -448,6 +471,7 @@
             var seekTs = coalescedSeekTs;
             coalescedSeekTs = null;
             if (seekTs == null) return;
+            if (isViewportSettling(ch)) return;
             // Prefer the SAME render path as the play-time frame stream so pause/scrub
             // doesn't visibly re-fit the viewport and snap back. Fall back to a full
             // seek (which can refetch) only when the mirror can't render this ts.
@@ -485,6 +509,14 @@
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
+            }
+            if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                try {
+                    ch._syncIndependentPanelViewportIfNeeded({
+                        resetPriceScale: !!isEnter,
+                        render: false,
+                    });
+                } catch (_) {}
             }
         }
 
@@ -1161,6 +1193,7 @@
                 }
                 case 'syncReplayFromHost': {
                     if (ch._multichartPairLoadInFlight) return;
+                    if (isViewportSettling(ch)) return;
                     var pcReplay = null;
                     try {
                         pcReplay = (global.parent && global.parent !== global)
@@ -1179,7 +1212,14 @@
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
-                    if (!args.force && replayAligned) return;
+                    if (!args.force && replayAligned) {
+                        if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                            try {
+                                ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
+                            } catch (_) {}
+                        }
+                        return;
+                    }
                     return forceReplaySeek(ch, hostTs, false);
                 }
                 case 'replayEnter': {
@@ -1193,6 +1233,7 @@
                 case 'replayTick': {
                     var ts2 = Number(args.timestamp);
                     if (!Number.isFinite(ts2)) return;
+                    if (isViewportSettling(ch)) return;
                     // Defer to chartDataLoaded if rawData isn't in yet
                     // — otherwise applyReplayEnter handles everything.
                     if (!ch.rawData || ch.rawData.length === 0) {

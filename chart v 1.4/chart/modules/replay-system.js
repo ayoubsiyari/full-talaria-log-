@@ -5301,13 +5301,21 @@ class ReplaySystem {
                 -Math.floor((chart.offsetX || 0) / safeCs) + Math.ceil(plotW / safeCs) + 5
             );
             const visibleBars = Math.max(0, i1 - i0);
-            const needsScroll = visibleBars === 0
+            const needsRecovery = typeof chart._multichartViewportNeedsRecovery === 'function'
+                && chart._multichartViewportNeedsRecovery();
+            const needsScroll = needsRecovery
+                || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
             if (needsScroll || this.autoScrollEnabled) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;
-                if (st && Number.isFinite(st.offsetX)) {
+                if (needsRecovery && typeof chart._syncIndependentPanelViewportIfNeeded === 'function') {
+                    chart._syncIndependentPanelViewportIfNeeded({
+                        resetPriceScale: false,
+                        render: false,
+                    });
+                } else if (st && Number.isFinite(st.offsetX)) {
                     chart.offsetX = st.offsetX;
                     chart._chartViewRestored = true;
                 } else if (needsScroll && typeof chart.fitToView === 'function') {
