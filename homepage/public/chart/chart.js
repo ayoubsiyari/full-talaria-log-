@@ -17226,9 +17226,65 @@ class Chart {
         if (typeof this._normalizeVolumeIndicatorLayout === 'function') {
             this._normalizeVolumeIndicatorLayout();
         }
-        // Horizontal pan does not change price range — skip repeat OHLC scans (ZOOM-FIX-9).
+        // ZOOM-FIX-9: skip heavy OHLC scan on pan when Y domain can be derived from snap + priceOffset.
         if (this._chartPanRenderLoopActive && this._panScalesCalculated && this.yScale && this.xScale) {
-            return;
+            const priceMoved = this.priceOffset !== this._panSnapPriceOffset
+                || this.priceZoom !== this._panSnapPriceZoom;
+            const mPan = this.margin;
+            const cwPan = this.w - mPan.l - mPan.r;
+            const candleAndSpacing = this.getCandleSpacing();
+            const bufferCandles = 20;
+            let visStart = Math.max(0, -Math.floor(this.offsetX / candleAndSpacing) - bufferCandles);
+            let visEnd = Math.min(
+                this.data.length,
+                -Math.floor(this.offsetX / candleAndSpacing) + Math.ceil(cwPan / candleAndSpacing) + bufferCandles
+            );
+            const normVis = this._normalizeViewportBarRange(
+                visStart, visEnd, this.data.length, cwPan, candleAndSpacing, bufferCandles
+            );
+            const visCount = Math.max(0, normVis.visEnd - normVis.visStart);
+            this.xScale = d3.scaleLinear()
+                .domain([
+                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)),
+                    Math.max(0, -Math.floor(this.offsetX / candleAndSpacing)) + visCount,
+                ])
+                .range([mPan.l, this.w - mPan.r]);
+
+            if (priceMoved && this._panSnapYDomain && this._panSnapYDomain.length === 2) {
+                const indPanelH = this.separateIndicatorPanelHeight || 0;
+                const plotBottom = this.h - mPan.b - indPanelH;
+                const ch = this.h - mPan.t - mPan.b;
+                const overlayRatio = typeof this._getVolumeOverlayRatio === 'function'
+                    ? this._getVolumeOverlayRatio()
+                    : 0;
+                const volumeOverlayHeight = ch * overlayRatio;
+                const snapPo = Number.isFinite(this._panSnapPriceOffset)
+                    ? this._panSnapPriceOffset
+                    : this.priceOffset;
+                const priceDy = this.priceOffset - snapPo;
+                const domainMin = this._panSnapYDomain[0] + priceDy;
+                const domainMax = this._panSnapYDomain[1] + priceDy;
+                this.yScale = d3.scaleLinear()
+                    .domain([domainMin, domainMax])
+                    .range([plotBottom, mPan.t]);
+                this.volumeScale = d3.scaleLinear()
+                    .domain(this.volumeScale ? this.volumeScale.domain() : [0, 1])
+                    .range([plotBottom, plotBottom - volumeOverlayHeight]);
+                this.scales = {
+                    yScale: this.yScale,
+                    xScale: this.xScale,
+                    volumeScale: this.volumeScale,
+                };
+                return;
+            }
+
+            if (!priceMoved) {
+                if (this.scales) {
+                    this.scales.xScale = this.xScale;
+                }
+                return;
+            }
+            this._panScalesCalculated = false;
         }
         const m = this.margin;
 
@@ -17830,6 +17886,7 @@ class Chart {
         this._panScalesCalculated = false;
         this._panSnapOffsetX = this.offsetX;
         this._panSnapPriceOffset = this.priceOffset;
+        this._panSnapPriceZoom = this.priceZoom;
         if (this.yScale) {
             const d = this.yScale.domain();
             this._panSnapYDomain = [Number(d[0]), Number(d[1])];
@@ -18492,11 +18549,8 @@ class Chart {
             if (chartViewPanning) {
                 this._clearPanDrawingsLayerTransform(false);
             }
-            // ZOOM-FIX-5: skip SVG drawings during pan loop — _finishPanDrawingRedraw restores on mouseup.
-            if (!this._chartPanRenderLoopActive) {
-                this.redrawDrawings();
-                this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
-            }
+            this.redrawDrawings();
+            this._syncOrderOverlaysDuringPan(chartViewPanning || axisZoomDragging || wheelBurstLight, { lite: true });
             if (typeof this.syncOverlayIndicatorSelectionOverlay === 'function') {
                 this.syncOverlayIndicatorSelectionOverlay();
             }

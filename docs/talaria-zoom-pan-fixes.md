@@ -11,7 +11,7 @@
 | ZOOM-FIX-2 | ✅ Done | Incremental resample on pan merge + `_commitLoadedBars` mergeDirection paths |
 | ZOOM-FIX-3 | ✅ Done | Removed per-frame display cache bust; pan offset shift cache in `chart-data-pipeline.js` |
 | ZOOM-FIX-4 | ✅ Done | Zoom-out fill threshold **82% → 90%** |
-| ZOOM-FIX-5 | ✅ Done | Skip `redrawDrawings` during `_chartPanRenderLoopActive`; restore on mouseup |
+| ZOOM-FIX-5 | ✅ Adjusted | `panFast` drawings during pan (skip-only reverted — caused stuck vertical feel) |
 | ZOOM-FIX-6 | ✅ Done | Near-edge threshold: `max(200, min(600, plotWidth * 0.3))` |
 | ZOOM-FIX-7 | ✅ Done | Wheel burst **350ms**; post-burst timer **400ms** |
 | ZOOM-FIX-8 | ✅ Done | Replay pan load debounce **90ms → 200ms** |
