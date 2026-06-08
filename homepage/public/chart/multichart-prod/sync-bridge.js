@@ -144,7 +144,6 @@
      */
     function applyPanDragFollow(chart, m) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
-        if (userOwnsViewport(chart)) return false;
         const srcCw = Number(m.candleWidth);
         if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
 
@@ -402,21 +401,12 @@
         return now < until;
     }
 
-    function userOwnsViewport(chart) {
-        if (!chart) return false;
-        if (typeof chart._multichartUserOwnsViewport === 'function') {
-            return chart._multichartUserOwnsViewport();
-        }
-        if (chart._multichartViewportUserLocked) return true;
-        const replay = chart.replaySystem;
-        return !!(replay && replay.isActive && (replay.userHasPanned || !replay.autoScrollEnabled));
-    }
-
     /** When sync leaves zero bars on screen, recover without resetting zoom on iframe tiles. */
     function recoverViewportIfEmpty(chart) {
         if (!chart || !chart.data || !chart.data.length) return false;
         if (countVisibleBars(chart) > 0) return false;
-        if (userOwnsViewport(chart)) return false;
+        const replay = chart.replaySystem;
+        if (replay && !replay.autoScrollEnabled) return false;
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;
@@ -1613,7 +1603,8 @@
         }
 
         function applyVisibleRange(m) {
-            if (userOwnsViewport(chart)) {
+            const replay = chart.replaySystem;
+            if (replay && !replay.autoScrollEnabled) {
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }

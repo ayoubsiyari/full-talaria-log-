@@ -51,6 +51,8 @@ class ImageTool extends BaseDrawing {
         if (typeof this.style.maintainAspectRatio !== 'boolean') {
             this.style.maintainAspectRatio = false;
         }
+        // Free resize is the default — legacy drawings saved with aspect lock still stretch freely.
+        this.style.maintainAspectRatio = false;
         if (!this.style.originalAspectRatio) this.style.originalAspectRatio = null;
     }
 
@@ -121,11 +123,10 @@ class ImageTool extends BaseDrawing {
         const left = x - halfW;
         const top = y - halfH;
 
-        // Calculate actual rendered image dimensions when aspect ratio is maintained
-        let borderWidth = width;
-        let borderHeight = height;
+        const borderWidth = width;
+        const borderHeight = height;
         
-        // Detect aspect ratio from image if not already stored
+        // Detect aspect ratio from image if not already stored (metadata only — resize stays free).
         if (this.style.imageUrl && !this.style.originalAspectRatio && !this._detectingAspectRatio) {
             this._detectingAspectRatio = true;
             const img = new Image();
@@ -137,19 +138,6 @@ class ImageTool extends BaseDrawing {
                 }
             };
             img.src = this.style.imageUrl;
-        }
-        
-        if (this.style.maintainAspectRatio && this.style.originalAspectRatio && this.style.imageUrl) {
-            const aspectRatio = this.style.originalAspectRatio;
-            const containerAspect = width / height;
-            
-            if (aspectRatio > containerAspect) {
-                // Image is wider - height will be constrained
-                borderHeight = width / aspectRatio;
-            } else {
-                // Image is taller - width will be constrained
-                borderWidth = height * aspectRatio;
-            }
         }
 
         // Selection box (absolute coords — same pattern as emoji-sticker)
@@ -174,7 +162,7 @@ class ImageTool extends BaseDrawing {
                 .attr('width', width)
                 .attr('height', height)
                 .attr('href', this.style.imageUrl)
-                .attr('preserveAspectRatio', this.style.maintainAspectRatio ? 'xMidYMid meet' : 'none')
+                .attr('preserveAspectRatio', 'none')
                 .style('opacity', this.style.opacity != null ? this.style.opacity : 1)
                 .style('pointer-events', 'all')
                 .style('cursor', 'move');
@@ -439,18 +427,6 @@ class ImageTool extends BaseDrawing {
             newWidthPx = Math.max(10, Math.min(1500, newWidthPx));
             newHeightPx = Math.max(10, Math.min(1500, newHeightPx));
 
-            // Maintain aspect ratio if enabled (only when we have a known ratio)
-            if (this.style.maintainAspectRatio && this.style.originalAspectRatio) {
-                const aspectRatio = this.style.originalAspectRatio;
-                if (Math.abs(newWidthPx - startWidthPx) > Math.abs(newHeightPx - startHeightPx)) {
-                    newHeightPx = newWidthPx / aspectRatio;
-                } else {
-                    newWidthPx = newHeightPx * aspectRatio;
-                }
-                newWidthPx = Math.max(10, Math.min(1500, newWidthPx));
-                newHeightPx = Math.max(10, Math.min(1500, newHeightPx));
-            }
-
             // Convert pixel size to data units using the chart helpers
             const startCenterPx = this._dragStartCenterPx || { x: this._screenX || 0, y: this._screenY || 0 };
             const newCenterPx = { x: startCenterPx.x, y: startCenterPx.y };
@@ -506,24 +482,7 @@ class ImageTool extends BaseDrawing {
             height = Math.max(10, Math.min(1000, height));
         }
 
-        // Use the same effective bounds as the rendered selection box.
-        // When preserveAspectRatio is enabled, the actual visible image is smaller than its container.
-        // We store those bounds on render as _borderWidth/_borderHeight.
-        if (this.style.maintainAspectRatio && this.style.originalAspectRatio && this.style.imageUrl) {
-            if (this._borderWidth && this._borderHeight) {
-                width = this._borderWidth;
-                height = this._borderHeight;
-            } else {
-                const aspectRatio = this.style.originalAspectRatio;
-                const containerAspect = width / height;
-                if (aspectRatio > containerAspect) {
-                    height = width / aspectRatio;
-                } else {
-                    width = height * aspectRatio;
-                }
-            }
-        }
-        
+        // Hit-test the full stretched image bounds.
         const minX = cx - width / 2;
         const maxX = cx + width / 2;
         const minY = cy - height / 2;
@@ -695,6 +654,7 @@ class ImageTool extends BaseDrawing {
 
     static fromJSON(data, chart) {
         const tool = new ImageTool(data.points, data.style || {});
+        tool.style.maintainAspectRatio = false;
         tool.id = data.id;
         tool.visible = data.visible;
         tool.meta = data.meta;

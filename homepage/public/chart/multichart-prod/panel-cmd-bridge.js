@@ -329,23 +329,7 @@
             return;
         }
 
-        var userOwns = (typeof ch._multichartUserOwnsViewport === 'function')
-            ? ch._multichartUserOwnsViewport()
-            : !!(rs.userHasPanned || !rs.autoScrollEnabled || ch._multichartViewportUserLocked);
-        var prevOffsetX = userOwns ? ch.offsetX : null;
-        var prevCw = userOwns ? ch.candleWidth : null;
-
         var applied = rs.applyMultichartMirrorFrame(args);
-        if (applied && userOwns) {
-            if (Number.isFinite(prevOffsetX)) ch.offsetX = prevOffsetX;
-            if (Number.isFinite(prevCw) && prevCw > 0) ch.candleWidth = prevCw;
-            if (typeof ch.constrainOffset === 'function') {
-                try { ch.constrainOffset(); } catch (_) {}
-            }
-            if (Number.isFinite(prevOffsetX)) ch.offsetX = prevOffsetX;
-            ch.renderPending = true;
-            if (typeof ch.render === 'function') ch.render();
-        }
         if (applied) return;
 
         if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
@@ -461,10 +445,7 @@
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
                 var keepOffset = Number.isFinite(prevOffsetX);
-                if (rs.userHasPanned || !rs.autoScrollEnabled || ch._multichartViewportUserLocked) {
-                    keepOffset = true;
-                } else if (typeof ch._multichartUserOwnsViewport === 'function'
-                    && ch._multichartUserOwnsViewport()) {
+                if (rs.userHasPanned || !rs.autoScrollEnabled) {
                     keepOffset = true;
                 } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
                     && ch._multichartViewportNeedsRecovery()) {
@@ -533,10 +514,7 @@
         function doSeek() {
             if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
-            var preserveViewport = !isEnter && (
-                (typeof ch._multichartUserOwnsViewport === 'function' && ch._multichartUserOwnsViewport())
-                || !!(rs.userHasPanned || !rs.autoScrollEnabled || ch._multichartViewportUserLocked)
-            );
+            var preserveViewport = !isEnter && !rs.autoScrollEnabled;
             try {
                 rs.goToReplayTimestamp(ts, {
                     preserveVisibleWindow: preserveViewport || !isEnter,
@@ -545,10 +523,7 @@
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
             }
-            if (!(typeof ch._multichartUserOwnsViewport === 'function'
-                    ? ch._multichartUserOwnsViewport()
-                    : rs.userHasPanned)
-                && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+            if (!rs.userHasPanned && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({
                         resetPriceScale: !!isEnter,
@@ -1276,9 +1251,7 @@
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
                     if (!args.force && replayAligned) {
-                        if (!(typeof ch._multichartUserOwnsViewport === 'function'
-                                ? ch._multichartUserOwnsViewport()
-                                : ch.replaySystem.userHasPanned)
+                        if (!ch.replaySystem.userHasPanned
                             && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                             try {
                                 ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
