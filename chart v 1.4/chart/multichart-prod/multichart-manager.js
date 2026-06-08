@@ -430,24 +430,7 @@
         for (const c of this.charts.values()) {
             if (c.host) { host = c; break; }
         }
-        if (!host) return;
-
-        // Backtest/replay: align new iframes to host playhead, not a stale
-        // visible-range snapshot (host can still show session-start offset
-        // until the grid resize + replay follow completes).
-        try {
-            var hostCh = (typeof global !== 'undefined' && global.chart) ? global.chart : null;
-            var rs = hostCh && hostCh.replaySystem;
-            var playhead = rs && rs.isActive ? Number(rs.replayTimestamp) : NaN;
-            if (Number.isFinite(playhead) && typeof this.sendCommandNoReply === 'function') {
-                this.sendCommandNoReply(newChart.id, 'replayEnter', { timestamp: playhead });
-                this._log('info', 'initial-sync replayEnter ' + host.id + ' → ' + newChart.id
-                    + ' ts=' + playhead);
-                return;
-            }
-        } catch (_) {}
-
-        if (typeof host.directRead !== 'function') return;
+        if (!host || typeof host.directRead !== 'function') return;
         let range = null;
         try { range = host.directRead(); } catch (_) { range = null; }
         if (!range || !Number.isFinite(range.startSec) || !Number.isFinite(range.endSec)) return;

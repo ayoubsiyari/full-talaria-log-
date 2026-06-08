@@ -799,19 +799,14 @@
                     }
                     primeIframeReplayPlayheadFromParent(ch);
                     ch._multichartPairLoadInFlight = true;
-                    var loadPanel = typeof ch.loadMultichartPanelFile === 'function'
-                        ? function (fid) {
-                            return ch.loadMultichartPanelFile(fid, { force: !!args.force });
-                        }
-                        : function (fid) { return ch.loadFileData(fid); };
-                    var p = loadPanel(fidStr);
+                    var p = ch.loadFileData(fidStr);
                     if (p && typeof p.then === 'function') {
                         return p.then(function () {
                             ch._multichartPairLoadInFlight = false;
                             afterLoadFile(ch);
                         }).catch(function (e) {
                             ch._multichartPairLoadInFlight = false;
-                            warn('loadFile: panel load failed', e && e.message);
+                            warn('loadFile: loadFileData failed', e && e.message);
                             throw e;
                         });
                     }

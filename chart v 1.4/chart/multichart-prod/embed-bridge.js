@@ -856,36 +856,36 @@
                         && pcBoot.replaySystem.fullRawData.length > 0) {
                         reportToShell('info', 'boot: parent native master (no /smart) fileId=' + loadFid);
                     }
-                    reportToShell('info', 'panel load fileId=' + loadFid + ' tf=' + (tf || '?')
+                    reportToShell('info', 'loadFileData fileId=' + loadFid + ' tf=' + (tf || '?')
                         + (playheadTs != null ? ' playhead=' + playheadTs : ''));
                     ch._multichartPairLoadInFlight = true;
-                    var runLoad = typeof ch.loadMultichartPanelFile === 'function'
-                        ? function () {
-                            return ch.loadMultichartPanelFile(String(loadFid), {
-                                timeframe: tf || ch.currentTimeframe,
-                                replayTimestamp: playheadTs,
-                                force: true,
-                            });
-                        }
-                        : (typeof ch.loadMultichartPanelFromHost === 'function'
-                            ? function () {
-                                return ch.loadMultichartPanelFromHost({
-                                    fileId: String(loadFid),
-                                    timeframe: tf || ch.currentTimeframe,
-                                    replayTimestamp: playheadTs,
-                                    force: true,
-                                });
-                            }
-                            : function () { return ch.loadFileData(String(loadFid)); });
-                    var lp = runLoad();
+                    var lp = ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
                         ch._multichartPairLoadInFlight = false;
+                        if (!Number.isFinite(playheadTs)) {
+                            afterLoad();
+                            return;
+                        }
+                        try {
+                            var rs = ch.replaySystem;
+                            if (!rs && typeof ch.initReplaySystem === 'function') ch.initReplaySystem();
+                            rs = ch.replaySystem;
+                            if (rs && !rs.isActive && typeof rs.enterReplayMode === 'function') {
+                                rs.enterReplayMode({ suppressInitialUpdateChartData: true });
+                            }
+                            if (rs && rs.isActive && typeof rs.goToReplayTimestamp === 'function') {
+                                rs.goToReplayTimestamp(playheadTs, { centerOnCandle: true });
+                            }
+                            if (typeof ch._reseedReplayFullRawFromLoadedData === 'function') {
+                                ch._reseedReplayFullRawFromLoadedData();
+                            }
+                        } catch (_) {}
                         afterLoad();
                     };
                     if (lp && typeof lp.then === 'function') {
                         lp.then(bootReplay, function (err) {
                             ch._multichartPairLoadInFlight = false;
-                            reportToShell('error', 'panel load failed: '
+                            reportToShell('error', 'loadFileData failed: '
                                 + (err && err.message || err));
                         });
                     } else {

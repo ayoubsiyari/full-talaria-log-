@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b248';
+const CHART_ENGINE_BUILD = '20260602b247';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2212,10 +2212,6 @@ class Chart {
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
-                if (this._isMultichartEmbedPanel()
-                    && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    this._panelFullRawData = [...this.rawData];
-                }
                 this.currentTimeframe = displayTf;
                 if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, displayTf);
@@ -2319,43 +2315,6 @@ class Chart {
 
         this._multichartPanelLoadInflight = run;
         return run;
-    }
-
-    /**
-     * Multichart iframe / panel file load — prefers loadMultichartPanelFromHost
-     * (playhead-centered backtest fetch + viewport sync) over loadFileData.
-     * @param {string|number} fileId
-     * @param {{ force?: boolean, timeframe?: string, replayTimestamp?: number, session?: object }} [opts]
-     */
-    async loadMultichartPanelFile(fileId, opts = {}) {
-        const fid = String(fileId || '').trim();
-        if (!fid) return false;
-        const o = opts && typeof opts === 'object' ? opts : {};
-        const session = o.session || this.backtestingSession;
-        const isBacktest = session && (this._isSessionBacktestStyle(session)
-            || this._isMultichartEmbedPanel());
-        if (this._isMultichartEmbedPanel()
-            && isBacktest
-            && typeof this.loadMultichartPanelFromHost === 'function') {
-            let replayTs = Number(o.replayTimestamp);
-            if (!Number.isFinite(replayTs)) {
-                replayTs = this._readParentReplayTimestampForMultichart();
-            }
-            if (!Number.isFinite(replayTs) && this.replaySystem) {
-                replayTs = Number(this.replaySystem.replayTimestamp);
-            }
-            return this.loadMultichartPanelFromHost({
-                fileId: fid,
-                session,
-                timeframe: o.timeframe || this.currentTimeframe,
-                replayTimestamp: Number.isFinite(replayTs) ? replayTs : null,
-                force: !!o.force,
-            });
-        }
-        if (typeof this.loadFileData === 'function') {
-            return this.loadFileData(fid);
-        }
-        return false;
     }
 
     /**
@@ -2524,37 +2483,10 @@ class Chart {
         if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) return false;
         const ts = Number(replayTs);
         if (!Number.isFinite(ts)) return false;
-
-        const firstBarTs = Number(this._panelFullRawData[0]?.t);
-        let barMs = 60_000;
-        try {
-            const parsed = this.parseTimeframe(this.currentTimeframe);
-            if (Number.isFinite(parsed) && parsed > 0) barMs = parsed;
-        } catch (_) {}
-
-        // Shared replay clock from host tile A can sit before this instrument's
-        // loaded range after a pair switch. Clamping to index 0 leaves one fat
-        // candle and a misaligned time axis — show the full fetched window instead.
         const replay = this.replaySystem;
-        const lastAtOrBefore = replay && typeof replay._findLastRawIndexAtOrBefore === 'function'
-            ? replay._findLastRawIndexAtOrBefore(this._panelFullRawData, ts)
-            : null;
-        if (Number.isFinite(firstBarTs) && ts + barMs < firstBarTs) {
-            this.rawData = [...this._panelFullRawData];
-            this.data = this.resampleData(this.rawData, this.currentTimeframe);
-            return true;
-        }
-        if (lastAtOrBefore != null && lastAtOrBefore < 0) {
-            this.rawData = [...this._panelFullRawData];
-            this.data = this.resampleData(this.rawData, this.currentTimeframe);
-            return true;
-        }
-
         let idx = 0;
         if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
             idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, ts);
-        } else if (lastAtOrBefore != null && lastAtOrBefore >= 0) {
-            idx = lastAtOrBefore;
         } else {
             for (let i = this._panelFullRawData.length - 1; i >= 0; i--) {
                 if (Number(this._panelFullRawData[i]?.t) <= ts) {
@@ -2565,11 +2497,6 @@ class Chart {
         }
         const sliced = this._panelFullRawData.slice(0, idx + 1);
         if (!sliced.length) return false;
-        if (sliced.length <= 1 && this._panelFullRawData.length > 1 && lastAtOrBefore != null && lastAtOrBefore < 0) {
-            this.rawData = [...this._panelFullRawData];
-            this.data = this.resampleData(this.rawData, this.currentTimeframe);
-            return true;
-        }
         this.rawData = sliced;
         this.data = this.resampleData(sliced, this.currentTimeframe);
         return true;
@@ -2688,10 +2615,6 @@ class Chart {
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
-                if (this._isIndependentMultichartPair()
-                    && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    this._panelFullRawData = [...this.rawData];
-                }
                 const finishDisplayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || displayTf;
                 if (finishDisplayTf !== replayRawTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, finishDisplayTf);
@@ -5129,12 +5052,6 @@ class Chart {
             } catch (_mcePfrd) { /* ignore */ }
 
             if (fetchReplayAnchored && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
-                if (this._isIndependentMultichartPair() && Number.isFinite(replayTargetTs)
-                    && typeof this.ensureReplayDataCoversTimestamp === 'function') {
-                    try {
-                        await this.ensureReplayDataCoversTimestamp(replayTargetTs);
-                    } catch (_erc) { /* ignore */ }
-                }
                 this._applyIndependentPanelReplaySlice(replayTargetTs);
             }
 
@@ -5484,14 +5401,24 @@ class Chart {
             this._panelFullRawData = [...this.rawData];
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
-                if (typeof this.ensureReplayDataCoversTimestamp === 'function') {
-                    try {
-                        await this.ensureReplayDataCoversTimestamp(replayTs);
-                    } catch (_erc) { /* ignore */ }
+                let idx;
+                if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
+                    idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, replayTs);
+                } else {
+                    idx = -1;
+                    if (typeof this.findGoToTargetIndex === 'function') {
+                        idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
+                    }
+                    if (idx < 0) {
+                        idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
+                    }
+                    if (idx < 0) idx = this._panelFullRawData.length - 1;
+                    idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
                 }
-                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
-                    this._applyIndependentPanelReplaySlice(replayTs);
-                }
+
+                const sliced = this._panelFullRawData.slice(0, idx + 1);
+                this.rawData = sliced;
+                this.data = this.resampleData(sliced, this.currentTimeframe);
                 if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                     this._reseedReplayFullRawFromLoadedData();
                 }
@@ -17700,7 +17627,60 @@ class Chart {
             if (ve > vs) return this.data.slice(vs, ve);
             return [];
         }
-        return ve > vs ? this.data.slice(vs, ve) : [];
+
+        const rawCount = ve - vs;
+        if (rawCount <= 0) return [];
+
+        // ── Zoomed-out LOD pre-sample ────────────────────────────────────────
+        // When spacing < TV_ZOOMED_OUT_SLOT_PX (pixel-column mode), every
+        // render function receives a full raw slice (up to 50 000+ bars) and
+        // iterates the entire array — candles, volume, indicators, axes.
+        // At 60 fps this becomes the sole frame-time bottleneck.
+        //
+        // Fix: stride-sample the data down to ≤ maxPreSampleBars BEFORE passing
+        // it downstream. All render functions work on the reduced array; the
+        // correct global bar indices are preserved via the `midIdx` field so
+        // indicator lookups stay accurate.  `_aggregateVisibleOhlcvByPixelColumn`
+        // still merges overlapping slots, but now loops over ~900 items instead
+        // of 50 000.  Visual fidelity is unchanged: at sub-pixel spacing the
+        // individual skipped bars are physically invisible.
+        if (spacing > 0 && spacing < TV_ZOOMED_OUT_SLOT_PX) {
+            // Keep ~3 samples per 2-px slot for solid H/L fidelity.
+            const slotsOnScreen = Math.ceil(plotPx / TV_ZOOMED_OUT_SLOT_PX);
+            const maxPreSampleBars = Math.max(slotsOnScreen * 3, 600);
+            if (rawCount > maxPreSampleBars) {
+                const stride = Math.max(1, Math.floor(rawCount / maxPreSampleBars));
+                const sampled = [];
+                for (let i = vs; i < ve; i += stride) {
+                    // Merge H/L across the stride window so wicks stay accurate.
+                    const end = Math.min(ve, i + stride);
+                    const bar = this.data[i];
+                    let h = bar.h, l = bar.l;
+                    for (let j = i + 1; j < end; j++) {
+                        const bj = this.data[j];
+                        if (bj.h > h) h = bj.h;
+                        if (bj.l < l) l = bj.l;
+                    }
+                    // Reuse the bar object when stride = 1 (no copy needed).
+                    if (stride === 1) {
+                        sampled.push(bar);
+                    } else {
+                        sampled.push({
+                            o: bar.o,
+                            h,
+                            l,
+                            c: this.data[end - 1].c,
+                            v: bar.v,
+                            t: bar.t,
+                            midIdx: Math.floor((i + end - 1) / 2), // true global bar index
+                        });
+                    }
+                }
+                return sampled;
+            }
+        }
+
+        return this.data.slice(vs, ve);
     }
 
     _isPriceAxisZoomDragging() {
@@ -17811,7 +17791,14 @@ class Chart {
         const spacing = this.getCandleSpacing();
         const offsetX = this.offsetX || 0;
 
-        for (let i = 0; i < visible.length; i++) {
+        // Safety-net stride: when this function is called with a very large array
+        // (e.g. from a display pipeline that skipped the pre-sample), skip bars that
+        // are guaranteed to map to the same pixel slot as the previous one.
+        // At spacing=0.02 and slotPx=2, stride=25 → 40× fewer iterations.
+        const barsPerSlot = spacing > 0 ? slotPx / spacing : 1;
+        const stride = barsPerSlot >= 8 ? Math.max(1, Math.floor(barsPerSlot / 4)) : 1;
+
+        for (let i = 0; i < visible.length; i += stride) {
             const d = visible[i];
             if (!d) continue;
             const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
@@ -17819,20 +17806,32 @@ class Chart {
             const slot = Math.floor((x - m.l) / slotPx);
             if (slot < 0 || slot >= numSlots) continue;
 
+            // Merge H/L across the stride window before writing the slot.
+            let dh = d.h, dl = d.l;
+            if (stride > 1) {
+                const iEnd = Math.min(visible.length, i + stride);
+                for (let j = i + 1; j < iEnd; j++) {
+                    const dj = visible[j];
+                    if (!dj) continue;
+                    if (dj.h > dh) dh = dj.h;
+                    if (dj.l < dl) dl = dj.l;
+                }
+            }
+
             let bucket = slots[slot];
             if (!bucket) {
                 slots[slot] = {
                     o: d.o,
-                    h: d.h,
-                    l: d.l,
+                    h: dh,
+                    l: dl,
                     c: d.c,
                     vSum: Number(d.v) || 0,
                     midIdx: idx,
                     _pixelX: m.l + slot * slotPx,
                 };
             } else {
-                if (d.h > bucket.h) bucket.h = d.h;
-                if (d.l < bucket.l) bucket.l = d.l;
+                if (dh > bucket.h) bucket.h = dh;
+                if (dl < bucket.l) bucket.l = dl;
                 bucket.c = d.c;
                 bucket.vSum += Number(d.v) || 0;
             }

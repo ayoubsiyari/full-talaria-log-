@@ -9602,6 +9602,14 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         return Number.isFinite(y) && y >= plotYMin && y <= plotYMax;
     };
 
+    // At sub-pixel bar spacing many consecutive indices map to the SAME screen X.
+    // Drawing ctx.lineTo to duplicate pixel X is pure waste — cap draw calls to
+    // at most one sample per pixel to keep indicators smooth even at max zoom-out.
+    const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 1;
+    const drawStride = (Number.isFinite(spacing) && spacing > 0 && spacing < 1)
+        ? Math.max(1, Math.floor(1 / spacing))
+        : 1;
+
     ctx.save();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
@@ -9617,7 +9625,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     if (style === 'Line' || style === 'Dashed' || style === 'Dotted' || style === 'Dashdot' || style === 'Line with breaks') {
         ctx.setLineDash(this._lineDashForStyle(dashForLine(style === 'Line with breaks' ? 'Line' : style)));
         let started = false;
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
                 if (breakOnNull && started) { flushLine(); started = false; }
                 continue;
@@ -9635,7 +9643,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         ctx.beginPath();
         let started = false;
         const diamonds = [];
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
                 if (breakOnNull && started) { flushLine(); started = false; prev = null; }
                 continue;
@@ -9665,7 +9673,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
         }
     } else if (style === 'Histogram' || style === 'Columns') {
         const half = function(i) { return this._plotBarWidthPx(i, lw) / 2; }.bind(this);
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
@@ -9684,7 +9692,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Cross') {
         const r = Math.max(2.5, lw * 1.5);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
@@ -9698,7 +9706,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     } else if (style === 'Circles') {
         const r = Math.max(2, lw * 1.1);
         ctx.beginPath();
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) continue;
             const x = this.dataIndexToPixel(i);
             const y = yAt(data[i]);
@@ -9726,7 +9734,7 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
             ctx.stroke();
         };
         let seg = [];
-        for (let i = startIndex; i < endIndex; i++) {
+        for (let i = startIndex; i < endIndex; i += drawStride) {
             if (data[i] == null || data[i] === undefined || isNaN(data[i])) {
                 if (breakOnNull && seg.length) { drawAreaSegment(seg); seg = []; }
                 continue;
