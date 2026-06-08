@@ -2462,14 +2462,15 @@ export default function MultichartGrid({
                 if (!rs || !rs.isActive) return;
                 const ts = Number(rs.replayTimestamp);
                 if (!Number.isFinite(ts)) return;
-                const hostPlaying = !!rs.isPlaying;
                 replayStateRef.current.lastBroadcastTs = ts;
                 replayStateRef.current.everEntered = true;
                 replayStateRef.current.parentEverEntered = true;
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
                     try {
-                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: hostPlaying });
+                        // During play, replayFrame keeps candle data aligned; force only
+                        // corrects timestamp drift without re-centering a user-panned viewport.
+                        mgr.sendCommand(c.id, "syncReplayFromHost", { force: false });
                     } catch (_) {}
                 }
             } catch (_) {}

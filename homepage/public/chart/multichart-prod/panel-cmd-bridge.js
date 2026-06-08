@@ -512,15 +512,16 @@
         function doSeek() {
             if (!rs.isActive) return;
             if (typeof rs.goToReplayTimestamp !== 'function') return;
+            var preserveViewport = !isEnter && !!(rs.userHasPanned || !rs.autoScrollEnabled);
             try {
                 rs.goToReplayTimestamp(ts, {
-                    preserveVisibleWindow: false,
-                    centerOnCandle: !!isEnter,
+                    preserveVisibleWindow: preserveViewport || !isEnter,
+                    centerOnCandle: !!isEnter && !preserveViewport,
                 });
             } catch (e) {
                 warn('forceReplaySeek: goToReplayTimestamp threw', e && e.message);
             }
-            if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+            if (!rs.userHasPanned && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                 try {
                     ch._syncIndependentPanelViewportIfNeeded({
                         resetPriceScale: !!isEnter,
@@ -1229,7 +1230,8 @@
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
                     if (!args.force && replayAligned) {
-                        if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                        if (!ch.replaySystem.userHasPanned
+                            && typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                             try {
                                 ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
                             } catch (_) {}
