@@ -162,6 +162,34 @@ export function resolveAxisTextColor(settings) {
   return preferred;
 }
 
+function mirrorV9ThemeOntoChartInstance(pc, settings, map, wantUnified, precisionPatch) {
+  if (!pc || !pc.chartSettings) return;
+  const pcs = pc.chartSettings;
+  for (const k of Object.keys(map)) {
+    const v = map[k];
+    if (v != null) pcs[k] = v;
+  }
+  if (typeof settings.showOrderHistory === "boolean") {
+    pcs.showOrderHistory = settings.showOrderHistory;
+  }
+  if (typeof settings.showOpenOrders === "boolean") {
+    pcs.showOpenOrders = settings.showOpenOrders;
+  }
+  if (pcs.unifiedBarColorEnabled !== wantUnified) pcs.unifiedBarColorEnabled = wantUnified;
+  if (settings.unifiedBarColorVal) pcs.unifiedBarColor = settings.unifiedBarColorVal;
+  if (precisionPatch) {
+    pcs.precision = precisionPatch.precision;
+    pcs.pricePrecision = precisionPatch.pricePrecision;
+  }
+  applyCanvasTheme(pcs, settings);
+  try {
+    pc.applyChartSettings?.();
+  } catch (_) {}
+  try {
+    pc.render?.();
+  } catch (_) {}
+}
+
 /**
  * @param {object} settings V9 settings state
  * @returns {boolean} true if chart exists and sync completed (or nothing to do); false if window.chart not ready
@@ -237,14 +265,14 @@ export function applyV9ThemeSettingsToChart(settings) {
     cs.showCandleBorders = wantBorders;
     changed = true;
   }
-  const p = resolveV9Precision(settings.precision);
-  if (p) {
-    if (cs.precision !== p.precision) {
-      cs.precision = p.precision;
+  const precisionPatch = resolveV9Precision(settings.precision);
+  if (precisionPatch) {
+    if (cs.precision !== precisionPatch.precision) {
+      cs.precision = precisionPatch.precision;
       changed = true;
     }
-    if (cs.pricePrecision !== p.pricePrecision) {
-      cs.pricePrecision = p.pricePrecision;
+    if (cs.pricePrecision !== precisionPatch.pricePrecision) {
+      cs.pricePrecision = precisionPatch.pricePrecision;
       changed = true;
     }
   }
@@ -269,33 +297,20 @@ export function applyV9ThemeSettingsToChart(settings) {
 
   try {
     const panels = window.panelManager?.getPanels?.() || [];
-    for (const p of panels) {
-      const pc = p?.chartInstance;
+    for (const panel of panels) {
+      const pc = panel?.chartInstance;
       if (!pc || pc === chart || !pc.chartSettings) continue;
-      const pcs = pc.chartSettings;
-      for (const k of Object.keys(map)) {
-        const v = map[k];
-        if (v != null) pcs[k] = v;
+      mirrorV9ThemeOntoChartInstance(pc, settings, map, wantUnified, precisionPatch);
+    }
+  } catch (_) {}
+
+  try {
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (grid && typeof grid.enumerateCharts === "function") {
+      for (const pc of grid.enumerateCharts()) {
+        if (!pc || pc === chart) continue;
+        mirrorV9ThemeOntoChartInstance(pc, settings, map, wantUnified, precisionPatch);
       }
-      if (typeof settings.showOrderHistory === "boolean") {
-        pcs.showOrderHistory = settings.showOrderHistory;
-      }
-      if (typeof settings.showOpenOrders === "boolean") {
-        pcs.showOpenOrders = settings.showOpenOrders;
-      }
-      if (pcs.unifiedBarColorEnabled !== wantUnified) pcs.unifiedBarColorEnabled = wantUnified;
-      if (settings.unifiedBarColorVal) pcs.unifiedBarColor = settings.unifiedBarColorVal;
-      if (p) {
-        pcs.precision = p.precision;
-        pcs.pricePrecision = p.pricePrecision;
-      }
-      applyCanvasTheme(pcs, settings);
-      try {
-        pc.applyChartSettings?.();
-      } catch (_) {}
-      try {
-        pc.render?.();
-      } catch (_) {}
     }
   } catch (_) {}
 

@@ -3500,6 +3500,25 @@ function v9SyncQuickBarPosFromToolbarShow(br, x, y, drawingType) {
   br.setTlBarPos({ x: left, y: top });
 }
 
+/** Map toolbar.show client coords from an iframe tile into the parent viewport. */
+function v9MapToolbarClientToParent(dm, x, y) {
+  if (typeof x !== "number" || typeof y !== "number" || Number.isNaN(x) || Number.isNaN(y)) {
+    return { x, y };
+  }
+  try {
+    const grid = typeof window !== "undefined" ? window.__multichartGrid : null;
+    if (grid && typeof grid.mapToolbarClientToParent === "function") {
+      return grid.mapToolbarClientToParent(dm, x, y);
+    }
+  } catch (_) {}
+  return { x, y };
+}
+
+function v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawingType) {
+  const mapped = v9MapToolbarClientToParent(dm, x, y);
+  v9SyncQuickBarPosFromToolbarShow(br, mapped.x, mapped.y, drawingType);
+}
+
 /** Rail groups where each chart.js `drawing.type` has its own settings (never fib fan ← fib retracement). */
 const V9_EXACT_STYLE_MATCH_GROUPS = new Set(['fib', 'gann', 'pattern', 'rect', 'channel', 'brush2']);
 
@@ -9002,11 +9021,16 @@ const TalariaV8bLive = () => {
     if (fileId == null) return;
     const fid = typeof fileId === "string" ? fileId : String(fileId);
     try {
-      // Phase 7.2.4: if the new MultichartGrid is mounted (layoutPanels.n > 1),
-      // route the file load through its per-panel command bus so the file
-      // lands in the FOCUSED panel only — host A is loaded directly, iframe
-      // panels receive a `panel-cmd` postMessage handled by panel-cmd-bridge.
       const grid = window.__multichartGrid;
+      if (grid && typeof grid.loadFileOnPanel === "function") {
+        const panelId = typeof grid.getFocusedPanelId === "function"
+          ? grid.getFocusedPanelId()
+          : null;
+        grid.loadFileOnPanel(panelId, fid, { force: true }).catch((err) => {
+          console.warn("[V9 sym] loadFileOnPanel failed", panelId, err);
+        });
+        return;
+      }
       if (grid && typeof grid.runCommand === "function") {
         const panelId = typeof grid.getFocusedPanelId === "function"
           ? grid.getFocusedPanelId()
@@ -16436,7 +16460,7 @@ const TalariaV8bLive = () => {
             } else {
               br.setTlBarSelected(true);
               br.setTlBarSelectedType(drawing.type);
-              v9SyncQuickBarPosFromToolbarShow(br, x, y, drawing && drawing.type);
+              v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawing && drawing.type);
               if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
               return origShow ? origShow(drawing, x, y) : undefined;
             }
@@ -16648,7 +16672,7 @@ const TalariaV8bLive = () => {
               } catch (_) {}
             }
           }
-          v9SyncQuickBarPosFromToolbarShow(br, x, y, drawing && drawing.type);
+          v9SyncQuickBarPosFromDrawingManagerShow(br, dm, x, y, drawing && drawing.type);
         } catch (_) {}
         if (v9ShouldSkipLegacyDrawingToolbarShow()) return undefined;
         return origShow ? origShow(drawing, x, y) : undefined;
@@ -16687,11 +16711,13 @@ const TalariaV8bLive = () => {
     const onReady = () => hookAll();
     window.addEventListener("chartDataLoaded", onReady);
     window.addEventListener("panelSelected", onReady);
+    window.addEventListener("multichartFocusChanged", onReady);
     return () => {
       cancelled = true;
       clearInterval(poll);
       window.removeEventListener("chartDataLoaded", onReady);
       window.removeEventListener("panelSelected", onReady);
+      window.removeEventListener("multichartFocusChanged", onReady);
       try {
         for (const dm of enumerateV9DrawingManagersFromWindow()) {
           const tb = dm && dm.toolbar;
@@ -29387,12 +29413,17 @@ const TalariaV8bLive = () => {
                           setSymbol(s.id);
                           setSymbolOpen(false);
                           setSymbolSearch("");
-                          // Route load to the selected multi-panel tile (main → loadFileData,
-                          // other panels → chartInstance.loadPanelFileData). Symbol sync in
-                          // panel-manager still applies when layout sync is enabled.
-                          if (s.fileId != null) {
-                            try { routeSessionFileLoadToSelectedPanel(s.fileId); }
+                          let loadFid = s.fileId;
+                          if (loadFid == null && sessionPairs.length) {
+                            const normKey = (x) => String(x || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "");
+                            const hit = sessionPairs.find((p) => normKey(p.ticker) === normKey(s.id));
+                            if (hit && hit.fileId != null) loadFid = hit.fileId;
+                          }
+                          if (loadFid != null) {
+                            try { routeSessionFileLoadToSelectedPanel(loadFid); }
                             catch (err) { console.warn("[V9 sym] session file load failed", err); }
+                          } else {
+                            console.warn("[V9 sym] no fileId for symbol", s.id);
                           }
                         }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",

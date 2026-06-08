@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260602a502";
+const BRIDGE_VERSION = "20260602a504";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2969,6 +2969,8 @@ export default function MultichartGrid({
     // (chart-state from iframes can re-fire many times per pan).
     const lastBroadcastTfRef = useRef({});       // panelId -> tf
     const lastBroadcastFileRef = useRef({});     // panelId -> fileId
+    /** Skip symbol-sync pull-back briefly after user picks a pair on this iframe tile. */
+    const userPairLoadGuardRef = useRef({});
 
     // Fire when ANY panel's state updates. Two responsibilities:
     //
@@ -3027,8 +3029,11 @@ export default function MultichartGrid({
         // When Symbol sync is off, tiles may use different pairs during replay.
         if (sync.symbol && hostFid && state && state.fileId != null
             && String(state.fileId) !== hostFid) {
-            try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
-            lastBroadcastFileRef.current[id] = hostFid;
+            const guardUntil = userPairLoadGuardRef.current[id];
+            if (!(guardUntil && performance.now() < guardUntil)) {
+                try { mgr.sendCommand(id, "loadFile", { fileId: hostFid }); } catch (_) {}
+                lastBroadcastFileRef.current[id] = hostFid;
+            }
             return;
         }
 
@@ -3524,49 +3529,175 @@ export default function MultichartGrid({
         // Optional opts.panelId pins the command to a specific panel
         // (used by per-panel persistence flows). Without opts.panelId
         // the bus targets the currently focused panel.
+        function mirrorHostSessionOntoChart(ch) {
+            if (!ch) return;
+            const host = window.chart;
+            if (!host) return;
+            try {
+                if (host.backtestingSession) ch.backtestingSession = host.backtestingSession;
+                if (host.activeTradingSessionId && !ch.activeTradingSessionId) {
+                    ch.activeTradingSessionId = host.activeTradingSessionId;
+                }
+                if (typeof host.isBacktestMode === "boolean") ch.isBacktestMode = host.isBacktestMode;
+                if (typeof host.isPropFirmMode === "boolean") ch.isPropFirmMode = host.isPropFirmMode;
+            } catch (_) {}
+        }
+
+        function resolveHostReplayPlayheadMs() {
+            const host = window.chart;
+            const rs = host && host.replaySystem;
+            if (!rs || !rs.isActive) return null;
+            const ts = Number(rs.replayTimestamp);
+            return Number.isFinite(ts) ? ts : null;
+        }
+
+        function markUserPairLoadGuard(panelId) {
+            if (!panelId || panelId === HOST_PANEL_ID) return;
+            userPairLoadGuardRef.current[panelId] = performance.now() + 4000;
+        }
+
+        /**
+         * Load a session file on one tile — same in-process path as panel A.
+         * Iframe B/C/D: call contentWindow.chart.loadMultichartPanelFile directly
+         * (panel-cmd postMessage was unreliable for pair switches).
+         */
+        function loadFileOnPanel(panelId, fileId, opts) {
+            const o = opts && typeof opts === "object" ? opts : {};
+            const fid = fileId != null ? String(fileId).trim() : "";
+            if (!fid) return Promise.reject(new Error("loadFile: missing fileId"));
+            const pid = panelId || focusedPanelIdRef.current || HOST_PANEL_ID;
+
+            if (pid !== HOST_PANEL_ID) markUserPairLoadGuard(pid);
+
+            if (pid === HOST_PANEL_ID) {
+                return applyHostCommand("loadFile", { fileId: fid, force: !!o.force }).then((data) => {
+                    if (typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
+                        try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
+                    }
+                    return data;
+                });
+            }
+
+            const ch = getChartForPanelId(pid);
+            if (!ch) {
+                const mgr = managerRef.current;
+                if (!mgr || typeof mgr.sendCommand !== "function") {
+                    return Promise.reject(new Error("panel chart not ready"));
+                }
+                return mgr.sendCommand(pid, "loadFile", { fileId: fid, force: true }).then((data) => {
+                    finalizeIframePanelAfterPairLoad(pid);
+                    return data;
+                });
+            }
+
+            mirrorHostSessionOntoChart(ch);
+            const replayTs = resolveHostReplayPlayheadMs();
+            const tf = ch.currentTimeframe || window.chart?.currentTimeframe || "5m";
+            const useMc = !!(ch.isBacktestMode || ch.backtestingSession)
+                && typeof ch.loadMultichartPanelFile === "function";
+
+            let loadPromise;
+            if (useMc) {
+                loadPromise = ch.loadMultichartPanelFile(fid, {
+                    force: true,
+                    replayTimestamp: replayTs,
+                    timeframe: tf,
+                });
+            } else if (typeof ch.loadMultichartPanelFromHost === "function"
+                && (ch.isBacktestMode || ch.backtestingSession)) {
+                loadPromise = ch.loadMultichartPanelFromHost({
+                    fileId: fid,
+                    force: true,
+                    replayTimestamp: replayTs,
+                    timeframe: tf,
+                });
+            } else if (typeof ch.loadFileData === "function") {
+                loadPromise = ch.loadFileData(fid);
+            } else {
+                return Promise.reject(new Error("loadFile not available on panel " + pid));
+            }
+
+            const finish = () => {
+                try {
+                    if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
+                        ch._finalizeMultichartPanelAfterPairLoad();
+                    }
+                } catch (_) {}
+                finalizeIframePanelAfterPairLoad(pid);
+                if (focusedPanelIdRef.current === pid) {
+                    dispatchFocusChanged(pid);
+                }
+            };
+
+            if (loadPromise && typeof loadPromise.then === "function") {
+                return loadPromise.then(finish).then(() => null);
+            }
+            finish();
+            return Promise.resolve(null);
+        }
+
+        function syncIframeReplayInProcess(panelId) {
+            const ch = getChartForPanelId(panelId);
+            const ts = resolveHostReplayPlayheadMs();
+            if (!ch || !Number.isFinite(ts)) return;
+            try {
+                mirrorHostSessionOntoChart(ch);
+                const rs = ch.replaySystem;
+                if (!rs && typeof ch.initReplaySystem === "function") ch.initReplaySystem();
+                const rs2 = ch.replaySystem;
+                if (rs2 && !rs2.isActive && typeof rs2.enterReplayMode === "function") {
+                    rs2.enterReplayMode({
+                        suppressInitialUpdateChartData: true,
+                        initialReplayTimestamp: ts,
+                    });
+                }
+                if (rs2 && rs2.isActive && typeof rs2.goToReplayTimestamp === "function") {
+                    rs2.goToReplayTimestamp(ts, { centerOnCandle: true });
+                }
+                if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
+                    ch._finalizeMultichartPanelAfterPairLoad();
+                } else if (rs2 && typeof rs2.syncReplayViewportToPlayhead === "function") {
+                    rs2.syncReplayViewportToPlayhead(ch, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        render: true,
+                    });
+                }
+            } catch (_) {}
+        }
+
         function finalizeIframePanelAfterPairLoad(panelId) {
             if (!panelId || panelId === HOST_PANEL_ID) return;
-            const mgr = managerRef.current;
-            if (!mgr) return;
-            const host = window.chart;
-            const hostRs = host && host.replaySystem;
-            if (!hostRs || !hostRs.isActive) return;
-            const ts = Number(hostRs.replayTimestamp);
-            if (!Number.isFinite(ts)) return;
             const push = function () {
+                syncIframeReplayInProcess(panelId);
+                const mgr = managerRef.current;
+                if (!mgr) return;
                 try {
                     if (typeof mgr.sendCommandNoReply === "function") {
                         mgr.sendCommandNoReply(panelId, "syncReplayFromHost", { force: true });
-                    } else {
-                        mgr.sendCommand(panelId, "syncReplayFromHost", { force: true }).catch(() => {});
                     }
                 } catch (_) {}
             };
-            setTimeout(push, 950);
-            setTimeout(push, 1600);
+            setTimeout(push, 80);
+            setTimeout(push, 450);
+            setTimeout(push, 1000);
         }
 
         function runCommand(cmd, args, opts) {
             const target = (opts && opts.panelId)
                 ? opts.panelId
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
+            if (cmd === "loadFile" && args && args.fileId != null && args.fileId !== "") {
+                return loadFileOnPanel(target, args.fileId, { force: !!args.force });
+            }
             if (target === HOST_PANEL_ID) {
-                return applyHostCommand(cmd, args).then((data) => {
-                    if (cmd === "loadFile" && args && args.force
-                        && typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
-                        try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
-                    }
-                    return data;
-                });
+                return applyHostCommand(cmd, args);
             }
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") {
                 return Promise.reject(new Error("manager not ready"));
             }
-            return mgr.sendCommand(target, cmd, args).then((data) => {
-                if (cmd === "loadFile") finalizeIframePanelAfterPairLoad(target);
-                return data;
-            });
+            return mgr.sendCommand(target, cmd, args);
         }
 
         // Helper: query indicators on the focused (or specified) panel.
@@ -3977,6 +4108,60 @@ export default function MultichartGrid({
             return out;
         }
 
+        function enumerateMultichartCharts() {
+            const out = [];
+            const seen = new Set();
+            const addChart = (ch) => {
+                if (!ch || seen.has(ch)) return;
+                seen.add(ch);
+                out.push(ch);
+            };
+            addChart(window.chart);
+            const mgr = managerRef.current;
+            if (mgr && mgr.charts && typeof mgr.charts.values === "function") {
+                for (const c of mgr.charts.values()) {
+                    if (!c || c.host) continue;
+                    try {
+                        const cw = c.frame && c.frame.contentWindow;
+                        addChart(cw && cw.chart);
+                    } catch (_) {}
+                }
+            }
+            return out;
+        }
+
+        /** Iframe tile toolbar.show(x,y) is in iframe viewport — map to parent for V9 tlBar. */
+        function findPanelFrameForDrawingManager(dm) {
+            if (!dm) return null;
+            const hostDm = window.chart && window.chart.drawingManager;
+            if (dm === hostDm) return null;
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return null;
+            for (const entry of mgr.charts.values()) {
+                if (!entry || entry.host) continue;
+                try {
+                    const cw = entry.frame && entry.frame.contentWindow;
+                    const ch = cw && cw.chart;
+                    if (ch && ch.drawingManager === dm) return entry.frame || null;
+                } catch (_) {}
+            }
+            return null;
+        }
+
+        function mapToolbarClientToParent(dm, x, y) {
+            if (typeof x !== "number" || typeof y !== "number" || Number.isNaN(x) || Number.isNaN(y)) {
+                return { x, y };
+            }
+            const frame = findPanelFrameForDrawingManager(dm);
+            if (!frame) return { x, y };
+            try {
+                const r = frame.getBoundingClientRect();
+                return { x: r.left + x, y: r.top + y };
+            } catch (_) {
+                return { x, y };
+            }
+        }
+
         const prevGetActiveChart = typeof window.getActiveChart === "function"
             ? window.getActiveChart
             : null;
@@ -4006,7 +4191,10 @@ export default function MultichartGrid({
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
             getChartForPanel: getChartForPanelId,
+            loadFileOnPanel,
             getActiveChart: getActiveChartForMultichart,
+            enumerateCharts: enumerateMultichartCharts,
+            mapToolbarClientToParent,
             enumerateDrawingManagers: enumerateMultichartDrawingManagers,
             hostPanelId: HOST_PANEL_ID,
         };
