@@ -67,8 +67,12 @@
             styleEl.id = 'multichart-embed-style';
             styleEl.textContent = [
                 'html.multichart-embed [data-v9-chrome="1"] { display: none !important; }',
-                'html.multichart-embed body { background: #07080E !important; }',
-                'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; visibility: visible !important; }',
+                'html.multichart-embed, html.multichart-embed body { height: 100% !important; min-height: 0 !important; overflow: hidden !important; background: #07080E !important; }',
+                'html.multichart-embed #root { padding: 0 !important; margin: 0 !important; visibility: visible !important; height: 100% !important; min-height: 0 !important; }',
+                'html.multichart-embed [data-v9-app] { height: 100% !important; min-height: 0 !important; padding-left: 0 !important; }',
+                'html.multichart-embed #chart-container, html.multichart-embed #chartWrapper { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; }',
+                /* Keep symbol · TF · OHLC legend visible on B/C/D tiles (same as panel A). */
+                'html.multichart-embed #chartWrapper .ohlc-info, html.multichart-embed .ohlc-info { display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 25 !important; pointer-events: none !important; }',
                 /* Force the splash overlay off in iframe panels regardless of any later
                    class additions (chart.js can re-add active to #backtestingLoader). */
                 'html.multichart-embed #backtestingLoader,',

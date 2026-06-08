@@ -19113,8 +19113,10 @@ const TalariaV8bLive = () => {
     return () => document.removeEventListener("contextmenu", onCtx, true);
   }, []);
 
+  const isMcIframeEmbed = v9IsMultichartIframeEmbed();
+
   return (
-    <div data-v9-app="1" style={{ width: "100%", height: "100dvh", boxSizing: "border-box", paddingLeft: 1, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
+    <div data-v9-app="1" style={{ width: "100%", height: isMcIframeEmbed ? "100%" : "100dvh", boxSizing: "border-box", paddingLeft: isMcIframeEmbed ? 0 : 1, background: c.bg, fontFamily: F, color: c.tx, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", animation: isFullscreen ? "tlrFullscreenIn 0.3s ease forwards" : undefined }}
       onContextMenu={v9BlockBrowserContextMenu}
       onClick={(e) => {
         // Never run closeAll on bubbled clicks from children — it ran after every button/dropdown
