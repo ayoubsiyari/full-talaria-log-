@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260602a485";
+const BRIDGE_VERSION = "20260602a486";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -805,12 +805,55 @@ function closeGlobalLegacyDrawingSettings() {
 // canvas dimensions immediately. We zero `_lastResizeDpr` first because
 // chart.js bails out of resize() when DPR is unchanged, and only the size
 // changed here.
-function syncHostReplayViewport(ch) {
+function resolveHostReplayPlayheadMs(ch, mgr) {
+    if (!ch) return null;
+    try {
+        const rs = ch.replaySystem;
+        if (rs && Number.isFinite(rs.replayTimestamp)) return rs.replayTimestamp;
+        const sid = (typeof ch.getActiveTradingSessionId === "function")
+            ? ch.getActiveTradingSessionId()
+            : ch.activeTradingSessionId;
+        if (sid && typeof ch._getSavedReplayRestoreState === "function") {
+            const saved = ch._getSavedReplayRestoreState(sid);
+            const ts = saved && Number(saved.replayTimestamp);
+            if (Number.isFinite(ts)) return ts;
+        }
+    } catch (_) {}
+    if (mgr && mgr.charts) {
+        for (const c of mgr.charts.values()) {
+            if (!c || c.host || !c.ready || !c.frame) continue;
+            try {
+                const ic = c.frame.contentWindow && c.frame.contentWindow.chart;
+                const irs = ic && ic.replaySystem;
+                if (irs && irs.isActive && Number.isFinite(irs.replayTimestamp)) {
+                    return irs.replayTimestamp;
+                }
+            } catch (_) {}
+        }
+    }
+    if (typeof document !== "undefined") {
+        try {
+            const iframes = document.querySelectorAll("iframe");
+            for (let i = 0; i < iframes.length; i++) {
+                const ic = iframes[i].contentWindow && iframes[i].contentWindow.chart;
+                const irs = ic && ic.replaySystem;
+                if (irs && irs.isActive && Number.isFinite(irs.replayTimestamp)) {
+                    return irs.replayTimestamp;
+                }
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
+/** Re-enter backtest replay on tile A when layout split left it on full-file view. */
+function alignHostChartForMultichart(ch, mgr) {
     if (!ch) return;
     try {
         const rs = ch.replaySystem;
-        if (rs && rs.isActive) {
-            if (typeof rs.syncReplayViewportToPlayhead === "function") {
+        const inBacktest = !!(ch.isBacktestMode && ch.backtestingSession);
+        if (!inBacktest || !rs) {
+            if (rs && rs.isActive && typeof rs.syncReplayViewportToPlayhead === "function") {
                 rs.syncReplayViewportToPlayhead(ch, {
                     centerPlayhead: true,
                     resetPriceScale: true,
@@ -818,15 +861,50 @@ function syncHostReplayViewport(ch) {
                 });
                 return;
             }
-            if (typeof rs.scheduleReplayFollowOnceLayoutSettled === "function") {
-                rs.scheduleReplayFollowOnceLayoutSettled();
-                return;
+            if (typeof ch.fitToView === "function") {
+                ch._chartViewRestored = false;
+                ch.fitToView();
+                if (typeof ch.render === "function") ch.render();
             }
+            return;
         }
-        if (typeof ch.fitToView === "function") {
-            ch._chartViewRestored = false;
-            ch.fitToView();
-            if (typeof ch.render === "function") ch.render();
+
+        const playheadMs = resolveHostReplayPlayheadMs(ch, mgr);
+
+        if (!rs.isActive && typeof rs.enterReplayMode === "function") {
+            const enterOpts = { startAtBeginning: true };
+            if (Number.isFinite(playheadMs)) {
+                enterOpts.preservePlayhead = true;
+                enterOpts.initialReplayTimestamp = playheadMs;
+            }
+            rs.enterReplayMode(enterOpts);
+        } else if (rs.isActive && Number.isFinite(playheadMs)
+            && typeof rs.goToReplayTimestamp === "function") {
+            rs.goToReplayTimestamp(playheadMs);
+        }
+
+        if (typeof rs.syncReplayViewportToPlayhead === "function") {
+            rs.syncReplayViewportToPlayhead(ch, {
+                centerPlayhead: true,
+                resetPriceScale: true,
+                render: true,
+            });
+        } else if (typeof ch.render === "function") {
+            ch.render();
+        }
+    } catch (_) {}
+}
+
+function syncHostReplayViewport(ch) {
+    alignHostChartForMultichart(ch, null);
+}
+
+function syncAllIframesToHost(mgr) {
+    if (!mgr || typeof mgr._initialSyncToHost !== "function") return;
+    try {
+        for (const c of mgr.charts.values()) {
+            if (!c || c.host || !c.ready) continue;
+            mgr._initialSyncToHost(c);
         }
     } catch (_) {}
 }
@@ -842,7 +920,7 @@ function applyHostSlot(cellEl) {
             ch._lastResizeDpr = 0;
             ch.resize();
             if (typeof ch.render === "function") ch.render();
-            syncHostReplayViewport(ch);
+            alignHostChartForMultichart(ch, null);
         }
     } catch (_) {}
 }
@@ -1519,7 +1597,9 @@ export default function MultichartGrid({
                     // pass on the HOST replaySystem (shared with in-page panels).
                     setTimeout(function () {
                         try {
-                            syncHostReplayViewport(window.chart);
+                            const mgr = managerRef.current;
+                            alignHostChartForMultichart(window.chart, mgr);
+                            syncAllIframesToHost(mgr);
                         } catch (_) { /* ignore */ }
                     }, 0);
                 },
@@ -1605,6 +1685,11 @@ export default function MultichartGrid({
                     if (typeof hostBridge.setSyncModeGate === "function") {
                         hostBridge.setSyncModeGate(managerRef.current.syncMode);
                     }
+                    setTimeout(function () {
+                        try {
+                            alignHostChartForMultichart(window.chart, managerRef.current);
+                        } catch (_) {}
+                    }, 50);
                 } catch (e) {
                     console.error("[MultichartGrid] addHostChart failed:", e);
                 }
@@ -1774,12 +1859,12 @@ export default function MultichartGrid({
             requestAnimationFrame(() => {
                 repaintAllPanelSurfaces(container, cellA);
                 const mgr = managerRef.current;
+                try {
+                    alignHostChartForMultichart(window.chart, mgr);
+                } catch (_) {}
                 if (mgr && mgr.syncMode && mgr.syncMode.visibleRange) {
                     try {
-                        for (const c of mgr.charts.values()) {
-                            if (c.host || !c.ready) continue;
-                            mgr._initialSyncToHost(c);
-                        }
+                        syncAllIframesToHost(mgr);
                     } catch (_) {}
                 }
                 if (computeFocusedRectRef.current) {

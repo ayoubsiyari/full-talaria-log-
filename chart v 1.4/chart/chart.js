@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b249';
+const CHART_ENGINE_BUILD = '20260602b250';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -12618,6 +12618,20 @@ class Chart {
             const i1 = Math.min(this.data.length, i0 + Math.ceil(plotW / spacing));
             if (i1 > i0) return;
             this._chartViewRestored = false;
+            const rs = this.replaySystem;
+            if (this.isBacktestMode && rs) {
+                if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
+                    rs.enterReplayMode({ startAtBeginning: true });
+                }
+                if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
+                    rs.syncReplayViewportToPlayhead(this, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        render: true,
+                    });
+                    return;
+                }
+            }
             this.jumpToLatest();
         });
     }
