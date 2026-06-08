@@ -3329,9 +3329,29 @@ class Chart {
     /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
     _getRawDataCap() {
         const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        if (tf === '1m' || tf === '5m') return 5000;
-        if (tf === '15m' || tf === '30m') return 6000;
-        return this._RAW_DATA_CAP || 8000;
+        let baseCap;
+        if (tf === '1m' || tf === '5m') baseCap = 5000;
+        else if (tf === '15m' || tf === '30m') baseCap = 6000;
+        else baseCap = this._RAW_DATA_CAP || 8000;
+
+        // Viewport-aware floor: when zoomed out to the max, the number of candles
+        // visible on screen can exceed baseCap. Trimming to baseCap would then evict
+        // candles that are still on-screen (e.g. dragging right to reveal older bars
+        // would unload the newest visible candles). Keep the cap at least as large as
+        // the visible window plus a history buffer so the ring buffer never trims
+        // anything currently in view.
+        try {
+            const m = this.margin || { l: 60, r: 60 };
+            const cw = Math.max(1, this.w - m.l - m.r);
+            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+            if (Number.isFinite(spacing) && spacing > 0) {
+                const visibleCandles = Math.ceil(cw / spacing);
+                // 1.5x visible keeps a scroll buffer on each side; hard ceiling guards memory.
+                const viewportCap = Math.ceil(visibleCandles * 1.5) + 500;
+                return Math.min(20000, Math.max(baseCap, viewportCap));
+            }
+        } catch (_e) { /* fall through to baseCap */ }
+        return baseCap;
     }
 
     _markScalesDirty() {
