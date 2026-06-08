@@ -2407,22 +2407,45 @@ class Chart {
 
         const playheadTs = this._resolveMultichartReplayPlayheadMs();
 
-        this.currentTimeframe = normalizedTf;
+        // Drop any in-flight ensureReplayDataCoversTimestamp fetch that captured the
+        // old display TF — when it completes it would reset currentTimeframe + bars to 1m.
+        this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
+        this._ensureReplayDataInflight = null;
+
+        this._commitTimeframeChange(normalizedTf);
         this._nativeRawFetchTf = '1m';
 
-        replay.fullRawData = [...this._panelFullRawData];
-        replay.rawTimeframe = '1m';
-        replay._fullRawDataMatchesTF = false;
         replay.animatingCandle = null;
         replay.tickProgress = 0;
         replay.tickElapsedMs = 0;
         replay.tickPathCache = {};
         replay.tickPathCacheBuilt = false;
 
-        this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
+        if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+            this._reseedReplayFullRawFromLoadedData();
+        } else {
+            replay.fullRawData = [...this._panelFullRawData];
+            replay.rawTimeframe = '1m';
+            replay._fullRawDataMatchesTF = false;
+        }
 
-        if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
-        this._scheduleIndicatorsAfterTimeframe();
+        if (Number.isFinite(playheadTs)) {
+            this._applyIndependentPanelReplaySlice(playheadTs);
+        } else if (typeof replay.updateChartData === 'function') {
+            replay.updateChartData(true);
+        }
+
+        const finish = () => {
+            if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
+            this._scheduleIndicatorsAfterTimeframe();
+        };
+
+        if (typeof replay.onTimeframeChange === 'function') {
+            replay.onTimeframeChange(this, { onReady: finish });
+        } else {
+            this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
+            finish();
+        }
         return true;
     }
 
@@ -2485,6 +2508,20 @@ class Chart {
             && covers(replayForCover.fullRawData)) {
             return true;
         }
+        if (this._isIndependentMultichartPair()
+            && Array.isArray(this._panelFullRawData)
+            && this._panelFullRawData.length > 0
+            && covers(this._panelFullRawData)) {
+            if (replayForCover?.isActive) {
+                if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                    this._reseedReplayFullRawFromLoadedData();
+                }
+                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+                    this._applyIndependentPanelReplaySlice(ts);
+                }
+            }
+            return true;
+        }
 
         const session = this.backtestingSession;
         const fileId = this.currentFileId;
@@ -2494,6 +2531,7 @@ class Chart {
             return this._ensureReplayDataInflight;
         }
 
+        const captureGeneration = this._ensureReplayDataGeneration || 0;
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
         let replayRawTf = displayTf;
         try {
@@ -2508,6 +2546,11 @@ class Chart {
 
         this._ensureReplayDataInflight = (async () => {
             try {
+                if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
+                    || this._timeframeSwitching) {
+                    return false;
+                }
+
                 if (wasPlaying && replay && typeof replay.pause === 'function') {
                     replay.pause();
                 }
@@ -2536,15 +2579,20 @@ class Chart {
                 }
                 if (!this._smartResponseHasPayload(result)) return false;
 
+                if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
+                    || this._timeframeSwitching) {
+                    return false;
+                }
+
                 this._nativeRawFetchTf = replayRawTf;
                 this._ingestSmartWindowResult(result, {
                     skipIndicators: true,
                     skipFitToView: true,
                     skipTimeframePrefetch: true,
                 });
-                if (displayTf !== replayRawTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    this.currentTimeframe = displayTf;
-                    this.data = this.resampleData(this.rawData, displayTf);
+                const finishDisplayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || displayTf;
+                if (finishDisplayTf !== replayRawTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this.data = this.resampleData(this.rawData, finishDisplayTf);
                     if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
                         this._trimLastDataBarToReplayPlayhead();
                     }
@@ -2558,12 +2606,19 @@ class Chart {
                 };
 
                 if (replay && wasActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    replay.fullRawData = [...this.rawData];
-                    replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
-                    replay.rawTimeframe = replayRawTf;
-                    replay._fullRawDataMatchesTF = false;
-                    replay.tickPathCache = {};
-                    replay.tickPathCacheBuilt = false;
+                    if (this._isIndependentMultichartPair()
+                        && Array.isArray(this._panelFullRawData)
+                        && this._panelFullRawData.length > 0
+                        && typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                        this._reseedReplayFullRawFromLoadedData();
+                    } else {
+                        replay.fullRawData = [...this.rawData];
+                        replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
+                        replay.rawTimeframe = replayRawTf;
+                        replay._fullRawDataMatchesTF = false;
+                        replay.tickPathCache = {};
+                        replay.tickPathCacheBuilt = false;
+                    }
                     let sessionStartMs = null;
                     try {
                         const rawStart = session.startDate || session.start_date;
@@ -15507,6 +15562,8 @@ class Chart {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
         this._timeframeFetchAbort = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        this._ensureReplayDataGeneration = (this._ensureReplayDataGeneration || 0) + 1;
+        this._ensureReplayDataInflight = null;
         this._timeframeSwitching = true;
         this._switchingFromTimeframe = fromTf || this.currentTimeframe || null;
         this._switchingToTimeframe = toTf || null;

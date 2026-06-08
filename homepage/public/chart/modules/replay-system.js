@@ -5364,18 +5364,12 @@ class ReplaySystem {
             sliced.push(indep.candle);
             chart.rawData = sliced;
             const tp = this.tickProgress || 0;
-            if (chart.data && chart.data.length > 0 && tp > 1) {
-                const last = chart.data[chart.data.length - 1];
-                last.h = Math.max(last.h, indep.candle.h);
-                last.l = Math.min(last.l, indep.candle.l);
-                last.c = indep.candle.c;
-                last.v = indep.candle.v;
-            } else {
-                chart.data = chart.resampleData(sliced, chart.currentTimeframe);
-                if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
-                    && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
-                    chart._trimLastDataBarToReplayPlayhead();
-                }
+            // Independent panels resample 1m master → display TF; in-place last-bar
+            // patches are only valid when display TF matches raw granularity (1m).
+            chart.data = chart.resampleData(sliced, chart.currentTimeframe);
+            if (typeof chart._trimLastDataBarToReplayPlayhead === 'function'
+                && !(this.animatingCandle && (this.tickProgress || 0) > 0)) {
+                chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
             if (this.autoScrollEnabled && tp > 0 && tp % 8 === 0 && chart.fitToView) {
