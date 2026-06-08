@@ -48,6 +48,14 @@
         try { fn.call(console, '[multichart-embed:' + chartId + ']', text); } catch (_) {}
     }
 
+    function markViewportBootSettle(chart, ms) {
+        if (!chart) return;
+        var now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        chart._multichartViewportSettleUntil = now + (ms || 2500);
+    }
+
     function pollFor(predicate, intervalMs, maxMs, onReady, onTimeout) {
         var start = Date.now();
         var tick = function () {
@@ -236,6 +244,7 @@
             return;
         }
         try {
+            markViewportBootSettle(ch, 2800);
             // Hint timeframe BEFORE load so first-paint resamples to the
             // correct tf instead of paint-then-resample.
             if (tf && typeof ch.currentTimeframe === 'string') {
@@ -694,6 +703,7 @@
                 });
             } catch (_) {}
             var afterLoad = function () {
+                markViewportBootSettle(ch, 1600);
                 // Only switch tf when it actually differs — calling
                 // setTimeframe with the already-loaded tf would trigger a
                 // redundant re-fetch that, in replay, can re-anchor the
@@ -862,6 +872,7 @@
                     var lp = ch.loadFileData(String(loadFid));
                     var bootReplay = function () {
                         ch._multichartPairLoadInFlight = false;
+                        markViewportBootSettle(ch, 1600);
                         if (!Number.isFinite(playheadTs)) {
                             afterLoad();
                             return;

@@ -391,10 +391,23 @@
         return Math.max(0, i1 - i0);
     }
 
-    /** When sync leaves zero bars on screen, jump to latest (TradingView dbl-click parity). */
+    function isViewportBootSettling(chart) {
+        if (!chart) return false;
+        const until = chart._multichartViewportSettleUntil;
+        if (!Number.isFinite(until)) return false;
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        return now < until;
+    }
+
+    /** When sync leaves zero bars on screen, recover without resetting zoom on iframe tiles. */
     function recoverViewportIfEmpty(chart) {
         if (!chart || !chart.data || !chart.data.length) return false;
         if (countVisibleBars(chart) > 0) return false;
+        // During iframe boot, transient zero-bar frames are normal — skip
+        // recovery so we don't fight incoming visibleRange sync (causes shake).
+        if (isViewportBootSettling(chart)) return false;
 
         chart._chartViewRestored = false;
 
@@ -411,9 +424,26 @@
                     }
                 }
             } catch (_) {}
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                try {
+                    replay.syncReplayViewportToPlayhead(chart, {
+                        centerPlayhead: true,
+                        resetPriceScale: false,
+                        render: true,
+                    });
+                    return countVisibleBars(chart) > 0;
+                } catch (_) {}
+            }
         }
 
-        if (typeof chart.jumpToLatest === 'function') {
+        const isEmbed = typeof chart._isMultichartEmbedPanel === 'function'
+            && chart._isMultichartEmbedPanel();
+        if (isEmbed) {
+            if (typeof chart.fitToView === 'function') {
+                chart.fitToView();
+                if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
+            }
+        } else if (typeof chart.jumpToLatest === 'function') {
             chart.jumpToLatest();
         } else if (typeof chart.fitToView === 'function') {
             chart.fitToView();
@@ -423,7 +453,9 @@
     }
 
     function finishViewportApply(chart, panSync) {
-        recoverViewportIfEmpty(chart);
+        if (!isViewportBootSettling(chart)) {
+            recoverViewportIfEmpty(chart);
+        }
         chart._chartViewRestored = countVisibleBars(chart) > 0;
         if (panSync) {
             chart._panSyncBurstUntil = performance.now() + 48;
@@ -569,7 +601,9 @@
             if (Number.isFinite(r0) && Number.isFinite(r1) && r1 >= r0) {
                 const recEndExclusive = r1 + barSec;
                 if (!(startSec < recEndExclusive && r0 < endSec)) {
-                    recoverViewportIfEmpty(chart);
+                    if (!isViewportBootSettling(chart)) {
+                        recoverViewportIfEmpty(chart);
+                    }
                     if (chart.priceScale) chart.priceScale.autoScale = true;
                     chart.autoScale = true;
                     if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
@@ -636,8 +670,8 @@
             }
         }
 
-        // Safety net: if alignment left zero bars on screen, jump to latest.
-        if (countVisibleBars(chart) === 0) {
+        // Safety net: if alignment left zero bars on screen, recover once boot settles.
+        if (!isViewportBootSettling(chart) && countVisibleBars(chart) === 0) {
             recoverViewportIfEmpty(chart);
         }
 

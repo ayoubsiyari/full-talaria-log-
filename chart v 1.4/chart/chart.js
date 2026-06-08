@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b250';
+const CHART_ENGINE_BUILD = '20260602b251';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -12605,10 +12605,18 @@ class Chart {
      */
     _scheduleViewportEmptyRecovery() {
         if (this._viewportEmptyRecoverPending) return;
+        if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
+            const until = this._multichartViewportSettleUntil;
+            if (Number.isFinite(until) && performance.now() < until) return;
+        }
         this._viewportEmptyRecoverPending = true;
         requestAnimationFrame(() => {
             this._viewportEmptyRecoverPending = false;
             if (!this.data || this.data.length === 0) return;
+            if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
+                const until = this._multichartViewportSettleUntil;
+                if (Number.isFinite(until) && performance.now() < until) return;
+            }
             const m = this.margin;
             const plotW = this.w - m.l - m.r;
             if (plotW <= 0) return;
