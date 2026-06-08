@@ -2483,8 +2483,6 @@ class ReplaySystem {
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
-        // Same gate as updateChartData: never re-scroll while user is exploring history.
-        if (!opts.force && !this.autoScrollEnabled) return false;
 
         let offsetX = null;
         if (opts.centerPlayhead) {
@@ -5286,27 +5284,51 @@ class ReplaySystem {
         };
     }
 
-    /**
-     * Iframe mirror tail — must match updateChartData(): only touch offsetX when follow is on.
-     */
     _finishMultichartMirrorRender(chart) {
         if (!chart) return;
         chart.isLoading = false;
 
-        if (this.autoScrollEnabled) {
-            this.syncReplayViewportToPlayhead(chart, { resetPriceScale: false, render: false });
+        if (Array.isArray(chart.data) && chart.data.length > 0) {
+            const m = chart.margin || { l: 60, r: 70 };
+            const plotW = Math.max(1, (Number(chart.w) || 320) - m.l - m.r);
+            const cs = chart.getCandleSpacing
+                ? chart.getCandleSpacing()
+                : (chart.candleWidth + (chart.candleGap || 2));
+            const safeCs = Number.isFinite(cs) && cs > 0 ? cs : 8;
+            const i0 = Math.max(0, -Math.floor((chart.offsetX || 0) / safeCs) - 5);
+            const i1 = Math.min(
+                chart.data.length,
+                -Math.floor((chart.offsetX || 0) / safeCs) + Math.ceil(plotW / safeCs) + 5
+            );
+            const visibleBars = Math.max(0, i1 - i0);
+            const needsRecovery = typeof chart._multichartViewportNeedsRecovery === 'function'
+                && chart._multichartViewportNeedsRecovery();
+            const needsScroll = needsRecovery
+                || visibleBars === 0
+                || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
+            if (needsScroll || this.autoScrollEnabled) {
+                const st = typeof this.getReplayAutoScrollState === 'function'
+                    ? this.getReplayAutoScrollState(chart)
+                    : null;
+                if (needsRecovery && typeof chart._syncIndependentPanelViewportIfNeeded === 'function') {
+                    chart._syncIndependentPanelViewportIfNeeded({
+                        resetPriceScale: false,
+                        render: false,
+                    });
+                } else if (st && Number.isFinite(st.offsetX)) {
+                    chart.offsetX = st.offsetX;
+                    chart._chartViewRestored = true;
+                } else if (needsScroll && typeof chart.fitToView === 'function') {
+                    chart._chartViewRestored = false;
+                    chart.fitToView();
+                }
+            }
         }
 
-        if (typeof chart.constrainOffset === 'function') {
-            chart.constrainOffset();
-        }
-
-        chart.renderPending = true;
+        if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
         if (typeof chart.render === 'function') {
+            chart.renderPending = true;
             chart.render();
-        }
-        if (typeof chart._syncReplayPlayheadCrosshairValues === 'function') {
-            chart._syncReplayPlayheadCrosshairValues();
         }
         if (chart.orderManager && typeof chart.orderManager.updatePositions === 'function') {
             try { chart.orderManager.updatePositions(); } catch (_e) { /* ignore */ }

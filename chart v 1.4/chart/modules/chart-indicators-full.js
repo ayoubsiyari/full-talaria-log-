@@ -8666,30 +8666,6 @@ Chart.prototype._syncReplayPlayheadCrosshairValues = function() {
     if (typeof this.syncCrosshairIndicatorValues === 'function') {
         this.syncCrosshairIndicatorValues();
     }
-
-    let candle = null;
-    const replay = this.replaySystem;
-    const ac = replay.animatingCandle;
-    const tickReplay = typeof replay.getPlaybackMode === 'function'
-        && replay.getPlaybackMode() === 'tick';
-    if (ac && !replay.fastMode && tickReplay) {
-        candle = {
-            t: ac.t,
-            o: ac.open,
-            h: ac.high,
-            l: ac.low,
-            c: ac.close,
-            v: ac.volume || 0,
-        };
-    } else {
-        const barIdx = this.data.length - 1;
-        candle = typeof this.getDisplayCandle === 'function'
-            ? this.getDisplayCandle(barIdx)
-            : this.data[barIdx];
-    }
-    if (candle && typeof this.updateOHLCFromCandle === 'function') {
-        this.updateOHLCFromCandle(candle);
-    }
 };
 
 Chart.prototype._pickFiniteSeriesValue = function(arr, barIdx) {

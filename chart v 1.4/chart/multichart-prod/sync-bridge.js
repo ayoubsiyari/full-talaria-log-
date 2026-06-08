@@ -405,14 +405,13 @@
     function recoverViewportIfEmpty(chart) {
         if (!chart || !chart.data || !chart.data.length) return false;
         if (countVisibleBars(chart) > 0) return false;
-        const replay = chart.replaySystem;
-        if (replay && !replay.autoScrollEnabled) return false;
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;
 
         chart._chartViewRestored = false;
 
+        const replay = chart.replaySystem;
         if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
             try {
                 const st = replay.getReplayAutoScrollState(chart);
@@ -1603,11 +1602,6 @@
         }
 
         function applyVisibleRange(m) {
-            const replay = chart.replaySystem;
-            if (replay && !replay.autoScrollEnabled) {
-                if (m && m.causationId) state.applied.add(m.causationId);
-                return;
-            }
             const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);

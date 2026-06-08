@@ -438,123 +438,6 @@
         return eventMatchesChartPair(e, pair);
     }
 
-    function isMultichartEmbedIframe() {
-        try {
-            if (window.parent === window) return false;
-            return new URLSearchParams(window.location.search || '').get('multichart') === '1';
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function canUseParentCalendarSource() {
-        if (!isMultichartEmbedIframe()) return false;
-        try {
-            var parentApi = window.parent.__economicCalendarForChart;
-            return !!(parentApi && typeof parentApi.getSourceEvents === 'function');
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function getParentNewsFilters() {
-        try {
-            var ui = window.parent.__economicCalendarUi;
-            if (ui && typeof ui.getStatus === 'function') {
-                var st = ui.getStatus();
-                if (st && st.filters) {
-                    return cloneNewsFilters(st.filters);
-                }
-            }
-        } catch (e2) {}
-        return null;
-    }
-
-    function cloneNewsFilters(f) {
-        if (!f || typeof f !== 'object') return null;
-        return {
-            impactHigh: !!f.impactHigh,
-            impactMedium: !!f.impactMedium,
-            impactLow: !!f.impactLow,
-            pairOnly: !!f.pairOnly,
-            countryCodes: Array.isArray(f.countryCodes) ? f.countryCodes.slice() : []
-        };
-    }
-
-    /** Live parent filters, else last host broadcast snapshot (multichart iframe). */
-    function getEffectiveNewsFiltersForEmbed() {
-        var pf = getParentNewsFilters();
-        if (pf) return pf;
-        try {
-            if (window.__multichartMirroredNewsFilters) {
-                return cloneNewsFilters(window.__multichartMirroredNewsFilters);
-            }
-        } catch (e0) {}
-        return null;
-    }
-
-    function snapshotNewsFilters() {
-        return cloneNewsFilters(state.filters);
-    }
-
-    function invalidateAxisEventsCache() {
-        _axisEventsCacheFp = '';
-        _axisEventsCacheArr = null;
-    }
-
-    /** Apply host filter snapshot on iframe tiles — no Finnhub refetch or rebroadcast. */
-    function applyMirroredNewsFilters(filters) {
-        var f = cloneNewsFilters(filters);
-        if (!f) return;
-        try { window.__multichartMirroredNewsFilters = f; } catch (e0) {}
-        state.filters.impactHigh = f.impactHigh;
-        state.filters.impactMedium = f.impactMedium;
-        state.filters.impactLow = f.impactLow;
-        state.filters.pairOnly = f.pairOnly;
-        state.filters.countryCodes = f.countryCodes.slice();
-        invalidateAxisEventsCache();
-    }
-
-    /** Raw marker rows (before user filters) from the local Finnhub cache. */
-    function collectMarkerSourceEvents() {
-        var source = [];
-        var keys = Object.keys(chartMarkerEventByKey);
-        if (keys.length > 0) {
-            for (var ki = 0; ki < keys.length; ki++) {
-                source.push(chartMarkerEventByKey[keys[ki]]);
-            }
-        } else if (state.events && state.events.length) {
-            source = state.events.slice();
-        }
-        if (source.length) {
-            source.sort(function (a, b) { return a.t - b.t; });
-        }
-        return source;
-    }
-
-    function filterSourceEvents(source, filters) {
-        if (!source || !source.length) return [];
-        if (!filters) return [];
-        var saved = state.filters;
-        state.filters = filters;
-        var out = source.filter(passesUserFilters);
-        state.filters = saved;
-        return out;
-    }
-
-    /** Host-only: tell multichart iframe tiles to repaint time-axis news markers. */
-    function requestMultichartNewsMarkerRedraw() {
-        if (isMultichartEmbedIframe()) return;
-        try {
-            var grid = window.__multichartGrid;
-            if (grid && typeof grid.broadcastToIframesNoReply === 'function') {
-                grid.broadcastToIframesNoReply('redrawEconomicNewsMarkers', {
-                    filters: snapshotNewsFilters()
-                });
-            }
-        } catch (e) {}
-    }
-
     function escapeHtml(s) {
         return String(s)
             .replace(/&/g, '&amp;')
@@ -910,7 +793,6 @@
             render();
             startCountdownLoop();
             requestChartMarkerRedraw();
-            requestMultichartNewsMarkerRedraw();
             syncFilterControlsToDom();
         }
     }
@@ -1078,32 +960,29 @@
      * Pair-filtered releases for the loaded range — used on the time axis, not search/tab.
      */
     window.__economicCalendarForChart = {
-        /** Unfiltered Finnhub rows for multichart iframe tiles (host is source of truth). */
-        getSourceEvents: function () {
-            return collectMarkerSourceEvents();
-        },
         getEvents: function () {
-            if (canUseParentCalendarSource()) {
-                try {
-                    var parentSource = window.parent.__economicCalendarForChart.getSourceEvents();
-                    var embedFilters = getEffectiveNewsFiltersForEmbed();
-                    if (!embedFilters) return [];
-                    return filterSourceEvents(parentSource, embedFilters);
-                } catch (eEmbed) {
-                    return [];
-                }
-            }
             var fp = axisEventsCacheFingerprint();
             if (fp === _axisEventsCacheFp && _axisEventsCacheArr) {
                 return _axisEventsCacheArr;
             }
-            var source = collectMarkerSourceEvents();
+            var source = [];
+            var keys = Object.keys(chartMarkerEventByKey);
+            if (keys.length > 0) {
+                for (var ki = 0; ki < keys.length; ki++) {
+                    source.push(chartMarkerEventByKey[keys[ki]]);
+                }
+            } else if (state.events && state.events.length) {
+                source = state.events.slice();
+            }
             if (!source.length) {
                 _axisEventsCacheFp = fp;
                 _axisEventsCacheArr = [];
                 return _axisEventsCacheArr;
             }
-            var out = filterSourceEvents(source, state.filters);
+            source.sort(function (a, b) { return a.t - b.t; });
+            var out = source.filter(function (e) {
+                return passesUserFilters(e);
+            });
             _axisEventsCacheFp = fp;
             _axisEventsCacheArr = out;
             return out;
@@ -1185,10 +1064,6 @@
     });
 
     function onChartContextReady() {
-        if (canUseParentCalendarSource()) {
-            requestChartMarkerRedraw();
-            return;
-        }
         var rng = getCalendarFetchRange();
         // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
         if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
@@ -1287,12 +1162,7 @@
             saveFiltersToStorage();
             syncFilterControlsToDom();
             render();
-            invalidateAxisEventsCache();
             requestChartMarkerRedraw();
-            requestMultichartNewsMarkerRedraw();
-        },
-        applyMirroredFilters: function (filters) {
-            applyMirroredNewsFilters(filters);
         },
         displayForEvent: function (e) {
             if (!e || !Number.isFinite(e.t)) return null;

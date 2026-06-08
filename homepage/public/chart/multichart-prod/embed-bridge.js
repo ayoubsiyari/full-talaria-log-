@@ -716,11 +716,6 @@
                     if (typeof ch.render === 'function') ch.render();
                 } catch (_) {}
                 try {
-                    if (typeof ch.updateChartOHLCSymbol === 'function' && ch.currentSymbol) {
-                        ch.updateChartOHLCSymbol(ch.currentSymbol);
-                    }
-                } catch (_) {}
-                try {
                     if (ch.drawingManager && typeof ch.drawingManager.redrawAll === 'function'
                         && ch.xScale && ch.yScale) {
                         ch.drawingManager.redrawAll();
