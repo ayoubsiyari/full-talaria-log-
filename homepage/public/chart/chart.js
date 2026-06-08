@@ -28106,6 +28106,34 @@ async function _talariaInitializeChart() {
     const chartInstance = new Chart();
     window.chart = chartInstance;
     window.mainChart = chartInstance;
+    if (typeof window.__talariaMemStats !== 'function') {
+        window.__talariaMemStats = function talariaMemStats() {
+            const ch = window.chart;
+            const rs = ch && ch.replaySystem;
+            const mem = (typeof performance !== 'undefined' && performance.memory)
+                ? {
+                    jsHeapUsedMB: Math.round(performance.memory.usedJSHeapSize / 1048576),
+                    jsHeapTotalMB: Math.round(performance.memory.totalJSHeapSize / 1048576),
+                }
+                : null;
+            const tickCacheSize = rs && rs.tickPathCache && typeof rs.tickPathCache.size === 'number'
+                ? rs.tickPathCache.size
+                : (rs && rs.tickPathCache ? Object.keys(rs.tickPathCache).length : 0);
+            return {
+                mem,
+                fileId: ch && ch.currentFileId,
+                timeframe: ch && ch.currentTimeframe,
+                rawBars: ch && Array.isArray(ch.rawData) ? ch.rawData.length : 0,
+                displayBars: ch && Array.isArray(ch.data) ? ch.data.length : 0,
+                replayFullRawBars: rs && Array.isArray(rs.fullRawData) ? rs.fullRawData.length : 0,
+                tickPathCacheEntries: tickCacheSize,
+                tickPathCacheMax: rs && rs._tickPathCacheMax,
+                tfCacheFiles: ch && ch._tfDataCache ? ch._tfDataCache.size : 0,
+                btTfCacheFiles: ch && ch._btTfDataCache ? ch._btTfDataCache.size : 0,
+                smartPrefetchEntries: ch && ch._smartPrefetchCache ? ch._smartPrefetchCache.size : 0,
+            };
+        };
+    }
     if (typeof CHART_ENGINE_BUILD === 'string') {
         console.info('[Talaria chart engine]', CHART_ENGINE_BUILD);
     }
