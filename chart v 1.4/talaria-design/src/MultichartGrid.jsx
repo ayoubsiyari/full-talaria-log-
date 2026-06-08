@@ -34,7 +34,7 @@
  *     right-panel layout tab.
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 // Phase 7.2.5: tile id "A" is the HOST tile — it does NOT spawn an iframe.
 // Instead, the parent's existing #chartWrapper (the original main chart with
@@ -1352,6 +1352,15 @@ export default function MultichartGrid({
     // focused panel reports a new tf / fileId / symbol.
     const focusedPanelIdRef = useRef(focusedPanelId);
     useEffect(() => { focusedPanelIdRef.current = focusedPanelId; }, [focusedPanelId]);
+
+    /** Keep ref + React state in sync immediately — runCommand reads the ref, not state. */
+    const focusPanelById = useCallback((id) => {
+        if (!id) return;
+        focusedPanelIdRef.current = id;
+        if (typeof setFocusedPanelId === "function") setFocusedPanelId(id);
+    }, [setFocusedPanelId]);
+    const focusPanelByIdRef = useRef(focusPanelById);
+    focusPanelByIdRef.current = focusPanelById;
     const onStateAnyRef = useRef(null);
 
     // ─── per-host order forwarding state ──────────────────────────────
@@ -1615,9 +1624,7 @@ export default function MultichartGrid({
                 // explicitly via panel-cmd-bridge's focus broadcast.
                 onPanelFocus: function (id) {
                     const prev = focusedPanelIdRef.current;
-                    if (typeof setFocusedPanelId === "function") {
-                        setFocusedPanelId(id);
-                    }
+                    focusPanelByIdRef.current(id);
                     const grid = window.__multichartGrid;
                     if (!grid) return;
                     // Focus changed → full peer cleanup (deselect other tiles, close settings).
@@ -2027,9 +2034,7 @@ export default function MultichartGrid({
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
         const onHostPointerDown = () => {
             const prev = focusedPanelIdRef.current;
-            if (typeof setFocusedPanelId === "function") {
-                setFocusedPanelId(HOST_PANEL_ID);
-            }
+            focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;
             if (!grid) return;
             if (prev !== HOST_PANEL_ID) {
@@ -4901,9 +4906,7 @@ export default function MultichartGrid({
                         data-panel-id={tile.id}
                         data-multichart-host-cell={isHost ? "1" : undefined}
                         onMouseDownCapture={() => {
-                            if (typeof setFocusedPanelId === "function") {
-                                setFocusedPanelId(tile.id);
-                            }
+                            focusPanelById(tile.id);
                             const grid = window.__multichartGrid;
                             if (grid && typeof grid.clearDrawingUiOnOtherPanels === "function") {
                                 grid.clearDrawingUiOnOtherPanels(tile.id);

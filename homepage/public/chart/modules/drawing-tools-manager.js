@@ -9103,13 +9103,8 @@ class DrawingToolsManager {
                     window.__v9OnDrawingDeleted(drawing);
                 } catch (_) {}
             }
-            
-            // Hide the drawing toolbar if it was showing this drawing
-            if (this.toolbar && this.toolbar.currentDrawing === drawing) {
-                this.toolbar.hide();
-            }
-            
-            // Clear selection if deleted drawing was selected
+
+            // Clear selection before hiding toolbar so we know if anything remains selected.
             if (this.selectedDrawing === drawing) {
                 this.selectedDrawing = null;
             }
@@ -9118,6 +9113,23 @@ class DrawingToolsManager {
                 if (!this.selectedDrawing && this.selectedDrawings.length > 0) {
                     this.selectedDrawing = this.selectedDrawings[this.selectedDrawings.length - 1] || null;
                 }
+            }
+
+            const hasRemainingSelection =
+                !!this.selectedDrawing ||
+                (Array.isArray(this.selectedDrawings) && this.selectedDrawings.length > 0);
+            const trackedDeleted =
+                this.toolbar &&
+                (this.toolbar.currentDrawing === drawing ||
+                    (this.toolbar.currentDrawing &&
+                        drawing.id != null &&
+                        this.toolbar.currentDrawing.id != null &&
+                        String(this.toolbar.currentDrawing.id) === String(drawing.id)));
+
+            // Hide V9 quick bar / legacy toolbar when the deleted shape was selected.
+            // V9 often skips legacy toolbar.show(), so currentDrawing may be null even while tlBarSelected is true.
+            if (this.toolbar && (!hasRemainingSelection || trackedDeleted)) {
+                this.toolbar.hide();
             }
             
             // Clear all axis highlights after deletion
