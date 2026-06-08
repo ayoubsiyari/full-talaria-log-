@@ -9012,7 +9012,9 @@ const TalariaV8bLive = () => {
           ? grid.getFocusedPanelId()
           : null;
         const opts = panelId ? { panelId } : undefined;
-        void grid.runCommand("loadFile", { fileId: fid, force: true }, opts);
+        grid.runCommand("loadFile", { fileId: fid, force: true }, opts).catch((err) => {
+          console.warn("[V9 sym] loadFile on panel failed", panelId, err);
+        });
         return;
       }
       const pm = window.panelManager;
@@ -16289,16 +16291,11 @@ const TalariaV8bLive = () => {
 
     const onDrawingDeleted = (drawing) => {
       try {
-        if (!drawing) return;
         const editing = editingDrawingRef.current;
-        if (editing?.drawing && (editing.drawing === drawing || editing.drawing.id === drawing.id)) {
-          try { v9StyleBridgeFlushRef.current?.(); } catch (_) {}
-          dismissShapeSettingsForNewSelection();
-        }
-        setTlBarSelected(false);
-        setTlBarSelectedType(null);
-        v9SyncQuickBarLockFromDrawing(null, setTlLocked, setTxtLocked, setAvLocked, setVpLocked, setVwapLocked);
-        v9DismissQuickBarPopoversSync();
+        if (!editing?.drawing || !drawing) return;
+        if (editing.drawing !== drawing && editing.drawing.id !== drawing.id) return;
+        try { v9StyleBridgeFlushRef.current?.(); } catch (_) {}
+        dismissShapeSettingsForNewSelection();
       } catch (_) {}
     };
 
@@ -22265,9 +22262,6 @@ const TalariaV8bLive = () => {
                 suppressTxtForwardBridge,
                 tool === "text" ? resolveArmedTextLegacyTool() : null,
               );
-              setTlBarSelected(false);
-              setTlBarSelectedType(null);
-              v9DismissQuickBarPopoversSync();
             }
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
@@ -26790,9 +26784,6 @@ const TalariaV8bLive = () => {
                 if (dm.chart) dm.chart.scheduleRender && dm.chart.scheduleRender();
               });
             } catch(err){ console.warn('[V9 delete] failed:', err); }
-            setTlBarSelected(false);
-            setTlBarSelectedType(null);
-            v9DismissQuickBarPopoversSync();
           }}>
             {(_,isAct,col)=><I n="trash" s={16} cl={col}/>}
           </TlBtn>

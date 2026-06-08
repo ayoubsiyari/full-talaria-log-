@@ -5719,7 +5719,6 @@ class DrawingToolsManager {
             this.drawings.forEach(d => {
                 if (d !== drawing) d.deselect();
             });
-            this.toolbar.hide();
 
             drawing.select();
             this.selectedDrawing = drawing;

@@ -251,12 +251,14 @@
     function afterLoadFile(ch, usedMultichartLoader) {
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now() + 800;
+                ch._multichartViewportSettleUntil = performance.now() + 1000;
             } catch (_) {}
         }
         if (usedMultichartLoader) {
             try {
-                if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
+                if (typeof ch._finalizeMultichartPanelAfterPairLoad === 'function') {
+                    ch._finalizeMultichartPanelAfterPairLoad();
+                } else if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
                     ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: true, render: true });
                 }
             } catch (_) {}
@@ -838,17 +840,23 @@
                     if (switchingPair || args.force) {
                         clearReplayBufferForPairSwitch(ch);
                     }
-                    primeIframeReplayPlayheadFromParent(ch);
                     ch._multichartPairLoadInFlight = true;
+                    var primedPlayheadTs = primeIframeReplayPlayheadFromParent(ch);
                     var useMcLoader = shouldUseMultichartPanelLoader(ch);
                     var loadPromise;
                     if (useMcLoader) {
                         if (typeof ch.loadMultichartPanelFile === 'function') {
-                            loadPromise = ch.loadMultichartPanelFile(fidStr, { force: !!args.force });
+                            loadPromise = ch.loadMultichartPanelFile(fidStr, {
+                                force: !!args.force,
+                                replayTimestamp: primedPlayheadTs,
+                                timeframe: ch.currentTimeframe,
+                            });
                         } else {
                             loadPromise = ch.loadMultichartPanelFromHost({
                                 fileId: fidStr,
                                 force: !!args.force,
+                                replayTimestamp: primedPlayheadTs,
+                                timeframe: ch.currentTimeframe,
                             });
                         }
                     } else {

@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b254';
+const CHART_ENGINE_BUILD = '20260602b255';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2309,6 +2309,9 @@ class Chart {
 
                 this.resize();
                 this.render();
+                if (typeof this._finalizeMultichartPanelAfterPairLoad === 'function') {
+                    this._finalizeMultichartPanelAfterPairLoad();
+                }
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
@@ -2532,6 +2535,49 @@ class Chart {
             resetPriceScale: opts.resetPriceScale !== false,
             render: opts.render !== false,
         });
+    }
+
+    /**
+     * Post pair-switch passes: resize + replay viewport follow (iframe B/C/D often
+     * have chart.w=0 on first paint — without deferred passes the chart stays blank
+     * until host tile A triggers a global replay sync).
+     */
+    _finalizeMultichartPanelAfterPairLoad() {
+        const replay = this.replaySystem;
+        const settleMs = this._isMultichartEmbedPanel?.() ? 1000 : 400;
+        try {
+            this._multichartViewportSettleUntil = performance.now() + settleMs;
+        } catch (_) {}
+
+        const pass = (passOpts = {}) => {
+            try {
+                if (typeof this.resize === 'function') this.resize();
+                if (replay?.isActive) {
+                    if (typeof this._syncIndependentPanelViewportIfNeeded === 'function') {
+                        this._syncIndependentPanelViewportIfNeeded({
+                            resetPriceScale: passOpts.resetPriceScale !== false,
+                            render: true,
+                        });
+                    } else if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                        replay.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: true,
+                            resetPriceScale: passOpts.resetPriceScale !== false,
+                            render: true,
+                        });
+                    } else if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
+                        replay.scheduleReplayFollowOnceLayoutSettled();
+                    }
+                }
+                if (typeof this.render === 'function') this.render();
+            } catch (_e) { /* ignore */ }
+        };
+
+        pass({ resetPriceScale: true });
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(() => pass({ resetPriceScale: false })));
+        }
+        setTimeout(() => pass({ resetPriceScale: false }), 120);
+        setTimeout(() => pass({ resetPriceScale: false }), 450);
     }
 
     /**

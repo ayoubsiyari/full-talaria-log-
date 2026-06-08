@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260602a496";
+const BRIDGE_VERSION = "20260602a502";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -3524,16 +3524,49 @@ export default function MultichartGrid({
         // Optional opts.panelId pins the command to a specific panel
         // (used by per-panel persistence flows). Without opts.panelId
         // the bus targets the currently focused panel.
+        function finalizeIframePanelAfterPairLoad(panelId) {
+            if (!panelId || panelId === HOST_PANEL_ID) return;
+            const mgr = managerRef.current;
+            if (!mgr) return;
+            const host = window.chart;
+            const hostRs = host && host.replaySystem;
+            if (!hostRs || !hostRs.isActive) return;
+            const ts = Number(hostRs.replayTimestamp);
+            if (!Number.isFinite(ts)) return;
+            const push = function () {
+                try {
+                    if (typeof mgr.sendCommandNoReply === "function") {
+                        mgr.sendCommandNoReply(panelId, "syncReplayFromHost", { force: true });
+                    } else {
+                        mgr.sendCommand(panelId, "syncReplayFromHost", { force: true }).catch(() => {});
+                    }
+                } catch (_) {}
+            };
+            setTimeout(push, 950);
+            setTimeout(push, 1600);
+        }
+
         function runCommand(cmd, args, opts) {
             const target = (opts && opts.panelId)
                 ? opts.panelId
                 : (focusedPanelIdRef.current || HOST_PANEL_ID);
-            if (target === HOST_PANEL_ID) return applyHostCommand(cmd, args);
+            if (target === HOST_PANEL_ID) {
+                return applyHostCommand(cmd, args).then((data) => {
+                    if (cmd === "loadFile" && args && args.force
+                        && typeof window.chart?._finalizeMultichartPanelAfterPairLoad === "function") {
+                        try { window.chart._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
+                    }
+                    return data;
+                });
+            }
             const mgr = managerRef.current;
             if (!mgr || typeof mgr.sendCommand !== "function") {
                 return Promise.reject(new Error("manager not ready"));
             }
-            return mgr.sendCommand(target, cmd, args);
+            return mgr.sendCommand(target, cmd, args).then((data) => {
+                if (cmd === "loadFile") finalizeIframePanelAfterPairLoad(target);
+                return data;
+            });
         }
 
         // Helper: query indicators on the focused (or specified) panel.
@@ -3669,7 +3702,8 @@ export default function MultichartGrid({
             if (!skipDismiss) {
                 closeGlobalLegacyDrawingSettings();
                 try {
-                    window.dispatchEvent(new CustomEvent("talaria:v9-cleared-selection"));
+                    // Do not dispatch talaria:v9-cleared-selection here — that hides the
+                    // parent V9 quick bar even on the source tile that just selected/drew.
                     window.dispatchEvent(new CustomEvent("multichart-dismiss-drawing-settings"));
                 } catch (_) {}
             }
