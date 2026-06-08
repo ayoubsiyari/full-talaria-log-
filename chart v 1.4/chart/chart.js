@@ -4680,16 +4680,32 @@ class Chart {
             this.dataPipeline.invalidatePanDisplayCache();
         }
         // ── LOD cache refresh ────────────────────────────────────────────────
-        // For backward merges (pan-left loads) use a fast O(newBars) incremental
-        // prepend instead of rebuilding the full O(totalBars) cache.
+        // For backward merges (pan-left loads) use the fast O(newBars) incremental
+        // prepend ONLY when the bar cap was not exceeded. When the cap fires, the
+        // newest bars are sliced off rawData. The incremental cache would leave
+        // "ghost slots" for those dropped bars that render at wrong positions when
+        // the user pans right — causing candles to split into two disconnected
+        // clusters. Detect cap overflow and do a clean rebuild instead.
+        //
+        // For forward merges (pan-right loads), the oldest bars are sliced off.
+        // All bar indices shift down — the entire cache is stale → always rebuild.
+        //
         // For initial loads (startIndex=0) defer the build one frame so the render
-        // loop gets a chance to draw before we spend ~20ms on O(50k) aggregation.
+        // loop gets a chance to draw before we spend time on the O(n) aggregation.
+        const dataCap = this._getRawDataCap();
         if (mergeDirection === 'backward') {
-            this._prependToZoomedOutLodCache(newData);
+            // If rawData.length == cap the cap was hit and newest bars were dropped.
+            if (this.rawData.length >= dataCap) {
+                // Ghost-slot risk — rebuild from the capped data (O(cap) = O(5000), fast).
+                this._buildZoomedOutLodCache();
+            } else {
+                // No cap overflow — safe incremental prepend.
+                this._prependToZoomedOutLodCache(newData);
+            }
+        } else if (mergeDirection === 'forward') {
+            // Oldest bars were sliced → all indices shifted → full rebuild required.
+            this._buildZoomedOutLodCache();
         } else if (startIndex === 0) {
-            // Yield to the browser — the first render of new data doesn't need
-            // the LOD cache (there are no pending pan frames yet at this point).
-            // _startChartPanRenderLoop will rebuild it synchronously on first drag.
             this._zoomedOutLodCache = null;
             setTimeout(() => { this._buildZoomedOutLodCache(); }, 0);
         } else {
