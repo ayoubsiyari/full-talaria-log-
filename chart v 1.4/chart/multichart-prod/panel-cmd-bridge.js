@@ -1088,6 +1088,23 @@
                     return;
                 }
 
+                // Host News panel filter changes → same markers on every iframe tile.
+                case 'setEconomicNewsFilters': {
+                    var econFilters = args.filters;
+                    if (!econFilters || typeof econFilters !== 'object') return;
+                    var econUi = global.__economicCalendarUi;
+                    if (!econUi || typeof econUi.setFilters !== 'function') return;
+                    try {
+                        global.__multichartEconNewsMirroring = true;
+                        econUi.setFilters(econFilters);
+                    } catch (eEcon) {
+                        warn('setEconomicNewsFilters threw', eEcon && eEcon.message);
+                    } finally {
+                        try { global.__multichartEconNewsMirroring = false; } catch (_eMir) {}
+                    }
+                    return;
+                }
+
                 // ─── replay sync ───────────────────────────────────────
                 //
                 // Parent broadcasts the host's replay state so every

@@ -957,6 +957,44 @@
     }
 
     /**
+     * Host-only: mirror economic calendar filters to multichart iframe tiles so
+     * time-axis news markers hide/show in sync when the user changes filters.
+     */
+    function broadcastEconomicNewsFiltersToMultichart(partial) {
+        if (!partial || typeof partial !== 'object') return;
+        try {
+            if (window.__multichartEconNewsMirroring) return;
+        } catch (e0) {}
+        try {
+            var grid = window.__multichartGrid;
+            if (grid && typeof grid.broadcastToIframesNoReply === 'function') {
+                grid.broadcastToIframesNoReply('setEconomicNewsFilters', { filters: partial });
+            }
+        } catch (e1) {}
+    }
+
+    /** Multichart iframe boot: mirror host News filters so axis markers match panel A. */
+    function syncEconomicNewsFiltersFromParentIfEmbed() {
+        try {
+            if (window.parent === window) return;
+            var qs = new URLSearchParams(window.location.search || '');
+            if (qs.get('multichart') !== '1') return;
+            var parentUi = window.parent.__economicCalendarUi;
+            var ui = window.__economicCalendarUi;
+            if (!parentUi || !ui || typeof parentUi.getStatus !== 'function' || typeof ui.setFilters !== 'function') {
+                return;
+            }
+            var st = parentUi.getStatus();
+            if (!st || !st.filters) return;
+            window.__multichartEconNewsMirroring = true;
+            ui.setFilters(st.filters);
+        } catch (e2) {
+        } finally {
+            try { window.__multichartEconNewsMirroring = false; } catch (e3) {}
+        }
+    }
+
+    /**
      * Pair-filtered releases for the loaded range — used on the time axis, not search/tab.
      */
     window.__economicCalendarForChart = {
@@ -1064,6 +1102,7 @@
     });
 
     function onChartContextReady() {
+        syncEconomicNewsFiltersFromParentIfEmbed();
         var rng = getCalendarFetchRange();
         // Load calendar for the chart bar range even when News is closed so time-axis markers work immediately.
         if (!state.loading && (!state.loaded || state.loadedRangeKey !== rng.rangeKey)) {
@@ -1163,6 +1202,11 @@
             syncFilterControlsToDom();
             render();
             requestChartMarkerRedraw();
+            try {
+                if (!window.__multichartEconNewsMirroring) {
+                    broadcastEconomicNewsFiltersToMultichart(partial);
+                }
+            } catch (_eBc) {}
         },
         displayForEvent: function (e) {
             if (!e || !Number.isFinite(e.t)) return null;
