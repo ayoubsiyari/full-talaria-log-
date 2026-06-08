@@ -2483,6 +2483,7 @@ class ReplaySystem {
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
+        if (!opts.force && this._userOwnsViewport()) return false;
 
         let offsetX = null;
         if (opts.centerPlayhead) {
@@ -4806,6 +4807,9 @@ class ReplaySystem {
      * Called when user manually pans the chart
      */
     onUserPan() {
+        if (this.chart?._isMultichartEmbedPanel?.()) {
+            this.chart._multichartViewportUserLocked = true;
+        }
         if (!this.isActive) return;
         
         this.autoScrollEnabled = false;
@@ -4821,6 +4825,7 @@ class ReplaySystem {
     enableAutoScroll() {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+        if (this.chart) this.chart._multichartViewportUserLocked = false;
 
         // Reset zoom and scroll to latest candle (same as double-click on time axis).
         if (this.chart && typeof this.chart.jumpToLatest === 'function') {
@@ -5284,9 +5289,24 @@ class ReplaySystem {
         };
     }
 
+    _userOwnsViewport() {
+        if (this.userHasPanned || !this.autoScrollEnabled) return true;
+        const ch = this.chart;
+        if (ch && typeof ch._multichartUserOwnsViewport === 'function') {
+            return ch._multichartUserOwnsViewport();
+        }
+        return !!(ch && ch._multichartViewportUserLocked);
+    }
+
     _finishMultichartMirrorRender(chart) {
         if (!chart) return;
         chart.isLoading = false;
+
+        const userOwnsViewport = this._userOwnsViewport();
+        const savedOffsetX = userOwnsViewport && Number.isFinite(chart.offsetX) ? chart.offsetX : null;
+        const savedCandleWidth = userOwnsViewport && Number.isFinite(chart.candleWidth) && chart.candleWidth > 0
+            ? chart.candleWidth
+            : null;
 
         if (Array.isArray(chart.data) && chart.data.length > 0) {
             const m = chart.margin || { l: 60, r: 70 };
@@ -5306,7 +5326,6 @@ class ReplaySystem {
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
-            const userOwnsViewport = this.userHasPanned || !this.autoScrollEnabled;
             if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
@@ -5327,6 +5346,10 @@ class ReplaySystem {
         }
 
         if (typeof chart.constrainOffset === 'function') chart.constrainOffset();
+        if (userOwnsViewport) {
+            if (savedOffsetX !== null) chart.offsetX = savedOffsetX;
+            if (savedCandleWidth !== null) chart.candleWidth = savedCandleWidth;
+        }
         if (typeof chart.render === 'function') {
             chart.renderPending = true;
             chart.render();
@@ -5347,6 +5370,14 @@ class ReplaySystem {
     applyMultichartMirrorFrame(detail) {
         if (!this.isActive || !detail || typeof detail !== 'object') return false;
         const chart = this.chart;
+        const userOwns = this._userOwnsViewport();
+        const savedOffsetX = userOwns && Number.isFinite(chart?.offsetX) ? chart.offsetX : null;
+        const savedCandleWidth = userOwns && Number.isFinite(chart?.candleWidth) && chart.candleWidth > 0
+            ? chart.candleWidth
+            : null;
+        const savedAutoScroll = userOwns ? this.autoScrollEnabled : null;
+        if (userOwns) this.autoScrollEnabled = false;
+        try {
         const frd = this._resolveMirrorRawSeries(chart, detail);
         if (!chart || !Array.isArray(frd) || !frd.length) return false;
 
@@ -5490,6 +5521,9 @@ class ReplaySystem {
 
         this._finishMultichartMirrorRender(chart);
         return true;
+        } finally {
+            if (savedAutoScroll !== null) this.autoScrollEnabled = savedAutoScroll;
+        }
     }
 
     /**

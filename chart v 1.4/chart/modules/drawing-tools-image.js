@@ -287,12 +287,12 @@ class ImageTool extends BaseDrawing {
     }
 
     createBoxHandles(group, scales) {
-        const handleRadius = 3;
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
         
         group.selectAll('.resize-handle').remove();
+        group.selectAll('.resize-handle-hit').remove();
         group.selectAll('.resize-handle-group').remove();
         
         if (this.points.length < 1) return;
@@ -304,8 +304,10 @@ class ImageTool extends BaseDrawing {
         );
         const cy = this._screenY != null ? this._screenY : scales.yScale(this.points[0].y);
 
-        const width = this._borderWidth || this._currentWidth || this.style.width;
-        const height = this._borderHeight || this._currentHeight || this.style.height;
+        const width = this._currentWidth || this._borderWidth || this.style.width;
+        const height = this._currentHeight || this._borderHeight || this.style.height;
+        const handleRadius = (width < 8 || height < 8) ? 4 : 3;
+        const hitRadius = Math.max(14, handleRadius + 9);
 
         const minX = cx - width / 2;
         const maxX = cx + width / 2;
@@ -332,8 +334,21 @@ class ImageTool extends BaseDrawing {
                 .attr('class', 'resize-handle-group')
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
+
+            handleGroup.append('circle')
+                .attr('class', 'resize-handle-hit')
+                .attr('cx', pos.x)
+                .attr('cy', pos.y)
+                .attr('r', hitRadius)
+                .attr('fill', 'transparent')
+                .attr('stroke', 'none')
+                .style('cursor', pos.cursor)
+                .style('pointer-events', 'all')
+                .style('opacity', 0)
+                .attr('data-handle-role', pos.role)
+                .attr('data-point-index', index);
             
-            const handle = handleGroup.append('circle')
+            handleGroup.append('circle')
                 .attr('class', 'resize-handle')
                 .attr('cx', pos.x)
                 .attr('cy', pos.y)
@@ -342,13 +357,15 @@ class ImageTool extends BaseDrawing {
                 .attr('stroke', handleStroke)
                 .attr('stroke-width', handleStrokeWidth)
                 .style('cursor', pos.cursor)
-                .style('pointer-events', 'all')
+                .style('pointer-events', 'none')
                 .style('opacity', this.selected ? 1 : 0)
                 .attr('data-handle-role', pos.role)
                 .attr('data-point-index', index);
             
             this.handles.push(handleGroup);
         });
+
+        group.selectAll('.resize-handle-group').raise();
     }
 
     beginHandleDrag(handleRole, context = {}) {

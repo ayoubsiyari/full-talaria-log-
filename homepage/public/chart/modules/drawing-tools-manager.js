@@ -7539,6 +7539,10 @@ class DrawingToolsManager {
             drawing.group.selectAll('.resize-handle').style('pointer-events', 'none');
             drawing.group.selectAll('.resize-handle-hit, .custom-handle').style('pointer-events', 'all');
             drawing.group.selectAll('.shape-border-hit').style('pointer-events', 'none');
+            if (drawing.type === 'image') {
+                drawing.group.selectAll('.image-content, .image-placeholder')
+                    .style('pointer-events', 'none');
+            }
             this._raiseResizeHandles(drawing);
         }
         if (this._hoveredDrawing === drawing) {
@@ -7976,6 +7980,10 @@ class DrawingToolsManager {
         if (drawing?.group && !drawing.group.empty()) {
             drawing.group.selectAll('.shape-border-hit')
                 .style('pointer-events', 'stroke');
+            if (drawing.type === 'image') {
+                drawing.group.selectAll('.image-content, .image-placeholder')
+                    .style('pointer-events', 'all');
+            }
         }
 
         this.renderDrawing(drawing, { skipTimestampSync: true });

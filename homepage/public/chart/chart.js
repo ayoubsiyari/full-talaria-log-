@@ -1704,6 +1704,14 @@ class Chart {
         } catch (_e) { return false; }
     }
 
+    /** True when this embed tile owns horizontal pan (user dragged or disabled follow). */
+    _multichartUserOwnsViewport() {
+        if (this._multichartViewportUserLocked) return true;
+        const rs = this.replaySystem;
+        if (rs && rs.isActive && (rs.userHasPanned || !rs.autoScrollEnabled)) return true;
+        return false;
+    }
+
     _isMultichartHostPanel() {
         try {
             return typeof window !== 'undefined'
@@ -2496,10 +2504,10 @@ class Chart {
         if (typeof this._isMultichartEmbedPanel === 'function' && !this._isMultichartEmbedPanel()) {
             return false;
         }
-        const rs = this.replaySystem;
-        if (rs && (rs.userHasPanned || !rs.autoScrollEnabled)) {
+        if (this._multichartUserOwnsViewport()) {
             return false;
         }
+        const rs = this.replaySystem;
         if (!Array.isArray(this.data) || !this.data.length) return true;
         const vis = this._countVisiblePlotBars();
         if (vis <= 1) return true;
@@ -2525,10 +2533,10 @@ class Chart {
      * @returns {boolean}
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
-        const replay = this.replaySystem;
-        if (replay && (replay.userHasPanned || !replay.autoScrollEnabled)) {
+        if (this._multichartUserOwnsViewport()) {
             return false;
         }
+        const replay = this.replaySystem;
         if (!this._multichartViewportNeedsRecovery()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
@@ -23125,6 +23133,9 @@ class Chart {
                     chartWrapper.style.cursor = panCursor;
                 }
                 
+                if (this._isMultichartEmbedPanel?.()) {
+                    this._multichartViewportUserLocked = true;
+                }
                 if (this.replaySystem?.isActive) {
                     this.replaySystem.onUserPan();
                 }
