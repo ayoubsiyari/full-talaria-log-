@@ -734,20 +734,10 @@ class TimeframeFavorites {
                 console.log('🔗 Panel1 is selected - updating only panel1');
                 const pc = panel1.chartInstance;
 
-                const hadData = pc.data && pc.data.length > 0;
-
-                // Snapshot the visible wall-clock window BEFORE resampling so the
-                // new timeframe lands on the same chart position (TradingView
-                // parity), matching the main-chart setTimeframe behavior.
-                let viewportCaptured = false;
-                if (hadData && typeof pc._captureTfSwitchViewport === 'function') {
-                    pc._captureTfSwitchViewport();
-                    viewportCaptured = true;
-                }
-                // Legacy fallback for chart builds without the snapshot helpers.
-                const centerTimestamp = (!viewportCaptured && pc._getVisibleCenterTimestamp)
-                    ? pc._getVisibleCenterTimestamp() : null;
+                // Capture center timestamp and zoom BEFORE resampling
+                const centerTimestamp = pc._getVisibleCenterTimestamp ? pc._getVisibleCenterTimestamp() : null;
                 const savedCandleWidth = pc.candleWidth;
+                const hadData = pc.data && pc.data.length > 0;
 
                 // Resample panel data to new timeframe
                 pc.data = pc.resampleData(pc.rawData, timeframe);
@@ -758,10 +748,8 @@ class TimeframeFavorites {
                 const tfLabel = document.getElementById('chartTimeframe1');
                 if (tfLabel) tfLabel.textContent = timeframe;
 
-                // Restore the previous visible window (preferred) or center timestamp.
-                if (viewportCaptured && typeof pc._restoreOrJumpAfterTfSwitch === 'function') {
-                    pc._restoreOrJumpAfterTfSwitch();
-                } else if (hadData && centerTimestamp && pc.data && pc.data.length > 0 && pc._restorePositionToTimestamp) {
+                // Restore position to center timestamp if we had data before
+                if (hadData && centerTimestamp && pc.data && pc.data.length > 0 && pc._restorePositionToTimestamp) {
                     pc._restorePositionToTimestamp(centerTimestamp, savedCandleWidth);
                 } else {
                     pc._chartViewRestored = false;

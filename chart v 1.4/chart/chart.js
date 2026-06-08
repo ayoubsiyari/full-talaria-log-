@@ -3329,29 +3329,9 @@ class Chart {
     /** Timeframe-aware in-memory bar cap (ZOOM-FIX-10). */
     _getRawDataCap() {
         const tf = String(this.currentTimeframe || '1m').toLowerCase().trim();
-        let baseCap;
-        if (tf === '1m' || tf === '5m') baseCap = 5000;
-        else if (tf === '15m' || tf === '30m') baseCap = 6000;
-        else baseCap = this._RAW_DATA_CAP || 8000;
-
-        // Viewport-aware floor: when zoomed out to the max, the number of candles
-        // visible on screen can exceed baseCap. Trimming to baseCap would then evict
-        // candles that are still on-screen (e.g. dragging right to reveal older bars
-        // would unload the newest visible candles). Keep the cap at least as large as
-        // the visible window plus a history buffer so the ring buffer never trims
-        // anything currently in view.
-        try {
-            const m = this.margin || { l: 60, r: 60 };
-            const cw = Math.max(1, this.w - m.l - m.r);
-            const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
-            if (Number.isFinite(spacing) && spacing > 0) {
-                const visibleCandles = Math.ceil(cw / spacing);
-                // 1.5x visible keeps a scroll buffer on each side; hard ceiling guards memory.
-                const viewportCap = Math.ceil(visibleCandles * 1.5) + 500;
-                return Math.min(20000, Math.max(baseCap, viewportCap));
-            }
-        } catch (_e) { /* fall through to baseCap */ }
-        return baseCap;
+        if (tf === '1m' || tf === '5m') return 5000;
+        if (tf === '15m' || tf === '30m') return 6000;
+        return this._RAW_DATA_CAP || 8000;
     }
 
     _markScalesDirty() {
@@ -3884,7 +3864,6 @@ class Chart {
         this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
-        this._buildZoomedOutLodCache();
         if (this.currentFileId) {
             this._saveTfDataCache(this.currentFileId, normalizedTf);
         }
@@ -4398,7 +4377,6 @@ class Chart {
         // Replay must not paint the full cached series — updateChartData slices to playhead.
         if (!replay.isActive) {
             this.data = this.resampleData(this.rawData, normalizedTf);
-            this._buildZoomedOutLodCache();
         }
         this._panLoading = false;
         this._chartViewRestored = false;
@@ -4698,38 +4676,6 @@ class Chart {
         }
         if (this.dataPipeline && typeof this.dataPipeline.invalidatePanDisplayCache === 'function') {
             this.dataPipeline.invalidatePanDisplayCache();
-        }
-        // ── LOD cache refresh ────────────────────────────────────────────────
-        // For backward merges (pan-left loads) use the fast O(newBars) incremental
-        // prepend ONLY when the bar cap was not exceeded. When the cap fires, the
-        // newest bars are sliced off rawData. The incremental cache would leave
-        // "ghost slots" for those dropped bars that render at wrong positions when
-        // the user pans right — causing candles to split into two disconnected
-        // clusters. Detect cap overflow and do a clean rebuild instead.
-        //
-        // For forward merges (pan-right loads), the oldest bars are sliced off.
-        // All bar indices shift down — the entire cache is stale → always rebuild.
-        //
-        // For initial loads (startIndex=0) defer the build one frame so the render
-        // loop gets a chance to draw before we spend time on the O(n) aggregation.
-        const dataCap = this._getRawDataCap();
-        if (mergeDirection === 'backward') {
-            // If rawData.length == cap the cap was hit and newest bars were dropped.
-            if (this.rawData.length >= dataCap) {
-                // Ghost-slot risk — rebuild from the capped data (O(cap) = O(5000), fast).
-                this._buildZoomedOutLodCache();
-            } else {
-                // No cap overflow — safe incremental prepend.
-                this._prependToZoomedOutLodCache(newData);
-            }
-        } else if (mergeDirection === 'forward') {
-            // Oldest bars were sliced → all indices shifted → full rebuild required.
-            this._buildZoomedOutLodCache();
-        } else if (startIndex === 0) {
-            this._zoomedOutLodCache = null;
-            setTimeout(() => { this._buildZoomedOutLodCache(); }, 0);
-        } else {
-            this._buildZoomedOutLodCache();
         }
         this.bumpDataVersion();
 
@@ -12692,7 +12638,6 @@ class Chart {
      */
     dispatchScrollSync(force = false) {
         if (!this.data || this.data.length === 0) return;
-        if (this._timeframeSwitching) return;
         // Allow main chart (panel 0) to sync to other panels too
         if (!window.panelManager || window.panelManager.currentLayout === '1') return;
         const syncSettings = window.panelManager && window.panelManager.syncSettings;
@@ -15642,7 +15587,6 @@ class Chart {
         this._logTfSwitch('local-resample', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
         this.data = this.resampleData(this.rawData, normalizedTf);
-        this._buildZoomedOutLodCache();
         this._deferRecalculateIndicators();
         if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -15706,16 +15650,13 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
-        // Snapshot the current visible window so the new timeframe lands on the
-        // same chart position (TradingView parity). Live charts preserve the
-        // wall-clock window; during replay we instead anchor the playhead pixel +
-        // zoom so a panel TF switch doesn't shake/recenter.
+        // Snapshot the current visible wall-clock window so the new timeframe can
+        // land on the same chart position (TradingView parity). Skipped during
+        // replay — replay paths drive their own playhead-anchored viewport.
         if (!(this.replaySystem && this.replaySystem.isActive)) {
-            this._replayTfAnchor = null;
             try { this._captureTfSwitchViewport(); } catch (e) { /* ignore */ }
         } else {
             this._tfSwitchViewport = null;
-            try { this._replayTfAnchor = this._captureReplayTfAnchor(); } catch (e) { this._replayTfAnchor = null; }
         }
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
@@ -15740,9 +15681,6 @@ class Chart {
         this._timeframeFetchAbort = null;
         this._switchingFromTimeframe = null;
         this._switchingToTimeframe = null;
-        // Consumed by replay onTimeframeChange before this runs; clear so a stale
-        // anchor never leaks into a later (possibly non-replay) switch.
-        this._replayTfAnchor = null;
         try { this._hideTimeframeLoadingIndicator(); } catch (e) { /* ignore */ }
         if (!wasSwitching) {
             try { this._removeFreezeOverlay(); } catch (e) { /* ignore */ }
@@ -15772,17 +15710,12 @@ class Chart {
     /**
      * Take a bitmap snapshot of the current canvas and overlay it on top of the
      * canvas so the previous frame stays visible while we fetch / commit the new
-     * timeframe's bars. Removing or hiding it reveals whatever the canvas painted
-     * while it was up.
+     * timeframe's bars. The overlay is a plain <img> sized to match the canvas;
+     * removing or hiding it reveals whatever the canvas painted while it was up.
      *
-     * The snapshot is a sibling <canvas> filled via ctx.drawImage(this.canvas).
-     * This is deliberately NOT toDataURL()+<img>: PNG-encoding the whole canvas on
-     * every timeframe switch is slow and, with 3–4 multichart panels under replay
-     * load, can return an empty string — which previously hid the overlay and let
-     * the user see the blank (resized) canvas = the "chart hides then shows again"
-     * flash. canvas→canvas drawImage is cheap, synchronous, and never taints, so
-     * the frozen frame is reliable across panels. A previously valid snapshot is
-     * kept on the rare draw failure so we never reveal a blank frame.
+     * Falls back gracefully if toDataURL() throws (tainted canvas, no parent yet,
+     * 0×0 canvas before first layout, etc.) — the freeze flag alone still skips
+     * render() so we don't actively make things worse in that edge case.
      */
     _captureFreezeOverlay() {
         if (!this.canvas || !this.canvas.parentElement) return;
@@ -15794,10 +15727,10 @@ class Chart {
             parent.style.position = 'relative';
         }
         let overlay = parent.querySelector(':scope > .tf-freeze-overlay');
-        if (!overlay || overlay.tagName !== 'CANVAS') {
-            if (overlay) { try { overlay.remove(); } catch (_e) { /* ignore */ } }
-            overlay = document.createElement('canvas');
+        if (!overlay) {
+            overlay = document.createElement('img');
             overlay.className = 'tf-freeze-overlay';
+            overlay.alt = '';
             // z-index sits above #drawingSvg (z:2) so the snapshot also covers
             // drawings (which would otherwise pop to new positions when
             // _commitLoadedBars changes bar indices). Stays below crosshair (z:10)
@@ -15813,23 +15746,19 @@ class Chart {
                 'pointer-events:none',
                 'z-index:3',
                 'display:block',
+                'object-fit:fill',
                 'user-select:none'
             ].join(';');
             parent.appendChild(overlay);
         }
-        try {
-            // Match the live canvas backing-store size; style stays 100% so the
-            // device-pixel bitmap scales to the same CSS box as the canvas.
-            if (overlay.width !== this.canvas.width) overlay.width = this.canvas.width;
-            if (overlay.height !== this.canvas.height) overlay.height = this.canvas.height;
-            const octx = overlay.getContext('2d');
-            octx.clearRect(0, 0, overlay.width, overlay.height);
-            octx.drawImage(this.canvas, 0, 0);
+        let dataUrl = '';
+        try { dataUrl = this.canvas.toDataURL('image/png'); } catch (e) { dataUrl = ''; }
+        if (dataUrl) {
+            overlay.src = dataUrl;
             overlay.style.display = 'block';
-            this._freezeOverlayValid = true;
-        } catch (e) {
-            // Keep any previously valid snapshot visible; only hide if we have none.
-            if (!this._freezeOverlayValid) overlay.style.display = 'none';
+        } else {
+            // Couldn't snapshot — hide overlay so a stale image doesn't linger.
+            overlay.style.display = 'none';
         }
     }
 
@@ -15839,15 +15768,8 @@ class Chart {
         const overlay = this.canvas.parentElement.querySelector(':scope > .tf-freeze-overlay');
         if (overlay) {
             overlay.style.display = 'none';
-            if (overlay.tagName === 'CANVAS') {
-                // Release the backing-store memory between switches.
-                overlay.width = 0;
-                overlay.height = 0;
-            } else {
-                overlay.removeAttribute('src');
-            }
+            overlay.removeAttribute('src');
         }
-        this._freezeOverlayValid = false;
     }
 
     /**
@@ -17246,25 +17168,11 @@ class Chart {
             '6h': 1300, '8h': 1200, '12h': 1100,
             '1d': 1200, '1w': 900, '1wk': 900,
         };
-        let cap = limits[tf];
-        if (!Number.isFinite(cap)) {
-            const mo = tf.match(/^(\d+)mo$/);
-            cap = mo ? 800 : 2400;
-        }
-
-        // Replay/backtest: the zoom-out auto-fill is disabled (see
-        // _fillVisibleWindowAfterZoomOut), so only the candles between the loaded
-        // history start and the playhead exist. Allowing the screen to show more
-        // bars than are loaded just shrinks them into a sliver and leaves the sides
-        // blank ("candles hide when zoomed out"). Clamp the cap to the loaded bar
-        // count (+ a small margin) so the available candles always fill the plot.
-        // The cap still grows as backward history streams in, so deeper zoom-out
-        // becomes available once more bars are actually loaded.
-        if (this.replaySystem && this.replaySystem.isActive
-            && Array.isArray(this.data) && this.data.length > 0) {
-            cap = Math.min(cap, this.data.length + 30);
-        }
-        return cap;
+        const tfCap = limits[tf];
+        if (Number.isFinite(tfCap)) return tfCap;
+        const mo = tf.match(/^(\d+)mo$/);
+        if (mo) return 800;
+        return 2400;
     }
 
     /**
@@ -17652,109 +17560,9 @@ class Chart {
     _finishWheelBurstInteraction() {
         this._cancelWheelBurstRender();
         this._wheelBurstFinalPass = true;
-        // Rebuild the zoomed-out LOD cache at the new zoom level so subsequent
-        // pan frames are O(numScreenSlots) ≈ O(450) instead of O(n_bars).
-        this._buildZoomedOutLodCache();
         this.renderPending = false;
         this.render();
         this._wheelBurstFinalPass = false;
-    }
-
-    // ── Zoomed-out LOD column cache — the TradingView trick ───────────────────
-    //
-    // TradingView never iterates raw bars during pan. Instead they pre-compute
-    // a "virtual slot" array (one OHLC entry per 2-px slot) when the zoom level
-    // changes. During pan, they just re-project these ~450 virtual slots onto
-    // the current screen position — O(numScreenSlots) per frame.
-    //
-    // We do the same:
-    //   _buildZoomedOutLodCache()  — O(n) once, called after zoom settles
-    //   _getZoomedOutLodForRender() — O(numScreenSlots) per frame during pan
-
-    /**
-     * Pre-compute one OHLC entry per 2-px pixel slot for the full dataset.
-     * Called once after zoom changes (wheel settle, axis drag end, data load).
-     * O(n_bars) — acceptable as a one-time cost. Invalidated on spacing change.
-     */
-    _buildZoomedOutLodCache() {
-        if (!this.data || !this.data.length) { this._zoomedOutLodCache = null; return; }
-        const spacing = this.getCandleSpacing();
-        if (!Number.isFinite(spacing) || spacing >= TV_ZOOMED_OUT_SLOT_PX) {
-            this._zoomedOutLodCache = null;
-            return;
-        }
-        const slotPx = TV_ZOOMED_OUT_SLOT_PX;
-        const n = this.data.length;
-        // How many raw bars fit into one 2-px screen slot at this zoom level
-        const barsPerSlot = Math.max(1, slotPx / spacing);
-        const numVirtualSlots = Math.ceil(n / barsPerSlot);
-
-        const slots = new Array(numVirtualSlots);
-        for (let s = 0; s < numVirtualSlots; s++) {
-            const i0 = Math.floor(s * barsPerSlot);
-            const i1 = Math.min(n - 1, Math.floor((s + 1) * barsPerSlot) - 1);
-            const first = this.data[i0];
-            let h = first.h, l = first.l, vSum = 0;
-            for (let k = i0; k <= i1; k++) {
-                const b = this.data[k];
-                if (b.h > h) h = b.h;
-                if (b.l < l) l = b.l;
-                vSum += Number(b.v) || 0;
-            }
-            slots[s] = {
-                o: first.o,
-                h,
-                l,
-                c: this.data[i1].c,
-                vSum,
-                baseBarIdx: i0,
-                midBarIdx: Math.floor((i0 + i1) / 2),
-            };
-        }
-        this._zoomedOutLodCache = { slots, barsPerSlot, spacing, n };
-    }
-
-    /**
-     * Re-project the pre-built LOD cache onto the current screen position.
-     * O(numScreenSlots) ≈ O(plotPx / 2) per call — constant regardless of data size.
-     * Returns null when cache is stale or spacing changed (falls back to full scan).
-     */
-    _getZoomedOutLodForRender(plotPx) {
-        const cache = this._zoomedOutLodCache;
-        if (!cache) return null;
-        const spacing = this.getCandleSpacing();
-        // Invalidate if spacing changed by more than 1% (zoom has changed since cache was built)
-        if (!Number.isFinite(spacing) || spacing >= TV_ZOOMED_OUT_SLOT_PX ||
-            Math.abs(spacing - cache.spacing) / cache.spacing > 0.01) {
-            this._zoomedOutLodCache = null;
-            return null;
-        }
-        const m = this.margin || { l: 60, r: 60 };
-        const slotPx = TV_ZOOMED_OUT_SLOT_PX;
-        const numScreenSlots = Math.max(1, Math.ceil(plotPx / slotPx));
-        const offsetX = this.offsetX || 0;
-        const { slots, barsPerSlot } = cache;
-
-        // Skip virtual slots that are fully left of the screen.
-        // Screen X of virtual slot s: m.l + slots[s].baseBarIdx * spacing + offsetX
-        // We want: m.l + baseBarIdx * spacing + offsetX >= m.l → baseBarIdx >= -offsetX / spacing
-        const minVirtual = Math.max(0, Math.floor(-offsetX / (barsPerSlot * spacing)) - 2);
-
-        const out = [];
-        for (let s = minVirtual; s < slots.length; s++) {
-            const vs = slots[s];
-            const pixelX = m.l + vs.baseBarIdx * spacing + offsetX;
-            const screenSlot = Math.floor((pixelX - m.l) / slotPx);
-            if (screenSlot < 0) continue;
-            if (screenSlot >= numScreenSlots) break;
-            out.push({
-                o: vs.o, h: vs.h, l: vs.l, c: vs.c,
-                vSum: vs.vSum,
-                midIdx: vs.midBarIdx,
-                _pixelX: m.l + screenSlot * slotPx,
-            });
-        }
-        return out.length ? out : null;
     }
 
     /** True while dragging the price or time axis to zoom (not chart-body pan). */
@@ -17819,60 +17627,7 @@ class Chart {
             if (ve > vs) return this.data.slice(vs, ve);
             return [];
         }
-
-        const rawCount = ve - vs;
-        if (rawCount <= 0) return [];
-
-        // ── Zoomed-out LOD pre-sample ────────────────────────────────────────
-        // When spacing < TV_ZOOMED_OUT_SLOT_PX (pixel-column mode), every
-        // render function receives a full raw slice (up to 50 000+ bars) and
-        // iterates the entire array — candles, volume, indicators, axes.
-        // At 60 fps this becomes the sole frame-time bottleneck.
-        //
-        // Fix: stride-sample the data down to ≤ maxPreSampleBars BEFORE passing
-        // it downstream. All render functions work on the reduced array; the
-        // correct global bar indices are preserved via the `midIdx` field so
-        // indicator lookups stay accurate.  `_aggregateVisibleOhlcvByPixelColumn`
-        // still merges overlapping slots, but now loops over ~900 items instead
-        // of 50 000.  Visual fidelity is unchanged: at sub-pixel spacing the
-        // individual skipped bars are physically invisible.
-        if (spacing > 0 && spacing < TV_ZOOMED_OUT_SLOT_PX) {
-            // Keep ~3 samples per 2-px slot for solid H/L fidelity.
-            const slotsOnScreen = Math.ceil(plotPx / TV_ZOOMED_OUT_SLOT_PX);
-            const maxPreSampleBars = Math.max(slotsOnScreen * 3, 600);
-            if (rawCount > maxPreSampleBars) {
-                const stride = Math.max(1, Math.floor(rawCount / maxPreSampleBars));
-                const sampled = [];
-                for (let i = vs; i < ve; i += stride) {
-                    // Merge H/L across the stride window so wicks stay accurate.
-                    const end = Math.min(ve, i + stride);
-                    const bar = this.data[i];
-                    let h = bar.h, l = bar.l;
-                    for (let j = i + 1; j < end; j++) {
-                        const bj = this.data[j];
-                        if (bj.h > h) h = bj.h;
-                        if (bj.l < l) l = bj.l;
-                    }
-                    // Reuse the bar object when stride = 1 (no copy needed).
-                    if (stride === 1) {
-                        sampled.push(bar);
-                    } else {
-                        sampled.push({
-                            o: bar.o,
-                            h,
-                            l,
-                            c: this.data[end - 1].c,
-                            v: bar.v,
-                            t: bar.t,
-                            midIdx: Math.floor((i + end - 1) / 2), // true global bar index
-                        });
-                    }
-                }
-                return sampled;
-            }
-        }
-
-        return this.data.slice(vs, ve);
+        return ve > vs ? this.data.slice(vs, ve) : [];
     }
 
     _isPriceAxisZoomDragging() {
@@ -17915,8 +17670,6 @@ class Chart {
         if (this.drawingManager && typeof this.drawingManager.redrawAll === 'function') {
             this.drawingManager.redrawAll({ forceFull: true });
         }
-        // Rebuild LOD cache at the new zoom level (axis drag changes spacing).
-        this._buildZoomedOutLodCache();
         this._axisZoomFinalizePass = true;
         this.renderPending = false;
         this.render();
@@ -17977,14 +17730,6 @@ class Chart {
      * Prevents zoomed-out candles from stacking into a solid line.
      */
     _aggregateVisibleOhlcvByPixelColumn(visible, plotPx) {
-        // ── Fast path: pre-computed LOD cache (TradingView technique) ──────────
-        // After zoom settles, _buildZoomedOutLodCache() pre-aggregates the full
-        // dataset into ~450 virtual slots. Re-projecting them onto the current
-        // screen takes O(numScreenSlots) ≈ O(450) regardless of dataset size —
-        // vs O(n_bars) for the raw scan below. This is the primary pan path.
-        const cachedLod = this._getZoomedOutLodForRender(plotPx);
-        if (cachedLod) return cachedLod;
-
         const m = this.margin || { l: 60, r: 60 };
         const slotPx = TV_ZOOMED_OUT_SLOT_PX;
         const numSlots = Math.max(1, Math.ceil(plotPx / slotPx));
@@ -17993,14 +17738,7 @@ class Chart {
         const spacing = this.getCandleSpacing();
         const offsetX = this.offsetX || 0;
 
-        // Safety-net stride: when this function is called with a very large array
-        // (e.g. from a display pipeline that skipped the pre-sample), skip bars that
-        // are guaranteed to map to the same pixel slot as the previous one.
-        // At spacing=0.02 and slotPx=2, stride=25 → 40× fewer iterations.
-        const barsPerSlot = spacing > 0 ? slotPx / spacing : 1;
-        const stride = barsPerSlot >= 8 ? Math.max(1, Math.floor(barsPerSlot / 4)) : 1;
-
-        for (let i = 0; i < visible.length; i += stride) {
+        for (let i = 0; i < visible.length; i++) {
             const d = visible[i];
             if (!d) continue;
             const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
@@ -18008,32 +17746,20 @@ class Chart {
             const slot = Math.floor((x - m.l) / slotPx);
             if (slot < 0 || slot >= numSlots) continue;
 
-            // Merge H/L across the stride window before writing the slot.
-            let dh = d.h, dl = d.l;
-            if (stride > 1) {
-                const iEnd = Math.min(visible.length, i + stride);
-                for (let j = i + 1; j < iEnd; j++) {
-                    const dj = visible[j];
-                    if (!dj) continue;
-                    if (dj.h > dh) dh = dj.h;
-                    if (dj.l < dl) dl = dj.l;
-                }
-            }
-
             let bucket = slots[slot];
             if (!bucket) {
                 slots[slot] = {
                     o: d.o,
-                    h: dh,
-                    l: dl,
+                    h: d.h,
+                    l: d.l,
                     c: d.c,
                     vSum: Number(d.v) || 0,
                     midIdx: idx,
                     _pixelX: m.l + slot * slotPx,
                 };
             } else {
-                if (dh > bucket.h) bucket.h = dh;
-                if (dl < bucket.l) bucket.l = dl;
+                if (d.h > bucket.h) bucket.h = d.h;
+                if (d.l < bucket.l) bucket.l = d.l;
                 bucket.c = d.c;
                 bucket.vSum += Number(d.v) || 0;
             }
@@ -18044,66 +17770,6 @@ class Chart {
             if (slots[s]) out.push(slots[s]);
         }
         return out.length ? out : null;
-    }
-
-    /**
-     * Incremental LOD cache update for pan-left (backward) data loads.
-     *
-     * When bars are prepended during pan-left loading, rebuilding the full cache
-     * from all O(totalBars) is expensive and causes a visible freeze. Instead:
-     *   1. Build slots for the new prefix bars only — O(newBars).
-     *   2. Shift the baseBarIdx / midBarIdx of existing slots by newCount.
-     *   3. Concatenate: newSlots + shiftedOldSlots.
-     *
-     * Total work: O(newBars/barsPerSlot + existingSlots) ≈ O(50 + 500) = O(550)
-     * instead of O(50 000). Runs during active pan without freezing the rAF loop.
-     *
-     * @param {Array} newRawBars  The newly prepended raw bars (oldest-first).
-     */
-    _prependToZoomedOutLodCache(newRawBars) {
-        if (!newRawBars || !newRawBars.length) return;
-        // Fall back to full rebuild if there is no existing cache (e.g. zoom changed).
-        if (!this._zoomedOutLodCache) {
-            this._buildZoomedOutLodCache();
-            return;
-        }
-        const { slots: existingSlots, barsPerSlot, spacing, n: oldN } = this._zoomedOutLodCache;
-        const newCount = newRawBars.length;
-
-        // Shift all existing slot indices to account for the prepended bars.
-        const shiftedSlots = existingSlots.map((s) => ({
-            o: s.o, h: s.h, l: s.l, c: s.c, vSum: s.vSum,
-            baseBarIdx: s.baseBarIdx + newCount,
-            midBarIdx: s.midBarIdx + newCount,
-        }));
-
-        // Build new virtual slots for the prepended bars.
-        const numNewSlots = Math.ceil(newCount / barsPerSlot);
-        const newSlots = new Array(numNewSlots);
-        for (let s = 0; s < numNewSlots; s++) {
-            const i0 = Math.floor(s * barsPerSlot);
-            const i1 = Math.min(newCount - 1, Math.floor((s + 1) * barsPerSlot) - 1);
-            const first = newRawBars[i0];
-            let h = first.h, l = first.l, vSum = 0;
-            for (let k = i0; k <= i1; k++) {
-                const b = newRawBars[k];
-                if (b.h > h) h = b.h;
-                if (b.l < l) l = b.l;
-                vSum += Number(b.v) || 0;
-            }
-            newSlots[s] = {
-                o: first.o, h, l, c: newRawBars[i1].c, vSum,
-                baseBarIdx: i0,
-                midBarIdx: Math.floor((i0 + i1) / 2),
-            };
-        }
-
-        this._zoomedOutLodCache = {
-            slots: newSlots.concat(shiftedSlots),
-            barsPerSlot,
-            spacing,
-            n: newCount + oldN,
-        };
     }
 
     /** @deprecated Drawings use per-frame redraw during pan (CSS translate + overflow:hidden on #chart-container clips extended tools). */
@@ -18276,14 +17942,6 @@ class Chart {
 
     _startChartPanRenderLoop() {
         if (this._chartPanRenderLoopActive) return;
-        // Ensure the LOD pixel-column cache exists before the first pan frame fires.
-        // It is normally built after zoom/data-load, but the user may pan before ever
-        // touching the scroll wheel (e.g. right after page load at zoom-out level).
-        // Building it here is O(n) once and prevents the first drag from falling
-        // through to the slow O(n)-per-frame full scan.
-        if (!this._zoomedOutLodCache) {
-            this._buildZoomedOutLodCache();
-        }
         this._chartPanRenderLoopActive = true;
         const tick = () => {
             if (!this._isChartPanDragging()) {
@@ -21517,7 +21175,7 @@ class Chart {
             }
 
             this.ctx.restore();
-            if (drawn === 0 && drawSeries.length > 0 && !this._timeframeSwitching) {
+            if (drawn === 0 && drawSeries.length > 0) {
                 console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
             }
             return;
@@ -21640,7 +21298,7 @@ class Chart {
 
         this.ctx.restore();
         
-        if (drawn === 0 && drawSeries.length > 0 && !this._timeframeSwitching) {
+        if (drawn === 0 && drawSeries.length > 0) {
             console.warn('⚠️ No candles drawn! All', drawSeries.length, 'candles are outside viewport. Skipped:', skipped);
         }
     }
@@ -22080,61 +21738,6 @@ class Chart {
             this._chartViewRestored = false;
             this.fitToView();
         }
-    }
-
-    /**
-     * Find the visible data-index of the replay playhead bar (the last bar at or
-     * before the current replay time). Shared by the replay TF-switch anchor.
-     */
-    _replayPlayheadViewIndex() {
-        if (!Array.isArray(this.data) || !this.data.length) return -1;
-        const ts = (typeof this._getReplayPlayheadMs === 'function') ? this._getReplayPlayheadMs() : null;
-        if (!Number.isFinite(ts)) return this.data.length - 1;
-        let idx = this.data.length - 1;
-        for (let i = 0; i < this.data.length; i++) {
-            const t = Number(this.data[i] && this.data[i].t);
-            if (!Number.isFinite(t)) continue;
-            if (t <= ts) idx = i; else break;
-        }
-        return idx;
-    }
-
-    /**
-     * Snapshot, before a replay timeframe switch, the on-screen pixel X of the
-     * replay playhead plus the current candle zoom. Restoring it after the new
-     * bars land keeps the playhead in the SAME spot at the SAME zoom (FXReplay /
-     * TradingView parity) instead of snapping zoom to default + re-centering,
-     * which is the visible "shake/jump" on a multichart panel TF switch.
-     */
-    _captureReplayTfAnchor() {
-        if (!(this.replaySystem && this.replaySystem.isActive)) return null;
-        const idx = this._replayPlayheadViewIndex();
-        if (idx < 0) return null;
-        const spacing = this.getCandleSpacing();
-        if (!Number.isFinite(spacing) || spacing <= 0) return null;
-        const pixelX = (idx * spacing) + (this.offsetX || 0) + (spacing / 2);
-        return { pixelX, candleWidth: this.candleWidth };
-    }
-
-    /**
-     * Restore the playhead pixel + zoom captured by _captureReplayTfAnchor onto
-     * the freshly resampled data. Returns true on success; false (→ caller keeps
-     * its existing center/auto-scroll behavior) when no anchor or no data.
-     */
-    _restoreReplayTfAnchor(anchor) {
-        const a = anchor || this._replayTfAnchor;
-        if (!a || !Number.isFinite(a.pixelX)) return false;
-        if (!Array.isArray(this.data) || !this.data.length) return false;
-        if (Number.isFinite(a.candleWidth) && a.candleWidth > 0) {
-            this.candleWidth = a.candleWidth;
-        }
-        const spacing = this.getCandleSpacing();
-        if (!Number.isFinite(spacing) || spacing <= 0) return false;
-        const idx = this._replayPlayheadViewIndex();
-        if (idx < 0) return false;
-        this.offsetX = a.pixelX - (idx * spacing) - (spacing / 2);
-        if (typeof this.constrainOffset === 'function') this.constrainOffset();
-        return true;
     }
 
     /** Fallback ms between bars when data-derived step is unavailable (matches crosshair / x-axis tf map). */
@@ -22822,10 +22425,6 @@ class Chart {
             this._wheelBurstUntil = performance.now() + 350;
             this._markScalesDirty();
             this._clearPanTimeTickCache();
-            // Invalidate LOD cache while zooming — spacing is changing.
-            // _buildZoomedOutLodCache() is called in _finishWheelBurstInteraction()
-            // once the burst settles, so pan after zoom picks up the fresh cache.
-            this._zoomedOutLodCache = null;
             this._cachedInteractionTimeTicks = null;
             if (!burstWasActive && this.drawingManager?.drawings?.length) {
                 const dm = this.drawingManager;

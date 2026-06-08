@@ -430,20 +430,7 @@
             chart.currentSymbol = sym;
             chart.currentTimeframe = tf;
             chart.totalCandles = candles.length;
-            // TradingView parity: when this load is a TF switch, loadDataInto()
-            // captured the previous visible window onto chart._tfSwitchViewport.
-            // Re-center the new TF on it; fall back to fitToView for file/symbol/
-            // initial loads and when the captured center isn't in the fetched
-            // (end-anchored) window — so loading is never broken.
-            var __viewRestored = false;
-            try {
-                if (chart._tfSwitchViewport && typeof chart._restoreTfSwitchViewport === 'function') {
-                    __viewRestored = chart._restoreTfSwitchViewport();
-                }
-            } catch (_) {}
-            if (!__viewRestored) {
-                try { chart.fitToView && chart.fitToView(); } catch (_) {}
-            }
+            try { chart.fitToView && chart.fitToView(); } catch (_) {}
             try { chart.scheduleRender ? chart.scheduleRender() : chart.render(); } catch (_) {}
             try {
                 // v10.5.0: include `fileId` so the shell can persist it
@@ -488,17 +475,7 @@
          * in the per-chart badge and the parent shell log instead of silently
          * showing fake data.
          */
-        function loadDataInto(chart, fid, tf, preserveViewport) {
-            // Snapshot the current visible window only for TF switches (the tf
-            // <select> handler passes preserveViewport=true). File/symbol/initial
-            // loads clear it so applyCandles fits to the latest candle.
-            try {
-                if (preserveViewport && typeof chart._captureTfSwitchViewport === 'function') {
-                    chart._captureTfSwitchViewport();
-                } else {
-                    chart._tfSwitchViewport = null;
-                }
-            } catch (_) { chart._tfSwitchViewport = null; }
+        function loadDataInto(chart, fid, tf) {
             if (!fid) {
                 setBars(0, true);
                 reportToShell('warn', 'no file selected — pick one from the per-panel dropdown');
@@ -899,7 +876,7 @@
             // never broadcast as a sync event.
             tfSel.addEventListener('change', function (e) {
                 const newTf = e.target.value;
-                loadDataInto(chart, currentFileId, newTf, true);
+                loadDataInto(chart, currentFileId, newTf);
                 try {
                     window.dispatchEvent(new CustomEvent('timeframeChanged', {
                         detail: { chart: chart, timeframe: newTf },
