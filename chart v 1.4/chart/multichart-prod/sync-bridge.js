@@ -405,9 +405,21 @@
     function recoverViewportIfEmpty(chart) {
         if (!chart || !chart.data || !chart.data.length) return false;
         if (countVisibleBars(chart) > 0) return false;
-        // Don't recover/recenter a tile the user deliberately panned during replay.
+        // Don't recover/recenter a tile the user deliberately panned during
+        // replay, OR one that host-driven visible-range/date-range sync is
+        // positioning. If the pan/sync reached not-yet-loaded history, stream
+        // older bars in (like the main chart) instead of snapping the viewport
+        // back to the playhead.
         const rsRec = chart.replaySystem;
-        if (rsRec && rsRec.isActive && (rsRec.userHasPanned || !rsRec.autoScrollEnabled)) return false;
+        const userOwned = (rsRec && rsRec.isActive
+                && (rsRec.userHasPanned || !rsRec.autoScrollEnabled))
+            || !!chart._multichartVisibleRangeSyncOn;
+        if (userOwned) {
+            if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
+        }
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;

@@ -2523,26 +2523,25 @@ class Chart {
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
         const replay = this.replaySystem;
-        // When visible-range / date-range sync is ON, the host chart (panel A)
-        // drives this panel's viewport. The replay align guard must NOT recenter
-        // on the playhead — doing so fights the incoming sync and snaps the panel
-        // back right after it followed A. Only recover when the panel is genuinely
-        // empty (0 visible bars = broken render, not a deliberately synced view).
-        if (this._multichartVisibleRangeSyncOn) {
-            const visSync = typeof this._countVisiblePlotBars === 'function'
+        // A panel is "user-owned" when the user dragged it directly
+        // (replay.userHasPanned) OR when host-driven visible-range / date-range
+        // sync is positioning it. In BOTH cases the replay align guard must NOT
+        // recenter on the playhead — that recenter IS the snap-back the user sees.
+        //
+        // KEY: when a pan/sync reaches not-yet-loaded history, the panel shows
+        // few/no candles for a moment. That is NOT a broken render — it is the
+        // exact "drag into empty space, history streams in" behavior the MAIN
+        // chart has. So we LOAD older bars (like the main chart) instead of
+        // snapping the viewport back to the playhead.
+        const userOwned = !!(replay && replay.userHasPanned) || !!this._multichartVisibleRangeSyncOn;
+        if (userOwned) {
+            const visOwned = typeof this._countVisiblePlotBars === 'function'
                 ? this._countVisiblePlotBars()
                 : 1;
-            if (visSync > 0) return false;
-        }
-        // Respect a deliberate user pan (matches main chart behavior): once the
-        // user drags this panel (replay.userHasPanned → autoScrollEnabled=false),
-        // do NOT recenter on the playhead. Only allow recovery when the panel is
-        // genuinely empty (0 visible bars), which is a broken render, not a pan.
-        if (replay && replay.userHasPanned) {
-            const vis = typeof this._countVisiblePlotBars === 'function'
-                ? this._countVisiblePlotBars()
-                : 1;
-            if (vis > 0) return false;
+            if (visOwned <= 1 && typeof this._scheduleReplayPanLoadLeft === 'function') {
+                try { this._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
         }
         if (!this._multichartViewportNeedsRecovery()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
