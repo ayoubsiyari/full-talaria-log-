@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b12';
+const CHART_ENGINE_BUILD = '20260609b13';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2002,6 +2002,7 @@ class Chart {
         if (typeof this.constrainOffset === 'function') {
             try { this.constrainOffset(); } catch (_c) { /* ignore */ }
         }
+        this._multichartViewportMirroredWithHost = true;
         return true;
     }
 
@@ -2011,6 +2012,7 @@ class Chart {
      */
     _multichartDetachViewportFromHost() {
         if (!this._isMultichartEmbedPanel()) return;
+        this._multichartViewportMirroredWithHost = false;
         if (Array.isArray(this.data) && this.data.length > 0) {
             this.data = this.data.slice();
         }
@@ -28378,6 +28380,33 @@ class Chart {
         }
         return ans >= 0 ? ans : 0;
     }
+
+    /**
+     * Bar index for a synced crosshair on this chart.
+     * sourceDataIndex is only valid when local bar open time matches the synced timestamp
+     * (mirrored host data); otherwise fall back to wall-clock lookup.
+     * @param {number} timestampMs
+     * @param {number} [sourceDataIndex]
+     * @returns {number}
+     */
+    _resolveSyncedCrosshairBarIndex(timestampMs, sourceDataIndex) {
+        if (!this.data || this.data.length === 0) return -1;
+        const tsIdx = this.findLastDataIndexAtOrBeforeTime(timestampMs);
+        if (!Number.isFinite(sourceDataIndex) || sourceDataIndex < 0) return tsIdx;
+        const srcIdx = Math.max(0, Math.min(this.data.length - 1, Math.floor(sourceDataIndex)));
+        const srcCandle = this.data[srcIdx];
+        if (!srcCandle || !Number.isFinite(srcCandle.t)) return tsIdx;
+        const normTs = this.normalizeTimestampMs
+            ? this.normalizeTimestampMs(timestampMs)
+            : Number(timestampMs);
+        const normBar = this.normalizeTimestampMs
+            ? this.normalizeTimestampMs(srcCandle.t)
+            : Number(srcCandle.t);
+        if (Number.isFinite(normTs) && Number.isFinite(normBar) && normBar === normTs) {
+            return srcIdx;
+        }
+        return tsIdx >= 0 ? tsIdx : srcIdx;
+    }
     
     /**
      * Broadcast crosshair position to all other panels and main chart
@@ -28479,18 +28508,18 @@ class Chart {
         let candleIndex = -1;
 
         if (this._multichartVisibleRangeSyncOn
-            && Number.isFinite(opts.sourceDataIndex)
             && this.data && this.data.length > 0) {
-            candleIndex = Math.max(0, Math.min(
-                Math.floor(opts.sourceDataIndex),
-                this.data.length - 1,
-            ));
-            candle = this.getDisplayCandle(candleIndex);
+            candleIndex = (typeof this._resolveSyncedCrosshairBarIndex === 'function')
+                ? this._resolveSyncedCrosshairBarIndex(timestamp, opts.sourceDataIndex)
+                : this.findLastDataIndexAtOrBeforeTime(timestamp);
         } else if (this.data && this.data.length > 0) {
             candleIndex = this.findLastDataIndexAtOrBeforeTime(timestamp);
             if (candleIndex >= 0) {
                 candle = this.getDisplayCandle(candleIndex);
             }
+        }
+        if (candleIndex >= 0 && !candle) {
+            candle = this.getDisplayCandle(candleIndex);
         }
         
         // If no local candle but we have source candle, use it for OHLC display

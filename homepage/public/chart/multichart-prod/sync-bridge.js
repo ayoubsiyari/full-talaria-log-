@@ -1654,6 +1654,12 @@
                 try { chart._multichartDetachViewportFromHost(); } catch (_) {}
             }
             chart._multichartVisibleRangeSyncWasOn = nextOn;
+            // Snap iframe data + scroll to host the moment date-range sync turns on.
+            if (nextOn && !wasOn && isEmbedPanelChart()) {
+                if (mirrorEmbedFromHostForDateRange()) {
+                    if (typeof chart.render === 'function') chart.render();
+                }
+            }
         }
 
         refreshChartSyncCrosshairFlag();
@@ -1692,9 +1698,13 @@
             state.applied.add(m.causationId);
             beginApplying(true);
             // Same-pair iframe: keep bars + scroll identical to host before drawing crosshair.
+            var mirrored = false;
             if (chart._multichartVisibleRangeSyncOn
                 && typeof chart._multichartMirrorViewportFromHost === 'function') {
-                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+                try { mirrored = !!chart._multichartMirrorViewportFromHost(); } catch (_) {}
+            }
+            if (mirrored && typeof chart.render === 'function') {
+                chart.render();
             }
             const usePlotFraction = Number.isFinite(m.plotFraction);
             chart.receiveCrosshairSync(toMillis(m.time), null, null, {
@@ -1888,7 +1898,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b12';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b13';
 
         return {
             state,
