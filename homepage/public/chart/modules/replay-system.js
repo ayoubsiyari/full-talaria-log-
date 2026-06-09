@@ -5941,22 +5941,12 @@ class ReplaySystem {
                 this.chart.priceZoom = savedPriceZoom;
             }
             if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
-                const ok = this.chart._ensureMultichartViewportVisible({
+                this.chart._ensureMultichartViewportVisible({
                     centerPlayhead: true,
                     resetPriceScale: true,
                     forceRecenter: true,
                     render: true,
                 });
-                if (!ok && typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(() => {
-                        this.chart._ensureMultichartViewportVisible({
-                            centerPlayhead: true,
-                            resetPriceScale: true,
-                            forceRecenter: true,
-                            render: true,
-                        });
-                    });
-                }
             } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
                 this.syncReplayViewportToPlayhead(this.chart, {
                     centerPlayhead: true,
