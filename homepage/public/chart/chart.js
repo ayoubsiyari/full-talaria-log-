@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b03';
+const CHART_ENGINE_BUILD = '20260609b04';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2760,6 +2760,24 @@ class Chart {
         }
 
         const finish = () => {
+            if (typeof this._ensureMultichartViewportVisible === 'function') {
+                const ok = this._ensureMultichartViewportVisible({
+                    centerPlayhead: true,
+                    forceRecenter: true,
+                    resetPriceScale: true,
+                    render: false,
+                });
+                if (!ok && typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => {
+                        this._ensureMultichartViewportVisible({
+                            centerPlayhead: true,
+                            forceRecenter: true,
+                            resetPriceScale: true,
+                            render: true,
+                        });
+                    });
+                }
+            }
             if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
             this._scheduleIndicatorsAfterTimeframe();
         };
@@ -12991,18 +13009,39 @@ class Chart {
         if (this.timeScale) this.timeScale.locked = false;
 
         const replay = this.replaySystem;
+        const isEmbed = typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel();
+        if (replay && replay.isActive && isEmbed) {
+            const ok = this._ensureMultichartViewportVisible({
+                centerPlayhead: centerPlayhead != null ? centerPlayhead : true,
+                forceRecenter,
+                resetPriceScale: true,
+                render,
+            });
+            if (!ok && typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(() => {
+                    this._ensureMultichartViewportVisible({
+                        centerPlayhead: centerPlayhead != null ? centerPlayhead : true,
+                        forceRecenter,
+                        resetPriceScale: true,
+                        render: true,
+                    });
+                });
+            }
+            return;
+        }
         if (replay && replay.isActive) {
             if (forceRecenter) replay.userHasPanned = false;
             const useCenter = centerPlayhead != null ? centerPlayhead : true;
             if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                replay.syncReplayViewportToPlayhead(this, {
+                const synced = replay.syncReplayViewportToPlayhead(this, {
                     centerPlayhead: useCenter,
                     resetPriceScale: true,
                     forceRecenter,
                     render,
                 });
-                this._markMultichartViewportSettled();
-                return;
+                if (synced && this._countVisiblePlotBars() > 0) {
+                    return;
+                }
             }
         }
 
@@ -13011,7 +13050,6 @@ class Chart {
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
             else if (typeof this.render === 'function') this.render();
         }
-        this._markMultichartViewportSettled();
     }
 
     /** Block follow/sync passes from fighting a fresh programmatic viewport reset. */
@@ -13025,7 +13063,74 @@ class Chart {
         const settleMs = 1200;
         this._multichartViewportSettleUntil = now + settleMs;
         this._multichartViewportJustResetUntil = now + settleMs;
-        this._chartViewRestored = true;
+        // Only lock fitToView when bars are actually on screen — otherwise blank
+        // panels stay blank until the guard expires (TF switch on B/C/D).
+        if (this._countVisiblePlotBars() > 0) {
+            this._chartViewRestored = true;
+        } else {
+            this._chartViewRestored = false;
+        }
+    }
+
+    /**
+     * Position multichart embed viewport so bars are on screen. Falls back through
+     * playhead-center sync → replay follow offset → fitToView when sync leaves zero
+     * visible bars (blank panel after TF switch).
+     * @returns {boolean} true when at least one bar is visible.
+     */
+    _ensureMultichartViewportVisible(opts = {}) {
+        const render = opts.render !== false;
+        const centerPlayhead = opts.centerPlayhead !== false;
+        const resetPriceScale = opts.resetPriceScale !== false;
+        const forceRecenter = opts.forceRecenter !== false;
+
+        if (typeof this.resize === 'function') {
+            try { this.resize(); } catch (_e) { /* ignore */ }
+        }
+
+        this._chartViewRestored = false;
+        const replay = this.replaySystem;
+
+        if (replay && replay.isActive) {
+            if (forceRecenter) replay.userHasPanned = false;
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                replay.syncReplayViewportToPlayhead(this, {
+                    centerPlayhead,
+                    resetPriceScale,
+                    forceRecenter,
+                    render: false,
+                });
+            }
+        }
+
+        if (this._countVisiblePlotBars() <= 0) {
+            this._chartViewRestored = false;
+            if (replay && replay.isActive && typeof replay.getReplayAutoScrollState === 'function') {
+                const st = replay.getReplayAutoScrollState(this);
+                if (st && Number.isFinite(st.offsetX)) {
+                    this.offsetX = st.offsetX;
+                }
+            }
+            if (this._countVisiblePlotBars() <= 0) {
+                this.fitToView();
+            }
+        }
+
+        if (typeof this.constrainOffset === 'function') {
+            this.constrainOffset();
+        }
+        if (render) {
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            else if (typeof this.render === 'function') this.render();
+        }
+
+        const ok = this._countVisiblePlotBars() > 0;
+        if (ok) {
+            this._markMultichartViewportSettled();
+        } else {
+            this._chartViewRestored = false;
+        }
+        return ok;
     }
 
     _isMultichartViewportJustReset() {
@@ -13053,7 +13158,12 @@ class Chart {
         if (this._viewportEmptyRecoverPending) return;
         if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
             const until = this._multichartViewportSettleUntil;
-            if (Number.isFinite(until) && performance.now() < until) return;
+            if (Number.isFinite(until) && performance.now() < until) {
+                const vis = typeof this._countVisiblePlotBars === 'function'
+                    ? this._countVisiblePlotBars()
+                    : 0;
+                if (vis > 0) return;
+            }
         }
         this._viewportEmptyRecoverPending = true;
         requestAnimationFrame(() => {
@@ -13061,7 +13171,12 @@ class Chart {
             if (!this.data || this.data.length === 0) return;
             if (this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
                 const until = this._multichartViewportSettleUntil;
-                if (Number.isFinite(until) && performance.now() < until) return;
+                if (Number.isFinite(until) && performance.now() < until) {
+                    const vis = typeof this._countVisiblePlotBars === 'function'
+                        ? this._countVisiblePlotBars()
+                        : 0;
+                    if (vis > 0) return;
+                }
             }
             const m = this.margin;
             const plotW = this.w - m.l - m.r;
@@ -13076,6 +13191,16 @@ class Chart {
             if (this.isBacktestMode && rs) {
                 if (!rs.isActive && typeof rs.enterReplayMode === 'function') {
                     rs.enterReplayMode({ startAtBeginning: true });
+                }
+                if (rs.isActive && typeof this._ensureMultichartViewportVisible === 'function'
+                    && this._isMultichartEmbedPanel && this._isMultichartEmbedPanel()) {
+                    this._ensureMultichartViewportVisible({
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        forceRecenter: true,
+                        render: true,
+                    });
+                    return;
                 }
                 if (rs.isActive && typeof rs.syncReplayViewportToPlayhead === 'function') {
                     rs.syncReplayViewportToPlayhead(this, {

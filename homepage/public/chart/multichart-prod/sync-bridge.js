@@ -484,7 +484,8 @@
         }
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
-        if (isViewportBootSettling(chart)) return false;
+        // Unless the panel is still blank — then recover immediately.
+        if (isViewportBootSettling(chart) && countVisibleBars(chart) > 0) return false;
 
         chart._chartViewRestored = false;
 
@@ -515,6 +516,15 @@
 
         const isEmbed = typeof chart._isMultichartEmbedPanel === 'function'
             && chart._isMultichartEmbedPanel();
+        if (isEmbed && typeof chart._ensureMultichartViewportVisible === 'function') {
+            chart._ensureMultichartViewportVisible({
+                centerPlayhead: true,
+                resetPriceScale: false,
+                forceRecenter: false,
+                render: true,
+            });
+            return countVisibleBars(chart) > 0;
+        }
         if (isEmbed) {
             if (typeof chart.fitToView === 'function') {
                 chart.fitToView();
@@ -1938,7 +1948,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b03';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b04';
 
         return {
             state,
