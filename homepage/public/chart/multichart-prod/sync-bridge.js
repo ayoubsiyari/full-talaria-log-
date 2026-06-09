@@ -1938,7 +1938,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b02';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b03';
 
         return {
             state,

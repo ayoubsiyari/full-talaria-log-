@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b02';
+const CHART_ENGINE_BUILD = '20260609b03';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2399,13 +2399,17 @@ class Chart {
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
                     }
-                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: true });
                     if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                         this._syncReplayPanCursorsFromFullRaw();
                     }
                 }
 
                 this.resize();
+                this._resetViewportToDefault({
+                    centerPlayhead: true,
+                    forceRecenter: true,
+                    render: false,
+                });
                 if (!pairLoadUiActive) {
                     this.render();
                 }
@@ -2643,6 +2647,7 @@ class Chart {
             return false;
         }
         if (!this._multichartViewportNeedsRecovery()) return false;
+        if (this._isMultichartViewportJustReset && this._isMultichartViewportJustReset()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
         }
@@ -2659,7 +2664,7 @@ class Chart {
      * chart.w=0 on first paint). Repeated calls within the settle window merge.
      */
     _finalizeMultichartPanelAfterPairLoad() {
-        const settleMs = this._isMultichartEmbedPanel?.() ? 550 : 300;
+        const settleMs = this._isMultichartEmbedPanel?.() ? 1200 : 300;
         try {
             this._multichartViewportSettleUntil = performance.now() + settleMs;
         } catch (_) {}
@@ -2678,8 +2683,11 @@ class Chart {
             this._finalizePairLoadRaf = null;
             try {
                 if (typeof this.resize === 'function') this.resize();
+                const justReset = typeof this._isMultichartViewportJustReset === 'function'
+                    && this._isMultichartViewportJustReset();
                 const replay = this.replaySystem;
-                const needsRecovery = typeof this._multichartViewportNeedsRecovery === 'function'
+                const needsRecovery = !justReset
+                    && typeof this._multichartViewportNeedsRecovery === 'function'
                     && this._multichartViewportNeedsRecovery();
                 if (needsRecovery && replay?.isActive) {
                     if (typeof this._syncIndependentPanelViewportIfNeeded === 'function') {
@@ -2757,12 +2765,7 @@ class Chart {
         };
 
         if (typeof replay.onTimeframeChange === 'function') {
-            replay.onTimeframeChange(this, {
-                onReady: () => {
-                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
-                    finish();
-                },
-            });
+            replay.onTimeframeChange(this, { onReady: finish });
         } else {
             this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
             finish();
@@ -4221,7 +4224,6 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
-            this._resetViewportToDefault({ render: false, centerPlayhead: true, forceRecenter: true });
             this.replaySystem.onTimeframeChange(this, {
                 onReady: () => {
                     this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
@@ -5841,12 +5843,20 @@ class Chart {
                 // override our synced offset with fitToView().
                 this._chartViewRestored = true;
             } else {
-                this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
+                this._resetViewportToDefault({
+                    centerPlayhead: true,
+                    forceRecenter: true,
+                    render: false,
+                });
             }
 
             if (alignScrollToMain && panelVisibleBarCount() === 0) {
                 this._chartViewRestored = false;
-                this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
+                this._resetViewportToDefault({
+                    centerPlayhead: true,
+                    forceRecenter: true,
+                    render: false,
+                });
             }
 
             this.render();
@@ -5862,10 +5872,13 @@ class Chart {
                     this._chartViewRestored = true;
                     if (panelVisibleBarCount() === 0) {
                         this._chartViewRestored = false;
-                        this.fitToView();
                     }
-                } else {
-                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
+                } else if (!this._isMultichartViewportJustReset()) {
+                    this._resetViewportToDefault({
+                        centerPlayhead: true,
+                        forceRecenter: true,
+                        render: false,
+                    });
                 }
                 this.render();
 
@@ -5874,9 +5887,11 @@ class Chart {
                 // width is often wrong for one frame; retries match the main chart.
                 const rsFollow = mainChart && mainChart.replaySystem;
                 if (rsFollow && rsFollow.isActive
+                    && !this._isMultichartViewportJustReset()
                     && typeof rsFollow.scheduleReplayFollowOnceLayoutSettled === 'function') {
                     rsFollow.scheduleReplayFollowOnceLayoutSettled();
-                } else if (rsFollow && rsFollow.isActive && typeof rsFollow.enableAutoScroll === 'function') {
+                } else if (rsFollow && rsFollow.isActive && typeof rsFollow.enableAutoScroll === 'function'
+                    && !this._isMultichartViewportJustReset()) {
                     requestAnimationFrame(() => {
                         try {
                             rsFollow.enableAutoScroll();
@@ -12986,6 +13001,7 @@ class Chart {
                     forceRecenter,
                     render,
                 });
+                this._markMultichartViewportSettled();
                 return;
             }
         }
@@ -12995,6 +13011,30 @@ class Chart {
             if (typeof this.scheduleRender === 'function') this.scheduleRender();
             else if (typeof this.render === 'function') this.render();
         }
+        this._markMultichartViewportSettled();
+    }
+
+    /** Block follow/sync passes from fighting a fresh programmatic viewport reset. */
+    _markMultichartViewportSettled() {
+        if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) {
+            return;
+        }
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        const settleMs = 1200;
+        this._multichartViewportSettleUntil = now + settleMs;
+        this._multichartViewportJustResetUntil = now + settleMs;
+        this._chartViewRestored = true;
+    }
+
+    _isMultichartViewportJustReset() {
+        const until = this._multichartViewportJustResetUntil;
+        if (!Number.isFinite(until)) return false;
+        const now = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        return now < until;
     }
 
     /**
@@ -15987,7 +16027,6 @@ class Chart {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
             // TradingView-style reset on every TF switch (double-click parity).
-            this._resetViewportToDefault({ render: false, centerPlayhead: true, forceRecenter: true });
             let replayTfEnded = false;
             const finishReplayTfSwitch = () => {
                 if (replayTfEnded) return;

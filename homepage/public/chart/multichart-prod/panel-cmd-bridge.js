@@ -251,7 +251,7 @@
     function afterLoadFile(ch, usedMultichartLoader) {
         if (ch) {
             try {
-                ch._multichartViewportSettleUntil = performance.now() + 550;
+                ch._multichartViewportSettleUntil = performance.now() + 1200;
             } catch (_) {}
         }
         if (usedMultichartLoader) {
@@ -562,6 +562,10 @@
      */
     function scheduleMultichartPanelReplayFollow(ch) {
         if (!ch) return;
+        if (typeof ch._isMultichartViewportJustReset === 'function'
+            && ch._isMultichartViewportJustReset()) {
+            return;
+        }
         var rs = ch.replaySystem;
         if (!rs || !rs.isActive) return;
         if (typeof rs.scheduleReplayFollowOnceLayoutSettled === 'function') {

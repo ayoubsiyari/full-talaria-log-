@@ -4832,9 +4832,21 @@ class ReplaySystem {
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
 
+        const chart = this.chart;
+        if (chart && typeof chart._isMultichartViewportJustReset === 'function'
+            && chart._isMultichartViewportJustReset()) {
+            if (this.isActive) {
+                this.updateChartData(true);
+            }
+            requestAnimationFrame(() => {
+                this.updateAutoScrollIndicator();
+            });
+            return;
+        }
+
         // Reset zoom and scroll to latest candle (same as double-click on time axis).
-        if (this.chart && typeof this.chart.jumpToLatest === 'function') {
-            this.chart.jumpToLatest();
+        if (chart && typeof chart.jumpToLatest === 'function') {
+            chart.jumpToLatest();
         }
 
         if (this.isActive) {
@@ -4855,8 +4867,17 @@ class ReplaySystem {
     scheduleReplayFollowOnceLayoutSettled() {
         if (!this.isActive) return;
         if (this.userHasPanned) return;
+        const chart = this.chart;
+        if (chart && typeof chart._isMultichartViewportJustReset === 'function'
+            && chart._isMultichartViewportJustReset()) {
+            return;
+        }
         const run = () => {
             if (this.userHasPanned) return;
+            if (chart && typeof chart._isMultichartViewportJustReset === 'function'
+                && chart._isMultichartViewportJustReset()) {
+                return;
+            }
             try {
                 this.enableAutoScroll();
             } catch (_) { /* ignore */ }
@@ -5729,7 +5750,18 @@ class ReplaySystem {
                 if (typeof this.syncPanelCharts === 'function') {
                     this.syncPanelCharts(true);
                 }
-                if (this.autoScrollEnabled) {
+                this.userHasPanned = false;
+                if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                    this.syncReplayViewportToPlayhead(initiator, {
+                        centerPlayhead: true,
+                        resetPriceScale: true,
+                        forceRecenter: true,
+                        render: false,
+                    });
+                    if (typeof initiator._markMultichartViewportSettled === 'function') {
+                        initiator._markMultichartViewportSettled();
+                    }
+                } else if (this.autoScrollEnabled) {
                     const st = this.getReplayAutoScrollState(initiator);
                     if (st) initiator.offsetX = st.offsetX;
                 }
