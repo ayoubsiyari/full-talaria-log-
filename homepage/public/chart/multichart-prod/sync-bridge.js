@@ -74,15 +74,31 @@
     };
     function tfSec(tf) { return TIMEFRAME_SECONDS[tf] || 60; }
 
-    function findLastAtOrBefore(data, ts) {
+    function barTimeMs(chart, rawT) {
+        if (chart && typeof chart.normalizeTimestampMs === 'function') {
+            const n = chart.normalizeTimestampMs(rawT);
+            if (Number.isFinite(n)) return n;
+        }
+        const t = Number(rawT);
+        if (!Number.isFinite(t)) return NaN;
+        return Math.abs(t) < 1e11 ? t * 1000 : t;
+    }
+
+    function findLastAtOrBefore(data, tsMs, chart) {
         if (!data || data.length === 0) return 0;
+        const target = Number(tsMs);
+        if (!Number.isFinite(target)) return 0;
         let lo = 0;
         let hi = data.length - 1;
         let ans = 0;
         while (lo <= hi) {
             const mid = (lo + hi) >>> 1;
-            const t = data[mid]?.t || 0;
-            if (t <= ts) { ans = mid; lo = mid + 1; }
+            const mt = barTimeMs(chart, data[mid]?.t);
+            if (!Number.isFinite(mt)) {
+                lo = mid + 1;
+                continue;
+            }
+            if (mt <= target) { ans = mid; lo = mid + 1; }
             else hi = mid - 1;
         }
         return ans;
@@ -91,13 +107,13 @@
     function resolveFractionalRightIndex(chart, endTimeSec) {
         if (!chart || !chart.data || chart.data.length === 0) return null;
         const endMs = toMillis(endTimeSec);
-        const probeMs = Math.max(toMillis(chart.data[0]?.t || 0), endMs - 1);
-        let i0 = findLastAtOrBefore(chart.data, probeMs);
+        const probeMs = Math.max(barTimeMs(chart, chart.data[0]?.t) || 0, endMs - 1);
+        let i0 = findLastAtOrBefore(chart.data, probeMs, chart);
         i0 = Math.max(0, Math.min(i0, chart.data.length - 1));
         let frac = 0;
         if (i0 < chart.data.length - 1) {
-            const t0 = Number(chart.data[i0]?.t);
-            const t1 = Number(chart.data[i0 + 1]?.t);
+            const t0 = barTimeMs(chart, chart.data[i0]?.t);
+            const t1 = barTimeMs(chart, chart.data[i0 + 1]?.t);
             if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0 && endMs > t0) {
                 frac = Math.max(0, Math.min(1, (endMs - t0) / (t1 - t0)));
             }
@@ -162,7 +178,15 @@
         if (!(spacing > 0)) return false;
 
         let positioned = false;
-        if (Number.isFinite(m.endTime)) {
+        const sameTf = sameTimeframeMessage(chart, m);
+        // Same TF + date-range pan: mirror leader offsetX so bar indices stay aligned.
+        // endTime anchoring alone drifts when loaded history slices differ slightly.
+        if (sameTf && Number.isFinite(m.offsetX)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+            positioned = true;
+        }
+        if (!positioned && Number.isFinite(m.endTime)) {
             const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
             if (Number.isFinite(idxAtRight)) {
                 chart.offsetX = plotW - (idxAtRight + 1) * spacing;
@@ -217,13 +241,24 @@
             : chart.candleWidth;
         if (!(spacing > 0)) return false;
 
+        const sameTf = sameTimeframeMessage(chart, m);
+        if (sameTf && Number.isFinite(m.offsetX)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+            if (typeof chart.constrainOffset === 'function') {
+                try { chart.constrainOffset(); } catch (_) {}
+            }
+            finishViewportApply(chart, !!m.panSync);
+            return true;
+        }
+
         let barCount = Number.isFinite(m.visibleBarCount)
             ? Math.max(1, Math.floor(m.visibleBarCount))
             : null;
         if (!barCount && Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime) {
-            const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime));
-            const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+            const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime), chart);
+            const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
             barCount = Math.max(1, iR - iL + 1);
         }
         if (!barCount) return false;
@@ -319,8 +354,8 @@
             return false;
         }
 
-        const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime));
-        const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+        const iL = findLastAtOrBefore(chart.data, toMillis(m.startTime), chart);
+        const iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
         const iL2 = Math.max(0, Math.min(iL, chart.data.length - 1));
         const iR2 = Math.max(iL2, Math.min(iR, chart.data.length - 1));
         const numBars = Math.max(1, iR2 - iL2 + 1);
@@ -510,8 +545,8 @@
         } else if (Number.isFinite(m.startTime) && Number.isFinite(m.endTime) && m.endTime > m.startTime) {
             const endMs = toMillis(m.endTime) - 1;
             const startMs = toMillis(m.startTime);
-            endIdx = findLastAtOrBefore(chart.data, endMs);
-            startIdx = findLastAtOrBefore(chart.data, startMs);
+            endIdx = findLastAtOrBefore(chart.data, endMs, chart);
+            startIdx = findLastAtOrBefore(chart.data, startMs, chart);
             if (!barCount) barCount = Math.max(1, endIdx - startIdx + 1);
         } else {
             return false;
@@ -521,7 +556,7 @@
         let iR;
         let iL;
         if (Number.isFinite(m.endTime)) {
-            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1);
+            iR = findLastAtOrBefore(chart.data, toMillis(m.endTime) - 1, chart);
             iL = Math.max(0, iR - barCount + 1);
         } else if (endIdx != null) {
             iR = Math.max(0, Math.min(endIdx, chart.data.length - 1));

@@ -28384,11 +28384,18 @@ class Chart {
         if (!candle && !usePlotFraction) return;
         const m = this.margin;
         let x;
-        if (usePlotFraction) {
+        // Pin crosshair to the local bar for this wall-clock moment when we have one.
+        // plotFraction only mirrors screen position and drifts from the time label when
+        // date-range pan leaves panels slightly misaligned on bar index.
+        if (candleIndex >= 0 && typeof this.dataIndexToPixel === 'function') {
+            x = this.dataIndexToPixel(candleIndex);
+        } else if (usePlotFraction) {
             const plotW = Math.max(0, this.w - m.l - m.r);
             x = m.l + opts.plotFraction * plotW;
-        } else {
+        } else if (candleIndex >= 0) {
             x = this.dataIndexToPixel(candleIndex);
+        } else {
+            return;
         }
         
         // Check if x is within visible bounds
