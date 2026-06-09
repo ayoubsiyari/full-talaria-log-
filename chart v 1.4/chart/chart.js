@@ -2131,6 +2131,16 @@ class Chart {
             return;
         }
 
+        const loadSeq = ++this._multichartPanelLoadSeq;
+        let pairLoadUiActive = false;
+        if (switchingPair) {
+            const nextSym = this.resolveSessionTickerForFileId(session, fileId) || fileId;
+            try {
+                this._beginPairSwitchLoading(nextSym, loadSeq);
+                pairLoadUiActive = true;
+            } catch (_pairUi) { /* ignore */ }
+        }
+
         this.currentTimeframe = displayTf;
         if (this._tfDataCache) this._tfDataCache.clear();
         if (this._btTfDataCache) this._btTfDataCache.clear();
@@ -2149,8 +2159,6 @@ class Chart {
                 rs0.tickPathCacheBuilt = false;
             }
         }
-
-        const loadSeq = ++this._multichartPanelLoadSeq;
 
         const run = (async () => {
             try {
@@ -2171,8 +2179,16 @@ class Chart {
                     this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
                 }
 
+                const independentPair = switchingPair
+                    && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
+                    && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
+
                 let result = null;
-                if (sessionStartTs != null && Number.isFinite(replayTs)) {
+                // Independent pair (e.g. panel D = GBP/USD while host A = EUR/USD): same fetch
+                // shape as loadFileData — full history ending at session end. The small seek
+                // buffer + goToReplayTimestamp alone collapses to one stretched candle when
+                // the shared playhead predates the new instrument's first loaded bar.
+                if (!independentPair && sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
                             fileId, session, masterTf, replayTs
@@ -2182,9 +2198,16 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    const range = Number.isFinite(replayTs)
-                        ? this._getBacktestReplayFetchRange(masterTf, session, replayTs)
-                        : this._getBacktestInitialFetchRange(masterTf, session);
+                    let range;
+                    if (independentPair) {
+                        range = sessionEndMs != null
+                            ? { endTs: sessionEndMs }
+                            : this._getBacktestInitialFetchRange(masterTf, session);
+                    } else if (Number.isFinite(replayTs)) {
+                        range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
+                    } else {
+                        range = this._getBacktestInitialFetchRange(masterTf, session);
+                    }
                     result = await this._fetchSmartWindow(
                         fileId,
                         masterTf,
@@ -2231,6 +2254,11 @@ class Chart {
                         }
                     }
                 } catch (_mceMaster) { /* ignore */ }
+
+                if (independentPair && Number.isFinite(replayTs)
+                    && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
+                    this._applyIndependentPanelReplaySlice(replayTs);
+                }
 
                 if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, displayTf);
@@ -2284,6 +2312,10 @@ class Chart {
                         startAtBeginning: !Number.isFinite(restoreTs),
                         suppressInitialUpdateChartData: Number.isFinite(restoreTs),
                     });
+                    if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                        this._reseedReplayFullRawFromLoadedData();
+                    }
+                    replay.rawTimeframe = masterTf;
                     if (Number.isFinite(restoreTs)
                         && typeof replay.goToReplayTimestamp === 'function') {
                         replay.goToReplayTimestamp(restoreTs, { centerOnCandle: true });
@@ -2302,13 +2334,12 @@ class Chart {
                     if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                         this._syncReplayPanCursorsFromFullRaw();
                     }
-                    if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
-                        this._reseedReplayFullRawFromLoadedData();
-                    }
                 }
 
                 this.resize();
-                this.render();
+                if (!pairLoadUiActive) {
+                    this.render();
+                }
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
                         detail: { fileId, source: 'loadMultichartPanelFromHost' },
@@ -2328,6 +2359,9 @@ class Chart {
             } finally {
                 if (loadSeq === this._multichartPanelLoadSeq) {
                     this._multichartPanelLoadInflight = null;
+                }
+                if (pairLoadUiActive) {
+                    try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
                 }
             }
         })();
@@ -2773,7 +2807,8 @@ class Chart {
         this._ensureReplayDataInflight = (async () => {
             try {
                 if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
-                    || this._timeframeSwitching) {
+                    || this._timeframeSwitching
+                    || this._pairSwitchLoading) {
                     return false;
                 }
 
@@ -2806,7 +2841,8 @@ class Chart {
                 if (!this._smartResponseHasPayload(result)) return false;
 
                 if (captureGeneration !== (this._ensureReplayDataGeneration || 0)
-                    || this._timeframeSwitching) {
+                    || this._timeframeSwitching
+                    || this._pairSwitchLoading) {
                     return false;
                 }
 
@@ -3614,7 +3650,7 @@ class Chart {
     }
 
     async _fillVisibleWindowAfterZoomOut() {
-        if (this._zoomOutFillInflight || this._panLoading || this._timeframeSwitching) return;
+        if (this._zoomOutFillInflight || this._panLoading || this._timeframeSwitching || this._pairSwitchLoading) return;
         if (!this.currentFileId || !this.data || this.data.length === 0) return;
         if (this.replaySystem && this.replaySystem.isActive) return;
 
@@ -4007,7 +4043,7 @@ class Chart {
         ric(() => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (self.isBacktestMode) return;
-            if (self._timeframeSwitching) return;
+            if (self._timeframeSwitching || self._pairSwitchLoading) return;
             const targets = self._getTimeframesToPrefetch(currentTf);
             const sess = session || self.backtestingSession || {};
             targets.forEach((tf) => {
@@ -4376,7 +4412,7 @@ class Chart {
         const runPrefetch = () => {
             if (String(self.currentFileId) !== String(fileId)) return;
             if (!self.isBacktestMode) return;
-            if (self._timeframeSwitching) return;
+            if (self._timeframeSwitching || self._pairSwitchLoading) return;
 
             if (typeof self._isMultichartEmbedPanel === 'function'
                 && self._isMultichartEmbedPanel()
@@ -5835,7 +5871,7 @@ class Chart {
                 const sess = session;
                 setTimeout(() => {
                     if (String(this.currentFileId) !== String(fid)) return;
-                    if (this._timeframeSwitching) return;
+                    if (this._timeframeSwitching || this._pairSwitchLoading) return;
                     if (typeof this._scheduleBacktestTimeframePrefetch === 'function') {
                         this._scheduleBacktestTimeframePrefetch(fid, sess);
                     }
@@ -16032,11 +16068,12 @@ class Chart {
      * correctly even if the host page's CSS hasn't loaded our keyframes yet
      * (e.g. cached HTML, multi-panel pages without dist-v9/index.html).
      */
-    _showTimeframeLoadingIndicator() {
+    _showTimeframeLoadingIndicator(kind) {
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         const ohlcInfo = document.getElementById('ohlcInfo' + idSuffix) || document.getElementById('ohlcInfo');
         const tfEl = document.getElementById('chartTimeframe' + idSuffix) || document.getElementById('chartTimeframe');
         if (!ohlcInfo || !tfEl || !tfEl.parentElement) return;
+        const ariaLabel = kind === 'symbol' ? 'Loading symbol' : 'Loading new timeframe';
 
         // Inject a one-time <style> block so the dot keyframes exist regardless of
         // what stylesheet the host page loaded.
@@ -16054,7 +16091,7 @@ class Chart {
         if (!dots) {
             dots = document.createElement('span');
             dots.className = 'tf-loading-dots';
-            dots.setAttribute('aria-label', 'Loading new timeframe');
+            dots.setAttribute('aria-label', ariaLabel);
             dots.style.cssText = [
                 'display:inline-flex',
                 'align-items:center',
@@ -16080,6 +16117,7 @@ class Chart {
             tfEl.parentElement.insertBefore(dots, tfEl.nextSibling);
         } else {
             dots.style.display = 'inline-flex';
+            dots.setAttribute('aria-label', ariaLabel);
         }
         ohlcInfo.classList.add('tf-loading-active');
     }
@@ -16099,6 +16137,113 @@ class Chart {
                 if (dots) dots.style.display = 'none';
             }
         }
+    }
+
+    /**
+     * Multichart pair switch: freeze the last frame + show 3-dot loader (TradingView-style)
+     * while the new instrument's bars are fetched. Separate from TF switching so we do not
+     * abort TF fetches or touch replay-generation guards meant for timeframe changes.
+     * @param {string} [nextLabel]  Resolved ticker for the destination pair.
+     * @param {number} [loadSeq]    loadMultichartPanelFromHost sequence — stale loads skip end().
+     */
+    _beginPairSwitchLoading(nextLabel, loadSeq) {
+        if (this.drag) {
+            this.drag.active = false;
+            this.drag.type = null;
+        }
+        this._stopChartPanRenderLoop();
+        this._cancelChartPanFrame();
+        this._clearPanTimeTickCache();
+        if (typeof this._clearPanDrawingsLayerTransform === 'function') {
+            this._clearPanDrawingsLayerTransform();
+        }
+        try { this._captureFreezeOverlay(); } catch (_e) { /* ignore */ }
+        this._pairSwitchLoading = true;
+        this._pairSwitchLoadSeq = loadSeq != null ? loadSeq : null;
+        try { this._showTimeframeLoadingIndicator('symbol'); } catch (_e) { /* ignore */ }
+        if (typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()) {
+            try { this._showChartCenterLoadingDots(); } catch (_e) { /* ignore */ }
+        }
+        if (nextLabel) {
+            try { this.updateChartTitle(nextLabel); } catch (_e) { /* ignore */ }
+        }
+    }
+
+    /** Lift pair-switch freeze + loading dots once the new bars are committed. */
+    _endPairSwitchLoading(loadSeq) {
+        if (!this._pairSwitchLoading) return;
+        if (loadSeq != null && this._pairSwitchLoadSeq !== loadSeq) return;
+        this._pairSwitchLoading = false;
+        this._pairSwitchLoadSeq = null;
+        try { this._hideTimeframeLoadingIndicator(); } catch (_e) { /* ignore */ }
+        try { this._hideChartCenterLoadingDots(); } catch (_e) { /* ignore */ }
+        try { if (typeof this.render === 'function') this.render(); } catch (_e) { /* ignore */ }
+        requestAnimationFrame(() => {
+            try {
+                if (typeof this.render === 'function') this.render();
+            } catch (_e) { /* ignore */ }
+            try { this._removeFreezeOverlay(); } catch (_e) { /* ignore */ }
+        });
+    }
+
+    /** Centered 3-dot loader on the chart pane (multichart embed pair switch). */
+    _showChartCenterLoadingDots() {
+        const wrap = (this.canvas && this.canvas.parentElement)
+            || document.getElementById('chartWrapper');
+        if (!wrap) return;
+        const cs = window.getComputedStyle(wrap);
+        if (cs && cs.position === 'static') {
+            wrap.style.position = 'relative';
+        }
+        if (!document.getElementById('tf-loading-dots-style')) {
+            const styleEl = document.createElement('style');
+            styleEl.id = 'tf-loading-dots-style';
+            styleEl.textContent = '@keyframes tfLoadingDotPulse {' +
+                '0%,80%,100% { opacity: 0.25; transform: scale(0.7); }' +
+                '40% { opacity: 1; transform: scale(1.15); }' +
+                '}';
+            document.head.appendChild(styleEl);
+        }
+        let el = wrap.querySelector(':scope > .chart-center-loading-dots');
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'chart-center-loading-dots';
+            el.setAttribute('aria-label', 'Loading chart data');
+            el.style.cssText = [
+                'position:absolute',
+                'left:50%',
+                'top:50%',
+                'transform:translate(-50%,-50%)',
+                'display:flex',
+                'align-items:center',
+                'gap:6px',
+                'z-index:12',
+                'pointer-events:none'
+            ].join(';');
+            const dotCss = [
+                'width:7px',
+                'height:7px',
+                'border-radius:50%',
+                'background:#9598a1',
+                'display:inline-block',
+                'animation:tfLoadingDotPulse 1.1s ease-in-out infinite'
+            ].join(';');
+            el.innerHTML =
+                '<span style="' + dotCss + ';animation-delay:0s"></span>' +
+                '<span style="' + dotCss + ';animation-delay:0.18s"></span>' +
+                '<span style="' + dotCss + ';animation-delay:0.36s"></span>';
+            wrap.appendChild(el);
+        } else {
+            el.style.display = 'flex';
+        }
+    }
+
+    _hideChartCenterLoadingDots() {
+        const wrap = (this.canvas && this.canvas.parentElement)
+            || document.getElementById('chartWrapper');
+        if (!wrap) return;
+        const el = wrap.querySelector(':scope > .chart-center-loading-dots');
+        if (el) el.style.display = 'none';
     }
     
     /**
@@ -16673,7 +16818,7 @@ class Chart {
      * @param {boolean} force - when true, probe server even if local hasMore flags are stale
      */
     checkViewportLoadMore(direction, force = false) {
-        if (this._timeframeSwitching) return false;
+        if (this._timeframeSwitching || this._pairSwitchLoading) return false;
         if (this._panLoading) return true;
         if (!this.currentFileId) return false;
         if (!this._serverCursors) return false;
@@ -18731,7 +18876,7 @@ class Chart {
         // which look like the chart "broke" until the user double-clicks the time axis.
         // setTimeframe() / _loadTimeframeFromServer() lift this flag once the new bars are
         // committed and the currentTimeframe matches the destination TF.
-        if (this._timeframeSwitching) return;
+        if (this._timeframeSwitching || this._pairSwitchLoading) return;
         
         // Ensure minimum dimensions to prevent rendering issues
         if (this.w < 200 || this.h < 150) {
