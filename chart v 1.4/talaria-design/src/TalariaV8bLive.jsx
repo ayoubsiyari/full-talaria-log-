@@ -12384,10 +12384,35 @@ const TalariaV8bLive = () => {
       e.stopImmediatePropagation();
       try {
         const rs = getReplaySystem();
-        const chart =
-          typeof window.getActiveChart === "function"
+        if (!rs) return;
+
+        const grid = typeof window.__multichartGrid !== "undefined"
+          ? window.__multichartGrid
+          : null;
+        let chart = null;
+        let x = 0;
+        if (grid && typeof grid.resolveChartAtClientPoint === "function") {
+          const hit = grid.resolveChartAtClientPoint(e.clientX, e.clientY);
+          if (hit) {
+            chart = hit.chart;
+            x = hit.x;
+          }
+        }
+        if (!chart) {
+          chart = typeof window.getActiveChart === "function"
             ? window.getActiveChart()
             : window.chart;
+          if (chart) {
+            const containerNode =
+              chart.container && typeof chart.container.node === "function"
+                ? chart.container.node()
+                : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
+            if (containerNode) {
+              const rect = containerNode.getBoundingClientRect();
+              x = e.clientX - rect.left;
+            }
+          }
+        }
         if (rs && chart) {
           const containerNode =
             chart.container && typeof chart.container.node === "function"
@@ -12395,10 +12420,9 @@ const TalariaV8bLive = () => {
               : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
           if (containerNode) {
             const rect = containerNode.getBoundingClientRect();
-            const x = e.clientX - rect.left;
             const inChartArea =
               x >= (chart.margin?.l || 0) &&
-              x <= (chart.w - (chart.margin?.r || 0));
+              x <= ((Number(chart.w) >= 80 ? chart.w : rect.width) - (chart.margin?.r || 0));
             if (inChartArea) {
               const candleIndex =
                 typeof rs.getCandleIndexAtXForChart === "function"
@@ -12443,6 +12467,21 @@ const TalariaV8bLive = () => {
       window.removeEventListener("click", handleClick, true);
     };
   }, [rollback]);
+
+  // Tell multichart iframes to listen for rollback clicks; host tile uses parent handler.
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent("talariaReplayRollbackMode", {
+        detail: { active: rollback },
+      }));
+    } catch (_) {}
+  }, [rollback, layoutPanels.n]);
+
+  useEffect(() => {
+    const onDone = () => setRollback(false);
+    window.addEventListener("talariaReplayRollbackDone", onDone);
+    return () => window.removeEventListener("talariaReplayRollbackDone", onDone);
+  }, []);
 
   /** chart.js `drawing.type` → V9 rail group (`tool` state). Shared by settings open + floating toolbar selection sync. */
   const drawingTypeToPanelGroup = useCallback((type) => {
@@ -30219,7 +30258,7 @@ const TalariaV8bLive = () => {
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
               {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
-              {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
+              {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none",pointerEvents:layoutPanels.n > 1 ? "none" : "auto"}}/>}
 
               {/*
                 `#replayFollow` MUST live AFTER rollback/screenshot layers. Inside `#chartWrapper` it sat under

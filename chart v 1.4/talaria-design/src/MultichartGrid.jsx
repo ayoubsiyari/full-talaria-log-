@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b05";
+const BRIDGE_VERSION = "20260609b06";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -4151,6 +4151,77 @@ export default function MultichartGrid({
             return out;
         }
 
+        /** Hit-test which chart tile contains a viewport click (rollback cut, etc.). */
+        function resolveChartAtClientPoint(clientX, clientY) {
+            if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+            const charts = enumerateMultichartCharts();
+            let best = null;
+            let bestArea = Infinity;
+            for (const chart of charts) {
+                if (!chart) continue;
+                let containerNode = null;
+                try {
+                    if (chart.container && typeof chart.container.node === "function") {
+                        containerNode = chart.container.node();
+                    } else if (chart.canvas && chart.canvas.parentElement) {
+                        containerNode = chart.canvas.parentElement;
+                    }
+                } catch (_) { /* cross-origin */ }
+                if (!containerNode) continue;
+                let rect;
+                try { rect = containerNode.getBoundingClientRect(); } catch (_) { continue; }
+                if (clientX < rect.left || clientX >= rect.right) continue;
+                if (clientY < rect.top || clientY >= rect.bottom) continue;
+                const area = rect.width * rect.height;
+                if (area >= bestArea) continue;
+                const x = clientX - rect.left;
+                const ml = chart.margin?.l || 0;
+                let effectiveW = Number(chart.w) || 0;
+                if (effectiveW < 80) effectiveW = rect.width;
+                const mr = chart.margin?.r || 0;
+                if (x < ml || x > effectiveW - mr) continue;
+                best = { chart, x };
+                bestArea = area;
+            }
+            return best;
+        }
+
+        function applyHostReplayCutFromPanel(ts, sourceChart, candleIndex) {
+            const rs = window.chart && window.chart.replaySystem;
+            if (!rs || typeof rs.applyReplayCutToWallClock !== "function") return false;
+            try {
+                return rs.applyReplayCutToWallClock(ts, { sourceChart, candleIndex });
+            } catch (_) {
+                return false;
+            }
+        }
+
+        const onIframeRollbackCut = (e) => {
+            const d = e && e.data;
+            if (!d || d.type !== "v9-replay-rollback-cut") return;
+            const ts = Number(d.timestamp);
+            if (!Number.isFinite(ts)) return;
+            const chart = getChartForPanelId(d.source);
+            if (applyHostReplayCutFromPanel(ts, chart || undefined, d.candleIndex)) {
+                try {
+                    window.dispatchEvent(new CustomEvent("talariaReplayRollbackDone"));
+                } catch (_) {}
+            }
+        };
+        window.addEventListener("message", onIframeRollbackCut);
+
+        const onReplayRollbackMode = (ev) => {
+            const active = !!(ev && ev.detail && ev.detail.active);
+            const mgr = managerRef.current;
+            if (!mgr || !mgr.charts) return;
+            const cmd = active ? "rollbackPickStart" : "rollbackPickStop";
+            for (const c of mgr.charts.values()) {
+                if (!c || c.host || !c.ready) continue;
+                try { mgr.sendCommand(c.id, cmd, {}); } catch (_) {}
+            }
+        };
+        window.addEventListener("talariaReplayRollbackMode", onReplayRollbackMode);
+
         /** Iframe tile toolbar.show(x,y) is in iframe viewport — map to parent for V9 tlBar. */
         function findPanelFrameForDrawingManager(dm) {
             if (!dm) return null;
@@ -4212,6 +4283,7 @@ export default function MultichartGrid({
             getPanelIndicators,
             getFocusedPanelId: () => focusedPanelIdRef.current,
             getChartForPanel: getChartForPanelId,
+            resolveChartAtClientPoint,
             loadFileOnPanel,
             getActiveChart: getActiveChartForMultichart,
             enumerateCharts: enumerateMultichartCharts,
@@ -4242,6 +4314,8 @@ export default function MultichartGrid({
             if (window.__multichartGrid && window.__multichartGrid.runCommand === runCommand) {
                 delete window.__multichartGrid;
             }
+            window.removeEventListener("message", onIframeRollbackCut);
+            window.removeEventListener("talariaReplayRollbackMode", onReplayRollbackMode);
         };
         // Mount-once. The ref captures the latest focusedPanelId without
         // re-subscribing.
