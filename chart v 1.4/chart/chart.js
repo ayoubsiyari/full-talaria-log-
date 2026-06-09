@@ -1954,10 +1954,38 @@ class Chart {
             try { this._warmBtTfCacheFromParent(this.currentTimeframe); } catch (_warm) { /* ignore */ }
         }
 
+        const prs = parent.replaySystem;
+        const lrs = this.replaySystem;
+        if (prs && prs.isActive) {
+            if (!lrs && typeof this.initReplaySystem === 'function') {
+                try { this.initReplaySystem(); } catch (_init) { /* ignore */ }
+            }
+            const replay = this.replaySystem;
+            if (replay) {
+                replay.isActive = true;
+                replay.replayTimestamp = prs.replayTimestamp;
+                replay.userHasPanned = prs.userHasPanned;
+                replay.autoScrollEnabled = prs.autoScrollEnabled;
+                replay.rawTimeframe = prs.rawTimeframe;
+                replay.tickProgress = prs.tickProgress;
+                replay.tickElapsedMs = prs.tickElapsedMs;
+                replay.animatingCandle = prs.animatingCandle;
+                if (Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0) {
+                    replay.fullRawData = prs.fullRawData;
+                }
+            }
+        }
+
         this.rawData = parent.rawData;
         this.data = parent.data;
         if (Array.isArray(parent._panelFullRawData)) {
             this._panelFullRawData = parent._panelFullRawData;
+        }
+        if (parent._serverCursors) {
+            this._serverCursors = Object.assign({}, parent._serverCursors);
+        }
+        if (Number.isFinite(parent.totalCandles)) {
+            this.totalCandles = parent.totalCandles;
         }
         this.candleWidth = parent.candleWidth;
         if (this.zoomLevel && parent.zoomLevel) {
@@ -28406,8 +28434,16 @@ class Chart {
         // Same wall-clock moment on every TF: use last bar with open time <= synced timestamp
         let candle = null;
         let candleIndex = -1;
-        
-        if (this.data && this.data.length > 0) {
+
+        if (this._multichartVisibleRangeSyncOn
+            && Number.isFinite(opts.sourceDataIndex)
+            && this.data && this.data.length > 0) {
+            candleIndex = Math.max(0, Math.min(
+                Math.floor(opts.sourceDataIndex),
+                this.data.length - 1,
+            ));
+            candle = this.getDisplayCandle(candleIndex);
+        } else if (this.data && this.data.length > 0) {
             candleIndex = this.findLastDataIndexAtOrBeforeTime(timestamp);
             if (candleIndex >= 0) {
                 candle = this.getDisplayCandle(candleIndex);

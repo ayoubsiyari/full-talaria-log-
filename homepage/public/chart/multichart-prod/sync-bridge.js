@@ -898,6 +898,7 @@
                     && typeof chart.dataIndexToPixel === 'function') {
                     const idx = chart.findLastDataIndexAtOrBeforeTime(timestampMs);
                     if (idx >= 0) {
+                        payload.sourceDataIndex = idx;
                         const x = chart.dataIndexToPixel(idx);
                         const pm = chart.margin || { l: 60, r: 60 };
                         const plotW = resolvePlotWidthPx(chart);
@@ -991,6 +992,18 @@
             }
             const d = ev.detail || {};
             if (d.chart !== chart) return;
+
+            // Date-range sync: iframe tiles mirror host A — never broadcast local scroll
+            // (iframe replay/history slices differ and poison peer viewports).
+            if (chart._multichartVisibleRangeSyncOn
+                && typeof chart._isMultichartEmbedPanel === 'function'
+                && chart._isMultichartEmbedPanel()
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+                if (typeof chart.render === 'function') chart.render();
+                return;
+            }
+
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
@@ -1634,11 +1647,28 @@
         function refreshChartSyncCrosshairFlag() {
             const sm = syncModeGate || localSyncMode;
             chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
-            // When visible-range / date-range sync is ON, the host chart (panel A)
-            // drives this panel's viewport. The replay align guard reads this flag
-            // to avoid recentering on the playhead (which would snap the panel back
-            // and fight the incoming sync). Cleared when sync is turned off.
             chart._multichartVisibleRangeSyncOn = !!sm.visibleRange;
+        }
+
+        function isEmbedPanelChart() {
+            return typeof chart._isMultichartEmbedPanel === 'function'
+                && chart._isMultichartEmbedPanel();
+        }
+
+        function mirrorEmbedFromHostForDateRange() {
+            if (!chart._multichartVisibleRangeSyncOn || !isEmbedPanelChart()) return false;
+            if (typeof chart._multichartMirrorViewportFromHost !== 'function') return false;
+            try { return !!chart._multichartMirrorViewportFromHost(); } catch (_) { return false; }
+        }
+
+        if (typeof chart.updateCrosshair === 'function') {
+            const __origUpdateCrosshair = chart.updateCrosshair.bind(chart);
+            chart.updateCrosshair = function (e) {
+                if (mirrorEmbedFromHostForDateRange()) {
+                    chart.renderPending = true;
+                }
+                return __origUpdateCrosshair(e);
+            };
         }
 
         if (!opts.skipMessageListener) {
@@ -1659,6 +1689,7 @@
             chart.receiveCrosshairSync(toMillis(m.time), null, null, {
                 usePlotFraction: usePlotFraction,
                 plotFraction: m.plotFraction,
+                sourceDataIndex: Number.isFinite(m.sourceDataIndex) ? m.sourceDataIndex : undefined,
             });
         }
 
@@ -1845,6 +1876,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b10';
 
         return {
             state,
