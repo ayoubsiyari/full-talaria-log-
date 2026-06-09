@@ -142,6 +142,62 @@
     // playback state. This is the key fix that makes "join mid-play"
     // and "deferred play during data load" actually work.
     var pendingPlayDesired = null;
+
+    var rollbackPickActive = false;
+    var rollbackPickCleanup = null;
+
+    function teardownRollbackPick() {
+        if (rollbackPickCleanup) {
+            try { rollbackPickCleanup(); } catch (_) {}
+        }
+        rollbackPickCleanup = null;
+        rollbackPickActive = false;
+    }
+
+    function installRollbackPick(ch) {
+        teardownRollbackPick();
+        if (!ch) return;
+        var wrapper = global.document.getElementById('chartWrapper')
+            || (ch.canvas && ch.canvas.parentElement);
+        if (!wrapper) return;
+        rollbackPickActive = true;
+        var onClick = function (e) {
+            if (!rollbackPickActive) return;
+            if (e.target && e.target.closest && e.target.closest('.ohlc-info')) return;
+            var rs = ch.replaySystem;
+            if (!rs) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            var rect = wrapper.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var ml = (ch.margin && ch.margin.l) || 0;
+            var w = Number(ch.w) || rect.width;
+            var mr = (ch.margin && ch.margin.r) || 0;
+            if (x < ml || x > w - mr) return;
+            var candleIndex = -1;
+            if (typeof rs.getCandleIndexAtXForChart === 'function') {
+                candleIndex = rs.getCandleIndexAtXForChart(ch, x);
+            } else if (typeof rs.getCandleIndexAtX === 'function') {
+                candleIndex = rs.getCandleIndexAtX(x);
+            }
+            if (candleIndex < 0 || !ch.data || !ch.data[candleIndex]) return;
+            var ts = ch.data[candleIndex].t;
+            teardownRollbackPick();
+            try {
+                global.parent.postMessage({
+                    type: 'v9-replay-rollback-cut',
+                    source: panelId,
+                    timestamp: ts,
+                    candleIndex: candleIndex,
+                }, '*');
+            } catch (_) {}
+        };
+        wrapper.addEventListener('click', onClick, true);
+        rollbackPickCleanup = function () {
+            wrapper.removeEventListener('click', onClick, true);
+        };
+    }
     var pendingPlaySpeed = null;
     var pendingPlayMode = null;
 
@@ -1352,6 +1408,14 @@
                     // tick stream arrives. After this, ticks coalesce
                     // via scheduleCoalescedSeek (see replayTick below).
                     return applyReplayEnter(ch, tsE);
+                }
+                case 'rollbackPickStart': {
+                    installRollbackPick(ch);
+                    return;
+                }
+                case 'rollbackPickStop': {
+                    teardownRollbackPick();
+                    return;
                 }
                 case 'replayCut': {
                     var tsCut = Number(args.timestamp);

@@ -12373,6 +12373,8 @@ const TalariaV8bLive = () => {
   // (handlePickModeClick → startReplayAtIndex) but keeps V9 visual styling.
   useEffect(() => {
     if (!rollback) return;
+    // Multichart uses replay-system goBackToPickPoint (per-panel cut lines + clicks).
+    if (layoutPanels.n > 1) return;
     const handleClick = (e) => {
       const el = e.target;
       // Never steal clicks from header, rail, or any UI outside the chart slot (#chart-container).
@@ -12466,13 +12468,41 @@ const TalariaV8bLive = () => {
       clearTimeout(t);
       window.removeEventListener("click", handleClick, true);
     };
-  }, [rollback]);
+  }, [rollback, layoutPanels.n]);
 
-  // Tell multichart iframes to listen for rollback clicks; host tile uses parent handler.
+  // Multichart rollback: legacy per-panel go-back UI (cut line on every tile).
+  useEffect(() => {
+    const rs = getReplaySystem();
+    const isMulti = layoutPanels.n > 1;
+    if (!isMulti) {
+      if (rollback && rs?.isGoingBack) {
+        try { rs.exitGoBackMode(); } catch (_) {}
+      }
+      return;
+    }
+    if (rollback) {
+      if (!rs) return;
+      if (typeof rs.goBackToPickPoint === "function") {
+        try {
+          if (!rs.isGoingBack) rs.goBackToPickPoint();
+        } catch (err) {
+          console.warn("[V9 Replay] multichart goBackToPickPoint failed", err);
+        }
+      }
+    } else if (rs?.isGoingBack) {
+      try { rs.exitGoBackMode(); } catch (_) {}
+    }
+    return () => {
+      if (rs?.isGoingBack) {
+        try { rs.exitGoBackMode(); } catch (_) {}
+      }
+    };
+  }, [rollback, layoutPanels.n]);
+
   useEffect(() => {
     try {
       window.dispatchEvent(new CustomEvent("talariaReplayRollbackMode", {
-        detail: { active: rollback },
+        detail: { active: rollback && layoutPanels.n <= 1 },
       }));
     } catch (_) {}
   }, [rollback, layoutPanels.n]);
@@ -30257,8 +30287,8 @@ const TalariaV8bLive = () => {
 
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
-              {rollback&&<div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
-              {rollback&&<div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none",pointerEvents:layoutPanels.n > 1 ? "none" : "auto"}}/>}
+              {rollback && layoutPanels.n <= 1 && <div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
+              {rollback && layoutPanels.n <= 1 && <div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
 
               {/*
                 `#replayFollow` MUST live AFTER rollback/screenshot layers. Inside `#chartWrapper` it sat under

@@ -1277,6 +1277,18 @@ class ReplaySystem {
     /**
      * Handle mouse move in pick mode
      */
+    /** Effective plot width when chart.w is unset (multichart iframe after load). */
+    _chartPlotWidth(chart) {
+        let w = Number(chart && chart.w) || 0;
+        if (w >= 80) return w;
+        try {
+            const el = chart.canvas && chart.canvas.parentElement;
+            const rw = el ? el.getBoundingClientRect().width : 0;
+            if (Number.isFinite(rw) && rw >= 80) return rw;
+        } catch (_) { /* ignore */ }
+        return w;
+    }
+
     handlePickModeMouseMove(e) {
         if (!this.isPickingPoint) return;
 
@@ -1287,7 +1299,8 @@ class ReplaySystem {
             if (!wrapper) return;
             const rect = wrapper.getBoundingClientRect();
             const x = e.clientX - rect.left;
-            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
+            const plotW = this._chartPlotWidth(chart);
+            if (x < chart.margin.l || x > plotW - chart.margin.r) {
                 this.hideAllGoBackVisualsMulti();
                 return;
             }
@@ -1438,6 +1451,28 @@ class ReplaySystem {
 
     collectGoBackPanelEntries() {
         const out = [];
+        // V9 MultichartGrid: host tile + iframe panels (same wall-clock cut on every tile).
+        if (typeof window !== 'undefined' && window.__multichartGrid
+            && typeof window.__multichartGrid.enumerateCharts === 'function') {
+            try {
+                const charts = window.__multichartGrid.enumerateCharts();
+                if (Array.isArray(charts) && charts.length > 1) {
+                    charts.forEach((c, i) => {
+                        if (!c || !c.canvas) return;
+                        let wrapper = null;
+                        try {
+                            wrapper = c.canvas.parentElement;
+                            if (!wrapper) {
+                                const doc = c.canvas.ownerDocument;
+                                wrapper = doc && doc.getElementById('chartWrapper');
+                            }
+                        } catch (_) { /* cross-origin */ }
+                        if (wrapper) out.push({ chart: c, wrapper, panelIndex: i });
+                    });
+                    if (out.length > 1) return out;
+                }
+            } catch (_) { /* ignore */ }
+        }
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         if (pm && Array.isArray(pm.panels) && pm.panels.length > 1) {
             pm.panels.forEach((panel, i) => {
@@ -1521,7 +1556,8 @@ class ReplaySystem {
             } else {
                 return;
             }
-            if (x < chart.margin.l || x > chart.w - chart.margin.r) {
+            const plotW = this._chartPlotWidth(chart);
+            if (x < chart.margin.l || x > plotW - chart.margin.r) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
                 if (cutLineLabel) cutLineLabel.style.opacity = '0';
@@ -2079,6 +2115,11 @@ class ReplaySystem {
         setTimeout(() => {
             this.applyReplayCutToWallClock(candle.t, { sourceChart, candleIndex });
             this.exitGoBackMode();
+            try {
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
+                }
+            } catch (_) { /* ignore */ }
         }, 150);
     }
     
