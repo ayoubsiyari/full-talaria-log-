@@ -98,3 +98,28 @@ if (fs.existsSync(mcpSrc)) {
   console.warn("[sync-v9-to-homepage] multichart-prod not found, skip:", mcpSrc);
 }
 
+// PWA install assets: served at /chart/* (index.html is dist-v9 content but URL is /chart/index.html).
+const pwaPublic = path.resolve(__dirname, "../live/public");
+const pwaFiles = ["manifest.webmanifest", "sw.js", "pwa-install.js"];
+const pwaTargets = [
+  path.resolve(__dirname, "../../chart"),
+  path.resolve(__dirname, "../../../homepage/public/chart"),
+];
+for (const targetRoot of pwaTargets) {
+  fs.mkdirSync(targetRoot, { recursive: true });
+  for (const file of pwaFiles) {
+    const from = path.join(pwaPublic, file);
+    const to = path.join(targetRoot, file);
+    if (fs.existsSync(from)) {
+      fs.copyFileSync(from, to);
+    }
+  }
+  const pwaDirFrom = path.join(pwaPublic, "pwa");
+  const pwaDirTo = path.join(targetRoot, "pwa");
+  if (fs.existsSync(pwaDirFrom)) {
+    fs.mkdirSync(pwaDirTo, { recursive: true });
+    fs.cpSync(pwaDirFrom, pwaDirTo, { recursive: true });
+  }
+  console.log("[sync-v9-to-homepage] Copied PWA assets →", targetRoot);
+}
+

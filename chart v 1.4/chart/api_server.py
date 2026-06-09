@@ -19849,6 +19849,9 @@ CHART_ROOT_FILES = {
     "chart-main.js",
     "chart.module.js",
     "propfirm-script.js",
+    "sw.js",
+    "manifest.webmanifest",
+    "pwa-install.js",
 }
 
 @app.get("/chart")
@@ -19885,6 +19888,12 @@ async def chart_root_files(file_name: str):
         if _DIST_LEGACY_INDEX.is_file():
             return FileResponse(str(_DIST_LEGACY_INDEX))
     legacy_path = _CHART_ROOT_PATH / file_name
+    if file_name == "manifest.webmanifest":
+        return FileResponse(str(legacy_path), media_type="application/manifest+json")
+    if file_name == "sw.js":
+        return FileResponse(str(legacy_path), media_type="application/javascript")
+    if file_name == "pwa-install.js":
+        return FileResponse(str(legacy_path), media_type="application/javascript")
     return FileResponse(str(legacy_path))
 
 @app.get("/replay-system.js")
@@ -19912,6 +19921,9 @@ if _DIST_LEGACY_DIR.is_dir():
     app.mount("/chart/dist", StaticFiles(directory=str(_DIST_LEGACY_DIR)), name="chart_dist")
 
 app.mount("/chart/modules", StaticFiles(directory=str(_CHART_ROOT_PATH / "modules")), name="chart_modules")
+_CHART_PWA_DIR_PATH = _CHART_ROOT_PATH / "pwa"
+if _CHART_PWA_DIR_PATH.is_dir():
+    app.mount("/chart/pwa", StaticFiles(directory=str(_CHART_PWA_DIR_PATH)), name="chart_pwa")
 _INDICATORS_DIR_PATH = _CHART_ROOT_PATH / "indicators"
 _INDICATORS_DIR_PATH.mkdir(exist_ok=True)
 app.mount("/chart/indicators", StaticFiles(directory=str(_INDICATORS_DIR_PATH)), name="chart_indicators")
