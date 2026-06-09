@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b04';
+const CHART_ENGINE_BUILD = '20260609b05';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2647,7 +2647,11 @@ class Chart {
             return false;
         }
         if (!this._multichartViewportNeedsRecovery()) return false;
-        if (this._isMultichartViewportJustReset && this._isMultichartViewportJustReset()) return false;
+        if (this._isMultichartViewportJustReset && this._isMultichartViewportJustReset()
+            && !this._multichartPassivePlayActive
+            && this._countVisiblePlotBars() > 0) {
+            return false;
+        }
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
         }
@@ -2832,6 +2836,71 @@ class Chart {
     }
 
     /**
+     * Multichart iframe: apply host replay cut at shared wall-clock playhead.
+     * @param {number} replayTs
+     * @param {number} [orderCutoff]
+     * @returns {boolean}
+     */
+    applyMultichartReplayCut(replayTs, orderCutoff) {
+        const rs = this.replaySystem;
+        if (!rs?.isActive) return false;
+        const ts = Number(replayTs);
+        if (!Number.isFinite(ts)) return false;
+
+        rs.isPlaying = false;
+        rs._savedTickState = null;
+        rs.animatingCandle = null;
+        rs.tickProgress = 0;
+        rs.tickElapsedMs = 0;
+
+        let master = (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length)
+            ? this._panelFullRawData
+            : rs.fullRawData;
+        if (!Array.isArray(master) || !master.length) {
+            if (typeof rs.goToReplayTimestamp === 'function') {
+                rs.goToReplayTimestamp(ts, { centerOnCandle: true });
+            }
+            return false;
+        }
+
+        let idx = typeof rs._findLastRawIndexAtOrBefore === 'function'
+            ? rs._findLastRawIndexAtOrBefore(master, ts)
+            : 0;
+        if (idx < 0) idx = 0;
+        idx = Math.min(idx, master.length - 1);
+        const truncated = master.slice(0, idx + 1);
+        this._panelFullRawData = truncated.slice();
+        rs.fullRawData = truncated.slice();
+        rs.currentIndex = idx;
+        const rawBar = truncated[idx];
+        rs.replayTimestamp = (rawBar && Number.isFinite(rawBar.t)) ? rawBar.t : ts;
+
+        if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+            this._applyIndependentPanelReplaySlice(rs.replayTimestamp);
+        }
+
+        const cutoff = Number(orderCutoff);
+        if (Number.isFinite(cutoff) && this.orderManager
+            && typeof this.orderManager.forceCloseAllOrders === 'function') {
+            this.orderManager.forceCloseAllOrders(cutoff);
+        }
+
+        if (typeof rs.updateChartData === 'function') {
+            rs.updateChartData(true);
+        }
+        if (typeof rs.updateTimeDisplay === 'function') {
+            rs.updateTimeDisplay();
+        }
+
+        const om = this.orderManager;
+        if (om && typeof om.redrawPreservedTradeMarkers === 'function') {
+            setTimeout(() => om.redrawPreservedTradeMarkers(), 100);
+        }
+
+        return true;
+    }
+
+    /**
      * True when raw series has at least one bar at/before the shared replay wall-clock.
      * @param {Array} raw
      * @param {number} ts
@@ -2920,8 +2989,12 @@ class Chart {
         if (!session || !fileId) return false;
 
         if (this._ensureReplayDataInflight) {
+            if (!Number.isFinite(this._ensureReplayDataTargetTs) || ts > this._ensureReplayDataTargetTs) {
+                this._ensureReplayDataTargetTs = ts;
+            }
             return this._ensureReplayDataInflight;
         }
+        this._ensureReplayDataTargetTs = ts;
 
         const captureGeneration = this._ensureReplayDataGeneration || 0;
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
@@ -3039,6 +3112,19 @@ class Chart {
                 return hasWallClockPrefix(this.rawData);
             } finally {
                 this._ensureReplayDataInflight = null;
+                const ahead = this._ensureReplayDataTargetTs;
+                this._ensureReplayDataTargetTs = null;
+                const master = this._isIndependentMultichartPair()
+                    ? this._panelFullRawData
+                    : (this.replaySystem && this.replaySystem.fullRawData);
+                const lastMasterT = Array.isArray(master) && master.length
+                    ? Number(master[master.length - 1]?.t)
+                    : NaN;
+                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT) {
+                    Promise.resolve().then(() => {
+                        try { this.ensureReplayDataCoversTimestamp(ahead); } catch (_e) { /* ignore */ }
+                    });
+                }
             }
         })();
 

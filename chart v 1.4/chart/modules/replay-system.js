@@ -5382,6 +5382,7 @@ class ReplaySystem {
             const visibleBars = Math.max(0, i1 - i0);
             const needsRecovery = typeof chart._multichartViewportNeedsRecovery === 'function'
                 && chart._multichartViewportNeedsRecovery();
+            const passivePlay = chart._multichartPassivePlayActive === true;
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
@@ -5389,7 +5390,9 @@ class ReplaySystem {
             // autoScrollEnabled=false), never re-scroll/recenter the viewport.
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
-            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled) && visibleBars > 0;
+            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled)
+                && visibleBars > 0
+                && !passivePlay;
             if (userOwnsViewport
                 && visibleBars <= 1
                 && typeof chart._needsReplayHistoryLoadLeft === 'function'
@@ -5397,7 +5400,7 @@ class ReplaySystem {
                 && typeof chart._scheduleReplayPanLoadLeft === 'function') {
                 chart._scheduleReplayPanLoadLeft();
             }
-            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
+            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled || passivePlay)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;

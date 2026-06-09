@@ -168,6 +168,9 @@
     // SUBSEQUENT seeks once isActive=true.
     var coalescedSeekTs = null;
     var coalescedSeekScheduled = false;
+    var coalescedMirrorCatchUpTs = null;
+    var coalescedMirrorCatchUpArgs = null;
+    var coalescedMirrorCatchUpScheduled = false;
 
     function isMultichartIframePanel() {
         try {
@@ -332,22 +335,7 @@
         var applied = rs.applyMultichartMirrorFrame(args);
         if (applied) return;
 
-        if (typeof ch.ensureReplayDataCoversTimestamp === 'function') {
-            return ch.ensureReplayDataCoversTimestamp(ts).then(function () {
-                try {
-                    if (rs.applyMultichartMirrorFrame(args)) return;
-                    scheduleCoalescedSeek(ch, ts);
-                } catch (e) {
-                    warn('applyReplayFrame: mirror after fetch failed', e && e.message);
-                    scheduleCoalescedSeek(ch, ts);
-                }
-            }).catch(function (e) {
-                warn('applyReplayFrame: ensureReplayDataCoversTimestamp failed', e && e.message);
-                scheduleCoalescedSeek(ch, ts);
-            });
-        }
-
-        scheduleCoalescedSeek(ch, ts);
+        scheduleMirrorCatchUp(ch, ts, args);
     }
 
     // ─── per-panel order forwarding state ──────────────────────────────
@@ -404,6 +392,90 @@
         bus.on('order:closed',          function (o) { postIframeOrder('closed',          o); });
         bus.on('order:pending-removed', function (o) { postIframeOrder('pending-removed', o); });
         log('order forwarders installed');
+    }
+
+    function readParentReplayTimestamp() {
+        try {
+            var pc = global.parent && global.parent !== global ? global.parent.chart : null;
+            var prs = pc && pc.replaySystem;
+            if (prs && Number.isFinite(Number(prs.replayTimestamp))) {
+                return Number(prs.replayTimestamp);
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    /**
+     * Independent-pair iframes can lag when mirror frames arrive faster than
+     * /bars prefetch. Coalesce to the latest ts and refetch once per frame.
+     */
+    function scheduleMirrorCatchUp(ch, ts, args) {
+        if (Number.isFinite(ts)) {
+            coalescedMirrorCatchUpTs = coalescedMirrorCatchUpTs == null
+                ? ts
+                : Math.max(coalescedMirrorCatchUpTs, ts);
+        }
+        if (args && typeof args === 'object') {
+            coalescedMirrorCatchUpArgs = args;
+        }
+        if (coalescedMirrorCatchUpScheduled) return;
+        coalescedMirrorCatchUpScheduled = true;
+        var raf = global.requestAnimationFrame || function (fn) {
+            return setTimeout(fn, 16);
+        };
+        raf(function () {
+            coalescedMirrorCatchUpScheduled = false;
+            var seekTs = coalescedMirrorCatchUpTs;
+            var frameArgs = coalescedMirrorCatchUpArgs;
+            coalescedMirrorCatchUpTs = null;
+            coalescedMirrorCatchUpArgs = null;
+            if (seekTs == null || !ch) return;
+            var rs = ch.replaySystem;
+            if (!rs || !rs.isActive) return;
+
+            function buildPayload() {
+                if (frameArgs && typeof frameArgs === 'object') {
+                    return Object.assign({}, frameArgs, { timestamp: seekTs });
+                }
+                return {
+                    timestamp: seekTs,
+                    isPlaying: ch._multichartPassivePlayActive === true,
+                    tickProgress: rs.tickProgress || 0,
+                    tickElapsedMs: rs.tickElapsedMs || 0,
+                    hostFileId: readParentHostFileId(),
+                };
+            }
+
+            function retryMirror() {
+                if (typeof rs.applyMultichartMirrorFrame !== 'function') return false;
+                try {
+                    return !!rs.applyMultichartMirrorFrame(buildPayload());
+                } catch (e) {
+                    warn('mirror catch-up: applyMultichartMirrorFrame threw', e && e.message);
+                    return false;
+                }
+            }
+
+            if (retryMirror()) return;
+
+            if (typeof ch.ensureReplayDataCoversTimestamp !== 'function') {
+                scheduleCoalescedSeek(ch, seekTs);
+                return;
+            }
+
+            ch.ensureReplayDataCoversTimestamp(seekTs).then(function () {
+                if (retryMirror()) return;
+                var latest = pendingReplayTs != null ? pendingReplayTs : readParentReplayTimestamp();
+                if (Number.isFinite(latest) && latest > seekTs) {
+                    scheduleMirrorCatchUp(ch, latest, frameArgs);
+                    return;
+                }
+                scheduleCoalescedSeek(ch, seekTs);
+            }).catch(function (e) {
+                warn('mirror catch-up: ensureReplayDataCoversTimestamp failed', e && e.message);
+                scheduleCoalescedSeek(ch, seekTs);
+            });
+        });
     }
 
     /** Host tile A's current fileId, so mirror frames pick the shared vs independent path correctly. */
@@ -1281,6 +1353,29 @@
                     // via scheduleCoalescedSeek (see replayTick below).
                     return applyReplayEnter(ch, tsE);
                 }
+                case 'replayCut': {
+                    var tsCut = Number(args.timestamp);
+                    if (!Number.isFinite(tsCut)) return;
+                    pendingPlayDesired = false;
+                    pendingReplayTs = null;
+                    var rsCut = ch.replaySystem;
+                    if (rsCut) {
+                        rsCut.isPlaying = false;
+                        rsCut._savedTickState = null;
+                        rsCut.animatingCandle = null;
+                        rsCut.tickProgress = 0;
+                        rsCut.tickElapsedMs = 0;
+                        if (typeof rsCut.pause === 'function') {
+                            try { rsCut.pause(); } catch (_) {}
+                        }
+                    }
+                    if (typeof ch.applyMultichartReplayCut === 'function') {
+                        ch.applyMultichartReplayCut(tsCut, args.orderCutoff);
+                    } else if (rsCut && typeof rsCut.goToReplayTimestamp === 'function') {
+                        forceReplaySeek(ch, tsCut, false);
+                    }
+                    return;
+                }
                 case 'replayTick': {
                     var ts2 = Number(args.timestamp);
                     if (!Number.isFinite(ts2)) return;
@@ -1358,6 +1453,7 @@
                         warn('replayPlay: replaySystem not available');
                         return;
                     }
+                    ch._multichartPassivePlayActive = true;
                     ensurePanelReplaySeries(ch);
                     if (!rsP.isActive) {
                         log('replayPlay stashed (not yet active)');
@@ -1367,19 +1463,46 @@
                     // scrolls with playback on every panel, same as tile A.
                     rsP.autoScrollEnabled = true;
                     rsP.userHasPanned = false;
-                    if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
-                        try {
-                            rsP.syncReplayViewportToPlayhead(ch, {
-                                resetPriceScale: true,
-                                render: false,
-                            });
-                        } catch (_) {}
+                    var playheadTs = readParentReplayTimestamp();
+                    if (!Number.isFinite(playheadTs) && Number.isFinite(rsP.replayTimestamp)) {
+                        playheadTs = Number(rsP.replayTimestamp);
                     }
-                    drainPendingPlay(ch);
+                    var primeAndFollow = function () {
+                        if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
+                            try {
+                                rsP.syncReplayViewportToPlayhead(ch, {
+                                    resetPriceScale: false,
+                                    render: false,
+                                });
+                            } catch (_) {}
+                        }
+                        if (Number.isFinite(playheadTs)
+                            && typeof rsP.applyMultichartMirrorFrame === 'function') {
+                            try {
+                                rsP.applyMultichartMirrorFrame({
+                                    timestamp: playheadTs,
+                                    isPlaying: true,
+                                    tickProgress: rsP.tickProgress || 0,
+                                    tickElapsedMs: rsP.tickElapsedMs || 0,
+                                    hostFileId: readParentHostFileId(),
+                                });
+                            } catch (_) {}
+                        }
+                        drainPendingPlay(ch);
+                    };
+                    if (Number.isFinite(playheadTs)
+                        && typeof ch.ensureReplayDataCoversTimestamp === 'function') {
+                        ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
+                            primeAndFollow();
+                        });
+                    } else {
+                        primeAndFollow();
+                    }
                     return;
                 }
                 case 'replayPause': {
                     pendingPlayDesired = false;
+                    ch._multichartPassivePlayActive = false;
                     var rsPa = ch.replaySystem;
                     if (!rsPa || !rsPa.isActive) return;
                     drainPendingPlay(ch);

@@ -1916,6 +1916,118 @@ class ReplaySystem {
     }
     
     /**
+     * Rewind replay to a wall-clock cut point and notify multichart panels.
+     * @param {number|string|Date} targetTimestamp
+     * @param {{ sourceChart?: object, candleIndex?: number }} options
+     * @returns {boolean}
+     */
+    applyReplayCutToWallClock(targetTimestamp, options = {}) {
+        if (!this.isBackNavigationAllowed()) return false;
+        if (!this.isActive || !Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
+            return false;
+        }
+
+        const sourceChart = options.sourceChart || this.chart;
+        const chart = this.chart;
+        const ts = chart && typeof chart.normalizeTimestampMs === 'function'
+            ? chart.normalizeTimestampMs(targetTimestamp)
+            : Number(targetTimestamp);
+        if (!Number.isFinite(ts)) return false;
+
+        if (this.isPlaying) {
+            if (typeof this.stop === 'function') this.stop();
+            else if (typeof this.pause === 'function') this.pause();
+        }
+        this.isPlaying = false;
+        this._savedTickState = null;
+        this.animatingCandle = null;
+        this.tickProgress = 0;
+        this.tickElapsedMs = 0;
+
+        const goBackFloor = this.sessionStartIndex || 0;
+        let newRawIndex = goBackFloor;
+        let orderCutoff = ts + 1;
+
+        const candleIndex = options.candleIndex;
+        if (Number.isInteger(candleIndex) && candleIndex >= 0
+            && sourceChart && Array.isArray(sourceChart.data)
+            && sourceChart.data[candleIndex]) {
+            const candle = sourceChart.data[candleIndex];
+            const tStart = candle.t;
+            const nextDisp = sourceChart.data[candleIndex + 1];
+            const tEndExclusive = (nextDisp && Number.isFinite(nextDisp.t)) ? nextDisp.t : Infinity;
+
+            if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
+                let lastInBucket = -1;
+                for (let i = 0; i < this.fullRawData.length; i++) {
+                    const rt = this.fullRawData[i]?.t;
+                    if (!Number.isFinite(rt)) continue;
+                    if (rt >= tEndExclusive) break;
+                    if (rt >= tStart) lastInBucket = i;
+                }
+                if (lastInBucket >= 0) {
+                    newRawIndex = Math.max(lastInBucket, goBackFloor);
+                } else {
+                    let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
+                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, tStart)
+                        : this.fullRawData.findIndex(c => (c && c.t) >= tStart);
+                    if (idx < 0) idx = goBackFloor;
+                    newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
+                }
+            }
+
+            if (Number.isFinite(tEndExclusive)) {
+                orderCutoff = tEndExclusive;
+            } else {
+                const rb = this.fullRawData[newRawIndex];
+                orderCutoff = (rb && Number.isFinite(rb.t)) ? rb.t + 1 : tStart + 1;
+            }
+        } else {
+            let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
+                ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+                : -1;
+            if (idx < 0) idx = goBackFloor;
+            newRawIndex = Math.min(Math.max(idx, goBackFloor), this.fullRawData.length - 1);
+            const rawBar = this.fullRawData[newRawIndex];
+            orderCutoff = (rawBar && Number.isFinite(rawBar.t)) ? rawBar.t + 1 : ts + 1;
+        }
+
+        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
+            this.chart.orderManager.forceCloseAllOrders(orderCutoff);
+        }
+
+        this.currentIndex = Math.max(newRawIndex, goBackFloor);
+        const rawBar = this.fullRawData[this.currentIndex];
+        if (rawBar && Number.isFinite(rawBar.t)) {
+            this.replayTimestamp = rawBar.t;
+        } else {
+            this.replayTimestamp = ts;
+        }
+
+        this.updateChartData();
+        if (typeof this.updateTimeDisplay === 'function') {
+            this.updateTimeDisplay();
+        }
+
+        if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
+            setTimeout(() => this.chart.orderManager.redrawPreservedTradeMarkers(), 100);
+        }
+
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talariaReplayCut', {
+                    detail: {
+                        timestamp: this.replayTimestamp,
+                        orderCutoff,
+                    },
+                }));
+            }
+        } catch (_) { /* ignore */ }
+
+        return true;
+    }
+
+    /**
      * Handle click in go back mode - rewind to this point
      */
     handleGoBackClick(e) {
@@ -1951,45 +2063,6 @@ class ReplaySystem {
         const candle = sourceChart.data[candleIndex];
         if (!candle) return;
 
-        const tStart = candle.t;
-        const nextDisp = sourceChart.data[candleIndex + 1];
-        const tEndExclusive = (nextDisp && Number.isFinite(nextDisp.t)) ? nextDisp.t : Infinity;
-
-        // Cut ON the clicked candle: include all raw bars that belong to that display
-        // bucket (from its open through the next bar’s open, exclusive). Previously we
-        // stepped back one raw bar so the click excluded the bar — that felt wrong vs
-        // “cut where I clicked”.
-        const goBackFloor = this.sessionStartIndex || 0;
-        let newRawIndex = goBackFloor;
-        if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-            let lastInBucket = -1;
-            for (let i = 0; i < this.fullRawData.length; i++) {
-                const rt = this.fullRawData[i]?.t;
-                if (!Number.isFinite(rt)) continue;
-                if (rt >= tEndExclusive) break;
-                if (rt >= tStart) lastInBucket = i;
-            }
-            if (lastInBucket >= 0) {
-                newRawIndex = Math.max(lastInBucket, goBackFloor);
-            } else {
-                let idx = (typeof this._bsearchTimestamp === 'function')
-                    ? this._bsearchTimestamp(this.fullRawData, tStart)
-                    : this.fullRawData.findIndex(c => (c && c.t) >= tStart);
-                if (idx < 0) idx = goBackFloor;
-                newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
-            }
-        }
-
-        // Order/journal cutoff: first moment *after* the included window (next display
-        // open), or just after the last raw bar if this is the final candle.
-        let orderCutoff;
-        if (Number.isFinite(tEndExclusive)) {
-            orderCutoff = tEndExclusive;
-        } else {
-            const rb = this.fullRawData[newRawIndex];
-            orderCutoff = (rb && Number.isFinite(rb.t)) ? rb.t + 1 : tStart + 1;
-        }
-
         const flashCutLines = () => {
             if (this._goBackMultiPanel && this._goBackEntries) {
                 this._goBackEntries.forEach((ent) => {
@@ -2002,37 +2075,10 @@ class ReplaySystem {
             }
         };
         flashCutLines();
-        
-        // Selectively close only orders/trades that occurred AFTER the cut point;
-        // trades completed before targetTime keep their markers.
-        if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
-            this.chart.orderManager.forceCloseAllOrders(orderCutoff);
-        }
 
-        // Kill all animation state and update currentIndex NOW so any
-        // intermediate renders during the delay show the correct price line.
-        this.isPlaying = false;
-        this._savedTickState = null;
-        this.animatingCandle = null;
-        this.tickProgress = 0;
-        this.tickElapsedMs = 0;
-        const goBackMinIdx = this.sessionStartIndex || 0;
-        this.currentIndex = Math.max(newRawIndex, goBackMinIdx);
-        const rawBar = this.fullRawData[this.currentIndex];
-        if (rawBar && Number.isFinite(rawBar.t)) {
-            this.replayTimestamp = rawBar.t;
-        }
-
-        // Brief delay for visual feedback then update chart data
         setTimeout(() => {
+            this.applyReplayCutToWallClock(candle.t, { sourceChart, candleIndex });
             this.exitGoBackMode();
-            this.updateChartData();
-            this.updateTimeDisplay();
-
-            // Redraw preserved trade markers now that chart data/scales are current
-            if (this.chart.orderManager && typeof this.chart.orderManager.redrawPreservedTradeMarkers === 'function') {
-                setTimeout(() => this.chart.orderManager.redrawPreservedTradeMarkers(), 100);
-            }
         }, 150);
     }
     
@@ -5336,6 +5382,7 @@ class ReplaySystem {
             const visibleBars = Math.max(0, i1 - i0);
             const needsRecovery = typeof chart._multichartViewportNeedsRecovery === 'function'
                 && chart._multichartViewportNeedsRecovery();
+            const passivePlay = chart._multichartPassivePlayActive === true;
             const needsScroll = needsRecovery
                 || visibleBars === 0
                 || (chart.data.length <= 30 && visibleBars < Math.min(3, chart.data.length));
@@ -5343,7 +5390,9 @@ class ReplaySystem {
             // autoScrollEnabled=false), never re-scroll/recenter the viewport.
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
-            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled) && visibleBars > 0;
+            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled)
+                && visibleBars > 0
+                && !passivePlay;
             if (userOwnsViewport
                 && visibleBars <= 1
                 && typeof chart._needsReplayHistoryLoadLeft === 'function'
@@ -5351,7 +5400,7 @@ class ReplaySystem {
                 && typeof chart._scheduleReplayPanLoadLeft === 'function') {
                 chart._scheduleReplayPanLoadLeft();
             }
-            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
+            if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled || passivePlay)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
                     : null;

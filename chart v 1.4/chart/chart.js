@@ -2647,7 +2647,11 @@ class Chart {
             return false;
         }
         if (!this._multichartViewportNeedsRecovery()) return false;
-        if (this._isMultichartViewportJustReset && this._isMultichartViewportJustReset()) return false;
+        if (this._isMultichartViewportJustReset && this._isMultichartViewportJustReset()
+            && !this._multichartPassivePlayActive
+            && this._countVisiblePlotBars() > 0) {
+            return false;
+        }
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
         }
@@ -2985,8 +2989,12 @@ class Chart {
         if (!session || !fileId) return false;
 
         if (this._ensureReplayDataInflight) {
+            if (!Number.isFinite(this._ensureReplayDataTargetTs) || ts > this._ensureReplayDataTargetTs) {
+                this._ensureReplayDataTargetTs = ts;
+            }
             return this._ensureReplayDataInflight;
         }
+        this._ensureReplayDataTargetTs = ts;
 
         const captureGeneration = this._ensureReplayDataGeneration || 0;
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
@@ -3104,6 +3112,19 @@ class Chart {
                 return hasWallClockPrefix(this.rawData);
             } finally {
                 this._ensureReplayDataInflight = null;
+                const ahead = this._ensureReplayDataTargetTs;
+                this._ensureReplayDataTargetTs = null;
+                const master = this._isIndependentMultichartPair()
+                    ? this._panelFullRawData
+                    : (this.replaySystem && this.replaySystem.fullRawData);
+                const lastMasterT = Array.isArray(master) && master.length
+                    ? Number(master[master.length - 1]?.t)
+                    : NaN;
+                if (Number.isFinite(ahead) && Number.isFinite(lastMasterT) && ahead > lastMasterT) {
+                    Promise.resolve().then(() => {
+                        try { this.ensureReplayDataCoversTimestamp(ahead); } catch (_e) { /* ignore */ }
+                    });
+                }
             }
         })();
 
