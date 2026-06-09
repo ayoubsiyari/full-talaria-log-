@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b15";
+const BRIDGE_VERSION = "20260608b16";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {

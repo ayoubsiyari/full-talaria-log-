@@ -21,18 +21,18 @@ const distIndexPath = path.resolve(__dirname, "../../chart/dist-v9/index.html");
 
 const SCRIPT_SRC_RE = /(<script\b[^>]*\ssrc=")(\/chart\/[^"?]+)(?:\?[^"#]*)?(")/g;
 /** Multichart iframe inject() cache bust in live/index.html */
-const INLINE_MULTICHART_V_RE = /var V = '\d{8}a\d+';/g;
+const INLINE_MULTICHART_V_RE = /var V = '\d{8}[ab]\d+';/g;
 
 function defaultBuildId() {
   const d = new Date();
   const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  return `${ymd}a1`;
+  return `${ymd}b1`;
 }
 
-/** Bump `20260516a1` → `20260516a2` when rebuilding the same day. */
+/** Bump `20260516b1` → `20260516b2` (or legacy `…aN`) when rebuilding the same day. */
 function incrementBuildId(id) {
-  const m = /^(\d{8})a(\d+)$/i.exec(String(id || "").trim());
-  if (m) return `${m[1]}a${parseInt(m[2], 10) + 1}`;
+  const m = /^(\d{8})([ab])(\d+)$/i.exec(String(id || "").trim());
+  if (m) return `${m[1]}${m[2]}${parseInt(m[3], 10) + 1}`;
   return `${defaultBuildId()}2`;
 }
 
