@@ -5317,6 +5317,13 @@ class ReplaySystem {
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
             const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled) && visibleBars > 0;
+            if (userOwnsViewport
+                && visibleBars <= 1
+                && typeof chart._needsReplayHistoryLoadLeft === 'function'
+                && chart._needsReplayHistoryLoadLeft()
+                && typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                chart._scheduleReplayPanLoadLeft();
+            }
             if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)

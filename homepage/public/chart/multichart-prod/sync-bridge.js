@@ -403,17 +403,37 @@
 
     /** When sync leaves zero bars on screen, recover without resetting zoom on iframe tiles. */
     function recoverViewportIfEmpty(chart) {
-        if (!chart || !chart.data || !chart.data.length) return false;
+        if (!chart) return false;
+        const rsRec = chart.replaySystem;
+
+        // Rebuild display from replay master when the slice exists but resampled data is empty.
+        if (rsRec && rsRec.isActive && Array.isArray(rsRec.fullRawData) && rsRec.fullRawData.length > 0
+            && (!chart.data || !chart.data.length)
+            && typeof rsRec.updateChartData === 'function') {
+            try { rsRec.updateChartData(false); } catch (_) {}
+        }
+
+        if (!chart.data || !chart.data.length) {
+            if (rsRec && rsRec.isActive
+                && typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
+        }
         if (countVisibleBars(chart) > 0) return false;
         // Don't recover/recenter a tile the user deliberately panned during
         // replay, OR one that host-driven visible-range/date-range sync is
-        // positioning — recentering is the snap-back. The panel's own pan
-        // handler streams history when dragged, so don't trigger loads here.
-        const rsRec = chart.replaySystem;
+        // positioning — recentering is the snap-back. Stream history instead.
         const userOwned = (rsRec && rsRec.isActive
                 && (rsRec.userHasPanned || !rsRec.autoScrollEnabled))
             || !!chart._multichartVisibleRangeSyncOn;
-        if (userOwned) return false;
+        if (userOwned) {
+            if (rsRec && rsRec.isActive
+                && typeof chart._scheduleReplayPanLoadLeft === 'function') {
+                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+            }
+            return false;
+        }
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;

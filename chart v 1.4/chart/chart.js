@@ -2530,7 +2530,15 @@ class Chart {
         // so we must NOT trigger loads or re-fit here (that fights the drag and
         // pins the panel in place).
         const userOwned = !!(replay && replay.userHasPanned) || !!this._multichartVisibleRangeSyncOn;
-        if (userOwned) return false;
+        if (userOwned) {
+            // Never recenter while the user (or date-range sync) owns the viewport, but
+            // DO stream history when they panned into unloaded left — same as tile A.
+            if (typeof this._needsReplayHistoryLoadLeft === 'function'
+                && this._needsReplayHistoryLoadLeft()) {
+                this._scheduleReplayPanLoadLeft();
+            }
+            return false;
+        }
         if (!this._multichartViewportNeedsRecovery()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
@@ -17010,6 +17018,14 @@ class Chart {
                         this.viewportData.hasMoreRight = !!this._serverCursors.hasMoreRight;
                     }
                     this._syncReplayPanCursorsFromFullRaw();
+                    if (direction === 'backward' && uniqueNew.length > 0
+                        && typeof this._isMultichartEmbedPanel === 'function'
+                        && this._isMultichartEmbedPanel()
+                        && Array.isArray(this.replaySystem.fullRawData)) {
+                        // Mirror renderer reads _panelFullRawData for independent pairs;
+                        // keep it aligned with the replay master after backward pan loads.
+                        this._panelFullRawData = [...this.replaySystem.fullRawData];
+                    }
                     if (direction === 'forward' && uniqueNew.length > 0 && this.replaySystem.isPlaying) {
                         queueMicrotask(() => {
                             const rs = this.replaySystem;
@@ -18464,7 +18480,16 @@ class Chart {
 
     /** Debounced backward fetch while dragging replay chart left (TradingView-style). */
     _scheduleReplayPanLoadLeft() {
-        if (!this.replaySystem?.isActive || !this.data?.length) return;
+        if (!this.replaySystem?.isActive) return;
+        const hasDisplay = Array.isArray(this.data) && this.data.length > 0;
+        const master = this.replaySystem.fullRawData;
+        const hasMaster = Array.isArray(master) && master.length > 0;
+        if (!hasDisplay && !hasMaster) return;
+        // 1D/4H tiles can have a populated master but an empty resampled `data` after
+        // a mirror slice — rebuild the display series before probing the viewport gap.
+        if (!hasDisplay && hasMaster && typeof this.replaySystem.updateChartData === 'function') {
+            try { this.replaySystem.updateChartData(false); } catch (_) {}
+        }
         if (this._panLoading) return;
         const spacing = this.getCandleSpacing();
         const m = this.margin || { l: 60, r: 60 };
