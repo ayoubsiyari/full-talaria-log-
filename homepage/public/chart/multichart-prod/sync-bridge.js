@@ -405,6 +405,9 @@
     function recoverViewportIfEmpty(chart) {
         if (!chart || !chart.data || !chart.data.length) return false;
         if (countVisibleBars(chart) > 0) return false;
+        // Don't recover/recenter a tile the user deliberately panned during replay.
+        const rsRec = chart.replaySystem;
+        if (rsRec && rsRec.isActive && (rsRec.userHasPanned || !rsRec.autoScrollEnabled)) return false;
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;
@@ -1602,6 +1605,14 @@
         }
 
         function applyVisibleRange(m) {
+            // A tile the user has panned during replay owns its viewport — peer
+            // pan/visibleRange sync must NOT drag it back to the playhead.
+            // (Matches main chart: a manual pan stops follow until re-enabled.)
+            const rsOwn = chart.replaySystem;
+            if (rsOwn && rsOwn.isActive && (rsOwn.userHasPanned || !rsOwn.autoScrollEnabled)) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             const panSync = !!m.panSync;
             const before = G.snapshotPriceState(chart);
             state.applied.add(m.causationId);
