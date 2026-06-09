@@ -23006,22 +23006,9 @@ class Chart {
             }
 
             const [mx, my] = this._eventCanvasLocalXY(e);
-            const mode = detectCursorMode(mx, my);
-
-            if (this.drawingManager && this.drawingManager.currentTool) {
-                if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
-                    return;
-                }
-            }
-
-            const dmPanBlock = this.drawingManager;
-            if (dmPanBlock && typeof dmPanBlock.isVolumeProfileChartPanBlockedAtPoint === 'function'
-                && dmPanBlock.isVolumeProfileChartPanBlockedAtPoint(mx, my)) {
-                e.preventDefault();
-                return;
-            }
 
             // Start separate indicator panel resize when dragging a panel separator.
+            // Must run before drawing-tool guards — separator sits in the chart body.
             if (e.button === 0 && typeof this.getSeparatePanelResizeHandleAt === 'function') {
                 const resizeHandle = this.getSeparatePanelResizeHandleAt(mx, my);
                 if (resizeHandle && typeof this.startSeparatePanelResize === 'function' && this.startSeparatePanelResize(resizeHandle, my)) {
@@ -23036,6 +23023,21 @@ class Chart {
                     e.preventDefault();
                     return;
                 }
+            }
+
+            const mode = detectCursorMode(mx, my);
+
+            if (this.drawingManager && this.drawingManager.currentTool) {
+                if (mode !== 'priceAxis' && mode !== 'timeAxis' && mode !== 'separatePanelAxis') {
+                    return;
+                }
+            }
+
+            const dmPanBlock = this.drawingManager;
+            if (dmPanBlock && typeof dmPanBlock.isVolumeProfileChartPanBlockedAtPoint === 'function'
+                && dmPanBlock.isVolumeProfileChartPanBlockedAtPoint(mx, my)) {
+                e.preventDefault();
+                return;
             }
             
             // Unlock axes IMMEDIATELY if clicking on them - before any other processing
@@ -23621,10 +23623,17 @@ class Chart {
             }
 
             const wasPanDrag = this.drag.type === 'pan';
+            const wasPanelResize = this.drag.type === 'separatePanelResize';
             this._cancelChartPanFrame();
             if (wasPanDrag) {
                 this._clearPanDrawingsLayerTransform();
                 this._finishPanDrawingRedraw();
+            }
+            if (wasPanelResize) {
+                if (typeof this.finishSeparatePanelResize === 'function') {
+                    this.finishSeparatePanelResize();
+                }
+                this._finishSeparatePanelResizeInteraction();
             }
             this.drag.active = false;
             this.drag.type = null;
@@ -23686,7 +23695,15 @@ class Chart {
             }
 
             // Continue axis/pan drags when pointer leaves canvas or moves over separate-panel DOM layers.
-            if (this.drag && this.drag.active && this.canvas) {
+            if (this.drag && this.drag.active && this.drag.type === 'separatePanelResize' && this.canvas) {
+                const [, resizeMy] = this._eventCanvasLocalXY(e);
+                if (typeof this.updateSeparatePanelResize === 'function') {
+                    this.updateSeparatePanelResize(resizeMy);
+                }
+                this._scheduleSeparatePanelResizeRender();
+                this.drag.lastX = e.clientX;
+                this.drag.lastY = e.clientY;
+            } else if (this.drag && this.drag.active && this.canvas) {
                 const rect = this._pointerLayoutRect();
                 const [mx, my] = this._eventCanvasLocalXY(e);
                 const isOutside = e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom;

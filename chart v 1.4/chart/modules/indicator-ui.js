@@ -105,6 +105,13 @@ function sanitizeIndicatorPayloadFromDefinition(def, payload) {
     return out;
 }
 
+/** Solid / dashed / dotted only — ICT Everything verticals, opens, SD lines. */
+const ICT_SIMPLE_LINE_STYLE_OPTIONS = [
+    { value: 'Solid', label: 'Solid' },
+    { value: 'Dashed', label: 'Dashed' },
+    { value: 'Dotted', label: 'Dotted' }
+];
+
 /** Full plot-style list for indicators; includes legacy dash names for saved layouts + ICT. */
 const OVERLAY_LINE_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS.concat([
     { value: 'Dashed', label: 'Dashed' },
@@ -1423,7 +1430,7 @@ function getV9OpenIndicatorSettingsFn() {
 }
 
 function __ictEverythingParamList() {
-    const lineStyle = OVERLAY_LINE_STYLE_OPTIONS;
+    const lineStyle = ICT_SIMPLE_LINE_STYLE_OPTIONS;
     const lineWidth = ['1px', '2px', '3px', '4px', '5px'].map(function (v) { return { value: v, label: v }; });
     const labelSize = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'].map(function (v) { return { value: v, label: v }; });
     const terminus = [
@@ -1484,12 +1491,12 @@ function __ictEverythingParamList() {
         { id: 'MOPColor', label: 'Midnight vline color', type: 'color', default: '#787b86' },
         { id: 'Midnight_Open_LS', label: 'Midnight vline style', type: 'select', options: lineStyle, default: 'Dotted' },
         { id: 'Midnight_Open_LW', label: 'Midnight vline width', type: 'select', options: lineWidth, default: '1px' },
-        { id: 'ShowLOP', label: 'London 03:00', type: 'checkbox', default: false },
+        { id: 'ShowLOP', label: 'London session start', type: 'checkbox', default: false },
         { id: 'txt14', label: 'LOP label', type: 'text', default: 'LONDON' },
         { id: 'LOPColor', label: 'LOP color', type: 'color', default: 'rgba(0,128,128,0.6)' },
         { id: 'london_Open_LS', label: 'LOP style', type: 'select', options: lineStyle, default: 'Solid' },
         { id: 'London_Open_LW', label: 'LOP width', type: 'select', options: lineWidth, default: '1px' },
-        { id: 'ShowNYOP', label: 'NY 08:30', type: 'checkbox', default: true },
+        { id: 'ShowNYOP', label: 'NY session start', type: 'checkbox', default: true },
         { id: 'txt15', label: 'NYOP label', type: 'text', default: 'NEW YORK' },
         { id: 'NYOPColor', label: 'NYOP color', type: 'color', default: 'rgba(0,128,128,0.6)' },
         { id: 'NY_Open_LS', label: 'NYOP style', type: 'select', options: lineStyle, default: 'Solid' },
@@ -1583,11 +1590,11 @@ function __ictEverythingParamList() {
         { id: 'DOWTime', label: 'DOW hour', type: 'number', default: 12, min: 0, max: 23 },
         { id: 'DOWLoc_inpt', label: 'DOW position', type: 'select', options: [{ value: 'Top', label: 'Top' }, { value: 'Bottom', label: 'Bottom' }], default: 'Bottom' },
         { id: 'h_biaspre', type: 'heading', label: 'BIAS & NOTES PRECONFIG' },
-        { id: 'BIAS_M_Bool', label: 'Show bias table (UI only)', type: 'checkbox', default: false },
+        { id: 'BIAS_M_Bool', label: 'Show bias table', type: 'checkbox', default: false },
         { id: 'txt100', label: 'Bias table title', type: 'text', default: 'BIAS' },
         { id: 'Tab2txtCol', label: 'Bias text color', type: 'color', default: '#787b86' },
         { id: 'TabOption2', label: 'Bias table position', type: 'select', options: tablePos, default: 'Bottom Right' },
-        { id: 'NOTES_M_Bool', label: 'Show notes table (UI only)', type: 'checkbox', default: true },
+        { id: 'NOTES_M_Bool', label: 'Show notes table', type: 'checkbox', default: true },
         { id: 'txt101', label: 'Notes table title', type: 'text', default: 'NOTES' },
         { id: 'Tab3txtCol', label: 'Notes text color', type: 'color', default: '#787b86' },
         { id: 'TabOption3', label: 'Notes table position', type: 'select', options: tablePos, default: 'Top Center' },

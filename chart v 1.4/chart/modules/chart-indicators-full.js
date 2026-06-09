@@ -2837,7 +2837,7 @@
 
     /**
      * ICT Everything — session strips, CBDR/Asia/FLOUT range boxes, verticals, opening lines (Pine-aligned inputs).
-     * Tables (bias/notes/range stats) and Auto_Select deletion logic are not drawn on canvas yet.
+     * Range stats table (Auto_Select) is not drawn on canvas yet.
      */
     function calculateIctEverything(data, indicator) {
         const empty = {
@@ -3018,6 +3018,32 @@
                 lw: _ictPxWidthFromSelect(lwName)
             });
         };
+
+        /** Vertical line at session start time (same wall clock as session shading). */
+        const vlineSessionDefs = [
+            {
+                show: !!P.ShowLOP,
+                start: _ictParseTimeToDec(P.LDNseshStart || '02:00'),
+                color: P.LOPColor,
+                dash: P.london_Open_LS,
+                lw: P.London_Open_LW
+            },
+            {
+                show: P.ShowNYOP !== false,
+                start: _ictParseTimeToDec(P.NYseshStart || '07:00'),
+                color: P.NYOPColor,
+                dash: P.NY_Open_LS,
+                lw: P.NY_Open_LW
+            },
+            {
+                show: !!P.ShowEOP,
+                start: _ictParseTimeToDec(P.EquitiesOpen || '09:30'),
+                color: P.EOPColor,
+                dash: P.Equities_Open_LS,
+                lw: P.Equities_Open_LW
+            }
+        ];
+
         let prevWall = null;
         for (let i = 0; i < n; i++) {
             const w = wallAt(data[i].t);
@@ -3032,14 +3058,12 @@
                     pushVline(i, P.MOPColor, P.Midnight_Open_LS, P.Midnight_Open_LW);
                 }
                 if (w.dayKey === prevWall.dayKey) {
-                    const cross = function (targetDec, color, dashN, lwN) {
-                        if (prevWall.dec < targetDec && w.dec >= targetDec) {
-                            pushVline(i, color, dashN, lwN);
+                    vlineSessionDefs.forEach(function (def) {
+                        if (!def.show) return;
+                        if (prevWall.dec < def.start && w.dec >= def.start) {
+                            pushVline(i, def.color, def.dash, def.lw);
                         }
-                    };
-                    if (P.ShowLOP) cross(3, P.LOPColor, P.london_Open_LS, P.London_Open_LW);
-                    if (P.ShowNYOP !== false) cross(8.5, P.NYOPColor, P.NY_Open_LS, P.NY_Open_LW);
-                    if (P.ShowEOP) cross(9.5, P.EOPColor, P.Equities_Open_LS, P.Equities_Open_LW);
+                    });
                 }
             }
             prevWall = w;
@@ -3111,9 +3135,8 @@
             pushMidnightHline(midStart, n - 1, midDayKey, openMidnight);
         }
 
-        function pushOpenAtClock(hour, minute, enabled, color, dashS, lwS, label) {
+        function pushOpenAtDec(targetDec, enabled, color, dashS, lwS, label) {
             if (!enabled) return;
-            const target = hour + minute / 60;
             let prevW = wallAt(data[0].t);
             const seenDay = {};
             for (let i = 1; i < n; i++) {
@@ -3122,12 +3145,12 @@
                     prevW = w;
                     continue;
                 }
-                if (w.dayKey === prevW.dayKey && prevW.dec < target && w.dec >= target) {
+                if (w.dayKey === prevW.dayKey && prevW.dec < targetDec && w.dec >= targetDec) {
                     if (!allowMiscHline(w.dayKey)) {
                         prevW = w;
                         continue;
                     }
-                    const ukey = String(label) + '|' + w.dayKey + '|' + String(hour) + ':' + String(minute);
+                    const ukey = String(label) + '|' + w.dayKey + '|' + String(targetDec);
                     if (seenDay[ukey]) {
                         prevW = w;
                         continue;
@@ -3147,9 +3170,9 @@
                 prevW = w;
             }
         }
-        pushOpenAtClock(8, 30, !!P.ShowNYOPP, P.NYOPColP, P.NYOPLS, P.i_NYOPLW, P.txt17);
-        pushOpenAtClock(9, 30, !!P.ShowEOPP, P.EOPColP, P.EOPLS, P.i_EOPLW, P.txt18);
-        pushOpenAtClock(13, 30, !!P.ShowAFTPP, P.AFTOPColP, P.AFTOPLS, P.i_AFTOPLW, P.txt1330);
+        pushOpenAtDec(_ictParseTimeToDec(P.NYseshStart || '07:00'), !!P.ShowNYOPP, P.NYOPColP, P.NYOPLS, P.i_NYOPLW, P.txt17);
+        pushOpenAtDec(_ictParseTimeToDec(P.EquitiesOpen || '09:30'), !!P.ShowEOPP, P.EOPColP, P.EOPLS, P.i_EOPLW, P.txt18);
+        pushOpenAtDec(_ictParseTimeToDec(P.PMseshStart || '13:00'), !!P.ShowAFTPP, P.AFTOPColP, P.AFTOPLS, P.i_AFTOPLW, P.txt1330);
 
         const dowMarks = [];
         if (P.showDOW) {
@@ -10620,6 +10643,135 @@ Chart.prototype.drawKillzones = function(data, style, startIndex = 0, endIndex) 
     }
 };
 
+function _ictOverlayTableAnchor(pos, chartW, chartH, margin, panelW, panelH) {
+    const pad = 10;
+    const plotL = margin.l;
+    const plotR = chartW - margin.r;
+    const plotT = margin.t;
+    const plotB = chartH - margin.b;
+    const p = String(pos || 'Top Right');
+    let x = plotL + pad;
+    let y = plotT + pad;
+    if (p.indexOf('Right') >= 0) x = plotR - pad - panelW;
+    else if (p.indexOf('Center') >= 0) x = (plotL + plotR - panelW) / 2;
+    if (p.indexOf('Bottom') >= 0) y = plotB - pad - panelH;
+    else if (p.indexOf('Middle') >= 0) y = (plotT + plotB - panelH) / 2;
+    x = Math.max(plotL + 4, Math.min(x, plotR - panelW - 4));
+    y = Math.max(plotT + 4, Math.min(y, plotB - panelH - 4));
+    return { x: x, y: y };
+}
+
+function _ictBiasValueColor(bias) {
+    const b = String(bias || '').toLowerCase();
+    if (b === 'bullish') return '#26a69a';
+    if (b === 'bearish') return '#ef5350';
+    if (b === 'consolidating') return '#787b86';
+    if (b === 'unclear') return '#ff9800';
+    return null;
+}
+
+function _ictWrapCanvasLines(ctx, text, maxWidth) {
+    const out = [];
+    String(text || '').split(/\r?\n/).forEach(function (para) {
+        const words = para.trim().split(/\s+/).filter(Boolean);
+        if (!words.length) {
+            out.push('');
+            return;
+        }
+        let line = words[0];
+        for (let i = 1; i < words.length; i++) {
+            const next = line + ' ' + words[i];
+            if (ctx.measureText(next).width <= maxWidth) line = next;
+            else {
+                out.push(line);
+                line = words[i];
+            }
+        }
+        out.push(line);
+    });
+    return out.length ? out : [''];
+}
+
+Chart.prototype._drawIctOverlayTable = function(anchorPos, title, rows, textColor, options) {
+    options = options || {};
+    const ctx = this.ctx;
+    const m = this.margin;
+    const titleFont = '700 11px Roboto, system-ui, sans-serif';
+    const bodyFont = '500 11px Roboto, system-ui, sans-serif';
+    const padX = 10;
+    const padY = 7;
+    const lineH = 14;
+    const gap = 4;
+    const maxInnerW = options.maxWidth != null ? options.maxWidth : 220;
+    ctx.save();
+    ctx.font = titleFont;
+    let innerW = ctx.measureText(String(title || '')).width;
+    ctx.font = bodyFont;
+    rows.forEach(function (row) {
+        if (row.kind === 'text') {
+            _ictWrapCanvasLines(ctx, row.text, maxInnerW).forEach(function (ln) {
+                innerW = Math.max(innerW, ctx.measureText(ln).width);
+            });
+        } else {
+            innerW = Math.max(innerW, ctx.measureText(String(row.left || '')).width + 12 + ctx.measureText(String(row.right || '')).width);
+        }
+    });
+    innerW = Math.min(maxInnerW, Math.max(72, innerW));
+    let rowCount = 0;
+    rows.forEach(function (row) {
+        if (row.kind === 'text') rowCount += _ictWrapCanvasLines(ctx, row.text, innerW).length;
+        else rowCount += 1;
+    });
+    const panelW = innerW + padX * 2;
+    const panelH = padY * 2 + lineH + gap + rowCount * lineH;
+    const anchor = _ictOverlayTableAnchor(anchorPos, this.w, this.h, m, panelW, panelH);
+    ctx.fillStyle = options.bg || 'rgba(13, 17, 23, 0.92)';
+    ctx.strokeStyle = options.border || 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    const rx = anchor.x;
+    const ry = anchor.y;
+    const rr = 4;
+    ctx.beginPath();
+    ctx.moveTo(rx + rr, ry);
+    ctx.lineTo(rx + panelW - rr, ry);
+    ctx.quadraticCurveTo(rx + panelW, ry, rx + panelW, ry + rr);
+    ctx.lineTo(rx + panelW, ry + panelH - rr);
+    ctx.quadraticCurveTo(rx + panelW, ry + panelH, rx + panelW - rr, ry + panelH);
+    ctx.lineTo(rx + rr, ry + panelH);
+    ctx.quadraticCurveTo(rx, ry + panelH, rx, ry + panelH - rr);
+    ctx.lineTo(rx, ry + rr);
+    ctx.quadraticCurveTo(rx, ry, rx + rr, ry);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.font = titleFont;
+    ctx.fillStyle = textColor || '#d1d4dc';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(String(title || ''), anchor.x + padX, anchor.y + padY);
+    let y = anchor.y + padY + lineH + gap;
+    ctx.font = bodyFont;
+    rows.forEach(function (row) {
+        if (row.kind === 'text') {
+            _ictWrapCanvasLines(ctx, row.text, innerW).forEach(function (ln) {
+                ctx.fillStyle = textColor || '#d1d4dc';
+                ctx.fillText(ln, anchor.x + padX, y);
+                y += lineH;
+            });
+            return;
+        }
+        ctx.fillStyle = textColor || '#d1d4dc';
+        ctx.fillText(String(row.left || ''), anchor.x + padX, y);
+        const biasCol = _ictBiasValueColor(row.right);
+        ctx.fillStyle = biasCol || textColor || '#d1d4dc';
+        ctx.textAlign = 'right';
+        ctx.fillText(String(row.right || ''), anchor.x + panelW - padX, y);
+        ctx.textAlign = 'left';
+        y += lineH;
+    });
+    ctx.restore();
+};
+
 Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endIndex) {
     if (!data || !data.dom) return;
     const ctx = this.ctx;
@@ -10774,6 +10926,39 @@ Chart.prototype.drawIctEverything = function(data, style, startIndex = 0, endInd
             ctx.fillText(dm.text || '', x, y);
         });
         ctx.restore();
+    }
+
+    const P = data._params || {};
+    if (P.BIAS_M_Bool) {
+        const biasRows = [];
+        const nameIds = ['txt52', 'txt53', 'txt54', 'txt55'];
+        for (let bi = 1; bi <= 4; bi++) {
+            if (!P['BIASbool' + bi]) continue;
+            biasRows.push({
+                left: String(P[nameIds[bi - 1]] != null ? P[nameIds[bi - 1]] : '').trim(),
+                right: String(P['BIASOption' + bi] != null ? P['BIASOption' + bi] : '')
+            });
+        }
+        if (biasRows.length) {
+            this._drawIctOverlayTable(
+                P.TabOption2 || 'Bottom Right',
+                P.txt100 || 'BIAS',
+                biasRows,
+                P.Tab2txtCol || style.textColor || '#787b86'
+            );
+        }
+    }
+    if (P.NOTES_M_Bool) {
+        const noteBody = String(P.notes != null ? P.notes : '').trim();
+        if (noteBody) {
+            this._drawIctOverlayTable(
+                P.TabOption3 || 'Top Center',
+                P.txt101 || 'NOTES',
+                [{ kind: 'text', text: noteBody }],
+                P.Tab3txtCol || style.textColor || '#787b86',
+                { maxWidth: 260 }
+            );
+        }
     }
 };
 

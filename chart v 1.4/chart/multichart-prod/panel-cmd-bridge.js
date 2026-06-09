@@ -445,7 +445,11 @@
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
                 var keepOffset = Number.isFinite(prevOffsetX);
-                if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
+                // User deliberately panned this tile → always keep their offset
+                // (matches main chart: a manual pan disables auto-recenter).
+                if (rs.userHasPanned) {
+                    keepOffset = Number.isFinite(prevOffsetX);
+                } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
                     && ch._multichartViewportNeedsRecovery()) {
                     keepOffset = false;
                 }
