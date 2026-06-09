@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b11';
+const CHART_ENGINE_BUILD = '20260609b12';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2418,9 +2418,13 @@ class Chart {
                         this._reseedReplayFullRawFromLoadedData();
                     }
                     replay.rawTimeframe = masterTf;
-                    if (Number.isFinite(restoreTs)
-                        && typeof replay.goToReplayTimestamp === 'function') {
-                        replay.goToReplayTimestamp(restoreTs, { centerOnCandle: true });
+                    if (Number.isFinite(restoreTs)) {
+                        if (independentPair
+                            && typeof this._applyIndependentPanelReplaySlice === 'function') {
+                            this._applyIndependentPanelReplaySlice(restoreTs);
+                        } else if (typeof replay.goToReplayTimestamp === 'function') {
+                            replay.goToReplayTimestamp(restoreTs, { centerOnCandle: false });
+                        }
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
                     }
@@ -2430,13 +2434,19 @@ class Chart {
                 }
 
                 this.resize();
-                this._scheduleCoalescedViewportCommit({
-                    centerPlayhead: true,
-                    forceRecenter: true,
-                    render: true,
-                    endPairSwitch: pairLoadUiActive,
-                    pairSwitchLoadSeq: loadSeq,
-                });
+                if (typeof this._resetViewportToDefault === 'function') {
+                    this._resetViewportToDefault({
+                        centerPlayhead: true,
+                        forceRecenter: true,
+                        render: false,
+                    });
+                }
+                if (typeof this.render === 'function') {
+                    this.render();
+                }
+                if (pairLoadUiActive) {
+                    try { this._endPairSwitchLoading(loadSeq); } catch (_pairUiEnd) { /* ignore */ }
+                }
                 viewportCommitted = true;
                 try {
                     global.dispatchEvent(new CustomEvent('chartDataLoaded', {
@@ -5444,10 +5454,8 @@ class Chart {
                     return Number.isFinite(t) ? Math.floor(t) : null;
                 })();
                 let endAnchor = sessionEndMs;
-                // Independent multichart panels mirror host A's play loop, so they MUST keep
-                // forward bars (history → session end) to advance on play. Anchoring the fetch
-                // at the playhead would truncate the future and freeze the panel on Run.
-                // The visible window is still cut to the playhead via _applyIndependentPanelReplaySlice.
+                // Host tile A during replay may anchor at playhead; independent panels need
+                // history through session end so replay can advance (slice handles playhead).
                 if (fetchReplayAnchored && !anchorToHostPlayhead) {
                     endAnchor = Math.floor(replayTargetTs);
                 }
@@ -5496,7 +5504,26 @@ class Chart {
             }
             if (!result) {
                 if (isBacktestSession) {
-                    if (anchorToHostPlayhead && fetchReplayAnchored && Number.isFinite(replayTargetTs)) {
+                    // Independent iframe: session-spanning 1m master (not playhead seek buffer).
+                    if (anchorToHostPlayhead) {
+                        try {
+                            const initRange = this._getBacktestInitialFetchRange('1m', session);
+                            result = await this._fetchSmartWindow(
+                                targetFileId,
+                                '1m',
+                                session,
+                                'end',
+                                initRange,
+                                {
+                                    skipSessionDates: true,
+                                    limit: this._backtestFetchLimitForTimeframe('1m'),
+                                },
+                            );
+                        } catch (e) {
+                            console.warn('loadFileData: independent initial fetch failed', e);
+                        }
+                    }
+                    if (!result && anchorToHostPlayhead && fetchReplayAnchored && Number.isFinite(replayTargetTs)) {
                         try {
                             result = await this._fetchReplaySeekBuffer(
                                 targetFileId,
@@ -5509,13 +5536,12 @@ class Chart {
                         }
                     }
                     if (!result) {
-                        const fallbackRange = (anchorToHostPlayhead && fetchReplayAnchored
-                            && Number.isFinite(replayTargetTs))
-                            ? this._getBacktestReplayFetchRange('1m', session, replayTargetTs)
+                        const fallbackRange = anchorToHostPlayhead
+                            ? this._getBacktestInitialFetchRange('1m', session)
                             : backtestHistoryRange;
                         result = await this._fetchSmartWindow(
                             targetFileId,
-                            requestTimeframe,
+                            anchorToHostPlayhead ? '1m' : requestTimeframe,
                             session,
                             'end',
                             fallbackRange,
@@ -5600,8 +5626,18 @@ class Chart {
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
             this._nativeRawFetchTf = result.nativeRawFetchTf || requestTimeframe;
+            if (anchorToHostPlayhead && isBacktestSession) {
+                this._nativeRawFetchTf = '1m';
+            }
             this._ingestSmartWindowResult(result, { skipFitToView: true });
             this.loadedRanges.set(0, result.returned);
+
+            if (anchorToHostPlayhead && isBacktestSession) {
+                const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+                if (displayTf !== '1m' && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                    this.data = this.resampleData(this.rawData, displayTf);
+                }
+            }
 
             // Multichart iframe on a different pair than host A: keep full series for replay mirror.
             try {
@@ -5813,22 +5849,28 @@ class Chart {
             let params;
             let backtestHistoryRange = null;
             if (isBacktest) {
-                requestTimeframe = this.currentTimeframe || '1d';
-                const sessionEndMs = (() => {
-                    const r = session.endDate || session.end_date;
-                    if (!r) return null;
-                    const t = (mainChart && typeof mainChart._sessionEndToInclusiveUtcMs === 'function')
-                        ? mainChart._sessionEndToInclusiveUtcMs(r)
-                        : (typeof this._sessionEndToInclusiveUtcMs === 'function'
-                            ? this._sessionEndToInclusiveUtcMs(r)
-                            : new Date(r).getTime());
-                    return Number.isFinite(t) ? Math.floor(t) : null;
-                })();
-                let endAnchor = sessionEndMs;
-                if (replayActiveBefore && Number.isFinite(replayTs)) {
-                    endAnchor = Math.floor(replayTs);
-                }
-                backtestHistoryRange = endAnchor != null ? { endTs: endAnchor } : null;
+                // 1m master for client TF resample (same as iframe loadMultichartPanelFromHost).
+                requestTimeframe = '1m';
+                const getInitRange = (mainChart && typeof mainChart._getBacktestInitialFetchRange === 'function')
+                    ? mainChart._getBacktestInitialFetchRange.bind(mainChart)
+                    : (typeof this._getBacktestInitialFetchRange === 'function'
+                        ? this._getBacktestInitialFetchRange.bind(this)
+                        : null);
+                backtestHistoryRange = getInitRange
+                    ? getInitRange('1m', session)
+                    : (() => {
+                        const sessionEndMs = (() => {
+                            const r = session.endDate || session.end_date;
+                            if (!r) return null;
+                            const t = (mainChart && typeof mainChart._sessionEndToInclusiveUtcMs === 'function')
+                                ? mainChart._sessionEndToInclusiveUtcMs(r)
+                                : (typeof this._sessionEndToInclusiveUtcMs === 'function'
+                                    ? this._sessionEndToInclusiveUtcMs(r)
+                                    : new Date(r).getTime());
+                            return Number.isFinite(t) ? Math.floor(t) : null;
+                        })();
+                        return sessionEndMs != null ? { endTs: sessionEndMs } : null;
+                    })();
                 const buildParams = (mainChart && typeof mainChart._buildSmartWindowParams === 'function')
                     ? mainChart._buildSmartWindowParams.bind(mainChart)
                     : this._buildSmartWindowParams.bind(this);
@@ -5947,37 +5989,27 @@ class Chart {
 
             this._isLoadingOwnPairData = true;
             this._ingestSmartWindowResult(result, { skipFitToView: true });
+            this._nativeRawFetchTf = '1m';
+            const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
+            if (displayTf !== '1m' && Array.isArray(this.rawData) && this.rawData.length > 0) {
+                this.data = this.resampleData(this.rawData, displayTf);
+            }
             this.loadedRanges.set(0, result.returned);
             this._isLoadingOwnPairData = false;
 
-            if (mainChart && typeof mainChart._scheduleSmartPrefetchOthers === 'function') {
-                mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
-            }
-
-            this._panelFullRawData = [...this.rawData];
+            this._panelFullRawData = Array.isArray(this.rawData) ? [...this.rawData] : null;
 
             if (replay && replay.isActive && Number.isFinite(replayTs) && this._panelFullRawData.length > 0) {
-                let idx;
-                if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
-                    idx = replay._resolvePanelRawEndIndexForReplay(this._panelFullRawData, replayTs);
-                } else {
-                    idx = -1;
-                    if (typeof this.findGoToTargetIndex === 'function') {
-                        idx = this.findGoToTargetIndex(this._panelFullRawData, replayTs);
-                    }
-                    if (idx < 0) {
-                        idx = this._panelFullRawData.findIndex(c => Number(c && c.t) >= replayTs);
-                    }
-                    if (idx < 0) idx = this._panelFullRawData.length - 1;
-                    idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
+                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+                    this._applyIndependentPanelReplaySlice(replayTs);
                 }
-
-                const sliced = this._panelFullRawData.slice(0, idx + 1);
-                this.rawData = sliced;
-                this.data = this.resampleData(sliced, this.currentTimeframe);
                 if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                     this._reseedReplayFullRawFromLoadedData();
                 }
+            }
+
+            if (mainChart && typeof mainChart._scheduleSmartPrefetchOthers === 'function') {
+                mainChart._scheduleSmartPrefetchOthers(targetFileId, requestTimeframe, session);
             }
 
             this.updateChartOHLCSymbol(this.currentSymbol);
