@@ -2205,6 +2205,31 @@
     }
     global.addEventListener('contextmenu', onContextMenu, { capture: true });
 
+    // Parent hosts the unified context menu (iframe forwards contextmenu above).
+    // Clicks inside this iframe never hit the parent's document mousedown
+    // listener, so forward pointerdown so the host menu closes on chart click.
+    function onDismissParentContextMenu(e) {
+        if (!e || e.button === 2) return;
+        if (e.target && e.target.closest
+            && e.target.closest('.chart-context-menu, .drawing-style-editor')) {
+            return;
+        }
+        try {
+            var chLocal = global.chart;
+            if (chLocal && typeof chLocal.hideContextMenu === 'function') {
+                chLocal.hideContextMenu();
+            }
+        } catch (_) {}
+        try {
+            global.parent.postMessage({
+                type: 'iframe-dismiss-contextmenu',
+                source: panelId,
+            }, '*');
+        } catch (_) {}
+    }
+    global.addEventListener('mousedown', onDismissParentContextMenu, true);
+    global.addEventListener('pointerdown', onDismissParentContextMenu, true);
+
     global.MultichartCmdBridge = {
         panelId:      panelId,
         applyCommand: applyCommand,

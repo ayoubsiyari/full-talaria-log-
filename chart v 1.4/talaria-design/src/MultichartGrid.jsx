@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b12";
+const BRIDGE_VERSION = "20260609b13";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -1514,6 +1514,32 @@ export default function MultichartGrid({
         try {
             console.log("[MultichartGrid] mounted, BRIDGE_VERSION =", BRIDGE_VERSION);
         } catch (_) {}
+    }, []);
+
+    // Close the host context menu when the user clicks any chart tile (host or iframe).
+    useEffect(() => {
+        const dismissHostContextMenu = (e) => {
+            if (!e || e.button === 2) return;
+            const t = e.target;
+            if (t && t.closest
+                && t.closest(".chart-context-menu, .drawing-style-editor, .tv-context-menu")) {
+                return;
+            }
+            if (!t || !t.closest
+                || !t.closest("#chart-container, [data-multichart-grid=\"1\"]")) {
+                return;
+            }
+            try {
+                const ch = window.chart;
+                if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
+            } catch (_) {}
+        };
+        document.addEventListener("mousedown", dismissHostContextMenu, true);
+        document.addEventListener("pointerdown", dismissHostContextMenu, true);
+        return () => {
+            document.removeEventListener("mousedown", dismissHostContextMenu, true);
+            document.removeEventListener("pointerdown", dismissHostContextMenu, true);
+        };
     }, []);
 
     // ─── Mount the MultichartManager ONCE on first render of the grid ───
