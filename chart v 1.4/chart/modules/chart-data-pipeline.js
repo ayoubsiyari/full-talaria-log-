@@ -182,11 +182,11 @@
             const offsetX = chart && chart.offsetX ? chart.offsetX : 0;
             const maxBuckets = maxBars != null ? maxBars : RENDER_BAR_BUDGET;
 
+            // Always pixel-slot merge when over budget — the old slotBudget gate left a
+            // 500–600 bar dead zone (step buckets without _pixelX) where candles vanished
+            // until zooming out far enough to cross plotWidth.
             if (slice.length > maxBuckets || spacing < ZOOMED_OUT_SLOT_PX) {
-                const slotBudget = Math.ceil(plotWidth / ZOOMED_OUT_SLOT_PX);
-                if (slice.length > slotBudget || spacing < ZOOMED_OUT_SLOT_PX) {
-                    return this._applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex);
-                }
+                return this._applyRenderBudgetByPixelColumn(slice, plotWidth, m, offsetX, spacing, baseIndex);
             }
 
             if (slice.length <= maxBuckets) {
@@ -355,7 +355,7 @@
             let display;
             if (visEnd <= visStart) {
                 display = [];
-            } else if (pixelLod || (visEnd - visStart) > plotWidth) {
+            } else if (pixelLod || (visEnd - visStart) > plotWidth || (visEnd - visStart) > maxBudget) {
                 display = this._pixelSlotAggregateFromRange(resampled, visStart, visEnd, plotWidth, m, offsetX, spacing);
             } else if (visEnd - visStart <= maxBudget) {
                 display = new Array(visEnd - visStart);

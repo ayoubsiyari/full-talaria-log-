@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260608b17';
+const CHART_ENGINE_BUILD = '20260609b01';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -17979,6 +17979,19 @@ class Chart {
             // Apply price offset for vertical panning relative to fixed base range
             domainMin = this.manualCenterPrice - halfRange + this.priceOffset;
             domainMax = this.manualCenterPrice + halfRange + this.priceOffset;
+
+            // Horizontal zoom-out can reveal OHLC outside the Y range frozen on the first
+            // wheel tick — refit the manual base so the chart does not go blank mid-zoom.
+            if (Number.isFinite(minPrice) && Number.isFinite(maxPrice)
+                && (domainMax < minPrice || domainMin > maxPrice)) {
+                const visLo = minPrice - padding;
+                const visHi = maxPrice + padding;
+                this.manualCenterPrice = (visLo + visHi) / 2;
+                this.manualRange = visHi - visLo;
+                const refitHalf = this.manualRange / (2 * this.priceZoom);
+                domainMin = this.manualCenterPrice - refitHalf + this.priceOffset;
+                domainMax = this.manualCenterPrice + refitHalf + this.priceOffset;
+            }
         }
 
         // One-time guard for restored sessions: if saved vertical viewport is stale/invalid,
@@ -23173,6 +23186,9 @@ class Chart {
                 }
 
                 this.candleWidth = newWidth;
+                if (this.dataPipeline && typeof this.dataPipeline.bumpDisplayVersion === 'function') {
+                    this.dataPipeline.bumpDisplayVersion();
+                }
 
                 const newCandleSpacing = this.getCandleSpacing();
 
