@@ -1255,6 +1255,15 @@
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
+                    try {
+                        console.log('[SNAP-DIAG v2]',
+                            'force=' + !!args.force,
+                            'aligned=' + replayAligned,
+                            'userHasPanned=' + !!ch.replaySystem.userHasPanned,
+                            'autoScroll=' + !!ch.replaySystem.autoScrollEnabled,
+                            'syncOn=' + !!ch._multichartVisibleRangeSyncOn,
+                            'offsetX=' + Math.round(ch.offsetX || 0));
+                    } catch (_) {}
                     // Aligned + paused: leave the panel's viewport exactly where the
                     // user (or sync) put it — do NOT recenter on the playhead. This
                     // restores the known-good behavior at commit 8d1751f. The
