@@ -1607,11 +1607,17 @@
         }
 
         function applyVisibleRange(m) {
-            // A tile the user has panned during replay owns its viewport — peer
-            // pan/visibleRange sync must NOT drag it back to the playhead.
-            // (Matches main chart: a manual pan stops follow until re-enabled.)
+            // When visible-range / date-range sync is ON, this panel MUST follow
+            // the host (panel A) — never refuse the incoming range. Self-echoes are
+            // already dropped by the causationId loop guard below.
+            //
+            // When sync is OFF, a tile the user directly panned during replay owns
+            // its viewport — ignore stray peer ranges so it doesn't snap back to
+            // the playhead (matches the main chart: a manual pan stops follow).
             const rsOwn = chart.replaySystem;
-            if (rsOwn && rsOwn.isActive && (rsOwn.userHasPanned || !rsOwn.autoScrollEnabled)) {
+            if (!chart._multichartVisibleRangeSyncOn
+                && rsOwn && rsOwn.isActive
+                && (rsOwn.userHasPanned || !rsOwn.autoScrollEnabled)) {
                 if (m && m.causationId) state.applied.add(m.causationId);
                 return;
             }
