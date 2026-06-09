@@ -2172,7 +2172,12 @@ class Chart {
                 }
 
                 let result = null;
-                if (sessionStartTs != null && Number.isFinite(replayTs)) {
+                // Pair switch: use the same full-history fetch as tile A (anchor=end,
+                // endTs=session end). The playhead-centered seek buffer (~31h of 1m)
+                // resamples to ~5 visible bars on 1D/1H then trickles the rest via
+                // pan-load — exactly the staggered load users report on B/C/D.
+                const useFullPairSwitchFetch = switchingPair || !!o.force;
+                if (!useFullPairSwitchFetch && sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
                             fileId, session, masterTf, replayTs
@@ -2182,9 +2187,16 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    const range = Number.isFinite(replayTs)
-                        ? this._getBacktestReplayFetchRange(masterTf, session, replayTs)
-                        : this._getBacktestInitialFetchRange(masterTf, session);
+                    let range;
+                    if (useFullPairSwitchFetch) {
+                        range = sessionEndMs != null
+                            ? { endTs: sessionEndMs }
+                            : this._getBacktestInitialFetchRange(masterTf, session);
+                    } else if (Number.isFinite(replayTs)) {
+                        range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
+                    } else {
+                        range = this._getBacktestInitialFetchRange(masterTf, session);
+                    }
                     result = await this._fetchSmartWindow(
                         fileId,
                         masterTf,
@@ -2196,6 +2208,19 @@ class Chart {
                             limit: this._backtestFetchLimitForTimeframe(masterTf),
                         },
                     );
+                    if (!this._smartResponseHasPayload(result)) {
+                        result = await this._fetchSmartWindow(
+                            fileId,
+                            masterTf,
+                            session,
+                            'end',
+                            null,
+                            {
+                                skipSessionDates: true,
+                                limit: this._backtestFetchLimitForTimeframe(masterTf),
+                            },
+                        );
+                    }
                 }
                 if (!this._smartResponseHasPayload(result)) {
                     throw new Error(this._smartEmptyResponseHint(result, fileId));
