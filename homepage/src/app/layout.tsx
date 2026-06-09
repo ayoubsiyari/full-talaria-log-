@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { LanguageProvider } from "./LanguageProvider";
 import CookieConsent from "./CookieConsent";
+import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 import { JsonLdScript } from "@/components/seo/JsonLdScript";
 import {
   buildPublicAlternates,
@@ -56,13 +57,21 @@ export const metadata: Metadata = {
   ],
   alternates: buildPublicAlternates("/"),
   applicationName: "Talaria-Log",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#07080E",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Talaria-Log",
+  },
   robots: { index: true, follow: true },
   icons: {
     icon: [
       { url: FAVICON_PATH, sizes: "32x32", type: "image/png" },
-      { url: FAVICON_PATH, sizes: "192x192", type: "image/png" },
+      { url: "/pwa/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/pwa/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: FAVICON_PATH,
+    apple: "/pwa/icon-192.png",
     shortcut: FAVICON_PATH,
   },
   openGraph: {
@@ -118,6 +127,7 @@ export default function RootLayout({
         <LanguageProvider>
           {children}
           <CookieConsent />
+          <PwaInstallPrompt />
         </LanguageProvider>
       </body>
     </html>

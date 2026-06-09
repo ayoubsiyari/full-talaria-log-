@@ -1,0 +1,33 @@
+{
+  "id": "/chart/dist-v9/",
+  "name": "Talaria Backtest",
+  "short_name": "Talaria Chart",
+  "description": "Replay sessions, run backtests, and trade on historical data.",
+  "start_url": "./index.html",
+  "scope": "/chart/dist-v9/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07080E",
+  "theme_color": "#07080E",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "./pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
