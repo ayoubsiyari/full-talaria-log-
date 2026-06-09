@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b09';
+const CHART_ENGINE_BUILD = '20260609b10';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -4321,6 +4321,13 @@ class Chart {
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
             this.replaySystem.onTimeframeChange(this, {
                 onReady: () => {
+                    if (this.data && this.data.length > 0) {
+                        this._resetViewportToDefault({
+                            centerPlayhead: true,
+                            forceRecenter: true,
+                            render: false,
+                        });
+                    }
                     this._endTimeframeSwitching();
                 },
             });
@@ -4940,13 +4947,12 @@ class Chart {
             }
 
             if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                // Viewport commit is coalesced to one paint after data is ready (TV-style).
-                this._scheduleCoalescedViewportCommit({
+                this._resetViewportToDefault({
                     centerPlayhead: true,
                     forceRecenter: true,
                     render: false,
-                    onDone: () => this._endTimeframeSwitching(),
                 });
+                this._endTimeframeSwitching();
             } else {
                 this._endTimeframeSwitching();
             }
@@ -16256,7 +16262,13 @@ class Chart {
                     clearTimeout(this._replayTfSwitchWatchdog);
                     this._replayTfSwitchWatchdog = null;
                 }
-                // Viewport already committed inside replaySystem.onTimeframeChange.
+                if (this.data && this.data.length > 0) {
+                    this._resetViewportToDefault({
+                        centerPlayhead: true,
+                        forceRecenter: true,
+                        render: false,
+                    });
+                }
                 this._endTimeframeSwitching();
             };
             this._replayTfSwitchWatchdog = setTimeout(finishReplayTfSwitch, 3000);
@@ -16356,8 +16368,7 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
-        // No wall-clock viewport preservation — always reset like axis double-click.
-        this._tfSwitchViewport = null;
+        try { this._captureTfSwitchViewport(); } catch (_vp) { /* ignore */ }
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
@@ -22618,10 +22629,17 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
+        if (this._restoreTfSwitchViewport()) {
+            return;
+        }
         if (this.data && this.data.length > 0) {
-            this._scheduleCoalescedViewportCommit({
-                centerPlayhead: true,
+            const replay = this.replaySystem;
+            const inReplay = !!(replay && replay.isActive);
+            // Must run synchronously before _endTimeframeSwitching() paints the new TF.
+            this._resetViewportToDefault({
+                centerPlayhead: inReplay ? true : false,
                 forceRecenter: true,
+                render: false,
             });
         } else {
             this._tfSwitchViewport = null;
