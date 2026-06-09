@@ -1255,14 +1255,12 @@
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
-                    if (!args.force && replayAligned) {
-                        if (typeof ch._syncIndependentPanelViewportIfNeeded === 'function') {
-                            try {
-                                ch._syncIndependentPanelViewportIfNeeded({ resetPriceScale: false });
-                            } catch (_) {}
-                        }
-                        return;
-                    }
+                    // Aligned + paused: leave the panel's viewport exactly where the
+                    // user (or sync) put it — do NOT recenter on the playhead. This
+                    // restores the known-good behavior at commit 8d1751f. The
+                    // `_syncIndependentPanelViewportIfNeeded` recenter added afterwards
+                    // is what made the panel snap back to the middle every 800ms.
+                    if (!args.force && replayAligned) return;
                     return forceReplaySeek(ch, hostTs, false);
                 }
                 case 'replayEnter': {
