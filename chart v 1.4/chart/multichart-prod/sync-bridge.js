@@ -407,19 +407,13 @@
         if (countVisibleBars(chart) > 0) return false;
         // Don't recover/recenter a tile the user deliberately panned during
         // replay, OR one that host-driven visible-range/date-range sync is
-        // positioning. If the pan/sync reached not-yet-loaded history, stream
-        // older bars in (like the main chart) instead of snapping the viewport
-        // back to the playhead.
+        // positioning — recentering is the snap-back. The panel's own pan
+        // handler streams history when dragged, so don't trigger loads here.
         const rsRec = chart.replaySystem;
         const userOwned = (rsRec && rsRec.isActive
                 && (rsRec.userHasPanned || !rsRec.autoScrollEnabled))
             || !!chart._multichartVisibleRangeSyncOn;
-        if (userOwned) {
-            if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
-                try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
-            }
-            return false;
-        }
+        if (userOwned) return false;
         // During iframe boot, transient zero-bar frames are normal — skip
         // recovery so we don't fight incoming visibleRange sync (causes shake).
         if (isViewportBootSettling(chart)) return false;

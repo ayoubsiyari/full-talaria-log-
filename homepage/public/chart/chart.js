@@ -2523,26 +2523,14 @@ class Chart {
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
         const replay = this.replaySystem;
-        // A panel is "user-owned" when the user dragged it directly
-        // (replay.userHasPanned) OR when host-driven visible-range / date-range
-        // sync is positioning it. In BOTH cases the replay align guard must NOT
-        // recenter on the playhead — that recenter IS the snap-back the user sees.
-        //
-        // KEY: when a pan/sync reaches not-yet-loaded history, the panel shows
-        // few/no candles for a moment. That is NOT a broken render — it is the
-        // exact "drag into empty space, history streams in" behavior the MAIN
-        // chart has. So we LOAD older bars (like the main chart) instead of
-        // snapping the viewport back to the playhead.
+        // Don't recenter a panel the user is controlling — either a direct pan
+        // (replay.userHasPanned) or host-driven visible-range/date-range sync.
+        // Recentering on the playhead is exactly the snap-back the user sees.
+        // The panel's own pan handler already streams in history when dragged,
+        // so we must NOT trigger loads or re-fit here (that fights the drag and
+        // pins the panel in place).
         const userOwned = !!(replay && replay.userHasPanned) || !!this._multichartVisibleRangeSyncOn;
-        if (userOwned) {
-            const visOwned = typeof this._countVisiblePlotBars === 'function'
-                ? this._countVisiblePlotBars()
-                : 1;
-            if (visOwned <= 1 && typeof this._scheduleReplayPanLoadLeft === 'function') {
-                try { this._scheduleReplayPanLoadLeft(); } catch (_) {}
-            }
-            return false;
-        }
+        if (userOwned) return false;
         if (!this._multichartViewportNeedsRecovery()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
