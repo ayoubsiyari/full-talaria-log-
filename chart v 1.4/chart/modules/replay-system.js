@@ -1766,6 +1766,17 @@ class ReplaySystem {
         return true;
     }
 
+    /** True when the React V9 shell owns replay chrome (skip legacy floating toasts). */
+    _isV9ShellActive() {
+        if (typeof window === 'undefined') return false;
+        if (window.__TALARIA_V9_UI_REV__) return true;
+        try {
+            return !!document.querySelector('[data-v9-chrome="1"]');
+        } catch (_) {
+            return false;
+        }
+    }
+
     goBackToPickPoint() {
         if (!this.isBackNavigationAllowed()) {
             console.warn('🚫 Go Back blocked: back navigation disabled by session policy');
@@ -1880,72 +1891,70 @@ class ReplaySystem {
      * Show instruction for go back mode
      */
     showGoBackInstruction() {
+        // V9: replay bar already highlights Rollback (RB) — no legacy floating toast.
+        if (this._isV9ShellActive()) {
+            return;
+        }
+
         const instruction = document.createElement('div');
         instruction.id = 'replayPickInstruction';
+        instruction.className = 'replay-pick-instruction';
         instruction.style.cssText = `
             position: fixed;
             bottom: 82px;
             left: 50%;
-            transform: translateX(-50%) translateY(20px);
+            transform: translateX(-50%) translateY(8px);
             opacity: 0;
-            background: linear-gradient(135deg, rgba(31, 37, 56, 0.96) 0%, rgba(43, 52, 78, 0.95) 100%);
-            border: 1px solid rgba(145, 189, 255, 0.75);
-            color: #f3f6ff;
-            padding: 9px 18px;
-            border-radius: 10px;
-            font-size: 13px;
-            font-weight: 600;
-            letter-spacing: 0.01em;
+            background: rgba(10, 12, 22, 0.94);
+            border: 1px solid rgba(140, 160, 255, 0.22);
+            color: #b4c0e8;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0;
             z-index: 10000;
-            box-shadow:
-                0 10px 24px rgba(0, 0, 0, 0.42),
-                0 0 0 1px rgba(103, 166, 255, 0.65),
-                0 0 22px rgba(79, 140, 255, 0.9),
-                0 0 44px rgba(79, 140, 255, 0.5);
-            text-shadow:
-                0 0 12px rgba(165, 199, 255, 0.85),
-                0 0 4px rgba(165, 199, 255, 0.65);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
             display: flex;
             align-items: center;
-            gap: 12px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(8px);
+            gap: 10px;
+            transition: opacity 0.2s ease, transform 0.2s ease;
         `;
         instruction.innerHTML = `
             <span>Click on chart to rewind to that point</span>
-            <button id="cancelPickMode" style="
-                background: rgba(22, 34, 58, 0.72);
-                border: 1px solid rgba(145, 189, 255, 0.65);
-                color: #f3f6ff;
-                padding: 7px 14px;
-                border-radius: 8px;
-                cursor:default;
-                font-size: 13px;
-                font-weight: 600;
-                letter-spacing: 0.01em;
-                text-shadow: 0 0 8px rgba(165, 199, 255, 0.55);
-                box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 16px rgba(79, 140, 255, 0.28);
-                transition: all 0.2s ease;
-            " onmouseover="this.style.background='rgba(42, 62, 102, 0.8)'; this.style.borderColor='rgba(174, 213, 255, 0.95)'" 
-               onmouseout="this.style.background='rgba(22, 34, 58, 0.72)'; this.style.borderColor='rgba(145, 189, 255, 0.65)'">Cancel (ESC)</button>
+            <button type="button" id="cancelPickMode" style="
+                background: rgba(74, 106, 255, 0.08);
+                border: 1px solid rgba(140, 160, 255, 0.28);
+                color: #8ca0ff;
+                padding: 4px 10px;
+                border-radius: 4px;
+                cursor: default;
+                font-family: inherit;
+                font-size: 11px;
+                font-weight: 500;
+            ">Cancel (ESC)</button>
         `;
         document.body.appendChild(instruction);
-        
-        // Animate in
+
         requestAnimationFrame(() => {
             instruction.style.opacity = '1';
             instruction.style.transform = 'translateX(-50%) translateY(0)';
         });
-        
-        // Cancel button
+
         document.getElementById('cancelPickMode').addEventListener('click', () => {
             this.exitGoBackMode();
+            try {
+                window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
+            } catch (_) { /* ignore */ }
         });
-        
-        // ESC key to cancel
+
         this.escKeyHandler = (e) => {
             if (e.key === 'Escape' && this.isPickingPoint) {
                 this.exitGoBackMode();
+                try {
+                    window.dispatchEvent(new CustomEvent('talariaReplayRollbackDone'));
+                } catch (_) { /* ignore */ }
             }
         };
         document.addEventListener('keydown', this.escKeyHandler);
