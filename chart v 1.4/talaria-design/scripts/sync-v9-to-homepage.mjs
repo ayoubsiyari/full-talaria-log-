@@ -123,3 +123,10 @@ for (const targetRoot of pwaTargets) {
   console.log("[sync-v9-to-homepage] Copied PWA assets →", targetRoot);
 }
 
+// Regenerate opaque transparent-background icons from logo-04.png (run scripts/generate-pwa-icons.ps1 before release).
+const homepagePwa = path.resolve(__dirname, "../../../homepage/public/pwa");
+const homepageFavicon = path.resolve(__dirname, "../../../homepage/public/favicon.png");
+if (fs.existsSync(path.join(homepagePwa, "icon-32.png"))) {
+  fs.copyFileSync(path.join(homepagePwa, "icon-32.png"), homepageFavicon);
+}
+

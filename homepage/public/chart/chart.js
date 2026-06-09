@@ -18348,14 +18348,9 @@ class Chart {
         const spacing = this.getCandleSpacing();
         const offsetX = this.offsetX || 0;
 
-        // Safety-net stride: when this function is called with a very large array
-        // (e.g. from a display pipeline that skipped the pre-sample), skip bars that
-        // are guaranteed to map to the same pixel slot as the previous one.
-        // At spacing=0.02 and slotPx=2, stride=25 → 40× fewer iterations.
-        const barsPerSlot = spacing > 0 ? slotPx / spacing : 1;
-        const stride = barsPerSlot >= 8 ? Math.max(1, Math.floor(barsPerSlot / 4)) : 1;
-
-        for (let i = 0; i < visible.length; i += stride) {
+        // Always visit every bar — a stride shortcut here dropped bars that mapped to
+        // other pixel slots, so one wheel tick made candles vanish or flatten in place.
+        for (let i = 0; i < visible.length; i++) {
             const d = visible[i];
             if (!d) continue;
             const idx = Number.isFinite(d.midIdx) ? d.midIdx : base + i;
@@ -18363,32 +18358,20 @@ class Chart {
             const slot = Math.floor((x - m.l) / slotPx);
             if (slot < 0 || slot >= numSlots) continue;
 
-            // Merge H/L across the stride window before writing the slot.
-            let dh = d.h, dl = d.l;
-            if (stride > 1) {
-                const iEnd = Math.min(visible.length, i + stride);
-                for (let j = i + 1; j < iEnd; j++) {
-                    const dj = visible[j];
-                    if (!dj) continue;
-                    if (dj.h > dh) dh = dj.h;
-                    if (dj.l < dl) dl = dj.l;
-                }
-            }
-
             let bucket = slots[slot];
             if (!bucket) {
                 slots[slot] = {
                     o: d.o,
-                    h: dh,
-                    l: dl,
+                    h: d.h,
+                    l: d.l,
                     c: d.c,
                     vSum: Number(d.v) || 0,
                     midIdx: idx,
                     _pixelX: m.l + slot * slotPx,
                 };
             } else {
-                if (dh > bucket.h) bucket.h = dh;
-                if (dl < bucket.l) bucket.l = dl;
+                if (d.h > bucket.h) bucket.h = d.h;
+                if (d.l < bucket.l) bucket.l = d.l;
                 bucket.c = d.c;
                 bucket.vSum += Number(d.v) || 0;
             }
