@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260608b16";
+const BRIDGE_VERSION = "20260609b16";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -77,18 +77,18 @@ function loadParentBridge() {
                 'script[data-multichart-bridge="' + src + '"]'
             );
             if (existing) {
-                if (existing.dataset.loaded === "1") {
+                if (existing.dataset.loaded === "1"
+                    && existing.dataset.bridgeVersion === BRIDGE_VERSION) {
                     resolve();
                     return;
                 }
-                existing.addEventListener("load", () => resolve(), { once: true });
-                existing.addEventListener("error", () => reject(new Error("failed: " + src)), { once: true });
-                return;
+                try { existing.remove(); } catch (_) {}
             }
             const s = document.createElement("script");
             s.src = src + "?v=" + BRIDGE_VERSION;
             s.async = false;
             s.dataset.multichartBridge = src;
+            s.dataset.bridgeVersion = BRIDGE_VERSION;
             s.addEventListener("load", () => {
                 s.dataset.loaded = "1";
                 resolve();
@@ -127,6 +127,10 @@ function loadParentBridge() {
 // Returns null if window.chart isn't ready yet; caller should retry.
 function ensureHostBridge() {
     if (typeof window === "undefined") return null;
+    if (window.__multichartBridgeVersion !== BRIDGE_VERSION) {
+        try { delete window.__multichartHostBridge; } catch (_) {}
+        window.__multichartBridgeVersion = BRIDGE_VERSION;
+    }
     if (window.__multichartHostBridge) return window.__multichartHostBridge;
     if (!window.MultichartBridge) return null;
     const ch = window.chart;

@@ -172,8 +172,10 @@
      * widths or loaded data slices differ).
      * Full bar realignment runs once on pan release (!panSync).
      */
-    function applyPanDragFollow(chart, m) {
+    function applyPanDragFollow(chart, m, opts) {
         if (!chart || !chart.data || chart.data.length === 0) return false;
+        opts = opts || {};
+        const preferOffsetFirst = !!opts.preferOffsetFirst;
         const srcCw = Number(m.candleWidth);
         if (!Number.isFinite(srcCw) || srcCw <= 0) return false;
 
@@ -196,9 +198,14 @@
         const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
             && m.endTime > m.startTime;
         ensureHistoryForVisibleStart(chart, m);
-        // Same TF: align by wall-clock window first (offsetX alone drifts when one
-        // tile has loaded more left history than the other after replay pan).
-        if (sameTf && hasWallClock) {
+
+        if (preferOffsetFirst && Number.isFinite(m.offsetX)) {
+            const sw = Number(m.plotWidthPx);
+            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
+            positioned = true;
+        }
+        // Host-led / same data slice: wall-clock window first.
+        if (!positioned && sameTf && hasWallClock) {
             positioned = applyWallClockDateRange(chart, m);
         }
         if (!positioned && Number.isFinite(m.endTime)) {
@@ -403,6 +410,14 @@
         const src = m.sourceTimeframe != null ? String(m.sourceTimeframe) : '';
         const mine = chart.currentTimeframe != null ? String(chart.currentTimeframe) : '';
         return src.length > 0 && mine.length > 0 && src === mine;
+    }
+
+    /** Visible-range message from iframe B/C/D (not tile A). */
+    function isPeerLedRangeMessage(m) {
+        if (!m) return false;
+        if (m.forceInitialSync) return false;
+        const src = m.source != null ? String(m.source).trim().toUpperCase() : '';
+        return src.length > 0 && src !== 'A';
     }
 
     /** Low-latency pan follow: offset mirror only + immediate paint (no bar-count refit). */
@@ -1049,6 +1064,15 @@
             } else {
                 pending.visibleRange = rangePayload;
                 scheduleFlush();
+            }
+            // After iframe-led pan release, re-sync data slice from host tile A.
+            if (!d.panSync && chart._multichartVisibleRangeSyncOn && isEmbedPanelChart()) {
+                requestAnimationFrame(function () {
+                    if (isLocalPanDragActive()) return;
+                    if (mirrorEmbedFromHostForDateRange() && typeof chart.render === 'function') {
+                        chart.render();
+                    }
+                });
             }
         });
 
@@ -1785,14 +1809,21 @@
 
             ensureHistoryForVisibleStart(chart, m);
 
+            const peerLed = isPeerLedRangeMessage(m);
+            const panFollowOpts = peerLed ? { preferOffsetFirst: true } : null;
+
             if (panSync) {
                 // Drag: wall-clock window on same TF, else offset mirror.
-                if (sameTf && hasWallClock) {
+                if (!peerLed && sameTf && hasWallClock) {
                     applied = applyWallClockDateRange(chart, m);
                 }
-                if (!applied && sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
-                    applied = applyPanDragFollow(chart, m);
-                } else if (hasWallClock && !sameTf) {
+                if (!applied) {
+                    applied = applyPanDragFollow(chart, m, panFollowOpts);
+                }
+                if (!applied && peerLed && sameTf && hasWallClock) {
+                    applied = applyWallClockDateRange(chart, m);
+                }
+                if (!applied && hasWallClock && !sameTf) {
                     applied = applyWallClockDateRange(chart, m);
                 }
                 if (!applied) {
@@ -1907,7 +1938,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260608b16';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b16';
 
         return {
             state,
