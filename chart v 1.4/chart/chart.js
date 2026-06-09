@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b14';
+const CHART_ENGINE_BUILD = '20260609b15';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2282,11 +2282,11 @@ class Chart {
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
 
                 let result = null;
-                // Independent pair (e.g. panel D = GBP/USD while host A = EUR/USD): same fetch
-                // shape as loadFileData — full history ending at session end. The small seek
-                // buffer + goToReplayTimestamp alone collapses to one stretched candle when
-                // the shared playhead predates the new instrument's first loaded bar.
-                if (!independentPair && sessionStartTs != null && Number.isFinite(replayTs)) {
+                // Playhead-centered seek buffer (same as host tile A): one ~2k-bar request
+                // that includes the shared replay time so goToReplayTimestamp can paint the
+                // full prefix immediately. Session-end fetch left early playheads outside the
+                // loaded window → ~30-bar fallback and 60x catch-up on independent panels.
+                if (sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
                             fileId, session, masterTf, replayTs
@@ -2297,12 +2297,10 @@ class Chart {
                 }
                 if (!result) {
                     let range;
-                    if (independentPair) {
-                        range = sessionEndMs != null
-                            ? { endTs: sessionEndMs }
-                            : this._getBacktestInitialFetchRange(masterTf, session);
-                    } else if (Number.isFinite(replayTs)) {
+                    if (Number.isFinite(replayTs)) {
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
+                    } else if (independentPair && sessionEndMs != null) {
+                        range = { endTs: sessionEndMs };
                     } else {
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
@@ -2352,11 +2350,6 @@ class Chart {
                         }
                     }
                 } catch (_mceMaster) { /* ignore */ }
-
-                if (independentPair && Number.isFinite(replayTs)
-                    && Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
-                    this._applyIndependentPanelReplaySlice(replayTs);
-                }
 
                 if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     this.data = this.resampleData(this.rawData, displayTf);
@@ -2803,6 +2796,14 @@ class Chart {
         if (!Array.isArray(this._panelFullRawData) || !this._panelFullRawData.length) return false;
         const ts = Number(replayTs);
         if (!Number.isFinite(ts)) return false;
+        const firstT = Number(this._panelFullRawData[0]?.t);
+        const lastT = Number(this._panelFullRawData[this._panelFullRawData.length - 1]?.t);
+        const tfMs = this.parseTimeframe(this.currentTimeframe) || 60_000;
+        const margin = Math.max(tfMs * 4, 240_000);
+        if (Number.isFinite(firstT) && Number.isFinite(lastT)
+            && (ts < firstT - margin || ts > lastT + margin)) {
+            return false;
+        }
         const replay = this.replaySystem;
         let idx = 0;
         if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
@@ -2815,16 +2816,7 @@ class Chart {
                 }
             }
         }
-        const firstT = Number(this._panelFullRawData[0]?.t);
-        if (Number.isFinite(firstT) && ts < firstT) {
-            idx = Math.min(
-                this._panelFullRawData.length - 1,
-                Math.max(30, Math.floor(this._panelFullRawData.length * 0.05))
-            );
-        }
-        if (idx <= 0 && this._panelFullRawData.length > 1) {
-            idx = Math.min(this._panelFullRawData.length - 1, 30);
-        }
+        idx = Math.max(0, Math.min(idx, this._panelFullRawData.length - 1));
         const sliced = this._panelFullRawData.slice(0, idx + 1);
         if (!sliced.length) return false;
         this.rawData = sliced;
@@ -5273,14 +5265,32 @@ class Chart {
             }
             if (!result) {
                 if (isBacktestSession) {
-                    result = await this._fetchSmartWindow(
-                        targetFileId,
-                        requestTimeframe,
-                        session,
-                        'end',
-                        backtestHistoryRange,
-                        { skipSessionDates: true }
-                    );
+                    if (anchorToHostPlayhead && fetchReplayAnchored && Number.isFinite(replayTargetTs)) {
+                        try {
+                            result = await this._fetchReplaySeekBuffer(
+                                targetFileId,
+                                session,
+                                '1m',
+                                replayTargetTs,
+                            );
+                        } catch (e) {
+                            console.warn('loadFileData: replay seek buffer failed', e);
+                        }
+                    }
+                    if (!result) {
+                        const fallbackRange = (anchorToHostPlayhead && fetchReplayAnchored
+                            && Number.isFinite(replayTargetTs))
+                            ? this._getBacktestReplayFetchRange('1m', session, replayTargetTs)
+                            : backtestHistoryRange;
+                        result = await this._fetchSmartWindow(
+                            targetFileId,
+                            requestTimeframe,
+                            session,
+                            'end',
+                            fallbackRange,
+                            { skipSessionDates: true }
+                        );
+                    }
                     if (!this._smartResponseHasPayload(result)) {
                         result = await this._fetchSmartWindow(
                             targetFileId,

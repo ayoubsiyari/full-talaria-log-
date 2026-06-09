@@ -828,6 +828,10 @@
 
         global.__multichartBridgeState = state;
 
+        function isLocalPanDragActive() {
+            return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
+        }
+
         function beginApplying(fast) {
             state.applying = true;
             if (state.applyingClearRaf) cancelAnimationFrame(state.applyingClearRaf);
@@ -986,12 +990,15 @@
 
         // 2) Visible range — listen to chartScrolled (also rAF-coalesced)
         global.addEventListener('chartScrolled', function (ev) {
-            if (state.applying) return;
+            // While this tile is the pan leader, keep broadcasting even if a peer
+            // echo briefly set `applying` or suppressRangeScrollEcho*.
+            if (state.applying && !isLocalPanDragActive()) return;
             var nowEcho = (typeof performance !== 'undefined' && performance.now)
                 ? performance.now()
                 : Date.now();
-            if (nowEcho < state.suppressRangeScrollEchoUntil
-                    && state.suppressRangeScrollEchoLeft > 0) {
+            if (!isLocalPanDragActive()
+                && nowEcho < state.suppressRangeScrollEchoUntil
+                && state.suppressRangeScrollEchoLeft > 0) {
                 state.suppressRangeScrollEchoLeft--;
                 return;
             }
@@ -1681,10 +1688,6 @@
             return src === 'A';
         }
 
-        function isLocalPanDragActive() {
-            return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
-        }
-
         if (!opts.skipMessageListener) {
             global.addEventListener('message', function (ev) {
                 applyInbound(ev.data);
@@ -1720,6 +1723,12 @@
         }
 
         function applyVisibleRange(m) {
+            // When this iframe is mid-drag, it is the pan leader — ignore host/peer
+            // echo ranges that would mirror back from A and freeze B/C/D in place.
+            if (isLocalPanDragActive()) {
+                if (m && m.causationId) state.applied.add(m.causationId);
+                return;
+            }
             // When visible-range / date-range sync is ON, this panel MUST follow
             // the host (panel A) — never refuse the incoming range. Self-echoes are
             // already dropped by the causationId loop guard below.
@@ -1898,7 +1907,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b14';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b15';
 
         return {
             state,
