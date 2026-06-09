@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260602b255';
+const CHART_ENGINE_BUILD = '20260609b12';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -20627,6 +20627,36 @@ class Chart {
         return `${hh}:${mm}`;
     }
 
+    /**
+     * Crosshair time label (same string on host + synced iframe panels).
+     * @param {number} timestampMs
+     * @param {number} [timeframeMs]
+     * @returns {string}
+     */
+    _formatCrosshairTimeLabel(timestampMs, timeframeMs) {
+        if (!Number.isFinite(timestampMs) || timestampMs <= 0) return '';
+        let tfMs = timeframeMs;
+        if (!Number.isFinite(tfMs) || tfMs <= 0) {
+            if (this.data && this.data.length >= 2) {
+                tfMs = this.data[1].t - this.data[0].t;
+            } else {
+                tfMs = this._estimateTimeframeStepMs();
+            }
+        }
+        const tzDate = this.convertToTimezone(timestampMs);
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[tzDate.getUTCMonth()];
+        const day = tzDate.getUTCDate();
+        const year = tzDate.getUTCFullYear();
+        const rsCross = this.replaySystem;
+        const isDailyOrHigher = tfMs >= 86400000;
+        const hasIntradayClock = !!(tzDate.getUTCHours() || tzDate.getUTCMinutes() || tzDate.getUTCSeconds());
+        if (isDailyOrHigher && !(rsCross && rsCross.isActive && hasIntradayClock)) {
+            return `${month} ${day}, ${year}`;
+        }
+        return `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
+    }
+
     mapV9TimezoneLabelToId(label) {
         if (!label || typeof label !== 'string') return null;
         const map = {
@@ -25886,7 +25916,7 @@ class Chart {
             : null;
 
         // Snap vertical crosshair to the nearest candle center (TradingView-style).
-        const snappedIdx = Math.round(rawDataIdx);
+        const snappedIdx = dataIdx;
         const lineX = this.dataIndexToPixel(snappedIdx);
         const lineY = y;
 
@@ -26131,13 +26161,16 @@ class Chart {
                 timeframeMs = this._estimateTimeframeStepMs();
             }
             
-            // Time at snapped candle position (matches vertical line snap).
-            const idxForTime = snappedIdx;
-            // Extrapolate past last / before first using last bar step (not firstBar + index * avg — wrong with gaps).
-            let timestamp = typeof this.estimateTimestampForDataIndex === 'function'
-                ? this.estimateTimestampForDataIndex(idxForTime)
-                : null;
-            if (timestamp != null && !Number.isFinite(timestamp)) timestamp = null;
+            // One wall-clock instant for label + multichart broadcast (bar open, not interpolated).
+            let crosshairTimestampMs = null;
+            if (hasSnappedCandle && snappedCandle && Number.isFinite(snappedCandle.t)) {
+                crosshairTimestampMs = snappedCandle.t;
+            } else if (typeof this.estimateTimestampForDataIndex === 'function') {
+                crosshairTimestampMs = this.estimateTimestampForDataIndex(snappedIdx);
+            }
+            if (crosshairTimestampMs != null && !Number.isFinite(crosshairTimestampMs)) {
+                crosshairTimestampMs = null;
+            }
 
             const rsCross = this.replaySystem;
             const playheadMs = (rsCross && rsCross.isActive && typeof this._getReplayPlayheadMs === 'function')
@@ -26146,28 +26179,13 @@ class Chart {
             if (rsCross && rsCross.isActive && Number.isFinite(playheadMs)
                 && Number.isFinite(snappedIdx) && this.data.length > 0
                 && Math.abs(snappedIdx - (this.data.length - 1)) < 0.01) {
-                timestamp = playheadMs;
+                crosshairTimestampMs = playheadMs;
             }
             
             // Show time label if we have a valid timestamp
-            if (timestamp && timestamp > 0) {
-                const tzDate = this.convertToTimezone(timestamp);
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const month = months[tzDate.getUTCMonth()];
-                const day = tzDate.getUTCDate();
-                const year = tzDate.getUTCFullYear();
-
-                // Format based on timeframe - match x-axis label style + Settings time format
-                let timeStr;
-                const isDailyOrHigher = timeframeMs >= 86400000; // 1 day or more
-                const hasIntradayClock = !!(tzDate.getUTCHours() || tzDate.getUTCMinutes() || tzDate.getUTCSeconds());
-                if (isDailyOrHigher && !(rsCross && rsCross.isActive && hasIntradayClock)) {
-                    // Daily/weekly/monthly: include year so the cursor label always
-                    // identifies which year the bar belongs to ("Apr 28, 2026").
-                    timeStr = `${month} ${day}, ${year}`;
-                } else {
-                    timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
-                }
+            if (crosshairTimestampMs && crosshairTimestampMs > 0) {
+                const timeStr = this._formatCrosshairTimeLabel(crosshairTimestampMs, timeframeMs);
+                this._lastCrosshairTimeLabel = timeStr;
                 
                 timeLabel.textContent = timeStr;
                 timeLabel.style.left = lineX + 'px';
@@ -26185,12 +26203,16 @@ class Chart {
             
             if (hasSnappedCandle) {
                 const candle = snappedCandle;
+                const syncTimestampMs = (crosshairTimestampMs && crosshairTimestampMs > 0)
+                    ? crosshairTimestampMs
+                    : candle.t;
                 
                 // Store and broadcast timestamp for panel sync
-                this.currentCrosshairTimestamp = candle.t;
+                this.currentCrosshairTimestamp = syncTimestampMs;
+                this._multichartCrosshairSourceDataIndex = dataIdx;
                 if (this._crosshairPanelSyncAllowed() && this.yScale) {
                     const price = Number.isFinite(crosshairPrice) ? crosshairPrice : this.yScale.invert(y);
-                    this.broadcastCrosshairSync(candle.t, price);
+                    this.broadcastCrosshairSync(syncTimestampMs, price);
                 }
                 
                 const _ohlcDec = this.getPriceDecimals(
@@ -28572,38 +28594,31 @@ class Chart {
             if (priceLabel) priceLabel.style.display = 'none';
         }
         
-        // Time label — synced wall-clock moment (same on every panel when date-range sync is on).
-        if (timeLabel && isXVisible && Number.isFinite(timestamp) && timestamp > 0) {
-            let timeframeMs = 60000;
-            if (this.data && this.data.length >= 2) {
-                timeframeMs = this.data[1].t - this.data[0].t;
+        // Time label — prefer source panel's formatted string so TZ/session matches exactly.
+        if (timeLabel && isXVisible) {
+            let timeStr = (opts && typeof opts.labelText === 'string') ? opts.labelText : '';
+            if (!timeStr && Number.isFinite(timestamp) && timestamp > 0) {
+                let timeframeMs = 60000;
+                if (this.data && this.data.length >= 2) {
+                    timeframeMs = this.data[1].t - this.data[0].t;
+                } else {
+                    timeframeMs = this._estimateTimeframeStepMs();
+                }
+                let labelTimestamp = timestamp;
+                if (this.normalizeTimestampMs) {
+                    const nt = this.normalizeTimestampMs(timestamp);
+                    if (Number.isFinite(nt) && nt > 0) labelTimestamp = nt;
+                }
+                if (this._multichartVisibleRangeSyncOn && candleIndex >= 0 && candle && Number.isFinite(candle.t)) {
+                    labelTimestamp = candle.t;
+                } else if (!Number.isFinite(labelTimestamp) || labelTimestamp <= 0) {
+                    labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
+                }
+                timeStr = this._formatCrosshairTimeLabel(labelTimestamp, timeframeMs);
+            }
+            if (!timeStr) {
+                timeLabel.style.display = 'none';
             } else {
-                const tfMap = { '1m': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '10m': 600000, '15m': 900000, '30m': 1800000, '45m': 2700000, '1h': 3600000, '2h': 7200000, '4h': 14400000, '6h': 21600000, '12h': 43200000, '1d': 86400000, '1w': 604800000, '1mo': 2592000000 };
-                timeframeMs = tfMap[this.currentTimeframe || '1m'] || 60000;
-            }
-            // Synced crosshair: use the broadcast wall-clock moment so every panel shows the same date/time
-            // even when timeframes differ (local candle.t is the resampled bucket open).
-            let labelTimestamp = timestamp;
-            if (this.normalizeTimestampMs) {
-                const nt = this.normalizeTimestampMs(timestamp);
-                if (Number.isFinite(nt) && nt > 0) labelTimestamp = nt;
-            }
-            if (!Number.isFinite(labelTimestamp) || labelTimestamp <= 0) {
-                labelTimestamp = (candle && Number.isFinite(candle.t)) ? candle.t : timestamp;
-            }
-            const tzDate = this.convertToTimezone(labelTimestamp);
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const month = months[tzDate.getUTCMonth()];
-            const day = tzDate.getUTCDate();
-            const year = tzDate.getUTCFullYear();
-            let timeStr;
-            if (timeframeMs >= 86400000) {
-                // Daily/weekly/monthly: include year so the cursor label always
-                // identifies which year the bar belongs to ("Apr 28, 2026").
-                timeStr = `${month} ${day}, ${year}`;
-            } else {
-                timeStr = `${month} ${day}, ${year}, ${this._formatSessionClock(tzDate, true)}`;
-            }
             const timeLabelBottom = Math.max(2, Math.floor(m.b * 0.2));
             timeLabel.textContent = timeStr;
             timeLabel.style.left = `${x}px`;
@@ -28619,6 +28634,7 @@ class Chart {
             timeLabel.style.whiteSpace = 'nowrap';
             timeLabel.style.zIndex = '101';
             timeLabel.style.display = 'block';
+            }
         } else if (timeLabel) {
             timeLabel.style.display = 'none';
         }

@@ -896,7 +896,12 @@
                 }
                 if (typeof chart.findLastDataIndexAtOrBeforeTime === 'function'
                     && typeof chart.dataIndexToPixel === 'function') {
-                    const idx = chart.findLastDataIndexAtOrBeforeTime(timestampMs);
+                    let idx = Number.isFinite(chart._multichartCrosshairSourceDataIndex)
+                        ? chart._multichartCrosshairSourceDataIndex
+                        : -1;
+                    if (idx < 0) {
+                        idx = chart.findLastDataIndexAtOrBeforeTime(timestampMs);
+                    }
                     if (idx >= 0) {
                         payload.sourceDataIndex = idx;
                         const x = chart.dataIndexToPixel(idx);
@@ -907,6 +912,9 @@
                         }
                     }
                 }
+            }
+            if (typeof chart._lastCrosshairTimeLabel === 'string' && chart._lastCrosshairTimeLabel) {
+                payload.labelText = chart._lastCrosshairTimeLabel;
             }
             return payload;
         }
@@ -1693,6 +1701,7 @@
                 usePlotFraction: usePlotFraction,
                 plotFraction: m.plotFraction,
                 sourceDataIndex: Number.isFinite(m.sourceDataIndex) ? m.sourceDataIndex : undefined,
+                labelText: (typeof m.labelText === 'string' && m.labelText) ? m.labelText : undefined,
             });
         }
 
@@ -1879,7 +1888,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b11';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b12';
 
         return {
             state,
