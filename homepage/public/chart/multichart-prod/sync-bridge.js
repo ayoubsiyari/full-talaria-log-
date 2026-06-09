@@ -137,6 +137,20 @@
         return Math.max(0, fallback - margin.l - margin.r);
     }
 
+    /** When leader's visible window starts before our first bar, fetch left history. */
+    function ensureHistoryForVisibleStart(chart, m) {
+        if (!chart || !m || !Number.isFinite(m.startTime)) return;
+        if (!chart.data || !chart.data.length) return;
+        const startMs = toMillis(m.startTime);
+        const firstMs = barTimeMs(chart, chart.data[0]?.t);
+        if (!Number.isFinite(firstMs) || startMs >= firstMs - 60_000) return;
+        if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
+            try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
+        } else if (typeof chart.checkViewportLoadMore === 'function') {
+            try { chart.checkViewportLoadMore('backward', true); } catch (_) {}
+        }
+    }
+
     /** Cheap bounds clamp during live pan follow — skips history fetch side effects. */
     function applyLightweightOffsetClamp(chart) {
         if (!chart || !chart.data || chart.data.length === 0) return;
@@ -179,12 +193,13 @@
 
         let positioned = false;
         const sameTf = sameTimeframeMessage(chart, m);
-        // Same TF + date-range pan: mirror leader offsetX so bar indices stay aligned.
-        // endTime anchoring alone drifts when loaded history slices differ slightly.
-        if (sameTf && Number.isFinite(m.offsetX)) {
-            const sw = Number(m.plotWidthPx);
-            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-            positioned = true;
+        const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
+            && m.endTime > m.startTime;
+        ensureHistoryForVisibleStart(chart, m);
+        // Same TF: align by wall-clock window first (offsetX alone drifts when one
+        // tile has loaded more left history than the other after replay pan).
+        if (sameTf && hasWallClock) {
+            positioned = applyWallClockDateRange(chart, m);
         }
         if (!positioned && Number.isFinite(m.endTime)) {
             const idxAtRight = resolveFractionalRightIndex(chart, m.endTime);
@@ -241,16 +256,7 @@
             : chart.candleWidth;
         if (!(spacing > 0)) return false;
 
-        const sameTf = sameTimeframeMessage(chart, m);
-        if (sameTf && Number.isFinite(m.offsetX)) {
-            const sw = Number(m.plotWidthPx);
-            chart.offsetX = (sw > 0) ? Number(m.offsetX) * (plotW / sw) : Number(m.offsetX);
-            if (typeof chart.constrainOffset === 'function') {
-                try { chart.constrainOffset(); } catch (_) {}
-            }
-            finishViewportApply(chart, !!m.panSync);
-            return true;
-        }
+        ensureHistoryForVisibleStart(chart, m);
 
         let barCount = Number.isFinite(m.visibleBarCount)
             ? Math.max(1, Math.floor(m.visibleBarCount))
@@ -287,15 +293,7 @@
         }
 
         if (!m.panSync && Number.isFinite(m.startTime)) {
-            const startMs = toMillis(m.startTime);
-            const firstMs = toMillis(chart.data[0]?.t);
-            if (Number.isFinite(firstMs) && startMs < firstMs - 60_000) {
-                if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
-                    try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
-                } else if (typeof chart.checkViewportLoadMore === 'function') {
-                    try { chart.checkViewportLoadMore('backward', true); } catch (_) {}
-                }
-            }
+            ensureHistoryForVisibleStart(chart, m);
         }
 
         finishViewportApply(chart, !!m.panSync);
@@ -1652,8 +1650,11 @@
         function applyCrosshair(m) {
             state.applied.add(m.causationId);
             beginApplying(true);
-            // Viewport alignment is owned by visibleRange sync — do not refit
-            // here on every mouse move (that fought Date Range pan/zoom).
+            // Same-pair iframe: keep bars + scroll identical to host before drawing crosshair.
+            if (chart._multichartVisibleRangeSyncOn
+                && typeof chart._multichartMirrorViewportFromHost === 'function') {
+                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
+            }
             const usePlotFraction = Number.isFinite(m.plotFraction);
             chart.receiveCrosshairSync(toMillis(m.time), null, null, {
                 usePlotFraction: usePlotFraction,
@@ -1687,6 +1688,31 @@
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
+            // Same-pair iframe under date-range sync: host tile A owns loaded history.
+            // Mirror its data + scroll so bar index N is the same candle on every tile.
+            if (chart._multichartVisibleRangeSyncOn
+                && typeof chart._multichartMirrorViewportFromHost === 'function'
+                && chart._multichartMirrorViewportFromHost()) {
+                finishViewportApply(chart, panSync);
+                var tSilHost = (typeof performance !== 'undefined' && performance.now)
+                    ? performance.now()
+                    : Date.now();
+                state.suppressRangeScrollEchoUntil = tSilHost + (panSync ? 120 : 200);
+                state.suppressRangeScrollEchoLeft = panSync ? 4 : 6;
+                if (panSync) return;
+                requestAnimationFrame(function () {
+                    const after = G.snapshotPriceState(chart);
+                    const v = G.diffPriceState(before, after, 'visibleRange');
+                    if (v.length) {
+                        console.error('[bridge:' + chartId + '] VISIBLE-RANGE LEAK (non-autoFit fields changed):', v);
+                        reportAssertion('visibleRange', v);
+                    } else {
+                        reportAssertion('visibleRange', null, before, after);
+                    }
+                });
+                return;
+            }
+
             let applied = false;
             const sameTf = sameTimeframeMessage(chart, m);
             const hasWallClock = Number.isFinite(m.startTime) && Number.isFinite(m.endTime)
@@ -1695,9 +1721,14 @@
                 && Number.isFinite(m.candleWidth)
                 && (Number.isFinite(m.visibleBarCount) || hasWallClock);
 
+            ensureHistoryForVisibleStart(chart, m);
+
             if (panSync) {
-                // Drag: lightweight offset mirror (same frame feel as leader).
-                if (sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
+                // Drag: wall-clock window on same TF, else offset mirror.
+                if (sameTf && hasWallClock) {
+                    applied = applyWallClockDateRange(chart, m);
+                }
+                if (!applied && sameTf && Number.isFinite(m.candleWidth) && Number.isFinite(m.offsetX)) {
                     applied = applyPanDragFollow(chart, m);
                 } else if (hasWallClock && !sameTf) {
                     applied = applyWallClockDateRange(chart, m);

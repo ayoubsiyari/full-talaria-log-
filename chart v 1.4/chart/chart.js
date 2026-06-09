@@ -1930,6 +1930,53 @@ class Chart {
         }
     }
 
+    /**
+     * Same-pair iframe under date-range sync: mirror host tile A's loaded bars +
+     * scroll so bar index N is the same candle on both panels (TradingView parity).
+     * @returns {boolean}
+     */
+    _multichartMirrorViewportFromHost() {
+        if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        let parent = null;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            parent = window.parent.chart;
+        } catch (_e) {
+            return false;
+        }
+        if (!parent || !Array.isArray(parent.data) || parent.data.length === 0) return false;
+        const srcTf = String(parent.currentTimeframe || '').toLowerCase().trim();
+        const mineTf = String(this.currentTimeframe || '').toLowerCase().trim();
+        if (srcTf !== mineTf) return false;
+
+        try { this._multichartSeedPanelMasterFromParent(); } catch (_seed) { /* ignore */ }
+        if (typeof this._warmBtTfCacheFromParent === 'function') {
+            try { this._warmBtTfCacheFromParent(this.currentTimeframe); } catch (_warm) { /* ignore */ }
+        }
+
+        this.rawData = parent.rawData;
+        this.data = parent.data;
+        if (Array.isArray(parent._panelFullRawData)) {
+            this._panelFullRawData = parent._panelFullRawData;
+        }
+        this.candleWidth = parent.candleWidth;
+        if (this.zoomLevel && parent.zoomLevel) {
+            this.zoomLevel.candleWidthIndex = parent.zoomLevel.candleWidthIndex;
+        }
+        if (this._candleWidthAtCache !== undefined) this._candleWidthAtCache = null;
+
+        const pm = this.margin || { l: 60, r: 60 };
+        const ppm = parent.margin || { l: 60, r: 60 };
+        const plotW = Math.max(1, (this.w || 0) - pm.l - pm.r);
+        const parentPlotW = Math.max(1, (parent.w || 0) - ppm.l - ppm.r);
+        this.offsetX = parent.offsetX * (plotW / parentPlotW);
+
+        if (typeof this.constrainOffset === 'function') {
+            try { this.constrainOffset(); } catch (_c) { /* ignore */ }
+        }
+        return true;
+    }
+
     async _applyBacktestTimeframeFromParentCache(timeframe) {
         if (!this._isMultichartEmbedPanel() || !this.isBacktestMode || !this.currentFileId) {
             return false;
