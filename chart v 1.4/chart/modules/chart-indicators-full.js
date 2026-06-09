@@ -2787,6 +2787,30 @@
         return { y: y, M: M, D: D, hour: h, minute: m, dec: dec, dayKey: dayKey, dow: d.getUTCDay() };
     }
 
+    /** Chart wall clock for ICT Everything — uses chart timezone (not browser local). */
+    function _ictBarWallClock(utcMs) {
+        if (!Number.isFinite(utcMs)) {
+            return { y: 0, M: 0, D: 0, hour: 0, minute: 0, dec: 0, dayKey: '0', dow: 0 };
+        }
+        const tzId = resolveChartWallTimezoneId();
+        const dayKey = dayKeyInTimezone(utcMs, tzId);
+        const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey);
+        const y = dm ? parseInt(dm[1], 10) : 0;
+        const M = dm ? parseInt(dm[2], 10) : 0;
+        const D = dm ? parseInt(dm[3], 10) : 0;
+        const dec = sessionWallDecimal(utcMs, tzId);
+        const hour = Math.floor(dec);
+        const minute = Math.round((dec - hour) * 60) % 60;
+        let dow = 0;
+        try {
+            const parts = new Intl.DateTimeFormat('en-US', { timeZone: tzId, weekday: 'short' }).formatToParts(new Date(utcMs));
+            const wd = parts.find(function (p) { return p.type === 'weekday'; });
+            const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+            if (wd && map[wd.value] != null) dow = map[wd.value];
+        } catch (e) { /* keep 0 */ }
+        return { y: y, M: M, D: D, hour: hour, minute: minute, dec: dec, dayKey: dayKey, dow: dow };
+    }
+
     function _ictIsoWeekKey(y, M, D) {
         const t = Date.UTC(y, M - 1, D);
         const wd = new Date(t).getUTCDay() || 7;
@@ -2836,7 +2860,7 @@
 
         const P = Object.assign({}, indicator.params || {}, indicator.style || {});
         function wallAt(utcMs) {
-            return _ictWallFromUtc(utcMs, _ictLocalOffsetHoursAt(utcMs));
+            return _ictBarWallClock(utcMs);
         }
         const barMin = _ictMedianBarMinutes(data);
         const maxIv = P.inputMaxInterval != null ? +P.inputMaxInterval : 31;
@@ -2863,6 +2887,22 @@
                 return barT >= lastMs - 35 * 86400000;
             }
             return true;
+        }
+
+        function allowMidnightVline(dayKey) {
+            if (P.ShowMOP === false) return false;
+            if (dayKey === lastDayKey) return true;
+            return !!P.MOLHist;
+        }
+
+        function allowMidnightHline(dayKey) {
+            if (dayKey === lastDayKey) return P.ShowMOPP !== false;
+            return !!P.ShowMOPL;
+        }
+
+        function allowMiscHline(dayKey) {
+            if (dayKey === lastDayKey) return true;
+            return !!P.ShowPrev;
         }
 
         const sessionStrips = new Array(n);
@@ -2986,7 +3026,9 @@
                 continue;
             }
             if (prevWall) {
-                if (P.ShowMOP !== false && w.dayKey !== prevWall.dayKey) {
+                if (w.dayKey !== prevWall.dayKey
+                    && allowMidnightVline(w.dayKey)
+                    && passesTimeFilter(w.dayKey, _ictIsoWeekKey(w.y, w.M, w.D), data[i].t)) {
                     pushVline(i, P.MOPColor, P.Midnight_Open_LS, P.Midnight_Open_LW);
                 }
                 if (w.dayKey === prevWall.dayKey) {
@@ -3035,41 +3077,38 @@
         });
 
         let openMidnight = null;
-        midStart = null;
-        for (let i = 0; i < n; i++) {
-            const w = wallAt(data[i].t);
-            const prev = i > 0 ? wallAt(data[i - 1].t) : null;
-            const newDay = !prev || prev.dayKey !== w.dayKey;
-            if (newDay) {
-                if (P.ShowMOPP !== false && openMidnight != null && midStart != null) {
-                    horizontals.push({
-                        startIndex: midStart,
-                        endIndex: Math.max(midStart, i - 1),
-                        price: openMidnight,
-                        color: P.MOPColP,
-                        dash: _ictDashFromStyle(P.MOPLS),
-                        lw: _ictPxWidthFromSelect(P.i_MOPLW),
-                        label: P.txt13 || 'MIDNIGHT',
-                        showLabel: P.ShowLabel !== false
-                    });
-                }
-                openMidnight = data[i].o;
-                midStart = i;
-            } else if (openMidnight != null) {
-                openMidnight = Math.max(openMidnight, data[i].o);
-            }
-        }
-        if (P.ShowMOPP !== false && openMidnight != null && midStart != null) {
+        let midStart = null;
+        let midDayKey = null;
+        function pushMidnightHline(startIdx, endIdx, dayKey, price) {
+            if (startIdx == null || endIdx == null || startIdx > endIdx || !Number.isFinite(price)) return;
+            if (!allowMidnightHline(dayKey)) return;
+            const w0 = wallAt(data[startIdx].t);
+            if (!passesTimeFilter(dayKey, _ictIsoWeekKey(w0.y, w0.M, w0.D), data[startIdx].t)) return;
             horizontals.push({
-                startIndex: midStart,
-                endIndex: n - 1,
-                price: openMidnight,
+                startIndex: startIdx,
+                endIndex: endIdx,
+                price: price,
                 color: P.MOPColP,
                 dash: _ictDashFromStyle(P.MOPLS),
                 lw: _ictPxWidthFromSelect(P.i_MOPLW),
                 label: P.txt13 || 'MIDNIGHT',
                 showLabel: P.ShowLabel !== false
             });
+        }
+        for (let i = 0; i < n; i++) {
+            const w = wallAt(data[i].t);
+            const newDay = midDayKey == null || w.dayKey !== midDayKey;
+            if (newDay) {
+                if (openMidnight != null && midStart != null && midDayKey != null) {
+                    pushMidnightHline(midStart, i - 1, midDayKey, openMidnight);
+                }
+                openMidnight = data[i].o;
+                midStart = i;
+                midDayKey = w.dayKey;
+            }
+        }
+        if (openMidnight != null && midStart != null && midDayKey != null) {
+            pushMidnightHline(midStart, n - 1, midDayKey, openMidnight);
         }
 
         function pushOpenAtClock(hour, minute, enabled, color, dashS, lwS, label) {
@@ -3084,6 +3123,10 @@
                     continue;
                 }
                 if (w.dayKey === prevW.dayKey && prevW.dec < target && w.dec >= target) {
+                    if (!allowMiscHline(w.dayKey)) {
+                        prevW = w;
+                        continue;
+                    }
                     const ukey = String(label) + '|' + w.dayKey + '|' + String(hour) + ':' + String(minute);
                     if (seenDay[ukey]) {
                         prevW = w;
@@ -3141,7 +3184,7 @@
             showNYMidnight: false,
             _params: P,
             _barMin: barMin,
-            _offH: _ictLocalOffsetHoursAt(lastMs)
+            _chartTz: resolveChartWallTimezoneId()
         };
     }
 

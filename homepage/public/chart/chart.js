@@ -2522,8 +2522,18 @@ class Chart {
      * @returns {boolean}
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
-        if (!this._multichartViewportNeedsRecovery()) return false;
         const replay = this.replaySystem;
+        // Respect a deliberate user pan (matches main chart behavior): once the
+        // user drags this panel (replay.userHasPanned → autoScrollEnabled=false),
+        // do NOT recenter on the playhead. Only allow recovery when the panel is
+        // genuinely empty (0 visible bars), which is a broken render, not a pan.
+        if (replay && replay.userHasPanned) {
+            const vis = typeof this._countVisiblePlotBars === 'function'
+                ? this._countVisiblePlotBars()
+                : 1;
+            if (vis > 0) return false;
+        }
+        if (!this._multichartViewportNeedsRecovery()) return false;
         if (!replay?.isActive || typeof replay.syncReplayViewportToPlayhead !== 'function') {
             return false;
         }
