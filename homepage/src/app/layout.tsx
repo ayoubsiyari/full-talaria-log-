@@ -28,8 +28,8 @@ const zain = localFont({
   ],
 });
 
-/** Browser tab / bookmark icon (square mark). */
-const FAVICON_PATH = "/logo-04.png";
+/** Browser tab / bookmark icon (transparent mark, no black box). */
+const FAVICON_PATH = "/favicon.png";
 /** Link previews (Discord, X, etc.). */
 const OG_IMAGE_PATH = "/talaria-log.logo.png";
 

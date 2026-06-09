@@ -945,7 +945,6 @@
                     zoomLevelIndex: r.zoomLevelIndex,
                     plotWidthPx: r.plotWidthPx,
                 });
-                scheduleEmbedAlignFromHostAfterOutbound();
             }
         }
         function scheduleFlush() {
@@ -1040,7 +1039,6 @@
                     zoomLevelIndex: rangePayload.zoomLevelIndex,
                     plotWidthPx: rangePayload.plotWidthPx,
                 });
-                scheduleEmbedAlignFromHostAfterOutbound();
             } else {
                 pending.visibleRange = rangePayload;
                 scheduleFlush();
@@ -1675,17 +1673,16 @@
             try { return !!chart._multichartMirrorViewportFromHost(); } catch (_) { return false; }
         }
 
-        /** Iframe pan is fanned to host first; source panel is excluded from fan-out — re-align from A after send. */
-        function scheduleEmbedAlignFromHostAfterOutbound() {
-            if (!chart._multichartVisibleRangeSyncOn || !isEmbedPanelChart()) return;
-            requestAnimationFrame(function () {
-                requestAnimationFrame(function () {
-                    if (state.applying) return;
-                    if (mirrorEmbedFromHostForDateRange()) {
-                        if (typeof chart.render === 'function') chart.render();
-                    }
-                });
-            });
+        /** Tile A (host) is the data/viewport authority; peer iframe pans must not re-mirror from A. */
+        function isHostLedRangeMessage(m) {
+            if (!m) return false;
+            if (m.forceInitialSync) return true;
+            var src = m.source != null ? String(m.source).trim().toUpperCase() : '';
+            return src === 'A';
+        }
+
+        function isLocalPanDragActive() {
+            return !!(chart.drag && chart.drag.active && chart.drag.type === 'pan');
         }
 
         if (!opts.skipMessageListener) {
@@ -1697,9 +1694,10 @@
         function applyCrosshair(m) {
             state.applied.add(m.causationId);
             beginApplying(true);
-            // Same-pair iframe: keep bars + scroll identical to host before drawing crosshair.
+            // Same-pair iframe: mirror host before crosshair unless this tile is mid-pan.
             var mirrored = false;
             if (chart._multichartVisibleRangeSyncOn
+                && !isLocalPanDragActive()
                 && typeof chart._multichartMirrorViewportFromHost === 'function') {
                 try { mirrored = !!chart._multichartMirrorViewportFromHost(); } catch (_) {}
             }
@@ -1741,9 +1739,11 @@
             state.applied.add(m.causationId);
             beginApplying(panSync);
 
-            // Same-pair iframe under date-range sync: host tile A owns loaded history.
-            // Mirror its data + scroll so bar index N is the same candle on every tile.
+            // Host-led range only: mirror tile A data + scroll. Iframe-initiated pans
+            // apply the incoming envelope below so the dragging panel is not snapped back.
             if (chart._multichartVisibleRangeSyncOn
+                && isEmbedPanelChart()
+                && isHostLedRangeMessage(m)
                 && typeof chart._multichartMirrorViewportFromHost === 'function'
                 && chart._multichartMirrorViewportFromHost()) {
                 finishViewportApply(chart, panSync);
@@ -1898,7 +1898,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b13';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b14';
 
         return {
             state,
