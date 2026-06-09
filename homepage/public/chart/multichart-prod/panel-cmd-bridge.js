@@ -1237,6 +1237,9 @@
                 case 'syncReplayFromHost': {
                     if (ch._multichartPairLoadInFlight) return;
                     if (isViewportSettling(ch)) return;
+                    // Parent streams replayFrame every animation tick while playing;
+                    // forceReplaySeek here fights the mirror renderer and desyncs tick animation.
+                    if (isParentReplayPlaying()) return;
                     var pcReplay = null;
                     try {
                         pcReplay = (global.parent && global.parent !== global)
@@ -1255,21 +1258,15 @@
                     var panelTs = Number(ch.replaySystem.replayTimestamp);
                     var replayAligned = Number.isFinite(panelTs)
                         && Math.abs(panelTs - hostTs) <= panelTfMs * 2;
-                    try {
-                        console.log('[SNAP-DIAG v2]',
-                            'force=' + !!args.force,
-                            'aligned=' + replayAligned,
-                            'userHasPanned=' + !!ch.replaySystem.userHasPanned,
-                            'autoScroll=' + !!ch.replaySystem.autoScrollEnabled,
-                            'syncOn=' + !!ch._multichartVisibleRangeSyncOn,
-                            'offsetX=' + Math.round(ch.offsetX || 0));
-                    } catch (_) {}
                     // Aligned + paused: leave the panel's viewport exactly where the
                     // user (or sync) put it — do NOT recenter on the playhead. This
                     // restores the known-good behavior at commit 8d1751f. The
                     // `_syncIndependentPanelViewportIfNeeded` recenter added afterwards
                     // is what made the panel snap back to the middle every 800ms.
                     if (!args.force && replayAligned) return;
+                    // Same render path as the play-time frame stream — avoids
+                    // goToReplayTimestamp viewport jumps when playhead drifted while paused.
+                    if (applyStaticMirrorFrame(ch, hostTs)) return;
                     return forceReplaySeek(ch, hostTs, false);
                 }
                 case 'replayEnter': {
@@ -1361,6 +1358,18 @@
                     if (!rsP.isActive) {
                         log('replayPlay stashed (not yet active)');
                         return;
+                    }
+                    // Mirror host play(): re-enable follow mode so the replay head
+                    // scrolls with playback on every panel, same as tile A.
+                    rsP.autoScrollEnabled = true;
+                    rsP.userHasPanned = false;
+                    if (typeof rsP.syncReplayViewportToPlayhead === 'function') {
+                        try {
+                            rsP.syncReplayViewportToPlayhead(ch, {
+                                resetPriceScale: true,
+                                render: false,
+                            });
+                        } catch (_) {}
                     }
                     drainPendingPlay(ch);
                     return;
