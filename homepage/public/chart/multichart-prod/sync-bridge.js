@@ -937,6 +937,7 @@
                     zoomLevelIndex: r.zoomLevelIndex,
                     plotWidthPx: r.plotWidthPx,
                 });
+                scheduleEmbedAlignFromHostAfterOutbound();
             }
         }
         function scheduleFlush() {
@@ -993,17 +994,6 @@
             const d = ev.detail || {};
             if (d.chart !== chart) return;
 
-            // Date-range sync: iframe tiles mirror host A — never broadcast local scroll
-            // (iframe replay/history slices differ and poison peer viewports).
-            if (chart._multichartVisibleRangeSyncOn
-                && typeof chart._isMultichartEmbedPanel === 'function'
-                && chart._isMultichartEmbedPanel()
-                && typeof chart._multichartMirrorViewportFromHost === 'function') {
-                try { chart._multichartMirrorViewportFromHost(); } catch (_) {}
-                if (typeof chart.render === 'function') chart.render();
-                return;
-            }
-
             const startT = d.startTimestamp;
             const endT   = d.timeSyncEndTimestamp || d.endTimestamp;
             if (!Number.isFinite(startT) || !Number.isFinite(endT)) return;
@@ -1042,6 +1032,7 @@
                     zoomLevelIndex: rangePayload.zoomLevelIndex,
                     plotWidthPx: rangePayload.plotWidthPx,
                 });
+                scheduleEmbedAlignFromHostAfterOutbound();
             } else {
                 pending.visibleRange = rangePayload;
                 scheduleFlush();
@@ -1646,9 +1637,18 @@
 
         function refreshChartSyncCrosshairFlag() {
             const sm = syncModeGate || localSyncMode;
+            const nextOn = !!sm.visibleRange;
+            const wasOn = !!chart._multichartVisibleRangeSyncWasOn;
             chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
-            chart._multichartVisibleRangeSyncOn = !!sm.visibleRange;
+            chart._multichartVisibleRangeSyncOn = nextOn;
+            if (wasOn && !nextOn
+                && typeof chart._multichartDetachViewportFromHost === 'function') {
+                try { chart._multichartDetachViewportFromHost(); } catch (_) {}
+            }
+            chart._multichartVisibleRangeSyncWasOn = nextOn;
         }
+
+        refreshChartSyncCrosshairFlag();
 
         function isEmbedPanelChart() {
             return typeof chart._isMultichartEmbedPanel === 'function'
@@ -1661,14 +1661,17 @@
             try { return !!chart._multichartMirrorViewportFromHost(); } catch (_) { return false; }
         }
 
-        if (typeof chart.updateCrosshair === 'function') {
-            const __origUpdateCrosshair = chart.updateCrosshair.bind(chart);
-            chart.updateCrosshair = function (e) {
-                if (mirrorEmbedFromHostForDateRange()) {
-                    chart.renderPending = true;
-                }
-                return __origUpdateCrosshair(e);
-            };
+        /** Iframe pan is fanned to host first; source panel is excluded from fan-out — re-align from A after send. */
+        function scheduleEmbedAlignFromHostAfterOutbound() {
+            if (!chart._multichartVisibleRangeSyncOn || !isEmbedPanelChart()) return;
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    if (state.applying) return;
+                    if (mirrorEmbedFromHostForDateRange()) {
+                        if (typeof chart.render === 'function') chart.render();
+                    }
+                });
+            });
         }
 
         if (!opts.skipMessageListener) {
@@ -1876,7 +1879,7 @@
         // Same-origin fast path: parent manager can call this synchronously during
         // panSync instead of postMessage (avoids one event-loop tick of lag).
         global.__multichartSyncApply = applyInbound;
-        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b10';
+        global.__MULTICHART_SYNC_BRIDGE_VERSION = '20260609b11';
 
         return {
             state,

@@ -2005,6 +2005,27 @@ class Chart {
         return true;
     }
 
+    /**
+     * After date-range sync is turned off, stop sharing array refs with host tile A
+     * so this iframe can pan/viewport independently again.
+     */
+    _multichartDetachViewportFromHost() {
+        if (!this._isMultichartEmbedPanel()) return;
+        if (Array.isArray(this.data) && this.data.length > 0) {
+            this.data = this.data.slice();
+        }
+        if (Array.isArray(this.rawData) && this.rawData.length > 0) {
+            this.rawData = this.rawData.slice();
+        }
+        if (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length > 0) {
+            this._panelFullRawData = this._panelFullRawData.slice();
+        }
+        const replay = this.replaySystem;
+        if (replay && Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0) {
+            replay.fullRawData = replay.fullRawData.slice();
+        }
+    }
+
     async _applyBacktestTimeframeFromParentCache(timeframe) {
         if (!this._isMultichartEmbedPanel() || !this.isBacktestMode || !this.currentFileId) {
             return false;

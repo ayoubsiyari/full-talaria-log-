@@ -7,7 +7,7 @@
   if (isEmbed) return;
 
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("./sw.js").catch(function () {});
+    navigator.serviceWorker.register("/chart/sw.js", { scope: "/chart/" }).catch(function () {});
   });
 })();
 
