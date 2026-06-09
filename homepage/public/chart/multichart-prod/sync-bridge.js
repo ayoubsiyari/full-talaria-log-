@@ -1573,11 +1573,13 @@
         }
 
         function refreshChartSyncCrosshairFlag() {
-            if (syncModeGate) {
-                chart.syncCrosshair = !!(syncModeGate.crosshair || syncModeGate.visibleRange);
-            } else {
-                chart.syncCrosshair = !!(localSyncMode.crosshair || localSyncMode.visibleRange);
-            }
+            const sm = syncModeGate || localSyncMode;
+            chart.syncCrosshair = !!(sm.crosshair || sm.visibleRange);
+            // When visible-range / date-range sync is ON, the host chart (panel A)
+            // drives this panel's viewport. The replay align guard reads this flag
+            // to avoid recentering on the playhead (which would snap the panel back
+            // and fight the incoming sync). Cleared when sync is turned off.
+            chart._multichartVisibleRangeSyncOn = !!sm.visibleRange;
         }
 
         if (!opts.skipMessageListener) {

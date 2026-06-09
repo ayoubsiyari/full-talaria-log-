@@ -445,9 +445,13 @@
             rs.autoScrollEnabled = prevAutoScroll;
             if (ok) {
                 var keepOffset = Number.isFinite(prevOffsetX);
-                // User deliberately panned this tile → always keep their offset
-                // (matches main chart: a manual pan disables auto-recenter).
-                if (rs.userHasPanned) {
+                // Keep the current offset when EITHER:
+                //   • the user deliberately panned this tile (manual pan disables
+                //     auto-recenter, matching the main chart), OR
+                //   • visible-range / date-range sync is driving this tile's
+                //     viewport from the host (panel A) — recomputing here would
+                //     snap it back to the playhead and fight the incoming sync.
+                if (rs.userHasPanned || ch._multichartVisibleRangeSyncOn) {
                     keepOffset = Number.isFinite(prevOffsetX);
                 } else if (keepOffset && typeof ch._multichartViewportNeedsRecovery === 'function'
                     && ch._multichartViewportNeedsRecovery()) {

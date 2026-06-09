@@ -2523,6 +2523,17 @@ class Chart {
      */
     _syncIndependentPanelViewportIfNeeded(opts = {}) {
         const replay = this.replaySystem;
+        // When visible-range / date-range sync is ON, the host chart (panel A)
+        // drives this panel's viewport. The replay align guard must NOT recenter
+        // on the playhead — doing so fights the incoming sync and snaps the panel
+        // back right after it followed A. Only recover when the panel is genuinely
+        // empty (0 visible bars = broken render, not a deliberately synced view).
+        if (this._multichartVisibleRangeSyncOn) {
+            const visSync = typeof this._countVisiblePlotBars === 'function'
+                ? this._countVisiblePlotBars()
+                : 1;
+            if (visSync > 0) return false;
+        }
         // Respect a deliberate user pan (matches main chart behavior): once the
         // user drags this panel (replay.userHasPanned → autoScrollEnabled=false),
         // do NOT recenter on the playhead. Only allow recovery when the panel is
