@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b01';
+const CHART_ENGINE_BUILD = '20260609b02';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -1883,20 +1883,7 @@ class Chart {
         } else if (typeof replay.updateChartData === 'function') {
             replay.updateChartData(true);
         }
-        if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-            replay.syncReplayViewportToPlayhead(this, {
-                centerPlayhead: true,
-                resetPriceScale: true,
-                render: true,
-            });
-        } else {
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            if (this.priceScale) this.priceScale.autoScale = true;
-            this.fitToView();
-            if (typeof this.render === 'function') this.render();
-        }
+        this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: true });
     }
 
     /**
@@ -2412,18 +2399,7 @@ class Chart {
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
                     }
-                    if (typeof this.fitToView === 'function') {
-                        this.fitToView();
-                    }
-                    if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                        replay.syncReplayViewportToPlayhead(this, {
-                            centerPlayhead: true,
-                            resetPriceScale: true,
-                            render: true,
-                        });
-                    } else if (typeof replay.scheduleReplayFollowOnceLayoutSettled === 'function') {
-                        replay.scheduleReplayFollowOnceLayoutSettled();
-                    }
+                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: true });
                     if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
                         this._syncReplayPanCursorsFromFullRaw();
                     }
@@ -2781,7 +2757,12 @@ class Chart {
         };
 
         if (typeof replay.onTimeframeChange === 'function') {
-            replay.onTimeframeChange(this, { onReady: finish });
+            replay.onTimeframeChange(this, {
+                onReady: () => {
+                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
+                    finish();
+                },
+            });
         } else {
             this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
             finish();
@@ -4240,17 +4221,19 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
-            this.candleWidth = DEFAULT_CANDLE_WIDTH;
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            this._chartViewRestored = false;
-            this.replaySystem.onTimeframeChange(this);
+            this._resetViewportToDefault({ render: false, centerPlayhead: true, forceRecenter: true });
+            this.replaySystem.onTimeframeChange(this, {
+                onReady: () => {
+                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
+                    this._endTimeframeSwitching();
+                },
+            });
             requestAnimationFrame(() => {
                 if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                     this.compareOverlay.refreshForTimeframe(normalizedTf);
                 }
             });
+            return true;
         } else {
             this._deferRecalculateIndicators();
             this.resize();
@@ -5401,17 +5384,9 @@ class Chart {
                 this.loadedRanges.clear();
             }
 
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            if (this.priceScale) {
-                this.priceScale.autoScale = true;
-                this.priceScale.locked = false;
-            }
-            if (this.timeScale) this.timeScale.locked = false;
-            this.manualCenterPrice = null;
-            this.manualRange = null;
             this._chartViewRestored = false;
+            if (this.priceScale) this.priceScale.locked = false;
+            if (this.timeScale) this.timeScale.locked = false;
 
             this.currentFileId = targetFileId;
             // Keep symbol in sync with file id before ingest / loadDrawings / order visuals — otherwise
@@ -5449,12 +5424,6 @@ class Chart {
             this.updateChartTitle(this.currentSymbol);
 
             this.resize();
-            const deferFitForIndependentReplay = this._isIndependentMultichartPair()
-                && fetchReplayAnchored
-                && this.replaySystem;
-            if (!deferFitForIndependentReplay) {
-                this.fitToView();
-            }
             this.render();
 
             if (replay && replay.isActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
@@ -5504,13 +5473,6 @@ class Chart {
                         replay.scheduleReplayFollowOnceLayoutSettled();
                     }
                 } catch (_eMc) { /* ignore */ }
-
-                // Ensure Y-axis auto-scales for the new pair's price range
-                this.priceZoom = 1;
-                this.priceOffset = 0;
-                this.autoScale = true;
-                if (this.priceScale) this.priceScale.autoScale = true;
-                this.render();
 
                 if (replayWasPlayingBefore && typeof replay.play === 'function') {
                     replay.play();
@@ -5566,6 +5528,9 @@ class Chart {
                     window.panelManager.syncSymbol(sourcePanel, this.currentSymbol, targetFileId);
                 }
             }
+
+            this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
+            this.render();
 
             return true;
         } catch (error) {
@@ -5818,17 +5783,8 @@ class Chart {
 
             this.updateChartOHLCSymbol(this.currentSymbol);
 
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            if (this.priceScale) {
-                this.priceScale.autoScale = true;
-                // Fresh instrument must rescale Y — stale locked axis hides candles (wrong domain).
-                this.priceScale.locked = false;
-            }
+            if (this.priceScale) this.priceScale.locked = false;
             if (this.timeScale) this.timeScale.locked = false;
-            this.manualCenterPrice = null;
-            this.manualRange = null;
             this._chartViewRestored = false;
 
             const pairSwitched = outgoingPanelFileId != null
@@ -5885,12 +5841,12 @@ class Chart {
                 // override our synced offset with fitToView().
                 this._chartViewRestored = true;
             } else {
-                this.fitToView();
+                this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
             }
 
             if (alignScrollToMain && panelVisibleBarCount() === 0) {
                 this._chartViewRestored = false;
-                this.fitToView();
+                this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
             }
 
             this.render();
@@ -5909,8 +5865,7 @@ class Chart {
                         this.fitToView();
                     }
                 } else {
-                    this._chartViewRestored = false;
-                    this.fitToView();
+                    this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true, render: false });
                 }
                 this.render();
 
@@ -12971,27 +12926,83 @@ class Chart {
         this.constrainOffset();
     }
     
+    /** Snap zoom-level index to {@link DEFAULT_CANDLE_WIDTH}. */
+    _resetZoomLevelIndexToDefault() {
+        if (!this.zoomLevel || !Array.isArray(this.zoomLevel.allowedWidths)) return;
+        const allowedWidths = this.zoomLevel.allowedWidths;
+        let nearestIdx = 0;
+        let minDiff = Math.abs(DEFAULT_CANDLE_WIDTH - allowedWidths[0]);
+        for (let i = 1; i < allowedWidths.length; i++) {
+            const diff = Math.abs(DEFAULT_CANDLE_WIDTH - allowedWidths[i]);
+            if (diff < minDiff) {
+                minDiff = diff;
+                nearestIdx = i;
+            }
+        }
+        this.zoomLevel.candleWidthIndex = nearestIdx;
+    }
+
+    /** Reset Y-axis to auto-scale (price-axis double-click parity). */
+    _resetPriceScaleToAuto() {
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        this.autoScale = true;
+        this.manualCenterPrice = null;
+        this.manualRange = null;
+        if (this.priceScale) {
+            this.priceScale.autoScale = true;
+        }
+    }
+
+    /**
+     * Reset zoom, price scale, and horizontal position to defaults — like
+     * double-clicking the time axis (X) plus resetting Y auto-scale.
+     * Replay/backtest: centers on the playhead; live / manual jump: latest on the right.
+     * @param {object} [opts]
+     * @param {boolean} [opts.render=true]
+     * @param {boolean} [opts.forceRecenter=true] Clear manual pan before repositioning.
+     * @param {boolean|null} [opts.centerPlayhead] Replay only; true = center, false = right-edge follow.
+     */
+    _resetViewportToDefault(opts = {}) {
+        const render = opts.render !== false;
+        const forceRecenter = opts.forceRecenter !== false;
+        const centerPlayhead = opts.centerPlayhead;
+
+        this._chartViewRestored = false;
+        this._tfSwitchViewport = null;
+        this.candleWidth = DEFAULT_CANDLE_WIDTH;
+        this._resetPriceScaleToAuto();
+        this._resetZoomLevelIndexToDefault();
+        if (this.timeScale) this.timeScale.locked = false;
+
+        const replay = this.replaySystem;
+        if (replay && replay.isActive) {
+            if (forceRecenter) replay.userHasPanned = false;
+            const useCenter = centerPlayhead != null ? centerPlayhead : true;
+            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
+                replay.syncReplayViewportToPlayhead(this, {
+                    centerPlayhead: useCenter,
+                    resetPriceScale: true,
+                    forceRecenter,
+                    render,
+                });
+                return;
+            }
+        }
+
+        this.fitToView();
+        if (render) {
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            else if (typeof this.render === 'function') this.render();
+        }
+    }
+
     /**
      * Jump to latest candles (like TradingView double-click feature)
      * Resets zoom and shows the most recent data
      */
     jumpToLatest() {
-        
-        // Clear the restored flag so fitToView() can reposition
-        this._chartViewRestored = false;
-        
-        // Reset zoom
-        this.candleWidth = DEFAULT_CANDLE_WIDTH;
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        
-        // Position to show latest data
-        this.fitToView();
-        
-        // Re-render
-        this.scheduleRender();
-        
+        this._resetViewportToDefault({ centerPlayhead: false, forceRecenter: true });
     }
 
     /**
@@ -15976,13 +15987,7 @@ class Chart {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
             }
             // TradingView-style reset on every TF switch (double-click parity).
-            // Reset BEFORE onTimeframeChange so the replay viewport is computed
-            // against default candleWidth + autoScale, identical to a fresh load.
-            this.candleWidth = DEFAULT_CANDLE_WIDTH;
-            this.priceZoom = 1;
-            this.priceOffset = 0;
-            this.autoScale = true;
-            this._chartViewRestored = false;
+            this._resetViewportToDefault({ render: false, centerPlayhead: true, forceRecenter: true });
             let replayTfEnded = false;
             const finishReplayTfSwitch = () => {
                 if (replayTfEnded) return;
@@ -15991,6 +15996,7 @@ class Chart {
                     clearTimeout(this._replayTfSwitchWatchdog);
                     this._replayTfSwitchWatchdog = null;
                 }
+                this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
                 this._endTimeframeSwitching();
             };
             this._replayTfSwitchWatchdog = setTimeout(finishReplayTfSwitch, 3000);
@@ -16090,14 +16096,8 @@ class Chart {
         // Capture BEFORE setting the flag — captureFreezeOverlay calls toDataURL on
         // the live canvas, which must still hold the previous frame's pixels.
         try { this._captureFreezeOverlay(); } catch (e) { /* ignore */ }
-        // Snapshot the current visible wall-clock window so the new timeframe can
-        // land on the same chart position (TradingView parity). Skipped during
-        // replay — replay paths drive their own playhead-anchored viewport.
-        if (!(this.replaySystem && this.replaySystem.isActive)) {
-            try { this._captureTfSwitchViewport(); } catch (e) { /* ignore */ }
-        } else {
-            this._tfSwitchViewport = null;
-        }
+        // No wall-clock viewport preservation — always reset like axis double-click.
+        this._tfSwitchViewport = null;
         if (this._timeframeFetchAbort) {
             try { this._timeframeFetchAbort.abort(); } catch (_e) { /* ignore */ }
         }
@@ -18972,15 +18972,7 @@ class Chart {
     }
     
     resetView() {
-        // Reset zoom levels
-        this.candleWidth = DEFAULT_CANDLE_WIDTH;
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        
-        // Reset position to show latest data
-        this.fitToView();
-        this.render();
+        this._resetViewportToDefault({ centerPlayhead: false, forceRecenter: true, render: true });
     }
     
     animate() {
@@ -22367,11 +22359,7 @@ class Chart {
      */
     _restoreOrJumpAfterTfSwitch() {
         if (this.data && this.data.length > 0) {
-            if (this._restoreTfSwitchViewport()) {
-                this.scheduleRender();
-                return;
-            }
-            this.jumpToLatest();
+            this._resetViewportToDefault({ centerPlayhead: true, forceRecenter: true });
         } else {
             this._tfSwitchViewport = null;
             this._chartViewRestored = false;
