@@ -832,6 +832,12 @@ function alignHostChartForMultichart(ch, mgr) {
     if (!ch) return;
     try {
         const rs = ch.replaySystem;
+        // User panned this tile — don't recenter on playhead after split/resize.
+        if (rs && rs.userHasPanned) {
+            if (typeof ch.constrainOffset === "function") ch.constrainOffset();
+            if (typeof ch.render === "function") ch.render();
+            return;
+        }
         const inBacktest = !!(ch.isBacktestMode && ch.backtestingSession);
         if (!inBacktest || !rs) {
             if (rs && rs.isActive && typeof rs.syncReplayViewportToPlayhead === "function") {

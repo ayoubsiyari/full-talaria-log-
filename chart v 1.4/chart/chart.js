@@ -24644,6 +24644,9 @@ class Chart {
                 touchStartX = touchLastX = touch.clientX;
                 touchStartY = touchLastY = touch.clientY;
                 isTouchDragging = true;
+                if (this.replaySystem?.isActive) {
+                    this.replaySystem.onUserPan();
+                }
                 this.movement.lastTime = performance.now();
                 e.preventDefault();
             } else if (e.touches.length === 2) {

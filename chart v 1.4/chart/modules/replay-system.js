@@ -2483,6 +2483,10 @@ class ReplaySystem {
      */
     syncReplayViewportToPlayhead(chartInstance = this.chart, opts = {}) {
         if (!this.isActive || !chartInstance) return false;
+        // Manual pan disables follow — don't recenter on playhead unless explicitly forced.
+        if (this.userHasPanned && opts.forceRecenter !== true) {
+            return false;
+        }
 
         let offsetX = null;
         if (opts.centerPlayhead) {
@@ -4844,7 +4848,9 @@ class ReplaySystem {
      */
     scheduleReplayFollowOnceLayoutSettled() {
         if (!this.isActive) return;
+        if (this.userHasPanned) return;
         const run = () => {
+            if (this.userHasPanned) return;
             try {
                 this.enableAutoScroll();
             } catch (_) { /* ignore */ }
@@ -5310,7 +5316,7 @@ class ReplaySystem {
             // autoScrollEnabled=false), never re-scroll/recenter the viewport.
             // Only force a recovery when the panel is genuinely empty (0 bars),
             // which is a broken render, not a deliberate pan.
-            const userOwnsViewport = this.userHasPanned && visibleBars > 0;
+            const userOwnsViewport = (this.userHasPanned || !this.autoScrollEnabled) && visibleBars > 0;
             if (!userOwnsViewport && (needsScroll || this.autoScrollEnabled)) {
                 const st = typeof this.getReplayAutoScrollState === 'function'
                     ? this.getReplayAutoScrollState(chart)
@@ -5385,7 +5391,7 @@ class ReplaySystem {
                 chart._trimLastDataBarToReplayPlayhead();
             }
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            if (this.autoScrollEnabled && tp > 0 && tp % 8 === 0 && chart.fitToView) {
+            if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0 && chart.fitToView) {
                 chart.fitToView();
             }
             this._finishMultichartMirrorRender(chart);
@@ -5450,7 +5456,7 @@ class ReplaySystem {
             }
 
             if (typeof chart.bumpDataVersion === 'function') chart.bumpDataVersion();
-            if (this.autoScrollEnabled && tp > 0 && tp % 8 === 0) {
+            if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
         } else {
