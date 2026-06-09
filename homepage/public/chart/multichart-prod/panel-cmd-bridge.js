@@ -514,6 +514,12 @@
 
             if (retryMirror()) return;
 
+            if (typeof ch._independentMasterCoversReplayTimestamp === 'function'
+                && ch._independentMasterCoversReplayTimestamp(seekTs)) {
+                retryMirror();
+                return;
+            }
+
             if (typeof ch.ensureReplayDataCoversTimestamp !== 'function') {
                 scheduleCoalescedSeek(ch, seekTs);
                 return;
@@ -1556,9 +1562,14 @@
                     };
                     if (Number.isFinite(playheadTs)
                         && typeof ch.ensureReplayDataCoversTimestamp === 'function') {
-                        ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
+                        if (typeof ch._independentMasterCoversReplayTimestamp === 'function'
+                            && ch._independentMasterCoversReplayTimestamp(playheadTs)) {
                             primeAndFollow();
-                        });
+                        } else {
+                            ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
+                                primeAndFollow();
+                            });
+                        }
                     } else {
                         primeAndFollow();
                     }

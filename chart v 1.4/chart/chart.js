@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b10';
+const CHART_ENGINE_BUILD = '20260609b11';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2274,11 +2274,28 @@ class Chart {
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
 
                 let result = null;
-                // Playhead-centered seek buffer (same as host tile A): one ~2k-bar request
-                // that includes the shared replay time so goToReplayTimestamp can paint the
-                // full prefix immediately. Session-end fetch left early playheads outside the
-                // loaded window → ~30-bar fallback and 60x catch-up on independent panels.
-                if (sessionStartTs != null && Number.isFinite(replayTs)) {
+                // Independent pair: load session-spanning 1m master first so replay slice
+                // always has history on screen. Playhead-only seek buffers (~2k bars) left
+                // B/C/D with a tiny candle island and empty plot when replay started.
+                if (independentPair) {
+                    try {
+                        const initRange = this._getBacktestInitialFetchRange(masterTf, session);
+                        result = await this._fetchSmartWindow(
+                            fileId,
+                            masterTf,
+                            session,
+                            'end',
+                            initRange,
+                            {
+                                skipSessionDates: true,
+                                limit: this._backtestFetchLimitForTimeframe(masterTf),
+                            },
+                        );
+                    } catch (e) {
+                        console.warn('loadMultichartPanelFromHost: independent initial fetch failed', e);
+                    }
+                }
+                if (!result && sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
                             fileId, session, masterTf, replayTs
@@ -2289,7 +2306,7 @@ class Chart {
                 }
                 if (!result) {
                     let range;
-                    if (Number.isFinite(replayTs)) {
+                    if (Number.isFinite(replayTs) && !independentPair) {
                         range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
@@ -2909,6 +2926,77 @@ class Chart {
     }
 
     /**
+     * Merge fetched 1m bars into the independent-panel master without replacing history.
+     * @param {Array} incoming
+     * @returns {Array|null}
+     */
+    _mergeIntoPanelFullRawData(incoming) {
+        if (!Array.isArray(incoming) || !incoming.length) {
+            return Array.isArray(this._panelFullRawData) ? this._panelFullRawData : null;
+        }
+        const existing = Array.isArray(this._panelFullRawData) ? this._panelFullRawData : [];
+        if (!existing.length) {
+            this._panelFullRawData = incoming.slice();
+            return this._panelFullRawData;
+        }
+        const byT = new Map();
+        for (let i = 0; i < existing.length; i++) {
+            const b = existing[i];
+            if (b && Number.isFinite(b.t)) byT.set(b.t, b);
+        }
+        for (let i = 0; i < incoming.length; i++) {
+            const b = incoming[i];
+            if (b && Number.isFinite(b.t)) byT.set(b.t, b);
+        }
+        this._panelFullRawData = Array.from(byT.values()).sort((a, b) => a.t - b.t);
+        return this._panelFullRawData;
+    }
+
+    /**
+     * True when independent panel master already has enough history + forward room
+     * for replay at ts — skip refetch that would wipe the chart and show loading.
+     * @param {number} ts
+     * @returns {boolean}
+     */
+    _independentMasterCoversReplayTimestamp(ts) {
+        const targetTs = Number(ts);
+        if (!Number.isFinite(targetTs)) return false;
+        const master = this._panelFullRawData;
+        if (!Array.isArray(master) || !master.length) return false;
+        if (!this._replayRawHasWallClockPrefix(master, targetTs)) return false;
+
+        const masterTf = this._nativeRawFetchTf || '1m';
+        const tfMs = this.parseTimeframe(masterTf) || 60_000;
+        const firstT = Number(master[0]?.t);
+        const lastT = Number(master[master.length - 1]?.t);
+        if (!Number.isFinite(firstT) || !Number.isFinite(lastT)) return false;
+
+        const replay = this.replaySystem;
+        let idx = master.length - 1;
+        if (replay && typeof replay._resolvePanelRawEndIndexForReplay === 'function') {
+            idx = replay._resolvePanelRawEndIndexForReplay(master, targetTs);
+        } else if (replay && typeof replay._findLastRawIndexAtOrBefore === 'function') {
+            idx = replay._findLastRawIndexAtOrBefore(master, targetTs);
+        }
+        idx = Math.max(0, Math.min(idx, master.length - 1));
+
+        const minHistoryBars = 120;
+        if (idx < minHistoryBars && firstT > targetTs - minHistoryBars * tfMs) {
+            return false;
+        }
+
+        const sessionEndMs = this._getBacktestSessionEndMs(this.backtestingSession);
+        const forwardMs = 6000 * tfMs;
+        if (sessionEndMs != null && targetTs < sessionEndMs - tfMs) {
+            const forwardTarget = Math.min(sessionEndMs, targetTs + forwardMs);
+            if (lastT < forwardTarget - tfMs * 30) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Independent multichart panel: guarantee loaded master bars include host playhead
      * before replay seek (avoids one-candle prefix + 60x catch-up after pair switch).
      * @param {number} replayTs
@@ -2925,7 +3013,7 @@ class Chart {
         if (typeof this.ensureReplayDataCoversTimestamp !== 'function') return false;
         const ok = await this.ensureReplayDataCoversTimestamp(ts);
         if (Array.isArray(this.rawData) && this.rawData.length > 0) {
-            this._panelFullRawData = [...this.rawData];
+            this._mergeIntoPanelFullRawData(this.rawData);
         }
         return ok && this._replayRawHasWallClockPrefix(this._panelFullRawData, ts);
     }
@@ -2966,10 +3054,13 @@ class Chart {
         if (this._isIndependentMultichartPair()
             && Array.isArray(this._panelFullRawData)
             && this._panelFullRawData.length > 0
-            && hasWallClockPrefix(this._panelFullRawData)) {
+            && this._independentMasterCoversReplayTimestamp(ts)) {
             if (replayForCover?.isActive) {
                 if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                     this._reseedReplayFullRawFromLoadedData();
+                }
+                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+                    this._applyIndependentPanelReplaySlice(ts);
                 }
             }
             return true;
@@ -3065,11 +3156,16 @@ class Chart {
 
                 if (replay && wasActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
                     if (this._isIndependentMultichartPair()) {
-                        if (Array.isArray(this.rawData) && this.rawData.length > 0) {
-                            this._panelFullRawData = [...this.rawData];
-                        }
+                        const fetchedBars = this.rawData.slice();
+                        this._mergeIntoPanelFullRawData(fetchedBars);
                         if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                             this._reseedReplayFullRawFromLoadedData();
+                        }
+                        const sliceTs = Number.isFinite(this._ensureReplayDataTargetTs)
+                            ? this._ensureReplayDataTargetTs
+                            : ts;
+                        if (typeof this._applyIndependentPanelReplaySlice === 'function') {
+                            this._applyIndependentPanelReplaySlice(sliceTs);
                         }
                     } else {
                         replay.fullRawData = [...this.rawData];
