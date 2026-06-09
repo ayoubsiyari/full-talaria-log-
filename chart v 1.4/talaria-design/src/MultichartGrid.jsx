@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b04";
+const BRIDGE_VERSION = "20260609b05";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -2500,6 +2500,18 @@ export default function MultichartGrid({
             } catch (_) {}
         };
 
+        const onReplayCut = (e) => {
+            const d = e?.detail;
+            if (!d || !Number.isFinite(d.timestamp)) return;
+            replayStateRef.current.lastBroadcastTs = d.timestamp;
+            broadcastToIframes("replayPause", {});
+            broadcastToIframes("replayCut", {
+                timestamp: d.timestamp,
+                orderCutoff: d.orderCutoff,
+            });
+        };
+        window.addEventListener("talariaReplayCut", onReplayCut);
+
         // Monkey-patch parent's exitReplayMode + play + pause + setSpeed
         // + setPlaybackMode so iframes mirror the parent's full playback
         // state (not just the per-tick timestamp). Done lazily because
@@ -2735,6 +2747,7 @@ export default function MultichartGrid({
             clearInterval(replayAlignGuard);
             window.removeEventListener("replayVirtualTimeChanged", onReplayTick);
             window.removeEventListener("replayMultichartFrame", onMultichartReplayFrame);
+            window.removeEventListener("talariaReplayCut", onReplayCut);
             window.removeEventListener("message", onReplayKeyboard);
             // Restore originals if we patched them — keeps single-
             // chart behavior intact when the user picks layout 1 again.

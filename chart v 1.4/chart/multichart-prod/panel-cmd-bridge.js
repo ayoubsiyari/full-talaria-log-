@@ -1281,6 +1281,29 @@
                     // via scheduleCoalescedSeek (see replayTick below).
                     return applyReplayEnter(ch, tsE);
                 }
+                case 'replayCut': {
+                    var tsCut = Number(args.timestamp);
+                    if (!Number.isFinite(tsCut)) return;
+                    pendingPlayDesired = false;
+                    pendingReplayTs = null;
+                    var rsCut = ch.replaySystem;
+                    if (rsCut) {
+                        rsCut.isPlaying = false;
+                        rsCut._savedTickState = null;
+                        rsCut.animatingCandle = null;
+                        rsCut.tickProgress = 0;
+                        rsCut.tickElapsedMs = 0;
+                        if (typeof rsCut.pause === 'function') {
+                            try { rsCut.pause(); } catch (_) {}
+                        }
+                    }
+                    if (typeof ch.applyMultichartReplayCut === 'function') {
+                        ch.applyMultichartReplayCut(tsCut, args.orderCutoff);
+                    } else if (rsCut && typeof rsCut.goToReplayTimestamp === 'function') {
+                        forceReplaySeek(ch, tsCut, false);
+                    }
+                    return;
+                }
                 case 'replayTick': {
                     var ts2 = Number(args.timestamp);
                     if (!Number.isFinite(ts2)) return;

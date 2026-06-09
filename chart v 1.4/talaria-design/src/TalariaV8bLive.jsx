@@ -12401,11 +12401,13 @@ const TalariaV8bLive = () => {
               x <= (chart.w - (chart.margin?.r || 0));
             if (inChartArea) {
               const candleIndex =
-                typeof rs.getCandleIndexAtX === "function"
-                  ? rs.getCandleIndexAtX(x)
-                  : typeof chart.pixelToDataIndex === "function"
-                    ? Math.round(chart.pixelToDataIndex(x))
-                    : -1;
+                typeof rs.getCandleIndexAtXForChart === "function"
+                  ? rs.getCandleIndexAtXForChart(chart, x)
+                  : typeof rs.getCandleIndexAtX === "function"
+                    ? rs.getCandleIndexAtX(x)
+                    : typeof chart.pixelToDataIndex === "function"
+                      ? Math.round(chart.pixelToDataIndex(x))
+                      : -1;
               if (
                 candleIndex >= 0 &&
                 Array.isArray(chart.data) &&
@@ -12421,6 +12423,8 @@ const TalariaV8bLive = () => {
                       rs.goToReplayTimestamp(ts);
                     }
                   }
+                } else if (typeof rs.applyReplayCutToWallClock === "function") {
+                  rs.applyReplayCutToWallClock(ts, { sourceChart: chart, candleIndex });
                 } else if (typeof rs.goToReplayTimestamp === "function") {
                   rs.goToReplayTimestamp(ts);
                 }
