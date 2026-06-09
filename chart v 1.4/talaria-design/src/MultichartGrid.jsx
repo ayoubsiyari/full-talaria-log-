@@ -63,7 +63,7 @@ const HOST_CONTAINER_ID = "chart-container";
 // (api_server.py /chart/multichart-prod/). Same-origin, no CORS.
 //
 // Cached as a module-level promise so subsequent mounts are instant.
-const BRIDGE_VERSION = "20260609b16";
+const BRIDGE_VERSION = "20260608b17";
 let bridgeLoadPromise = null;
 
 function loadParentBridge() {
@@ -3675,7 +3675,10 @@ export default function MultichartGrid({
                         ch._finalizeMultichartPanelAfterPairLoad();
                     }
                 } catch (_) {}
-                syncIframeReplayPlaybackOnce(pid);
+                // Let pair-load seek + fitToView paint the full prefix before 60x catch-up.
+                setTimeout(() => {
+                    try { syncIframeReplayPlaybackOnce(pid); } catch (_) {}
+                }, 500);
                 if (focusedPanelIdRef.current === pid) {
                     dispatchFocusChanged(pid);
                 }

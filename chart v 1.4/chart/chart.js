@@ -332,7 +332,7 @@ const TV_CANDLE_BODY_SLOT_RATIO = 0.8;
 /** Zoomed-out horizontal slot: 1px body + 1px gutter between bars (TradingView-style). */
 const TV_ZOOMED_OUT_SLOT_PX = 2;
 /** Bump with bump-dist-v9-cache / build:live:chart — check DevTools console on load. */
-const CHART_ENGINE_BUILD = '20260609b16';
+const CHART_ENGINE_BUILD = '20260608b17';
 
 class Chart {
     constructor(canvasElement = null, svgElement = null, options = {}) {
@@ -2351,12 +2351,11 @@ class Chart {
                     }
                 } catch (_mceMaster) { /* ignore */ }
 
-                if (displayTf !== masterTf && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    this.data = this.resampleData(this.rawData, displayTf);
-                    if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
-                        this._trimLastDataBarToReplayPlayhead();
-                    }
+                if (independentPair && Number.isFinite(replayTs)
+                    && typeof this._ensureIndependentPanelCoversPlayhead === 'function') {
+                    await this._ensureIndependentPanelCoversPlayhead(replayTs);
                 }
+
                 this.loadedRanges.set(0, result.returned);
                 this._serverCursors = {
                     firstTs: result.first_cursor,
@@ -2412,6 +2411,9 @@ class Chart {
                         replay.goToReplayTimestamp(restoreTs, { centerOnCandle: true });
                     } else if (typeof replay.updateChartData === 'function') {
                         replay.updateChartData(true);
+                    }
+                    if (typeof this.fitToView === 'function') {
+                        this.fitToView();
                     }
                     if (typeof replay.syncReplayViewportToPlayhead === 'function') {
                         replay.syncReplayViewportToPlayhead(this, {
@@ -2828,6 +2830,45 @@ class Chart {
     }
 
     /**
+     * True when raw series has at least one bar at/before the shared replay wall-clock.
+     * @param {Array} raw
+     * @param {number} ts
+     * @returns {boolean}
+     */
+    _replayRawHasWallClockPrefix(raw, ts) {
+        if (!Array.isArray(raw) || !raw.length || !Number.isFinite(ts)) return false;
+        const replay = this.replaySystem;
+        if (replay && typeof replay._findLastRawIndexAtOrBefore === 'function') {
+            return replay._findLastRawIndexAtOrBefore(raw, ts) >= 0;
+        }
+        const first = Number(raw[0]?.t);
+        const last = Number(raw[raw.length - 1]?.t);
+        return Number.isFinite(first) && Number.isFinite(last) && ts >= first && ts <= last;
+    }
+
+    /**
+     * Independent multichart panel: guarantee loaded master bars include host playhead
+     * before replay seek (avoids one-candle prefix + 60x catch-up after pair switch).
+     * @param {number} replayTs
+     * @returns {Promise<boolean>}
+     */
+    async _ensureIndependentPanelCoversPlayhead(replayTs) {
+        const ts = Number(replayTs);
+        if (!Number.isFinite(ts)) return false;
+        const master = this._panelFullRawData;
+        if (this._replayRawHasWallClockPrefix(master, ts)
+            && this._replayRawHasWallClockPrefix(this.rawData, ts)) {
+            return true;
+        }
+        if (typeof this.ensureReplayDataCoversTimestamp !== 'function') return false;
+        const ok = await this.ensureReplayDataCoversTimestamp(ts);
+        if (Array.isArray(this.rawData) && this.rawData.length > 0) {
+            this._panelFullRawData = [...this.rawData];
+        }
+        return ok && this._replayRawHasWallClockPrefix(this._panelFullRawData, ts);
+    }
+
+    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
@@ -2850,24 +2891,23 @@ class Chart {
                 && ts >= first - margin && ts <= last + margin;
         };
 
-        if (covers(this.rawData)) return true;
+        const hasWallClockPrefix = (raw) => covers(raw) && this._replayRawHasWallClockPrefix(raw, ts);
+
+        if (hasWallClockPrefix(this.rawData)) return true;
         const replayForCover = this.replaySystem;
         if (replayForCover?.isActive
             && Array.isArray(replayForCover.fullRawData)
             && replayForCover.fullRawData.length
-            && covers(replayForCover.fullRawData)) {
+            && hasWallClockPrefix(replayForCover.fullRawData)) {
             return true;
         }
         if (this._isIndependentMultichartPair()
             && Array.isArray(this._panelFullRawData)
             && this._panelFullRawData.length > 0
-            && covers(this._panelFullRawData)) {
+            && hasWallClockPrefix(this._panelFullRawData)) {
             if (replayForCover?.isActive) {
                 if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
                     this._reseedReplayFullRawFromLoadedData();
-                }
-                if (typeof this._applyIndependentPanelReplaySlice === 'function') {
-                    this._applyIndependentPanelReplaySlice(ts);
                 }
             }
             return true;
@@ -2958,11 +2998,13 @@ class Chart {
                 };
 
                 if (replay && wasActive && Array.isArray(this.rawData) && this.rawData.length > 0) {
-                    if (this._isIndependentMultichartPair()
-                        && Array.isArray(this._panelFullRawData)
-                        && this._panelFullRawData.length > 0
-                        && typeof this._reseedReplayFullRawFromLoadedData === 'function') {
-                        this._reseedReplayFullRawFromLoadedData();
+                    if (this._isIndependentMultichartPair()) {
+                        if (Array.isArray(this.rawData) && this.rawData.length > 0) {
+                            this._panelFullRawData = [...this.rawData];
+                        }
+                        if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                            this._reseedReplayFullRawFromLoadedData();
+                        }
                     } else {
                         replay.fullRawData = [...this.rawData];
                         replay.fullData = Array.isArray(this.data) ? [...this.data] : null;
@@ -2992,7 +3034,7 @@ class Chart {
                     }
                 }
 
-                return covers(this.rawData);
+                return hasWallClockPrefix(this.rawData);
             } finally {
                 this._ensureReplayDataInflight = null;
             }

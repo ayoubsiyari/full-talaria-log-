@@ -4735,8 +4735,14 @@ class ReplaySystem {
             return false;
         }
 
-        let idx = 0;
-        if (chart && typeof chart.findGoToTargetIndex === 'function') {
+        // Replay display is a prefix through the last bar at/before wall-clock playhead.
+        // findGoToTargetIndex returns the first bar on/after ts — when ts predates the
+        // series that collapses to index 0 → one stretched candle on multichart pair switch.
+        let idx = -1;
+        if (typeof this._findLastRawIndexAtOrBefore === 'function') {
+            idx = this._findLastRawIndexAtOrBefore(this.fullRawData, ts);
+        }
+        if (idx < 0 && chart && typeof chart.findGoToTargetIndex === 'function') {
             idx = chart.findGoToTargetIndex(this.fullRawData, ts);
         }
         if (idx < 0) {
