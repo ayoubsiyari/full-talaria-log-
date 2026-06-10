@@ -299,43 +299,27 @@ class BaseDrawing {
     }
 
     /**
-     * Highlighter strokes are very thick; default SVG markers scale with strokeWidth
-     * and become huge. Use fixed pixel-sized arrowheads instead.
-     */
-    _freehandEndpointMarkerOpts(strokeWidth) {
-        if (this.type !== 'highlighter') return null;
-        // ~40% of stroke width, clamped so arrows stay visible but not oversized.
-        const size = Math.min(26, Math.max(12, strokeWidth * 0.4));
-        return {
-            markerUnits: 'userSpaceOnUse',
-            markerWidth: size,
-            markerHeight: size,
-            refX: size * 0.85,
-            refY: size * 0.5,
-        };
-    }
-
-    /**
      * Freehand path + optional arrow endpoints (ep1/ep2 → startStyle/endStyle).
+     * Highlighter does not support endpoints.
      */
     _appendStrokePathWithEndpoints(group, container, pathData, hitWidth) {
         const stroke = this.style.stroke || this.style.color || '#787b86';
         const strokeWidth = this.style.strokeWidth != null ? this.style.strokeWidth : 2;
-        const startStyle = this.style.startStyle || 'normal';
-        const endStyle = this.style.endStyle || 'normal';
+        const noEndpoints = this.type === 'highlighter';
+        const startStyle = noEndpoints ? 'normal' : (this.style.startStyle || 'normal');
+        const endStyle = noEndpoints ? 'normal' : (this.style.endStyle || 'normal');
         const pathOpacity = this.style.opacity != null ? this.style.opacity : 1;
-        const markerOpts = this._freehandEndpointMarkerOpts(strokeWidth);
 
-        if (startStyle === 'arrow' || endStyle === 'arrow') {
+        if (!noEndpoints && (startStyle === 'arrow' || endStyle === 'arrow')) {
             const svgRoot = container && container.node && container.node().ownerSVGElement
                 ? d3.select(container.node().ownerSVGElement)
                 : null;
             if (svgRoot && typeof SVGHelpers !== 'undefined') {
                 if (startStyle === 'arrow') {
-                    SVGHelpers.createArrowMarker(svgRoot, `arrow-start-${this.id}`, stroke, markerOpts || undefined);
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-start-${this.id}`, stroke);
                 }
                 if (endStyle === 'arrow') {
-                    SVGHelpers.createArrowMarker(svgRoot, `arrow-end-${this.id}`, stroke, markerOpts || undefined);
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-end-${this.id}`, stroke);
                 }
             }
         }
@@ -362,10 +346,10 @@ class BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'move');
 
-        if (startStyle === 'arrow') {
+        if (!noEndpoints && startStyle === 'arrow') {
             path.attr('marker-start', `url(#arrow-start-${this.id})`);
         }
-        if (endStyle === 'arrow') {
+        if (!noEndpoints && endStyle === 'arrow') {
             path.attr('marker-end', `url(#arrow-end-${this.id})`);
         }
         return path;

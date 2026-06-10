@@ -1113,6 +1113,22 @@ function v9PatchTlShowInfoTypesOnToggle(prev, metric) {
   };
 }
 
+/** Master Show Info toggle — select first metric when enabling with none chosen. */
+function v9PatchTlShowInfoOnToggle(prev, nextShowInfo, legacyTool) {
+  if (!nextShowInfo) {
+    return { ...prev, showInfo: false };
+  }
+  const types = Array.isArray(prev.showInfoTypes) ? prev.showInfoTypes.filter(Boolean) : [];
+  if (types.length > 0) {
+    return { ...prev, showInfo: true };
+  }
+  const defaultTypes =
+    legacyTool && v9IsRangeMeasureChartType(legacyTool)
+      ? v9DefaultShowInfoTypesForRangeType(prev.rangeType).slice(0, 1)
+      : ["Price range"];
+  return { ...prev, showInfo: true, showInfoTypes: defaultTypes };
+}
+
 function v9ChartInfoSettingsFromTlStyle(tlStyle) {
   const types = Array.isArray(tlStyle?.showInfoTypes) ? tlStyle.showInfoTypes : [];
   const show = !!tlStyle?.showInfo && types.length > 0;
@@ -1657,8 +1673,8 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     borderColor: tlStyle.borderColor,
     borderDasharray: V9_DASH_TO_LEGACY[tlStyle.borderType] ?? "",
     borderWidth: parseInt(tlStyle.borderWidth, 10) || 1,
-    startStyle: tlStyle.ep1,
-    endStyle: tlStyle.ep2,
+    startStyle: legacyTool === "highlighter" ? "normal" : tlStyle.ep1,
+    endStyle: legacyTool === "highlighter" ? "normal" : tlStyle.ep2,
     extendLeft: isPf ? !!tlStyle.extendLeft : !!tlStyle.extendLeft,
     extendRight: isPf ? tlStyle.extendRight !== false : !!tlStyle.extendRight,
     ...(legacyTool === "flat-top-bottom" || legacyTool === "disjoint-channel"
@@ -6334,8 +6350,8 @@ function v9TlStylePatchFromDrawing(d) {
         : s.borderColor
           ? { borderColor: s.borderColor }
           : {}),
-    ...(s.startStyle ? { ep1: s.startStyle } : {}),
-    ...(s.endStyle ? { ep2: s.endStyle } : {}),
+    ...(d.type !== "highlighter" && s.startStyle ? { ep1: s.startStyle } : {}),
+    ...(d.type !== "highlighter" && s.endStyle ? { ep2: s.endStyle } : {}),
     extendLeft: !!(s.extendLeft === true || s.extendLeft === 1
       || (typeof s.extendLeft === 'string' && /^(true|1|yes)$/i.test(String(s.extendLeft).trim()))),
     extendRight: !!(s.extendRight === true || s.extendRight === 1
@@ -6352,10 +6368,23 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.labelBackgroundColor ? { labelBgColor: s.labelBackgroundColor } : {}),
     ...(s.infoSettings && typeof s.infoSettings === 'object'
       ? (() => {
-          const types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
-          const show =
-            types.length > 0 &&
-            (s.infoSettings.showInfo === true || s.infoSettings.showInfo !== false);
+          let types = v9ShowInfoTypesFromChartInfoSettings(s.infoSettings);
+          const masterOn =
+            s.showLabel === true ||
+            s.infoSettings.showInfo === true ||
+            (types.length > 0 && s.infoSettings.showInfo !== false);
+          if (masterOn && types.length === 0) {
+            types = d.type && v9IsRangeMeasureChartType(d.type)
+              ? v9DefaultShowInfoTypesForRangeType(
+                  s.rangeMode === "price"
+                    ? "Price"
+                    : s.rangeMode === "time"
+                      ? "Date and time"
+                      : "Date & Price",
+                ).slice(0, 1)
+              : ["Price range"];
+          }
+          const show = masterOn && types.length > 0;
           return {
             showInfo: show,
             showInfoTypes: types,
@@ -6789,6 +6818,8 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
     return {
       lineWidth: V9_DEFAULT_HIGHLIGHTER_LINE_WIDTH,
       lineColor: cpBuildColor(base.r, base.g, base.b, V9_DEFAULT_HIGHLIGHTER_ALPHA),
+      ep1: "normal",
+      ep2: "normal",
     };
   }
   if (legacy === "arrow-marker") {
@@ -17680,6 +17711,18 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Show Info master toggle — auto-select first metric when enabling. */
+  const applyTlShowInfoToggle = useCallback(() => {
+    flushSync(() => setTlStyle((s) => {
+      const legacy = resolveLegacyTool();
+      return v9PatchTlShowInfoOnToggle(s, !s.showInfo, legacy);
+    }));
+    v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
+      editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+      resolveLegacyTool,
+    });
+  }, []);
+
   /** Middle-line dash style — immediate repaint (rect / ellipse / circle / parallel channel). */
   const applyTlMidLineType = useCallback((midLineType) => {
     flushSync(() => setTlStyle((s) => {
@@ -19541,7 +19584,8 @@ const TalariaV8bLive = () => {
                     })}/>
                 );
                 const isBrushTool = ["draw","brush"].includes(tlSubTool.icon);
-                const showEp = !isFibTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork"].includes(tlSubTool.icon);
+                const isHighlighterTool = tlSubTool.icon === "brush";
+                const showEp = !isFibTool && !isPatternTool && !isHighlighterTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowLine","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork"].includes(tlSubTool.icon);
                 const hasBg = ["curve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","flatChannel","disjointCh","xabcd","headShoulders","triPattern"].includes(tlSubTool.icon);
                 const showLine = !isGannTool && !(isFibTool && tlSubTool.icon !== "fibSpiral") && !["arrowMarker","arrowUp","arrowDn","channel","regressionCh","pitchfork"].includes(tlSubTool.icon);
                 const isChannel = ["channel","regressionCh"].includes(tlSubTool.icon);
@@ -19718,7 +19762,7 @@ const TalariaV8bLive = () => {
                     {/* Separator spanning all columns */}
                     <div style={{gridColumn:"1 / -1",height:1,background:c.br,margin:"2px 0 4px"}}/>
                     {/* Stats row: checkbox col1, dropdown spanning cols 2-4 */}
-                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",()=>setTlStyle(s=>({...s,showInfo:!s.showInfo})))}</div>
+                    <div style={{padding:"8px 0"}}>{TlChk(tlStyle.showInfo,"tlchk-rngInfo","Stats",applyTlShowInfoToggle)}</div>
                     <div style={{gridColumn:"2 / -1",padding:"8px 0",opacity:tlStyle.showInfo?1:0.38,pointerEvents:tlStyle.showInfo?"auto":"none",transition:"opacity 0.15s"}}>
                       <div style={{position:"relative"}}>
                         <div {...modalPointerActivate((e) => {
@@ -20753,7 +20797,7 @@ const TalariaV8bLive = () => {
               ))}
                             {/* Show Info row — dropdown always visible, dimmed when off (hidden for hline) */}
               {!isRRTool && tlSubTool.icon !== "measure" && !isFibTool && !isGannTool && !isPatternTool && !["hline","hray","vline","ray","extendedLine","crossLine","polyline","pathTool","curve","doubleCurve","triangle","rect","arcShape","ellipse","circle","arrowMarker","arrowUp","arrowDn","channel","regressionCh","flatChannel","disjointCh","pitchfork","draw","brush"].includes(tlSubTool.icon) && <div style={{ display:"flex", alignItems:"center", padding:"8px 0" }}>
-                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",()=>setTlStyle(s=>({...s,showInfo:!s.showInfo})))}
+                {TlChk(tlStyle.showInfo,"tlchk-showInfo","Show Info",applyTlShowInfoToggle)}
                 <div style={{ position:"relative", marginLeft:"auto" }}>
                   <div onClick={e=>{e.stopPropagation();if(tlStyle.showInfo){if(tlStyleDrop==="info"||closing.has("tlInfoDrop")){closeTlInfoDrop();}else{const r=e.currentTarget.getBoundingClientRect();const dropH=210;const goUp=r.bottom/Z+dropH>window.innerHeight/Z;setTlInfoDropUp(goUp);setTlStyleDrop("info");}}}}
                     onMouseEnter={()=>setHov("tlInfoBtn")} onMouseLeave={()=>setHov(null)}
