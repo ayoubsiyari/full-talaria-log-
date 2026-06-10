@@ -1747,13 +1747,15 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
           middleLineDash: midDashArr,
         }),
   };
-  if (legacyTool && v9IsClassicFibRetracementType(legacyTool) && Array.isArray(tlStyle.fibLevels)) {
-    const chartLevels = v9TlFibLevelsToChart(
-      tlStyle.fibLevels,
-      tlStyle.fibLineType,
-      tlStyle.fibLineWidth,
-    );
-    if (chartLevels.length) patch.levels = chartLevels;
+  if (legacyTool && v9IsClassicFibRetracementType(legacyTool)) {
+    if (Array.isArray(tlStyle.fibLevels)) {
+      const chartLevels = v9TlFibLevelsToChart(
+        tlStyle.fibLevels,
+        tlStyle.fibLineType,
+        tlStyle.fibLineWidth,
+      );
+      if (chartLevels.length) patch.levels = chartLevels;
+    }
     const classicTrendDash =
       tlStyle.lineType === "bold"
         ? ""
@@ -4795,7 +4797,7 @@ function v9SyncFibLevelPositionToStyle(st, tlStyle) {
 function v9FibLevelsChartToTl(levels) {
   if (!Array.isArray(levels) || !levels.length) return undefined;
   return levels.map((lv) => ({
-    on: lv.visible !== false,
+    on: lv.visible !== false && lv.enabled !== false,
     value:
       lv.label != null && String(lv.label).trim() !== ""
         ? String(lv.label).trim()
@@ -4816,6 +4818,7 @@ function v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth) {
       label: vs,
       color: ln.color || "#787b86",
       visible: ln.on !== false,
+      enabled: ln.on !== false,
       lineType: dashStr,
       lineWidth: w,
     };
@@ -5368,8 +5371,8 @@ function v9FibTlLevelsMatchLegacyType(legacyType, fibLevels) {
   const vals = fibLevels
     .map((l) => parseFloat(l.value))
     .filter((n) => Number.isFinite(n));
-  if (legacyType === "fibonacci-extension") {
-    return vals.some((v) => v >= 1.272 || v > 1.05);
+  if (legacyType === "fibonacci-extension" || legacyType === "trend-fib-extension") {
+    return vals.some((v) => v >= 1.272 || v > 1.05) || vals.some((v) => v > 0 && v < 1);
   }
   if (legacyType === "fibonacci-retracement") {
     return vals.some((v) => v > 0 && v < 1 && v !== 1);
@@ -18171,6 +18174,20 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Fib level values on/off — immediate chart sync (labels show/hide). */
+  const applyTlFibLevelsOn = useCallback((fibLevelsOn) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, fibLevelsOn };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
   /** Fib level values mode (Value / Percent / …) — immediate chart sync. */
   const applyTlFibLevelsMode = useCallback((fibLevelsMode) => {
     flushSync(() => {
@@ -20927,7 +20944,7 @@ const TalariaV8bLive = () => {
                         if (!fibSupportsLevelsMode) {
                           return (
                             <div style={{ padding:"6px 0" }}>
-                              {TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}
+                              {TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}
                             </div>
                           );
                         }
@@ -20936,7 +20953,7 @@ const TalariaV8bLive = () => {
                         const options = ["Value","Percent","Value and Percent"];
                         return (
                           <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
-                            <div style={{ width:130 }}>{TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}</div>
+                            <div style={{ width:130 }}>{TlChk(tlStyle.fibLevelsOn,"tlchk-fibLvl","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}</div>
                             <div style={{ position:"relative", marginLeft:78, opacity:tlStyle.fibLevelsOn?1:0.38, pointerEvents:tlStyle.fibLevelsOn?"auto":"none", transition:"opacity 0.15s" }}>
                               <div onClick={e=>{e.stopPropagation();setTlStyleDrop(tlStyleDrop===dk?null:dk);}}
                                 onMouseEnter={()=>setHov(`tl-btn-${dk}`)} onMouseLeave={()=>setHov(null)}
@@ -21802,7 +21819,7 @@ const TalariaV8bLive = () => {
                         </div>
                         <div style={{ position:"relative", width:54, opacity:op, transition:"opacity 0.15s" }}>
                           <input value={lv.value}
-                            onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.map((l,i)=>i===idx?{...l,value:val}:l)));}}
+                            onChange={e=>{const val=e.target.value;if(/^[0-9.]*$/.test(val))applyTlFibLevelsPatch(fi, rows=>rows.map((l,i)=>i===idx?{...l,value:val}:l));}}
                             onPointerDown={e=>e.stopPropagation()}
                             onMouseDown={e=>e.stopPropagation()}
                             onClick={e=>e.stopPropagation()}
@@ -21811,7 +21828,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 4px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l))))}
+                              <button type="button" key={i} {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, rows=>rows.map((l,j)=>j===idx?{...l,value:(Math.max(0,+(+l.value+delta*0.001).toFixed(3))).toFixed(3).replace(/\.?0+$/,"")||"0"}:l)))}
                                 onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
@@ -21823,7 +21840,7 @@ const TalariaV8bLive = () => {
                           </div>
                         </div>
                         <div style={{ opacity:op, transition:"opacity 0.15s" }}>{fibColorSwatch(`fibLevel-${idx}`, lv.color)}</div>
-                        {idx >= 2 && <div {...modalPointerActivate(() => setTlStyle(s=>v9PatchFibLevelsInStyle(s, fi, rows=>rows.filter((_,i)=>i!==idx))))}
+                        {idx >= 2 && <div {...modalPointerActivate(() => applyTlFibLevelsPatch(fi, rows=>rows.filter((_,i)=>i!==idx)))}
                           onMouseEnter={()=>setHov(`fibDel-${idx}`)} onMouseLeave={()=>setHov(null)}
                           style={{ cursor:"default", padding:"0 2px" }}>
                           <I n="x" s={9} cl={hov===`fibDel-${idx}`?c.rd:c.tm}/>

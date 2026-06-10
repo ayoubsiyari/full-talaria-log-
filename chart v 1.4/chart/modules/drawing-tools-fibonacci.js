@@ -146,7 +146,7 @@ class FibonacciRetracementTool extends BaseDrawing {
         // Draw each Fibonacci level
         for (let i = 0; i < this.levels.length; i++) {
             const level = this.levels[i];
-            if (!level || !level.visible) continue;
+            if (!BaseDrawing.fibLevelRowVisible(level)) continue;
 
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
@@ -165,6 +165,7 @@ class FibonacciRetracementTool extends BaseDrawing {
                 .attr('y1', yAtLevel)
                 .attr('x2', fibX2)
                 .attr('y2', yAtLevel)
+                .attr('data-fib-idx', i)
                 .attr('data-level', level.value)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', levelHitWidth)
@@ -186,6 +187,7 @@ class FibonacciRetracementTool extends BaseDrawing {
             }
 
             appendFibHorizontalLineWithCenterGap(this.group, fibX1, fibX2, yAtLevel, centerGap, {
+                'data-fib-idx': i,
                 'data-level': level.value,
                 stroke: level.color,
                 'stroke-width': scaledLevelWidth,
@@ -198,6 +200,7 @@ class FibonacciRetracementTool extends BaseDrawing {
             const textY = fibHorizontalLabelBaselineY(this.style, yAtLevel);
             const textEl = this.group.append('text')
                 .attr('class', 'non-interactive-text')
+                .attr('data-fib-label-idx', i)
                 .attr('data-fib-label', level.value)
                 .attr('x', labelPlacement.x)
                 .attr('y', textY)
@@ -411,7 +414,7 @@ class FibonacciExtensionTool extends BaseDrawing {
 
         for (let i = 0; i < this.levels.length; i++) {
             const level = this.levels[i];
-            if (!level || !level.visible) continue;
+            if (!BaseDrawing.fibLevelRowVisible(level)) continue;
 
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = scales.yScale(priceAtLevel);
@@ -429,6 +432,7 @@ class FibonacciExtensionTool extends BaseDrawing {
                 .attr('y1', yAtLevel)
                 .attr('x2', fibX2)
                 .attr('y2', yAtLevel)
+                .attr('data-fib-idx', i)
                 .attr('data-level', level.value)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', levelHitWidth)
@@ -450,6 +454,7 @@ class FibonacciExtensionTool extends BaseDrawing {
             }
 
             appendFibHorizontalLineWithCenterGap(this.group, fibX1, fibX2, yAtLevel, centerGap, {
+                'data-fib-idx': i,
                 'data-level': level.value,
                 stroke: level.color,
                 'stroke-width': scaledLevelWidth,
@@ -462,6 +467,7 @@ class FibonacciExtensionTool extends BaseDrawing {
             const textY = fibHorizontalLabelBaselineY(this.style, yAtLevel);
             const textEl = this.group.append('text')
                 .attr('class', 'non-interactive-text')
+                .attr('data-fib-label-idx', i)
                 .attr('data-fib-label', level.value)
                 .attr('x', labelPlacement.x)
                 .attr('y', textY)

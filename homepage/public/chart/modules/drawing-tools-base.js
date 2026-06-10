@@ -652,17 +652,12 @@ class BaseDrawing {
         };
 
         const levels = [];
-        (tool.levels || []).forEach((level, i) => {
-            if (!level || level.visible === false) return;
+        (tool.levels || []).forEach((level, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(level)) return;
             const priceAtLevel = getPriceAtLevel(level.value);
             const yAtLevel = BaseDrawing.fibPriceToPixel(scales, priceAtLevel);
             if (!Number.isFinite(yAtLevel)) return;
-            let nextY = null;
-            const nextLevel = tool.levels[i + 1];
-            if (nextLevel && nextLevel.visible !== false) {
-                nextY = BaseDrawing.fibPriceToPixel(scales, getPriceAtLevel(nextLevel.value));
-            }
-            levels.push({ value: level.value, y: yAtLevel, nextY });
+            levels.push({ idx, value: level.value, y: yAtLevel });
         });
 
         const zoneBands = BaseDrawing.buildFibHorizontalZoneBands(
@@ -756,9 +751,16 @@ class BaseDrawing {
         return { channelOffset, reverse, getSegment, offsetPoint, p1, p2, p3, toPx, nx, ny };
     }
 
+    static fibLevelRowVisible(level) {
+        if (!level) return false;
+        if (level.visible === false) return false;
+        if (level.enabled === false) return false;
+        return true;
+    }
+
     static patchTwoPointHorizontalFib(tool, scales) {
         if (!tool || !tool.group || tool.group.empty() || !scales) return false;
-        if (!tool.group.select('line[data-level]').node()) return false;
+        if (!tool.group.select('line[data-fib-idx]').node()) return false;
 
         const layout = BaseDrawing.computeTwoPointHorizontalFibLayout(tool, scales);
         if (!layout) return false;
@@ -779,15 +781,13 @@ class BaseDrawing {
                 .attr('height', Math.abs(band.y2 - band.y1));
         });
 
-        levels.forEach(({ value, y }) => {
-            const key = `${value}`;
-            group.selectAll(`line[data-level="${key}"]`)
+        levels.forEach(({ idx, y }) => {
+            group.selectAll(`line[data-fib-idx="${idx}"]`)
                 .attr('x1', fibX1)
                 .attr('y1', y)
                 .attr('x2', fibX2)
                 .attr('y2', y);
-            group.selectAll(`text[data-fib-label="${key}"]`)
-                .attr('x', fibX2 + 5)
+            group.selectAll(`text[data-fib-label-idx="${idx}"]`)
                 .attr('y', y + 4);
         });
 
@@ -845,7 +845,7 @@ class BaseDrawing {
 
     static patchFibChannel(tool, scales) {
         if (!tool || !tool.group || tool.group.empty() || !scales) return false;
-        if (!tool.group.select('line[data-fib-channel-level]').node()) return false;
+        if (!tool.group.select('line[data-fib-channel-idx]').node()) return false;
         if (!Array.isArray(tool.points) || tool.points.length < 3) return false;
 
         const geom = BaseDrawing.computeFibChannelGeometry(tool, scales);
@@ -854,24 +854,19 @@ class BaseDrawing {
         const { reverse, getSegment, offsetPoint, p1, p2 } = geom;
         const group = tool.group;
 
-        group.selectAll('line[data-fib-channel-level]').each(function () {
-            const lvl = parseFloat(d3.select(this).attr('data-fib-channel-level'));
-            if (!Number.isFinite(lvl)) return;
+        (tool.levels || []).forEach((levelObj, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return;
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            if (level == null || isNaN(parseFloat(level))) return;
+            const lvl = parseFloat(level);
             const actualLevel = reverse ? (1 - lvl) : lvl;
             const seg = getSegment(offsetPoint(p1, actualLevel), offsetPoint(p2, actualLevel));
             if (!seg) return;
-            d3.select(this)
+            group.selectAll(`line[data-fib-channel-idx="${idx}"]`)
                 .attr('x1', seg.x1).attr('y1', seg.y1)
                 .attr('x2', seg.x2).attr('y2', seg.y2);
-        });
-
-        group.selectAll('text[data-fib-channel-label]').each(function () {
-            const lvl = parseFloat(d3.select(this).attr('data-fib-channel-label'));
-            if (!Number.isFinite(lvl)) return;
-            const actualLevel = reverse ? (1 - lvl) : lvl;
-            const seg = getSegment(offsetPoint(p1, actualLevel), offsetPoint(p2, actualLevel));
-            if (!seg) return;
-            d3.select(this).attr('x', seg.x2 + 5).attr('y', seg.y2 + 4);
+            group.selectAll(`text[data-fib-channel-label-idx="${idx}"]`)
+                .attr('x', seg.x2 + 5).attr('y', seg.y2 + 4);
         });
 
         if (tool.style.showZones) {

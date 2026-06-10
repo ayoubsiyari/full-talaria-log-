@@ -169,9 +169,11 @@ class FibChannelTool extends BaseDrawing {
                 }
             }
 
-            this.levels.forEach(levelObj => {
+            this.levels.forEach((levelObj, idx) => {
                 const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-                const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+                const enabled = typeof levelObj === 'object'
+                    ? (levelObj.enabled !== false && levelObj.visible !== false)
+                    : true;
                 const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
                 const baseWidth = (typeof levelObj === 'object' && levelObj.lineWidth)
                     ? levelObj.lineWidth
@@ -193,6 +195,7 @@ class FibChannelTool extends BaseDrawing {
 
                 this.group.append('line')
                     .attr('class', 'fib-level-hit')
+                    .attr('data-fib-channel-idx', idx)
                     .attr('data-fib-channel-level', lvl)
                     .attr('x1', seg.x1)
                     .attr('y1', seg.y1)
@@ -206,6 +209,7 @@ class FibChannelTool extends BaseDrawing {
                     .style('cursor', 'move');
 
                 this.group.append('line')
+                    .attr('data-fib-channel-idx', idx)
                     .attr('data-fib-channel-level', lvl)
                     .attr('x1', seg.x1)
                     .attr('y1', seg.y1)
@@ -229,6 +233,7 @@ class FibChannelTool extends BaseDrawing {
                 const lp = fibHorizontalSpanLabelPlacement(this.style, seg.x1, seg.x2);
 
                 this.group.append('text')
+                    .attr('data-fib-channel-label-idx', idx)
                     .attr('data-fib-channel-label', lvl)
                     .attr('x', lp.x)
                     .attr('y', seg.y2 + 4)
@@ -706,7 +711,9 @@ class FibSpeedFanTool extends BaseDrawing {
         // Draw fan lines from point 1
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.visible !== false)
+                : true;
             const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
             const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : this.style.strokeWidth;
             const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
@@ -1265,7 +1272,9 @@ class FibCirclesTool extends BaseDrawing {
 
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.visible !== false)
+                : true;
             const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
             const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : this.style.strokeWidth;
             const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
@@ -2041,7 +2050,9 @@ class FibWedgeTool extends BaseDrawing {
         // Draw arcs + labels
         this.levels.forEach(levelObj => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.visible !== false)
+                : true;
             const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
             const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : 1;
             const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
@@ -2100,7 +2111,9 @@ class FibWedgeTool extends BaseDrawing {
         // Outer boundary arc — only when at least one level is on (skip if level 1 arc already drawn).
         const levelOneEnabled = this.levels.some((levelObj) => {
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+            const enabled = typeof levelObj === 'object'
+                ? (levelObj.enabled !== false && levelObj.visible !== false)
+                : true;
             return enabled && Math.abs(+level - 1) < 1e-6;
         });
         if (enabledLevelsSorted.length > 0 && !levelOneEnabled) {
@@ -4208,9 +4221,11 @@ class TrendFibExtensionTool extends BaseDrawing {
 
             // Draw extension levels projecting from point 3
             // Extension projects in the SAME direction as the first leg (A→B)
-            this.levels.forEach(levelObj => {
+            this.levels.forEach((levelObj, idx) => {
                 const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-                const enabled = typeof levelObj === 'object' ? levelObj.enabled !== false : true;
+                const enabled = typeof levelObj === 'object'
+                    ? (levelObj.enabled !== false && levelObj.visible !== false)
+                    : true;
                 const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
                 const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : (level === 1 ? 2 : 1);
                 const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
@@ -4232,6 +4247,7 @@ class TrendFibExtensionTool extends BaseDrawing {
                     .attr('class', 'fib-level-hit')
                     .attr('x1', leftX).attr('y1', yAtLevel)
                     .attr('x2', rightX).attr('y2', yAtLevel)
+                    .attr('data-fib-idx', idx)
                     .attr('data-level', level)
                     .attr('stroke', 'rgba(255,255,255,0.001)')
                     .attr('stroke-width', levelHitWidth)
@@ -4261,6 +4277,7 @@ class TrendFibExtensionTool extends BaseDrawing {
                 }
 
                 appendFibHorizontalLineWithCenterGap(this.group, leftX, rightX, yAtLevel, extGap, {
+                    'data-fib-idx': idx,
                     'data-level': level,
                     stroke: color,
                     'stroke-width': scaledLevelWidth,
@@ -4271,6 +4288,7 @@ class TrendFibExtensionTool extends BaseDrawing {
                 if (!showLevelValues) return;
                 const extTextY = fibHorizontalLabelBaselineY(this.style, yAtLevel, 0);
                 const extTextEl = this.group.append('text')
+                    .attr('data-fib-label-idx', idx)
                     .attr('x', extLp.x)
                     .attr('y', extTextY)
                     .attr('fill', color)
