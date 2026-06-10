@@ -6330,16 +6330,13 @@ function v9TlStylePatchFromDrawing(d) {
   const shapeWidthStr = shapeWidthRaw != null
     ? String(parseInt(shapeWidthRaw, 10) || 1)
     : undefined;
-  const shapeLineType = isShapeBorder
-    ? (parseInt(shapeWidthStr, 10) >= 2 && !dashRaw ? "bold" : lineType)
-    : lineType;
   return {
     ...(shapeStroke ? { lineColor: shapeStroke } : (stroke ? { lineColor: stroke } : {})),
     ...(isShapeBorder
       ? (shapeWidthStr ? { lineWidth: shapeWidthStr, borderWidth: shapeWidthStr } : {})
       : (widthStr ? { lineWidth: widthStr } : {})),
-    lineType: isShapeBorder ? shapeLineType : lineType,
-    ...(isShapeBorder ? { borderType: shapeLineType } : {}),
+    lineType: isShapeBorder ? lineType : lineType,
+    ...(isShapeBorder ? { borderType: lineType } : {}),
     ...(s.fill ? { bgColor: s.fill } : (s.backgroundColor ? { bgColor: s.backgroundColor } : {})),
     showBg:
       typeof s.showBackground === "boolean"
@@ -17724,7 +17721,12 @@ const TalariaV8bLive = () => {
 
   /** Range Tool border dash — immediate chart sync (settings Style tab). */
   const applyTlBorderType = useCallback((borderType) => {
-    flushSync(() => setTlStyle((s) => ({ ...s, borderType })));
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      return v9IsFilledShapeBorderSubIcon(icon)
+        ? { ...s, borderType, lineType: borderType }
+        : { ...s, borderType };
+    }));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
@@ -17733,7 +17735,12 @@ const TalariaV8bLive = () => {
 
   /** Range Tool border thickness — immediate chart sync. */
   const applyTlBorderWidth = useCallback((borderWidth) => {
-    flushSync(() => setTlStyle((s) => ({ ...s, borderWidth })));
+    flushSync(() => setTlStyle((s) => {
+      const icon = tlSubToolIconRef.current;
+      return v9IsFilledShapeBorderSubIcon(icon)
+        ? { ...s, borderWidth, lineWidth: borderWidth }
+        : { ...s, borderWidth };
+    }));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
@@ -19950,7 +19957,7 @@ const TalariaV8bLive = () => {
                         [["bold",undefined,2.5],["dotted","2,4",1.5],["dashed","7,4",1.5],["dashdot","7,4,2,4",1.5]].map(([v,dArr,sw])=>{
                           const isA=edgeTypeVal===v; const isH=hov===`tlt-${v}`;
                           return (
-                            <div key={v} {...tlStyleDropPick(() => applyTlLineType(v))}
+                            <div key={v} {...tlStyleDropPick(() => (isShapeBorderUi ? applyTlBorderType(v) : applyTlLineType(v)))}
                               onMouseEnter={()=>setHov(`tlt-${v}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -20000,7 +20007,7 @@ const TalariaV8bLive = () => {
                         ["1","2","3","4"].map(w=>{
                           const isA=edgeWidthVal===w; const isH=hov===`tlw-${w}`;
                           return (
-                            <div key={w} {...tlStyleDropPick(() => applyTlLineWidth(w))}
+                            <div key={w} {...tlStyleDropPick(() => (isShapeBorderUi ? applyTlBorderWidth(w) : applyTlLineWidth(w)))}
                               onMouseEnter={()=>setHov(`tlw-${w}`)} onMouseLeave={()=>setHov(null)}
                               style={{ padding:"7px 0", cursor:"default", display:"flex", alignItems:"center", justifyContent:"center", position:"relative",
                                        background:isA?c.acD:isH?c.hv:"transparent", transition:"background 0.1s" }}>

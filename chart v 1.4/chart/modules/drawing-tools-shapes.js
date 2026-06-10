@@ -153,14 +153,14 @@ function resolveShapeBorderDrawStyle(style, scaleFactor = 1) {
  * @param {d3.Selection} group
  * @param {Array<{x1:number,y1:number,x2:number,y2:number,name?:string}>} edges
  * @param {Object} style
- * @param {number} scaledStrokeWidth
+ * @param {number} scaleFactor
  * @param {{ hitWidth?: number, respectBorderToggle?: boolean }} [opts]
  */
-function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts = {}) {
+function appendShapeBorderEdgeLines(group, edges, style, scaleFactor = 1, opts = {}) {
     const respectBorderToggle = opts.respectBorderToggle !== false;
     const borderOn = respectBorderToggle ? shapeBorderVisible(style) : true;
-    const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
-    const borderStyle = resolveShapeBorderDrawStyle(style, scaledStrokeWidth / Math.max(0.5, parseFloat(style.strokeWidth) || 1));
+    const borderStyle = resolveShapeBorderDrawStyle(style, scaleFactor);
+    const hitWidth = opts.hitWidth ?? Math.max(16, borderStyle.width * 5);
 
     edges.forEach((edge) => {
         if (borderOn) {
@@ -173,6 +173,8 @@ function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts
                 .attr('stroke', borderStyle.stroke)
                 .attr('stroke-width', borderStyle.width)
                 .attr('stroke-dasharray', borderStyle.dash)
+                .attr('stroke-linecap', 'butt')
+                .attr('stroke-linejoin', 'miter')
                 .attr('opacity', style.opacity)
                 .attr('data-edge', edge.name || '')
                 .attr('data-original-width', style.borderWidth != null ? style.borderWidth : style.strokeWidth)
@@ -199,14 +201,14 @@ function appendShapeBorderEdgeLines(group, edges, style, scaledStrokeWidth, opts
  * @param {d3.Selection} group
  * @param {Array<{x:number,y:number}>} polyPts
  * @param {Object} style
- * @param {number} scaledStrokeWidth
+ * @param {number} scaleFactor
  * @param {{ hitWidth?: number, closed?: boolean }} [opts]
  */
-function appendShapeBorderPolylineLines(group, polyPts, style, scaledStrokeWidth, opts = {}) {
+function appendShapeBorderPolylineLines(group, polyPts, style, scaleFactor = 1, opts = {}) {
     const closed = opts.closed !== false;
     const borderOn = shapeBorderVisible(style);
-    const hitWidth = opts.hitWidth ?? Math.max(16, scaledStrokeWidth * 5);
-    const borderStyle = resolveShapeBorderDrawStyle(style, scaledStrokeWidth / Math.max(0.5, parseFloat(style.strokeWidth) || 1));
+    const borderStyle = resolveShapeBorderDrawStyle(style, scaleFactor);
+    const hitWidth = opts.hitWidth ?? Math.max(16, borderStyle.width * 5);
     const n = polyPts.length;
     if (n < 2) return;
 
@@ -225,6 +227,8 @@ function appendShapeBorderPolylineLines(group, polyPts, style, scaledStrokeWidth
                 .attr('stroke', borderStyle.stroke)
                 .attr('stroke-width', borderStyle.width)
                 .attr('stroke-dasharray', borderStyle.dash)
+                .attr('stroke-linecap', 'butt')
+                .attr('stroke-linejoin', 'miter')
                 .attr('opacity', style.opacity)
                 .attr('data-original-width', style.borderWidth != null ? style.borderWidth : style.strokeWidth)
                 .style('pointer-events', 'stroke')
@@ -640,7 +644,6 @@ class RectangleTool extends BaseDrawing {
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
-        const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing rectangle', renderOpts);
@@ -692,7 +695,7 @@ class RectangleTool extends BaseDrawing {
             { x1: x, y1: y, x2: x, y2: y + height, name: 'left' },
             { x1: x + width, y1: y, x2: x + width, y2: y + height, name: 'right' }
         ];
-        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
+        appendShapeBorderEdgeLines(this.group, edges, this.style, scaleFactor);
 
         // Handles on original corners only (TradingView); fill/border use extended width above.
         if (this._shouldCreateHandles(renderOpts)) {
@@ -815,7 +818,7 @@ class RectangleTool extends BaseDrawing {
     createBoxHandles(group, scales, opts = {}) {
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
-        const handleStrokeWidth = 2;
+        const handleStrokeWidth = 1;
 
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-hit').remove();
@@ -1023,7 +1026,7 @@ class EllipseTool extends BaseDrawing {
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
-        const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
+        const borderStyle = resolveShapeBorderDrawStyle(this.style, scaleFactor);
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing ellipse', renderOpts);
@@ -1058,7 +1061,7 @@ class EllipseTool extends BaseDrawing {
             .style('pointer-events', 'none')
             .style('cursor', 'default');
 
-        const desiredHitWidth = Math.max(16, scaledStrokeWidth * 5);
+        const desiredHitWidth = Math.max(16, borderStyle.width * 5);
         const maxHitWidth = Math.max(16, Math.min(rx, ry) * 0.35);
         const hitWidth = Math.min(desiredHitWidth, maxHitWidth);
 
@@ -1072,7 +1075,7 @@ class EllipseTool extends BaseDrawing {
             });
         }
 
-        appendShapeBorderPolylineLines(this.group, pts, this.style, scaledStrokeWidth, { hitWidth });
+        appendShapeBorderPolylineLines(this.group, pts, this.style, scaleFactor, { hitWidth });
 
         if (this._shouldCreateHandles(renderOpts)) {
             this.createBoxHandles(this.group, scales);
@@ -1160,7 +1163,7 @@ class EllipseTool extends BaseDrawing {
         const hitRadius = 14;
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
-        const handleStrokeWidth = 2;
+        const handleStrokeWidth = 1;
 
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-hit').remove();
@@ -1375,7 +1378,6 @@ class TriangleTool extends BaseDrawing {
 
         // Get zoom scale factor for visual scaling
         const scaleFactor = this.getZoomScaleFactor(scales);
-        const scaledStrokeWidth = Math.max(0.5, this.style.strokeWidth * scaleFactor);
 
         // Create group for this drawing
         this._prepareRenderGroup(container, 'drawing triangle', renderOpts);
@@ -1449,7 +1451,7 @@ class TriangleTool extends BaseDrawing {
             { x1: pts[1].x, y1: pts[1].y, x2: pts[2].x, y2: pts[2].y, name: 'edge2' },
             { x1: pts[2].x, y1: pts[2].y, x2: pts[0].x, y2: pts[0].y, name: 'edge3' }
         ];
-        appendShapeBorderEdgeLines(this.group, edges, this.style, scaledStrokeWidth);
+        appendShapeBorderEdgeLines(this.group, edges, this.style, scaleFactor);
 
         // Create resize handles at vertices
         if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);

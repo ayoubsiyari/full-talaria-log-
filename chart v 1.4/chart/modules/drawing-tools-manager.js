@@ -13402,7 +13402,7 @@ class DrawingToolsManager {
             stroke,
             color: stroke,
             lineColor: stroke,
-            strokeWidth: 2,
+            strokeWidth: 1,
             opacity: 1,
             dashArray: '',
             strokeDasharray: '',
