@@ -1957,6 +1957,51 @@ class CurveTool extends BaseDrawing {
 // ============================================================================
 // Double Curve Tool (S-curve with 4 points - smooth wave pattern)
 // ============================================================================
+
+function stripSvgPathMoveTo(pathStr) {
+    if (!pathStr) return '';
+    const match = /^M\s*-?\d*\.?\d+(?:e[-+]?\d+)?\s*,\s*-?\d*\.?\d+(?:e[-+]?\d+)?\s*/i.exec(pathStr)
+        || /^M\s*-?\d*\.?\d+(?:e[-+]?\d+)?\s+-?\d*\.?\d+(?:e[-+]?\d+)?\s*/i.exec(pathStr);
+    return match ? pathStr.slice(match[0].length) : pathStr;
+}
+
+function doubleCurveEndpointTangents(corePath, fallbackPts) {
+    const n = fallbackPts.length - 1;
+    let startTan = {
+        x: fallbackPts[1].x - fallbackPts[0].x,
+        y: fallbackPts[1].y - fallbackPts[0].y,
+    };
+    let endTan = {
+        x: fallbackPts[n].x - fallbackPts[n - 1].x,
+        y: fallbackPts[n].y - fallbackPts[n - 1].y,
+    };
+
+    if (typeof document !== 'undefined' && corePath) {
+        try {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            el.setAttribute('d', corePath);
+            const total = el.getTotalLength();
+            if (total > 0) {
+                const eps = Math.max(0.5, Math.min(2, total * 0.002));
+                const pStart = el.getPointAtLength(0);
+                const pStartFwd = el.getPointAtLength(eps);
+                const pEnd = el.getPointAtLength(total);
+                const pEndBack = el.getPointAtLength(Math.max(0, total - eps));
+                startTan = { x: pStartFwd.x - pStart.x, y: pStartFwd.y - pStart.y };
+                endTan = { x: pEnd.x - pEndBack.x, y: pEnd.y - pEndBack.y };
+            }
+        } catch (_) {}
+    }
+
+    return { startTan, endTan };
+}
+
+function doubleCurveUnitVector(v) {
+    const len = Math.hypot(v.x, v.y);
+    if (!len) return null;
+    return { x: v.x / len, y: v.y / len };
+}
+
 class DoubleCurveTool extends BaseDrawing {
     constructor(points = [], style = {}) {
         super('double-curve', points, style);
@@ -2037,7 +2082,7 @@ class DoubleCurveTool extends BaseDrawing {
         
         // Spline order: start → control₁ → control₂ → end (not start → end → controls)
         const splinePts = [screenP1, screenCP1, screenCP2, screenP2];
-        let pathData = this.buildDoubleCurvePath(splinePts);
+        const pathData = this.buildDoubleCurvePath(splinePts);
 
         // Invisible hit path for easier clicking (match HorizontalLineTool pattern)
         this.group.append('path')
@@ -2047,12 +2092,12 @@ class DoubleCurveTool extends BaseDrawing {
             .attr('stroke-dasharray', null)
             .attr('fill', 'none')
             .attr('opacity', 1)
-            .attr('stroke-linecap', 'round')
-            .attr('stroke-linejoin', 'round')
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-linejoin', 'miter')
             .style('pointer-events', 'stroke')
             .style('cursor', 'move');
 
-        // Draw the main curve path
+        // Draw the main curve path (core + straight extensions in one path)
         const path = this.group.append('path')
             .attr('d', pathData)
             .attr('stroke', this.style.stroke)
@@ -2060,8 +2105,8 @@ class DoubleCurveTool extends BaseDrawing {
             .attr('stroke-dasharray', this.style.strokeDasharray || null)
             .attr('fill', 'none')
             .attr('opacity', this.style.opacity)
-            .attr('stroke-linecap', 'round')
-            .attr('stroke-linejoin', 'round')
+            .attr('stroke-linecap', 'butt')
+            .attr('stroke-linejoin', 'miter')
             .attr('data-original-width', this.style.strokeWidth)
             .style('pointer-events', 'none')
             .style('cursor', 'move');
@@ -2123,44 +2168,55 @@ class DoubleCurveTool extends BaseDrawing {
         return (dist1 + dist2) / 2;
     }
     
-    /** Catmull–Rom path through start → CP1 → CP2 → end, with straight extend left/right. */
-    buildDoubleCurvePath(splinePts) {
-        if (!splinePts || splinePts.length < 2) return '';
+    /** Catmull–Rom core + straight line extensions aligned to rendered curve tangents. */
+    buildDoubleCurvePathParts(splinePts) {
+        if (!splinePts || splinePts.length < 2) {
+            return { corePath: '', fullPath: '', leftExt: null, rightExt: null };
+        }
 
         const lineGenerator = d3.line()
             .x((d) => d.x)
             .y((d) => d.y)
             .curve(d3.curveCatmullRom.alpha(0.5));
 
-        let pathData = lineGenerator(splinePts) || '';
-        if (!pathData) return '';
-
+        const corePath = lineGenerator(splinePts) || '';
         const extendLen = 10000;
+        const start = splinePts[0];
+        const end = splinePts[splinePts.length - 1];
+        const { startTan, endTan } = doubleCurveEndpointTangents(corePath, splinePts);
+        const startUnit = doubleCurveUnitVector(startTan);
+        const endUnit = doubleCurveUnitVector(endTan);
 
-        if (this.style.extendLeft && splinePts.length >= 2) {
-            const dx = splinePts[1].x - splinePts[0].x;
-            const dy = splinePts[1].y - splinePts[0].y;
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-                const extX = splinePts[0].x - (dx / len) * extendLen;
-                const extY = splinePts[0].y - (dy / len) * extendLen;
-                const moveMatch = /^M\s*[-\d.eE+]+\s*,?\s*[-\d.eE+]+\s*/.exec(pathData);
-                const curveBody = moveMatch ? pathData.slice(moveMatch[0].length) : pathData;
-                pathData = `M ${extX} ${extY} L ${splinePts[0].x} ${splinePts[0].y}${curveBody}`;
-            }
+        let leftExt = null;
+        let rightExt = null;
+        let fullPath = corePath;
+
+        if (this.style.extendLeft && startUnit) {
+            leftExt = {
+                x1: start.x - startUnit.x * extendLen,
+                y1: start.y - startUnit.y * extendLen,
+                x2: start.x,
+                y2: start.y,
+            };
+            const curveBody = stripSvgPathMoveTo(corePath);
+            fullPath = `M ${leftExt.x1} ${leftExt.y1} L ${leftExt.x2} ${leftExt.y2}${curveBody}`;
         }
 
-        if (this.style.extendRight && splinePts.length >= 2) {
-            const n = splinePts.length - 1;
-            const dx = splinePts[n].x - splinePts[n - 1].x;
-            const dy = splinePts[n].y - splinePts[n - 1].y;
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-                pathData += ` L ${splinePts[n].x + (dx / len) * extendLen} ${splinePts[n].y + (dy / len) * extendLen}`;
-            }
+        if (this.style.extendRight && endUnit) {
+            rightExt = {
+                x1: end.x,
+                y1: end.y,
+                x2: end.x + endUnit.x * extendLen,
+                y2: end.y + endUnit.y * extendLen,
+            };
+            fullPath += ` L ${rightExt.x2} ${rightExt.y2}`;
         }
 
-        return pathData;
+        return { corePath, fullPath, leftExt, rightExt };
+    }
+
+    buildDoubleCurvePath(splinePts) {
+        return this.buildDoubleCurvePathParts(splinePts).fullPath;
     }
 
     // Generate smooth curve using control points (like TradingView)
