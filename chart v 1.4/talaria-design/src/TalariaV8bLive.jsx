@@ -7081,6 +7081,9 @@ function v9DefaultArmedStyleForLegacyTool(legacy) {
   if (legacy === "pitchfork") {
     return { extendLeft: false, extendRight: true };
   }
+  if (legacy === "fib-arcs" || legacy === "fib-wedge" || legacy === "fib-circles") {
+    return v9FibSubtypeDefaultTlStyleFields(legacy);
+  }
   if (legacy && v9IsPatternChartType(legacy)) {
     return { textColor: V9_DEFAULT_TL_LINE_COLOR };
   }
@@ -7267,6 +7270,18 @@ function v9MergeHydratePatchFromLegacy(dm, legacy) {
       tlFromSaved && !v9FibTlLevelsWrongForTool(fibLegacy, tlFromSaved)
         ? tlFromSaved
         : v9DefaultFibLevelsTlForLegacy(fibLegacy);
+    const subtypeDef = v9FibSubtypeDefaultTlStyleFields(fibLegacy);
+    if (typeof saved.showZones === "boolean") {
+      out.fibBackground = saved.showZones;
+    } else if (out.fibBackground == null) {
+      out.fibBackground = subtypeDef.fibBackground !== false;
+    }
+    if (out.fibBgOpacity == null || out.fibBgOpacity === "") {
+      out.fibBgOpacity =
+        saved.backgroundOpacity != null && !Number.isNaN(+saved.backgroundOpacity)
+          ? Math.max(0, Math.min(1, +saved.backgroundOpacity))
+          : (subtypeDef.fibBgOpacity != null ? subtypeDef.fibBgOpacity : 0.12);
+    }
   });
   return out;
 }

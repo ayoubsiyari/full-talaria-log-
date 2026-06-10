@@ -5162,8 +5162,13 @@ class DrawingToolsManager {
                 || this.currentTool === 'gann-square-fixed'
                 || this.currentTool === 'gann-fan'
             );
+            const fibArcsWedgeUsesArmedPreview = (
+                this.currentTool === 'fib-arcs'
+                || this.currentTool === 'fib-wedge'
+            );
             const useFibDefaultPreview = this._isFibLikeDrawingType(this.currentTool)
                 && !gannUsesArmedPreview
+                && !fibArcsWedgeUsesArmedPreview
                 && this.currentTool !== 'pitchfork';
             let styleOverrides;
             if (useFibDefaultPreview) {
@@ -5190,7 +5195,7 @@ class DrawingToolsManager {
             if (!useFibDefaultPreview) {
                 this.applySavedStyle(tempDrawing);
             }
-            if (gannUsesArmedPreview) {
+            if (gannUsesArmedPreview || fibArcsWedgeUsesArmedPreview) {
                 this._applyArmedStyleExtras(tempDrawing);
             }
             
