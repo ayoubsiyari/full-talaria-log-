@@ -352,18 +352,19 @@
     function applyDonchianStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 1;
         const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.separatePanel = false;
         indicator.style.showUpper = params.showUpper !== false;
         indicator.style.upperColor = params.upperColor || '#2962ff';
         indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
-        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
         indicator.style.showMiddle = params.showMiddle !== false;
         indicator.style.middleColor = params.middleColor || '#787b86';
         indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
-        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
         indicator.style.showLower = params.showLower !== false;
         indicator.style.lowerColor = params.lowerColor || '#2962ff';
         indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
-        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
+        indicator.style.showBg = params.showBg === true;
+        indicator.style.bgColor = params.bgColor || 'rgba(41,98,255,0.1)';
         indicator.style.showFill = false;
         indicator.style.showLabel = params.showLabel !== false;
         applyPlotDashFieldsFromParams(indicator.style, params, [
@@ -401,18 +402,17 @@
     function applyBollingerStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 1;
         const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.separatePanel = false;
         indicator.style.showMiddle = params.showMiddle !== false;
         indicator.style.middleColor = params.middleColor || '#787b86';
         indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
-        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
         indicator.style.showUpper = params.showUpper !== false;
         indicator.style.upperColor = params.upperColor || '#2962ff';
         indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
-        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
         indicator.style.showLower = params.showLower !== false;
         indicator.style.lowerColor = params.lowerColor || '#2962ff';
         indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
-        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
         indicator.style.showFill = params.showFill !== false;
         if (params.fillColor && String(params.fillColor).indexOf('rgba') >= 0 && params.fillOpacity == null) {
             indicator.style.fillColor = params.fillColor;
@@ -634,6 +634,8 @@
     function applySupertrendStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.separatePanel = false;
         indicator.style.showUp = params.showUp !== false;
         indicator.style.upColor = params.upColor || '#26a69a';
         indicator.style.upLineWidth = params.upLineWidth != null ? params.upLineWidth : legacyW;
@@ -692,6 +694,8 @@
     function applyRsiStyleFromParams(indicator, params) {
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
+        indicator.params.period = params.period != null ? Number(params.period) : (indicator.params.period != null ? indicator.params.period : 14);
+        indicator.params.source = params.source || indicator.params.source || 'close';
         indicator.params.overboughtValue = params.overboughtValue != null ? Number(params.overboughtValue) : 70;
         indicator.params.midValue = params.midValue != null ? Number(params.midValue) : 50;
         indicator.params.oversoldValue = params.oversoldValue != null ? Number(params.oversoldValue) : 30;
@@ -1407,7 +1411,83 @@
         } else if (type === 'VWMA') {
             ma = rollingVwmaOnRsi(data, rsi, len);
         }
-        return { rsi: rsi, ma: ma, bbUpper: bbUpper, bbLower: bbLower };
+        const out = { rsi: rsi, ma: ma, bbUpper: bbUpper, bbLower: bbLower, divergences: null };
+        if (params.divergenceEnabled === true) {
+            out.divergences = calculateRsiDivergences(data, rsi, rsiDivergencePivotWidth(params));
+        }
+        return out;
+    }
+
+    function rsiDivergencePivotWidth(params) {
+        const period = params && params.period != null ? Number(params.period) : 14;
+        const fromPeriod = Math.floor(period / 3);
+        return Math.max(2, Math.min(10, Number.isFinite(fromPeriod) && fromPeriod > 0 ? fromPeriod : 5));
+    }
+
+    function collectPriceSwingPivots(data, w, kind) {
+        const pivots = [];
+        const n = data.length;
+        for (let i = w; i < n - w; i++) {
+            if (kind === 'high' && _ictSwingHigh(data, i, w)) {
+                pivots.push({ idx: i, price: data[i].h });
+            } else if (kind === 'low' && _ictSwingLow(data, i, w)) {
+                pivots.push({ idx: i, price: data[i].l });
+            }
+        }
+        return pivots;
+    }
+
+    /** Regular bullish/bearish RSI divergences from consecutive price swing pivots. */
+    function calculateRsiDivergences(data, rsi, pivotWidth) {
+        if (!data || !rsi || !data.length || !rsi.length) return [];
+        const w = Math.max(2, Math.min(10, pivotWidth | 0) || 5);
+        const divergences = [];
+        const lows = collectPriceSwingPivots(data, w, 'low');
+        for (let j = 1; j < lows.length; j++) {
+            const a = lows[j - 1];
+            const b = lows[j];
+            const rsiA = rsi[a.idx];
+            const rsiB = rsi[b.idx];
+            if (!Number.isFinite(rsiA) || !Number.isFinite(rsiB)) continue;
+            if (b.price < a.price && rsiB > rsiA) {
+                divergences.push({
+                    type: 'bull',
+                    i0: a.idx,
+                    i1: b.idx,
+                    price0: a.price,
+                    price1: b.price,
+                    rsi0: rsiA,
+                    rsi1: rsiB
+                });
+            }
+        }
+        const highs = collectPriceSwingPivots(data, w, 'high');
+        for (let j = 1; j < highs.length; j++) {
+            const a = highs[j - 1];
+            const b = highs[j];
+            const rsiA = rsi[a.idx];
+            const rsiB = rsi[b.idx];
+            if (!Number.isFinite(rsiA) || !Number.isFinite(rsiB)) continue;
+            if (b.price > a.price && rsiB < rsiA) {
+                divergences.push({
+                    type: 'bear',
+                    i0: a.idx,
+                    i1: b.idx,
+                    price0: a.price,
+                    price1: b.price,
+                    rsi0: rsiA,
+                    rsi1: rsiB
+                });
+            }
+        }
+        return divergences.length > 30 ? divergences.slice(-30) : divergences;
+    }
+
+    function enrichRsiPackWithDivergences(chartData, pack, params) {
+        if (!params || params.divergenceEnabled !== true || !pack || !pack.rsi || !chartData) return pack;
+        return Object.assign({}, pack, {
+            divergences: calculateRsiDivergences(chartData, pack.rsi, rsiDivergencePivotWidth(params))
+        });
     }
     
     function rollingVwmaOnData(data, period, source) {
@@ -5393,6 +5473,7 @@
             case 'donchian':
                 indicator.params.period = params.period || 20;
                 indicator.params.offset = params.offset != null ? Number(params.offset) : 0;
+                indicator.overlay = true;
                 applyDonchianStyleFromParams(indicator, params);
                 indicator.name = 'Donchian(' + indicator.params.period + ')';
                 this.indicators.data[indicator.id] = calculateDonchian(this.data, indicator.params.period, indicator.params.offset);
@@ -6231,7 +6312,15 @@
             applyAroonStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'rsi') {
-            applyRsiStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const mergedRsi = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyRsiStyleFromParams(indicator, mergedRsi);
+            const rsiRecalc = ['period', 'source', 'smoothingType', 'smoothingLength', 'bbStdDev', 'divergenceEnabled'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (rsiRecalc) {
+                indicator.name = 'RSI(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateRSIIndicatorData(this.data, indicator.params);
+            }
         }
         if (indicator.type === 'psar') {
             applyPsarStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6241,11 +6330,38 @@
             applyKeltnerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'donchian') {
-            applyDonchianStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const mergedDc = Object.assign({}, indicator.style, indicator.params, newParams);
+            if (newParams.period !== undefined) {
+                indicator.params.period = Math.max(1, Number(mergedDc.period) | 0) || 20;
+            }
+            if (newParams.offset !== undefined) {
+                indicator.params.offset = Number.isFinite(Number(mergedDc.offset)) ? Number(mergedDc.offset) : 0;
+            }
+            applyDonchianStyleFromParams(indicator, mergedDc);
+            const dcRecalc = ['period', 'offset'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (dcRecalc) {
+                indicator.name = 'Donchian(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateDonchian(
+                    this.data,
+                    indicator.params.period,
+                    indicator.params.offset
+                );
+            }
         }
         if (indicator.type === 'bb' || indicator.type === 'bollinger') {
-            applyBbCalcParams(indicator, Object.assign({}, indicator.params, newParams));
-            applyBollingerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            indicator.type = 'bb';
+            const mergedBb = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyBbCalcParams(indicator, mergedBb);
+            applyBollingerStyleFromParams(indicator, mergedBb);
+            const bbRecalc = ['period', 'source', 'stdDev', 'offset', 'maType'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (bbRecalc) {
+                indicator.name = 'BB(' + indicator.params.period + ',' + indicator.params.stdDev + ')';
+                this.indicators.data[indicator.id] = calculateBollingerBands(this.data, indicator.params);
+            }
         }
         if (indicator.type === 'stoch' || indicator.type === 'stochastic' || indicator.type === 'stochrsi') {
             applyStochasticStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6419,7 +6535,8 @@
             }
         }
         if (indicator.type === 'supertrend') {
-            applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            const mergedSt = Object.assign({}, indicator.style, indicator.params, newParams);
+            applySupertrendStyleFromParams(indicator, mergedSt);
         }
         if (indicator.type === 'dema') {
             const mergedDema = Object.assign({}, indicator.style, indicator.params, newParams);
@@ -7079,6 +7196,11 @@
                     try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
                 } else if (t === 'dema' || t === 'tema' || t === 'hma') {
                     try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
+                    const base = chart.indicators.data[ind.id];
+                    if (base) {
+                        chart.indicators.data[ind.id] = enrichRsiPackWithDivergences(chart.data, base, ind.params);
+                    }
                 }
             });
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
@@ -7823,6 +7945,29 @@
                     this._drawOverlayLineSelectionHandles(selSeries, startIndex, endIndex, indicator.style);
                 }
             }
+        }
+
+        for (let ri = 0; ri < this.indicators.active.length; ri++) {
+            const rsiInd = this.indicators.active[ri];
+            if (rsiInd.type !== 'rsi' || !rsiInd.params || rsiInd.params.divergenceEnabled !== true) continue;
+            if (rsiInd.visible === false) continue;
+            if (!this._indicatorVisibleForCurrentTimeframe(rsiInd)) continue;
+            const rsiPack = this.indicators.data[rsiInd.id];
+            if (!rsiPack || !Array.isArray(rsiPack.divergences) || !rsiPack.divergences.length) continue;
+            rsiPack.divergences.forEach(function(seg) {
+                this._drawRsiDivergenceSegment(
+                    ctx,
+                    m,
+                    seg.i0,
+                    seg.i1,
+                    seg.price0,
+                    seg.price1,
+                    startIndex,
+                    endIndex,
+                    function(v) { return this.yScale(v); }.bind(this),
+                    seg.type === 'bull' ? '#26a69a' : '#ef5350'
+                );
+            }.bind(this));
         }
 
         ctx.restore();
@@ -12833,6 +12978,32 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
     };
 
     // ---- RSI panel: 0–100 + bands + MA + gradient fills ----
+    Chart.prototype._drawRsiDivergenceSegment = function(ctx, m, i0, i1, val0, val1, visibleStart, visibleEnd, scaleYFn, color, clipTop, clipBottom) {
+        if (i0 == null || i1 == null || !Number.isFinite(val0) || !Number.isFinite(val1)) return;
+        if (i1 < visibleStart && i0 < visibleStart) return;
+        if (i0 > visibleEnd && i1 > visibleEnd) return;
+        const x0 = this.dataIndexToPixel(i0);
+        const x1 = this.dataIndexToPixel(i1);
+        let y0 = scaleYFn(val0);
+        let y1 = scaleYFn(val1);
+        if (!Number.isFinite(x0) || !Number.isFinite(x1) || !Number.isFinite(y0) || !Number.isFinite(y1)) return;
+        const useClip = Number.isFinite(clipTop) && Number.isFinite(clipBottom) && clipBottom > clipTop;
+        if (useClip) {
+            y0 = Math.max(clipTop + 0.5, Math.min(clipBottom - 0.5, y0));
+            y1 = Math.max(clipTop + 0.5, Math.min(clipBottom - 0.5, y1));
+        }
+        ctx.save();
+        ctx.strokeStyle = color || '#787b86';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(this._lineDashForStyle ? this._lineDashForStyle('Dashed') : [4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+    };
+
     Chart.prototype._renderRsiPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, data, visibleStart, visibleEnd) {
         const pack = data && data.rsi ? data : { rsi: data, ma: null, bbUpper: null, bbLower: null };
         const values = pack.rsi;
@@ -12922,6 +13093,25 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
         if (style.showLine !== false) {
             this._drawPanelLine(ctx, m, values, style.color || '#9c27b0', style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, style.lineStyle || 'Line', style.lineDashStyle || 'Solid');
+        }
+
+        if (indicator.params && indicator.params.divergenceEnabled === true && Array.isArray(pack.divergences) && pack.divergences.length) {
+            pack.divergences.forEach(function(seg) {
+                this._drawRsiDivergenceSegment(
+                    ctx,
+                    m,
+                    seg.i0,
+                    seg.i1,
+                    seg.rsi0,
+                    seg.rsi1,
+                    visibleStart,
+                    visibleEnd,
+                    scaleY,
+                    seg.type === 'bull' ? '#26a69a' : '#ef5350',
+                    panelTop,
+                    panelBottom
+                );
+            }.bind(this));
         }
 
         let last = null;

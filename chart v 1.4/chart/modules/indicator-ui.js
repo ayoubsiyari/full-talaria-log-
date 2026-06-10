@@ -331,18 +331,20 @@ function supertrendStyleParams() {
 /** TradingView-style Donchian Channels Style tab. */
 function donchianStyleParams() {
     return [
-        { id: 'showUpper', label: 'Show Upper Band', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'upperColor', label: 'Upper Band color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'upperLineStyle', label: 'Upper Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'upperLineWidth', label: 'Upper Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'showMiddle', label: 'Show Middle Band', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'middleColor', label: 'Middle Band color', type: 'color', default: '#787b86', tab: 'style' },
-        { id: 'middleLineStyle', label: 'Middle Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'middleLineWidth', label: 'Middle Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
-        { id: 'showLower', label: 'Show Lower Band', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'lowerColor', label: 'Lower Band color', type: 'color', default: '#2962ff', tab: 'style' },
-        { id: 'lowerLineStyle', label: 'Lower Band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lowerLineWidth', label: 'Lower Band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showMiddle', label: 'Show basis line', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'middleColor', label: 'Basis line color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'middleLineStyle', label: 'Basis line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'middleLineWidth', label: 'Basis line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showUpper', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background color', type: 'color', default: 'rgba(41,98,255,0.1)', tab: 'style' },
         { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
     ];
 }
@@ -4633,7 +4635,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('Basis', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
+                    v9PlotRow('Basis line', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
                     v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
                     v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
                 ]
@@ -4667,10 +4669,13 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('Upper Band', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
-                    v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
-                    v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
+                    v9PlotRow('Basis line', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
+                    v9PlotRow('Upper', 'upperColor', 'upperLineStyle', 'upperLineWidth', 'showUpper'),
+                    v9PlotRow('Lower', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
                 ]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
             }],
             footers: footers
         };
@@ -4681,8 +4686,8 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
             sections: [{
                 header: true,
                 rows: [
-                    v9PlotRow('Up Trend', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
-                    v9PlotRow('Down Trend', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown'),
+                    v9PlotRow('Up Trend line', 'upColor', 'upLineStyle', 'upLineWidth', 'showUp'),
+                    v9PlotRow('Down Trend line', 'downColor', 'downLineStyle', 'downLineWidth', 'showDown'),
                     v9PlotRow('Body Middle Line', 'bodyColor', 'bodyLineStyle', 'bodyLineWidth', 'showBody')
                 ]
             }, {
@@ -5510,7 +5515,7 @@ Object.keys(INDICATOR_DEFINITIONS).forEach(function (k) {
 
 window.INDICATOR_DEFINITIONS = INDICATOR_DEFINITIONS;
 window.INDICATOR_PLOT_STYLE_OPTIONS = INDICATOR_PLOT_STYLE_OPTIONS;
-window.V9_HIDE_INDICATOR_STYLE_PICKERS = true;
+window.V9_HIDE_INDICATOR_STYLE_PICKERS = true; // hides plot-style pickers only; line dash pickers stay visible in V9 Style grid
 window.INDICATOR_DASH_STYLE_OPTIONS = INDICATOR_DASH_STYLE_OPTIONS;
 window.__v9IndDashStyleParamId = v9IndDashStyleParamId;
 window.indicatorSettingsTabForParam = indicatorSettingsTabForParam;

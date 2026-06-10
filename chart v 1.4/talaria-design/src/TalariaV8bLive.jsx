@@ -356,11 +356,14 @@ function v9IsIndPlotStyleParamId(id) {
   return s === "lineStyle" || /linestyle$/i.test(s);
 }
 
-/** Hide plot-style + dash-style dropdowns in indicator Style menus (unsupported / broken UX). */
+/** Hide plot-style dropdowns in indicator Style menus; line dash (Line Style) pickers stay visible. */
 const V9_HIDE_INDICATOR_STYLE_PICKERS = true;
 function v9HideIndStylePickers() {
   if (typeof window !== "undefined" && window.V9_HIDE_INDICATOR_STYLE_PICKERS === true) return true;
   return V9_HIDE_INDICATOR_STYLE_PICKERS;
+}
+function v9HideIndPlotStylePickers() {
+  return v9HideIndStylePickers();
 }
 
 function v9IndPlotStyleMatches(stored, option) {
@@ -15048,7 +15051,7 @@ const TalariaV8bLive = () => {
   };
 
   const renderIndPlotStyleDrop = (styleId, getPlotVal, disabled) => {
-    if (v9HideIndStylePickers()) return <div />;
+    if (v9HideIndPlotStylePickers()) return <div />;
     const dropKey = `ind-ps-${styleId}`;
     const plotStyle = getPlotVal();
     const plotOpts = v9IndPlotStyleOptions();
@@ -15074,7 +15077,6 @@ const TalariaV8bLive = () => {
   };
 
   const renderIndShapeStyleDrop = (styleId, getDashVal, disabled) => {
-    if (v9HideIndStylePickers()) return <div />;
     const dashId = v9IndDashStyleParamId(styleId) || styleId;
     const dropKey = `ind-sh-${dashId}`;
     const shapeType = v9IndDashStyleToShapeType(getDashVal());
@@ -24275,8 +24277,9 @@ const TalariaV8bLive = () => {
           const gcBandColorOnly = "16px 1fr 26px 44px 28px";
           /** Single grid for all Style-tab rows when plot/dash pickers hidden — keeps COLOR column aligned. */
           const gcAlign = "16px 1fr 26px 56px 56px 44px";
-          const hideStylePickers = v9HideIndStylePickers();
+          const hideStylePickers = v9HideIndPlotStylePickers();
           const styleRowCols = (fallbackCols) => (hideStylePickers ? gcAlign : fallbackCols);
+          const lineStyleHdr = () => hdr(hideStylePickers ? "LINE STYLE" : "STYLE");
           const sectionHasStyleCol = (section) => {
             const rows = (section && section.rows) || [];
             const levels = (section && section.levelRows) || [];
@@ -24353,7 +24356,7 @@ const TalariaV8bLive = () => {
             if (!p) return <div />;
             return renderIndPlotStyleDrop(pid, () => v9GetIndPlotStyle(indSettDraft, pid, def0), disabled);
           };
-          const styleSlot = (pid, disabled) => (hideStylePickers ? <div /> : stSel(pid, disabled));
+          const styleSlot = (pid, disabled) => stSel(pid, disabled);
           const renderBandStyleRow = (row, i) => {
             const on = row.showId ? val(row.showId) !== false : true;
             const hasStyleCol = !!row.styleId;
@@ -24486,7 +24489,7 @@ const TalariaV8bLive = () => {
                 {section.header && !skipDupPlotHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: hideStylePickers ? gcAlign : gc, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}
+                    <div>{lineStyleHdr()}</div>
                     <div>{hdr("THICKNESS")}</div>
                     {hideStylePickers ? <div /> : null}
                     {!hideStylePickers ? <div /> : null}
@@ -24495,7 +24498,7 @@ const TalariaV8bLive = () => {
                 {section.levelHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: hdrCols, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}
+                    <div>{lineStyleHdr()}</div>
                     <div>{hdr("VALUE")}</div>
                     {hideStylePickers ? <div /> : null}
                     {!hideStylePickers ? <div /> : null}
@@ -24504,7 +24507,7 @@ const TalariaV8bLive = () => {
                 {section.bandLevelHeader && isFirstBandLevelHeader && (
                   <div style={{ display: "grid", gridTemplateColumns: bandHdrCols, columnGap: cg, alignItems: "center", height: 22, marginBottom: 4 }}>
                     <div /><div /><div>{hdr("COLOR")}</div>
-                    {sectionHasStyleCol(section) ? <>{hideStylePickers ? <div /> : <div>{hdr("STYLE")}</div>}<div>{hdr("THICKNESS")}</div></> : null}
+                    {sectionHasStyleCol(section) ? <><div>{lineStyleHdr()}</div><div>{hdr("THICKNESS")}</div></> : null}
                     <div>{hdr(section.levelValueHeader || "VALUE")}</div>
                     {sectionHasPlotStyleCol(section) ? <div /> : (hideStylePickers ? null : null)}
                   </div>
@@ -24514,7 +24517,7 @@ const TalariaV8bLive = () => {
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {hideStylePickers ? (
                       <>
-                        <div />
+                        <div>{lineStyleHdr()}</div>
                         <div>{hdr("THICKNESS")}</div>
                         <div />
                       </>
@@ -24534,7 +24537,7 @@ const TalariaV8bLive = () => {
                     <div /><div /><div>{hdr("COLOR")}</div>
                     {hideStylePickers ? (
                       <>
-                        <div />
+                        <div>{lineStyleHdr()}</div>
                         <div>{hdr("THICKNESS")}</div>
                         <div />
                       </>
