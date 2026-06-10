@@ -3609,7 +3609,7 @@ function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, ne
     var pid = String(param.id).toLowerCase();
     var toStyle = param.tab === 'style'
         || pid.indexOf('color') >= 0
-        || pid.indexOf('width') >= 0
+        || isIndicatorLineWidthParam(param)
         || pid.indexOf('fill') >= 0
         || pid.indexOf('linestyle') >= 0
         || pid.indexOf('opacity') >= 0

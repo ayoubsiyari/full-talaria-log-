@@ -220,7 +220,9 @@
         indicator.style.lineStyle = params.lineStyle || legacyS;
         indicator.style.showLabel = params.showLabel !== false;
         const hasSmoothing = String(indicator.params.smoothingType || 'None') !== 'None';
-        indicator.style.showSmooth = hasSmoothing && params.showSmooth !== false;
+        // Derived from smoothing type only — do not gate on stale indicator.style.showSmooth
+        // left false when type was None (merged back into params on live flush).
+        indicator.style.showSmooth = hasSmoothing;
         indicator.style.smoothColor = params.smoothColor || '#787b86';
         indicator.style.smoothLineWidth = params.smoothLineWidth != null ? params.smoothLineWidth : 1;
         applyPlotDashFieldsFromParams(indicator.style, params, [
@@ -5961,6 +5963,13 @@
         if (newParams.showLine !== undefined) indicator.style.showLine = newParams.showLine !== false;
         if (newParams.showLabel !== undefined) indicator.style.showLabel = newParams.showLabel !== false;
         if (newParams.source !== undefined) indicator.params.source = newParams.source;
+        if (newParams.smoothingType !== undefined) indicator.params.smoothingType = newParams.smoothingType;
+        if (newParams.smoothingLength !== undefined) {
+            indicator.params.smoothingLength = safeIndicatorNumber(newParams.smoothingLength, 14);
+        }
+        if (newParams.bbStdDev !== undefined) {
+            indicator.params.bbStdDev = safeIndicatorNumber(newParams.bbStdDev, 2);
+        }
         if (newParams.length !== undefined) indicator.params.length = newParams.length;
         if (newParams.atrLength !== undefined) indicator.params.atrLength = newParams.atrLength;
         if (newParams.useExponentialMa !== undefined) indicator.params.useExponentialMa = newParams.useExponentialMa !== false;
