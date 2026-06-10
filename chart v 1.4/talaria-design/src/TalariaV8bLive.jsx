@@ -4091,6 +4091,17 @@ const V9_LEGACY_DASH_STRING_TO_LINE_TYPE = (() => {
 /** V9 line type → chart.js `stroke-dasharray` for parallel-channel level lines. */
 const V9_LINE_TYPE_TO_LEGACY_DASH = { solid: '', dashed: '5,5', dotted: '2,4', dashdot: '7,4,2,4', bold: '' };
 
+/** Map V9 line style + width → dash/width (bold/solid = solid dash only; width from THICKNESS). */
+function v9LineDashAndWidthFromType(type, widthRaw, dashMap = V9_LINE_TYPE_TO_LEGACY_DASH) {
+  const t = type || "solid";
+  const parsed = parseInt(String(widthRaw), 10);
+  const width = Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
+  const dash = t === "bold" || t === "solid"
+    ? ""
+    : (dashMap[t] !== undefined ? dashMap[t] : "");
+  return { dash, width };
+}
+
 /** Default parallel-channel level rows (matches `ParallelChannelTool` / legacy settings). */
 function v9DefaultParallelChannelChLines(strokeColor) {
   const base = strokeColor || "#2962FF";
@@ -4263,18 +4274,14 @@ function v9ChLinesToParallelLevels(chLines) {
   return chLines.map((ln, idx) => {
     const t = parseFloat(ln.value);
     const value = Number.isFinite(t) ? t : 0;
-    const baseW = parseInt(ln.width, 10) || 2;
-    const isBold = ln.type === 'bold';
-    const dashStr = isBold ? '' : (V9_LINE_TYPE_TO_LEGACY_DASH[ln.type] !== undefined
-      ? V9_LINE_TYPE_TO_LEGACY_DASH[ln.type]
-      : '');
+    const { dash, width } = v9LineDashAndWidthFromType(ln.type, ln.width);
     const uiOn = !!ln.on;
     return {
       value,
       color: ln.color || '#2962FF',
       enabled: uiOn,
-      lineType: dashStr,
-      lineWidth: isBold ? Math.max(baseW, 3) : baseW,
+      lineType: dash,
+      lineWidth: width,
     };
   });
 }
@@ -4343,15 +4350,15 @@ function v9ApplyRegLinesToRegressionStyle(style, regLines) {
     return d === "" || d === undefined ? "0" : d;
   };
   style.stroke = mid.color;
-  style.strokeWidth = mid.type === "bold" ? Math.max(midW, 3) : midW;
+  style.strokeWidth = midW;
   style.strokeDasharray = dashStr(mid);
   style.showMiddleLine = mid.on !== false;
   style.upperStroke = up.color;
-  style.upperStrokeWidth = up.type === "bold" ? Math.max(upW, 3) : upW;
+  style.upperStrokeWidth = upW;
   style.upperStrokeDasharray = dashStr(up);
   style.useUpperDeviation = up.on !== false;
   style.lowerStroke = lo.color;
-  style.lowerStrokeWidth = lo.type === "bold" ? Math.max(loW, 3) : loW;
+  style.lowerStrokeWidth = loW;
   style.lowerStrokeDasharray = dashStr(lo);
   style.useLowerDeviation = lo.on !== false;
 }
@@ -4384,7 +4391,7 @@ function v9ApplyPitchforkFromTl(style, tlStyle) {
       ? tlStyle.pfMedianColor
       : style.medianColor || "#e91e63";
   style.lineEnabled = tlStyle.pfMiddleLine !== false;
-  style.medianStrokeWidth = tlStyle.pfMedianType === "bold" ? Math.max(medianW, 3) : medianW;
+  style.medianStrokeWidth = medianW;
   style.medianStrokeDasharray = medianDash;
   style.strokeWidth = levelsW;
   style.backgroundEnabled = tlStyle.pfBackground !== false;
@@ -4628,14 +4635,7 @@ function v9FibLevelsChartToTl(levels) {
 
 function v9TlFibLevelsToChart(levels, fibLineType, fibLineWidth) {
   if (!Array.isArray(levels) || !levels.length) return [];
-  const isBold = fibLineType === "bold";
-  const dashStr = isBold
-    ? ""
-    : (V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType] !== undefined
-      ? V9_LINE_TYPE_TO_LEGACY_DASH[fibLineType]
-      : "");
-  const baseW = parseInt(String(fibLineWidth), 10) || 2;
-  const w = isBold ? Math.max(baseW, 3) : baseW;
+  const { dash: dashStr, width: w } = v9LineDashAndWidthFromType(fibLineType, fibLineWidth);
   return levels.map((ln) => {
     const v = parseFloat(ln.value);
     const value = Number.isFinite(v) ? v : 0;
@@ -5284,7 +5284,7 @@ function v9FibTzLevelsChartToTl(levels) {
   return levels.map((lv) => {
     const dashRaw = String(lv.lineType ?? "").replace(/\s+/g, "");
     const type =
-      lv.lineType === "bold" || (!dashRaw && lv.lineWidth >= 3)
+      lv.lineType === "bold"
         ? "bold"
         : V9_LEGACY_DASH_STRING_TO_LINE_TYPE[dashRaw] ?? (dashRaw ? "dashed" : "solid");
     return {
