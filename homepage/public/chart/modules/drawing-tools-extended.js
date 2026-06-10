@@ -2123,39 +2123,44 @@ class DoubleCurveTool extends BaseDrawing {
         return (dist1 + dist2) / 2;
     }
     
-    /** Catmull–Rom path through start → CP1 → CP2 → end, with optional extend left/right. */
+    /** Catmull–Rom path through start → CP1 → CP2 → end, with straight extend left/right. */
     buildDoubleCurvePath(splinePts) {
         if (!splinePts || splinePts.length < 2) return '';
-        let pts = splinePts.map((p) => ({ x: p.x, y: p.y }));
-        const extendLen = 10000;
-        if (this.style.extendLeft && pts.length >= 2) {
-            const dx = pts[1].x - pts[0].x;
-            const dy = pts[1].y - pts[0].y;
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-                pts.unshift({
-                    x: pts[0].x - (dx / len) * extendLen,
-                    y: pts[0].y - (dy / len) * extendLen,
-                });
-            }
-        }
-        if (this.style.extendRight && pts.length >= 2) {
-            const n = pts.length - 1;
-            const dx = pts[n].x - pts[n - 1].x;
-            const dy = pts[n].y - pts[n - 1].y;
-            const len = Math.hypot(dx, dy);
-            if (len > 0) {
-                pts.push({
-                    x: pts[n].x + (dx / len) * extendLen,
-                    y: pts[n].y + (dy / len) * extendLen,
-                });
-            }
-        }
+
         const lineGenerator = d3.line()
             .x((d) => d.x)
             .y((d) => d.y)
             .curve(d3.curveCatmullRom.alpha(0.5));
-        return lineGenerator(pts) || '';
+
+        let pathData = lineGenerator(splinePts) || '';
+        if (!pathData) return '';
+
+        const extendLen = 10000;
+
+        if (this.style.extendLeft && splinePts.length >= 2) {
+            const dx = splinePts[1].x - splinePts[0].x;
+            const dy = splinePts[1].y - splinePts[0].y;
+            const len = Math.hypot(dx, dy);
+            if (len > 0) {
+                const extX = splinePts[0].x - (dx / len) * extendLen;
+                const extY = splinePts[0].y - (dy / len) * extendLen;
+                const moveMatch = /^M\s*[-\d.eE+]+\s*,?\s*[-\d.eE+]+\s*/.exec(pathData);
+                const curveBody = moveMatch ? pathData.slice(moveMatch[0].length) : pathData;
+                pathData = `M ${extX} ${extY} L ${splinePts[0].x} ${splinePts[0].y}${curveBody}`;
+            }
+        }
+
+        if (this.style.extendRight && splinePts.length >= 2) {
+            const n = splinePts.length - 1;
+            const dx = splinePts[n].x - splinePts[n - 1].x;
+            const dy = splinePts[n].y - splinePts[n - 1].y;
+            const len = Math.hypot(dx, dy);
+            if (len > 0) {
+                pathData += ` L ${splinePts[n].x + (dx / len) * extendLen} ${splinePts[n].y + (dy / len) * extendLen}`;
+            }
+        }
+
+        return pathData;
     }
 
     // Generate smooth curve using control points (like TradingView)

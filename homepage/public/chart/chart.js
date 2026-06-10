@@ -5377,6 +5377,9 @@ class Chart {
         const loadSeq = ++this._symbolLoadSeq;
         const targetFileId = String(fileId);
         let prevSymbol = this.currentSymbol;
+        let pairSwitchLoadSeq = null;
+        let pairLoadUiActive = false;
+        let pairSwitchEndDeferred = false;
 
         try {
             // Preserve wall-clock replay time when switching pairs. Multichart iframe panels
@@ -5417,8 +5420,6 @@ class Chart {
                 }
             }
             const switchingPair = String(this.currentFileId || '') !== targetFileId;
-            let pairSwitchLoadSeq = null;
-            let pairLoadUiActive = false;
             if (switchingPair) {
                 this._evictPanelMasterData();
                 pairSwitchLoadSeq = ++this._pairSwitchLoadSeq;
@@ -5583,7 +5584,9 @@ class Chart {
                 return false;
             }
 
-            if (!this._smartResponseHasPayload(result)) throw new Error('No data in response');
+            if (!this._smartResponseHasPayload(result)) {
+                throw new Error('No data in response');
+            }
 
             // Persist drawings for the pair we are leaving *before* currentFileId changes.
             // Otherwise saveDrawings()/storage keys target the new file and in-memory drawings are discarded.
@@ -5763,18 +5766,20 @@ class Chart {
                 endPairSwitch: pairLoadUiActive,
                 pairSwitchLoadSeq: pairSwitchLoadSeq,
             });
+            if (pairLoadUiActive) pairSwitchEndDeferred = true;
 
             return true;
         } catch (error) {
             console.error('❌ Failed to switch symbol:', error);
-            if (pairLoadUiActive) {
-                try { this._endPairSwitchLoading(pairSwitchLoadSeq); } catch (_pairEnd) { /* ignore */ }
-            }
             if (typeof this.showNotification === 'function') {
                 this.showNotification('Failed to load symbol: ' + error.message);
             }
             if (prevSymbol) this.updateChartTitle(prevSymbol);
             return false;
+        } finally {
+            if (pairLoadUiActive && !pairSwitchEndDeferred) {
+                try { this._endPairSwitchLoading(pairSwitchLoadSeq); } catch (_pairEnd) { /* ignore */ }
+            }
         }
     }
     
@@ -13212,14 +13217,17 @@ class Chart {
                 pairSwitchLoadSeq,
                 ...resetOpts
             } = o;
-            if (this.data && this.data.length > 0) {
-                this._resetViewportToDefault(resetOpts);
-            } else if (resetOpts.render !== false) {
-                if (typeof this.scheduleRender === 'function') this.scheduleRender();
-                else if (typeof this.render === 'function') this.render();
-            }
-            if (endPairSwitch && typeof this._endPairSwitchLoading === 'function') {
-                this._endPairSwitchLoading(pairSwitchLoadSeq);
+            try {
+                if (this.data && this.data.length > 0) {
+                    this._resetViewportToDefault(resetOpts);
+                } else if (resetOpts.render !== false) {
+                    if (typeof this.scheduleRender === 'function') this.scheduleRender();
+                    else if (typeof this.render === 'function') this.render();
+                }
+            } finally {
+                if (endPairSwitch && typeof this._endPairSwitchLoading === 'function') {
+                    this._endPairSwitchLoading(pairSwitchLoadSeq);
+                }
             }
             if (typeof onDone === 'function') {
                 try { onDone(); } catch (_e) { /* ignore */ }

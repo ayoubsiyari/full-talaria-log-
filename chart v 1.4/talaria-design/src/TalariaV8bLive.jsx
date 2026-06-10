@@ -9098,8 +9098,32 @@ const TalariaV8bLive = () => {
       }
       const pm = window.panelManager;
       if (!pm || !v9IsMultiPanelLayoutActive()) {
-        if (window.chart && typeof window.chart.loadFileData === "function") {
-          window.chart.loadFileData(fid);
+        const ch = window.chart;
+        if (!ch) return;
+        const useBacktestHostLoader = !!(ch.isBacktestMode || ch.backtestingSession)
+          && typeof ch.loadMultichartPanelFromHost === "function";
+        const finalizePairLoad = () => {
+          if (typeof ch._finalizeMultichartPanelAfterPairLoad === "function") {
+            try { ch._finalizeMultichartPanelAfterPairLoad(); } catch (_) {}
+          }
+        };
+        if (useBacktestHostLoader) {
+          const replayTs = typeof ch._resolveMultichartReplayPlayheadMs === "function"
+            ? ch._resolveMultichartReplayPlayheadMs()
+            : undefined;
+          void ch.loadMultichartPanelFromHost({
+            fileId: fid,
+            force: true,
+            replayTimestamp: replayTs,
+          }).then(finalizePairLoad).catch((err) => {
+            console.warn("[V9 sym] loadMultichartPanelFromHost failed", err);
+          });
+        } else if (typeof ch.loadFileData === "function") {
+          void ch.loadFileData(fid).then((ok) => {
+            if (ok) finalizePairLoad();
+          }).catch((err) => {
+            console.warn("[V9 sym] loadFileData failed", err);
+          });
         }
         return;
       }
