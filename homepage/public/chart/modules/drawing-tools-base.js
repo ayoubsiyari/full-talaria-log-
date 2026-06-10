@@ -304,7 +304,8 @@ class BaseDrawing {
      */
     _freehandEndpointMarkerOpts(strokeWidth) {
         if (this.type !== 'highlighter') return null;
-        const size = Math.min(11, Math.max(6, strokeWidth * 0.28));
+        // ~40% of stroke width, clamped so arrows stay visible but not oversized.
+        const size = Math.min(26, Math.max(12, strokeWidth * 0.4));
         return {
             markerUnits: 'userSpaceOnUse',
             markerWidth: size,
