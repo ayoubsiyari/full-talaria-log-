@@ -331,10 +331,10 @@ class BaseDrawing {
                 : null;
             if (svgRoot && typeof SVGHelpers !== 'undefined') {
                 if (startStyle === 'arrow') {
-                    SVGHelpers.createArrowMarker(svgRoot, `arrow-start-${this.id}`, stroke, markerOpts);
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-start-${this.id}`, stroke, markerOpts || undefined);
                 }
                 if (endStyle === 'arrow') {
-                    SVGHelpers.createArrowMarker(svgRoot, `arrow-end-${this.id}`, stroke, markerOpts);
+                    SVGHelpers.createArrowMarker(svgRoot, `arrow-end-${this.id}`, stroke, markerOpts || undefined);
                 }
             }
         }
@@ -2145,7 +2145,7 @@ class SVGHelpers {
      * @param {object|boolean} [opts] - markerUnits, markerWidth, markerHeight, refX, refY, orient
      */
     static createArrowMarker(svg, id, color = '#5dd3edff', opts = {}) {
-        if (opts === true) opts = {};
+        if (!opts || opts === true) opts = {};
         const markerUnits = opts.markerUnits || 'strokeWidth';
         const markerWidth = opts.markerWidth != null ? opts.markerWidth : 6;
         const markerHeight = opts.markerHeight != null ? opts.markerHeight : 6;
