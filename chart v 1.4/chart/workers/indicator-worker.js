@@ -319,34 +319,61 @@ function calculateWMAIndicatorData(data, params) {
     return applySmoothedOverlayMaSmoothing(line, data, params);
 }
 
+function pseudoBarsFromSeries(data, series, source) {
+    return data.map(function(d, i) {
+        const v = series[i];
+        const fallback = resolveOhlcSourceValue(d, source || 'close');
+        const val = v != null && !isNaN(v) ? v : fallback;
+        return { h: val, l: val, c: val, o: val, v: d && d.v, t: d && d.t };
+    });
+}
+
 function calculateDEMA(data, period, source) {
-    period = period || 20; source = source || 'close';
+    period = period || 20;
+    source = source || 'close';
     const ema1 = calculateEMA(data, period, source);
-    const fakeData = ema1.map((v, i) => ({ c: v, o: v, h: v, l: v, t: data[i] && data[i].t }));
-    const ema2 = calculateEMA(fakeData, period, 'close');
-    return ema1.map((v, i) => (v != null && ema2[i] != null) ? 2 * v - ema2[i] : null);
+    const ema2 = calculateEMA(pseudoBarsFromSeries(data, ema1, source), period, 'close');
+    return ema1.map(function(e1, i) {
+        const e2 = ema2[i];
+        if (e1 == null || e2 == null) return null;
+        return 2 * e1 - e2;
+    });
 }
 
 function calculateTEMA(data, period) {
     period = period || 20;
-    const ema1 = calculateEMA(data, period, 'close');
-    const fakeData1 = ema1.map((v, i) => ({ c: v, o: v, h: v, l: v, t: data[i] && data[i].t }));
-    const ema2 = calculateEMA(fakeData1, period, 'close');
-    const fakeData2 = ema2.map((v, i) => ({ c: v, o: v, h: v, l: v, t: data[i] && data[i].t }));
-    const ema3 = calculateEMA(fakeData2, period, 'close');
-    return ema1.map((v, i) => (v != null && ema2[i] != null && ema3[i] != null)
-        ? 3 * v - 3 * ema2[i] + ema3[i] : null);
+    const source = 'close';
+    const e1 = calculateEMA(data, period, source);
+    const p2 = pseudoBarsFromSeries(data, e1, source);
+    const e2 = calculateEMA(p2, period, 'close');
+    const p3 = pseudoBarsFromSeries(data, e2, source);
+    const e3 = calculateEMA(p3, period, 'close');
+    return e1.map(function(a, i) {
+        const b = e2[i];
+        const c = e3[i];
+        if (a == null || b == null || c == null) return null;
+        return 3 * a - 3 * b + c;
+    });
 }
 
 function calculateHMA(data, period, source) {
-    period = Math.max(2, period || 20); source = source || 'close';
-    const half = Math.round(period / 2);
-    const sq = Math.round(Math.sqrt(period));
-    const wma1 = calculateWMA(data, half, source);
-    const wma2 = calculateWMA(data, period, source);
-    const diff = wma1.map((v, i) => (v != null && wma2[i] != null) ? 2 * v - wma2[i] : null);
-    const fakeData = diff.map((v, i) => ({ c: v, o: v, h: v, l: v, t: data[i] && data[i].t }));
-    return calculateWMA(fakeData, sq, 'close');
+    source = source || 'close';
+    const n = Math.max(2, Math.floor(period || 20));
+    const half = Math.max(1, Math.floor(n / 2));
+    const sqrtN = Math.max(1, Math.round(Math.sqrt(n)));
+    const w1 = calculateWMA(data, half, source);
+    const w2 = calculateWMA(data, n, source);
+    const raw = data.map(function(_, i) {
+        if (w1[i] == null || w2[i] == null) return null;
+        return 2 * w1[i] - w2[i];
+    });
+    let last = null;
+    const pseudo = data.map(function(d, i) {
+        if (raw[i] != null) last = raw[i];
+        const c = last != null ? last : resolveOhlcSourceValue(d, source);
+        return { h: c, l: c, c: c, o: c, v: d && d.v, t: d && d.t };
+    });
+    return calculateWMA(pseudo, sqrtN, 'c');
 }
 
 function calculateRSI(data, period, source) {
@@ -1061,6 +1088,7 @@ function massIndexPeriodFromParams(params) {
 
 function calcIndicator(type, data, params) {
     if (!data || !data.length) return null;
+    type = String(type || '').toLowerCase();
     switch (type) {
         case 'sma': return calculateSMAIndicatorData(data, params);
         case 'ema': return calculateEMA(data, params.period, params.source || 'close');

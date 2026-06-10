@@ -5912,6 +5912,8 @@
             return;
         }
 
+        indicator.type = String(indicator.type || '').toLowerCase();
+
         newParams = newParams || {};
         newParams = sanitizeIndicatorRuntimePayload(indicator, Object.assign({}, newParams));
         
@@ -6278,11 +6280,22 @@
         if (indicator.type === 'dema') {
             applyDemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
-        if (indicator.type === 'wma') {
-            applyWmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
-        }
-        if (indicator.type === 'sma') {
-            applySmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        if (indicator.type === 'wma' || indicator.type === 'sma') {
+            const mergedMa = Object.assign({}, indicator.style, indicator.params, newParams);
+            if (indicator.type === 'sma') {
+                applySmaStyleFromParams(indicator, mergedMa);
+            } else {
+                applyWmaStyleFromParams(indicator, mergedMa);
+            }
+            const maRecalc = ['period', 'source', 'offset', 'smoothingType', 'smoothingLength', 'bbStdDev'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (maRecalc) {
+                indicator.name = (indicator.type === 'sma' ? 'SMA(' : 'WMA(') + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = indicator.type === 'sma'
+                    ? calculateSMAIndicatorData(this.data, indicator.params)
+                    : calculateWMAIndicatorData(this.data, indicator.params);
+            }
         }
         if (indicator.type === 'sessions') {
             applySessionsFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6774,8 +6787,10 @@
         chart.indicators.active.forEach(function(ind) {
             // cotnet / ICT complex types are skipped in worker — run sync for those
             var workerSkip = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
-            if (workerSkip.indexOf(ind.type) >= 0) return;
-            indicators[ind.id] = { type: ind.type, params: ind.params || {} };
+            var indType = String(ind.type || '').toLowerCase();
+            ind.type = indType;
+            if (workerSkip.indexOf(indType) >= 0) return;
+            indicators[ind.id] = { type: indType, params: ind.params || {} };
         });
 
         // Run sync fallback for skipped indicators immediately
@@ -6840,6 +6855,7 @@
         }
         
         this.indicators.active.forEach(function(indicator) {
+            indicator.type = String(indicator.type || '').toLowerCase();
             switch (indicator.type) {
                 case 'sma':
                     this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
@@ -6944,12 +6960,18 @@
                     });
                     break;
                 case 'dema':
+                    indicator.overlay = true;
+                    indicator.separatePanel = false;
                     this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'tema':
+                    indicator.overlay = true;
+                    indicator.separatePanel = false;
                     this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
                     break;
                 case 'hma':
+                    indicator.overlay = true;
+                    indicator.separatePanel = false;
                     this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source || 'close');
                     break;
                 case 'roc':
@@ -7451,6 +7473,8 @@
             const data = this.indicators.data[indicator.id];
             if (!data) continue;
 
+            const indType = String(indicator.type || '').toLowerCase();
+
             // Draw based on type
             if (indicator.type === 'vwap') {
                 this.drawVwapIndicator(data, indicator.style, startIndex, endIndex, indicator.params);
@@ -7488,19 +7512,11 @@
                 this.drawATRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
-            } else if (indicator.type === 'hma') {
+            } else if (indType === 'hma' || indType === 'tema' || indType === 'dema') {
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
-            } else if (indicator.type === 'tema') {
-                if (indicator.style.showLine !== false) {
-                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
-                }
-            } else if (indicator.type === 'dema') {
-                if (indicator.style.showLine !== false) {
-                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
-                }
-            } else if (indicator.type === 'wma' || indicator.type === 'sma') {
+            } else if (indType === 'wma' || indType === 'sma') {
                 this.drawSmoothedMaOverlay(data, indicator, startIndex, endIndex);
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
@@ -7520,12 +7536,14 @@
     Chart.prototype.drawSmoothedMaOverlay = function(data, indicator, startIndex, endIndex) {
         if (!data) return;
         const st = indicator.style || {};
+        const pr = indicator.params || {};
         const pack = Array.isArray(data) ? { line: data } : data;
         const smoothColor = st.smoothColor || '#787b86';
         const smoothW = st.smoothLineWidth != null ? st.smoothLineWidth : 1;
         const smoothStyle = st.smoothLineStyle || 'Line';
         const smoothDash = st.smoothLineDashStyle || 'Solid';
-        if (st.showSmooth !== false) {
+        const hasSmoothing = String(pr.smoothingType || 'None') !== 'None';
+        if (hasSmoothing) {
             if (pack.bbUpper) {
                 this.drawLineIndicator(pack.bbUpper, smoothColor, smoothW, startIndex, endIndex, smoothStyle, { dashStyle: smoothDash });
             }

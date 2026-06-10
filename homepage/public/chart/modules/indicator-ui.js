@@ -5482,7 +5482,7 @@ function _tryInitIndicatorUI() {
 _tryInitIndicatorUI();
 
 // Add updateIndicator function if it doesn't exist
-if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
+if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator && !window.INDICATORS_MODULE_LOADED) {
     Chart.prototype.updateIndicator = function(id, newParams) {
         const self = this;
         const indicator = this.indicators.active.find(function(ind) {
@@ -5508,6 +5508,11 @@ if (typeof Chart !== 'undefined' && !Chart.prototype.updateIndicator) {
         if (newParams.signal !== undefined) indicator.params.signal = parseInt(newParams.signal);
         if (newParams.smoothK !== undefined) indicator.params.smoothK = parseInt(newParams.smoothK);
         if (newParams.smoothD !== undefined) indicator.params.smoothD = parseInt(newParams.smoothD);
+        if (newParams.smoothingType !== undefined) indicator.params.smoothingType = newParams.smoothingType;
+        if (newParams.smoothingLength !== undefined) indicator.params.smoothingLength = parseFloat(newParams.smoothingLength);
+        if (newParams.bbStdDev !== undefined) indicator.params.bbStdDev = parseFloat(newParams.bbStdDev);
+        if (newParams.offset !== undefined) indicator.params.offset = Number(newParams.offset) || 0;
+        if (newParams.source !== undefined) indicator.params.source = newParams.source;
         
         // Update colors
         if (newParams.color !== undefined) indicator.style.color = newParams.color;
