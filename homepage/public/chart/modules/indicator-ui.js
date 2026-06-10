@@ -366,6 +366,27 @@ function keltnerInputParams() {
     ];
 }
 
+/** Keltner Channels Style tab (per-band lines + optional background between bands). */
+function keltnerStyleParams() {
+    return [
+        { id: 'showMiddle', label: 'Show middle band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'middleColor', label: 'Middle band color', type: 'color', default: '#787b86', tab: 'style' },
+        { id: 'middleLineStyle', label: 'Middle band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'middleLineWidth', label: 'Middle band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showUpper', label: 'Show upper band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'upperColor', label: 'Upper band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'upperLineStyle', label: 'Upper band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'upperLineWidth', label: 'Upper band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showLower', label: 'Show lower band', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'lowerColor', label: 'Lower band color', type: 'color', default: '#2962ff', tab: 'style' },
+        { id: 'lowerLineStyle', label: 'Lower band line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lowerLineWidth', label: 'Lower band thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'style' },
+        { id: 'showBg', label: 'Background', type: 'checkbox', default: false, tab: 'style' },
+        { id: 'bgColor', label: 'Background color', type: 'color', default: 'rgba(41,98,255,0.1)', tab: 'style' },
+        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
+    ];
+}
+
 /** Parabolic SAR Input tab (start / increment / max). */
 function psarInputParams() {
     return [
@@ -1305,17 +1326,39 @@ function smoothedOverlayMaStyleParams(lineLabel, defaultColor) {
     ];
 }
 
+function emaInputParams() {
+    return smoothedOverlayMaInputParams().concat([
+        { id: 'showSmoothEma', label: 'EMA-based MA', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'smoothColor', label: 'Color', type: 'color', default: '#787b86', tab: 'input' },
+        { id: 'smoothLineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'input' },
+        { id: 'smoothLineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'input' }
+    ]);
+}
+
+function emaStyleParams() {
+    return smoothedOverlayMaStyleParams('EMA', '#f23645');
+}
+
 function smaInputParams() {
-    return smoothedOverlayMaInputParams();
+    return smoothedOverlayMaInputParams().concat([
+        { id: 'showSmoothMa', label: 'SMA-based MA', type: 'checkbox', default: false, tab: 'input' },
+        { id: 'smoothColor', label: 'Color', type: 'color', default: '#787b86', tab: 'input' },
+        { id: 'smoothLineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'input' },
+        { id: 'smoothLineWidth', label: 'Line thickness', type: 'number', default: 1, min: 1, max: 4, tab: 'input' }
+    ]);
 }
 
 function smaStyleParams() {
     return smoothedOverlayMaStyleParams('SMA', '#2962ff');
 }
 
-/** Weighted Moving Average (WMA) Input tab. */
+/** Weighted Moving Average (WMA) Input tab — length, source, offset only (no smoothing). */
 function wmaInputParams() {
-    return smoothedOverlayMaInputParams();
+    return [
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' }
+    ];
 }
 
 function wmaStyleParams() {
@@ -1625,14 +1668,7 @@ const INDICATOR_DEFINITIONS = {
     ema: {
         name: 'Exponential Moving Average',
         type: 'overlay',
-        params: [
-            { id: 'period', label: 'Length', type: 'number', default: 20, min: 1 },
-            { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close' },
-            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line' },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#f23645' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 },
-            { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-        ]
+        params: emaInputParams().concat(emaStyleParams())
     },
     bb: {
         name: 'Bollinger Bands',
@@ -1829,7 +1865,7 @@ const INDICATOR_DEFINITIONS = {
     keltner: {
         name: 'Keltner Channels',
         type: 'overlay',
-        params: keltnerInputParams().concat(channelBandsStyleParams())
+        params: keltnerInputParams().concat(keltnerStyleParams())
     },
     aroon: {
         name: 'Aroon',
@@ -3614,7 +3650,7 @@ function mergeIndicatorDraftParamEntry(param, draft, baseExisting, newParams, ne
         || pid.indexOf('linestyle') >= 0
         || pid.indexOf('opacity') >= 0
         || pid === 'showlabel'
-        || /^show(middle|upper|lower|fill)$/.test(pid);
+        || /^show(middle|upper|lower|fill|bg|smoothma|smoothema)$/.test(pid);
     if (toStyle) {
         newStyle[param.id] = value;
     } else {
@@ -4566,6 +4602,34 @@ function v9OscLevelStyleRow(valueId, showId, colorId, opacityId, styleId, widthI
  * TradingView-style Style tab layout: sections of grid rows (chk | label | color | style | thickness).
  * Returns null when Style tab should use flex fallback (ICT Everything, custom script).
  */
+function v9BuildIndicatorInputLayout(indicatorType) {
+    if (indicatorType === 'sma') {
+        return {
+            excludeFlexIds: ['showSmoothMa', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth'],
+            sections: [{
+                title: 'SMA-based MA',
+                header: true,
+                rows: [
+                    v9PlotRow('SMA-based MA', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'showSmoothMa')
+                ]
+            }]
+        };
+    }
+    if (indicatorType === 'ema') {
+        return {
+            excludeFlexIds: ['showSmoothEma', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth'],
+            sections: [{
+                title: 'EMA-based MA',
+                header: true,
+                rows: [
+                    v9PlotRow('EMA-based MA', 'smoothColor', 'smoothLineStyle', 'smoothLineWidth', 'showSmoothEma')
+                ]
+            }]
+        };
+    }
+    return null;
+}
+
 function v9BuildIndicatorStyleLayout(indicatorType) {
     indicatorType = resolveIndicatorDefinitionKey(indicatorType);
     const def = INDICATOR_DEFINITIONS[indicatorType];
@@ -4604,6 +4668,9 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                     v9PlotRow('Middle Band', 'middleColor', 'middleLineStyle', 'middleLineWidth', 'showMiddle'),
                     v9PlotRow('Lower Band', 'lowerColor', 'lowerLineStyle', 'lowerLineWidth', 'showLower')
                 ]
+            }, {
+                title: 'Background',
+                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
             }],
             footers: footers
         };
@@ -4981,6 +5048,18 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 header: true,
                 rows: [
                     v9PlotRow('SMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
+            }],
+            footers: footers
+        };
+    }
+
+    if (indicatorType === 'ema') {
+        return {
+            sections: [{
+                header: true,
+                rows: [
+                    v9PlotRow('EMA', 'color', 'lineStyle', 'lineWidth', 'showLine')
                 ]
             }],
             footers: footers
@@ -5457,6 +5536,7 @@ window.__v9ClampIndicatorStyleLineWidths = clampIndicatorStyleLineWidths;
 window.__v9SanitizeIndicatorPayloadFromDefinition = sanitizeIndicatorPayloadFromDefinition;
 window.INDICATOR_MAX_LINE_WIDTH = INDICATOR_MAX_LINE_WIDTH;
 window.__v9BuildIndicatorStyleLayout = v9BuildIndicatorStyleLayout;
+window.__v9BuildIndicatorInputLayout = v9BuildIndicatorInputLayout;
 window.__v9SessionBoxSessionDefs = SESSION_BOX_SESSION_DEFS;
 window.__v9SessionBoxSessionShown = sessionBoxSessionShown;
 window.__v9SessionBoxResolveShowForMerge = sessionBoxResolveShowForMerge;

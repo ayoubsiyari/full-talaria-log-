@@ -24254,11 +24254,11 @@ const TalariaV8bLive = () => {
             </div>
           );
         };
-        const renderIndicatorStyleGrid = () => {
+        const renderIndicatorStyleGrid = (layoutOverride) => {
           const buildFn = typeof window.__v9BuildIndicatorStyleLayout === "function"
             ? window.__v9BuildIndicatorStyleLayout
             : null;
-          const layout = buildFn ? buildFn(ctx.indicatorType) : null;
+          const layout = layoutOverride || (buildFn ? buildFn(ctx.indicatorType) : null);
           if (!layout || !layout.sections || !layout.sections.length) return null;
           const def0 = (id) => def.params.find((x) => x.id === id);
           const val = (id) => (indSettDraft[id] !== undefined ? indSettDraft[id] : def0(id)?.default);
@@ -24763,6 +24763,15 @@ const TalariaV8bLive = () => {
           });
         };
         const styleGrid = indSettTab === "style" ? renderIndicatorStyleGrid() : null;
+        const inputLayoutFn = typeof window.__v9BuildIndicatorInputLayout === "function"
+          ? window.__v9BuildIndicatorInputLayout
+          : null;
+        const inputLayout = indSettTab === "input" && inputLayoutFn ? inputLayoutFn(ctx.indicatorType) : null;
+        const inputFlexExclude = new Set(inputLayout?.excludeFlexIds || []);
+        const inTabForFlex = inputFlexExclude.size
+          ? inTab.filter((p) => !inputFlexExclude.has(p.id))
+          : inTab;
+        const inputStyleGrid = inputLayout?.sections?.length ? renderIndicatorStyleGrid(inputLayout) : null;
         const styleLayoutIds = (() => {
           const buildFn = typeof window.__v9BuildIndicatorStyleLayout === "function" ? window.__v9BuildIndicatorStyleLayout : null;
           const layout = buildFn ? buildFn(ctx.indicatorType) : null;
@@ -25025,7 +25034,8 @@ const TalariaV8bLive = () => {
               </div>
             ) : indSettTab === "input" && inTab.length > 0 ? (
               <div style={{ width: "100%", boxSizing: "border-box" }}>
-                {renderIndicatorFlexSettings(inTab)}
+                {renderIndicatorFlexSettings(inTabForFlex)}
+                {inputStyleGrid}
               </div>
             ) : inTab.length === 0 ? (
               <div style={{ fontSize: 12, color: c.tm, fontStyle: "italic", padding: "8px 4px" }}>

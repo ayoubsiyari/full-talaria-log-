@@ -266,6 +266,17 @@ function calculateSMAIndicatorData(data, params) {
     return applySmoothedOverlayMaSmoothing(line, data, params);
 }
 
+function calculateEMAIndicatorData(data, params) {
+    params = params || {};
+    const period = params.period != null ? params.period : 20;
+    const source = params.source || 'close';
+    const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+    const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+    let line = calculateEMA(data, period, source);
+    line = shiftLineSeries(line, offset);
+    return applySmoothedOverlayMaSmoothing(line, data, params);
+}
+
 function calculateEMA(data, period, source) {
     period = period || 20; source = source || 'close';
     const result = [];
@@ -308,7 +319,7 @@ function calculateWMA(data, period, source) {
     return result;
 }
 
-function calculateWMAIndicatorData(data, params) {
+function calculateWMAOverlayData(data, params) {
     params = params || {};
     const period = params.period != null ? params.period : 20;
     const source = params.source || 'close';
@@ -316,7 +327,7 @@ function calculateWMAIndicatorData(data, params) {
     const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
     let line = calculateWMA(data, period, source);
     line = shiftLineSeries(line, offset);
-    return applySmoothedOverlayMaSmoothing(line, data, params);
+    return line;
 }
 
 function pseudoBarsFromSeries(data, series, source) {
@@ -363,15 +374,9 @@ function calculateHMA(data, period, source) {
     const sqrtN = Math.max(1, Math.round(Math.sqrt(n)));
     const w1 = calculateWMA(data, half, source);
     const w2 = calculateWMA(data, n, source);
-    const raw = data.map(function(_, i) {
-        if (w1[i] == null || w2[i] == null) return null;
-        return 2 * w1[i] - w2[i];
-    });
-    let last = null;
     const pseudo = data.map(function(d, i) {
-        if (raw[i] != null) last = raw[i];
-        const c = last != null ? last : resolveOhlcSourceValue(d, source);
-        return { h: c, l: c, c: c, o: c, v: d && d.v, t: d && d.t };
+        const v = (w1[i] == null || w2[i] == null) ? null : (2 * w1[i] - w2[i]);
+        return { h: v, l: v, c: v, o: v, v: d && d.v, t: d && d.t };
     });
     return calculateWMA(pseudo, sqrtN, 'c');
 }
@@ -809,34 +814,54 @@ function calculatePSAR(data, params) {
 }
 
 function calculateSupertrend(data, period, multiplier) {
-    period = period || 10; multiplier = multiplier || 3;
-    const atr = calculateATR(data, period, 'RMA');
-    const upper = [], lower = [];
-    for (let i = 0; i < data.length; i++) {
-        const hl2 = (data[i].h + data[i].l) / 2;
+    const mult = multiplier != null ? multiplier : 3;
+    const p = Math.max(1, period || 10);
+    const atr = calculateATR(data, p);
+    const n = data.length;
+    const finalUpper = new Array(n).fill(null);
+    const finalLower = new Array(n).fill(null);
+    const line = new Array(n).fill(null);
+    const direction = new Array(n).fill(1);
+    const body = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+        const hl2 = resolveOhlcSourceValue(data[i], 'hl2');
+        body[i] = Number.isFinite(hl2) ? hl2 : null;
+        const close = resolveOhlcSourceValue(data[i], 'close');
         const a = atr[i];
-        upper.push(a != null ? hl2 + multiplier * a : null);
-        lower.push(a != null ? hl2 - multiplier * a : null);
-    }
-    const trend = new Array(data.length).fill(null);
-    const direction = new Array(data.length).fill(null);
-    for (let i = 1; i < data.length; i++) {
-        if (upper[i] == null || lower[i] == null) continue;
-        const prevUpper = upper[i - 1] != null ? upper[i - 1] : upper[i];
-        const prevLower = lower[i - 1] != null ? lower[i - 1] : lower[i];
-        if (upper[i] < prevUpper || data[i - 1].c < prevUpper) upper[i] = Math.max(upper[i], prevUpper);
-        else upper[i] = upper[i];
-        if (lower[i] > prevLower || data[i - 1].c > prevLower) lower[i] = Math.min(lower[i], prevLower);
-        else lower[i] = lower[i];
-        const prevTrend = trend[i - 1];
-        if (prevTrend == null || prevTrend === upper[i - 1]) {
-            trend[i] = data[i].c <= upper[i] ? upper[i] : lower[i];
-        } else {
-            trend[i] = data[i].c >= lower[i] ? lower[i] : upper[i];
+        if (a == null || isNaN(a) || !Number.isFinite(hl2)) continue;
+        const basicUpper = hl2 + mult * a;
+        const basicLower = hl2 - mult * a;
+        if (i === 0) {
+            finalUpper[i] = basicUpper;
+            finalLower[i] = basicLower;
+            line[i] = finalLower[i];
+            direction[i] = 1;
+            continue;
         }
-        direction[i] = trend[i] === upper[i] ? -1 : 1;
+        const pU = finalUpper[i - 1];
+        const pL = finalLower[i - 1];
+        const pC = resolveOhlcSourceValue(data[i - 1], 'close');
+        finalUpper[i] = (basicUpper < pU || pC > pU) ? basicUpper : pU;
+        finalLower[i] = (basicLower > pL || pC < pL) ? basicLower : pL;
+        if (direction[i - 1] === 1) {
+            if (close < finalLower[i - 1]) {
+                direction[i] = -1;
+                line[i] = finalUpper[i];
+            } else {
+                direction[i] = 1;
+                line[i] = finalLower[i];
+            }
+        } else {
+            if (close > finalUpper[i - 1]) {
+                direction[i] = 1;
+                line[i] = finalLower[i];
+            } else {
+                direction[i] = -1;
+                line[i] = finalUpper[i];
+            }
+        }
     }
-    return { trend, direction };
+    return { line: line, direction: direction, upper: finalUpper, lower: finalLower, body: body };
 }
 
 function calculateStdDevLine(data, period, source) {
@@ -1091,8 +1116,8 @@ function calcIndicator(type, data, params) {
     type = String(type || '').toLowerCase();
     switch (type) {
         case 'sma': return calculateSMAIndicatorData(data, params);
-        case 'ema': return calculateEMA(data, params.period, params.source || 'close');
-        case 'wma': return calculateWMAIndicatorData(data, params);
+        case 'ema': return calculateEMAIndicatorData(data, params);
+        case 'wma': return calculateWMAOverlayData(data, params);
         case 'dema': return calculateDEMA(data, params.period, params.source || 'close');
         case 'tema': return calculateTEMA(data, params.period);
         case 'hma': return calculateHMA(data, params.period, params.source || 'close');

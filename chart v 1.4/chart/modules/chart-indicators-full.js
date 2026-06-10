@@ -232,11 +232,72 @@
     }
 
     function applyWmaStyleFromParams(indicator, params) {
-        applySmoothedOverlayMaStyleFromParams(indicator, params, '#ff9800');
+        applyMaLengthSourceFromParams(indicator, params, 20);
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        indicator.params.offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#ff9800';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS]
+        ]);
     }
 
     function applySmaStyleFromParams(indicator, params) {
-        applySmoothedOverlayMaStyleFromParams(indicator, params, '#2962ff');
+        applySmoothedOverlayMaCalcParams(indicator, params, 20);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#2962ff';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        if (params.showSmoothMa !== undefined) {
+            indicator.style.showSmoothMa = params.showSmoothMa === true;
+        } else if (params.showSmooth === true) {
+            indicator.style.showSmoothMa = true;
+        } else {
+            indicator.style.showSmoothMa = false;
+        }
+        indicator.style.smoothColor = params.smoothColor || '#787b86';
+        indicator.style.smoothLineWidth = params.smoothLineWidth != null ? params.smoothLineWidth : 1;
+        indicator.style.smoothLineStyle = params.smoothLineStyle || 'Line';
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['smoothLineStyle', 'smoothLineDashStyle', 'Line']
+        ]);
+    }
+
+    function applyEmaStyleFromParams(indicator, params) {
+        applySmoothedOverlayMaCalcParams(indicator, params, 20);
+        const legacyW = params.lineWidth != null ? params.lineWidth : 2;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.overlay = true;
+        indicator.style.showLine = params.showLine !== false;
+        indicator.style.color = params.color || '#f23645';
+        indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
+        indicator.style.lineStyle = params.lineStyle || legacyS;
+        indicator.style.showLabel = params.showLabel !== false;
+        if (params.showSmoothEma !== undefined) {
+            indicator.style.showSmoothEma = params.showSmoothEma === true;
+        } else if (params.showSmooth === true) {
+            indicator.style.showSmoothEma = true;
+        } else {
+            indicator.style.showSmoothEma = false;
+        }
+        indicator.style.smoothColor = params.smoothColor || '#787b86';
+        indicator.style.smoothLineWidth = params.smoothLineWidth != null ? params.smoothLineWidth : 1;
+        indicator.style.smoothLineStyle = params.smoothLineStyle || 'Line';
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['lineStyle', 'lineDashStyle', legacyS],
+            ['smoothLineStyle', 'smoothLineDashStyle', 'Line']
+        ]);
     }
 
     function clampIndicatorLineWidth(w, fallback) {
@@ -359,6 +420,37 @@
         ]);
     }
 
+    function applyKeltnerStyleFromParams(indicator, params) {
+        const legacyW = params.lineWidth != null ? params.lineWidth : 1;
+        const legacyS = params.lineStyle || 'Line';
+        indicator.style.showMiddle = params.showMiddle !== false;
+        indicator.style.middleColor = params.middleColor || '#787b86';
+        indicator.style.middleLineWidth = params.middleLineWidth != null ? params.middleLineWidth : legacyW;
+        indicator.style.middleLineStyle = params.middleLineStyle || legacyS;
+        indicator.style.showUpper = params.showUpper !== false;
+        indicator.style.upperColor = params.upperColor || '#2962ff';
+        indicator.style.upperLineWidth = params.upperLineWidth != null ? params.upperLineWidth : legacyW;
+        indicator.style.upperLineStyle = params.upperLineStyle || legacyS;
+        indicator.style.showLower = params.showLower !== false;
+        indicator.style.lowerColor = params.lowerColor || '#2962ff';
+        indicator.style.lowerLineWidth = params.lowerLineWidth != null ? params.lowerLineWidth : legacyW;
+        indicator.style.lowerLineStyle = params.lowerLineStyle || legacyS;
+        if (params.showBg !== undefined) {
+            indicator.style.showBg = params.showBg === true;
+        } else if (params.showFill !== undefined) {
+            indicator.style.showBg = params.showFill === true;
+        } else {
+            indicator.style.showBg = false;
+        }
+        indicator.style.bgColor = params.bgColor || params.fillColor || 'rgba(41,98,255,0.1)';
+        indicator.style.showLabel = params.showLabel !== false;
+        applyPlotDashFieldsFromParams(indicator.style, params, [
+            ['middleLineStyle', 'middleLineDashStyle', legacyS],
+            ['upperLineStyle', 'upperLineDashStyle', legacyS],
+            ['lowerLineStyle', 'lowerLineDashStyle', legacyS]
+        ]);
+    }
+
     function resolveBbCalcParams(params) {
         params = params || {};
         const periodRaw = params.period != null ? Number(params.period) : 20;
@@ -386,7 +478,13 @@
     }
 
     function bollingerFillRgba(style) {
-        if (!style || style.showFill === false) return null;
+        if (!style) return null;
+        if (style.showBg === true) {
+            const raw = style.bgColor || 'rgba(41,98,255,0.1)';
+            if (String(raw).indexOf('rgba') >= 0) return raw;
+            return raw;
+        }
+        if (style.showFill === false) return null;
         const raw = style.fillColor || '#2962ff';
         if (style.fillOpacity == null && String(raw).indexOf('rgba') >= 0) return raw;
         let op = style.fillOpacity != null ? Number(style.fillOpacity) : 10;
@@ -1097,8 +1195,23 @@
         return calculateSmoothedOverlayMaData(data, params, calculateWMA);
     }
 
+    function calculateWMAOverlayData(data, params) {
+        params = params || {};
+        const period = params.period != null ? params.period : 20;
+        const source = params.source || 'close';
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+        let line = calculateWMA(data, period, source);
+        if (offset) line = shiftLineSeries(line, offset);
+        return line;
+    }
+
     function calculateSMAIndicatorData(data, params) {
         return calculateSmoothedOverlayMaData(data, params, calculateSMA);
+    }
+
+    function calculateEMAIndicatorData(data, params) {
+        return calculateSmoothedOverlayMaData(data, params, calculateEMA);
     }
 
     /** Rolling SMA; null until full window of finite values */
@@ -3676,15 +3789,9 @@
         const sqrtN = Math.max(1, Math.round(Math.sqrt(n)));
         const w1 = calculateWMA(data, half, source);
         const w2 = calculateWMA(data, n, source);
-        const raw = data.map(function(_, i) {
-            if (w1[i] == null || w2[i] == null) return null;
-            return 2 * w1[i] - w2[i];
-        });
-        let last = null;
         const pseudo = data.map(function(d, i) {
-            if (raw[i] != null) last = raw[i];
-            const c = last != null ? last : resolveOhlcSourceValue(d, source);
-            return { h: c, l: c, c: c, o: c, v: d.v, t: d.t };
+            const v = (w1[i] == null || w2[i] == null) ? null : (2 * w1[i] - w2[i]);
+            return { h: v, l: v, c: v, o: v, v: d.v, t: d.t };
         });
         return calculateWMA(pseudo, sqrtN, 'c');
     }
@@ -4987,20 +5094,15 @@
                 break;
                 
             case 'ema':
-                indicator.params.period = params.period || 20;
-                indicator.params.source = params.source || 'close';
-                indicator.style.color = params.color || '#f23645';
-                indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-                indicator.style.lineStyle = params.lineStyle || 'Line';
-                indicator.style.showLabel = params.showLabel !== false;
+                applyEmaStyleFromParams(indicator, params);
                 indicator.name = 'EMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateEMAIndicatorData(this.data, indicator.params);
                 break;
                 
             case 'wma':
                 applyWmaStyleFromParams(indicator, params);
                 indicator.name = 'WMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWMAIndicatorData(this.data, indicator.params);
+                this.indicators.data[indicator.id] = calculateWMAOverlayData(this.data, indicator.params);
                 break;
                 
             case 'bb':
@@ -5256,7 +5358,7 @@
                 break;
             case 'keltner':
                 applyKeltnerCalcParams(indicator, params);
-                applyBollingerStyleFromParams(indicator, params);
+                applyKeltnerStyleFromParams(indicator, params);
                 indicator.name = 'Keltner(' + indicator.params.length + ')';
                 this.indicators.data[indicator.id] = calculateKeltner(this.data, indicator.params);
                 break;
@@ -5947,6 +6049,13 @@
         if (newParams.showUpper !== undefined) indicator.style.showUpper = newParams.showUpper !== false;
         if (newParams.showLower !== undefined) indicator.style.showLower = newParams.showLower !== false;
         if (newParams.showFill !== undefined) indicator.style.showFill = newParams.showFill !== false;
+        if (newParams.showBg !== undefined) indicator.style.showBg = newParams.showBg === true;
+        if (newParams.bgColor !== undefined) indicator.style.bgColor = newParams.bgColor;
+        if (newParams.showSmoothMa !== undefined) indicator.style.showSmoothMa = newParams.showSmoothMa === true;
+        if (newParams.showSmoothEma !== undefined) indicator.style.showSmoothEma = newParams.showSmoothEma === true;
+        if (newParams.smoothColor !== undefined) indicator.style.smoothColor = newParams.smoothColor;
+        if (newParams.smoothLineWidth !== undefined) indicator.style.smoothLineWidth = newParams.smoothLineWidth;
+        if (newParams.smoothLineStyle !== undefined) indicator.style.smoothLineStyle = newParams.smoothLineStyle;
         if (newParams.middleLineWidth !== undefined) indicator.style.middleLineWidth = newParams.middleLineWidth;
         if (newParams.upperLineWidth !== undefined) indicator.style.upperLineWidth = newParams.upperLineWidth;
         if (newParams.lowerLineWidth !== undefined) indicator.style.lowerLineWidth = newParams.lowerLineWidth;
@@ -6088,7 +6197,7 @@
         }
         if (indicator.type === 'keltner') {
             applyKeltnerCalcParams(indicator, Object.assign({}, indicator.params, newParams));
-            applyBollingerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+            applyKeltnerStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
         if (indicator.type === 'donchian') {
             applyDonchianStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
@@ -6284,21 +6393,35 @@
                 recalcMultiPassOverlayMa(this, indicator);
             }
         }
-        if (indicator.type === 'wma' || indicator.type === 'sma') {
+        if (indicator.type === 'wma') {
+            const mergedWma = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyWmaStyleFromParams(indicator, mergedWma);
+            const wmaRecalc = ['period', 'source', 'offset'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (wmaRecalc) {
+                indicator.name = 'WMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateWMAOverlayData(this.data, indicator.params);
+            }
+        }
+        if (indicator.type === 'sma' || indicator.type === 'ema') {
             const mergedMa = Object.assign({}, indicator.style, indicator.params, newParams);
             if (indicator.type === 'sma') {
                 applySmaStyleFromParams(indicator, mergedMa);
             } else {
-                applyWmaStyleFromParams(indicator, mergedMa);
+                applyEmaStyleFromParams(indicator, mergedMa);
             }
             const maRecalc = ['period', 'source', 'offset', 'smoothingType', 'smoothingLength', 'bbStdDev'].some(function(k) {
                 return newParams[k] !== undefined;
             });
             if (maRecalc) {
-                indicator.name = (indicator.type === 'sma' ? 'SMA(' : 'WMA(') + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = indicator.type === 'sma'
-                    ? calculateSMAIndicatorData(this.data, indicator.params)
-                    : calculateWMAIndicatorData(this.data, indicator.params);
+                if (indicator.type === 'sma') {
+                    indicator.name = 'SMA(' + indicator.params.period + ')';
+                    this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
+                } else {
+                    indicator.name = 'EMA(' + indicator.params.period + ')';
+                    this.indicators.data[indicator.id] = calculateEMAIndicatorData(this.data, indicator.params);
+                }
             }
         }
         if (indicator.type === 'sessions') {
@@ -6316,11 +6439,11 @@
                 break;
             case 'ema':
                 indicator.name = 'EMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateEMAIndicatorData(this.data, indicator.params);
                 break;
             case 'wma':
                 indicator.name = 'WMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateWMAIndicatorData(this.data, indicator.params);
+                this.indicators.data[indicator.id] = calculateWMAOverlayData(this.data, indicator.params);
                 break;
             case 'bb':
             case 'bollinger':
@@ -6794,6 +6917,18 @@
         }
     }
 
+    function recalcSupertrendOverlay(chart, indicator) {
+        if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
+        if (!chart.indicators.data) chart.indicators.data = {};
+        indicator.type = 'supertrend';
+        indicator.overlay = true;
+        indicator.separatePanel = false;
+        const period = indicator.params && indicator.params.period != null ? indicator.params.period : 10;
+        const multiplier = indicator.params && indicator.params.multiplier != null ? indicator.params.multiplier : 3;
+        indicator.name = 'Supertrend(' + period + ')';
+        chart.indicators.data[indicator.id] = calculateSupertrend(chart.data, period, multiplier);
+    }
+
     /**
      * Calculate all active indicators in a background Web Worker.
      * Falls back to synchronous recalculateIndicators() if worker is unavailable.
@@ -6818,22 +6953,33 @@
 
         // Build indicator config map for worker
         var indicators = {};
+        var didSyncOverlayRecalc = false;
         chart.indicators.active.forEach(function(ind) {
-            // Multi-pass MAs + ICT/session types stay on main thread (worker pseudo-series diverges).
+            // Multi-pass MAs, Supertrend, + ICT/session types stay on main thread.
             var workerSkip = [
-                'dema', 'tema', 'hma',
+                'dema', 'tema', 'hma', 'supertrend',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'
             ];
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
+            if (indType === 'supertrend') {
+                try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                didSyncOverlayRecalc = true;
+                return;
+            }
             if (['dema', 'tema', 'hma'].indexOf(indType) >= 0) {
                 try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                didSyncOverlayRecalc = true;
                 return;
             }
             if (workerSkip.indexOf(indType) >= 0) return;
             indicators[ind.id] = { type: indType, params: ind.params || {} };
         });
+
+        if (didSyncOverlayRecalc && typeof chart.scheduleRender === 'function') {
+            chart.scheduleRender();
+        }
 
         // Run sync fallback for skipped indicators immediately
         var syncOnlyTypes = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
@@ -6867,7 +7013,9 @@
             Object.assign(chart.indicators.data, results);
             chart.indicators.active.forEach(function(ind) {
                 const t = String(ind.type || '').toLowerCase();
-                if (t === 'dema' || t === 'tema' || t === 'hma') {
+                if (t === 'supertrend') {
+                    try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                } else if (t === 'dema' || t === 'tema' || t === 'hma') {
                     try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
                 }
             });
@@ -6909,10 +7057,10 @@
                     this.indicators.data[indicator.id] = calculateSMAIndicatorData(this.data, indicator.params);
                     break;
                 case 'ema':
-                    this.indicators.data[indicator.id] = calculateEMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                    this.indicators.data[indicator.id] = calculateEMAIndicatorData(this.data, indicator.params);
                     break;
                 case 'wma':
-                    this.indicators.data[indicator.id] = calculateWMAIndicatorData(this.data, indicator.params);
+                    this.indicators.data[indicator.id] = calculateWMAOverlayData(this.data, indicator.params);
                     break;
                 case 'bb':
                 case 'bollinger':
@@ -7554,7 +7702,22 @@
                 if (indicator.style.showLine !== false) {
                     this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
                 }
-            } else if (indType === 'wma' || indType === 'sma') {
+            } else if (indType === 'wma') {
+                if (indicator.style.showLine !== false) {
+                    const wmaLine = Array.isArray(data) ? data : (data && data.line);
+                    if (wmaLine) {
+                        this.drawLineIndicator(
+                            wmaLine,
+                            indicator.style.color,
+                            indicator.style.lineWidth,
+                            startIndex,
+                            endIndex,
+                            indicator.style.lineStyle,
+                            { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                        );
+                    }
+                }
+            } else if (indType === 'sma' || indType === 'ema') {
                 this.drawSmoothedMaOverlay(data, indicator, startIndex, endIndex);
             } else {
                 this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle);
@@ -7581,7 +7744,14 @@
         const smoothStyle = st.smoothLineStyle || 'Line';
         const smoothDash = st.smoothLineDashStyle || 'Solid';
         const hasSmoothing = String(pr.smoothingType || 'None') !== 'None';
-        if (hasSmoothing) {
+        const indTypeLo = String(indicator.type || '').toLowerCase();
+        let showSmoothOverlay = hasSmoothing;
+        if (indTypeLo === 'sma') {
+            showSmoothOverlay = hasSmoothing && st.showSmoothMa === true;
+        } else if (indTypeLo === 'ema') {
+            showSmoothOverlay = hasSmoothing && st.showSmoothEma === true;
+        }
+        if (showSmoothOverlay) {
             if (pack.bbUpper) {
                 this.drawLineIndicator(pack.bbUpper, smoothColor, smoothW, startIndex, endIndex, smoothStyle, { dashStyle: smoothDash });
             }
@@ -9347,7 +9517,8 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
             return out;
         }
         if (indicator.type === 'supertrend' && Array.isArray(data.line)) return [data.line];
-        if ((indicator.type === 'wma' || indicator.type === 'sma') && Array.isArray(data.line)) return [data.line];
+        if ((indicator.type === 'sma' || indicator.type === 'ema') && Array.isArray(data.line)) return [data.line];
+        if (indicator.type === 'wma' && Array.isArray(data)) return [data];
         if (indicator.type === 'vwap' && Array.isArray(data.vwap)) {
             const st = indicator.style || {};
             const p = indicator.params || {};
