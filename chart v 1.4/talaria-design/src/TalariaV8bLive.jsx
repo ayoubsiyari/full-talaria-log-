@@ -5909,6 +5909,7 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("gannLineWidth");
     line("gannBackground");
     line("gannBgOpacity");
+    line("fibLevelsOn");
     line("lineColor");
     line("lineWidth");
     return;
@@ -5921,6 +5922,7 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("gannLineWidth");
     line("gannBackground");
     line("gannBgOpacity");
+    line("fibLevelsOn");
     line("lineColor");
     line("lineWidth");
     return;
@@ -5931,6 +5933,7 @@ function v9SpreadFibTlPatchForHook(p, drawingType, out) {
     line("gannLineWidth");
     line("gannBackground");
     line("gannBgOpacity");
+    line("fibLevelsOn");
     line("lineColor");
     line("lineWidth");
   }
@@ -17981,27 +17984,17 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
-  /** Show Info master toggle — auto-select first metric when enabling; open dropdown for multi-pick. */
+  /** Show Info master toggle — auto-select first metric when enabling; do not auto-open dropdown. */
   const applyTlShowInfoToggle = useCallback(() => {
-    let opening = false;
     flushSync(() => setTlStyle((s) => {
       const legacy = resolveLegacyTool();
-      const next = v9PatchTlShowInfoOnToggle(s, !s.showInfo, legacy);
-      opening = next.showInfo && !s.showInfo;
-      return next;
+      return v9PatchTlShowInfoOnToggle(s, !s.showInfo, legacy);
     }));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, {
       editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
       resolveLegacyTool,
     });
-    if (opening) {
-      setClosing((s) => {
-        const n = new Set(s);
-        n.delete("tlInfoDrop");
-        return n;
-      });
-      setTlStyleDrop("info");
-    } else if (!tlStyleLiveRef.current?.showInfo) {
+    if (!tlStyleLiveRef.current?.showInfo) {
       closeTlInfoDrop();
     }
   }, []);
@@ -21097,7 +21090,7 @@ const TalariaV8bLive = () => {
                         </div>
                       </div>
                       <div style={{ padding:"6px 0" }}>
-                        {TlChk(tlStyle.fibLevelsOn,"tlchk-gannLvlVal","Level values",()=>setTlStyle(s=>({...s,fibLevelsOn:!s.fibLevelsOn})))}
+                        {TlChk(tlStyle.fibLevelsOn,"tlchk-gannLvlVal","Level values",()=>applyTlFibLevelsOn(!(tlStyle.fibLevelsOn !== false)))}
                       </div>
                     </>;
                   })()}
@@ -23340,8 +23333,8 @@ const TalariaV8bLive = () => {
                   </div>
                 </div>
               </>}
-              {/* Wrap Text — tools with multiline label boxes */}
-              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && <div style={{padding:"8px 0"}}>
+              {/* Wrap Text — basic text tools only (pin/signpost use Text tab) */}
+              {!isFlag && !isImage && !isEmoji && !isPriceNote && !isPriceLabel && !isPin && !isSignpost && <div style={{padding:"8px 0"}}>
                 {TlChk(txtStyle.wrapText,"txtWrapChk","Wrap Text",()=>setTxtStyle(s=>({...s,wrapText:!s.wrapText})))}
               </div>}
             </>}

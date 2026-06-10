@@ -38,6 +38,7 @@ class GannBoxTool extends BaseDrawing {
         this.style.showRightLabels = this.style.showRightLabels !== undefined ? this.style.showRightLabels : true;
         this.style.showTopLabels = this.style.showTopLabels !== undefined ? this.style.showTopLabels : true;
         this.style.showBottomLabels = this.style.showBottomLabels !== undefined ? this.style.showBottomLabels : true;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
         this.style.priceBackground = this.style.priceBackground || 'rgba(41, 98, 255, 0.1)';
         this.style.timeBackground = this.style.timeBackground || 'rgba(41, 98, 255, 0.1)';
     }
@@ -77,6 +78,7 @@ class GannBoxTool extends BaseDrawing {
         const levelsDasharray = this.style.levelsLineDasharray || '';
         const labelSize = Math.max(9, 12 * scaleFactor);
         const labelOffset = Math.max(6, 10 * scaleFactor);
+        const showLevelValues = this.style.levelsEnabled !== false;
 
         const fmt = (v) => {
             const n = Number(v);
@@ -217,7 +219,7 @@ class GannBoxTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
 
-            if (this.style.showLeftLabels) {
+            if (showLevelValues && this.style.showLeftLabels) {
                 this.group.append('text')
                     .attr('x', left - labelOffset)
                     .attr('y', y)
@@ -230,7 +232,7 @@ class GannBoxTool extends BaseDrawing {
                     .text(fmt(v));
             }
 
-            if (this.style.showRightLabels) {
+            if (showLevelValues && this.style.showRightLabels) {
                 this.group.append('text')
                     .attr('x', right + labelOffset)
                     .attr('y', y)
@@ -287,7 +289,7 @@ class GannBoxTool extends BaseDrawing {
                     .style('pointer-events', 'none');
             }
 
-            if (this.style.showTopLabels) {
+            if (showLevelValues && this.style.showTopLabels) {
                 this.group.append('text')
                     .attr('x', x)
                     .attr('y', top - labelOffset)
@@ -300,7 +302,7 @@ class GannBoxTool extends BaseDrawing {
                     .text(fmt(v));
             }
 
-            if (this.style.showBottomLabels) {
+            if (showLevelValues && this.style.showBottomLabels) {
                 this.group.append('text')
                     .attr('x', x)
                     .attr('y', bottom + labelOffset + (labelSize * 0.25))

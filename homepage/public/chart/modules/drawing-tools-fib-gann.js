@@ -3074,6 +3074,7 @@ class GannSquareFixedTool extends BaseDrawing {
         this.style.strokeWidth = style.strokeWidth || 1;
         if (this.style.showZones === undefined) this.style.showZones = true;
         if (this.style.backgroundOpacity === undefined) this.style.backgroundOpacity = 0.12;
+        if (this.style.levelsEnabled === undefined) this.style.levelsEnabled = true;
     }
 
     onPointHandleDrag(index, context = {}) {
@@ -3231,6 +3232,14 @@ class GannSquareFixedTool extends BaseDrawing {
             ? parseInt(this.style.levelsLineWidth)
             : 1;
         const levelStrokeWidth = Math.max(0.5, globalWidth * scaleFactor);
+        const showLevelValues = this.style.levelsEnabled !== false;
+        const labelSize = Math.max(9, 12 * scaleFactor);
+        const labelOffset = Math.max(6, 10 * scaleFactor);
+        const fmtLevel = (v) => {
+            const n = Number(v);
+            if (!Number.isFinite(n)) return '';
+            return n.toFixed(3).replace(/\.?0+$/, '');
+        };
 
         const toRgba = (color, alpha) => {
             if (!color) return `rgba(120, 123, 134, ${alpha})`;
@@ -3370,6 +3379,63 @@ class GannSquareFixedTool extends BaseDrawing {
                 .attr('opacity', 0.7)
                 .style('pointer-events', 'none');
         });
+
+        if (showLevelValues) {
+            gridRaw.forEach((rawLevel) => {
+                const v = clampUnitRatio(rawLevel && rawLevel.value != null ? rawLevel.value : '');
+                if (!Number.isFinite(v)) return;
+                if (rawLevel && rawLevel.enabled === false) return;
+                const color = (rawLevel && rawLevel.color) ? rawLevel.color : this.style.stroke;
+                const offset = size * v;
+                const yH = top + offset;
+                const xV = left + offset;
+                const txt = fmtLevel(v);
+
+                this.group.append('text')
+                    .attr('x', left - labelOffset)
+                    .attr('y', yH)
+                    .attr('text-anchor', 'end')
+                    .attr('dominant-baseline', 'middle')
+                    .attr('fill', color)
+                    .attr('opacity', 0.9)
+                    .attr('font-size', `${labelSize}px`)
+                    .style('pointer-events', 'none')
+                    .text(txt);
+
+                this.group.append('text')
+                    .attr('x', left + size + labelOffset)
+                    .attr('y', yH)
+                    .attr('text-anchor', 'start')
+                    .attr('dominant-baseline', 'middle')
+                    .attr('fill', color)
+                    .attr('opacity', 0.9)
+                    .attr('font-size', `${labelSize}px`)
+                    .style('pointer-events', 'none')
+                    .text(txt);
+
+                this.group.append('text')
+                    .attr('x', xV)
+                    .attr('y', top - labelOffset)
+                    .attr('text-anchor', 'middle')
+                    .attr('dominant-baseline', 'ideographic')
+                    .attr('fill', color)
+                    .attr('opacity', 0.9)
+                    .attr('font-size', `${labelSize}px`)
+                    .style('pointer-events', 'none')
+                    .text(txt);
+
+                this.group.append('text')
+                    .attr('x', xV)
+                    .attr('y', top + size + labelOffset + (labelSize * 0.25))
+                    .attr('text-anchor', 'middle')
+                    .attr('dominant-baseline', 'hanging')
+                    .attr('fill', color)
+                    .attr('opacity', 0.9)
+                    .attr('font-size', `${labelSize}px`)
+                    .style('pointer-events', 'none')
+                    .text(txt);
+            });
+        }
 
         // Diagonals
         const diagW = Math.max(0.5, 1.2 * scaleFactor);
