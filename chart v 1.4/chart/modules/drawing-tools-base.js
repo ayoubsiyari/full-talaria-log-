@@ -23,6 +23,44 @@ const ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\
 const DRAWING_TEXT_ARABIC_FONT_FAMILY = '"Segoe UI", "Noto Sans Arabic", "Arial", sans-serif';
 const DRAWING_TEXT_ITALIC_SKEW_DEG = -12;
 
+function normalizeFibLevelsLabelPosition(style) {
+    const raw = style && style.levelsLabelPosition;
+    const pos = String(raw || 'right').trim().toLowerCase();
+    return (pos === 'left' || pos === 'center' || pos === 'right') ? pos : 'right';
+}
+
+/** Horizontal span: label at left edge, center, or right edge of [spanMinX, spanMaxX]. */
+function fibHorizontalSpanLabelPlacement(style, spanMinX, spanMaxX, pad = 5) {
+    const pos = normalizeFibLevelsLabelPosition(style);
+    const minX = Math.min(spanMinX, spanMaxX);
+    const maxX = Math.max(spanMinX, spanMaxX);
+    if (pos === 'left') return { x: minX - pad, anchor: 'end' };
+    if (pos === 'center') return { x: (minX + maxX) / 2, anchor: 'middle' };
+    return { x: maxX + pad, anchor: 'start' };
+}
+
+/** Point along segment (x1,y1)→(x2,y2) for ray / axis labels. */
+function fibSegmentParamPlacement(style, x1, y1, x2, y2) {
+    const pos = normalizeFibLevelsLabelPosition(style);
+    const t = pos === 'left' ? 0.15 : pos === 'center' ? 0.5 : 0.85;
+    return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t };
+}
+
+/** Vertical fib line: label near chart top, offset left/center/right of the line. */
+function fibVerticalLineTopLabelPlacement(style, lineX, topY = 15, pad = 3) {
+    const pos = normalizeFibLevelsLabelPosition(style);
+    if (pos === 'left') return { x: lineX - pad, y: topY, anchor: 'end' };
+    if (pos === 'center') return { x: lineX, y: topY, anchor: 'middle' };
+    return { x: lineX + pad, y: topY, anchor: 'start' };
+}
+
+function fibPointTextAnchor(style) {
+    const pos = normalizeFibLevelsLabelPosition(style);
+    if (pos === 'left') return 'start';
+    if (pos === 'center') return 'middle';
+    return 'end';
+}
+
 function drawingTextHasArabicScript(text) {
     return ARABIC_SCRIPT_RE.test(String(text || ''));
 }

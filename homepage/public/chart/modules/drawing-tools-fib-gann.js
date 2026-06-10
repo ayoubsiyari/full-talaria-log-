@@ -226,11 +226,13 @@ class FibChannelTool extends BaseDrawing {
                 }
                 if (!showLevelValues) return;
                 const labelText = `${baseLabel}${priceText}`;
+                const lp = fibHorizontalSpanLabelPlacement(this.style, seg.x1, seg.x2);
 
                 this.group.append('text')
                     .attr('data-fib-channel-label', lvl)
-                    .attr('x', seg.x2 + 5)
+                    .attr('x', lp.x)
                     .attr('y', seg.y2 + 4)
+                    .attr('text-anchor', lp.anchor)
                     .attr('fill', color)
                     .attr('font-size', '10px')
                     .style('pointer-events', 'none')
@@ -429,11 +431,13 @@ class FibTimeZoneTool extends BaseDrawing {
                     .style('cursor', 'move');
 
                 if (showLevelValues) {
+                    const lp = fibVerticalLineTopLabelPlacement(this.style, x);
                     this.group.append('text')
                         .attr('class', 'fib-tz-label')
                         .attr('data-fib-tz', fib)
-                        .attr('x', x + 3)
-                        .attr('y', 15)
+                        .attr('x', lp.x)
+                        .attr('y', lp.y)
+                        .attr('text-anchor', lp.anchor)
                         .attr('fill', color)
                         .attr('font-size', '10px')
                         .style('pointer-events', 'none')
@@ -633,13 +637,13 @@ class FibSpeedFanTool extends BaseDrawing {
                     .style('pointer-events', 'none');
 
                 if (showLevelValues) {
-                    const labelX = dx >= 0 ? (x1 - 8) : (x1 + 8);
+                    const lp = fibHorizontalSpanLabelPlacement(this.style, x1, extendX);
                     this.group.append('text')
-                        .attr('x', labelX)
+                        .attr('x', lp.x)
                         .attr('y', y + 3)
                         .attr('fill', l.color)
                         .attr('font-size', '10px')
-                        .attr('text-anchor', dx >= 0 ? 'end' : 'start')
+                        .attr('text-anchor', lp.anchor)
                         .style('pointer-events', 'none')
                         .text(formatRatioLabel(l.value));
                 }
@@ -683,7 +687,7 @@ class FibSpeedFanTool extends BaseDrawing {
                         .attr('y', topLabelY)
                         .attr('fill', l.color)
                         .attr('font-size', '10px')
-                        .attr('text-anchor', 'middle')
+                        .attr('text-anchor', fibPointTextAnchor(this.style))
                         .style('pointer-events', 'none')
                         .text(l.value);
                 }
@@ -738,18 +742,15 @@ class FibSpeedFanTool extends BaseDrawing {
             // Labels on rays (TradingView-like)
             if (showLevelValues) {
                 const labelText = formatRatioLabel(ratio);
-                const labelX = (ratio === 0)
-                    ? x2
-                    : (x1 + (dx * 0.72));
-                const labelY = (ratio === 0)
-                    ? y2
-                    : (y1 + ((targetY - y1) / dx) * (labelX - x1));
+                const rayEndX = (ratio === 0) ? x2 : extendX;
+                const rayEndY = (ratio === 0) ? y2 : (y1 + ((targetY - y1) / dx) * (extendX - x1));
+                const lp = fibSegmentParamPlacement(this.style, x1, y1, rayEndX, rayEndY);
                 this.group.append('text')
-                    .attr('x', labelX)
-                    .attr('y', labelY - 4)
+                    .attr('x', lp.x)
+                    .attr('y', lp.y - 4)
                     .attr('fill', color)
                     .attr('font-size', '10px')
-                    .attr('text-anchor', 'middle')
+                    .attr('text-anchor', fibPointTextAnchor(this.style))
                     .style('pointer-events', 'none')
                     .text(labelText);
             }
@@ -895,6 +896,7 @@ class TrendFibTimeTool extends BaseDrawing {
             const bgOpacity = (this.style.backgroundOpacity != null && !isNaN(parseFloat(this.style.backgroundOpacity)))
                 ? parseFloat(this.style.backgroundOpacity)
                 : 0.12;
+            const showLevelValues = this.style.levelsEnabled !== false;
 
             const enabledLevels = (this.levels || [])
                 .filter(l => l && l.enabled !== false)
@@ -963,6 +965,19 @@ class TrendFibTimeTool extends BaseDrawing {
                     .attr('opacity', 0.9)
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
+
+                if (showLevelValues) {
+                    const lp = fibVerticalLineTopLabelPlacement(this.style, x);
+                    this.group.append('text')
+                        .attr('class', 'fib-tft-label')
+                        .attr('x', lp.x)
+                        .attr('y', lp.y)
+                        .attr('fill', lvl.color)
+                        .attr('font-size', '10px')
+                        .attr('text-anchor', lp.anchor)
+                        .style('pointer-events', 'none')
+                        .text(String(level));
+                }
             });
         }
 
@@ -1281,9 +1296,11 @@ class FibCirclesTool extends BaseDrawing {
             const lx = x1 + dx * rayS;
             const ly = y1 + dy * rayS;
             if (showLevelValues) {
+                const lp = fibSegmentParamPlacement(this.style, x1, y1, lx, ly);
                 this.group.append('text')
-                    .attr('x', lx + labelOffsetX)
-                    .attr('y', ly + labelOffsetY)
+                    .attr('x', lp.x + labelOffsetX)
+                    .attr('y', lp.y + labelOffsetY)
+                    .attr('text-anchor', fibPointTextAnchor(this.style))
                     .attr('fill', color)
                     .attr('font-size', '10px')
                     .attr('dominant-baseline', 'middle')
@@ -1711,9 +1728,11 @@ class FibArcsTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             if (showLevelValues) {
+                const lp = fibHorizontalSpanLabelPlacement(this.style, x1 - r, x1 + r);
                 this.group.append('text')
-                    .attr('x', x1 + r + 5)
+                    .attr('x', lp.x)
                     .attr('y', y1)
+                    .attr('text-anchor', lp.anchor)
                     .attr('fill', color)
                     .attr('font-size', '10px')
                     .style('pointer-events', 'none')
@@ -2046,7 +2065,9 @@ class FibWedgeTool extends BaseDrawing {
                 .style('pointer-events', 'stroke')
                 .style('cursor', 'move');
 
-            const labelR = Math.max(0, r - 10);
+            const pos = normalizeFibLevelsLabelPosition(this.style);
+            const labelT = pos === 'left' ? 0.35 : pos === 'center' ? 0.65 : 0.92;
+            const labelR = Math.max(0, r * labelT);
             const lp = polar(midAngle, labelR);
             if (showLevelValues) {
                 this.group.append('text')
@@ -2054,7 +2075,7 @@ class FibWedgeTool extends BaseDrawing {
                     .attr('y', lp.y)
                     .attr('fill', color)
                     .attr('font-size', '10px')
-                    .attr('text-anchor', 'middle')
+                    .attr('text-anchor', fibPointTextAnchor(this.style))
                     .style('pointer-events', 'none')
                     .text(level.toString());
             }
@@ -4227,14 +4248,15 @@ class TrendFibExtensionTool extends BaseDrawing {
                 })();
                 if (!showLevelValues) return;
                 const labelText = showPrices ? `${levelLabel} (${priceAtLevel.toFixed(priceDecimals)})` : `${levelLabel}`;
-                
+                const lp = fibHorizontalSpanLabelPlacement(this.style, leftX, rightX);
+
                 this.group.append('text')
-                    .attr('x', rightX + 5)
+                    .attr('x', lp.x)
                     .attr('y', yAtLevel)
                     .attr('fill', color)
                     .attr('font-size', '10px')
                     .attr('font-weight', '600')
-                    .attr('text-anchor', 'start')
+                    .attr('text-anchor', lp.anchor)
                     .style('pointer-events', 'none')
                     .text(labelText);
             });

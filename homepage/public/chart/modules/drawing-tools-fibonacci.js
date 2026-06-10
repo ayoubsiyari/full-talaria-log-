@@ -191,7 +191,8 @@ class FibonacciRetracementTool extends BaseDrawing {
             // Draw level label
             const baseText = formatLevelText(level);
             const finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
-            const textX = fibX2 + 5;
+            const labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
+            const textX = labelPlacement.x;
             const textY = yAtLevel + 4;
 
             this.group.append('text')
@@ -199,7 +200,7 @@ class FibonacciRetracementTool extends BaseDrawing {
                 .attr('data-fib-label', level.value)
                 .attr('x', textX)
                 .attr('y', textY)
-                .attr('text-anchor', 'start')
+                .attr('text-anchor', labelPlacement.anchor)
                 .attr('fill', level.color)
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
@@ -450,7 +451,8 @@ class FibonacciExtensionTool extends BaseDrawing {
             // Draw level label
             const baseText = formatLevelText(level);
             const finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
-            const textX = fibX2 + 5;
+            const labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
+            const textX = labelPlacement.x;
             const textY = yAtLevel + 4;
 
             this.group.append('text')
@@ -458,7 +460,7 @@ class FibonacciExtensionTool extends BaseDrawing {
                 .attr('data-fib-label', level.value)
                 .attr('x', textX)
                 .attr('y', textY)
-                .attr('text-anchor', 'start')
+                .attr('text-anchor', labelPlacement.anchor)
                 .attr('fill', level.color)
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
