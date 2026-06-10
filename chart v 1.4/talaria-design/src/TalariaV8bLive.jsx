@@ -2499,6 +2499,15 @@ function getPrimarySelectedDrawingForActiveChart(editingRefDrawing) {
   return getSelectedDrawingAcrossCharts(null);
 }
 
+/** Quick bar must not paint unless the chart still has a selected drawing. */
+function v9GetLiveSelectedDrawingForQuickBar() {
+  try {
+    return getPrimarySelectedDrawingForActiveChart(null) || getSelectedDrawingAcrossCharts(null);
+  } catch (_) {
+    return null;
+  }
+}
+
 function resolveDrawingManagerForDrawing(drawing) {
   if (!drawing) return null;
   for (const dm of enumerateV9DrawingManagersActiveFirst()) {
@@ -12590,6 +12599,8 @@ const TalariaV8bLive = () => {
     tlBarDrawingGroupRaw === "brush"
       ? (v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, "brush") || (groupSelected.brush?.icon ?? "vwap"))
       : null;
+  const tlBarLiveSelection = tlBarSelected ? v9GetLiveSelectedDrawingForQuickBar() : null;
+  const tlBarShowQuickBar = tlBarSelected && !!tlBarLiveSelection;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
     (tlSettOpen || closing.has("tlsett")) &&
@@ -16821,6 +16832,25 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("talaria:v9-cleared-selection", onClear);
   }, []);
 
+  // Drop stale tlBarSelected when the chart no longer has a selected drawing (e.g. freehand
+  // finalize clears selection but React state lagged, or paste while brush was armed).
+  useEffect(() => {
+    if (!tlBarSelected) return;
+    const sync = () => {
+      if (!v9GetLiveSelectedDrawingForQuickBar()) {
+        setTlBarSelected(false);
+        setTlBarSelectedType(null);
+      }
+    };
+    sync();
+    window.addEventListener("talaria:v9-cleared-selection", sync);
+    window.addEventListener("pointerup", sync, true);
+    return () => {
+      window.removeEventListener("talaria:v9-cleared-selection", sync);
+      window.removeEventListener("pointerup", sync, true);
+    };
+  }, [tlBarSelected]);
+
   // Chart.js fires this whenever a drawing becomes primary selection (see drawing-tools-manager
   // `_notifyV9SelectionSync`) — survives toolbar wrapper loss and reaches always after finalize/select.
   useEffect(() => {
@@ -16838,7 +16868,8 @@ const TalariaV8bLive = () => {
             if (d && d.type === t) live = d;
           }
         } catch (_) {}
-        const drawing = live || { type: t };
+        if (!live) return;
+        const drawing = live;
         const editSess = br.editingDrawingRef?.current;
         const prevSelectedType = br.v9LastSelectedDrawingTypeRef?.current ?? null;
         const selectedTypeChanged = !!(live && live.type && prevSelectedType !== live.type);
@@ -26463,7 +26494,7 @@ const TalariaV8bLive = () => {
       {/* Visibility: chart selection AND drawing maps to a line/shape rail group.
           Text/label drawings map to group "text" (not in TL_LINE_SHAPE_GROUPS) — without
           this guard, effectiveTlGroup is null and tlSubTool defaulted to Trend Line. */}
-      {tlBarSelected && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
+      {tlBarShowQuickBar && tlBarDrawingGroup && TL_LINE_SHAPE_GROUPS.has(tlBarDrawingGroup) && tlBarDrawingGroupRaw !== "brush" && (()=>{
         const TlBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "tl-del";
@@ -27186,7 +27217,7 @@ const TalariaV8bLive = () => {
 
 
       {/* ── Anchored VWAP floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "vwap" && (()=>{
+      {tlBarShowQuickBar && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "vwap" && (()=>{
         const VBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vb-del";
@@ -27384,7 +27415,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Fixed Range Volume Profile floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "volProfile" && (()=>{
+      {tlBarShowQuickBar && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "volProfile" && (()=>{
         const VPBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "vpb-del";
@@ -27626,7 +27657,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Anchored Volume Profile floating toolbar ── */}
-      {tlBarSelected && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "anchoredVol" && (()=>{
+      {tlBarShowQuickBar && tlBarDrawingGroupRaw === "brush" && tlBarVolumeIcon === "anchoredVol" && (()=>{
         const AVBtn = ({id, isAct, children, onClick, w}) => {
           const isH = hov === id;
           const isDel = id === "avb-del";

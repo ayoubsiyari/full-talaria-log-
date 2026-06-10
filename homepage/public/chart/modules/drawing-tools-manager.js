@@ -5738,6 +5738,12 @@ class DrawingToolsManager {
                 } catch (e) {}
             }
         } else {
+            this.drawings.forEach((d) => {
+                if (d && d.selected) {
+                    d.deselect();
+                    this.renderDrawing(d, { skipInteraction: true });
+                }
+            });
             this.toolbar.hide();
             this.selectedDrawing = null;
             this.selectedDrawings = [];
@@ -8820,7 +8826,11 @@ class DrawingToolsManager {
             this._applyClonePointOffset(newDrawing);
 
             this.addDrawing(newDrawing);
-            this.selectDrawing(newDrawing);
+            // While brush/highlighter stay armed, addDrawing clears selection — do not re-select
+            // or the V9 quick bar sticks with nothing visibly selected on canvas.
+            if (!this._isPersistentFreehandTool(this.currentTool)) {
+                this.selectDrawing(newDrawing);
+            }
             return true;
             // [debug removed]
         } catch (err) {
