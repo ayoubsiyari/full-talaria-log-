@@ -18160,6 +18160,34 @@ const TalariaV8bLive = () => {
     });
   }, []);
 
+  /** Fib level values mode (Value / Percent / …) — immediate chart sync. */
+  const applyTlFibLevelsMode = useCallback((fibLevelsMode) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, fibLevelsMode };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
+  /** Fib level label position (Left / Center / Right) — immediate chart sync. */
+  const applyTlFibLevelPosition = useCallback((fibLevelPosition) => {
+    flushSync(() => {
+      setTlStyle((s) => {
+        const next = { ...s, fibLevelPosition };
+        v9FlushTlStyleToChartTargets(next, {
+          editingRefDrawing: editingDrawingRef.current?.drawing ?? null,
+          resolveLegacyTool,
+        });
+        return next;
+      });
+    });
+  }, []);
+
   /** Fib wedge/arcs/circles Input-tab level rows — immediate chart sync. */
   const applyTlFibLevelsPatch = useCallback((subToolIcon, rowMapper) => {
     flushSync(() => {
@@ -20916,7 +20944,7 @@ const TalariaV8bLive = () => {
                                   {options.map(opt=>{
                                     const isA=val===opt; const isH=hov===`fibLM-${opt}`;
                                     return (
-                                      <div key={opt} onClick={()=>{setTlStyle(s=>({...s,fibLevelsMode:opt}));setTlStyleDrop(null);}}
+                                      <div key={opt} onClick={()=>{applyTlFibLevelsMode(opt);setTlStyleDrop(null);}}
                                         onMouseEnter={()=>setHov(`fibLM-${opt}`)} onMouseLeave={()=>setHov(null)}
                                         style={{ padding:"6px 12px", cursor:"default", position:"relative",
                                                  background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
@@ -20963,7 +20991,7 @@ const TalariaV8bLive = () => {
                               {options.map(opt=>{
                                 const isA=val===opt; const isH=hov===`fibLP-${opt}`;
                                 return (
-                                  <div key={opt} onClick={()=>{setTlStyle(s=>({...s,fibLevelPosition:opt}));setTlStyleDrop(null);}}
+                                  <div key={opt} onClick={()=>{applyTlFibLevelPosition(opt);setTlStyleDrop(null);}}
                                     onMouseEnter={()=>setHov(`fibLP-${opt}`)} onMouseLeave={()=>setHov(null)}
                                     style={{ padding:"6px 12px", cursor:"default", position:"relative",
                                              background:isA?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
