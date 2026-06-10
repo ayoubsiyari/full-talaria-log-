@@ -1369,37 +1369,28 @@ function wmaStyleParams() {
 function demaInputParams() {
     return [
         { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
-        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' }
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' }
     ];
 }
 
 /** Double EMA (DEMA) Style tab. */
 function demaStyleParams() {
-    return [
-        { id: 'showLine', label: 'Show DEMA line', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Line color', type: 'color', default: '#00bcd4', tab: 'style' },
-        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
-        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-    ];
+    return smoothedOverlayMaStyleParams('DEMA', '#00bcd4');
 }
 
 /** Triple EMA (TEMA) Input tab. */
 function temaInputParams() {
     return [
-        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' }
+        { id: 'period', label: 'Length', type: 'number', default: 20, min: 1, tab: 'input' },
+        { id: 'source', label: 'Source (OHLC Source)', type: 'select', options: OHLC_SOURCE_OPTIONS, default: 'close', tab: 'input' },
+        { id: 'offset', label: 'Offset', type: 'number', default: 0, step: 1, tab: 'input' }
     ];
 }
 
 /** Triple EMA (TEMA) Style tab. */
 function temaStyleParams() {
-    return [
-        { id: 'showLine', label: 'Show TEMA line', type: 'checkbox', default: true, tab: 'style' },
-        { id: 'color', label: 'Line color', type: 'color', default: '#ab47bc', tab: 'style' },
-        { id: 'lineStyle', label: 'Line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
-        { id: 'lineWidth', label: 'Line thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
-        { id: 'showLabel', label: 'Show Label (Price & Time)', type: 'checkbox', default: true, tab: 'style' }
-    ];
+    return smoothedOverlayMaStyleParams('TEMA', '#ab47bc');
 }
 
 /** Hull Moving Average Input tab. */

@@ -171,10 +171,13 @@
     }
 
     function applyTemaStyleFromParams(indicator, params) {
-        indicator.params.period = params.period != null ? params.period : 20;
+        applyMaLengthSourceFromParams(indicator, params, 20);
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        indicator.params.offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.overlay = true;
+        indicator.separatePanel = false;
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#ab47bc';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
@@ -187,9 +190,12 @@
 
     function applyDemaStyleFromParams(indicator, params) {
         applyMaLengthSourceFromParams(indicator, params, 20);
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        indicator.params.offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
         const legacyW = params.lineWidth != null ? params.lineWidth : 2;
         const legacyS = params.lineStyle || 'Line';
         indicator.overlay = true;
+        indicator.separatePanel = false;
         indicator.style.showLine = params.showLine !== false;
         indicator.style.color = params.color || '#00bcd4';
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : legacyW;
@@ -3758,8 +3764,19 @@
         });
     }
 
-    function calculateTEMA(data, period) {
-        const source = 'close';
+    function calculateDEMAOverlayData(data, params) {
+        params = params || {};
+        const period = params.period != null ? params.period : 20;
+        const source = params.source || 'close';
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+        let line = calculateDEMA(data, period, source);
+        if (offset) line = shiftLineSeries(line, offset);
+        return line;
+    }
+
+    function calculateTEMA(data, period, source) {
+        source = source || 'close';
         const e1 = calculateEMA(data, period, source);
         const p2 = data.map(function(d, i) {
             const v = e1[i];
@@ -3780,6 +3797,17 @@
             if (a == null || b == null || c == null) return null;
             return 3 * a - 3 * b + c;
         });
+    }
+
+    function calculateTEMAOverlayData(data, params) {
+        params = params || {};
+        const period = params.period != null ? params.period : 20;
+        const source = params.source || 'close';
+        const offsetRaw = params.offset != null ? Number(params.offset) : 0;
+        const offset = Number.isFinite(offsetRaw) ? (offsetRaw | 0) : 0;
+        let line = calculateTEMA(data, period, source);
+        if (offset) line = shiftLineSeries(line, offset);
+        return line;
     }
 
     function calculateHMA(data, period, source) {
@@ -5301,12 +5329,12 @@
             case 'dema':
                 applyDemaStyleFromParams(indicator, params);
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source);
+                this.indicators.data[indicator.id] = calculateDEMAOverlayData(this.data, indicator.params);
                 break;
             case 'tema':
                 applyTemaStyleFromParams(indicator, params);
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateTEMAOverlayData(this.data, indicator.params);
                 break;
             case 'hma':
                 applyHmaStyleFromParams(indicator, params);
@@ -6380,15 +6408,31 @@
         if (indicator.type === 'supertrend') {
             applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
-        if (indicator.type === 'dema' || indicator.type === 'tema' || indicator.type === 'hma') {
-            const mergedMp = Object.assign({}, indicator.style, indicator.params, newParams);
-            if (indicator.type === 'dema') {
-                applyDemaStyleFromParams(indicator, mergedMp);
-            } else if (indicator.type === 'tema') {
-                applyTemaStyleFromParams(indicator, mergedMp);
-            } else {
-                applyHmaStyleFromParams(indicator, mergedMp);
+        if (indicator.type === 'dema') {
+            const mergedDema = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyDemaStyleFromParams(indicator, mergedDema);
+            const demaRecalc = ['period', 'source', 'offset'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (demaRecalc) {
+                indicator.name = 'DEMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateDEMAOverlayData(this.data, indicator.params);
             }
+        }
+        if (indicator.type === 'tema') {
+            const mergedTema = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyTemaStyleFromParams(indicator, mergedTema);
+            const temaRecalc = ['period', 'source', 'offset'].some(function(k) {
+                return newParams[k] !== undefined;
+            });
+            if (temaRecalc) {
+                indicator.name = 'TEMA(' + indicator.params.period + ')';
+                this.indicators.data[indicator.id] = calculateTEMAOverlayData(this.data, indicator.params);
+            }
+        }
+        if (indicator.type === 'hma') {
+            const mergedHma = Object.assign({}, indicator.style, indicator.params, newParams);
+            applyHmaStyleFromParams(indicator, mergedHma);
             if (newParams.period !== undefined || newParams.source !== undefined) {
                 recalcMultiPassOverlayMa(this, indicator);
             }
@@ -6589,11 +6633,11 @@
                 break;
             case 'dema':
                 indicator.name = 'DEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                this.indicators.data[indicator.id] = calculateDEMAOverlayData(this.data, indicator.params);
                 break;
             case 'tema':
                 indicator.name = 'TEMA(' + indicator.params.period + ')';
-                this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
+                this.indicators.data[indicator.id] = calculateTEMAOverlayData(this.data, indicator.params);
                 break;
             case 'hma':
                 indicator.name = 'HMA(' + indicator.params.period + ')';
@@ -6899,14 +6943,16 @@
         indicator.separatePanel = false;
         if (indType === 'dema') {
             indicator.name = 'DEMA(' + period + ')';
-            chart.indicators.data[indicator.id] = calculateDEMA(
+            chart.indicators.data[indicator.id] = calculateDEMAOverlayData(
                 chart.data,
-                period,
-                (indicator.params && indicator.params.source) || 'close'
+                indicator.params || { period: period, source: 'close' }
             );
         } else if (indType === 'tema') {
             indicator.name = 'TEMA(' + period + ')';
-            chart.indicators.data[indicator.id] = calculateTEMA(chart.data, period);
+            chart.indicators.data[indicator.id] = calculateTEMAOverlayData(
+                chart.data,
+                indicator.params || { period: period, source: 'close' }
+            );
         } else if (indType === 'hma') {
             indicator.name = 'HMA(' + period + ')';
             chart.indicators.data[indicator.id] = calculateHMA(
@@ -7698,9 +7744,41 @@
                 this.drawATRBands(data, indicator.style, startIndex, endIndex);
             } else if (indicator.type === 'custom') {
                 this.drawCustomOverlayPlots(data, indicator, startIndex, endIndex);
-            } else if (indType === 'hma' || indType === 'tema' || indType === 'dema') {
-                if (indicator.style.showLine !== false) {
-                    this.drawLineIndicator(data, indicator.style.color, indicator.style.lineWidth, startIndex, endIndex, indicator.style.lineStyle, { dashStyle: indicator.style.lineDashStyle || 'Solid' });
+            } else if (indType === 'dema') {
+                if (indicator.style.showLine !== false && Array.isArray(data)) {
+                    this.drawLineIndicator(
+                        data,
+                        indicator.style.color,
+                        indicator.style.lineWidth,
+                        startIndex,
+                        endIndex,
+                        indicator.style.lineStyle,
+                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                    );
+                }
+            } else if (indType === 'tema') {
+                if (indicator.style.showLine !== false && Array.isArray(data)) {
+                    this.drawLineIndicator(
+                        data,
+                        indicator.style.color,
+                        indicator.style.lineWidth,
+                        startIndex,
+                        endIndex,
+                        indicator.style.lineStyle,
+                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                    );
+                }
+            } else if (indType === 'hma') {
+                if (indicator.style.showLine !== false && Array.isArray(data)) {
+                    this.drawLineIndicator(
+                        data,
+                        indicator.style.color,
+                        indicator.style.lineWidth,
+                        startIndex,
+                        endIndex,
+                        indicator.style.lineStyle,
+                        { dashStyle: indicator.style.lineDashStyle || 'Solid' }
+                    );
                 }
             } else if (indType === 'wma') {
                 if (indicator.style.showLine !== false) {
