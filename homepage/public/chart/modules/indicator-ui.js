@@ -398,14 +398,13 @@ function psarInputParams() {
     ];
 }
 
-/** Parabolic SAR Style tab (up/down colors + shared plot style). */
+/** Parabolic SAR Style tab (up/down colors + dot size). */
 function psarStyleParams() {
     return [
         { id: 'showUp', label: 'Show up', type: 'checkbox', default: true, tab: 'style' },
         { id: 'showDown', label: 'Show down', type: 'checkbox', default: true, tab: 'style' },
         { id: 'bullColor', label: 'Up color', type: 'color', default: '#26a69a', tab: 'style' },
         { id: 'bearColor', label: 'Down color', type: 'color', default: '#ef5350', tab: 'style' },
-        { id: 'lineStyle', label: 'Parabolic SAR line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Circles', tab: 'style' },
         { id: 'lineWidth', label: 'Parabolic SAR thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
 }
@@ -5286,7 +5285,7 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 rows: [
                     v9ColorRow('Up', 'bullColor', 'showUp'),
                     v9ColorRow('Down', 'bearColor', 'showDown'),
-                    v9PlotRow('Plot', null, 'lineStyle', 'lineWidth', null)
+                    v9PlotRow('Thickness', null, null, 'lineWidth', null, true)
                 ]
             }],
             footers: footers

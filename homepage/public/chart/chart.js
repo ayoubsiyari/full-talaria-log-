@@ -24081,9 +24081,13 @@ class Chart {
                     this.canvas.style.cursor = 'ew-resize';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'ew-resize';
                 } else if (mode === 'separatePanelPlot') {
-                    const panCursor = this.cursorType === 'dot' ? 'none' : 'move';
-                    this.canvas.style.cursor = panCursor;
-                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = panCursor;
+                    let cursorStyle = this.getCurrentCursorStyle();
+                    if (typeof this.findSeparatePanelIndicatorAtPoint === 'function') {
+                        const indHit = this.findSeparatePanelIndicatorAtPoint(mx, my);
+                        if (indHit) cursorStyle = 'pointer';
+                    }
+                    this.canvas.style.cursor = cursorStyle;
+                    if (this.svg && this.svg.node()) this.svg.node().style.cursor = cursorStyle;
                 } else if (this.tool || (this.drawingManager && this.drawingManager.currentTool)) {
                     this.canvas.style.cursor = 'crosshair';
                     if (this.svg && this.svg.node()) this.svg.node().style.cursor = 'crosshair';
@@ -24585,7 +24589,7 @@ class Chart {
             const [mx, my] = this._eventCanvasLocalXY(e);
             const mode = this.cursor.mode || detectCursorMode(mx, my);
 
-            if (mode === 'chart'
+            if ((mode === 'chart' || mode === 'separatePanelPlot')
                 && typeof this.handleSeparatePanelIndicatorDoubleClick === 'function'
                 && this.handleSeparatePanelIndicatorDoubleClick(mx, my)) {
                 e.preventDefault();

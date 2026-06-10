@@ -33,11 +33,15 @@ function applyCanvasTheme(targetCs, settings) {
     targetCs.showCrosshair = wantCross;
     c = true;
   }
-  let cxPat = settings.crosshairStyle || "dashed";
-  if (cxPat === "longDash") cxPat = "dashed";
-  if (cxPat !== "solid" && cxPat !== "dotted") cxPat = "dashed";
+  const cxMap = { solid: "solid", dashed: "dashed", dotted: "dotted", longDash: "longDash" };
+  const cxPat = cxMap[settings.crosshairStyle] || "dashed";
   if (targetCs.crosshairPattern !== cxPat) {
     targetCs.crosshairPattern = cxPat;
+    c = true;
+  }
+  const cxLw = Math.max(1, parseInt(settings.crosshairLineThickness, 10) || 1);
+  if (targetCs.crosshairWidth !== cxLw) {
+    targetCs.crosshairWidth = cxLw;
     c = true;
   }
 

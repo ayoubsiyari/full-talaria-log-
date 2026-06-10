@@ -11177,7 +11177,7 @@ const TalariaV8bLive = () => {
     bearBody: "#F23645", bearBorder: "#F23645", bearWick: "#F23645", unifiedBarColor: false, unifiedBarColorVal: "#089981",
     orderPlacement: "instant", showOrderHistory: true, showOpenOrders: true, timeFormat: "24h",
     gridLinesOn: true, gridLineStyle: "solid", gridLineThickness: 1,
-    crosshairOn: true, crosshairStyle: "dashed",
+    crosshairOn: true, crosshairStyle: "dashed", crosshairLineThickness: 1,
     priceLineStyle: "dashed", priceLineThickness: 1,
     chartTemplate: "Talaria Dark",
   };
@@ -11262,7 +11262,7 @@ const TalariaV8bLive = () => {
   //   gridLinesOn → showGrid + gridStyle (Vert and horz | None)
   //   gridLineStyle / gridLineThickness → gridPattern, gridLineWidth
   //   crosshairOn → showCrosshair (chart.js updateCrosshair + panel sync)
-  //   crosshairStyle → crosshairPattern
+  //   crosshairStyle / crosshairLineThickness → crosshairPattern, crosshairWidth
   //   priceLineStyle / priceLineThickness → priceLinePattern, priceLineWidth
   // Same fn as chart/modules/v9-theme-bridge.js — exposed for legacy HTML; implementation is bundled here
   // so dev (vite proxy to remote /chart/modules/) cannot 404 the bridge.
@@ -28742,11 +28742,34 @@ const TalariaV8bLive = () => {
                 );
               })()}
               {/* Crosshair row */}
-              <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
-                {Chk(settings.crosshairOn,"crosshairOn","chkCross","Crosshair")}
-                <div onMouseEnter={()=>setSwHov("crosshairColor")} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,"crosshairColor")}
-                  style={v9TlColorSwatchBoxStyle(settings.crosshairColor, { active: colorPicker === "crosshairColor", hover: swHov === "crosshairColor" })}/>
-              </div>
+              {(()=>{
+                const cxStyle=settings.crosshairStyle||"dashed", cxThick=settings.crosshairLineThickness||1;
+                const cxDash={solid:"none",dashed:"5,4",dotted:"1.5,4",longDash:"10,5"}[cxStyle]||"none";
+                const cxH=Math.max(cxThick*1.8+4,8);
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 0"}}>
+                    {Chk(settings.crosshairOn,"crosshairOn","chkCross","Crosshair")}
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("cxsb")} onMouseLeave={()=>setSwHov(null)}
+                      onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:120}));setSettDrop(settDrop==="crosshairStyle"?null:"crosshairStyle");}}
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="crosshairStyle"?"rgba(74,106,255,0.08)":swHov==="cxsb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      <svg width={24} height={10}><line x1={1} y1={5} x2={23} y2={5} stroke={c.ts} strokeWidth={1.2} strokeDasharray={cxDash}/></svg>
+                      <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="crosshairStyle"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {settDrop==="crosshairStyle"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                      {settDrop!=="crosshairStyle"&&swHov==="cxsb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                    </div>
+                    <div data-sett-drop-anchor="1" onMouseEnter={()=>setSwHov("cxtb")} onMouseLeave={()=>setSwHov(null)}
+                      onClick={(e)=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setSettDropPos(sdPos(r,{h:150}));setSettDrop(settDrop==="crosshairThick"?null:"crosshairThick");}}
+                      style={{display:"flex",alignItems:"center",gap:3,padding:"0 5px",height:20,position:"relative",background:settDrop==="crosshairThick"?"rgba(74,106,255,0.08)":swHov==="cxtb"?c.hv:"transparent",cursor:"default",transition:"background 0.12s",flexShrink:0}}>
+                      <svg width={24} height={Math.max(cxH,10)}><line x1={1} y1={Math.max(cxH,10)/2} x2={23} y2={Math.max(cxH,10)/2} stroke={c.ts} strokeWidth={cxThick*1.2} strokeLinecap="round"/></svg>
+                      <svg width={7} height={5}><path d="M0,0 L3.5,4.5 L7,0" stroke={settDrop==="crosshairThick"?c.acL:c.tm} strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {settDrop==="crosshairThick"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"70%",height:2,background:`linear-gradient(90deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`,pointerEvents:"none"}}/>}
+                      {settDrop!=="crosshairThick"&&swHov==="cxtb"&&<div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:"50%",height:1,background:`linear-gradient(90deg,transparent,`+c.hvLn+`,transparent)`,pointerEvents:"none"}}/>}
+                    </div>
+                    <div onMouseEnter={()=>setSwHov("crosshairColor")} onMouseLeave={()=>setSwHov(null)} onClick={(e)=>openCP(e,"crosshairColor")}
+                      style={v9TlColorSwatchBoxStyle(settings.crosshairColor, { active: colorPicker === "crosshairColor", hover: swHov === "crosshairColor" })}/>
+                  </div>
+                );
+              })()}
               {/* Price Line row */}
               {(()=>{
                 const pStyle=settings.priceLineStyle||"dashed", pThick=settings.priceLineThickness||1;
@@ -34484,7 +34507,7 @@ const TalariaV8bLive = () => {
         const tplOpts = [...(customTemplates.length>0?[{divider:"SAVED"},...customTemplates,{divider:"DEFAULT"}]:[]),...defaultTplOpts];
         const tzScrollH = Math.min(320, Math.max(160, (typeof window !== "undefined" ? window.innerHeight : 720) / Z - 130));
         const tzRefUiMs = getV9ChartBarTimeMs(v9ActiveChartInstance());
-        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["Default","0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts,scrollMaxPx:tzScrollH} };
+        const cfgMap = { gridStyle:{key:"gridLineStyle",type:"style"}, gridThick:{key:"gridLineThickness",type:"thick"}, crosshairStyle:{key:"crosshairStyle",type:"style"}, crosshairThick:{key:"crosshairLineThickness",type:"thick"}, priceStyle:{key:"priceLineStyle",type:"style"}, priceThick:{key:"priceLineThickness",type:"thick"}, chartTimeFormat:{key:"timeFormat",type:"select",opts:["24h","12h"]}, chartTimezone:{key:"timezone",type:"select",opts:getChartTimezoneSelectOptions(tzRefUiMs),scrollMaxPx:tzScrollH}, chartPrecision:{key:"precision",type:"select",opts:["Default","0.00000","0.0000","0.000","0.00","0.0"]}, chartTemplate:{key:"chartTemplate",type:"template",opts:tplOpts,scrollMaxPx:tzScrollH} };
         if (settDrop==="profLang") return <>
           <div data-sdrop="1" data-sett-drop-root="1" onClick={e=>e.stopPropagation()} style={{position:"fixed",...(settDropPos.cssBottom!=null?{bottom:settDropPos.cssBottom}:{top:settDropPos.top}),left:settDropPos.left,zIndex:10120,width:settDropPos.w||140,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`,fontFamily:F,animation:"tlrPopIn 0.13s ease"}}>
             <div style={{height:2,background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})`}}/>

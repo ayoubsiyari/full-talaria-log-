@@ -688,7 +688,8 @@
         indicator.style.bearColor = params.bearColor || '#ef5350';
         indicator.style.color = indicator.style.bullColor;
         indicator.style.lineWidth = params.lineWidth != null ? params.lineWidth : 2;
-        applyPlotDashFieldsFromParams(indicator.style, params, [['lineStyle', 'lineDashStyle', 'Circles']]);
+        indicator.style.lineStyle = 'Circles';
+        indicator.style.lineDashStyle = 'Solid';
     }
 
     function applyRsiStyleFromParams(indicator, params) {
@@ -9998,8 +9999,16 @@ Chart.prototype.handleSeparatePanelClick = function(x, y) {
 
     Chart.prototype.handleSeparatePanelIndicatorDoubleClick = function(mx, my) {
         const hit = this.findSeparatePanelIndicatorAtPoint(mx, my);
-        if (!hit) return false;
-        return this.openOverlayIndicatorSettings(hit.id);
+        if (hit) return this.openOverlayIndicatorSettings(hit.id);
+
+        const slot = typeof this._findSeparatePanelPlotSlot === 'function'
+            ? this._findSeparatePanelPlotSlot(mx, my)
+            : null;
+        if (!slot || !slot.indicator) return false;
+        const ind = slot.indicator;
+        if (ind.visible === false || ind.hidePlot === true) return false;
+        if (ind.type === 'volume' || ind.isVolume) return false;
+        return this.openOverlayIndicatorSettings(ind.id);
     };
 
     Chart.prototype.selectOverlayIndicator = function(id) {
