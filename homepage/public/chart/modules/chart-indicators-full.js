@@ -6271,14 +6271,18 @@
         if (indicator.type === 'supertrend') {
             applySupertrendStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
         }
-        if (indicator.type === 'hma') {
-            applyHmaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
-        }
-        if (indicator.type === 'tema') {
-            applyTemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
-        }
-        if (indicator.type === 'dema') {
-            applyDemaStyleFromParams(indicator, Object.assign({}, indicator.style, indicator.params, newParams));
+        if (indicator.type === 'dema' || indicator.type === 'tema' || indicator.type === 'hma') {
+            const mergedMp = Object.assign({}, indicator.style, indicator.params, newParams);
+            if (indicator.type === 'dema') {
+                applyDemaStyleFromParams(indicator, mergedMp);
+            } else if (indicator.type === 'tema') {
+                applyTemaStyleFromParams(indicator, mergedMp);
+            } else {
+                applyHmaStyleFromParams(indicator, mergedMp);
+            }
+            if (newParams.period !== undefined || newParams.source !== undefined) {
+                recalcMultiPassOverlayMa(this, indicator);
+            }
         }
         if (indicator.type === 'wma' || indicator.type === 'sma') {
             const mergedMa = Object.assign({}, indicator.style, indicator.params, newParams);
@@ -6760,6 +6764,36 @@
         }
     }
 
+    function recalcMultiPassOverlayMa(chart, indicator) {
+        if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
+        if (!chart.indicators.data) chart.indicators.data = {};
+        const indType = String(indicator.type || '').toLowerCase();
+        indicator.type = indType;
+        const period = indicator.params && indicator.params.period != null
+            ? Math.max(1, Number(indicator.params.period) | 0)
+            : 20;
+        indicator.overlay = true;
+        indicator.separatePanel = false;
+        if (indType === 'dema') {
+            indicator.name = 'DEMA(' + period + ')';
+            chart.indicators.data[indicator.id] = calculateDEMA(
+                chart.data,
+                period,
+                (indicator.params && indicator.params.source) || 'close'
+            );
+        } else if (indType === 'tema') {
+            indicator.name = 'TEMA(' + period + ')';
+            chart.indicators.data[indicator.id] = calculateTEMA(chart.data, period);
+        } else if (indType === 'hma') {
+            indicator.name = 'HMA(' + period + ')';
+            chart.indicators.data[indicator.id] = calculateHMA(
+                chart.data,
+                period,
+                (indicator.params && indicator.params.source) || 'close'
+            );
+        }
+    }
+
     /**
      * Calculate all active indicators in a background Web Worker.
      * Falls back to synchronous recalculateIndicators() if worker is unavailable.
@@ -6785,10 +6819,18 @@
         // Build indicator config map for worker
         var indicators = {};
         chart.indicators.active.forEach(function(ind) {
-            // cotnet / ICT complex types are skipped in worker — run sync for those
-            var workerSkip = ['cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or', 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'];
+            // Multi-pass MAs + ICT/session types stay on main thread (worker pseudo-series diverges).
+            var workerSkip = [
+                'dema', 'tema', 'hma',
+                'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
+                'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'
+            ];
             var indType = String(ind.type || '').toLowerCase();
             ind.type = indType;
+            if (['dema', 'tema', 'hma'].indexOf(indType) >= 0) {
+                try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                return;
+            }
             if (workerSkip.indexOf(indType) >= 0) return;
             indicators[ind.id] = { type: indType, params: ind.params || {} };
         });
@@ -6823,6 +6865,12 @@
             if (!chart.indicators) chart.indicators = {};
             if (!chart.indicators.data) chart.indicators.data = {};
             Object.assign(chart.indicators.data, results);
+            chart.indicators.active.forEach(function(ind) {
+                const t = String(ind.type || '').toLowerCase();
+                if (t === 'dema' || t === 'tema' || t === 'hma') {
+                    try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
+                }
+            });
             if (typeof chart.scheduleRender === 'function') chart.scheduleRender();
         }).catch(function(err) {
             if (chart._indicatorWorkerSeq !== mySeq) return;
@@ -6960,19 +7008,9 @@
                     });
                     break;
                 case 'dema':
-                    indicator.overlay = true;
-                    indicator.separatePanel = false;
-                    this.indicators.data[indicator.id] = calculateDEMA(this.data, indicator.params.period, indicator.params.source || 'close');
-                    break;
                 case 'tema':
-                    indicator.overlay = true;
-                    indicator.separatePanel = false;
-                    this.indicators.data[indicator.id] = calculateTEMA(this.data, indicator.params.period);
-                    break;
                 case 'hma':
-                    indicator.overlay = true;
-                    indicator.separatePanel = false;
-                    this.indicators.data[indicator.id] = calculateHMA(this.data, indicator.params.period, indicator.params.source || 'close');
+                    recalcMultiPassOverlayMa(this, indicator);
                     break;
                 case 'roc':
                     this.indicators.data[indicator.id] = calculateROC(this.data, indicator.params.period, indicator.params.source || 'close');
