@@ -1202,10 +1202,10 @@ function v9IsFilledShapeBorderSubIcon(icon) {
 function v9BorderDashAndWidthFromTlStyle(tlStyle) {
   const type = tlStyle?.borderType || tlStyle?.lineType || "solid";
   const baseW = parseInt(tlStyle?.borderWidth, 10) || parseInt(tlStyle?.lineWidth, 10) || 1;
-  if (type === "bold") {
-    return { dash: "", width: Math.max(2, baseW === 1 ? 2 : baseW) };
-  }
-  return { dash: V9_DASH_TO_LEGACY[type] ?? "", width: Math.max(1, baseW) };
+  const dash = type === "bold" || type === "solid"
+    ? ""
+    : (V9_DASH_TO_LEGACY[type] ?? "");
+  return { dash, width: Math.max(1, baseW) };
 }
 function v9BorderColorFromTlStyle(tlStyle) {
   return tlStyle?.borderColor || tlStyle?.lineColor || "#787b86";

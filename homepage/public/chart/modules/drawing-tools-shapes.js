@@ -10,7 +10,7 @@ const RECTANGLE_TEXT_DEFAULTS = {
     fontStyle: 'normal',
     textColor: '#FFFFFF',
     textAlign: 'center',
-    textPosition: 'middle',
+    textPosition: 'top',
     textOffsetX: 0,
     textOffsetY: 0,
     textPadding: 12
@@ -36,6 +36,21 @@ function lineTextOffsetY(style, textVAlign) {
     if (textVAlign === 'middle') return 0;
     if (Number.isFinite(style.textOffsetY)) return style.textOffsetY;
     return style.textOffsetY === undefined ? -8 : 0;
+}
+
+/** Match `LINE_LABEL_OFFSET` in drawing-tools-lines.js — gap from stroke to label anchor. */
+function shapeExternalLabelOffset(fontSize) {
+    const LINE_LABEL_OFFSET = 14;
+    const fs = Number(fontSize) || RECTANGLE_TEXT_DEFAULTS.fontSize;
+    return LINE_LABEL_OFFSET + Math.max(0, fs / 2 - 6);
+}
+
+/** Same default-zeroing as trendline / ray tools (`textOffsetY: -8` → no extra shift). */
+function shapeTextOffsetY(style) {
+    const raw = style && style.textOffsetY;
+    if (raw === undefined || raw === null || raw === -8) return 0;
+    if (Number.isFinite(raw)) return raw;
+    return 0;
 }
 
 function isRectangleExtendOn(style, key) {
@@ -448,7 +463,7 @@ class RectangleTool extends BaseDrawing {
     }
 
     _normalizeRectTextVAlign(style) {
-        let position = (style.textVAlign || style.textPosition || 'middle').toLowerCase();
+        let position = (style.textVAlign || style.textPosition || 'top').toLowerCase();
         if (position === 'start') position = 'top';
         if (position === 'end') position = 'bottom';
         if (position === 'center') position = 'middle';
@@ -488,28 +503,31 @@ class RectangleTool extends BaseDrawing {
                 baseX = x + width / 2;
         }
 
-        let topY;
+        let anchorY;
         let useMiddleBaseline = false;
-        const externalGap = Math.max(
-            Number.isFinite(this.style.textPadding) ? Math.min(this.style.textPadding, 12) : 5,
-            fontSize * 0.35
-        );
+        let useAppendTextLabel = false;
+        const borderStyle = resolveShapeBorderDrawStyle(this.style, scaleFactor);
+        const borderPad = borderStyle.width / 2;
+        const verticalOffset = shapeExternalLabelOffset(baseFontSize);
+        const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
+        const offsetY = shapeTextOffsetY(this.style);
         switch (position) {
             case 'top':
-                topY = y - externalGap - blockHeight;
+                useAppendTextLabel = true;
+                useMiddleBaseline = true;
+                anchorY = y - borderPad - verticalOffset + offsetY;
                 break;
             case 'bottom':
-                topY = y + height + externalGap;
+                useAppendTextLabel = true;
+                useMiddleBaseline = true;
+                anchorY = y + height + borderPad + verticalOffset + offsetY;
                 break;
             default:
                 useMiddleBaseline = true;
-                topY = y + height / 2;
+                anchorY = y + height / 2 + offsetY;
         }
-
-        const offsetX = Number.isFinite(this.style.textOffsetX) ? this.style.textOffsetX : 0;
-        const offsetY = Number.isFinite(this.style.textOffsetY) ? this.style.textOffsetY : 0;
         const textX = baseX + offsetX;
-        const textTop = topY + offsetY;
+        const textTop = anchorY;
 
         const fontFamily = this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily;
         const fontWeight = this.style.fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight;
@@ -558,11 +576,14 @@ class RectangleTool extends BaseDrawing {
             hasText: true,
             textX,
             textTop,
+            anchorY,
+            useAppendTextLabel,
             useMiddleBaseline,
             align,
             anchor,
             lines,
             fontSize,
+            baseFontSize,
             lineHeight,
             blockHeight,
             fontFamily: resolved.fontFamily,
@@ -946,10 +967,12 @@ class RectangleTool extends BaseDrawing {
         const {
             textX,
             textTop,
+            useAppendTextLabel,
             useMiddleBaseline,
             anchor,
             lines,
             fontSize,
+            baseFontSize,
             lineHeight,
             fontFamily,
             fontWeight,
@@ -957,6 +980,22 @@ class RectangleTool extends BaseDrawing {
             direction,
             italicSkew
         } = layout;
+
+        if (useAppendTextLabel && typeof appendTextLabel === 'function') {
+            appendTextLabel(this.group, this.text, {
+                x: textX,
+                y: textTop,
+                anchor,
+                yAnchor: 'middle',
+                fill: this.style.textColor || RECTANGLE_TEXT_DEFAULTS.textColor,
+                fontSize: baseFontSize || fontSize,
+                fontFamily: this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily,
+                fontWeight: fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight,
+                fontStyle: fontStyle || RECTANGLE_TEXT_DEFAULTS.fontStyle,
+                rotation: 0
+            });
+            return;
+        }
 
         const labelGroup = this.group.append('g')
             .attr('class', 'rectangle-text-label')
