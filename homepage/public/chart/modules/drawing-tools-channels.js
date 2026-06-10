@@ -70,14 +70,14 @@ class ParallelChannelTool extends BaseDrawing {
         this.style.extendRight = style.extendRight || false;
         this.ensureTextDefaults();
         
-        // Initialize default levels (excluding 0 and 1 which are always drawn as main lines)
+        // Initialize default levels (0/1 rails; middle adjustable between 0.25 and 0.75)
         const baseColor = this.style.stroke;
         this.levels = [
-            { value: -0.25, color: '#1e3a5f', enabled: false },
+            { value: 0, color: baseColor, enabled: true },
             { value: 0.25, color: '#1e3a5f', enabled: false },
             { value: 0.5, color: baseColor, enabled: true, lineType: '5,5' },
             { value: 0.75, color: '#1e3a5f', enabled: false },
-            { value: 1.25, color: '#1e3a5f', enabled: false }
+            { value: 1, color: baseColor, enabled: true }
         ];
     }
 
@@ -358,38 +358,46 @@ class ParallelChannelTool extends BaseDrawing {
                     .style('pointer-events', 'stroke');
             };
 
-            // Always draw main channel lines (0 and 1) with main stroke color
-            drawLevelLine(0, this.style.stroke);
-            drawLevelLine(1, this.style.stroke);
+            const baseStroke = this.style.stroke;
+            const baseWidth = scaledStrokeWidth;
+            const baseDash = this.style.strokeDasharray || 'none';
+            const levelNear = (t, levels) => levels.some((lv) => {
+                const v = typeof lv.value === 'number' ? lv.value : parseFloat(lv.value);
+                return Number.isFinite(v) && Math.abs(v - t) < 1e-6;
+            });
 
-            // Draw all levels from levels array (including disabled ones, but hide them)
-            if (Array.isArray(this.levels) && this.levels.length > 0) {
-                this.levels.forEach(level => {
-                    // Skip 0 and 1 as they're already drawn as main lines
-                    if (level.value === 0 || level.value === 1) return;
-                    
-                    const levelOffsetX = offsetX * level.value;
-                    const levelOffsetY = offsetY * level.value;
+            const levelList = Array.isArray(this.levels) ? this.levels : [];
+
+            // Draw all levels from levels array (including 0 / 1 boundary rails when present)
+            if (levelList.length > 0) {
+                levelList.forEach(level => {
+                    const t = typeof level.value === 'number' ? level.value : parseFloat(level.value);
+                    if (!Number.isFinite(t)) return;
+
+                    const levelOffsetX = offsetX * t;
+                    const levelOffsetY = offsetY * t;
                     const levelStartX = x1 + levelOffsetX;
                     const levelStartY = y1 + levelOffsetY;
                     const levelEndX = x2 + levelOffsetX;
                     const levelEndY = y2 + levelOffsetY;
                     const endpoints = getLineEndpoints(levelStartX, levelStartY, levelEndX, levelEndY);
-                    
+                    const strokeColor = level.color || baseStroke;
+                    const strokeW = level.lineWidth || baseWidth;
+                    const strokeDash = level.lineType !== undefined ? (level.lineType || 'none') : baseDash;
+
                     this.group.append('line')
                         .attr('x1', endpoints.sX)
                         .attr('y1', endpoints.sY)
                         .attr('x2', endpoints.eX)
                         .attr('y2', endpoints.eY)
-                        .attr('stroke', level.color || this.style.stroke)
-                        .attr('stroke-width', level.lineWidth || this.style.strokeWidth)
-                        .attr('stroke-dasharray', level.lineType !== undefined ? (level.lineType || 'none') : this.style.strokeDasharray)
-                        .attr('data-level', level.value)
+                        .attr('stroke', strokeColor)
+                        .attr('stroke-width', strokeW)
+                        .attr('stroke-dasharray', strokeDash)
+                        .attr('data-level', t)
                         .style('cursor', 'move')
                         .style('pointer-events', 'stroke')
                         .style('display', level.enabled ? null : 'none');
-                    
-                    // Add invisible wider hit area for easier selection
+
                     this.group.append('line')
                         .attr('class', 'shape-border-hit')
                         .attr('x1', endpoints.sX)
@@ -397,13 +405,17 @@ class ParallelChannelTool extends BaseDrawing {
                         .attr('x2', endpoints.eX)
                         .attr('y2', endpoints.eY)
                         .attr('stroke', 'transparent')
-                        .attr('stroke-width', Math.max(16, (level.lineWidth || this.style.strokeWidth || 2) * 5))
-                        .attr('data-level', level.value)
+                        .attr('stroke-width', Math.max(16, (strokeW || 2) * 5))
+                        .attr('data-level', t)
                         .style('cursor', 'move')
-                        .style('pointer-events', 'stroke')
+                        .style('pointer-events', level.enabled ? 'stroke' : 'none')
                         .style('display', level.enabled ? null : 'none');
                 });
             }
+
+            // Legacy drawings without explicit 0 / 1 rows — keep fixed boundary rails
+            if (!levelNear(0, levelList)) drawLevelLine(0, baseStroke, baseWidth, baseDash);
+            if (!levelNear(1, levelList)) drawLevelLine(1, baseStroke, baseWidth, baseDash);
 
             if (this.text && this.text.trim()) {
                 this.renderTextLabel(scales);

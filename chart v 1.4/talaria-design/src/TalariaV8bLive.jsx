@@ -4102,15 +4102,20 @@ function v9LineDashAndWidthFromType(type, widthRaw, dashMap = V9_LINE_TYPE_TO_LE
   return { dash, width };
 }
 
-/** Default parallel-channel level rows (matches `ParallelChannelTool` / legacy settings). */
+/** Middle line on parallel channel is adjustable only between these levels. */
+const V9_PARALLEL_CHANNEL_MIDDLE_MIN = 0.25;
+const V9_PARALLEL_CHANNEL_MIDDLE_MAX = 0.75;
+
+/** Default parallel-channel level rows (0/1 rails + 0.25/0.75 middle bounds). */
 function v9DefaultParallelChannelChLines(strokeColor) {
   const base = strokeColor || "#2962FF";
+  const aux = "#1e3a5f";
   return [
-    { on: false, value: "-0.25", color: "#1e3a5f", type: "solid", width: "2" },
-    { on: false, value: "0.25", color: "#1e3a5f", type: "solid", width: "2" },
+    { on: true, value: "0", color: base, type: "solid", width: "2" },
+    { on: false, value: "0.25", color: aux, type: "solid", width: "2" },
     { on: true, value: "0.5", color: base, type: "dashed", width: "1" },
-    { on: false, value: "0.75", color: "#1e3a5f", type: "solid", width: "2" },
-    { on: false, value: "1.25", color: "#1e3a5f", type: "solid", width: "2" },
+    { on: false, value: "0.75", color: aux, type: "solid", width: "2" },
+    { on: true, value: "1", color: base, type: "solid", width: "2" },
   ].map((row) => ({ ...row }));
 }
 
@@ -4153,16 +4158,47 @@ function v9ParallelLevelsToChLines(levels) {
 }
 
 function v9ParallelChannelMidLineRowIndex(chLines) {
-  if (!Array.isArray(chLines) || !chLines.length) return 2;
-  const idx = chLines.findIndex((ln) => {
+  if (!Array.isArray(chLines) || !chLines.length) return -1;
+  const dashedIdx = chLines.findIndex((ln) => ln.type === "dashed");
+  if (dashedIdx >= 0) return dashedIdx;
+  const midValIdx = chLines.findIndex((ln) => {
     const v = parseFloat(ln.value);
-    return Number.isFinite(v) && Math.abs(v - 0.5) < 0.0001;
+    return (
+      Number.isFinite(v)
+      && v > V9_PARALLEL_CHANNEL_MIDDLE_MIN - 0.001
+      && v < V9_PARALLEL_CHANNEL_MIDDLE_MAX + 0.001
+      && Math.abs(v) > 0.001
+      && Math.abs(v - 1) > 0.001
+    );
   });
-  return idx >= 0 ? idx : (chLines.length >= 3 ? 2 : -1);
+  if (midValIdx >= 0) return midValIdx;
+  if (chLines.length === 3) return 1;
+  if (chLines.length >= 5) return 2;
+  return Math.floor(chLines.length / 2);
+}
+
+function v9IsPartialChannelLevelValue(val) {
+  const s = String(val ?? "").trim();
+  return !s || s === "-" || s.endsWith(".");
+}
+
+function v9ClampParallelChannelMiddleValue(raw) {
+  const v = parseFloat(String(raw));
+  if (!Number.isFinite(v)) return String(raw ?? "0.5");
+  const clamped = Math.min(
+    V9_PARALLEL_CHANNEL_MIDDLE_MAX,
+    Math.max(V9_PARALLEL_CHANNEL_MIDDLE_MIN, Math.round(v * 100) / 100),
+  );
+  return clamped.toFixed(2);
 }
 
 /** Style-tab label for a parallel-channel level row (middle line has its own section). */
 function v9ParallelChannelStyleRowLabel(filteredIdx, filteredLen, ln) {
+  const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
+  if (Number.isFinite(v)) {
+    if (Math.abs(v) < 0.0001) return "Lower";
+    if (Math.abs(v - 1) < 0.0001) return "Upper";
+  }
   if (filteredIdx === 0) return "Upper";
   if (filteredIdx === filteredLen - 1) return "Lower";
   return v9ParallelChannelAuxLevelLabel(ln, filteredIdx);
@@ -4178,6 +4214,17 @@ function v9ParallelChannelAuxLevelLabel(ln, fallbackIdx = 0) {
     return String(raw);
   }
   return `Level ${fallbackIdx + 1}`;
+}
+
+/** Input-tab label — Lower (0), Middle (0.5), Upper (1); aux rows show their value. */
+function v9ParallelChannelInputRowLabel(ln, idx, lines, midIdx) {
+  if (idx === midIdx) return "Middle";
+  const v = parseFloat(String(ln?.value ?? "").replace(/,/g, ""));
+  if (Number.isFinite(v)) {
+    if (Math.abs(v) < 0.0001) return "Lower";
+    if (Math.abs(v - 1) < 0.0001) return "Upper";
+  }
+  return v9ParallelChannelAuxLevelLabel(ln, idx);
 }
 
 /** Style-tab label for a regression-channel line row (middle / upper / lower). */
@@ -4241,8 +4288,55 @@ const V9_PARTIAL_LEVEL_VALUE_RE = /^-?$|^-?\d*\.?\d*$/;
 function v9StepChannelLevelValue(raw, delta, step = 0.01) {
   const cur = parseFloat(String(raw));
   const base = Number.isFinite(cur) ? cur : 0;
-  const next = base + delta * step;
+  const next = Math.round((base + delta * step) * 100) / 100;
   return Number.isFinite(next) ? next.toFixed(2) : String(raw ?? "0");
+}
+
+function v9MaybeClampParallelChannelMiddleRowValue(chLines, idx, value, stKey) {
+  if (stKey !== "chLines" || v9IsPartialChannelLevelValue(value)) return value;
+  const midIdx = v9ParallelChannelMidLineRowIndex(chLines);
+  if (idx !== midIdx) return value;
+  return v9ClampParallelChannelMiddleValue(value);
+}
+
+/** Step one parallel-channel / flat-channel level row from current `tlStyle` (not render closure). */
+function v9BumpChLinesRowValue(s, idx, delta, stKey = "chLines", drawing = null) {
+  const base = v9EnsureChLinesRows(s, stKey, drawing);
+  if (idx < 0 || idx >= base.length) return s;
+  let nextVal = v9StepChannelLevelValue(base[idx].value, delta);
+  nextVal = v9MaybeClampParallelChannelMiddleRowValue(base, idx, nextVal, stKey);
+  return v9PatchChLinesRowValue(s, idx, nextVal, stKey, drawing);
+}
+
+let v9LastChLineStep = { key: "", t: 0 };
+
+/** Guard against duplicate pointer events firing two 0.01 steps per click. */
+function v9BumpChLinesRowValueOnce(s, idx, delta, stKey = "chLines", drawing = null) {
+  const key = `${stKey}:${idx}:${delta}`;
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (v9LastChLineStep.key === key && now - v9LastChLineStep.t < 350) return s;
+  v9LastChLineStep = { key, t: now };
+  return v9BumpChLinesRowValue(s, idx, delta, stKey, drawing);
+}
+
+/** Stepper buttons — single pointer activation (no duplicate click + pointerdown). */
+function v9ChLineStepPointerActivate(fn) {
+  return {
+    onPointerDown: (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fn(e);
+    },
+    onMouseDown: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    onClick: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  };
 }
 
 /** Writable chLines/regLines rows — bootstrap from drawing when state list is empty. */
@@ -4264,15 +4358,20 @@ function v9EnsureChLinesRows(s, stKey = "chLines", drawing = null) {
 function v9PatchChLinesRowValue(s, idx, value, stKey = "chLines", drawing = null) {
   const base = v9EnsureChLinesRows(s, stKey, drawing);
   if (idx < 0 || idx >= base.length) return s;
-  base[idx] = { ...base[idx], value };
+  const nextVal = v9MaybeClampParallelChannelMiddleRowValue(base, idx, value, stKey);
+  base[idx] = { ...base[idx], value: nextVal };
   if (stKey !== "chLines") return { ...s, [stKey]: base };
   return { ...s, chLines: base, ...v9ParallelChannelMidLinePatchFromChLines(base) };
 }
 
 function v9ChLinesToParallelLevels(chLines) {
   if (!Array.isArray(chLines)) return [];
+  const midIdx = v9ParallelChannelMidLineRowIndex(chLines);
   return chLines.map((ln, idx) => {
-    const t = parseFloat(ln.value);
+    let t = parseFloat(ln.value);
+    if (idx === midIdx && Number.isFinite(t)) {
+      t = parseFloat(v9ClampParallelChannelMiddleValue(t));
+    }
     const value = Number.isFinite(t) ? t : 0;
     const { dash, width } = v9LineDashAndWidthFromType(ln.type, ln.width);
     const uiOn = !!ln.on;
@@ -20339,7 +20438,7 @@ const TalariaV8bLive = () => {
                                              color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                                   <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                                     {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                                      <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>v9PatchChLinesRowValue(s,srcIdx,v9StepChannelLevelValue(ln.value,delta),stKey,editDrawing)))}
+                                      <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpChLinesRowValueOnce(s, srcIdx, delta, stKey, editDrawing)))}
                                         onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                                         style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                                  display:"flex", alignItems:"center", justifyContent:"center",
@@ -21884,13 +21983,7 @@ const TalariaV8bLive = () => {
                     const isMiddle = idx === midIdx;
                     const op = (isMiddle || ln.on) ? 1 : 0.38;
                     const pe = (isMiddle || ln.on) ? "auto" : "none";
-                    const lvlLabel = isMiddle
-                      ? "Middle"
-                      : idx === 0
-                        ? "Upper"
-                        : idx === lines.length - 1
-                          ? "Lower"
-                          : v9ParallelChannelAuxLevelLabel(ln, idx);
+                    const lvlLabel = v9ParallelChannelInputRowLabel(ln, idx, lines, midIdx);
                     return (
                       <div key={idx} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0" }}>
                         <div style={{ minWidth:72 }}>
@@ -21907,7 +22000,7 @@ const TalariaV8bLive = () => {
                                      color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                           <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                             {[[+1,"▲"],[-1,"▼"]].map(([delta, chr], i) => (
-                              <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s => v9PatchChLinesRowValue(s, idx, v9StepChannelLevelValue(ln.value, delta), stKey, editDrawing)))}
+                              <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpChLinesRowValueOnce(s, idx, delta, stKey, editDrawing)))}
                                 onMouseEnter={e => e.currentTarget.style.color = c.acL} onMouseLeave={e => e.currentTarget.style.color = c.ts}
                                 style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                          display:"flex", alignItems:"center", justifyContent:"center",
