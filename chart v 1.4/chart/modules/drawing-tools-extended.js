@@ -1279,9 +1279,6 @@ class ArcTool extends BaseDrawing {
 
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
-        if (this.group) {
-            this.group.remove();
-        }
 
         if (this.points.length < 2) return;
 
@@ -1371,40 +1368,18 @@ class ArcTool extends BaseDrawing {
             super.createHandles(group, scales);
             return;
         }
-        
-        // Points: [start, control, end]
-        const p1 = this.points[0];
-        const controlPoint = this.points[1];
-        const p2 = this.points[2];
-        
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        const ctrlX = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(controlPoint.x) : scales.xScale(controlPoint.x);
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-        const ctrlY = scales.yScale(controlPoint.y);
-        
-        // Calculate midpoint on the quadratic bezier curve (t=0.5)
-        const t = 0.5;
-        const midX = (1-t)*(1-t)*x1 + 2*(1-t)*t*ctrlX + t*t*x2;
-        const midY = (1-t)*(1-t)*y1 + 2*(1-t)*t*ctrlY + t*t*y2;
-        
-        // Handles: start (0), midpoint on curve (1 - controls the control point), end (2)
-        const handlePositions = [
-            { x: x1, y: y1, index: 0 },
-            { x: midX, y: midY, index: 1 },
-            { x: x2, y: y2, index: 2 }
-        ];
-        
-        handlePositions.forEach(pos => {
+
+        computeQuadraticToolHandlePositions(this.points, scales).forEach((pos) => {
             const handleGroup = appendCurveResizeHandle(
                 group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
             );
             this.handles.push(handleGroup);
         });
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.points.length < 3) return;
+        syncCurveResizeHandlePositions(this.group, computeQuadraticToolHandlePositions(this.points, scales));
     }
 
     renderTextLabel(coords) {
@@ -1495,14 +1470,27 @@ function setQuadraticControlFromMidpointScreen(tool, scales, desiredMid) {
     return true;
 }
 
+function computeDoubleCurveHandlePositions(points, scales) {
+    if (!points || points.length < 4 || !scales) return [];
+    const positions = [];
+    [2, 3].forEach((index) => {
+        const sp = drawingPointToScreen(points[index], scales);
+        if (sp) positions.push({ x: sp.x, y: sp.y, index });
+    });
+    return positions;
+}
+
 /** Double-curve inner handles: bend perpendicular to endpoint chord (not slide along it). */
-function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseDataPoint) {
-    if (!tool || !scales || !mouseDataPoint || tool.points.length < 4) return false;
-    if (pointIndex !== 2 && pointIndex !== 3) return false;
-    const t = pointIndex === 2 ? 1 / 3 : 2 / 3;
+function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseDataPoint, screenOpt) {
+    if (!tool || !scales || tool.points.length < 4) return false;
+    const pi = parseInt(pointIndex, 10);
+    if (pi !== 2 && pi !== 3) return false;
+    const t = pi === 2 ? 1 / 3 : 2 / 3;
     const p0s = drawingPointToScreen(tool.points[0], scales);
     const p1s = drawingPointToScreen(tool.points[1], scales);
-    const ms = drawingPointToScreen(mouseDataPoint, scales);
+    const ms = (screenOpt && Number.isFinite(screenOpt.x) && Number.isFinite(screenOpt.y))
+        ? { x: screenOpt.x, y: screenOpt.y }
+        : (mouseDataPoint ? drawingPointToScreen(mouseDataPoint, scales) : null);
     if (!p0s || !p1s || !ms) return false;
     const bx = p0s.x + (p1s.x - p0s.x) * t;
     const by = p0s.y + (p1s.y - p0s.y) * t;
@@ -1510,7 +1498,7 @@ function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseData
     const dy = p1s.y - p0s.y;
     const len = Math.hypot(dx, dy);
     if (len < 1) {
-        tool.points[pointIndex] = { x: mouseDataPoint.x, y: mouseDataPoint.y };
+        if (mouseDataPoint) tool.points[pi] = { x: mouseDataPoint.x, y: mouseDataPoint.y };
         return true;
     }
     const perpX = -dy / len;
@@ -1518,8 +1506,43 @@ function setDoubleCurveControlFromScreenDrag(tool, scales, pointIndex, mouseData
     const proj = (ms.x - bx) * perpX + (ms.y - by) * perpY;
     const bent = screenPointToDrawing({ x: bx + perpX * proj, y: by + perpY * proj }, scales);
     if (!bent) return false;
-    tool.points[pointIndex] = bent;
+    tool.points[pi] = bent;
     return true;
+}
+
+/** Screen positions for quadratic curve handles: endpoints + midpoint on the curve (index 1). */
+function computeQuadraticToolHandlePositions(points, scales) {
+    if (!points || points.length < 3 || !scales) return [];
+    const p0 = points[0];
+    const p1 = points[1];
+    const p2 = points[2];
+    const x1 = scales.chart && scales.chart.dataIndexToPixel
+        ? scales.chart.dataIndexToPixel(p0.x) : scales.xScale(p0.x);
+    const x2 = scales.chart && scales.chart.dataIndexToPixel
+        ? scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
+    const x3 = scales.chart && scales.chart.dataIndexToPixel
+        ? scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
+    const y1 = scales.yScale(p0.y);
+    const y2 = scales.yScale(p1.y);
+    const y3 = scales.yScale(p2.y);
+    const t = 0.5;
+    const curveMidX = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * x2 + t * t * x3;
+    const curveMidY = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * y2 + t * t * y3;
+    return [
+        { x: x1, y: y1, index: 0 },
+        { x: curveMidX, y: curveMidY, index: 1 },
+        { x: x3, y: y3, index: 2 },
+    ];
+}
+
+function syncCurveResizeHandlePositions(group, positions) {
+    if (!group || group.empty() || !positions || !positions.length) return;
+    positions.forEach((pos) => {
+        group.selectAll(`.resize-handle-group[data-point-index="${pos.index}"]`)
+            .selectAll('.resize-handle, .resize-handle-hit')
+            .attr('cx', pos.x)
+            .attr('cy', pos.y);
+    });
 }
 
 function appendCurveResizeHandle(group, pos, tool, handleRadius, handleFill, handleStroke, handleStrokeWidth) {
@@ -1682,9 +1705,6 @@ class CurveTool extends BaseDrawing {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
         this.ensureEndpointStyleDefaults();
-        if (this.group) {
-            this.group.remove();
-        }
 
         if (this.points.length < 2) return;
 
@@ -1854,38 +1874,18 @@ class CurveTool extends BaseDrawing {
             super.createHandles(group, scales);
             return;
         }
-        
-        const p1 = this.points[0];
-        const p2 = this.points[1];
-        const p3 = this.points[2];
-        
-        const x1 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p1.x) : scales.xScale(p1.x);
-        const x2 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p2.x) : scales.xScale(p2.x);
-        const x3 = scales.chart && scales.chart.dataIndexToPixel ? 
-            scales.chart.dataIndexToPixel(p3.x) : scales.xScale(p3.x);
-        const y1 = scales.yScale(p1.y);
-        const y2 = scales.yScale(p2.y);
-        const y3 = scales.yScale(p3.y);
-        
-        // Handle at curve midpoint (on the curve) for visual clarity
-        const t = 0.5;
-        const curveMidX = (1-t)*(1-t)*x1 + 2*(1-t)*t*x2 + t*t*x3;
-        const curveMidY = (1-t)*(1-t)*y1 + 2*(1-t)*t*y2 + t*t*y3;
-        
-        const handlePositions = [
-            { x: x1, y: y1, index: 0 },
-            { x: curveMidX, y: curveMidY, index: 1 },  // On curve midpoint
-            { x: x3, y: y3, index: 2 }
-        ];
-        
-        handlePositions.forEach(pos => {
+
+        computeQuadraticToolHandlePositions(this.points, scales).forEach((pos) => {
             const handleGroup = appendCurveResizeHandle(
                 group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
             );
             this.handles.push(handleGroup);
         });
+    }
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.points.length < 3) return;
+        syncCurveResizeHandlePositions(this.group, computeQuadraticToolHandlePositions(this.points, scales));
     }
 
     renderTextLabel(coords) {
@@ -2029,9 +2029,6 @@ class DoubleCurveTool extends BaseDrawing {
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
-        if (this.group) {
-            this.group.remove();
-        }
 
         if (this.points.length < 2) return;
 
@@ -2071,14 +2068,9 @@ class DoubleCurveTool extends BaseDrawing {
         }
         
         // Convert control points to screen coordinates
-        const screenCP1 = {
-            x: scales.chart.dataIndexToPixel(this.points[2].x),
-            y: scales.yScale(this.points[2].y)
-        };
-        const screenCP2 = {
-            x: scales.chart.dataIndexToPixel(this.points[3].x),
-            y: scales.yScale(this.points[3].y)
-        };
+        const screenCP1 = drawingPointToScreen(this.points[2], scales);
+        const screenCP2 = drawingPointToScreen(this.points[3], scales);
+        if (!screenCP1 || !screenCP2) return this.group;
         
         // Spline order: start → control₁ → control₂ → end (not start → end → controls)
         const splinePts = [screenP1, screenCP1, screenCP2, screenP2];
@@ -2246,46 +2238,56 @@ class DoubleCurveTool extends BaseDrawing {
     }
     
     createHandles(group, scales) {
-        this.handles = []; // Reset handles array
+        this.handles = [];
         const handleRadius = 3;
         const handleFill = 'transparent';
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
-        
-        // Remove existing handles
+
         group.selectAll('.resize-handle').remove();
         group.selectAll('.resize-handle-group').remove();
-        
-        // Create handles for all points (endpoints + control points)
-        this.points.forEach((point, index) => {
-            const cx = scales.chart && scales.chart.dataIndexToPixel ?
-                scales.chart.dataIndexToPixel(point.x) : scales.xScale(point.x);
-            const cy = scales.yScale(point.y);
+
+        if (this.points.length < 4) return;
+
+        // Peak + valley handles only (indices 2 and 3 on the spline).
+        computeDoubleCurveHandlePositions(this.points, scales).forEach((pos) => {
             const handleGroup = appendCurveResizeHandle(
-                group,
-                { x: cx, y: cy, index },
-                this,
-                handleRadius,
-                handleFill,
-                handleStroke,
-                handleStrokeWidth
+                group, pos, this, handleRadius, handleFill, handleStroke, handleStrokeWidth
             );
             this.handles.push(handleGroup);
         });
     }
-    
+
+    updateHandlePositions(scales) {
+        if (!this.group || this.points.length < 4) return;
+        syncCurveResizeHandlePositions(this.group, computeDoubleCurveHandlePositions(this.points, scales));
+    }
+
+    beginHandleDrag(handleRole, context) {
+        this._isDragging = true;
+    }
+
+    endHandleDrag(handleRole, context) {
+        this._isDragging = false;
+    }
+
     // Custom handle drag to maintain control points on curve
     handleCustomHandleDrag(handleRole, context = {}) {
-        const { point, pointIndex, scales } = context;
-        
-        if (pointIndex === undefined || !point) return false;
-        
-        if (pointIndex === 0 || pointIndex === 1) {
-            this.points[pointIndex] = { x: point.x, y: point.y };
-        } else if ((pointIndex === 2 || pointIndex === 3) && scales) {
-            setDoubleCurveControlFromScreenDrag(this, scales, pointIndex, point);
+        const { point, pointIndex, scales, screen } = context;
+        const pi = parseInt(pointIndex, 10);
+
+        if (!point || !Number.isFinite(pi)) return false;
+
+        if (!this._isDragging) {
+            this._isDragging = true;
         }
-        
+
+        if (pi === 0 || pi === 1) {
+            this.points[pi] = { x: point.x, y: point.y };
+        } else if ((pi === 2 || pi === 3) && scales) {
+            setDoubleCurveControlFromScreenDrag(this, scales, pi, point, screen);
+        }
+
         this.meta.updatedAt = Date.now();
         return true;
     }

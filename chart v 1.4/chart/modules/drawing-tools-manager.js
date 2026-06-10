@@ -561,14 +561,15 @@ class DrawingToolsManager {
     }
 
     _getFullHandleEditRenderOpts(drawing) {
-        const destroyGroup = drawing && ['curve', 'double-curve'].includes(drawing.type);
+        const isDoubleCurve = drawing && drawing.type === 'double-curve';
         return {
             skipInteraction: true,
             liveRender: true,
             skipTimestampSync: true,
             drawingRenderOpts: {
-                reuseGroup: !destroyGroup && !!(drawing && drawing.group && !drawing.group.empty()),
-                skipHandles: false
+                // Double curve: full rebuild each drag frame (document-level drag survives this).
+                reuseGroup: !isDoubleCurve && !!(drawing && drawing.group && !drawing.group.empty()),
+                skipHandles: isDoubleCurve ? false : true,
             }
         };
     }
@@ -3330,7 +3331,14 @@ class DrawingToolsManager {
 
                     if (customHandleNode) {
                         const role = customHandleNode.getAttribute('data-handle-role');
-                        this.startCustomHandleDrag(drawing, role, { sourceEvent: event });
+                        const idxAttr = customHandleNode.getAttribute('data-point-index');
+                        const idx = idxAttr != null ? parseInt(idxAttr, 10) : NaN;
+                        this.startCustomHandleDrag(
+                            drawing,
+                            role || (Number.isFinite(idx) ? idx : null),
+                            { sourceEvent: event },
+                            Number.isFinite(idx) ? idx : undefined,
+                        );
 
                         this._directResizeMoveHandler = (e) => {
                             if (this.chart && typeof this.chart.updateCrosshair === 'function') this.chart.updateCrosshair(e);
@@ -13402,7 +13410,7 @@ class DrawingToolsManager {
             stroke,
             color: stroke,
             lineColor: stroke,
-            strokeWidth: 1,
+            strokeWidth: 2,
             opacity: 1,
             dashArray: '',
             strokeDasharray: '',
