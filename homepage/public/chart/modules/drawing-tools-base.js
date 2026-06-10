@@ -899,6 +899,170 @@ class BaseDrawing {
         return true;
     }
 
+    /** Fib Wedge geometry in pixel space (3-point sector + ratio arcs). */
+    static computeFibWedgeLayout(tool, scales) {
+        if (!tool || !scales || !Array.isArray(tool.points) || tool.points.length < 3) return null;
+
+        const getX = (p) => BaseDrawing.fibIndexToPixel(scales, p.x);
+        const getY = (p) => BaseDrawing.fibPriceToPixel(scales, p.y);
+
+        const x1 = getX(tool.points[0]);
+        const y1 = getY(tool.points[0]);
+        const x2 = getX(tool.points[1]);
+        const y2 = getY(tool.points[1]);
+        const x3 = getX(tool.points[2]);
+        const y3 = getY(tool.points[2]);
+        if (![x1, y1, x2, y2, x3, y3].every(Number.isFinite)) return null;
+
+        const baseRadius = Math.hypot(x2 - x1, y2 - y1);
+        if (!baseRadius || !Number.isFinite(baseRadius)) return null;
+
+        const a1 = Math.atan2(y2 - y1, x2 - x1);
+        const a2 = Math.atan2(y3 - y1, x3 - x1);
+        const twoPi = Math.PI * 2;
+        const deltaCW = (a2 - a1 + twoPi) % twoPi;
+        const deltaCCW = (a1 - a2 + twoPi) % twoPi;
+        const sweepFlag = (deltaCW <= deltaCCW) ? 1 : 0;
+        const delta = (sweepFlag === 1) ? deltaCW : deltaCCW;
+        const largeArcFlag = delta > Math.PI ? 1 : 0;
+        const innerSweepFlag = sweepFlag === 1 ? 0 : 1;
+        const midAngle = sweepFlag === 1 ? (a1 + delta / 2) : (a1 - delta / 2);
+
+        const polar = (ang, r) => ({ x: x1 + Math.cos(ang) * r, y: y1 + Math.sin(ang) * r });
+        const p2 = polar(a1, baseRadius);
+        const p3 = polar(a2, baseRadius);
+
+        const wedgeArcD = (r) => {
+            const start = polar(a1, r);
+            const end = polar(a2, r);
+            return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${end.x} ${end.y}`;
+        };
+
+        const wedgeZoneD = (r, prevR) => {
+            const outerStart = polar(a1, r);
+            const outerEnd = polar(a2, r);
+            let d = `M ${outerStart.x} ${outerStart.y} ` +
+                `A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${outerEnd.x} ${outerEnd.y} `;
+            if (prevR > 0) {
+                const innerEnd = polar(a2, prevR);
+                const innerStart = polar(a1, prevR);
+                d += `L ${innerEnd.x} ${innerEnd.y} ` +
+                    `A ${prevR} ${prevR} 0 ${largeArcFlag} ${innerSweepFlag} ${innerStart.x} ${innerStart.y} Z`;
+            } else {
+                d += `L ${x1} ${y1} Z`;
+            }
+            return d;
+        };
+
+        const levelsSource = Array.isArray(tool.levels) && tool.levels.length
+            ? tool.levels
+            : (Array.isArray(tool.style?.levels) ? tool.style.levels : []);
+
+        const levels = [];
+        levelsSource.forEach((levelObj, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return;
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            const lvl = parseFloat(level);
+            if (!Number.isFinite(lvl)) return;
+            const r = baseRadius * lvl;
+            if (!Number.isFinite(r) || r <= 0) return;
+            const color = typeof levelObj === 'object' ? levelObj.color : tool.style.stroke;
+            levels.push({ idx, value: lvl, r, color: color || tool.style.stroke });
+        });
+
+        const zones = [];
+        const sorted = levels.slice().sort((a, b) => a.r - b.r);
+        let prevR = 0;
+        sorted.forEach((lvl, zoneIdx) => {
+            zones.push({ zoneIdx, r: lvl.r, prevR, color: lvl.color });
+            prevR = lvl.r;
+        });
+
+        const levelOneEnabled = levelsSource.some((levelObj) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return false;
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            return Math.abs(parseFloat(level) - 1) < 1e-6;
+        });
+
+        return {
+            x1, y1, x2, y2, p2, p3, baseRadius,
+            a1, a2, sweepFlag, delta, largeArcFlag, innerSweepFlag, midAngle,
+            polar, wedgeArcD, wedgeZoneD, levels, zones, levelOneEnabled,
+            bodyPath: `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y} L ${x1} ${y1} Z`,
+            outerBoundaryD: `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y}`,
+        };
+    }
+
+    static patchFibWedge(tool, scales) {
+        if (!tool || !tool.group || tool.group.empty() || !scales) return false;
+        if (!tool.group.select('path[data-fib-wedge-idx]').node()) return false;
+
+        const layout = BaseDrawing.computeFibWedgeLayout(tool, scales);
+        if (!layout) return false;
+
+        const {
+            x1, y1, x2, y2, p3, zones, polar, wedgeArcD, wedgeZoneD, midAngle,
+            bodyPath, outerBoundaryD, levelOneEnabled, baseRadius,
+        } = layout;
+        const group = tool.group;
+        const pos = normalizeFibLevelsLabelPosition(tool.style);
+        const labelT = pos === 'left' ? 0.35 : pos === 'center' ? 0.65 : 0.92;
+        const showLevelValues = tool.style.levelsEnabled !== false;
+
+        group.selectAll('.fib-wedge-trend-hit, .fib-wedge-trend')
+            .each(function () {
+                const sel = d3.select(this);
+                const isSecond = sel.attr('data-wedge-ray') === '2';
+                if (isSecond) {
+                    sel.attr('x1', x1).attr('y1', y1).attr('x2', p3.x).attr('y2', p3.y);
+                } else {
+                    sel.attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
+                }
+            });
+
+        group.select('.fib-wedge-hitbox').attr('d', bodyPath);
+
+        if (tool.style.showZones !== false) {
+            group.selectAll('path[data-fib-wedge-zone-idx]').each(function () {
+                const zoneIdx = parseInt(d3.select(this).attr('data-fib-wedge-zone-idx'), 10);
+                if (!Number.isFinite(zoneIdx) || zoneIdx < 0 || zoneIdx >= zones.length) return;
+                const z = zones[zoneIdx];
+                d3.select(this).attr('d', wedgeZoneD(z.r, z.prevR));
+            });
+        }
+
+        const levelsSource = Array.isArray(tool.levels) && tool.levels.length
+            ? tool.levels
+            : (Array.isArray(tool.style?.levels) ? tool.style.levels : []);
+
+        levelsSource.forEach((levelObj, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return;
+            const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
+            const lvl = parseFloat(level);
+            if (!Number.isFinite(lvl)) return;
+            const r = baseRadius * lvl;
+            if (!Number.isFinite(r) || r <= 0) return;
+            const arcD = wedgeArcD(r);
+            group.selectAll(`path[data-fib-wedge-idx="${idx}"]`).attr('d', arcD);
+            if (showLevelValues) {
+                const labelR = Math.max(0, r * labelT);
+                const lp = polar(midAngle, labelR);
+                group.selectAll(`text[data-fib-wedge-label-idx="${idx}"]`)
+                    .attr('x', lp.x)
+                    .attr('y', lp.y)
+                    .text(String(lvl));
+            }
+        });
+
+        if (zones.length > 0 && !levelOneEnabled) {
+            group.select('path[data-fib-wedge-boundary="1"]').attr('d', outerBoundaryD);
+        }
+
+        const opacity = tool.visible ? (tool.style.opacity != null ? tool.style.opacity : 1) : 0;
+        group.style('opacity', opacity).attr('transform', null);
+        return true;
+    }
+
     /**
      * Patch resize-handle positions without recreating handle DOM (hot path).
      */

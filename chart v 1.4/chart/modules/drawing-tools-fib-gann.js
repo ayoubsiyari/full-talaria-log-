@@ -1848,6 +1848,19 @@ class FibWedgeTool extends BaseDrawing {
             { value: 0.786, enabled: true, color: '#00bcd4' },
             { value: 1, enabled: true, color: '#787b86' }
         ];
+        this.style.levels = this.levels;
+    }
+
+    patchPanZoomGeometry(scales) {
+        return BaseDrawing.patchFibWedge(this, scales);
+    }
+
+    toJSON() {
+        this.style.levels = this.levels;
+        return {
+            ...super.toJSON(),
+            levels: this.levels
+        };
     }
 
     handleCustomHandleDrag(handleRole, context = {}) {
@@ -1920,7 +1933,7 @@ class FibWedgeTool extends BaseDrawing {
 
         const boundaryWidth = Math.max(0.5, (this.style.strokeWidth || 1) * scaleFactor);
 
-        const appendWedgeRay = (xA, yA, xB, yB) => {
+        const appendWedgeRay = (xA, yA, xB, yB, rayId) => {
             if (this.style.trendLineEnabled === false) return;
             const tCol = this.style.trendLineColor || this.style.stroke || DRAWING_TOOL_DEFAULT_STROKE;
             const tW = Math.max(0.5, (parseInt(this.style.trendLineWidth, 10) || 1) * scaleFactor);
@@ -1929,6 +1942,7 @@ class FibWedgeTool extends BaseDrawing {
             const tDash = tDashRaw.replace(/\s+/g, '') === '' ? 'none' : tDashRaw;
             this.group.append('line')
                 .attr('class', 'fib-wedge-trend-hit')
+                .attr('data-wedge-ray', rayId)
                 .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', tHit)
@@ -1937,6 +1951,7 @@ class FibWedgeTool extends BaseDrawing {
                 .style('cursor', 'move');
             this.group.append('line')
                 .attr('class', 'fib-wedge-trend fib-trend-line')
+                .attr('data-wedge-ray', rayId)
                 .attr('x1', xA).attr('y1', yA).attr('x2', xB).attr('y2', yB)
                 .attr('stroke', tCol)
                 .attr('stroke-width', tW)
@@ -1946,7 +1961,7 @@ class FibWedgeTool extends BaseDrawing {
                 .style('cursor', 'move');
         };
 
-        appendWedgeRay(x1, y1, x2, y2);
+        appendWedgeRay(x1, y1, x2, y2, '1');
 
         if (this.points.length < 3) {
             if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
@@ -1971,10 +1986,16 @@ class FibWedgeTool extends BaseDrawing {
         const p2 = polar(a1, baseRadius);
         const p3 = polar(a2, baseRadius);
 
-        appendWedgeRay(x1, y1, p3.x, p3.y);
+        appendWedgeRay(x1, y1, p3.x, p3.y, '2');
 
         const toDataX = (px) => scales.chart && scales.chart.pixelToDataIndex ? scales.chart.pixelToDataIndex(px) : scales.xScale.invert(px);
         const toDataY = (py) => scales.yScale.invert(py);
+
+        if (Array.isArray(this.style?.levels) && this.style.levels.length) {
+            this.levels = this.style.levels;
+        } else if (Array.isArray(this.levels) && this.levels.length) {
+            this.style.levels = this.levels;
+        }
 
         const hexToRgba = (hex, alpha) => {
             if (!hex || typeof hex !== 'string') return `rgba(41, 98, 255, ${alpha})`;
@@ -1994,19 +2015,20 @@ class FibWedgeTool extends BaseDrawing {
         const showLevelValues = this.style.levelsEnabled !== false;
 
         const enabledLevelsSorted = this.levels
-            .map(l => ({
+            .map((l, idx) => ({
+                idx,
                 value: typeof l === 'object' ? l.value : l,
-                enabled: typeof l === 'object' ? (l.enabled !== false) : true,
+                enabled: BaseDrawing.fibLevelRowVisible(l),
                 color: typeof l === 'object' ? l.color : this.style.stroke
             }))
             .filter(l => l.enabled)
-            .map(l => ({ ...l, r: baseRadius * l.value }))
+            .map(l => ({ ...l, r: baseRadius * parseFloat(l.value) }))
             .filter(l => isFinite(l.r) && l.r > 0)
             .sort((a, b) => a.r - b.r);
 
         if (showZones && enabledLevelsSorted.length) {
             let prevR = 0;
-            enabledLevelsSorted.forEach((lvl) => {
+            enabledLevelsSorted.forEach((lvl, zoneIdx) => {
                 const r = lvl.r;
                 const fill = hexToRgba(lvl.color, zonesOpacity);
                 const outerStart = polar(a1, r);
@@ -2025,6 +2047,7 @@ class FibWedgeTool extends BaseDrawing {
                 }
 
                 this.group.append('path')
+                    .attr('data-fib-wedge-zone-idx', zoneIdx)
                     .attr('d', d)
                     .attr('fill', fill)
                     .attr('stroke', 'none')
@@ -2047,33 +2070,31 @@ class FibWedgeTool extends BaseDrawing {
 
         const midAngle = sweepFlag === 1 ? (a1 + delta / 2) : (a1 - delta / 2);
 
-        // Draw arcs + labels
-        this.levels.forEach(levelObj => {
+        // Draw arcs + labels (keyed by row index, not ratio value)
+        this.levels.forEach((levelObj, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return;
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object'
-                ? (levelObj.enabled !== false && levelObj.visible !== false)
-                : true;
             const color = typeof levelObj === 'object' ? levelObj.color : this.style.stroke;
             const baseWidth = typeof levelObj === 'object' && levelObj.lineWidth ? levelObj.lineWidth : 1;
             const baseType = typeof levelObj === 'object' && levelObj.lineType ? levelObj.lineType : '';
             const lineWidth = globalLevelsWidth !== null ? globalLevelsWidth : baseWidth;
             const lineType = globalLevelsDash !== null ? globalLevelsDash : baseType;
 
-            if (!enabled) return;
-
-            const r = baseRadius * level;
+            const r = baseRadius * parseFloat(level);
             if (!isFinite(r) || r <= 0) return;
 
             const start = polar(a1, r);
             const end = polar(a2, r);
+            const arcD = `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${end.x} ${end.y}`;
 
             const scaledWidth = Math.max(0.5, (lineWidth || 1) * scaleFactor);
             const hitWidth = Math.max(10, scaledWidth * 6);
 
-            // Hit area (solid, nearly invisible) so arcs are easy to click
             this.group.append('path')
                 .attr('class', 'fib-level-hit')
-                .attr('d', `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${end.x} ${end.y}`)
+                .attr('data-fib-wedge-idx', idx)
+                .attr('data-fib-wedge-level', level)
+                .attr('d', arcD)
                 .attr('stroke', 'rgba(255,255,255,0.001)')
                 .attr('stroke-width', hitWidth)
                 .attr('stroke-dasharray', '')
@@ -2083,7 +2104,9 @@ class FibWedgeTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             this.group.append('path')
-                .attr('d', `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} ${sweepFlag} ${end.x} ${end.y}`)
+                .attr('data-fib-wedge-idx', idx)
+                .attr('data-fib-wedge-level', level)
+                .attr('d', arcD)
                 .attr('stroke', color)
                 .attr('stroke-width', scaledWidth)
                 .attr('stroke-dasharray', lineType || 'none')
@@ -2098,6 +2121,7 @@ class FibWedgeTool extends BaseDrawing {
             const lp = polar(midAngle, labelR);
             if (showLevelValues) {
                 this.group.append('text')
+                    .attr('data-fib-wedge-label-idx', idx)
                     .attr('x', lp.x)
                     .attr('y', lp.y)
                     .attr('fill', color)
@@ -2109,15 +2133,14 @@ class FibWedgeTool extends BaseDrawing {
         });
 
         // Outer boundary arc — only when at least one level is on (skip if level 1 arc already drawn).
-        const levelOneEnabled = this.levels.some((levelObj) => {
+        const levelOneEnabled = this.levels.some((levelObj, idx) => {
+            if (!BaseDrawing.fibLevelRowVisible(levelObj)) return false;
             const level = typeof levelObj === 'object' ? levelObj.value : levelObj;
-            const enabled = typeof levelObj === 'object'
-                ? (levelObj.enabled !== false && levelObj.visible !== false)
-                : true;
-            return enabled && Math.abs(+level - 1) < 1e-6;
+            return Math.abs(parseFloat(level) - 1) < 1e-6;
         });
         if (enabledLevelsSorted.length > 0 && !levelOneEnabled) {
             this.group.append('path')
+                .attr('data-fib-wedge-boundary', '1')
                 .attr('d', `M ${p2.x} ${p2.y} A ${baseRadius} ${baseRadius} 0 ${largeArcFlag} ${sweepFlag} ${p3.x} ${p3.y}`)
                 .attr('stroke', this.style.stroke)
                 .attr('stroke-width', boundaryWidth)
