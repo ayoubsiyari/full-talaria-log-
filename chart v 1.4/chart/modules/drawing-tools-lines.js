@@ -44,20 +44,29 @@ function appendTextLabel(group, text, config = {}) {
 
     const yPos = useCenteredY ? y : (y + legacyOffset);
 
+    const resolved = resolveDrawingTextStyle(text, fontStyle, fontFamily);
+    const transform = buildDrawingTextTransform(x, yPos, rotation, resolved.italicSkew);
+
     const textEl = group.append('text')
         .attr('x', x)
         .attr('y', yPos)
         .attr('fill', fill !== undefined ? fill : (color !== undefined ? color : '#ffffff'))
         .attr('font-size', `${fontSize}px`)
-        .attr('font-family', fontFamily)
+        .attr('font-family', resolved.fontFamily)
         .attr('font-weight', fontWeight)
-        .attr('font-style', fontStyle)
+        .attr('font-style', resolved.fontStyle)
         .attr('text-anchor', anchor)
         .attr('dominant-baseline', useCenteredY ? 'central' : 'text-before-edge')
         .attr('xml:space', 'preserve')
-        .attr('transform', `rotate(${rotation}, ${x}, ${yPos})`)
         .style('pointer-events', 'none')
         .style('user-select', 'none');
+
+    if (transform) {
+        textEl.attr('transform', transform);
+    }
+    if (resolved.direction) {
+        textEl.style('direction', resolved.direction);
+    }
 
     lines.forEach((line, index) => {
         const sanitized = line.length ? line.replace(/ /g, '\u00A0') : '\u00A0';
@@ -1822,14 +1831,18 @@ class VerticalLineTool extends BaseDrawing {
         baseX = baseX + offsetX;
         baseY = baseY + offsetY;
 
+        const measureStyle = resolveDrawingTextStyle(label, fontStyle, fontFamily);
         const tempText = this.group.append('text')
             .attr('font-size', fontSize)
-            .attr('font-family', fontFamily)
+            .attr('font-family', measureStyle.fontFamily)
             .attr('font-weight', fontWeight)
-            .attr('font-style', fontStyle)
+            .attr('font-style', measureStyle.fontStyle)
             .attr('text-anchor', 'middle')
             .style('visibility', 'hidden')
             .style('pointer-events', 'none');
+        if (measureStyle.direction) {
+            tempText.style('direction', measureStyle.direction);
+        }
 
         let maxTextWidth = 0;
         for (const line of textLines) {

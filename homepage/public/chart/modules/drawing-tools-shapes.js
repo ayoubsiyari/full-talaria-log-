@@ -510,6 +510,7 @@ class RectangleTool extends BaseDrawing {
         const fontFamily = this.style.fontFamily || RECTANGLE_TEXT_DEFAULTS.fontFamily;
         const fontWeight = this.style.fontWeight || RECTANGLE_TEXT_DEFAULTS.fontWeight;
         const fontStyle = this.style.fontStyle || RECTANGLE_TEXT_DEFAULTS.fontStyle;
+        const resolved = resolveDrawingTextStyle(lines.join('\n'), fontStyle, fontFamily);
 
         let blockWidth = 0;
         if (measureGroup && !measureGroup.empty()) {
@@ -519,16 +520,19 @@ class RectangleTool extends BaseDrawing {
                 const lineY = useMiddleBaseline
                     ? textTop + (index - (lines.length - 1) / 2) * lineHeight
                     : textTop + index * lineHeight;
-                temp.append('text')
+                const measureText = temp.append('text')
                     .attr('x', textX)
                     .attr('y', lineY)
                     .attr('font-size', `${fontSize}px`)
-                    .attr('font-family', fontFamily)
+                    .attr('font-family', resolved.fontFamily)
                     .attr('font-weight', fontWeight)
-                    .attr('font-style', fontStyle)
+                    .attr('font-style', resolved.fontStyle)
                     .attr('text-anchor', anchor)
                     .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
                     .text(sanitized);
+                if (resolved.direction) {
+                    measureText.style('direction', resolved.direction);
+                }
             });
             try {
                 const bbox = temp.node().getBBox();
@@ -557,9 +561,11 @@ class RectangleTool extends BaseDrawing {
             fontSize,
             lineHeight,
             blockHeight,
-            fontFamily,
+            fontFamily: resolved.fontFamily,
             fontWeight,
-            fontStyle
+            fontStyle: resolved.fontStyle,
+            direction: resolved.direction,
+            italicSkew: resolved.italicSkew
         };
 
         if (intersectsMidline) {
@@ -944,13 +950,23 @@ class RectangleTool extends BaseDrawing {
             lineHeight,
             fontFamily,
             fontWeight,
-            fontStyle
+            fontStyle,
+            direction,
+            italicSkew
         } = layout;
 
         const labelGroup = this.group.append('g')
             .attr('class', 'rectangle-text-label')
             .style('pointer-events', 'none')
             .style('user-select', 'none');
+
+        const pivotY = useMiddleBaseline
+            ? textTop
+            : textTop + (lines.length * lineHeight) / 2;
+        const labelTransform = buildDrawingTextTransform(textX, pivotY, 0, italicSkew || 0);
+        if (labelTransform) {
+            labelGroup.attr('transform', labelTransform);
+        }
 
         const textColor = this.style.textColor || RECTANGLE_TEXT_DEFAULTS.textColor;
 
@@ -959,7 +975,7 @@ class RectangleTool extends BaseDrawing {
             const lineY = useMiddleBaseline
                 ? textTop + (index - (lines.length - 1) / 2) * lineHeight
                 : textTop + index * lineHeight;
-            labelGroup.append('text')
+            const lineText = labelGroup.append('text')
                 .attr('x', textX)
                 .attr('y', lineY)
                 .attr('fill', textColor)
@@ -971,6 +987,9 @@ class RectangleTool extends BaseDrawing {
                 .attr('dominant-baseline', useMiddleBaseline ? 'middle' : 'hanging')
                 .attr('xml:space', 'preserve')
                 .text(sanitized);
+            if (direction) {
+                lineText.style('direction', direction);
+            }
         });
 
         labelGroup.raise();

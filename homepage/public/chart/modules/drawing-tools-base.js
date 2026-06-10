@@ -19,6 +19,48 @@ function generateUUID() {
 const DRAWING_TOOL_DEFAULT_STROKE = '#8C8C8C';
 const DRAWING_TOOL_DEFAULT_FILL = 'rgba(140, 140, 140, 0.2)';
 
+const ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+const DRAWING_TEXT_ARABIC_FONT_FAMILY = '"Segoe UI", "Noto Sans Arabic", "Arial", sans-serif';
+const DRAWING_TEXT_ITALIC_SKEW_DEG = -12;
+
+function drawingTextHasArabicScript(text) {
+    return ARABIC_SCRIPT_RE.test(String(text || ''));
+}
+
+function resolveDrawingTextStyle(text, fontStyle, fontFamily) {
+    const wantsItalic = fontStyle === 'italic';
+    const hasArabic = drawingTextHasArabicScript(text);
+    if (hasArabic) {
+        return {
+            fontStyle: wantsItalic ? 'normal' : (fontStyle || 'normal'),
+            fontFamily: fontFamily && !/roboto/i.test(fontFamily)
+                ? fontFamily
+                : DRAWING_TEXT_ARABIC_FONT_FAMILY,
+            direction: 'rtl',
+            italicSkew: wantsItalic ? DRAWING_TEXT_ITALIC_SKEW_DEG : 0
+        };
+    }
+    return {
+        fontStyle: fontStyle || 'normal',
+        fontFamily: fontFamily || 'Roboto, sans-serif',
+        direction: null,
+        italicSkew: 0
+    };
+}
+
+function buildDrawingTextTransform(x, y, rotation, italicSkew) {
+    const rot = Number(rotation) || 0;
+    const skew = Number(italicSkew) || 0;
+    const parts = [];
+    if (rot !== 0) {
+        parts.push(`rotate(${rot}, ${x}, ${y})`);
+    }
+    if (skew !== 0) {
+        parts.push(`translate(${x}, ${y}) skewX(${skew}) translate(${-x}, ${-y})`);
+    }
+    return parts.length ? parts.join(' ') : null;
+}
+
 const AXIS_LABEL_DEFAULT_LINE_TYPES = new Set([
     'trendline',
     'horizontal',

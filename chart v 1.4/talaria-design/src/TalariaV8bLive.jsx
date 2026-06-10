@@ -73,6 +73,11 @@ const LAYOUT_SYNC_HELP =
   "multichart iframe tiles use the focused panel for new indicators until full fan-out is wired.";
 
 const V9_IND_WALL_CLOCK_STEP_MIN = 5;
+const V9_ARABIC_SCRIPT_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+function v9DrawingTextHasArabicScript(text) {
+  return V9_ARABIC_SCRIPT_RE.test(String(text || ""));
+}
 
 function v9SnapWallClockTime(value, fallback = "09:30") {
   const m = String(value != null ? value : fallback).trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -1713,6 +1718,9 @@ function v9BuildLegacyStylePatchFromTlStyle(tlStyle, legacyTool) {
     })(),
     textHAlign: tlStyle.horizAlign || "center",
     textAlign: tlStyle.horizAlign || "center",
+    ...(legacyTool === "vertical"
+      ? { textOrientation: tlStyle.textOrientation === "vertical" ? "vertical" : "horizontal" }
+      : {}),
     showMiddleLine: regMidOn,
     ...(isRegCh
       ? {}
@@ -6407,6 +6415,9 @@ function v9TlStylePatchFromDrawing(d) {
     ...(s.fontStyle ? { textItalic: s.fontStyle === 'italic' } : {}),
     ...(chVert ? { vertAlign: v9ChartVertToUi(chVert) } : {}),
     ...((s.textHAlign || s.textAlign) ? { horizAlign: s.textHAlign || s.textAlign } : {}),
+    ...(d.type === "vertical"
+      ? { textOrientation: s.textOrientation === "vertical" ? "vertical" : "horizontal" }
+      : {}),
     // Must always sync midLine for rect/ellipse/circle: if showMiddleLine is missing (undefined),
     // omitting midLine leaves a stale true in tlStyle while the canvas sees falsy — "checkbox on, no line".
     ...(d.type === "rectangle" || d.type === "rotated-rectangle" || d.type === "ellipse" || d.type === "circle"
@@ -6907,6 +6918,7 @@ function v9FreshTlStyleDefaults() {
     labelLineWidth: "1",
     vertAlign: "top",
     horizAlign: "center",
+    textOrientation: "horizontal",
     midLine: false,
     midLineColor: V9_DEFAULT_TL_LINE_COLOR,
     midLineType: "dashed",
@@ -9946,7 +9958,7 @@ const TalariaV8bLive = () => {
     showBg: true, labelColor: "#ffffff", labelFontSize: "12", labelBg: true, labelBgColor: "rgba(0,0,0,0.6)",
     textSize: 14, textColor: "#ffffff", textItalic: false, textBold: false, textContent: "",
     labelLineType: "solid", labelLineWidth: "1",
-    vertAlign: "top", horizAlign: "center",
+    vertAlign: "top", horizAlign: "center", textOrientation: "horizontal",
     pt1Price: "126.96273", pt1Bar: "3775", pt2Price: "126.86393", pt2Bar: "3795", pt3Price: "126.76393", pt3Bar: "3815",
     pt4Price: "126.66393", pt4Bar: "3835", pt5Price: "126.56393", pt5Bar: "3855", pt6Price: "126.46393", pt6Bar: "3875",
     pt7Price: "126.36393", pt7Bar: "3895",
@@ -16243,6 +16255,9 @@ const TalariaV8bLive = () => {
           textItalic: sPartial.fontStyle === 'italic',
           vertAlign: v9ChartVertToUi(sPartial.textVAlign || sPartial.textPosition || prev.vertAlign),
           horizAlign: (sPartial.textHAlign || sPartial.textAlign || prev.horizAlign),
+          textOrientation: drawingForStyle.type === "vertical"
+            ? (sPartial.textOrientation === "vertical" ? "vertical" : "horizontal")
+            : prev.textOrientation,
           midLine:
             drawingForStyle.type === "rectangle" || drawingForStyle.type === "rotated-rectangle"
             || drawingForStyle.type === "ellipse" || drawingForStyle.type === "circle"
@@ -17581,7 +17596,7 @@ const TalariaV8bLive = () => {
     tlStyle.showInfo, tlStyle.showInfoTypes,
     tlStyle.labelColor, tlStyle.labelFontSize, tlStyle.labelBg, tlStyle.labelBgColor,
     tlStyle.textContent, tlStyle.textColor, tlStyle.textSize, tlStyle.textBold, tlStyle.textItalic,
-    tlStyle.vertAlign, tlStyle.horizAlign,
+    tlStyle.vertAlign, tlStyle.horizAlign, tlStyle.textOrientation,
     tlStyle.chLines,
     tlStyle.regLines,
     v9RegLinesBridgeSig(tlStyle.regLines),
@@ -17889,6 +17904,14 @@ const TalariaV8bLive = () => {
   const applyTlHorizAlign = useCallback((horizAlign) => {
     flushSync(() => setTlStyle((s) => ({ ...s, horizAlign })));
     v9FlushTlStyleToChartTargets(tlStyleLiveRef.current, cpFlushTlOpts());
+  }, []);
+
+  /** Vertical line label rotation — same-frame chart sync. */
+  const applyTlTextOrientation = useCallback((textOrientation) => {
+    flushSync(() => setTlStyle((s) => ({ ...s, textOrientation })));
+    const live = { ...tlStyleLiveRef.current, textOrientation };
+    tlStyleLiveRef.current = live;
+    v9FlushTlStyleToChartTargets(live, cpFlushTlOpts());
   }, []);
 
   /** Fib levels line thickness — first-click chart sync. */
@@ -20946,7 +20969,10 @@ const TalariaV8bLive = () => {
                   style={{ width:"100%", height:68, background:"rgba(140,160,255,0.05)", border:`1px solid rgba(140,160,255,0.2)`,
                            color:c.tx, fontSize:13, fontFamily:F, padding:"6px 8px", resize:"none",
                            outline:"none", boxSizing:"border-box",
-                           fontStyle:tlStyle.textItalic?"italic":"normal", fontWeight:tlStyle.textBold?700:400 }}/>
+                           direction:v9DrawingTextHasArabicScript(tlStyle.textContent)?"rtl":"ltr",
+                           fontStyle:tlStyle.textItalic&&!v9DrawingTextHasArabicScript(tlStyle.textContent)?"italic":"normal",
+                           transform:tlStyle.textItalic&&v9DrawingTextHasArabicScript(tlStyle.textContent)?"skewX(-12deg)":"none",
+                           fontWeight:tlStyle.textBold?700:400 }}/>
               </div>
               {!["arrowMarker","arrowUp","arrowDn"].includes(tlSubTool.icon) && <><div style={{ fontSize:10, fontWeight:800, color:c.tm, letterSpacing:"0.08em", marginBottom:10 }}>ALIGNMENT</div>
               <div style={{ marginBottom:16 }}>
@@ -20961,7 +20987,13 @@ const TalariaV8bLive = () => {
                     ["left",  <svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[0,6,10,6],[0,10,12,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "tl-ha-left"],
                     ["center",<svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[2,6,12,6],[1,10,13,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "tl-ha-center"],
                     ["right", <svg width={14} height={12} viewBox="0 0 14 12">{[[0,2,14,2],[4,6,14,6],[2,10,14,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "tl-ha-right"]
-                  ]]
+                  ]],
+                  ...(tlSubTool.icon === "vline" ? [[
+                    "Rotation", "textOrientation", [
+                      ["horizontal", <svg width={14} height={14} viewBox="0 0 14 14">{[[2,4,12,4],[2,7,10,7],[2,10,11,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</svg>, "tl-to-h"],
+                      ["vertical", <svg width={14} height={14} viewBox="0 0 14 14"><g transform="translate(7,7) rotate(90) translate(-7,-7)">{[[2,4,12,4],[2,7,10,7],[2,10,11,10]].map(([x1,y1,x2,y2],i)=><line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>)}</g></svg>, "tl-to-v"],
+                    ]
+                  ]] : []),
                 ].map(([label, key, opts], ri)=>(
                   <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", marginTop: ri>0 ? 4 : 0 }}>
                     <span style={{ fontSize:12, color:c.ts }}>{label}</span>
@@ -20972,6 +21004,7 @@ const TalariaV8bLive = () => {
                           <div key={v} onClick={()=>{
                               if (key === "vertAlign") applyTlVertAlign(v);
                               else if (key === "horizAlign") applyTlHorizAlign(v);
+                              else if (key === "textOrientation") applyTlTextOrientation(v);
                               else setTlStyle(s=>({...s,[key]:v}));
                             }}
                             onMouseEnter={()=>setHov(hk)} onMouseLeave={()=>setHov(null)}
