@@ -2601,30 +2601,51 @@ class PitchforkTool extends BaseDrawing {
                 ? this.style.medianStrokeDasharray
                 : (this.style.strokeDasharray || '');
 
+        const handleOpts = {
+            stroke: this.style.medianColor,
+            strokeWidth: medianStrokeWidth,
+            strokeDasharray: medianStrokeDasharray,
+            hitClass: 'pitchfork-handle-hit pitchfork-level-hit',
+            visClass: 'pitchfork-handle',
+        };
+        const tineOpts = {
+            stroke: this.style.medianColor,
+            strokeWidth: medianStrokeWidth,
+            strokeDasharray: medianStrokeDasharray,
+        };
+
+        // Base connector along the B–C edge — always visible; spans every enabled level anchor.
+        const baseAnchorPoints = [{ x: bx, y: by }, { x: cx, y: cy }];
+        levelLines.forEach((line) => {
+            if (line.isMedian) return;
+            baseAnchorPoints.push({ x: line.startX, y: line.startY });
+        });
+        const baseDirX = cx - bx;
+        const baseDirY = cy - by;
+        const baseLen2 = baseDirX * baseDirX + baseDirY * baseDirY || 1;
+        const baseParam = (p) => ((p.x - bx) * baseDirX + (p.y - by) * baseDirY) / baseLen2;
+        let minP = baseAnchorPoints[0];
+        let maxP = baseAnchorPoints[0];
+        let minT = baseParam(minP);
+        let maxT = minT;
+        baseAnchorPoints.forEach((p) => {
+            const t = baseParam(p);
+            if (t < minT) { minT = t; minP = p; }
+            if (t > maxT) { maxT = t; maxP = p; }
+        });
+        appendPitchforkLine(minP.x, minP.y, maxP.x, maxP.y, {
+            ...handleOpts,
+            visClass: 'pitchfork-handle pitchfork-base-line',
+        });
+
         if (middleLineEnabled) {
-            const handleOpts = {
-                stroke: this.style.medianColor,
-                strokeWidth: medianStrokeWidth,
-                strokeDasharray: medianStrokeDasharray,
-                hitClass: 'pitchfork-handle-hit pitchfork-level-hit',
-                visClass: 'pitchfork-handle',
-            };
-            const tineOpts = {
-                stroke: this.style.medianColor,
-                strokeWidth: medianStrokeWidth,
-                strokeDasharray: medianStrokeDasharray,
-            };
-            // Draw construction lines based on style
+            // Apex construction — median tine toggles independently of the base connector.
             if (this.style.pitchforkStyle === 'schiff') {
                 appendPitchforkLine(ax, ay, bx, by, handleOpts);
-                appendPitchforkLine(bx, by, cx, cy, handleOpts);
             } else if (this.style.pitchforkStyle === 'modified-schiff' || this.style.pitchforkStyle === 'inside') {
                 appendPitchforkLine(ax, ay, bx, by, handleOpts);
-                appendPitchforkLine(bx, by, cx, cy, handleOpts);
             } else {
                 appendPitchforkLine(ax, ay, midX, midY, handleOpts);
-                appendPitchforkLine(midX, midY, bx, by, handleOpts);
-                appendPitchforkLine(midX, midY, cx, cy, handleOpts);
             }
 
             const medianSeg = medianLineSeg;

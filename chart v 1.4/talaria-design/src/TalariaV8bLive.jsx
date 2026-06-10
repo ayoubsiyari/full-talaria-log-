@@ -4319,6 +4319,26 @@ function v9BumpChLinesRowValueOnce(s, idx, delta, stKey = "chLines", drawing = n
   return v9BumpChLinesRowValue(s, idx, delta, stKey, drawing);
 }
 
+function v9StepRegDevValue(raw, delta, step = 0.01) {
+  const cur = parseFloat(String(raw));
+  const base = Number.isFinite(cur) ? cur : 0;
+  const next = Math.max(0, Math.round((base + delta * step) * 100) / 100);
+  return Number.isFinite(next) ? next.toFixed(2) : String(raw ?? "0");
+}
+
+let v9LastRegDevStep = { key: "", t: 0 };
+
+/** Regression channel Upper/Lower deviation — single 0.01 step per click. */
+function v9BumpRegDevValueOnce(s, devKey, delta) {
+  const guardKey = `regDev:${devKey}:${delta}`;
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  if (v9LastRegDevStep.key === guardKey && now - v9LastRegDevStep.t < 350) return s;
+  v9LastRegDevStep = { key: guardKey, t: now };
+  const cur = s[devKey] || { on: true, value: "2.00" };
+  const nextVal = v9StepRegDevValue(cur.value ?? "2.00", delta);
+  return { ...s, [devKey]: { ...cur, value: nextVal } };
+}
+
 /** Stepper buttons — single pointer activation (no duplicate click + pointerdown). */
 function v9ChLineStepPointerActivate(fn) {
   return {
@@ -21902,7 +21922,7 @@ const TalariaV8bLive = () => {
                                  color:c.tx, fontSize:11, fontFamily:F, padding:"0 19px 0 6px", outline:"none", boxSizing:"border-box", textAlign:"center", fontVariantNumeric:"tabular-nums" }}/>
                       <div style={{ position:"absolute", right:0, top:0, bottom:0, display:"flex", flexDirection:"column", borderLeft:`1px solid ${c.br}` }}>
                         {[[+1,"▲"],[-1,"▼"]].map(([delta,chr],i)=>(
-                          <button type="button" key={i} {...modalPointerActivate(() => setTlStyle(s=>({...s,[key]:{...s[key],value:(Math.max(0,+(+(s[key]?.value??"2.00")+delta*0.01).toFixed(2))).toFixed(2)}})))}
+                          <button type="button" key={i} {...v9ChLineStepPointerActivate(() => setTlStyle(s => v9BumpRegDevValueOnce(s, key, delta)))}
                             onMouseEnter={e=>e.currentTarget.style.color=c.acL} onMouseLeave={e=>e.currentTarget.style.color=c.ts}
                             style={{ flex:1, width:16, background:"transparent", border:"none", color:c.ts, cursor:"default",
                                      display:"flex", alignItems:"center", justifyContent:"center",
