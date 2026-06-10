@@ -979,6 +979,23 @@ function v9HideFloatingBarLineStyleAndWidth(icon) {
   return false;
 }
 
+function v9TlQuickBarIcon(chartPrimarySelectedDrawingType, panelGroup, subToolIcon) {
+  return (
+    (chartPrimarySelectedDrawingType &&
+      v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, panelGroup)) ||
+    subToolIcon
+  );
+}
+
+/** Pitchfork median uses `bold` (solid) instead of generic `solid` line type. */
+function v9PitchforkMedianTypeFromQuickBarLineType(lineType) {
+  return lineType === "solid" ? "bold" : lineType;
+}
+
+function v9QuickBarLineTypeFromPitchforkMedian(pfMedianType) {
+  return pfMedianType === "bold" ? "solid" : pfMedianType || "dashed";
+}
+
 /** Hide floating-toolbar text color (A) when the tool has no Text tab. */
 function v9HideFloatingBarTextColor(icon) {
   return !v9ToolHasTextTab(icon);
@@ -25328,6 +25345,15 @@ const TalariaV8bLive = () => {
         const dropSizes = { style:[88,154], width:[88,154], more:[192,192], rngFsz:[52,240], rngType:[130,110], patFsz:[52,240] };
         const key = tlBarDrop || tlLastBarDropRef.current;
         const [dropW, dropH] = dropSizes[key] || [88, 154];
+        const tlBarDropQuickIcon = v9TlQuickBarIcon(
+          chartPrimarySelectedDrawingType,
+          tlBarDrawingGroup,
+          tlSubTool.icon,
+        );
+        const isPfQuickBar = tlBarDropQuickIcon === "pitchfork";
+        const qbCurLineStyle = isPfQuickBar
+          ? v9QuickBarLineTypeFromPitchforkMedian(tlStyle.pfMedianType)
+          : tlStyle.lineType;
         // All positions are in CSS/fixed-coordinate space (getBoundingClientRect / Z)
         const dy = tlBarPos.y - a.barY;
         const dx = tlBarPos.x - a.barX;
@@ -25358,13 +25384,13 @@ const TalariaV8bLive = () => {
               ["dotted",  "2,4"],
               ["dashdot", "7,4,2,4"],
             ].map(([v, da])=>(
-              <div key={v} onClick={()=>{applyTlLineType(v);setTlBarDrop(null);}}
+              <div key={v} onClick={()=>{(isPfQuickBar ? applyPfMedianType(v9PitchforkMedianTypeFromQuickBarLineType(v)) : applyTlLineType(v));setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbsty-${v}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding:"8px 12px", cursor:"default",
-                         background:hov===`tbsty-${v}`||tlStyle.lineType===v?c.hv:"transparent", transition:"background 0.1s" }}>
-                {tlStyle.lineType===v && <div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
+                         background:hov===`tbsty-${v}`||qbCurLineStyle===v?c.hv:"transparent", transition:"background 0.1s" }}>
+                {qbCurLineStyle===v && <div style={{position:"absolute",left:0,top:"15%",bottom:"15%",width:2,background:`linear-gradient(180deg,transparent,${c.acL},transparent)`,boxShadow:`0 0 6px ${c.acG}`}}/>}
                 <svg width={44} height={10} viewBox="0 0 44 10">
-                  <line x1={0} y1={5} x2={44} y2={5} stroke={tlStyle.lineType===v?c.acL:c.ts} strokeWidth={2}
+                  <line x1={0} y1={5} x2={44} y2={5} stroke={qbCurLineStyle===v?c.acL:c.ts} strokeWidth={2}
                     strokeDasharray={da==="0"?undefined:da} strokeLinecap="round"/>
                 </svg>
               </div>
@@ -25374,9 +25400,9 @@ const TalariaV8bLive = () => {
               : ["1","2","3","4"]
             ).map(w=>{
               const isFib = tlSubTool.icon.startsWith("fib");
-              const curW = isFib ? tlStyle.fibLineWidth : tlStyle.lineWidth;
+              const curW = isFib ? tlStyle.fibLineWidth : isPfQuickBar ? tlStyle.pfMedianWidth : tlStyle.lineWidth;
               return (
-              <div key={w} onClick={()=>{(isFib ? applyTlFibLineWidth : applyTlLineWidth)(w);setTlBarDrop(null);}}
+              <div key={w} onClick={()=>{(isFib ? applyTlFibLineWidth : isPfQuickBar ? applyPfMedianWidth : applyTlLineWidth)(w);setTlBarDrop(null);}}
                 onMouseEnter={()=>setHov(`tbwid-${w}`)} onMouseLeave={()=>setHov(null)}
                 style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", padding: tlSubTool.icon==="brush"?"5px 12px":"8px 12px", cursor:"default",
                          background:hov===`tbwid-${w}`||curW===w?c.hv:"transparent", transition:"background 0.1s" }}>
@@ -26762,9 +26788,17 @@ const TalariaV8bLive = () => {
           );
         };
         const TlSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
-        const tlQuickBarIcon =
-          (chartPrimarySelectedDrawingType && v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, tlBarDrawingGroup))
-          || tlSubTool.icon;
+        const tlQuickBarIcon = v9TlQuickBarIcon(
+          chartPrimarySelectedDrawingType,
+          tlBarDrawingGroup,
+          tlSubTool.icon,
+        );
+        const qbLineStyle =
+          tlQuickBarIcon === "pitchfork"
+            ? v9QuickBarLineTypeFromPitchforkMedian(tlStyle.pfMedianType)
+            : tlStyle.lineType;
+        const qbLineWidth =
+          tlQuickBarIcon === "pitchfork" ? tlStyle.pfMedianWidth : tlStyle.lineWidth;
         const hideQuickBarTextColor = v9HideFloatingBarTextColor(tlQuickBarIcon);
         const hideQuickBarLineStyle = v9HideFloatingBarLineStyleAndWidth(tlQuickBarIcon);
         return (
@@ -27099,7 +27133,7 @@ const TalariaV8bLive = () => {
               {(_,isAct,col)=><div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
                 <svg width={20} height={8} viewBox="0 0 20 8">
                   <line x1={0} y1={4} x2={20} y2={4} stroke={col} strokeWidth={2} strokeLinecap="round"
-                    strokeDasharray={tlStyle.lineType==="dashed"?"5,3":tlStyle.lineType==="dotted"?"2,3":tlStyle.lineType==="dashdot"?"5,3,2,3":undefined}/>
+                    strokeDasharray={qbLineStyle==="dashed"?"5,3":qbLineStyle==="dotted"?"2,3":qbLineStyle==="dashdot"?"5,3,2,3":undefined}/>
                 </svg>
                 <I n="chevDown" s={7} cl={col}/>
               </div>}
@@ -27113,9 +27147,9 @@ const TalariaV8bLive = () => {
                     <I n="chevDown" s={7} cl={col}/>
                   </div>
                 : <div style={{display:"flex",alignItems:"center",gap:3,padding:"0 7px",height:32}}>
-                    <svg width={20} height={Math.max(8,+tlStyle.lineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+tlStyle.lineWidth+3)}`}>
-                      <line x1={0} y1={Math.max(8,+tlStyle.lineWidth+3)/2} x2={20} y2={Math.max(8,+tlStyle.lineWidth+3)/2}
-                        stroke={col} strokeWidth={+tlStyle.lineWidth} strokeLinecap="round"/>
+                    <svg width={20} height={Math.max(8,+qbLineWidth+3)} viewBox={`0 0 20 ${Math.max(8,+qbLineWidth+3)}`}>
+                      <line x1={0} y1={Math.max(8,+qbLineWidth+3)/2} x2={20} y2={Math.max(8,+qbLineWidth+3)/2}
+                        stroke={col} strokeWidth={+qbLineWidth} strokeLinecap="round"/>
                     </svg>
                     <I n="chevDown" s={7} cl={col}/>
                   </div>}
