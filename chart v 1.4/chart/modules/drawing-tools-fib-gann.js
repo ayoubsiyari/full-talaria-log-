@@ -405,7 +405,6 @@ class FibTimeZoneTool extends BaseDrawing {
                 const scaledWidth = Math.max(0.5, parseFloat(lineWidth) * scaleFactor);
                 const hitWidth = Math.max(10, scaledWidth * 6);
 
-                // Hit area (solid, nearly invisible) so verticals are easy to click
                 this.group.append('line')
                     .attr('class', 'fib-level-hit fib-tz-vertical')
                     .attr('data-fib-tz', fib)
@@ -418,30 +417,40 @@ class FibTimeZoneTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                this.group.append('line')
-                    .attr('class', 'fib-tz-vertical')
-                    .attr('data-fib-tz', fib)
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
-                    .attr('stroke', color)
-                    .attr('stroke-width', scaledWidth)
-                    .attr('stroke-dasharray', lineType || 'none')
-                    .attr('opacity', 0.8)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                let labelText = null;
+                let lp = null;
+                let vGap = null;
+                const tzLabelFontSize = 10;
+                if (showLevelValues) {
+                    labelText = String(fib);
+                    lp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
+                    vGap = fibVerticalCenterLabelGap(this.style, this.group, labelText, lp.y, tzLabelFontSize, '600');
+                }
+
+                appendFibVerticalLineWithCenterGap(this.group, x, 0, chartHeight, vGap, {
+                    class: 'fib-tz-vertical',
+                    'data-fib-tz': fib,
+                    stroke: color,
+                    'stroke-width': scaledWidth,
+                    'stroke-dasharray': lineType || 'none',
+                    opacity: 0.8,
+                });
+                this.group.selectAll('line.fib-tz-vertical').filter(function() {
+                    return d3.select(this).attr('stroke') !== 'rgba(255,255,255,0.001)';
+                }).style('cursor', 'move');
 
                 if (showLevelValues) {
-                    const lp = fibVerticalLineTopLabelPlacement(this.style, x);
-                    this.group.append('text')
+                    const textEl = this.group.append('text')
                         .attr('class', 'fib-tz-label')
                         .attr('data-fib-tz', fib)
                         .attr('x', lp.x)
                         .attr('y', lp.y)
                         .attr('text-anchor', lp.anchor)
                         .attr('fill', color)
-                        .attr('font-size', '10px')
+                        .attr('font-size', `${tzLabelFontSize}px`)
                         .style('pointer-events', 'none')
-                        .text(fib);
+                        .text(labelText);
+                    if (lp.dominantBaseline) textEl.attr('dominant-baseline', lp.dominantBaseline);
                 }
             }
         });
@@ -956,27 +965,34 @@ class TrendFibTimeTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                this.group.append('line')
-                    .attr('x1', x).attr('y1', 0)
-                    .attr('x2', x).attr('y2', chartHeight)
-                    .attr('stroke', lvl.color)
-                    .attr('stroke-width', scaledWidth)
-                    .attr('stroke-dasharray', lineType || 'none')
-                    .attr('opacity', 0.9)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
+                let tftLabelText = null;
+                let tftLp = null;
+                let tftGap = null;
+                const tftLabelFontSize = 10;
+                if (showLevelValues) {
+                    tftLabelText = String(level);
+                    tftLp = fibVerticalSpanLabelPlacement(this.style, x, 0, chartHeight);
+                    tftGap = fibVerticalCenterLabelGap(this.style, this.group, tftLabelText, tftLp.y, tftLabelFontSize, '600');
+                }
+
+                appendFibVerticalLineWithCenterGap(this.group, x, 0, chartHeight, tftGap, {
+                    stroke: lvl.color,
+                    'stroke-width': scaledWidth,
+                    'stroke-dasharray': lineType || 'none',
+                    opacity: 0.9,
+                });
 
                 if (showLevelValues) {
-                    const lp = fibVerticalLineTopLabelPlacement(this.style, x);
-                    this.group.append('text')
+                    const textEl = this.group.append('text')
                         .attr('class', 'fib-tft-label')
-                        .attr('x', lp.x)
-                        .attr('y', lp.y)
+                        .attr('x', tftLp.x)
+                        .attr('y', tftLp.y)
                         .attr('fill', lvl.color)
-                        .attr('font-size', '10px')
-                        .attr('text-anchor', lp.anchor)
+                        .attr('font-size', `${tftLabelFontSize}px`)
+                        .attr('text-anchor', tftLp.anchor)
                         .style('pointer-events', 'none')
-                        .text(String(level));
+                        .text(tftLabelText);
+                    if (tftLp.dominantBaseline) textEl.attr('dominant-baseline', tftLp.dominantBaseline);
                 }
             });
         }
@@ -4224,18 +4240,10 @@ class TrendFibExtensionTool extends BaseDrawing {
                     .style('pointer-events', 'stroke')
                     .style('cursor', 'move');
 
-                this.group.append('line')
-                    .attr('x1', leftX).attr('y1', yAtLevel)
-                    .attr('x2', rightX).attr('y2', yAtLevel)
-                    .attr('data-level', level)
-                    .attr('stroke', color)
-                    .attr('stroke-width', scaledLevelWidth)
-                    .attr('stroke-dasharray', lineType || 'none')
-                    .attr('opacity', 0.85)
-                    .style('pointer-events', 'stroke')
-                    .style('cursor', 'move');
-
-                // Label on the left side with background
+                let extLabelText = null;
+                let extLp = null;
+                let extGap = null;
+                const extLabelFontSize = 10;
                 const priceDecimals = this.getPriceDecimals ? this.getPriceDecimals(price1) : 2;
                 const levelLabel = (() => {
                     if (levelsLabelMode === 'percent') {
@@ -4246,19 +4254,34 @@ class TrendFibExtensionTool extends BaseDrawing {
                     }
                     return `${level}`;
                 })();
-                if (!showLevelValues) return;
-                const labelText = showPrices ? `${levelLabel} (${priceAtLevel.toFixed(priceDecimals)})` : `${levelLabel}`;
-                const lp = fibHorizontalSpanLabelPlacement(this.style, leftX, rightX);
+                if (showLevelValues) {
+                    extLabelText = showPrices ? `${levelLabel} (${priceAtLevel.toFixed(priceDecimals)})` : `${levelLabel}`;
+                    extLp = fibHorizontalSpanLabelPlacement(this.style, leftX, rightX);
+                    extGap = fibHorizontalCenterLabelGap(this.style, this.group, extLabelText, extLp.x, extLabelFontSize, '600');
+                }
 
-                this.group.append('text')
-                    .attr('x', lp.x)
-                    .attr('y', yAtLevel)
+                appendFibHorizontalLineWithCenterGap(this.group, leftX, rightX, yAtLevel, extGap, {
+                    'data-level': level,
+                    stroke: color,
+                    'stroke-width': scaledLevelWidth,
+                    'stroke-dasharray': lineType || 'none',
+                    opacity: 0.85,
+                });
+
+                if (!showLevelValues) return;
+                const extTextY = fibHorizontalLabelBaselineY(this.style, yAtLevel, 0);
+                const extTextEl = this.group.append('text')
+                    .attr('x', extLp.x)
+                    .attr('y', extTextY)
                     .attr('fill', color)
-                    .attr('font-size', '10px')
+                    .attr('font-size', `${extLabelFontSize}px`)
                     .attr('font-weight', '600')
-                    .attr('text-anchor', lp.anchor)
+                    .attr('text-anchor', extLp.anchor)
                     .style('pointer-events', 'none')
-                    .text(labelText);
+                    .text(extLabelText);
+                if (normalizeFibLevelsLabelPosition(this.style) === 'center') {
+                    extTextEl.attr('dominant-baseline', 'middle');
+                }
             });
         }
 

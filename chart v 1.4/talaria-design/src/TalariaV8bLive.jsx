@@ -4765,15 +4765,26 @@ function v9FibLevelsModeChartToUi(ch) {
 
 function v9FibLevelPositionUiToChart(ui) {
   const m = String(ui || "Right").trim().toLowerCase();
-  if (m === "left" || m === "center" || m === "right") return m;
+  if (m === "left" || m === "top") return "left";
+  if (m === "center" || m === "middle") return "center";
+  if (m === "right" || m === "bottom") return "right";
   return "right";
 }
 
-function v9FibLevelPositionChartToUi(ch) {
+function v9FibLevelPositionChartToUi(ch, { vertical = false } = {}) {
   const m = String(ch || "right").trim().toLowerCase();
+  if (vertical) {
+    if (m === "left") return "Top";
+    if (m === "center") return "Middle";
+    return "Bottom";
+  }
   if (m === "left") return "Left";
   if (m === "center") return "Center";
   return "Right";
+}
+
+function v9FibLevelPositionUsesVerticalAxis(subToolIcon) {
+  return subToolIcon === "fibTimeZone" || subToolIcon === "fibTime";
 }
 
 function v9SyncFibLevelPositionToStyle(st, tlStyle) {
@@ -6761,7 +6772,7 @@ function v9TlStylePatchFromDrawing(d) {
                 ? Math.max(0, Math.min(1, parseFloat(s.backgroundOpacity)))
                 : 0.12,
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
+            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition, { vertical: true }),
           };
         })()
       : {}),
@@ -6894,7 +6905,7 @@ function v9TlStylePatchFromDrawing(d) {
               parseInt(s.trendLineWidth, 10) || parseInt(s.strokeWidth, 10) || 1,
             ),
             fibLevelsOn: s.levelsEnabled !== false,
-            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition),
+            fibLevelPosition: v9FibLevelPositionChartToUi(s.levelsLabelPosition, { vertical: true }),
           };
         })()
       : {}),
@@ -20968,8 +20979,12 @@ const TalariaV8bLive = () => {
                   {/* Level position — all fibonacci tools */}
                   {isFibTool && (() => {
                     const dk = "fibLevelPosition";
-                    const val = tlStyle.fibLevelPosition || "Right";
-                    const options = ["Left", "Center", "Right"];
+                    const verticalLevels = v9FibLevelPositionUsesVerticalAxis(tlSubTool.icon);
+                    const options = verticalLevels ? ["Top", "Middle", "Bottom"] : ["Left", "Center", "Right"];
+                    const valRaw = tlStyle.fibLevelPosition || (verticalLevels ? "Bottom" : "Right");
+                    const val = options.includes(valRaw)
+                      ? valRaw
+                      : v9FibLevelPositionChartToUi(v9FibLevelPositionUiToChart(valRaw), { vertical: verticalLevels });
                     return (
                       <div style={{ display:"flex", alignItems:"center", padding:"6px 0" }}>
                         <span style={{ width:130, fontSize:12, color:c.ts }}>Level position</span>

@@ -174,39 +174,43 @@ class FibonacciRetracementTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             // Draw horizontal line at this level
-            this.group.append('line')
-                .attr('x1', fibX1)
-                .attr('y1', yAtLevel)
-                .attr('x2', fibX2)
-                .attr('y2', yAtLevel)
-                .attr('data-level', level.value)
-                .attr('stroke', level.color)
-                .attr('stroke-width', scaledLevelWidth)
-                .attr('stroke-dasharray', levelDash)
-                .attr('opacity', 0.85)
-                .style('pointer-events', 'stroke');
+            let finalText = null;
+            let labelPlacement = null;
+            let centerGap = null;
+            const labelFontSize = 11;
+            if (showLevelValues) {
+                const baseText = formatLevelText(level);
+                finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
+                labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
+                centerGap = fibHorizontalCenterLabelGap(this.style, this.group, finalText, labelPlacement.x, labelFontSize, '600');
+            }
+
+            appendFibHorizontalLineWithCenterGap(this.group, fibX1, fibX2, yAtLevel, centerGap, {
+                'data-level': level.value,
+                stroke: level.color,
+                'stroke-width': scaledLevelWidth,
+                'stroke-dasharray': levelDash,
+                opacity: 0.85,
+            });
 
             if (!showLevelValues) continue;
 
-            // Draw level label
-            const baseText = formatLevelText(level);
-            const finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
-            const labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
-            const textX = labelPlacement.x;
-            const textY = yAtLevel + 4;
-
-            this.group.append('text')
+            const textY = fibHorizontalLabelBaselineY(this.style, yAtLevel);
+            const textEl = this.group.append('text')
                 .attr('class', 'non-interactive-text')
                 .attr('data-fib-label', level.value)
-                .attr('x', textX)
+                .attr('x', labelPlacement.x)
                 .attr('y', textY)
                 .attr('text-anchor', labelPlacement.anchor)
                 .attr('fill', level.color)
-                .attr('font-size', '11px')
+                .attr('font-size', `${labelFontSize}px`)
                 .attr('font-weight', '600')
                 .style('pointer-events', 'none')
                 .style('cursor', 'default')
                 .text(finalText);
+            if (normalizeFibLevelsLabelPosition(this.style) === 'center') {
+                textEl.attr('dominant-baseline', 'middle');
+            }
         }
 
         // Draw main trend line connecting the two anchor points
@@ -434,39 +438,43 @@ class FibonacciExtensionTool extends BaseDrawing {
                 .style('cursor', 'move');
 
             // Draw horizontal line at this level
-            this.group.append('line')
-                .attr('x1', fibX1)
-                .attr('y1', yAtLevel)
-                .attr('x2', fibX2)
-                .attr('y2', yAtLevel)
-                .attr('data-level', level.value)
-                .attr('stroke', level.color)
-                .attr('stroke-width', scaledLevelWidth)
-                .attr('stroke-dasharray', levelDash)
-                .attr('opacity', 0.85)
-                .style('pointer-events', 'stroke');
+            let finalText = null;
+            let labelPlacement = null;
+            let centerGap = null;
+            const labelFontSize = 11;
+            if (showLevelValues) {
+                const baseText = formatLevelText(level);
+                finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
+                labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
+                centerGap = fibHorizontalCenterLabelGap(this.style, this.group, finalText, labelPlacement.x, labelFontSize, '600');
+            }
+
+            appendFibHorizontalLineWithCenterGap(this.group, fibX1, fibX2, yAtLevel, centerGap, {
+                'data-level': level.value,
+                stroke: level.color,
+                'stroke-width': scaledLevelWidth,
+                'stroke-dasharray': levelDash,
+                opacity: 0.85,
+            });
 
             if (!showLevelValues) continue;
 
-            // Draw level label
-            const baseText = formatLevelText(level);
-            const finalText = showPrices ? `${baseText} (${priceAtLevel.toFixed(priceDecimals)})` : baseText;
-            const labelPlacement = fibHorizontalSpanLabelPlacement(this.style, fibX1, fibX2);
-            const textX = labelPlacement.x;
-            const textY = yAtLevel + 4;
-
-            this.group.append('text')
+            const textY = fibHorizontalLabelBaselineY(this.style, yAtLevel);
+            const textEl = this.group.append('text')
                 .attr('class', 'non-interactive-text')
                 .attr('data-fib-label', level.value)
-                .attr('x', textX)
+                .attr('x', labelPlacement.x)
                 .attr('y', textY)
                 .attr('text-anchor', labelPlacement.anchor)
                 .attr('fill', level.color)
-                .attr('font-size', '11px')
+                .attr('font-size', `${labelFontSize}px`)
                 .attr('font-weight', '600')
                 .style('pointer-events', 'none')
                 .style('cursor', 'default')
                 .text(finalText);
+            if (normalizeFibLevelsLabelPosition(this.style) === 'center') {
+                textEl.attr('dominant-baseline', 'middle');
+            }
         }
 
         // Draw main trend line

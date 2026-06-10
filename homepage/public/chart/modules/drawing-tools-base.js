@@ -39,19 +39,123 @@ function fibHorizontalSpanLabelPlacement(style, spanMinX, spanMaxX, pad = 5) {
     return { x: maxX + pad, anchor: 'start' };
 }
 
+function measureFibLabelTextWidth(group, text, fontSize = 11, fontWeight = '600') {
+    if (!group || text == null || `${text}` === '') return 0;
+    const temp = group.append('text')
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-weight', fontWeight)
+        .attr('visibility', 'hidden')
+        .text(String(text));
+    let w = 0;
+    try { w = temp.node().getBBox().width; } catch (_) {}
+    temp.remove();
+    return Number.isFinite(w) && w > 0 ? w : String(text).length * fontSize * 0.55;
+}
+
+function measureFibLabelTextBlock(group, text, fontSize = 10, fontWeight = '600') {
+    if (!group || text == null || `${text}` === '') return { width: 0, height: fontSize };
+    const temp = group.append('text')
+        .attr('font-size', `${fontSize}px`)
+        .attr('font-weight', fontWeight)
+        .attr('visibility', 'hidden')
+        .text(String(text));
+    let width = 0;
+    let height = fontSize;
+    try {
+        const bbox = temp.node().getBBox();
+        width = bbox.width;
+        height = bbox.height;
+    } catch (_) {}
+    temp.remove();
+    if (!Number.isFinite(width) || width <= 0) width = String(text).length * fontSize * 0.55;
+    if (!Number.isFinite(height) || height <= 0) height = fontSize;
+    return { width, height };
+}
+
+/** Gap in a horizontal level line when the label sits in the center (TradingView-style). */
+function fibHorizontalCenterLabelGap(style, group, labelText, textX, fontSize = 11, fontWeight = '600') {
+    if (normalizeFibLevelsLabelPosition(style) !== 'center') return null;
+    const w = measureFibLabelTextWidth(group, labelText, fontSize, fontWeight);
+    if (!w) return null;
+    const pad = Math.max(4, fontSize * 0.35);
+    return { left: textX - w / 2 - pad, right: textX + w / 2 + pad };
+}
+
+function appendFibHorizontalLineWithCenterGap(group, x1, x2, y, gap, lineAttrs) {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const append = (xa, xb) => {
+        const left = Math.max(minX, Math.min(xa, xb));
+        const right = Math.min(maxX, Math.max(xa, xb));
+        if (right - left < 0.5) return;
+        const line = group.append('line').attr('x1', left).attr('y1', y).attr('x2', right).attr('y2', y);
+        if (lineAttrs) {
+            Object.keys(lineAttrs).forEach((key) => {
+                const val = lineAttrs[key];
+                if (val !== undefined && val !== null) line.attr(key, val);
+            });
+        }
+        line.style('pointer-events', 'stroke');
+    };
+    if (gap && Number.isFinite(gap.left) && Number.isFinite(gap.right) && gap.left < gap.right) {
+        append(minX, gap.left);
+        append(gap.right, maxX);
+    } else {
+        append(minX, maxX);
+    }
+}
+
+function fibHorizontalLabelBaselineY(style, lineY, offsetBelow = 4) {
+    return normalizeFibLevelsLabelPosition(style) === 'center' ? lineY : lineY + offsetBelow;
+}
+
+/** Vertical span: top / middle / bottom along [spanMinY, spanMaxY] (maps left/center/right). */
+function fibVerticalSpanLabelPlacement(style, lineX, spanMinY, spanMaxY, pad = 8) {
+    const pos = normalizeFibLevelsLabelPosition(style);
+    const minY = Math.min(spanMinY, spanMaxY);
+    const maxY = Math.max(spanMinY, spanMaxY);
+    if (pos === 'left') return { x: lineX, y: minY + pad, anchor: 'middle', dominantBaseline: 'hanging' };
+    if (pos === 'center') return { x: lineX, y: (minY + maxY) / 2, anchor: 'middle', dominantBaseline: 'middle' };
+    return { x: lineX, y: maxY - pad, anchor: 'middle', dominantBaseline: 'auto' };
+}
+
+/** Gap in a vertical level line when the label sits in the middle. */
+function fibVerticalCenterLabelGap(style, group, labelText, labelY, fontSize = 10, fontWeight = '600') {
+    if (normalizeFibLevelsLabelPosition(style) !== 'center') return null;
+    const block = measureFibLabelTextBlock(group, labelText, fontSize, fontWeight);
+    const pad = Math.max(4, fontSize * 0.35);
+    return { top: labelY - block.height / 2 - pad, bottom: labelY + block.height / 2 + pad };
+}
+
+function appendFibVerticalLineWithCenterGap(group, x, y1, y2, gap, lineAttrs) {
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    const append = (ya, yb) => {
+        const top = Math.max(minY, Math.min(ya, yb));
+        const bottom = Math.min(maxY, Math.max(ya, yb));
+        if (bottom - top < 0.5) return;
+        const line = group.append('line').attr('x1', x).attr('y1', top).attr('x2', x).attr('y2', bottom);
+        if (lineAttrs) {
+            Object.keys(lineAttrs).forEach((key) => {
+                const val = lineAttrs[key];
+                if (val !== undefined && val !== null) line.attr(key, val);
+            });
+        }
+        line.style('pointer-events', 'stroke');
+    };
+    if (gap && Number.isFinite(gap.top) && Number.isFinite(gap.bottom) && gap.top < gap.bottom) {
+        append(minY, gap.top);
+        append(gap.bottom, maxY);
+    } else {
+        append(minY, maxY);
+    }
+}
+
 /** Point along segment (x1,y1)→(x2,y2) for ray / axis labels. */
 function fibSegmentParamPlacement(style, x1, y1, x2, y2) {
     const pos = normalizeFibLevelsLabelPosition(style);
     const t = pos === 'left' ? 0.15 : pos === 'center' ? 0.5 : 0.85;
     return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t };
-}
-
-/** Vertical fib line: label near chart top, offset left/center/right of the line. */
-function fibVerticalLineTopLabelPlacement(style, lineX, topY = 15, pad = 3) {
-    const pos = normalizeFibLevelsLabelPosition(style);
-    if (pos === 'left') return { x: lineX - pad, y: topY, anchor: 'end' };
-    if (pos === 'center') return { x: lineX, y: topY, anchor: 'middle' };
-    return { x: lineX + pad, y: topY, anchor: 'start' };
 }
 
 function fibPointTextAnchor(style) {
