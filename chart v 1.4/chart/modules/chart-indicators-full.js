@@ -11979,7 +11979,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg && this._panelRenderFast !== true) {
+        if (style.showBg) {
             ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
             ctx.fillRect(m.l, panelTop, Math.max(0, this.w - m.l), Math.max(0, panelBottom - panelTop));
         }
@@ -12775,7 +12775,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
         const midW = style.midLineWidth != null ? style.midLineWidth : 1;
 
-        if (style.showBg && this._panelRenderFast !== true) {
+        if (style.showBg) {
             const yUpper = scaleY(obVal);
             const yLower = scaleY(osVal);
             if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
@@ -13038,39 +13038,37 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const midW = style.midLineWidth != null ? style.midLineWidth : 1;
         const panelW = Math.max(0, this.w - m.l);
 
-        if (this._panelRenderFast !== true) {
-            if (style.showObGradient) {
-                const yOb = scaleY(obVal);
-                if (Number.isFinite(yOb)) {
-                    const fillTop = Math.min(panelTop, yOb);
-                    const fillH = Math.max(0, Math.max(panelTop, yOb) - fillTop);
-                    if (fillH > 0) {
-                        ctx.fillStyle = style.obGradientColor || 'rgba(239,83,80,0.12)';
-                        ctx.fillRect(m.l, fillTop, panelW, fillH);
-                    }
+        if (style.showObGradient) {
+            const yOb = scaleY(obVal);
+            if (Number.isFinite(yOb)) {
+                const fillTop = Math.min(panelTop, yOb);
+                const fillH = Math.max(0, Math.max(panelTop, yOb) - fillTop);
+                if (fillH > 0) {
+                    ctx.fillStyle = style.obGradientColor || 'rgba(239,83,80,0.12)';
+                    ctx.fillRect(m.l, fillTop, panelW, fillH);
                 }
             }
-            if (style.showOsGradient) {
-                const yOs = scaleY(osVal);
-                if (Number.isFinite(yOs)) {
-                    const fillTop = Math.min(yOs, panelBottom);
-                    const fillH = Math.max(0, panelBottom - fillTop);
-                    if (fillH > 0) {
-                        ctx.fillStyle = style.osGradientColor || 'rgba(38,166,154,0.12)';
-                        ctx.fillRect(m.l, fillTop, panelW, fillH);
-                    }
+        }
+        if (style.showOsGradient) {
+            const yOs = scaleY(osVal);
+            if (Number.isFinite(yOs)) {
+                const fillTop = Math.min(yOs, panelBottom);
+                const fillH = Math.max(0, panelBottom - fillTop);
+                if (fillH > 0) {
+                    ctx.fillStyle = style.osGradientColor || 'rgba(38,166,154,0.12)';
+                    ctx.fillRect(m.l, fillTop, panelW, fillH);
                 }
             }
-            if (style.showBg) {
-                const yUpper = scaleY(obVal);
-                const yLower = scaleY(osVal);
-                if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
-                    const fillTop = Math.min(yUpper, yLower);
-                    const fillHeight = Math.abs(yLower - yUpper);
-                    if (fillHeight > 0) {
-                        ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
-                        ctx.fillRect(m.l, fillTop, panelW, fillHeight);
-                    }
+        }
+        if (style.showBg) {
+            const yUpper = scaleY(obVal);
+            const yLower = scaleY(osVal);
+            if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
+                const fillTop = Math.min(yUpper, yLower);
+                const fillHeight = Math.abs(yLower - yUpper);
+                if (fillHeight > 0) {
+                    ctx.fillStyle = style.bgColor || 'rgba(19,23,34,0.15)';
+                    ctx.fillRect(m.l, fillTop, panelW, fillHeight);
                 }
             }
         }
@@ -13186,7 +13184,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const midW = style.midLineWidth != null ? style.midLineWidth : 1;
         const maW = style.maLineWidth != null ? style.maLineWidth : 1;
 
-        if (this._panelRenderFast !== true && style.showBg) {
+        if (style.showBg) {
             const yUpper = scaleY(upperVal);
             const yLower = scaleY(lowerVal);
             if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
@@ -13583,7 +13581,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
         };
 
-        if (style.showBg && this._panelRenderFast !== true) {
+        if (style.showBg) {
             const yUpper = scaleY(obVal);
             const yLower = scaleY(osVal);
             if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {
@@ -13800,7 +13798,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         const osW = style.oversoldLineWidth != null ? style.oversoldLineWidth : 1;
         const midW = style.midLineWidth != null ? style.midLineWidth : 1;
 
-        if (style.showBg && this._panelRenderFast !== true) {
+        if (style.showBg) {
             const yUpper = scaleY(obVal);
             const yLower = scaleY(osVal);
             if (Number.isFinite(yUpper) && Number.isFinite(yLower)) {

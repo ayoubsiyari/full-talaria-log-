@@ -5,6 +5,15 @@
 (function () {
     'use strict';
 
+    function isEconomicCalendarApiDisabled() {
+        try {
+            var env = typeof window !== 'undefined' && window.__CHART_ENV;
+            return !!(env && env.DISABLE_ECONOMIC_CALENDAR_API);
+        } catch (_e) {
+            return false;
+        }
+    }
+
     var FILTER_STORAGE_KEY = 'economicCalendarFilters';
 
     var state = {
@@ -785,6 +794,18 @@
     function render() {
         var hasRoots = allNewsItemRoots().length > 0;
 
+        if (isEconomicCalendarApiDisabled()) {
+            if (hasRoots) {
+                setNewsItemsHtml(
+                    '<div style="padding:20px;color:#6a6a7a;font-size:13px;text-align:center;">' +
+                    'Economic calendar is temporarily off (Finnhub access pending).' +
+                    '</div>'
+                );
+            }
+            dispatchCalendarUpdated();
+            return;
+        }
+
         if (state.loading) {
             var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
@@ -863,6 +884,17 @@
     }
 
     async function loadCalendar(force) {
+        if (isEconomicCalendarApiDisabled()) {
+            state.loading = false;
+            state.error = null;
+            state.loaded = true;
+            state.loadedRangeKey = 'disabled';
+            state.events = [];
+            clearChartMarkerCache();
+            stopCountdownLoop();
+            render();
+            return;
+        }
         if (state.loading && !force) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
@@ -1218,6 +1250,7 @@
 
     /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
     window.__economicCalendarNotifyChartRender = function (chart) {
+        if (isEconomicCalendarApiDisabled()) return;
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);

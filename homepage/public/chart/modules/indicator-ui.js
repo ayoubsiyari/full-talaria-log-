@@ -570,33 +570,21 @@ function elderRayInputParams() {
     ];
 }
 
-const ATR_SMOOTHING_TYPE_OPTIONS = [
-    { value: 'RMA', label: 'RMA' },
-    { value: 'SMA', label: 'SMA' },
-    { value: 'EMA', label: 'EMA' },
-    { value: 'WMA', label: 'WMA' }
-];
-
-/** ATR Input — smoothing MA type applied to true range. */
+/** ATR Input — length (smoothing fixed to RMA in calculateATR). */
 function atrInputParams() {
     return [
-        { id: 'smoothingHeading', label: 'Smoothing', type: 'heading', tab: 'input' },
-        {
-            id: 'smoothingType',
-            label: 'Type',
-            type: 'select',
-            tab: 'input',
-            default: 'RMA',
-            options: ATR_SMOOTHING_TYPE_OPTIONS
-        }
+        { id: 'period', label: 'Length', type: 'number', default: 14, min: 1, tab: 'input' }
     ];
 }
 
-/** ATR Style — line color (opacity in color picker). */
+/** ATR Style — show line, color, line style, thickness (opacity in color picker). */
 function atrStyleParams() {
     return [
-        { id: 'color', label: 'Color', type: 'color', default: '#ff6d00', tab: 'style' },
-        { id: 'lineOpacity', label: 'Opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' }
+        { id: 'showLine', label: 'Average True Range', type: 'checkbox', default: true, tab: 'style' },
+        { id: 'color', label: 'Average True Range color', type: 'color', default: '#ff6d00', tab: 'style' },
+        { id: 'lineOpacity', label: 'Average True Range opacity', type: 'number', default: 100, min: 0, max: 100, step: 1, tab: 'style' },
+        { id: 'lineStyle', label: 'Average True Range line style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Line', tab: 'style' },
+        { id: 'lineWidth', label: 'Average True Range thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' }
     ];
 }
 
@@ -1069,7 +1057,10 @@ function willrStyleParams() {
 }
 
 /** MACD Input tab MA types (fast/slow oscillator + signal smoothing). */
-const MACD_MA_TYPE_OPTIONS = ['EMA', 'SMA'];
+const MACD_MA_TYPE_OPTIONS = [
+    { value: 'EMA', label: 'EMA' },
+    { value: 'SMA', label: 'SMA' }
+];
 
 function macdInputMaParams() {
     return [
@@ -4839,8 +4830,10 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
     if (indicatorType === 'atr') {
         return {
             sections: [{
-                title: 'Average True Range',
-                rows: [v9BandStyleRow('Average True Range', 'color', 'lineOpacity', null, null, null)]
+                header: true,
+                rows: [
+                    v9PlotRow('Average True Range', 'color', 'lineStyle', 'lineWidth', 'showLine')
+                ]
             }],
             footers: footers
         };
