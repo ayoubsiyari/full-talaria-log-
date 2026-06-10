@@ -242,6 +242,21 @@ function patchTrendlineArrowHeads(group, origX1, origY1, origX2, origY2, stroke,
     group.selectAll('polygon:not(.trendline-arrow-start):not(.trendline-arrow-end)').remove();
 }
 
+function trendlineArrowHeadLength(strokeWidth, scaleFactor) {
+    const scaledStrokeWidth = Math.max(0.5, Number(strokeWidth || 2) * (scaleFactor || 1));
+    return Math.max(8, scaledStrokeWidth * 5);
+}
+
+/** Pixel inset from anchor tip so on-line labels clear polygon arrowheads. */
+function trendlineEndpointArrowInset(style, scaleFactor, end) {
+    if (!style) return 0;
+    const startStyle = style.startStyle || 'normal';
+    const endStyle = style.endStyle || 'normal';
+    const hasArrow = end === 'start' ? startStyle === 'arrow' : endStyle === 'arrow';
+    if (!hasArrow) return 0;
+    return trendlineArrowHeadLength(style.strokeWidth, scaleFactor) + 4;
+}
+
 const TEXT_ALIGN_TO_ANCHOR = {
     left: 'start',
     center: 'middle',
@@ -415,12 +430,14 @@ class TrendlineTool extends BaseDrawing {
             const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
             const seg_ux = rawDX / rawLen;
             const seg_uy = rawDY / rawLen;
+            const startArrowInset = trendlineEndpointArrowInset(this.style, scaleFactor, 'start');
+            const endArrowInset = trendlineEndpointArrowInset(this.style, scaleFactor, 'end');
 
             // Calculate text/gap position from raw endpoints — no clamping
             let textX, textY;
             switch (textHAlign) {
-                case 'left':  textX = rawLX + seg_ux * (TEXT_EDGE_PADDING + capPad); textY = rawLY + seg_uy * (TEXT_EDGE_PADDING + capPad); break;
-                case 'right': textX = rawRX - seg_ux * (TEXT_EDGE_PADDING + capPad); textY = rawRY - seg_uy * (TEXT_EDGE_PADDING + capPad); break;
+                case 'left':  textX = rawLX + seg_ux * (TEXT_EDGE_PADDING + capPad + startArrowInset); textY = rawLY + seg_uy * (TEXT_EDGE_PADDING + capPad + startArrowInset); break;
+                case 'right': textX = rawRX - seg_ux * (TEXT_EDGE_PADDING + capPad + endArrowInset); textY = rawRY - seg_uy * (TEXT_EDGE_PADDING + capPad + endArrowInset); break;
                 default:      textX = (rawLX + rawRX) / 2; textY = (rawLY + rawRY) / 2;
             }
 
@@ -429,16 +446,24 @@ class TrendlineTool extends BaseDrawing {
             let split1X, split1Y, split2X, split2Y;
             switch (textHAlign) {
                 case 'left':
-                    split1X = textX - seg_ux * capPad;
-                    split1Y = textY - seg_uy * capPad;
+                    split1X = startArrowInset > 0
+                        ? rawLX + seg_ux * startArrowInset
+                        : textX - seg_ux * capPad;
+                    split1Y = startArrowInset > 0
+                        ? rawLY + seg_uy * startArrowInset
+                        : textY - seg_uy * capPad;
                     split2X = textX + seg_ux * (textWidth + padding + capPad);
                     split2Y = textY + seg_uy * (textWidth + padding + capPad);
                     break;
                 case 'right':
                     split1X = textX - seg_ux * (textWidth + padding + capPad);
                     split1Y = textY - seg_uy * (textWidth + padding + capPad);
-                    split2X = textX + seg_ux * capPad;
-                    split2Y = textY + seg_uy * capPad;
+                    split2X = endArrowInset > 0
+                        ? rawRX - seg_ux * endArrowInset
+                        : textX + seg_ux * capPad;
+                    split2Y = endArrowInset > 0
+                        ? rawRY - seg_uy * endArrowInset
+                        : textY + seg_uy * capPad;
                     break;
                 default:
                     split1X = textX - seg_ux * halfGap;
@@ -629,6 +654,9 @@ class TrendlineTool extends BaseDrawing {
             startStyle,
             endStyle
         );
+
+        this.group.selectAll('.trendline-info').remove();
+        this.renderInfoBox(x1, y1, x2, y2, scales);
 
         if (typeof this.updateHandlePositions === 'function') {
             this.updateHandlePositions(scales);
@@ -837,11 +865,16 @@ class TrendlineTool extends BaseDrawing {
             const sRawLen = Math.sqrt(sRawDX * sRawDX + sRawDY * sRawDY) || 1;
             const sUx = sRawDX / sRawLen, sUy = sRawDY / sRawLen;
             const siTextHAlign = this.style.textHAlign || this.style.textAlign || 'center';
+            const siScaleFactor = typeof this.getZoomScaleFactor === 'function'
+                ? this.getZoomScaleFactor(siScales)
+                : 1;
+            const startArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'start');
+            const endArrowInset = trendlineEndpointArrowInset(this.style, siScaleFactor, 'end');
             const SI_EDGE = 5;
             let siTextX, siTextY, siAnchor;
             switch (siTextHAlign) {
-                case 'left':  siTextX = sRawLX + sUx * SI_EDGE; siTextY = sRawLY + sUy * SI_EDGE; siAnchor = 'start'; break;
-                case 'right': siTextX = sRawRX - sUx * SI_EDGE; siTextY = sRawRY - sUy * SI_EDGE; siAnchor = 'end';   break;
+                case 'left':  siTextX = sRawLX + sUx * (SI_EDGE + startArrowInset); siTextY = sRawLY + sUy * (SI_EDGE + startArrowInset); siAnchor = 'start'; break;
+                case 'right': siTextX = sRawRX - sUx * (SI_EDGE + endArrowInset); siTextY = sRawRY - sUy * (SI_EDGE + endArrowInset); siAnchor = 'end';   break;
                 default:      siTextX = (sRawLX + sRawRX) / 2;  siTextY = (sRawLY + sRawRY) / 2;  siAnchor = 'middle';
             }
 
@@ -917,6 +950,11 @@ class TrendlineTool extends BaseDrawing {
         const rawLen = Math.sqrt(rawDX * rawDX + rawDY * rawDY) || 1;
         const line_ux = rawDX / rawLen;
         const line_uy = rawDY / rawLen;
+        const labelScaleFactor = typeof this.getZoomScaleFactor === 'function'
+            ? this.getZoomScaleFactor(scales)
+            : 1;
+        const startArrowInset = trendlineEndpointArrowInset(this.style, labelScaleFactor, 'start');
+        const endArrowInset = trendlineEndpointArrowInset(this.style, labelScaleFactor, 'end');
 
         // Use raw (actual data-point) positions — no clamping to visible boundaries.
         // Text moves exactly with the line. When the endpoint is off-screen the text
@@ -926,13 +964,13 @@ class TrendlineTool extends BaseDrawing {
         let labelAnchor;
         switch (textHAlign) {
             case 'left':
-                baseX = rawLX + line_ux * EDGE;
-                baseY = rawLY + line_uy * EDGE;
+                baseX = rawLX + line_ux * (EDGE + startArrowInset);
+                baseY = rawLY + line_uy * (EDGE + startArrowInset);
                 labelAnchor = 'start';
                 break;
             case 'right':
-                baseX = rawRX - line_ux * EDGE;
-                baseY = rawRY - line_uy * EDGE;
+                baseX = rawRX - line_ux * (EDGE + endArrowInset);
+                baseY = rawRY - line_uy * (EDGE + endArrowInset);
                 labelAnchor = 'end';
                 break;
             default:
