@@ -8817,15 +8817,7 @@ class DrawingToolsManager {
             newDrawing.timestampPoints = null;
             newDrawing.coordinateSystem = 'index';
 
-            // Calculate small offset based on visible chart range
-            const priceRange = this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
-            const domainSpan = priceRange[1] - priceRange[0];
-            const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.02 : 0;
-
-            newDrawing.points = newDrawing.points.map(p => ({
-                x: Number.isFinite(p.x) ? p.x + 1 : p.x,
-                y: Number.isFinite(p.y) ? p.y - priceOffset : p.y
-            }));
+            this._applyClonePointOffset(newDrawing);
 
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing);
@@ -9199,12 +9191,82 @@ class DrawingToolsManager {
      * Resolve live bar-index points for clone/paste. toJSON() stores timestamps ({timestamp, price})
      * which must not be passed straight into fromJSON for in-memory duplication.
      */
+    _isFreehandDrawingType(type) {
+        return type === 'brush' || type === 'highlighter' || type === 'path';
+    }
+
+    _applyClonePointOffset(drawing) {
+        if (!drawing || !Array.isArray(drawing.points) || drawing.points.length === 0) return;
+        const pts = drawing.points;
+        const priceRange = this.chart && this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
+        const domainSpan = priceRange[1] - priceRange[0];
+        const domainOffsetBase = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan : 0;
+
+        if (this._isFreehandDrawingType(drawing.type) && pts.length >= 2) {
+            let minX = Infinity;
+            let maxX = -Infinity;
+            let minY = Infinity;
+            let maxY = -Infinity;
+            for (const p of pts) {
+                if (p && Number.isFinite(p.x)) {
+                    minX = Math.min(minX, p.x);
+                    maxX = Math.max(maxX, p.x);
+                }
+                if (p && Number.isFinite(p.y)) {
+                    minY = Math.min(minY, p.y);
+                    maxY = Math.max(maxY, p.y);
+                }
+            }
+            const spanX = Number.isFinite(maxX - minX) ? maxX - minX : 0;
+            const spanY = Number.isFinite(maxY - minY) ? maxY - minY : 0;
+            const xOffset = Math.max(3, spanX * 0.1, 0.25);
+            const yOffset = Math.max(
+                domainOffsetBase * 0.025,
+                spanY * 0.1,
+                domainOffsetBase * 0.015
+            );
+            drawing.points = pts.map(p => ({
+                x: Number.isFinite(p.x) ? p.x + xOffset : p.x,
+                y: Number.isFinite(p.y) ? p.y - yOffset : p.y
+            }));
+            return;
+        }
+
+        const priceOffset = domainOffsetBase * 0.02;
+        const candleOffset = 3;
+        drawing.points = pts.map(p => ({
+            x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
+            y: Number.isFinite(p.y) ? p.y - priceOffset : p.y
+        }));
+    }
+
     _resolveDrawingIndexPoints(drawing) {
         if (!drawing) return [];
         const pts = drawing.points;
         if (Array.isArray(pts) && pts.length > 0 &&
             pts.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
             return pts.map(p => ({ x: p.x, y: p.y }));
+        }
+        if (Array.isArray(pts) && pts.length > 0 &&
+            pts.every(p => p && Number.isFinite(p.timestamp)) &&
+            this.chart && Array.isArray(this.chart.data) && this.chart.data.length > 0 &&
+            typeof CoordinateUtils !== 'undefined' &&
+            typeof CoordinateUtils.pointsFromTimestamps === 'function') {
+            try {
+                const normalized = pts.map(p => ({
+                    timestamp: p.timestamp,
+                    price: p.price !== undefined ? p.price : p.y
+                }));
+                const converted = CoordinateUtils.pointsFromTimestamps(
+                    normalized,
+                    this.chart.data,
+                    this.chart.currentTimeframe
+                );
+                if (Array.isArray(converted) && converted.length > 0 &&
+                    converted.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) {
+                    return converted.map(p => ({ x: p.x, y: p.y }));
+                }
+            } catch (_) { /* fall through */ }
         }
         const tsPts = drawing.timestampPoints;
         if (Array.isArray(tsPts) && tsPts.length > 0 &&
@@ -9275,15 +9337,7 @@ class DrawingToolsManager {
             newDrawing.timestampPoints = null;
             newDrawing.coordinateSystem = 'index';
 
-            // Offset clone slightly so it appears near the original
-            const priceRange = this.chart.yScale ? this.chart.yScale.domain() : [0, 1];
-            const domainSpan = (priceRange[1] - priceRange[0]);
-            const priceOffset = Number.isFinite(domainSpan) && domainSpan !== 0 ? domainSpan * 0.015 : 0;
-            const candleOffset = 3;
-            newDrawing.points = newDrawing.points.map(p => ({
-                x: Number.isFinite(p.x) ? p.x + candleOffset : p.x,
-                y: Number.isFinite(p.y) ? p.y - priceOffset : p.y
-            }));
+            this._applyClonePointOffset(newDrawing);
 
             this.addDrawing(newDrawing);
             this.selectDrawing(newDrawing); // Select the new clone

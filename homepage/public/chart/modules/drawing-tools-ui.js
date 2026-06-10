@@ -3248,7 +3248,7 @@ class DrawingSettingsPanel {
 
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 
-    z-index: 13000;
+    z-index: 2147483647;
 
     display: none;
 

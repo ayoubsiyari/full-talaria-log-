@@ -7893,11 +7893,14 @@ function patchOrderManagerJournalScreenshot(sessionTradeId, phasePreOrPost, imag
   }
 }
 
+/** Must match / exceed floating settings panels (tlSettOpen uses 2147483647). */
+const V9_COLOR_PICKER_Z = 2147483647;
+
 // ── Color Picker Popup (isolated drag — parent does not re-render per pointermove) ──
 const ColorPickerPopup = memo(function ColorPickerPopup({
   pos, h: hProp, s: sProp, v: vProp, a: aProp, hexStr: hexProp,
   c, F, onCommit, onHexCommit, onClose, onDragActiveChange, animation, hideAlpha,
-  zIndex = 11100,
+  zIndex = V9_COLOR_PICKER_Z,
 }) {
   const [drag, setDrag] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -34317,6 +34320,7 @@ const TalariaV8bLive = () => {
           onDragActiveChange={handleCpDragActive}
           hideAlpha={(colorPicker==="tlLineColor"&&!v9TlLineColorSupportsOpacity(tlSubTool.icon,chartPrimarySelectedDrawingType))||colorPicker==="tlTextColor"||colorPicker==="tlMidLineColor"||colorPicker==="tlLabelColor"||colorPicker==="pfMedianColor"||colorPicker==="pfBgColor"||colorPicker?.startsWith("chLine-")||colorPicker?.startsWith("regLine-")||colorPicker?.startsWith("pfLevel-")||colorPicker?.startsWith("fibLevel-")||colorPicker==="fibTrendColor"||colorPicker?.startsWith("gannPrice-")||colorPicker?.startsWith("gannTime-")||colorPicker?.startsWith("gannGrid-")||colorPicker?.startsWith("gannFanLv-")||colorPicker?.startsWith("gannArc-")||colorPicker==="txtTextColor"||colorPicker==="rr_entryColor"||colorPicker==="rr_labelColor"||colorPicker==="gotoNewColor"||colorPicker==="pinLabelColor"||(colorPicker?.startsWith("ind-")&&!(typeof window.__v9IndicatorColorSupportsAlpha==="function"&&window.__v9IndicatorColorSupportsAlpha(colorPicker.slice(4),null)))}
           animation={closing.has("cp")?"tlrPopOut 0.15s ease both":"tlrPopIn 0.15s ease"}
+          zIndex={V9_COLOR_PICKER_Z}
         />
       , document.body)}
       {dragging && (
