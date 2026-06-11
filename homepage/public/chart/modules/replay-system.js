@@ -5480,6 +5480,40 @@ class ReplaySystem {
     }
 
     /**
+     * Passive multichart panels: mirror forming-candle state for order SL/TP path checks only.
+     * Does not start a local tick loop — tile A remains the sole playhead driver.
+     */
+    _syncMirrorAnimatingCandleState(detail, anim, pathTarget) {
+        if (!anim || !Number.isFinite(Number(anim.t))) {
+            this.animatingCandle = null;
+            return;
+        }
+        if (detail && Number.isFinite(detail.tickElapsedMs)) {
+            this.tickElapsedMs = Number(detail.tickElapsedMs);
+        }
+        if (detail && Number.isFinite(detail.tickProgress)) {
+            this.tickProgress = Number(detail.tickProgress);
+        }
+        const formTs = Number(anim.t);
+        const target = pathTarget && typeof pathTarget === 'object' ? pathTarget : {
+            t: formTs,
+            o: Number(anim.o),
+            h: Number(anim.h),
+            l: Number(anim.l),
+            c: Number(anim.c),
+            v: Number(anim.v) || 0,
+        };
+        this.animatingCandle = {
+            target,
+            open: Number(anim.o),
+            high: Number(anim.h),
+            low: Number(anim.l),
+            close: Number(anim.c),
+            t: formTs,
+        };
+    }
+
+    /**
      * Multichart V9: apply one replay frame from parent tile A on this panel.
      * Resolves playhead by timestamp / forming-candle time — never copies parent index.
      * @returns {boolean} false when target bar is not in loaded fullRawData (caller may refetch)
@@ -5527,6 +5561,10 @@ class ReplaySystem {
             if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0 && chart.fitToView) {
                 chart.fitToView();
             }
+            const indepPathTarget = (indep.formingIdx >= 0 && frd[indep.formingIdx])
+                ? frd[indep.formingIdx]
+                : indep.candle;
+            this._syncMirrorAnimatingCandleState(detail, anim, indepPathTarget);
             this._finishMultichartMirrorRender(chart);
             return true;
         }
@@ -5592,6 +5630,10 @@ class ReplaySystem {
             if (this.autoScrollEnabled && !this.userHasPanned && tp > 0 && tp % 8 === 0) {
                 if (chart.fitToView) chart.fitToView();
             }
+            const pathTarget = (Array.isArray(this.fullRawData) && targetIdx >= 0 && this.fullRawData[targetIdx])
+                ? this.fullRawData[targetIdx]
+                : ((targetIdx >= 0 && frd[targetIdx]) ? frd[targetIdx] : null);
+            this._syncMirrorAnimatingCandleState(detail, anim, pathTarget);
         } else {
             const lastT = Number(frd[frd.length - 1]?.t);
             if (Number.isFinite(lastT) && ts > lastT) {

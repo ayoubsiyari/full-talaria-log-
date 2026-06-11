@@ -281,6 +281,69 @@ class OrderManager {
     }
 
     /**
+     * Replay driver for intra-bar SL/TP: local animating candle, else parent tile A in multichart embed.
+     */
+    _resolveTickAnimReplaySystem() {
+        const rs = this._playbackReplaySystem();
+        if (rs && rs.animatingCandle) return rs;
+        if (typeof document !== 'undefined' && document.documentElement
+            && document.documentElement.classList.contains('multichart-embed')) {
+            try {
+                const prs = window.parent && window.parent.chart && window.parent.chart.replaySystem;
+                if (prs && prs.isActive && prs.animatingCandle) return prs;
+            } catch (_e) { /* cross-origin */ }
+        }
+        return rs;
+    }
+
+    /**
+     * True when any tick path sample strictly after guardTick touched `level` (wick-aware, guard-safe).
+     */
+    _tickPathTouchesLevelAfterGuard(rs, guardTick, level, dir) {
+        if (!rs || !rs.isActive) return false;
+        const lv = Number(level);
+        if (!Number.isFinite(lv)) return false;
+
+        const tickProg = Number(rs.tickProgress) || 0;
+        if (guardTick >= 0 && tickProg <= guardTick) return false;
+
+        const anim = rs.animatingCandle;
+        if (!anim) return false;
+
+        const tc = anim.target || anim;
+        let path = anim.cachedPath;
+        if ((!path || !path.length) && typeof rs.getTickPath === 'function') {
+            path = rs.getTickPath(tc);
+        }
+        if (!path || !path.length) {
+            const h = Number.parseFloat(anim.high ?? anim.h);
+            const l = Number.parseFloat(anim.low ?? anim.l);
+            if (dir === 'above' && Number.isFinite(h)) return h >= lv;
+            if (dir === 'below' && Number.isFinite(l)) return l <= lv;
+            const c = Number.parseFloat(anim.close ?? anim.c);
+            if (!Number.isFinite(c)) return false;
+            return dir === 'above' ? c >= lv : c <= lv;
+        }
+
+        const lo = Number.parseFloat(tc.l ?? tc.low);
+        const hi = Number.parseFloat(tc.h ?? tc.high);
+        const startIdx = guardTick >= 0 ? Math.min(guardTick, path.length - 1) : 0;
+        const endIdx = Math.min(Math.max(0, tickProg - 1), path.length - 1);
+        if (startIdx > endIdx) return false;
+
+        for (let i = startIdx; i <= endIdx; i++) {
+            let px = Number(path[i]);
+            if (!Number.isFinite(px)) continue;
+            if (Number.isFinite(lo) && Number.isFinite(hi)) {
+                px = Math.max(lo, Math.min(hi, px));
+            }
+            if (dir === 'above' && px >= lv) return true;
+            if (dir === 'below' && px <= lv) return true;
+        }
+        return false;
+    }
+
+    /**
      * Get the current symbol from the chart (normalised, no slashes).
      * @returns {string}
      */
@@ -1422,8 +1485,8 @@ class OrderManager {
      * Guarded SL/TP on the entry candle: after the guard, decide if `level` has been touched.
      * - Candle replay (active + mode candle): same as unguarded checks — `high` for `dir === 'above'`
      *   (e.g. BUY TP, SELL SL), `low` for `dir === 'below'` (e.g. SELL TP, BUY SL). Runs even when guardTick is -1.
-     * - Tick replay: unchanged — requires animatingCandle, tickProgress > guardTick, then tests `candle.c`
-     *   vs level (not bar wicks in this guarded path).
+     * - Tick replay: walk the deterministic tick path from guardTick → current tickProgress so wicks
+     *   trigger after the guard without re-firing on earlier ticks (close-only was too strict).
      * @param {number} guardTick - tickProgress when the guard was set (-1 if not tick anim)
      * @param {object} candle    - current candle from getCurrentCandle()
      * @param {number} level     - the price level to test
@@ -1431,7 +1494,7 @@ class OrderManager {
      *                                'below' if trigger is price <= level
      */
     _tickAnimOverridesGuard(guardTick, candle, level, dir) {
-        const rs = this._playbackReplaySystem();
+        const rs = this._resolveTickAnimReplaySystem();
         if (!rs) return false;
         const lv = Number(level);
         if (!Number.isFinite(lv)) return false;
@@ -1446,12 +1509,9 @@ class OrderManager {
             return Number.isFinite(l) && l <= lv;
         }
 
-        if (!(guardTick >= 0)) return false;
         if (!rs.animatingCandle) return false;
-        if ((Number(rs.tickProgress) || 0) <= guardTick) return false;
-        const close = Number(candle.c);
-        if (!Number.isFinite(close)) return false;
-        return dir === 'above' ? close >= lv : close <= lv;
+        if (guardTick >= 0 && (Number(rs.tickProgress) || 0) <= guardTick) return false;
+        return this._tickPathTouchesLevelAfterGuard(rs, guardTick, lv, dir);
     }
 
     /**

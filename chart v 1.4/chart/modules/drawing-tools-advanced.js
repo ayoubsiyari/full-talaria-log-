@@ -1956,6 +1956,14 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (orderManager.entryPrice !== undefined) orderManager.entryPrice = primaryEntry;
     }
 
+    /** Remove RR drag-hit layers that use `custom-handle` and survive reuseGroup clears. */
+    _purgeRiskRewardInteractionLayers() {
+        if (!this.group) return;
+        this.group.selectAll(
+            '.rr-primary-entry-drag-hit, .rr-primary-leg-drag-hit, .rr-extra-drag-hit, .rr-mini-badge-drag-hit'
+        ).remove();
+    }
+
     render(container, scales, renderOptsArg = {}) {
         const renderOpts = BaseDrawing.normalizeRenderOpts(renderOptsArg);
         const isPreview = renderOpts.isPreview;
@@ -1968,8 +1976,12 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this._prepareRenderGroup(container, `drawing risk-reward ${this.meta.orientation}`, renderOpts);
         this._clearDrawingLabels(scales);
+        if (!renderOpts.skipHandles) {
+            this._purgeRiskRewardInteractionLayers();
+        }
 
         this.handles = [];
+        const skipInteractionLayers = !!renderOpts.skipHandles;
 
         const entry = this.points[0];
         const stop = this.points[1];
@@ -2081,7 +2093,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('x', zoneX1)
             .attr('y', riskTop)
             .attr('width', zoneWidth)
-            .attr('height', riskHeight)
+            .attr('height', Math.max(0, riskHeight))
             .attr('fill', this.style.riskColor)
             .attr('stroke', 'none')
             // When selected, zones must not steal events — whole-tool drag uses .rr-body-drag instead
@@ -2094,7 +2106,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('x', zoneX1)
             .attr('y', rewTop)
             .attr('width', zoneWidth)
-            .attr('height', rewardHeight)
+            .attr('height', Math.max(0, rewardHeight))
             .attr('fill', this.style.rewardColor)
             .attr('stroke', 'none')
             .style('pointer-events', this.selected ? 'none' : 'all')
@@ -2111,7 +2123,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         const lowerBodyY = bandBot;
         const lowerBodyH = Math.max(0, bodyBotPx - lowerBodyY);
         const appendBodyDrag = (y0, h) => {
-            if (h < 1) return;
+            if (skipInteractionLayers || h < 1) return;
             this.group.append('rect')
                 .attr('class', 'rr-body-drag')
                 .attr('x', zoneX1)
@@ -2167,6 +2179,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y1', stopY)
             .attr('x2', zoneX2)
             .attr('y2', stopY)
+            .attr('stroke', 'none')
             .style('pointer-events', 'none');
 
         this.group.append('line')
@@ -2174,6 +2187,7 @@ class BaseRiskRewardTool extends BaseDrawing {
             .attr('y1', targetY)
             .attr('x2', zoneX2)
             .attr('y2', targetY)
+            .attr('stroke', 'none')
             .style('pointer-events', 'none');
 
         /** Full-width drag strip height for extra SL / BE (tighter vertical grab). */
@@ -2185,6 +2199,7 @@ class BaseRiskRewardTool extends BaseDrawing {
         // Full-width rect (not a thick stroke on <line>) so the whole horizontal band hits — transparent
         // strokes often miss the middle of the line in SVG, so users could only grab endpoints / small nodes.
         const appendExtraDragHit = (yy, role, hitW = extraDragHitW) => {
+            if (skipInteractionLayers) return;
             const w = Math.max(1, zoneX2 - zoneX1);
             this.group.append('rect')
                 .attr('class', 'custom-handle rr-extra-drag-hit')
@@ -3288,7 +3303,7 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         // Primary entry hit rect first (below); extra TP/SL/E drag lines after (on top) so E2 is draggable
         // and does not lose events to this wide strip.
-        if (this.selected) {
+        if (this.selected && !skipInteractionLayers) {
             // + buttons sit past zoneX2; primary entry strip can use full zone width.
             const entryDragX2 = zoneX2;
             const hasExtraEntries = (this.meta.extraEntries || []).length > 0;
@@ -3705,10 +3720,15 @@ class BaseRiskRewardTool extends BaseDrawing {
 
         this.group.selectAll('rect.rr-extra-drag-hit, rect.rr-primary-entry-drag-hit, rect.rr-primary-leg-drag-hit').each(function() {
             const sel = d3.select(this);
+            const role = sel.attr('data-handle-role') || '';
             const h = parseFloat(sel.attr('height')) || 16;
-            const cy = parseFloat(sel.attr('y')) + h / 2;
-            sel.attr('x', entryX).attr('width', zoneWidth);
-            if (Number.isFinite(cy)) sel.attr('y', cy - h / 2);
+            let lineY = null;
+            if (role === 'rr-primary-entry') lineY = scales.yScale(entry.y);
+            else if (role === 'rr-primary-stop') lineY = scales.yScale(stop.y);
+            else if (role === 'rr-primary-tp') lineY = scales.yScale(target.y);
+            else lineY = priceYFromRole(role);
+            if (!Number.isFinite(lineY)) return;
+            sel.attr('x', entryX).attr('width', zoneWidth).attr('y', lineY - h / 2);
         });
 
         const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
