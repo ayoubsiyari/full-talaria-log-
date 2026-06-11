@@ -17551,8 +17551,23 @@ class Chart {
         const hasSessionEnd = sessionEndMs != null;
 
         const replayRawTf = isReplay ? this._getReplayPanFetchTimeframe() : null;
-        const tf = replayRawTf || this.currentTimeframe || '1m';
-        
+        let tf = replayRawTf || this.currentTimeframe || '1m';
+
+        // HYBRID MASTER (independent multichart tiles only): the replay master stays
+        // 1m around the playhead so the forming candle still grows minute-by-minute
+        // (smooth candle-by-candle replay). But OLD history pulled when panning left
+        // is fetched at the NATIVE display TF, so big-TF back-fills are ~Nx fewer bars
+        // (single-chart speed). Far-left completed candles never animate, so coarse
+        // bars there are safe. Forward + forming stay on 1m, untouched.
+        const _indepNativeBack = isReplay
+            && direction === 'backward'
+            && String(this.currentTimeframe || '').toLowerCase().trim() !== '1m'
+            && typeof this._isMultichartEmbedPanel === 'function' && this._isMultichartEmbedPanel()
+            && typeof this._isIndependentMultichartPair === 'function' && this._isIndependentMultichartPair();
+        if (_indepNativeBack) {
+            tf = String(this.currentTimeframe).toLowerCase().trim();
+        }
+
         // Check if there's more data in this direction
         if (!force && direction === 'backward' && !this._serverCursors.hasMoreLeft) {
             if (!(this.isBacktestMode && this._backtestReplayHasUnloadHistoryLeft())) {
@@ -17801,13 +17816,29 @@ class Chart {
                 } else if (direction === 'backward') {
                     const firstTs = Number(masterData[0]?.t);
                     if (Number.isFinite(firstTs)) {
-                        uniqueNew = incoming.filter(c => Number(c?.t) < firstTs);
+                        // Hybrid seam: when prepending NATIVE-TF history in front of the
+                        // 1m master, drop any native bar that lands in the 1m region's
+                        // boundary display bucket. Otherwise that bucket would contain
+                        // both a native bar and the partial 1m bars → double-counted on
+                        // resample. Native buckets strictly older than the boundary are
+                        // contiguous and exact.
+                        let leftCut = firstTs;
+                        if (_indepNativeBack) {
+                            const tfMs = this.parseTimeframe(tf) || 60000;
+                            if (Number.isFinite(tfMs) && tfMs > 0) {
+                                leftCut = Math.floor(firstTs / tfMs) * tfMs;
+                            }
+                        }
+                        uniqueNew = incoming.filter(c => Number(c?.t) < leftCut);
                         merged = uniqueNew.length > 0 ? uniqueNew.concat(masterData) : masterData;
                     }
                 }
 
-                // Defensive fallback when fast-path couldn't classify data safely
-                if (uniqueNew.length === 0 && incoming.length > 0 && merged === masterData) {
+                // Defensive fallback when fast-path couldn't classify data safely.
+                // Skip for the hybrid native back-fill: this timestamp-uniqueness merge
+                // ignores the bucket-aligned seam and could place a native bar into the
+                // 1m boundary bucket (double-count on resample).
+                if (!_indepNativeBack && uniqueNew.length === 0 && incoming.length > 0 && merged === masterData) {
                     const existingTs = new Set(masterData.map(c => c.t));
                     uniqueNew = incoming.filter(c => !existingTs.has(c.t));
                     if (uniqueNew.length > 0) {
