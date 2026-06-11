@@ -929,7 +929,8 @@
                 if (hostReadyForMirror()) {
                     runPanelLoad();
                 } else {
-                    pollFor(hostReadyForMirror, 100, 5000, runPanelLoad, runPanelLoad);
+                    // Wait for tile A's replay master before boot — avoids tiny seek-buffer islands.
+                    pollFor(hostReadyForMirror, 100, 12000, runPanelLoad, runPanelLoad);
                 }
                 return;
             }

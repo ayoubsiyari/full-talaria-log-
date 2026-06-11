@@ -2269,15 +2269,27 @@ class Chart {
                     this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
                 }
 
+                const samePairAsHost = typeof this._multichartSamePairAsHost === 'function'
+                    && this._multichartSamePairAsHost(fileId);
                 const independentPair = switchingPair
                     && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
                     && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
 
                 let result = null;
+
+                // FAST PATH: same pair as tile A — clone host replay master (no /bars, no tiny seek window).
+                if (samePairAsHost && typeof this._warmBtTfCacheFromParent === 'function') {
+                    try { this._warmBtTfCacheFromParent(); } catch (_warmMc) { /* ignore */ }
+                }
+                if (samePairAsHost && !independentPair
+                    && typeof this._takeParentNativeMasterSmartWindow === 'function') {
+                    result = this._takeParentNativeMasterSmartWindow(fileId);
+                }
+
                 // Independent pair: load session-spanning 1m master first so replay slice
                 // always has history on screen. Playhead-only seek buffers (~2k bars) left
                 // B/C/D with a tiny candle island and empty plot when replay started.
-                if (independentPair) {
+                if (!result && independentPair) {
                     try {
                         const initRange = this._getBacktestInitialFetchRange(masterTf, session);
                         result = await this._fetchSmartWindow(
@@ -2295,7 +2307,8 @@ class Chart {
                         console.warn('loadMultichartPanelFromHost: independent initial fetch failed', e);
                     }
                 }
-                if (!result && sessionStartTs != null && Number.isFinite(replayTs)) {
+                // Seek buffer only for independent panels — same-pair tiles inherit host data above.
+                if (!result && independentPair && sessionStartTs != null && Number.isFinite(replayTs)) {
                     try {
                         result = await this._fetchReplaySeekBuffer(
                             fileId, session, masterTf, replayTs
@@ -2306,11 +2319,12 @@ class Chart {
                 }
                 if (!result) {
                     let range;
-                    if (Number.isFinite(replayTs) && !independentPair) {
-                        range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
-                    } else if (independentPair && sessionEndMs != null) {
+                    if (independentPair && sessionEndMs != null) {
                         range = { endTs: sessionEndMs };
+                    } else if (independentPair && Number.isFinite(replayTs)) {
+                        range = this._getBacktestReplayFetchRange(masterTf, session, replayTs);
                     } else {
+                        // Same-pair fallback: full session window (single-chart parity), not playhead island.
                         range = this._getBacktestInitialFetchRange(masterTf, session);
                     }
                     result = await this._fetchSmartWindow(
@@ -3046,6 +3060,57 @@ class Chart {
     }
 
     /**
+     * Same-pair multichart iframe: pull host tile A's replay master when it
+     * already covers targetTs — avoids per-panel /bars catch-up during play.
+     * @param {number} targetTs
+     * @returns {boolean}
+     */
+    _syncReplayMasterFromParentIfCovers(targetTs) {
+        if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        const ts = Number(targetTs);
+        if (!Number.isFinite(ts)) return false;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            const parent = window.parent.chart;
+            const prs = parent && parent.replaySystem;
+            const master = prs && Array.isArray(prs.fullRawData) ? prs.fullRawData : null;
+            if (!master || master.length === 0) return false;
+
+            const tfMs = this.parseTimeframe(this.currentTimeframe) || 60_000;
+            const margin = Math.max(tfMs * 40, 60_000);
+            const first = Number(master[0]?.t);
+            const last = Number(master[master.length - 1]?.t);
+            if (!Number.isFinite(first) || !Number.isFinite(last)) return false;
+            if (ts < first - margin || ts > last + margin) return false;
+            if (!this._replayRawHasWallClockPrefix(master, ts)) return false;
+
+            this._panelFullRawData = master.slice();
+            this._nativeRawFetchTf = '1m';
+            if (parent._serverCursors) {
+                this._serverCursors = Object.assign({}, parent._serverCursors);
+            }
+            if (Number.isFinite(parent.totalCandles)) {
+                this.totalCandles = parent.totalCandles;
+            }
+
+            const replay = this.replaySystem;
+            if (replay?.isActive) {
+                if (typeof this._reseedReplayFullRawFromLoadedData === 'function') {
+                    this._reseedReplayFullRawFromLoadedData();
+                }
+                if (typeof replay.goToReplayTimestamp === 'function') {
+                    replay.goToReplayTimestamp(ts, { centerOnCandle: false });
+                } else if (typeof replay.updateChartData === 'function') {
+                    replay.updateChartData(false);
+                }
+            }
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    /**
      * Multichart hard guard: refetch a playhead-centered window when the
      * currently loaded rawData does not contain targetTs. Without this,
      * goToReplayTimestamp clamps to the nearest loaded bar (often session
@@ -3092,6 +3157,9 @@ class Chart {
             }
             return true;
         }
+        if (this._syncReplayMasterFromParentIfCovers(ts)) {
+            return true;
+        }
 
         const session = this.backtestingSession;
         const fileId = this.currentFileId;
@@ -3126,12 +3194,17 @@ class Chart {
                     return false;
                 }
 
+                if (this._syncReplayMasterFromParentIfCovers(ts)) {
+                    return true;
+                }
+
                 if (wasPlaying && replay && typeof replay.pause === 'function') {
                     replay.pause();
                 }
 
                 let result = null;
-                if (String(replayRawTf).toLowerCase() === '1m') {
+                const samePairCatchUp = this._multichartSamePairAsHost(fileId);
+                if (!samePairCatchUp && String(replayRawTf).toLowerCase() === '1m') {
                     try {
                         result = await this._fetchReplaySeekBuffer(fileId, session, replayRawTf, ts);
                     } catch (e) {
@@ -3139,7 +3212,9 @@ class Chart {
                     }
                 }
                 if (!result) {
-                    const range = this._getBacktestReplayFetchRange(replayRawTf, session, ts);
+                    const range = samePairCatchUp
+                        ? this._getBacktestInitialFetchRange(replayRawTf, session)
+                        : this._getBacktestReplayFetchRange(replayRawTf, session, ts);
                     result = await this._fetchSmartWindow(
                         fileId,
                         replayRawTf,
