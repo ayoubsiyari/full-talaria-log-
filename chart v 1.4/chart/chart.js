@@ -3270,7 +3270,12 @@ class Chart {
         const displayTf = this._normalizeBacktestTimeframe(this.currentTimeframe) || '1m';
         let replayRawTf = displayTf;
         try {
-            if (typeof document !== 'undefined'
+            // Same-pair tiles + host force a 1m master for host-locked tick sync.
+            // Independent tiles run a native display-TF master (single-chart parity)
+            // so seek/catch-up here must NOT downgrade them back to 1m.
+            const independent = typeof this._isIndependentMultichartPair === 'function'
+                && this._isIndependentMultichartPair();
+            if (!independent && typeof document !== 'undefined'
                 && document.documentElement.classList.contains('multichart-embed')) {
                 replayRawTf = '1m';
             }
