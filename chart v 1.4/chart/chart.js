@@ -2118,6 +2118,73 @@ class Chart {
     }
 
     /**
+     * Synchronized pair switch (symbol sync ON): the host (tile A) and EVERY embed panel
+     * switch pair at the same instant. Classifying same-pair vs independent — and the fast
+     * "clone host 1m master" path — reads window.parent.chart.currentFileId. If the host
+     * has not finished loading the new pair yet, a SAME-pair tile mis-reads the OLD fileId,
+     * is treated as independent, and fetches its own full-session 1m master. With N panels
+     * that is N redundant session-spanning 1m fetches + resamples — the "multichart loads
+     * slow on high TF when I have 2-3 panels" report. Mirror the initial-boot
+     * hostReadyForMirror poll: wait for the host to settle on THIS fileId (master ready)
+     * before classifying, so the existing clone path runs (one shared master, no per-panel
+     * fetch). Independent switches (host not switching, or host on a different pair) resolve
+     * immediately so they never stall. Pure load timing — no replay/data-path change.
+     * @param {string} fileId
+     * @param {number} loadSeq
+     * @returns {Promise<void>}
+     */
+    _awaitHostPairSettle(fileId, loadSeq) {
+        return new Promise((resolve) => {
+            if (typeof this._isMultichartEmbedPanel !== 'function' || !this._isMultichartEmbedPanel()) {
+                resolve();
+                return;
+            }
+            const fid = String(fileId || '').trim();
+            const readHost = () => {
+                try {
+                    if (!window.parent || window.parent === window) return null;
+                    return window.parent.chart || null;
+                } catch (_e) {
+                    return null;
+                }
+            };
+            const hostMasterReady = (host) => {
+                const prs = host && host.replaySystem;
+                return !!(prs && Array.isArray(prs.fullRawData) && prs.fullRawData.length > 0);
+            };
+            const settled = () => {
+                // Superseded by a newer load on this panel — stop waiting.
+                if (loadSeq != null && this._multichartPanelLoadSeq !== loadSeq) return true;
+                const host = readHost();
+                if (!host) return true; // no host reference → behave as before (own fetch)
+                const hostFid = host.currentFileId != null ? String(host.currentFileId) : '';
+                if (hostFid === fid) {
+                    // Same pair as host: wait until the host master is populated, then clone.
+                    return hostMasterReady(host);
+                }
+                // Host is on a different pair. If it is NOT mid pair-switch this panel is
+                // genuinely independent → proceed now. If the host IS switching it may still
+                // resolve to our fileId, so keep waiting until it settles.
+                return !host._pairSwitchLoading;
+            };
+            if (settled()) {
+                resolve();
+                return;
+            }
+            const startedAt = Date.now();
+            const maxWaitMs = 8000;
+            const tick = () => {
+                if (settled() || Date.now() - startedAt >= maxWaitMs) {
+                    resolve();
+                    return;
+                }
+                setTimeout(tick, 60);
+            };
+            setTimeout(tick, 60);
+        });
+    }
+
+    /**
      * Multichart iframe FAST boot: when this panel shows the SAME pair host tile A already
      * holds in memory, build a /smart-shaped result from A's bars so loadFileData can ingest
      * it WITHOUT a network round-trip. Returns null (caller fetches from the server) for a
@@ -2267,6 +2334,21 @@ class Chart {
 
                 if (this.viewportData) {
                     this.viewportData.init(fileId, displayTf, sessionStartTs, sessionEndMs);
+                }
+
+                // Synchronized pair switch: let the host (tile A) settle on the new pair
+                // before classifying same-pair vs independent. Without this, racing tiles
+                // mis-read the host's old fileId and each refetch a full-session 1m master
+                // (slow on high TF, scales with panel count). Independent panels resolve
+                // instantly here, so they are not delayed.
+                if (switchingPair) {
+                    try { await this._awaitHostPairSettle(fileId, loadSeq); } catch (_settle) { /* ignore */ }
+                    if (loadSeq !== this._multichartPanelLoadSeq) {
+                        if (pairLoadUiActive) {
+                            try { this._endPairSwitchLoading(loadSeq); } catch (_stalePair) { /* ignore */ }
+                        }
+                        return;
+                    }
                 }
 
                 const samePairAsHost = typeof this._multichartSamePairAsHost === 'function'
