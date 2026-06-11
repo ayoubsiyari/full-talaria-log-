@@ -23012,8 +23012,8 @@ class Chart {
      * Retries while data keeps arriving and a left gap remains.
      */
     _fillViewportHistoryAfterTfSwitch(attempt = 0) {
-        if (attempt > 8) return;
-        // checkViewportLoadMore bails while a switch is mid-flight — retry shortly.
+        if (attempt > 12) return;
+        // Loaders bail while a switch is mid-flight — retry shortly.
         if (this._timeframeSwitching || this._pairSwitchLoading) {
             setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
             return;
@@ -23022,30 +23022,38 @@ class Chart {
         const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
         if (!(spacing > 0)) return;
 
-        // offsetX is the empty pixel run before the first loaded bar's left edge.
-        const leftGapPx = (this.offsetX || 0) - spacing / 2;
-        if (leftGapPx <= spacing) return; // left already filled
+        // Empty space on the left = the left plot edge maps to a bar index near 0
+        // (the same gap test the drag-load path uses, so it matches single-chart).
+        const m = this.margin || { l: 60, r: 60 };
+        const leftIdx = Math.floor(this.pixelToDataIndex(m.l));
+        if (leftIdx >= 6) return; // left already filled with loaded bars
 
-        const hasMoreLeft = !this._serverCursors
-            || this._serverCursors.hasMoreLeft !== false
-            || (this.isBacktestMode
-                && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
-                && this._backtestReplayHasUnloadHistoryLeft());
-        if (!hasMoreLeft) return;
-
-        const measureLen = () => (this.replaySystem && Array.isArray(this.replaySystem.fullRawData))
-            ? this.replaySystem.fullRawData.length
+        const replay = this.replaySystem;
+        const measureLen = () => (replay && Array.isArray(replay.fullRawData))
+            ? replay.fullRawData.length
             : (Array.isArray(this.data) ? this.data.length : 0);
         const beforeLen = measureLen();
 
-        this.checkViewportLoadMore('backward', true);
+        if (replay && replay.isActive) {
+            // Same proven path as dragging the replay chart left: parent-extend for
+            // same-pair multichart tiles, else a server /bars fetch (host + single).
+            if (typeof this._scheduleReplayPanLoadLeft === 'function') {
+                this._scheduleReplayPanLoadLeft();
+            }
+        } else {
+            const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
+            if (!hasMoreLeft) return;
+            this.checkViewportLoadMore('backward', true);
+        }
 
+        // Poll slower than the loader's debounce (≤200ms) so we don't keep
+        // resetting its timer; only re-trigger once the prior load settles.
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
-            // Stop when nothing new arrived and no fetch is in flight (avoid looping).
-            if (!grew && !this._panLoading) return;
+            const busy = this._panLoading || this._replayPanLoadTimer;
+            if (!grew && !busy) return; // nothing more to load
             this._fillViewportHistoryAfterTfSwitch(attempt + 1);
-        }, 180);
+        }, 260);
     }
 
     /**
