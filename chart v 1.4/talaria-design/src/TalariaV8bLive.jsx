@@ -583,7 +583,11 @@ function v9PortalFloatingUi(node) {
   if (!target) return node;
   const portaled = React.isValidElement(node)
     ? React.cloneElement(node, {
-        style: { ...(node.props.style || {}), pointerEvents: "auto" },
+        style: {
+          ...(node.props.style || {}),
+          pointerEvents: "auto",
+          zIndex: Math.max(Number(node.props.style?.zIndex) || 0, 2147483645),
+        },
       })
     : node;
   return createPortal(portaled, target);
@@ -12941,7 +12945,9 @@ const TalariaV8bLive = () => {
       ? (v9SubToolIconFromDrawingType(chartPrimarySelectedDrawingType, "brush") || (groupSelected.brush?.icon ?? "vwap"))
       : null;
   const tlBarLiveSelection = tlBarSelected ? v9GetLiveSelectedDrawingForQuickBar() : null;
-  const tlBarShowQuickBar = tlBarSelected && !!tlBarLiveSelection;
+  /** Parent multichart shell only — iframe tiles clip position:fixed UI to one cell. */
+  const v9HostFloatingBars = !v9IsMultichartIframeEmbed();
+  const tlBarShowQuickBar = tlBarSelected && !!tlBarLiveSelection && v9HostFloatingBars;
   // Selected annotation must never inherit line/shape rail from `tool`, or tlSubTool defaults to Trend Line.
   const settingsEditGroup =
     (tlSettOpen || closing.has("tlsett")) &&
@@ -16881,7 +16887,21 @@ const TalariaV8bLive = () => {
     let n = 0;
     const attachToolbarHooks = (dm) => {
       const tb = dm && dm.toolbar;
-      if (!tb || tb.__v9Hooked) return false;
+      if (!tb) return false;
+      // Iframe tiles never host V9 floating bars — parent shell owns toolbar.show → React tlBar.
+      if (v9IsMultichartIframeEmbed()) return false;
+      // Parent reclaim: embed React may have hooked this tile before the parent shell did.
+      if (tb.__v9Hooked) {
+        if (!v9IsMultiPanelLayoutActive() || tb.__v9HookedByParentShell) return false;
+        try {
+          if (tb.__v9OrigShow) tb.show = tb.__v9OrigShow;
+          if (tb.__v9OrigHide) tb.hide = tb.__v9OrigHide;
+          delete tb.__v9Hooked;
+          delete tb.__v9HookedByEmbed;
+        } catch (_) {
+          return false;
+        }
+      }
       const origShow = tb.show && tb.show.bind(tb);
       const origHide = tb.hide && tb.hide.bind(tb);
       tb.__v9OrigShow = origShow;
@@ -17131,6 +17151,7 @@ const TalariaV8bLive = () => {
         return origHide ? origHide() : undefined;
       };
       tb.__v9Hooked = true;
+      tb.__v9HookedByParentShell = !!v9IsMultiPanelLayoutActive();
       return true;
     };
     const hookAll = () => {
@@ -22699,7 +22720,7 @@ const TalariaV8bLive = () => {
           Active text tool OR a text/label drawing selected on the chart (toolbar.show
           sets tool to crosshair — tlBarDrawingGroup === "text" so we must not fall through
           to the Trend Line bar, which only keys off tlBarSelected). */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && (()=>{
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && v9HostFloatingBars && (()=>{
         const TxBtn = ({id, isAct, onClick, children, isDel}) => {
           const isH = hov === id;
           return (
@@ -25367,7 +25388,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar font size (portaled — bar uses overflowX:auto which clips inline dropdowns) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarSizeOpen && typeof document !== "undefined" && createPortal((() => {
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && v9HostFloatingBars && txtBarSizeOpen && typeof document !== "undefined" && createPortal((() => {
         const txtSizes = [10, 12, 14, 16, 18, 20, 22, 24];
         const a = txtBarSizeAnchor;
         const dropW = 52;
@@ -25415,7 +25436,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar template menu (portaled) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "template" && typeof document !== "undefined" && createPortal((() => {
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && v9HostFloatingBars && txtBarDrop === "template" && typeof document !== "undefined" && createPortal((() => {
         const a = txtBarDropAnchor;
         const dropW = 180;
         const tplRows = txtTemplates.length || 1;
@@ -25514,7 +25535,7 @@ const TalariaV8bLive = () => {
       })(), document.body)}
 
       {/* Text mini-bar ⋯ more menu (portaled) */}
-      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && txtBarDrop === "more" && typeof document !== "undefined" && createPortal((() => {
+      {(tool === "text" || (tlBarSelected && tlBarDrawingGroup === "text")) && v9HostFloatingBars && txtBarDrop === "more" && typeof document !== "undefined" && createPortal((() => {
         const a = txtBarDropAnchor;
         const dropW = 160;
         const dropH = 220;
@@ -27486,7 +27507,7 @@ const TalariaV8bLive = () => {
       })()}
 
       {/* ── Pinned tools floating bar (fixed — can overlay any UI area except right panels) ── */}
-      {pinnedBarOpen && (()=>{
+      {pinnedBarOpen && v9HostFloatingBars && (()=>{
         const pinnedTools = [];
         for (const group of toolGroups) {
           for (const t of group) {
