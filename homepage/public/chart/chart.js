@@ -22998,6 +22998,54 @@ class Chart {
         if (replay && replay.isActive && this._chartViewRestored) {
             replay.userHasPanned = true;
         }
+        // TradingView parity: with horizontal zoom preserved, the new TF can have
+        // fewer loaded bars than the old one, leaving empty space on the left.
+        // Auto-load older history to fill it instead of waiting for a manual pan.
+        if (typeof setTimeout === 'function') {
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0), 0);
+        }
+    }
+
+    /**
+     * Fill empty left space after a TF switch by loading older bars (TradingView
+     * keeps a backward buffer so previous data appears without a manual drag).
+     * Retries while data keeps arriving and a left gap remains.
+     */
+    _fillViewportHistoryAfterTfSwitch(attempt = 0) {
+        if (attempt > 8) return;
+        // checkViewportLoadMore bails while a switch is mid-flight — retry shortly.
+        if (this._timeframeSwitching || this._pairSwitchLoading) {
+            setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
+            return;
+        }
+        if (!Array.isArray(this.data) || this.data.length === 0) return;
+        const spacing = typeof this.getCandleSpacing === 'function' ? this.getCandleSpacing() : 0;
+        if (!(spacing > 0)) return;
+
+        // offsetX is the empty pixel run before the first loaded bar's left edge.
+        const leftGapPx = (this.offsetX || 0) - spacing / 2;
+        if (leftGapPx <= spacing) return; // left already filled
+
+        const hasMoreLeft = !this._serverCursors
+            || this._serverCursors.hasMoreLeft !== false
+            || (this.isBacktestMode
+                && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
+                && this._backtestReplayHasUnloadHistoryLeft());
+        if (!hasMoreLeft) return;
+
+        const measureLen = () => (this.replaySystem && Array.isArray(this.replaySystem.fullRawData))
+            ? this.replaySystem.fullRawData.length
+            : (Array.isArray(this.data) ? this.data.length : 0);
+        const beforeLen = measureLen();
+
+        this.checkViewportLoadMore('backward', true);
+
+        setTimeout(() => {
+            const grew = measureLen() > beforeLen;
+            // Stop when nothing new arrived and no fetch is in flight (avoid looping).
+            if (!grew && !this._panLoading) return;
+            this._fillViewportHistoryAfterTfSwitch(attempt + 1);
+        }, 180);
     }
 
     /**
