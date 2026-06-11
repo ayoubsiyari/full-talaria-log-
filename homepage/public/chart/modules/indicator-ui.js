@@ -3149,7 +3149,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         sessions: {
             name: 'Sessions',
             icon: '',
-            indicators: ['sessions', 'sessionsplus', 'openingrange', 'killzones']
+            indicators: ['sessions', 'openingrange', 'killzones']
         },
         ict: {
             name: 'ICT',

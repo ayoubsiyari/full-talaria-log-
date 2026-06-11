@@ -11387,7 +11387,6 @@ const TalariaV8bLive = () => {
 
     // Sessions
     { id:"SESS", type:"sessions", name:"Session Boxes", abbr:"SESS", cat:"sessions", desc:"Highlights major trading sessions" },
-    { id:"SESSPLUS", type:"sessionsplus", name:"Sessions+", abbr:"SESS+", cat:"sessions", desc:"Extended sessions module with labels" },
     { id:"KILLZONES", type:"killzones", name:"ICT Kill Zones", abbr:"ICT KZ", cat:"sessions", desc:"ICT session windows and opens" },
     { id:"ICTEVERYTHING", type:"icteverything", name:"ICT Everything", abbr:"ICT+", cat:"sessions", desc:"Sessions, CBDR/Asia/FLOUT, verticals & opens (Pine-aligned settings)" },
     { id:"OR", type:"openingrange", name:"Opening Range", abbr:"OR", cat:"sessions", desc:"Session opening range high/low levels" },

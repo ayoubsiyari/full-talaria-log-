@@ -18469,9 +18469,18 @@ class Chart {
         // Loop for volume max — spreading thousands of args into Math.max (...map) stalled
         // zoomed-out frames and could exceed the argument limit on large windows.
         let maxVolume = 1;
+        const volFromBar = typeof this._volumeFromOhlcBar === 'function'
+            ? (bar) => this._volumeFromOhlcBar(bar)
+            : (bar) => {
+                if (!bar) return 0;
+                const s = Number(bar.vSum);
+                if (Number.isFinite(s)) return s;
+                const v = Number(bar.v);
+                return Number.isFinite(v) ? v : 0;
+            };
         for (let i = 0; i < priceVisible.length; i++) {
-            const vv = Number(priceVisible[i] && priceVisible[i].v);
-            if (Number.isFinite(vv) && vv > maxVolume) maxVolume = vv;
+            const vv = volFromBar(priceVisible[i]);
+            if (vv > maxVolume) maxVolume = vv;
         }
         this.volumeScale = d3.scaleLinear()
             .domain([0, maxVolume])
@@ -21391,10 +21400,19 @@ class Chart {
         const plotPxVol = Math.max(1, this.w - m.l - m.r);
         const maxVolLod = this._getCandleRenderMaxBuckets(visible.length, plotPxVol, opts);
         const volLod = this._aggregateVisibleOhlcvBuckets(visible, maxVolLod, plotPxVol);
+        const volFromBar = typeof this._volumeFromOhlcBar === 'function'
+            ? (bar) => this._volumeFromOhlcBar(bar)
+            : (bar) => {
+                if (!bar) return 0;
+                const s = Number(bar.vSum);
+                if (Number.isFinite(s)) return s;
+                const v = Number(bar.v);
+                return Number.isFinite(v) ? v : 0;
+            };
         let volLodMax = 1;
         if (volLod) {
             for (let vi = 0; vi < volLod.length; vi++) {
-                const vs = Number(volLod[vi].vSum) || 0;
+                const vs = volFromBar(volLod[vi]);
                 if (vs > volLodMax) volLodMax = vs;
             }
         }
@@ -21435,11 +21453,11 @@ class Chart {
 
         if (cfg.showBars) {
         if (volLod) {
-            volLod.forEach((b) => drawVolBar(b.vSum, b.midIdx, b, b._pixelX));
+            volLod.forEach((b) => drawVolBar(volFromBar(b), b.midIdx, b, b._pixelX));
         } else {
             visible.forEach((d, i) => {
                 const idx = Number.isFinite(d.midIdx) ? d.midIdx : this.visibleStartIndex + i;
-                drawVolBar(Number.isFinite(d.v) ? d.v : (d.vSum || 0), idx, d);
+                drawVolBar(volFromBar(d), idx, d);
             });
         }
         }

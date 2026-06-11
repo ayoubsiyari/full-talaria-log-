@@ -51,6 +51,40 @@ const HOST_WRAPPER_ID = "chartWrapper";
 const MULTICHART_GLOBAL_SETTINGS_ROOT_ID = "multichart-global-settings-root";
 const HOST_CONTAINER_ID = "chart-container";
 
+/** Bars loaded on a multichart tile (host or iframe manager entry). */
+function panelCandleCount(chartEntry) {
+    if (!chartEntry) return 0;
+    if (chartEntry.host) {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        return (ch && Array.isArray(ch.data)) ? ch.data.length : 0;
+    }
+    const cc = chartEntry.state && Number(chartEntry.state.candleCount);
+    return Number.isFinite(cc) ? cc : 0;
+}
+
+function panelHasBars(chartEntry) {
+    return panelCandleCount(chartEntry) > 0;
+}
+
+/** Snapshot host tile A's current TF into _btTfDataCache so iframe fast paths hit. */
+function ensureHostBacktestTfCache(tf) {
+    try {
+        const ch = typeof window !== "undefined" ? window.chart : null;
+        if (!ch || !ch.isBacktestMode || !ch.currentFileId) return;
+        const fid = String(ch.currentFileId);
+        const normalized = String(tf || "").trim().toLowerCase();
+        if (!normalized) return;
+        if (typeof ch._getBtTfDataCache === "function" && ch._getBtTfDataCache(fid, normalized)) {
+            return;
+        }
+        if (ch.currentTimeframe === normalized
+            && Array.isArray(ch.rawData) && ch.rawData.length > 0
+            && typeof ch._saveBtTfDataCacheFromChart === "function") {
+            ch._saveBtTfDataCacheFromChart(fid, normalized);
+        }
+    } catch (_) { /* ignore */ }
+}
+
 // ─── parent-side bridge loader ──────────────────────────────────────────────
 //
 // /chart/ does NOT load the bridge by default (it's only loaded inside
@@ -1373,6 +1407,95 @@ export default function MultichartGrid({
     focusPanelByIdRef.current = focusPanelById;
     const onStateAnyRef = useRef(null);
 
+    const layoutSyncRef = useRef(layoutSync);
+    useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
+    const lastBroadcastTfRef = useRef({});
+    const lastBroadcastFileRef = useRef({});
+    const userPairLoadGuardRef = useRef({});
+    const layoutTargetTfRef = useRef(null);
+    const commandedTfRef = useRef({});
+    const intervalSyncInflightRef = useRef(false);
+    const intervalSyncPendingRef = useRef(null);
+
+    const runOneIntervalSync = useCallback(async (job) => {
+        const mgr = managerRef.current;
+        if (!mgr || typeof mgr.sendCommandNoReply !== "function") return;
+        const tf = job.tf;
+        const sourceId = job.sourceId;
+        const skipHost = !!job.skipHost;
+        const now = Date.now();
+        layoutTargetTfRef.current = tf;
+        ensureHostBacktestTfCache(tf);
+        if (sourceId) lastBroadcastTfRef.current[sourceId] = tf;
+        if (!skipHost) {
+            try {
+                const ch = window.chart;
+                if (ch && typeof ch.setTimeframe === "function" && ch.currentTimeframe !== tf) {
+                    ch._suppressIntervalSync = true;
+                    try { ch.setTimeframe(tf); } catch (_) {}
+                    ch._suppressIntervalSync = false;
+                }
+                lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
+                commandedTfRef.current[HOST_PANEL_ID] = { tf, at: now };
+            } catch (_) {}
+        } else {
+            lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
+        }
+        const panels = [...mgr.charts.values()].filter(
+            (c) => c && !c.host && c.id !== sourceId && c.ready
+        );
+        for (let i = 0; i < panels.length; i++) {
+            const c = panels[i];
+            lastBroadcastTfRef.current[c.id] = tf;
+            commandedTfRef.current[c.id] = { tf, at: now };
+            try { mgr.sendCommandNoReply(c.id, "setTimeframe", { tf }); } catch (_) {}
+            if (i < panels.length - 1) {
+                await new Promise((r) => setTimeout(r, 60));
+            }
+        }
+    }, []);
+
+    const scheduleIntervalSync = useCallback((tf, sourceId, opts = {}) => {
+        const normalized = String(tf || "").trim().toLowerCase();
+        if (!normalized) return;
+        intervalSyncPendingRef.current = { tf: normalized, sourceId, skipHost: !!opts.skipHost, at: Date.now() };
+        if (intervalSyncInflightRef.current) return;
+        intervalSyncInflightRef.current = true;
+        const drain = () => {
+            const job = intervalSyncPendingRef.current;
+            intervalSyncPendingRef.current = null;
+            if (!job) {
+                intervalSyncInflightRef.current = false;
+                return;
+            }
+            runOneIntervalSync(job).finally(() => {
+                if (intervalSyncPendingRef.current) {
+                    setTimeout(drain, 0);
+                } else {
+                    intervalSyncInflightRef.current = false;
+                }
+            });
+        };
+        drain();
+    }, [runOneIntervalSync]);
+
+    // Host TF change → fan out to iframes when Interval sync is on.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const onTfChanged = (ev) => {
+            if (!(layoutSync && layoutSync.interval)) return;
+            const tf = (ev && ev.detail && ev.detail.timeframe)
+                || (window.chart && window.chart.currentTimeframe)
+                || null;
+            if (!tf) return;
+            const normalized = String(tf).trim().toLowerCase();
+            if (layoutTargetTfRef.current === normalized) return;
+            scheduleIntervalSync(normalized, HOST_PANEL_ID, { skipHost: true });
+        };
+        window.addEventListener("timeframeChanged", onTfChanged);
+        return () => window.removeEventListener("timeframeChanged", onTfChanged);
+    }, [layoutSync, scheduleIntervalSync]);
+
     // ─── per-host order forwarding state ──────────────────────────────
     //
     // suppressEmitId — set to an order.id during an applyHostCommand
@@ -2134,36 +2257,6 @@ export default function MultichartGrid({
         } catch (_) {}
     }, [layoutSync, managerReady]);
 
-    // ─── Interval (timeframe) sync ──────────────────────────────────────
-    //
-    // Fan out the host chart's timeframe to every iframe **only** when the
-    // layout "Interval" toggle is on. Same-dataset / backtest replay still
-    // share one virtual playhead (replayTick) and one file lock (loadFile),
-    // but independent per-panel timeframes are a supported UX when Interval
-    // is off — do not override them when the user changes TF on tile A.
-    //
-    // Listen on chart.js's `timeframeChanged` on the parent window (tile A).
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const onTfChanged = (ev) => {
-            const mgr = managerRef.current;
-            if (!(layoutSync && layoutSync.interval)) {
-                return;
-            }
-            if (!mgr || typeof mgr.sendCommand !== "function") return;
-            const tf = (ev && ev.detail && ev.detail.timeframe)
-                || (window.chart && window.chart.currentTimeframe)
-                || null;
-            if (!tf) return;
-            for (const c of mgr.charts.values()) {
-                if (!c || c.host) continue; // host already changed; iframes only
-                try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
-            }
-        };
-        window.addEventListener("timeframeChanged", onTfChanged);
-        return () => window.removeEventListener("timeframeChanged", onTfChanged);
-    }, [layoutSync]);
-
     // ─── Symbol/file sync ───────────────────────────────────────────────
     //
     // Same pattern as Interval. When the host loads a new file (user
@@ -2296,27 +2389,50 @@ export default function MultichartGrid({
                             mgr.sendCommand(c.id, "replayEnter", { timestamp: ts });
                         }
                     } catch (_) {}
+                    if (!panelHasBars(c)) continue;
                     try {
                         const stf = rs.stepTimeframeOverride;
-                        mgr.sendCommand(c.id, "replaySetStepTf", {
-                            tf: stf == null ? null : stf,
-                        });
-                    }
-                    catch (_) {}
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "replaySetStepTf", {
+                                tf: stf == null ? null : stf,
+                            });
+                        } else {
+                            mgr.sendCommand(c.id, "replaySetStepTf", {
+                                tf: stf == null ? null : stf,
+                            });
+                        }
+                    } catch (_) {}
                     try {
                         const syncTf = !!(layoutSyncRef.current && layoutSyncRef.current.interval);
                         const syncSym = !!(layoutSyncRef.current && layoutSyncRef.current.symbol);
-                        mgr.sendCommand(c.id, "syncFromHost", {
-                            force: true,
-                            syncTimeframe: syncTf,
-                            syncSymbol: syncSym,
-                        });
-                    }
-                    catch (_) {}
-                    try { mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed }); }
-                    catch (_) {}
-                    try { mgr.sendCommand(c.id, "replaySetMode", { mode: parentMode }); }
-                    catch (_) {}
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "syncFromHost", {
+                                force: true,
+                                syncTimeframe: syncTf,
+                                syncSymbol: syncSym,
+                            });
+                        } else {
+                            mgr.sendCommand(c.id, "syncFromHost", {
+                                force: true,
+                                syncTimeframe: syncTf,
+                                syncSymbol: syncSym,
+                            });
+                        }
+                    } catch (_) {}
+                    try {
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "replaySetSpeed", { speed: parentSpeed });
+                        } else {
+                            mgr.sendCommand(c.id, "replaySetSpeed", { speed: parentSpeed });
+                        }
+                    } catch (_) {}
+                    try {
+                        if (typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, "replaySetMode", { mode: parentMode });
+                        } else {
+                            mgr.sendCommand(c.id, "replaySetMode", { mode: parentMode });
+                        }
+                    } catch (_) {}
                     if (parentIsPlaying) {
                         try { mgr.sendCommand(c.id, "replayPlay", { speed: parentSpeed, mode: parentMode }); }
                         catch (_) {}
@@ -2518,10 +2634,24 @@ export default function MultichartGrid({
             try {
                 const mgr = managerRef.current;
                 if (!mgr) return;
+                const needsBars = cmd === "replaySetMode"
+                    || cmd === "replaySetStepTf"
+                    || cmd === "replaySetSpeed"
+                    || cmd === "syncFromHost"
+                    || cmd === "syncReplayFromHost";
+                const useNoReply = cmd === "replaySetMode"
+                    || cmd === "replaySetStepTf"
+                    || cmd === "replaySetSpeed";
                 for (const c of mgr.charts.values()) {
                     if (!c || c.host || !c.ready) continue;
-                    try { mgr.sendCommand(c.id, cmd, args || {}); }
-                    catch (_) {}
+                    if (needsBars && !panelHasBars(c)) continue;
+                    try {
+                        if (useNoReply && typeof mgr.sendCommandNoReply === "function") {
+                            mgr.sendCommandNoReply(c.id, cmd, args || {});
+                        } else {
+                            mgr.sendCommand(c.id, cmd, args || {});
+                        }
+                    } catch (_) {}
                 }
             } catch (_) {}
         };
@@ -3016,19 +3146,6 @@ export default function MultichartGrid({
         return () => clearTimeout(t);
     }, [focusedPanelId]);
 
-    // Stable ref to the latest layoutSync so the onState delegate below
-    // can read it without re-running on every toggle change.
-    const layoutSyncRef = useRef(layoutSync);
-    useEffect(() => { layoutSyncRef.current = layoutSync; }, [layoutSync]);
-
-    // Track per-panel last-broadcast tf/fileId so we don't echo a sync
-    // back to the same panel and don't re-broadcast on noise updates
-    // (chart-state from iframes can re-fire many times per pan).
-    const lastBroadcastTfRef = useRef({});       // panelId -> tf
-    const lastBroadcastFileRef = useRef({});     // panelId -> fileId
-    /** Skip symbol-sync pull-back briefly after user picks a pair on this iframe tile. */
-    const userPairLoadGuardRef = useRef({});
-
     // Fire when ANY panel's state updates. Two responsibilities:
     //
     //   (a) Update focused-panel mirror UI (existing behavior — drives
@@ -3095,24 +3212,19 @@ export default function MultichartGrid({
         }
 
         if (state && state.timeframe && sync.interval) {
-            const tf = String(state.timeframe);
-            if (lastBroadcastTfRef.current[id] !== tf) {
-                lastBroadcastTfRef.current[id] = tf;
-                // 1) push to the host (in-process call) — host doesn't
-                // run panel-cmd-bridge, so we hit window.chart directly.
-                try {
-                    if (window.chart && typeof window.chart.setTimeframe === "function"
-                        && window.chart.currentTimeframe !== tf) {
-                        window.chart.setTimeframe(tf);
-                        lastBroadcastTfRef.current[HOST_PANEL_ID] = tf;
-                    }
-                } catch (_) {}
-                // 2) push to every other iframe panel
-                for (const c of mgr.charts.values()) {
-                    if (!c || c.host || c.id === id) continue;
-                    try { mgr.sendCommand(c.id, "setTimeframe", { tf }); } catch (_) {}
-                }
+            const tf = String(state.timeframe).trim().toLowerCase();
+            if (!tf) return;
+            if (state.timeframeSwitching) return;
+            const commanded = commandedTfRef.current[id];
+            if (commanded && commanded.tf !== tf && (Date.now() - commanded.at) < 120000) {
+                return;
             }
+            if (layoutTargetTfRef.current === tf) {
+                lastBroadcastTfRef.current[id] = tf;
+                return;
+            }
+            if (id !== focusedPanelIdRef.current) return;
+            scheduleIntervalSync(tf, id);
         }
         if (state && state.fileId && sync.symbol) {
             const fid = String(state.fileId);

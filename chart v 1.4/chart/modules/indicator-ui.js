@@ -1724,9 +1724,11 @@ const INDICATOR_DEFINITIONS = {
         type: 'separate',
         params: [
             { id: 'period', label: 'Length (Days)', type: 'number', default: 14, min: 1 },
-            { id: 'color', label: 'Line Color', type: 'color', default: '#26a69a' },
-            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4 }
-        ].concat(separateLineStyleExtras())
+            { id: 'color', label: 'Line Color', type: 'color', default: '#26a69a', tab: 'style' },
+            { id: 'lineWidth', label: 'Line Thickness', type: 'number', default: 2, min: 1, max: 4, tab: 'style' },
+            { id: 'lineStyle', label: 'Line Style', type: 'select', options: OVERLAY_LINE_STYLE_OPTIONS, default: 'Step line', tab: 'style' },
+            { id: 'showLabel', label: 'Show Label', type: 'checkbox', default: true, tab: 'style' }
+        ]
     },
     volume: {
         name: 'Volume',
@@ -3149,7 +3151,7 @@ function createIndicatorSelectionMenu(chartInstance) {
         sessions: {
             name: 'Sessions',
             icon: '',
-            indicators: ['sessions', 'sessionsplus', 'openingrange', 'killzones']
+            indicators: ['sessions', 'openingrange', 'killzones']
         },
         ict: {
             name: 'ICT',

@@ -1829,6 +1829,17 @@
         return c >= pc;
     }
 
+    /** LOD buckets use vSum (chart.js) or v (display pipeline) — read either. */
+    function volumeFromOhlcBar(bar) {
+        if (!bar) return 0;
+        const s = Number(bar.vSum);
+        if (Number.isFinite(s)) return s;
+        const v = Number(bar.v);
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    Chart.prototype._volumeFromOhlcBar = volumeFromOhlcBar;
+
     function applyVolumeStyleFromParams(indicator, params) {
         const legacyUp = params.upColor || 'rgba(8, 153, 129, 0.5)';
         const legacyDn = params.downColor || 'rgba(242, 54, 69, 0.5)';
@@ -11687,7 +11698,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (volLod && volLod.length) {
                 drewLod = true;
                 volLod.forEach(function(b) {
-                    const v = Number(b.vSum) || 0;
+                    const v = volumeFromOhlcBar(b);
                     const midIdx = Number.isFinite(b.midIdx) ? b.midIdx : 0;
                     const x = Number.isFinite(b._pixelX) ? b._pixelX : this.dataIndexToPixel(midIdx);
                     if (x < m.l - 10 || x > this.w - m.r + 10) return;

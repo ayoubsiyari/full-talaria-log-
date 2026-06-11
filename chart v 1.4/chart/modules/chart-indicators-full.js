@@ -1829,6 +1829,17 @@
         return c >= pc;
     }
 
+    /** LOD buckets use vSum (chart.js) or v (display pipeline) — read either. */
+    function volumeFromOhlcBar(bar) {
+        if (!bar) return 0;
+        const s = Number(bar.vSum);
+        if (Number.isFinite(s)) return s;
+        const v = Number(bar.v);
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    Chart.prototype._volumeFromOhlcBar = volumeFromOhlcBar;
+
     function applyVolumeStyleFromParams(indicator, params) {
         const legacyUp = params.upColor || 'rgba(8, 153, 129, 0.5)';
         const legacyDn = params.downColor || 'rgba(242, 54, 69, 0.5)';
@@ -5327,6 +5338,7 @@
                 indicator.params.period = Math.max(1, parseInt(params.period, 10) || 14);
                 indicator.style.color = params.color || '#26a69a';
                 indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.style.lineStyle = params.lineStyle || 'Step line';
                 indicator.overlay = false;
                 indicator.separatePanel = true;
                 indicator.name = 'ADR(' + indicator.params.period + ')';
@@ -7109,6 +7121,18 @@
         chart.indicators.data[indicator.id] = calculateSupertrend(chart.data, period, multiplier);
     }
 
+    /** ADR requires timezone-aware daily session keys — always recalc on the main thread. */
+    function recalcAdrIndicator(chart, indicator) {
+        if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
+        if (!chart.indicators.data) chart.indicators.data = {};
+        indicator.type = 'adr';
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+        indicator.params.period = Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14);
+        indicator.name = 'ADR(' + indicator.params.period + ')';
+        chart.indicators.data[indicator.id] = calculateADR(chart.data, indicator.params.period);
+    }
+
     /**
      * Calculate all active indicators in a background Web Worker.
      * Falls back to synchronous recalculateIndicators() if worker is unavailable.
@@ -7137,7 +7161,7 @@
         chart.indicators.active.forEach(function(ind) {
             // Multi-pass MAs, Supertrend, + ICT/session types stay on main thread.
             var workerSkip = [
-                'dema', 'tema', 'hma', 'supertrend',
+                'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'
             ];
@@ -7145,6 +7169,11 @@
             ind.type = indType;
             if (indType === 'supertrend') {
                 try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                didSyncOverlayRecalc = true;
+                return;
+            }
+            if (indType === 'adr') {
+                try { recalcAdrIndicator(chart, ind); } catch (_) {}
                 didSyncOverlayRecalc = true;
                 return;
             }
@@ -7195,6 +7224,8 @@
                 const t = String(ind.type || '').toLowerCase();
                 if (t === 'supertrend') {
                     try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                } else if (t === 'adr') {
+                    try { recalcAdrIndicator(chart, ind); } catch (_) {}
                 } else if (t === 'dema' || t === 'tema' || t === 'hma') {
                     try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
                 } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
@@ -8902,6 +8933,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'atr') {
             this._renderAtrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'adr') {
+            this._renderAdrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'stddev') {
             this._renderStddevPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -11687,7 +11721,7 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             if (volLod && volLod.length) {
                 drewLod = true;
                 volLod.forEach(function(b) {
-                    const v = Number(b.vSum) || 0;
+                    const v = volumeFromOhlcBar(b);
                     const midIdx = Number.isFinite(b.midIdx) ? b.midIdx : 0;
                     const x = Number.isFinite(b._pixelX) ? b._pixelX : this.dataIndexToPixel(midIdx);
                     if (x < m.l - 10 || x > this.w - m.r + 10) return;
