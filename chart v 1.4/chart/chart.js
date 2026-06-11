@@ -1817,6 +1817,9 @@ class Chart {
         } catch (e) {
             console.warn('[multichart] replay timeframe switch failed', e);
         } finally {
+            // Guard against any fast-path that committed the new TF label without
+            // rebuilding the candle series (label/candles desync).
+            try { this._ensureDisplayDataMatchesTimeframe(normalizedTf); } catch (_recoTf) { /* ignore */ }
             this._endTimeframeSwitching();
         }
     }
@@ -2913,6 +2916,7 @@ class Chart {
 
         const finish = () => {
             this._finishTfSwitchViewportRestore();
+            try { this._ensureDisplayDataMatchesTimeframe(normalizedTf); } catch (_recoTf) { /* ignore */ }
             if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
             this._scheduleIndicatorsAfterTimeframe();
         };
@@ -5655,6 +5659,69 @@ class Chart {
         }
     }
 
+    /**
+     * Guarantee the rendered candle series matches `this.currentTimeframe`.
+     *
+     * Several multichart/embed paths change `currentTimeframe` (which drives the
+     * on-chart legend + toolbar) WITHOUT rebuilding `this.data` — e.g. the session
+     * chart-view restore deliberately "syncs UI only" because it assumes the load
+     * already fetched native bars at the restored TF. In a multichart pair switch
+     * that assumption breaks: the panel loaded/resampled at its previous TF, so the
+     * label flips to e.g. 4H while the candles stay 1H (the reported glitch).
+     *
+     * This detects a spacing mismatch between the displayed bars and the requested
+     * timeframe and re-resamples from the loaded master so label and candles always
+     * agree. It is a no-op when they already match (cheap median check), so it is
+     * safe to call after any embed TF/load operation.
+     *
+     * @param {string} [tf] timeframe to enforce (defaults to currentTimeframe)
+     * @returns {boolean} true when a re-resample was applied
+     */
+    _ensureDisplayDataMatchesTimeframe(tf) {
+        try {
+            const targetTf = this._normalizeBacktestTimeframe(tf || this.currentTimeframe)
+                || tf || this.currentTimeframe;
+            const tfMs = this.parseTimeframe(targetTf);
+            if (!Number.isFinite(tfMs) || tfMs <= 0) return false;
+            if (!Array.isArray(this.data) || this.data.length < 3) return false;
+
+            // Dominant spacing of the most recent displayed bars. Median over a
+            // window is robust to occasional session gaps (e.g. forex weekends).
+            const n = this.data.length;
+            const deltas = [];
+            for (let i = Math.max(1, n - 40); i < n; i++) {
+                const d = Number(this.data[i].t) - Number(this.data[i - 1].t);
+                if (Number.isFinite(d) && d > 0) deltas.push(d);
+            }
+            if (!deltas.length) return false;
+            deltas.sort((a, b) => a - b);
+            const median = deltas[Math.floor(deltas.length / 2)];
+
+            // Already at the requested timeframe (within tolerance) → nothing to do.
+            if (median >= tfMs * 0.6 && median <= tfMs * 1.5) return false;
+
+            const src = (Array.isArray(this.rawData) && this.rawData.length)
+                ? this.rawData
+                : ((Array.isArray(this._panelFullRawData) && this._panelFullRawData.length)
+                    ? this._panelFullRawData
+                    : null);
+            if (!src) return false;
+
+            this.data = this.resampleData(src, targetTf);
+            if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
+                this.dataPipeline.invalidateResampleCache();
+            }
+            if (typeof this.bumpDataVersion === 'function') this.bumpDataVersion();
+            if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
+                try { this._trimLastDataBarToReplayPlayhead(); } catch (_trim) { /* ignore */ }
+            }
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
     _smartResponseHasPayload(result) {
         return !!(result && ((Array.isArray(result.candles) && result.candles.length > 0) || result.data));
     }
@@ -7342,6 +7409,11 @@ class Chart {
                         this.currentTimeframe = restoredTf;
                         this._persistBacktestTimeframeChoice(restoredTf);
                         this._syncBacktestTimeframeUi(restoredTf);
+                        // Multichart pair switches reach here after loading/resampling at the
+                        // panel's PREVIOUS timeframe, so the "native bars already match" premise
+                        // above can be false — the label would flip to restoredTf while candles
+                        // stay at the loaded TF. Re-resample the display to keep them in sync.
+                        this._ensureDisplayDataMatchesTimeframe(restoredTf);
                         try { this._emitTimeframeChanged(); } catch (_eTf) { /* ignore */ }
                     } else if (!this.isBacktestMode) {
                         this.currentTimeframe = restoredTf;
