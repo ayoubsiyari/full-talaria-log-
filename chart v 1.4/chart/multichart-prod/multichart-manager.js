@@ -718,6 +718,20 @@
                 // to update focusedPanelId so subsequent topbar actions
                 // (TF, file, …) target this panel. Coalesced inside the
                 // iframe so we get at most one message per user action.
+                //
+                // Also dismiss the unified HOST context menu on every
+                // primary click — including clicks on the already-focused
+                // panel (same-panel empty-area dismiss). Other-panel clicks
+                // used to look like the only working path because focus
+                // changed; same-panel clicks never left the iframe document
+                // so chart.js's local outside-click listener could not reach
+                // the host menu.
+                try {
+                    var chFocus = global.chart;
+                    if (chFocus && typeof chFocus.hideContextMenu === 'function') {
+                        chFocus.hideContextMenu();
+                    }
+                } catch (_) {}
                 if (sourceId) {
                     try { this.onPanelFocus(sourceId); } catch (e) {
                         this._log('warn', 'onPanelFocus threw: ' + (e && e.message || e));

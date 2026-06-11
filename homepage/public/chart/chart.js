@@ -27760,7 +27760,8 @@ class Chart {
     }
     
     hideContextMenu() {
-        this.contextMenu
+        this._disarmHostContextMenuOutsideDismiss();
+        d3.selectAll('.chart-context-menu')
             .style('display', 'none')
             .style('visibility', 'hidden')
             .style('opacity', '0')
@@ -27772,6 +27773,33 @@ class Chart {
             this.setTool(this._previousTool);
             this._previousTool = null;
         }
+    }
+
+    _disarmHostContextMenuOutsideDismiss() {
+        const handler = this._hostContextMenuOutsideDismiss;
+        if (!handler) return;
+        try {
+            document.removeEventListener('mousedown', handler, true);
+            document.removeEventListener('pointerdown', handler, true);
+        } catch (_) {}
+        this._hostContextMenuOutsideDismiss = null;
+    }
+
+    _armHostContextMenuOutsideDismiss() {
+        this._disarmHostContextMenuOutsideDismiss();
+        const self = this;
+        const handler = (e) => {
+            if (!e || e.button === 2) return;
+            const t = e.target;
+            if (t && typeof t.closest === 'function') {
+                if (t.closest('.chart-context-menu')) return;
+                if (t.closest('.drawing-style-editor')) return;
+            }
+            self.hideContextMenu();
+        };
+        this._hostContextMenuOutsideDismiss = handler;
+        document.addEventListener('mousedown', handler, true);
+        document.addEventListener('pointerdown', handler, true);
     }
     
     showChartContextMenu(clientX, clientY, offsetX, offsetY, overrides) {
@@ -27971,6 +27999,8 @@ class Chart {
                 this.hideContextMenu();
             }
         });
+
+        this._armHostContextMenuOutsideDismiss();
     }
 
     getContextMenuSymbolName() {

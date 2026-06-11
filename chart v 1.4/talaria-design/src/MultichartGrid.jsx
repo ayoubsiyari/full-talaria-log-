@@ -1633,6 +1633,10 @@ export default function MultichartGrid({
                 // clicks on B/C/D — we rely on the iframe to tell us
                 // explicitly via panel-cmd-bridge's focus broadcast.
                 onPanelFocus: function (id) {
+                    try {
+                        const ch = window.chart;
+                        if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
+                    } catch (_) {}
                     const prev = focusedPanelIdRef.current;
                     focusPanelByIdRef.current(id);
                     const grid = window.__multichartGrid;

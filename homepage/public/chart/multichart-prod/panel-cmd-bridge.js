@@ -2166,7 +2166,11 @@
     // the first click would then miss starting a stroke. Letting the
     // current event finish first fixes "pick tool → first click doesn't draw".
     var focusPending = false;
-    function notifyFocus() {
+    function notifyFocus(e) {
+        // Right-click mousedown is followed by contextmenu — do not post
+        // panel-focus here or a deferred hide would close the menu we are
+        // about to open on the host.
+        if (e && e.button === 2) return;
         if (focusPending) return;
         focusPending = true;
         setTimeout(function () {
