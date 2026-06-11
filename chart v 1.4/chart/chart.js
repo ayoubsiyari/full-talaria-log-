@@ -5194,6 +5194,19 @@ class Chart {
             this._serverCursors.hasMoreRight = true;
         }
 
+        // Drop the previous timeframe's forming-candle tick state before re-arming
+        // guards / running order checks. The client-resample path (onTimeframeChange)
+        // already clears animatingCandle; the master-replace hot-swap did not, so a
+        // coarse→fine switch (e.g. 1D→1m) left the old 1D candle's intra-bar tick path
+        // live. checkPendingOrders → _tickAnimOverridesGuard would then walk that stale
+        // path, see it touch a pending stop/limit level, and fire the order instantly
+        // with no replay. Clearing it (incl. the paused-resume snapshot) makes the new
+        // TF replay start a fresh forming candle at the synced playhead.
+        replay.animatingCandle = null;
+        replay.tickProgress = 0;
+        replay.tickElapsedMs = 0;
+        replay._savedTickState = null;
+
         replay._timeframeChanging = true;
         try {
             if (typeof replay.updateChartData === 'function') {
