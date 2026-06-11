@@ -2368,6 +2368,21 @@ class Chart {
                     result = this._takeParentNativeMasterSmartWindow(fileId);
                 }
 
+                // Independent pair on a high TF: HYBRID master — native bars for fast
+                // history (single-chart speed) + 1m around the playhead for smooth replay.
+                // Avoids fetching/resampling a full-session 1m master per panel.
+                if (!result && independentPair
+                    && String(displayTf).toLowerCase().trim() !== '1m'
+                    && typeof this._buildIndependentHybridInitialMaster === 'function') {
+                    try {
+                        result = await this._buildIndependentHybridInitialMaster(
+                            fileId, session, displayTf, replayTs
+                        );
+                    } catch (_hy) {
+                        console.warn('loadMultichartPanelFromHost: hybrid init failed', _hy);
+                    }
+                }
+
                 // Independent pair: load session-spanning 1m master first so replay slice
                 // always has history on screen. Playhead-only seek buffers (~2k bars) left
                 // B/C/D with a tiny candle island and empty plot when replay started.
@@ -3058,6 +3073,89 @@ class Chart {
         }
         this._panelFullRawData = Array.from(byT.values()).sort((a, b) => a.t - b.t);
         return this._panelFullRawData;
+    }
+
+    /**
+     * Independent multichart tile, initial load on a display TF coarser than 1m.
+     * A single chart paints a high TF from ~40 native bars; an independent panel kept a
+     * full 1m master and resampled ~10k+ bars per panel → slow on high TF, worse with
+     * more panels. This builds a HYBRID master: native display-TF bars for the history
+     * (fast viewport, single-chart parity) spliced with 1m bars from the playhead's
+     * display bucket onward (smooth minute-by-minute forming candle during replay).
+     *
+     * The seam sits on a display-TF boundary (floor(playhead / tfMs)) so there is NO
+     * granularity overlap — native bars are strictly left of it, 1m bars at/after it.
+     * Far-left native candles are completed (never animated) so coarse bars are safe.
+     * Forward replay keeps loading 1m (forward fill); pan-left loads native (existing
+     * _indepNativeBack hybrid). Returns a /smart-shaped result, or null to fall back to
+     * the legacy session-spanning 1m path on any problem.
+     * @returns {Promise<object|null>}
+     */
+    async _buildIndependentHybridInitialMaster(fileId, session, displayTf, replayTs) {
+        const tfMs = this.parseTimeframe(displayTf) || 60_000;
+        if (!(tfMs > 60_000)) return null; // only worth it when display is coarser than 1m
+        try {
+            // 1) Native display-TF history — few bars, fast (like a single chart).
+            const nativeRange = Number.isFinite(replayTs)
+                ? this._getBacktestReplayFetchRange(displayTf, session, replayTs)
+                : this._getBacktestInitialFetchRange(displayTf, session);
+            const nativeRes = await this._fetchSmartWindow(
+                fileId, displayTf, session, 'end', nativeRange,
+                { skipSessionDates: true, limit: this._backtestFetchLimitForTimeframe(displayTf) },
+            );
+            if (!this._smartResponseHasPayload(nativeRes)) return null;
+            const nativeBars = Array.isArray(nativeRes.candles) ? nativeRes.candles : [];
+            if (!nativeBars.length) return null;
+
+            const anchorTs = Number.isFinite(replayTs)
+                ? Number(replayTs)
+                : Number(nativeBars[nativeBars.length - 1]?.t);
+
+            // 2) 1m window around the playhead for the forming-candle region.
+            let oneMinBars = [];
+            if (Number.isFinite(anchorTs)) {
+                try {
+                    const minRange = this._getBacktestReplayFetchRange('1m', session, anchorTs);
+                    const minRes = await this._fetchSmartWindow(
+                        fileId, '1m', session, 'end', minRange,
+                        { skipSessionDates: true, limit: this._backtestFetchLimitForTimeframe('1m') },
+                    );
+                    if (this._smartResponseHasPayload(minRes) && Array.isArray(minRes.candles)) {
+                        oneMinBars = minRes.candles;
+                    }
+                } catch (_min) { /* native-only fallback below */ }
+            }
+
+            // 3) Splice on a display-bucket boundary: native strictly left, 1m at/after.
+            let merged = nativeBars;
+            if (oneMinBars.length && Number.isFinite(anchorTs)) {
+                const seam = Math.floor(anchorTs / tfMs) * tfMs;
+                const left = nativeBars.filter((b) => Number(b?.t) < seam);
+                const right = oneMinBars.filter((b) => Number(b?.t) >= seam);
+                if (right.length) {
+                    merged = left.concat(right);
+                    merged.sort((a, b) => Number(a.t) - Number(b.t));
+                }
+            }
+            if (!merged.length) return null;
+
+            const first = merged[0];
+            const last = merged[merged.length - 1];
+            return {
+                candles: merged,
+                total: Number.isFinite(nativeRes.total) ? nativeRes.total : merged.length,
+                returned: merged.length,
+                first_cursor: first ? first.t : null,
+                last_cursor: last ? last.t : null,
+                has_more_left: true,
+                has_more_right: nativeRes.has_more_right !== false,
+                source: 'independent-hybrid-init',
+                nativeRawFetchTf: '1m',
+            };
+        } catch (e) {
+            console.warn('_buildIndependentHybridInitialMaster failed', e);
+            return null;
+        }
     }
 
     /**
