@@ -1434,6 +1434,7 @@ class DrawingToolsManager {
             }
 
             self.saveDrawings();
+            self._broadcastLiveEditUpdate(drawing);
         };
         
         // Delete callback

@@ -3863,8 +3863,18 @@ function v9ApplyVwapStyleToDrawingTargets(vwapStyle, targets) {
       d._cache = d._cache || {};
       d._cache.vwapPoints = null;
       d._cache.bands = null;
-      try { dm.renderDrawing?.(d); } catch (_) {}
-      try { dm.saveDrawings?.(); } catch (_) {}
+      try {
+        if (tb && typeof tb.onUpdate === "function") tb.onUpdate(d);
+        else {
+          dm.renderDrawing?.(d);
+          dm.saveDrawings?.();
+        }
+      } catch (_) {
+        try {
+          dm.renderDrawing?.(d);
+          dm.saveDrawings?.();
+        } catch (_) {}
+      }
       if (dm.chart) chartsToRender.add(dm.chart);
     });
     chartsToRender.forEach((ch) => ch.scheduleRender && ch.scheduleRender());
