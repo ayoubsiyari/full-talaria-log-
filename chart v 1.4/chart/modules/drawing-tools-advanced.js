@@ -3686,7 +3686,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 : (m[1] === 'entry' ? this.meta.extraEntries : this.meta.extraStops);
             const row = list && list[parseInt(m[2], 10)];
             return row && Number.isFinite(row.y) ? scales.yScale(row.y) : null;
-        }.bind(this);
+        };
 
         this.group.selectAll('.rr-extra-handle-group').each(function() {
             const g = d3.select(this);
