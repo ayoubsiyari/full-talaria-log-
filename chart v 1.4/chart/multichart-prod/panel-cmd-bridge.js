@@ -391,7 +391,45 @@
         var applied = rs.applyMultichartMirrorFrame(args);
         if (applied) return;
 
+        // Mirror rejected the host playhead — almost always because this panel's
+        // loaded master does not yet reach `ts` (host stepped a full display-TF
+        // candle ahead; on a coarser-data / independent pair the forward bars
+        // aren't in yet). Instead of leaving the panel frozen on an old candle
+        // until the async fetch lands, advance it to the FURTHEST candle it
+        // already holds right now, then kick the catch-up fetch for the rest.
+        // This keeps every panel moving candle-by-candle through its own data.
+        renderFurthestLoadedMirrorFrame(ch, rs, args);
+
         scheduleMirrorCatchUp(ch, ts, args);
+    }
+
+    /**
+     * Advance this panel to the latest candle its loaded master already covers,
+     * clamping the host timestamp down to the panel's last loaded bar. No-op when
+     * the panel actually covers `ts` (handled by the normal mirror) or has no
+     * resolvable master. Pure render — does not fetch.
+     */
+    function renderFurthestLoadedMirrorFrame(ch, rs, args) {
+        try {
+            if (!rs || typeof rs.applyMultichartMirrorFrame !== 'function') return;
+            var ts = Number(args && args.timestamp);
+            if (!Number.isFinite(ts)) return;
+            var master = (Array.isArray(ch._panelFullRawData) && ch._panelFullRawData.length)
+                ? ch._panelFullRawData
+                : (rs.fullRawData && rs.fullRawData.length ? rs.fullRawData : null);
+            if (!master || !master.length) return;
+            var lastT = Number(master[master.length - 1] && master[master.length - 1].t);
+            if (!Number.isFinite(lastT)) return;
+            // Only step to the loaded edge when the host is genuinely ahead of it.
+            if (lastT >= ts) return;
+            var clamped = Object.assign({}, args, {
+                timestamp: lastT,
+                tickProgress: 0,
+                tickElapsedMs: 0,
+            });
+            delete clamped.animatedCandle;
+            rs.applyMultichartMirrorFrame(clamped);
+        } catch (_) { /* best-effort only */ }
     }
 
     // ─── per-panel order forwarding state ──────────────────────────────

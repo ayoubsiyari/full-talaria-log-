@@ -1499,6 +1499,15 @@ class OrderManager {
         const lv = Number(level);
         if (!Number.isFinite(lv)) return false;
 
+        // STRICT guard (guardTick === Infinity): the price action on this candle
+        // already elapsed before the user acted (e.g. a timeframe switch re-armed
+        // guards at the playhead). The level must NOT be considered "touched" on
+        // this candle in ANY mode — an order/SL/TP may only fire on price action
+        // that happens AFTER the playhead (i.e. on a later candle as replay
+        // advances). Without this, a coarse→fine switch (15m→1m) fills instantly
+        // because candle mode below only inspects the full high/low.
+        if (guardTick === Infinity) return false;
+
         const mode = typeof rs.getPlaybackMode === 'function' ? rs.getPlaybackMode() : (rs.playbackMode || 'tick');
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
@@ -32511,6 +32520,11 @@ class OrderManager {
     _drawTradeConnector(order, closeData, targetChart = null) {
         const chart = targetChart || this.chart;
         if (!chart || !chart.svg || !chart.scales) return;
+        // Pair guard (matches drawEntryMarker / drawExitMarker): a connector must
+        // never paint on a chart showing a different instrument/file than the trade.
+        // This is the only marker draw path that previously lacked the guard, so a
+        // stale entry→exit line could bleed onto another pair after close + switch.
+        if (order && !this._positionTickerMatchesChartSymbol(order, chart)) return;
         const { yScale } = chart.scales;
         if (!yScale) return;
 

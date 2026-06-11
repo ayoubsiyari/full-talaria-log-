@@ -5223,7 +5223,9 @@ class Chart {
                     ? Number(savedReplayTimestamp)
                     : (typeof this._getReplayPlayheadMs === 'function' ? this._getReplayPlayheadMs() : null);
                 if (Number.isFinite(guardTs)) {
-                    try { omTf._refreshAllGuardsToTimestamp(guardTs, -1); } catch (_e3) { /* ignore */ }
+                    // STRICT (Infinity): keep the post-switch playhead candle from
+                    // firing orders/SL/TP until replay actually advances past it.
+                    try { omTf._refreshAllGuardsToTimestamp(guardTs, Infinity); } catch (_e3) { /* ignore */ }
                 }
             }
 
@@ -5364,7 +5366,11 @@ class Chart {
             guardTs = rb != null && Number.isFinite(rb.t) ? rb.t : null;
         }
         if (omTf && typeof omTf._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
-            try { omTf._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
+            // STRICT guard: a TF switch must NOT fill orders / hit SL-TP on the
+            // already-elapsed playhead candle (candle mode would otherwise fire on
+            // the full high/low instantly). Infinity tick blocks the guarded candle
+            // in every mode; replay must advance for a fill.
+            try { omTf._refreshAllGuardsToTimestamp(Number(guardTs), Infinity); } catch (_e) { /* ignore */ }
         }
 
         if (this.isBacktestMode
