@@ -1906,6 +1906,9 @@ class Chart {
             return false;
         }
         if (!this._multichartSeedPanelMasterFromParent()) return false;
+        if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+            this._tryExtendReplayMasterFromParent();
+        }
         return this._independentPanelTimeframeSwitch(normalizedTf);
     }
 
@@ -3057,6 +3060,103 @@ class Chart {
             this._mergeIntoPanelFullRawData(this.rawData);
         }
         return ok && this._replayRawHasWallClockPrefix(this._panelFullRawData, ts);
+    }
+
+    /**
+     * Same-pair multichart iframe: merge host tile A's replay master when it
+     * extends further left/right than this panel (instant pan-fill, no /bars wait).
+     * @returns {boolean}
+     */
+    _tryExtendReplayMasterFromParent() {
+        if (!this._multichartSamePairAsHost(this.currentFileId)) return false;
+        const replay = this.replaySystem;
+        if (!replay?.isActive) return false;
+        try {
+            if (!window.parent || window.parent === window) return false;
+            const parent = window.parent.chart;
+            const prs = parent && parent.replaySystem;
+            const parentMaster = prs && Array.isArray(prs.fullRawData) ? prs.fullRawData : null;
+            if (!parentMaster || parentMaster.length === 0) return false;
+
+            const localMaster = Array.isArray(replay.fullRawData) ? replay.fullRawData : [];
+            const parentFirst = Number(parentMaster[0]?.t);
+            const parentLast = Number(parentMaster[parentMaster.length - 1]?.t);
+            const localFirst = localMaster.length ? Number(localMaster[0]?.t) : NaN;
+            const localLast = localMaster.length ? Number(localMaster[localMaster.length - 1]?.t) : NaN;
+
+            let earlier = [];
+            let later = [];
+            let merged = null;
+
+            if (!localMaster.length) {
+                merged = parentMaster.slice();
+            } else {
+                if (Number.isFinite(parentFirst) && Number.isFinite(localFirst) && parentFirst < localFirst) {
+                    earlier = parentMaster.filter((c) => Number(c?.t) < localFirst);
+                }
+                if (Number.isFinite(parentLast) && Number.isFinite(localLast) && parentLast > localLast) {
+                    later = parentMaster.filter((c) => Number(c?.t) > localLast);
+                }
+                if (!earlier.length && !later.length) return false;
+                merged = earlier.length ? earlier.concat(localMaster) : localMaster.slice();
+                if (later.length) merged = merged.concat(later);
+            }
+
+            const prevReplayIndex = Number.isFinite(Number(replay.currentIndex))
+                ? Number(replay.currentIndex)
+                : Math.max(0, localMaster.length - 1);
+
+            replay.fullRawData = merged;
+            this._panelFullRawData = merged.slice();
+            this._nativeRawFetchTf = '1m';
+            if (parent._serverCursors) {
+                this._serverCursors = Object.assign({}, parent._serverCursors);
+            }
+            if (Number.isFinite(parent.totalCandles)) {
+                this.totalCandles = parent.totalCandles;
+            }
+
+            if (earlier.length > 0 && Number.isFinite(prevReplayIndex)) {
+                replay.currentIndex = Math.min(
+                    Math.max(prevReplayIndex + earlier.length, 0),
+                    merged.length - 1,
+                );
+                const spacing = typeof this.getCandleSpacing === 'function'
+                    ? this.getCandleSpacing()
+                    : 0;
+                if (spacing > 0) {
+                    const displayBarsAdded = typeof this._countReplayBackwardDisplayBarsAdded === 'function'
+                        ? this._countReplayBackwardDisplayBarsAdded(
+                            localMaster,
+                            prevReplayIndex,
+                            merged,
+                            replay.currentIndex,
+                        )
+                        : earlier.length;
+                    const shiftBars = displayBarsAdded > 0 ? displayBarsAdded : earlier.length;
+                    this.offsetX -= shiftBars * spacing;
+                }
+            } else if (!localMaster.length && prs && Number.isFinite(Number(prs.currentIndex))) {
+                replay.currentIndex = Math.min(
+                    Math.max(Number(prs.currentIndex), 0),
+                    merged.length - 1,
+                );
+                if (Number.isFinite(Number(prs.replayTimestamp))) {
+                    replay.replayTimestamp = Number(prs.replayTimestamp);
+                }
+            }
+
+            if (typeof replay.updateChartData === 'function') {
+                replay.updateChartData(false);
+            }
+            if (typeof this._syncReplayPanCursorsFromFullRaw === 'function') {
+                this._syncReplayPanCursorsFromFullRaw();
+            }
+            if (typeof this.scheduleRender === 'function') this.scheduleRender();
+            return true;
+        } catch (_e) {
+            return false;
+        }
     }
 
     /**
@@ -17544,6 +17644,13 @@ class Chart {
         const debounceMs = isReplay ? 80 : 120;
         const now = Date.now();
         if (!force && this._lastPanLoadTime && now - this._lastPanLoadTime < debounceMs) return true;
+
+        // Same-pair iframe: inherit host's already-loaded history instantly (no /bars round-trip).
+        if (direction === 'backward'
+            && typeof this._tryExtendReplayMasterFromParent === 'function'
+            && this._tryExtendReplayMasterFromParent()) {
+            return true;
+        }
         
         this._panLoading = true;
 
@@ -19258,6 +19365,9 @@ class Chart {
         this.drag.lastY = clientY;
         this._constrainOffsetDuringDrag();
         if (this.replaySystem?.isActive && effectiveDx > 0.5) {
+            if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                this._tryExtendReplayMasterFromParent();
+            }
             this._scheduleReplayPanLoadLeft();
         }
     }
@@ -19304,14 +19414,25 @@ class Chart {
         const nearLoadedLeft = spacing > 0 && this.offsetX > maxOffset - spacing * 10;
         const forceProbe = gapOnLeft || nearLoadedLeft;
         if (!forceProbe && !this._needsReplayHistoryLoadLeft()) return;
+        if (typeof this._tryExtendReplayMasterFromParent === 'function'
+            && this._tryExtendReplayMasterFromParent()) {
+            return;
+        }
+        const isMcReplay = !!(this._isMultichartEmbedPanel && this._isMultichartEmbedPanel())
+            || !!(this._isMultichartHostPanel && this._isMultichartHostPanel());
+        const debounceMs = isMcReplay ? 40 : 200;
         clearTimeout(this._replayPanLoadTimer);
         this._replayPanLoadTimer = setTimeout(() => {
             this._replayPanLoadTimer = null;
             if (this._panLoading) return;
+            if (typeof this._tryExtendReplayMasterFromParent === 'function'
+                && this._tryExtendReplayMasterFromParent()) {
+                return;
+            }
             if (forceProbe || this._needsReplayHistoryLoadLeft()) {
                 this.checkViewportLoadMore('backward', forceProbe);
             }
-        }, 200);
+        }, debounceMs);
     }
 
     /** Coalesce paints to one render per animation frame while panning. */

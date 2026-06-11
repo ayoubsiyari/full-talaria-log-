@@ -144,6 +144,11 @@
         const startMs = toMillis(m.startTime);
         const firstMs = barTimeMs(chart, chart.data[0]?.t);
         if (!Number.isFinite(firstMs) || startMs >= firstMs - 60_000) return;
+        if (typeof chart._tryExtendReplayMasterFromParent === 'function') {
+            try {
+                if (chart._tryExtendReplayMasterFromParent()) return;
+            } catch (_) {}
+        }
         if (typeof chart._scheduleReplayPanLoadLeft === 'function') {
             try { chart._scheduleReplayPanLoadLeft(); } catch (_) {}
         } else if (typeof chart.checkViewportLoadMore === 'function') {
