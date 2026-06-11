@@ -2664,17 +2664,6 @@ class DrawingToolsManager {
         if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
             drawing.showAxisHighlights();
         }
-        this._refreshRiskRewardSettingsPanelIfOpen(drawing);
-    }
-
-    /** Keep Long/Short settings Input tab in sync while the tool is edited on-chart. */
-    _refreshRiskRewardSettingsPanelIfOpen(drawing) {
-        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return;
-        const sp = this.settingsPanel;
-        if (!sp || !sp.currentDrawing || sp.currentDrawing.id !== drawing.id) return;
-        if (typeof sp.refreshRiskRewardMirror === 'function') {
-            sp.refreshRiskRewardMirror(drawing);
-        }
     }
 
     /**
@@ -2781,7 +2770,6 @@ class DrawingToolsManager {
     _broadcastLiveEditUpdate(drawing, pointsOverride = null) {
         if (!drawing) return;
         this._notifyV9DrawingGeometryLive(drawing, pointsOverride);
-        this._refreshRiskRewardSettingsPanelIfOpen(drawing);
         if (!this.chart || !this.chart.broadcastDrawingChange) return;
         if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
         if (window.panelManager.currentLayout === '1') return;
@@ -7886,7 +7874,6 @@ class DrawingToolsManager {
         }
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
-        this._refreshRiskRewardSettingsPanelIfOpen(drawing);
 
         this.persistPositionToolDefaults(drawing);
         this.saveDrawings();
@@ -8019,7 +8006,6 @@ class DrawingToolsManager {
         }
 
         this.renderDrawing(drawing, { skipTimestampSync: true });
-        this._refreshRiskRewardSettingsPanelIfOpen(drawing);
 
         const canvas = (this.chart && this.chart.canvas) || document.getElementById('chartCanvas');
         if (canvas) canvas.style.cursor = '';

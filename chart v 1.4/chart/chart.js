@@ -1817,6 +1817,7 @@ class Chart {
         } catch (e) {
             console.warn('[multichart] replay timeframe switch failed', e);
         } finally {
+            try { this._ensureDisplayDataMatchesTimeframe(normalizedTf); } catch (_reco) { /* ignore */ }
             this._endTimeframeSwitching();
         }
     }
@@ -2913,6 +2914,7 @@ class Chart {
 
         const finish = () => {
             this._finishTfSwitchViewportRestore();
+            try { this._ensureDisplayDataMatchesTimeframe(normalizedTf); } catch (_reco) { /* ignore */ }
             if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
             this._scheduleIndicatorsAfterTimeframe();
         };
@@ -4285,6 +4287,7 @@ class Chart {
         if (useAsViewportSnapshot) {
             this.rawData = sorted;
             this.data = sorted;
+            try { this._ensureDisplayDataMatchesTimeframe(); } catch (_reco) { /* ignore */ }
         } else {
             const tsSet = new Set(existing.map((c) => c.t));
             const unique = sorted.filter((c) => !tsSet.has(c.t));
@@ -4422,6 +4425,97 @@ class Chart {
         if (!samples.length) return NaN;
         samples.sort((a, b) => a - b);
         return samples[Math.floor(samples.length / 2)];
+    }
+
+    /** Map observed bar spacing to the nearest standard chart timeframe. */
+    _inferTimeframeFromBarPeriodMs(ms) {
+        const period = Number(ms);
+        if (!Number.isFinite(period) || period <= 0) return null;
+        const table = [
+            ['1m', 60_000], ['5m', 300_000], ['15m', 900_000], ['30m', 1_800_000],
+            ['1h', 3_600_000], ['4h', 14_400_000], ['1d', 86_400_000], ['1w', 604_800_000],
+        ];
+        let best = null;
+        let bestDiff = Infinity;
+        for (const [tf, tfMs] of table) {
+            const diff = Math.abs(Math.log(period) - Math.log(tfMs));
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                best = tf;
+            }
+        }
+        return best;
+    }
+
+    _barPeriodMatchesTimeframe(periodMs, tf) {
+        const tfMs = this.parseTimeframe(tf);
+        if (!Number.isFinite(periodMs) || periodMs <= 0 || !Number.isFinite(tfMs) || tfMs <= 0) {
+            return false;
+        }
+        return periodMs >= tfMs * 0.6 && periodMs <= tfMs * 1.5;
+    }
+
+    /**
+     * Keep on-chart info (currentTimeframe) and rendered candles (this.data) aligned.
+     * Handles both directions: label 4H / candles 1H, and label 1m / candles 1D.
+     */
+    _ensureDisplayDataMatchesTimeframe(tf) {
+        if (this._reconcilingDisplayTf) return false;
+        const targetTf = this._normalizeBacktestTimeframe(tf || this.currentTimeframe)
+            || tf || this.currentTimeframe;
+        if (!targetTf || !Array.isArray(this.data) || this.data.length < 2) return false;
+
+        const dataMs = this._inferMedianBarPeriodMs(this.data);
+        if (!Number.isFinite(dataMs) || dataMs <= 0) return false;
+        if (this._barPeriodMatchesTimeframe(dataMs, targetTf)) return false;
+
+        this._reconcilingDisplayTf = true;
+        try {
+            const sources = [
+                this.rawData,
+                this._panelFullRawData,
+                this.replaySystem && this.replaySystem.fullRawData,
+            ].filter((src) => Array.isArray(src) && src.length >= 2);
+
+            let finest = null;
+            let finestMs = Infinity;
+            for (const src of sources) {
+                const ms = this._inferMedianBarPeriodMs(src);
+                if (Number.isFinite(ms) && ms > 0 && ms < finestMs) {
+                    finestMs = ms;
+                    finest = src;
+                }
+            }
+
+            const targetMs = this.parseTimeframe(targetTf) || 60_000;
+            if (finest && finestMs <= targetMs * 1.1) {
+                this.data = this.resampleData(finest, targetTf);
+                if (this.dataPipeline && typeof this.dataPipeline.invalidateResampleCache === 'function') {
+                    this.dataPipeline.invalidateResampleCache();
+                }
+                if (typeof this.bumpDataVersion === 'function') this.bumpDataVersion();
+                if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
+                    try { this._trimLastDataBarToReplayPlayhead(); } catch (_trim) { /* ignore */ }
+                }
+                if (typeof this.scheduleRender === 'function') this.scheduleRender();
+                return true;
+            }
+
+            const dataTf = this._inferTimeframeFromBarPeriodMs(dataMs);
+            if (dataTf && dataTf !== targetTf) {
+                this.currentTimeframe = dataTf;
+                if (this.isBacktestMode) this._persistBacktestTimeframeChoice(dataTf);
+                this._syncBacktestTimeframeUi(dataTf);
+                try { this._emitTimeframeChanged(); } catch (_ev) { /* ignore */ }
+                if (typeof this.scheduleRender === 'function') this.scheduleRender();
+                return true;
+            }
+            return false;
+        } catch (_e) {
+            return false;
+        } finally {
+            this._reconcilingDisplayTf = false;
+        }
     }
 
     _isBacktestReplayActive() {
@@ -7342,6 +7436,7 @@ class Chart {
                         this.currentTimeframe = restoredTf;
                         this._persistBacktestTimeframeChoice(restoredTf);
                         this._syncBacktestTimeframeUi(restoredTf);
+                        try { this._ensureDisplayDataMatchesTimeframe(restoredTf); } catch (_reco) { /* ignore */ }
                         try { this._emitTimeframeChanged(); } catch (_eTf) { /* ignore */ }
                     } else if (!this.isBacktestMode) {
                         this.currentTimeframe = restoredTf;
@@ -14030,6 +14125,7 @@ class Chart {
      * @param {string} symbol - Symbol to display
      */
     updateChartTitle(symbol) {
+        try { this._ensureDisplayDataMatchesTimeframe(); } catch (_reco) { /* ignore */ }
         const symbolDisplay = document.getElementById('symbolDisplay');
         if (symbolDisplay) {
             // Format like "EURUSD - 5" or "GBPUSD - 1H"
@@ -14057,6 +14153,7 @@ class Chart {
      * @param {string} symbol - Symbol to display
      */
     updateChartOHLCSymbol(symbol) {
+        try { this._ensureDisplayDataMatchesTimeframe(); } catch (_reco) { /* ignore */ }
         const idSuffix = (this.panelIndex !== undefined && this.panelIndex !== 0) ? this.panelIndex : '';
         
         const chartSymbol = document.getElementById('chartSymbol' + idSuffix);
@@ -16827,6 +16924,7 @@ class Chart {
         if (this.isBacktestMode) {
             this._persistBacktestTimeframeChoice(newTimeframe);
         }
+        try { this._ensureDisplayDataMatchesTimeframe(newTimeframe); } catch (_reco) { /* ignore */ }
         try { this.scheduleChartViewSave(); } catch (e) { /* ignore */ }
         try { this._emitTimeframeChanged(); } catch (e) { /* ignore */ }
         if (this.currentSymbol) {
