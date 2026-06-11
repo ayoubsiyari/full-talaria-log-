@@ -567,6 +567,53 @@ function v9SettingsPortalTarget() {
   return document.body;
 }
 
+/** Multichart parent shell — floating bars must escape #chart-container overflow. */
+function v9UsesFloatingUiPortal() {
+  try {
+    return !!(typeof window !== "undefined" && window.__multichartGrid);
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Portal tlBar / quick bars to the body-level root (same as shape settings). */
+function v9PortalFloatingUi(node) {
+  if (!node || typeof document === "undefined" || !v9UsesFloatingUiPortal()) return node;
+  const target = v9SettingsPortalTarget();
+  if (!target) return node;
+  const portaled = React.isValidElement(node)
+    ? React.cloneElement(node, {
+        style: { ...(node.props.style || {}), pointerEvents: "auto" },
+      })
+    : node;
+  return createPortal(portaled, target);
+}
+
+/** Drag clamp rect for portaled floating UI — full multichart chart slot, not one tile. */
+function v9FloatingUiDragBounds(zz, barW, barH, panelW = 0) {
+  const Z = zz || 1;
+  let minX = 0;
+  let minY = 0;
+  let maxX = window.innerWidth / Z - (barW || 0) - (panelW || 0);
+  let maxY = window.innerHeight / Z - (barH || 0);
+  try {
+    if (window.__multichartGrid) {
+      const el = document.getElementById("chart-container");
+      if (el) {
+        const r = el.getBoundingClientRect();
+        minX = r.left / Z;
+        minY = r.top / Z;
+        maxX = r.right / Z - (barW || 0);
+        maxY = r.bottom / Z - (barH || 0);
+        if (panelW > 0) {
+          maxX = Math.min(maxX, window.innerWidth / Z - (barW || 0) - panelW);
+        }
+      }
+    }
+  } catch (_) {}
+  return { minX, minY, maxX, maxY };
+}
+
 /** Chart instance that should drive the V9 pair + timeframe display. */
 function v9ActiveChartInstance() {
   return typeof window !== "undefined" ? (window.chart || null) : null;
@@ -22674,7 +22721,7 @@ const TalariaV8bLive = () => {
           );
         };
         const txtQuickIcon = txtSubTool.icon;
-        return (
+        return v9PortalFloatingUi(
         <div data-sdrop="1" onClick={e=>e.stopPropagation()} onMouseLeave={hideTip}
           style={{position:"fixed",top:tlBarPos.y,left:tlBarPos.x,zIndex:11000,
                   background:c.sf,border:`1px solid rgba(140,160,255,0.22)`,
@@ -22689,9 +22736,9 @@ const TalariaV8bLive = () => {
             const sx=e.clientX,sy=e.clientY,px=tlBarPos.x,py=tlBarPos.y;
             const barRect=el.getBoundingClientRect();
             const barW=barRect.width/Z,barH=barRect.height/Z;
-            const vpW=window.innerWidth/Z,vpH=window.innerHeight/Z;
+            const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, 0);
             let nx=px,ny=py;
-            const onMove=ev=>{nx=Math.max(0,Math.min(px+(ev.clientX-sx)/Z,vpW-barW));ny=Math.max(0,Math.min(py+(ev.clientY-sy)/Z,vpH-barH));el.style.left=nx+'px';el.style.top=ny+'px';};
+            const onMove=ev=>{nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z,maxX));ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z,maxY));el.style.left=nx+'px';el.style.top=ny+'px';};
             const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setTlBarPos({x:nx,y:ny});};
             window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
           }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
@@ -25551,7 +25598,7 @@ const TalariaV8bLive = () => {
         if (left + dropW > vw - mg) left = Math.max(mg, aRight + dx - dropW);
         left = Math.max(mg, left);
         const isClosing = closing.has("tlbardrop") && !tlBarDrop;
-        return (
+        return v9PortalFloatingUi(
         <div ref={tlBarDropRef} data-sdrop="1" data-tlbar="1" onClick={e=>e.stopPropagation()}
           style={{ position:"fixed", top, left, zIndex:10050,
                    width: (key==="style"||key==="width") ? 88 : undefined, minWidth: (key==="style"||key==="width") ? undefined : 148,
@@ -26983,7 +27030,7 @@ const TalariaV8bLive = () => {
           tlQuickBarIcon === "pitchfork" ? tlStyle.pfMedianWidth : tlStyle.lineWidth;
         const hideQuickBarTextColor = v9HideFloatingBarTextColor(tlQuickBarIcon);
         const hideQuickBarLineStyle = v9HideFloatingBarLineStyleAndWidth(tlQuickBarIcon);
-        return (
+        return v9PortalFloatingUi(
         <div ref={tlBarRef} data-sdrop="1" data-tlbar="1"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseLeave={hideTip}
@@ -27004,7 +27051,7 @@ const TalariaV8bLive = () => {
             const barRect=el.getBoundingClientRect();
             const barW=barRect.width/Z, barH=barRect.height/Z;
             const panelW=(rightPanel||orderPanelOpen)?336:0;
-            const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
+            const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
             const dropEl=tlBarDropRef.current;
             const dropRect=dropEl?dropEl.getBoundingClientRect():null;
             const dropStartLeft=dropRect?dropRect.left/Z:0;
@@ -27012,8 +27059,8 @@ const TalariaV8bLive = () => {
             let nx=px,ny=py;
             const onMove=ev=>{
               const cdx=(ev.clientX-sx)/Z, cdy=(ev.clientY-sy)/Z;
-              nx=Math.max(0,Math.min(px+cdx, vpW-panelW-barW));
-              ny=Math.max(0,Math.min(py+cdy, vpH-barH));
+              nx=Math.max(minX,Math.min(px+cdx, maxX));
+              ny=Math.max(minY,Math.min(py+cdy, maxY));
               el.style.left=nx+'px'; el.style.top=ny+'px';
               if(dropEl){const dx=nx-px,dy=ny-py;dropEl.style.left=(dropStartLeft+dx)+'px';dropEl.style.top=(dropStartTop+dy)+'px';}
             };
@@ -27452,7 +27499,7 @@ const TalariaV8bLive = () => {
             }
           }
         }
-        return (
+        return v9PortalFloatingUi(
           <div ref={pinnedBarRef} data-sdrop="1"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={e=>e.stopPropagation()}
@@ -27471,11 +27518,11 @@ const TalariaV8bLive = () => {
               const barRect=el.getBoundingClientRect();
               const barW=barRect.width/Z, barH=barRect.height/Z;
               const panelW=(rightPanel||orderPanelOpen)?336:0;
-              const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
+              const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
               let nx=px,ny=py;
               const onMove=ev=>{
-                nx=Math.max(0,Math.min(px+(ev.clientX-sx)/Z, vpW-panelW-barW));
-                ny=Math.max(0,Math.min(py+(ev.clientY-sy)/Z, vpH-barH));
+                nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z, maxX));
+                ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z, maxY));
                 el.style.left=nx+'px'; el.style.top=ny+'px';
               };
               const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setPinnedBarPos({x:nx,y:ny});};
@@ -27778,7 +27825,7 @@ const TalariaV8bLive = () => {
           });
         };
         const VSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
-        return (
+        return v9PortalFloatingUi(
           <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vwapBarPos.y, left:vwapBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
@@ -27795,9 +27842,9 @@ const TalariaV8bLive = () => {
               const barRect=el.getBoundingClientRect();
               const barW=barRect.width/Z, barH=barRect.height/Z;
               const panelW=(rightPanel||orderPanelOpen)?336:0;
-              const vpW=window.innerWidth/Z, vpH=window.innerHeight/Z;
+              const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
               let nx=px,ny=py;
-              const onMove=ev=>{nx=Math.max(0,Math.min(px+(ev.clientX-sx)/Z, vpW-panelW-barW));ny=Math.max(0,Math.min(py+(ev.clientY-sy)/Z, vpH-barH));el.style.left=nx+'px';el.style.top=ny+'px';};
+              const onMove=ev=>{nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z,maxX));ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z,maxY));el.style.left=nx+'px';el.style.top=ny+'px';};
               const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setVwapBarPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
             }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
@@ -28033,7 +28080,7 @@ const TalariaV8bLive = () => {
           }
         };
         const VPSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
-        return (
+        return v9PortalFloatingUi(
           <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:vpBarPos.y, left:vpBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
@@ -28049,9 +28096,9 @@ const TalariaV8bLive = () => {
               const barRect=el.getBoundingClientRect();
               const barW=barRect.width/Z, barH=barRect.height/Z;
               const panelW=(rightPanel||orderPanelOpen)?336:0;
-              const vpW2=window.innerWidth/Z, vpH2=window.innerHeight/Z;
+              const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
               let nx=px,ny=py;
-              const onMove=ev=>{nx=Math.max(0,Math.min(px+(ev.clientX-sx)/Z, vpW2-panelW-barW));ny=Math.max(0,Math.min(py+(ev.clientY-sy)/Z, vpH2-barH));el.style.left=nx+'px';el.style.top=ny+'px';};
+              const onMove=ev=>{nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z,maxX));ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z,maxY));el.style.left=nx+'px';el.style.top=ny+'px';};
               const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setVpBarPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
             }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
@@ -28133,7 +28180,7 @@ const TalariaV8bLive = () => {
           );
         };
         const AVSep = () => <div style={{width:1,alignSelf:"stretch",margin:"7px 1px",background:"rgba(140,160,255,0.13)",flexShrink:0}}/>;
-        return (
+        return v9PortalFloatingUi(
           <div data-sdrop="1" data-tlbar="1" onMouseDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
             style={{ position:"fixed", top:avBarPos.y, left:avBarPos.x, zIndex:11000,
                      background:c.sf, border:`1px solid rgba(140,160,255,0.22)`,
@@ -28149,9 +28196,9 @@ const TalariaV8bLive = () => {
               const barRect=el.getBoundingClientRect();
               const barW=barRect.width/Z, barH=barRect.height/Z;
               const panelW=(rightPanel||orderPanelOpen)?336:0;
-              const vpW2=window.innerWidth/Z, vpH2=window.innerHeight/Z;
+              const { minX, minY, maxX, maxY } = v9FloatingUiDragBounds(Z, barW, barH, panelW);
               let nx=px,ny=py;
-              const onMove=ev=>{nx=Math.max(0,Math.min(px+(ev.clientX-sx)/Z, vpW2-panelW-barW));ny=Math.max(0,Math.min(py+(ev.clientY-sy)/Z, vpH2-barH));el.style.left=nx+'px';el.style.top=ny+'px';};
+              const onMove=ev=>{nx=Math.max(minX,Math.min(px+(ev.clientX-sx)/Z,maxX));ny=Math.max(minY,Math.min(py+(ev.clientY-sy)/Z,maxY));el.style.left=nx+'px';el.style.top=ny+'px';};
               const onUp=()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);setAvBarPos({x:nx,y:ny});};
               window.addEventListener('pointermove',onMove); window.addEventListener('pointerup',onUp);
             }} className="tl-drag" style={{width:40,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"move",flexShrink:0}}>
