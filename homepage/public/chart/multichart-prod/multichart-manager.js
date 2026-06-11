@@ -802,15 +802,6 @@
                 }
                 return;
 
-            case 'iframe-dismiss-contextmenu':
-                try {
-                    var hostChart = (typeof window !== 'undefined') ? window.chart : null;
-                    if (hostChart && typeof hostChart.hideContextMenu === 'function') {
-                        hostChart.hideContextMenu();
-                    }
-                } catch (_) {}
-                return;
-
             case 'multichart-global-toast':
                 // replay-system: "already at end" / session-end toasts from iframe panels.
                 if (typeof msg.message === 'string' && msg.message.length) {

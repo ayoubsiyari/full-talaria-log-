@@ -514,12 +514,6 @@
 
             if (retryMirror()) return;
 
-            if (typeof ch._independentMasterCoversReplayTimestamp === 'function'
-                && ch._independentMasterCoversReplayTimestamp(seekTs)) {
-                retryMirror();
-                return;
-            }
-
             if (typeof ch.ensureReplayDataCoversTimestamp !== 'function') {
                 scheduleCoalescedSeek(ch, seekTs);
                 return;
@@ -952,12 +946,7 @@
                             ch.replaySystem.replayTimestamp = Number(prsTf.replayTimestamp);
                         }
                     } catch (_) {}
-                    if (typeof ch._warmBtTfCacheFromParent === 'function') {
-                        try { ch._warmBtTfCacheFromParent(tf); } catch (_) {}
-                    }
-                    ch._suppressIntervalSync = true;
                     var sw = ch.setTimeframe(tf);
-                    ch._suppressIntervalSync = false;
                     if (sw && typeof sw.then === 'function') {
                         return sw.then(function () {
                             try { scheduleMultichartPanelReplayFollow(ch); } catch (_) {}
@@ -1567,14 +1556,9 @@
                     };
                     if (Number.isFinite(playheadTs)
                         && typeof ch.ensureReplayDataCoversTimestamp === 'function') {
-                        if (typeof ch._independentMasterCoversReplayTimestamp === 'function'
-                            && ch._independentMasterCoversReplayTimestamp(playheadTs)) {
+                        ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
                             primeAndFollow();
-                        } else {
-                            ch.ensureReplayDataCoversTimestamp(playheadTs).then(primeAndFollow).catch(function () {
-                                primeAndFollow();
-                            });
-                        }
+                        });
                     } else {
                         primeAndFollow();
                     }
@@ -2209,31 +2193,6 @@
         } catch (_) {}
     }
     global.addEventListener('contextmenu', onContextMenu, { capture: true });
-
-    // Parent hosts the unified context menu (iframe forwards contextmenu above).
-    // Clicks inside this iframe never hit the parent's document mousedown
-    // listener, so forward pointerdown so the host menu closes on chart click.
-    function onDismissParentContextMenu(e) {
-        if (!e || e.button === 2) return;
-        if (e.target && e.target.closest
-            && e.target.closest('.chart-context-menu, .drawing-style-editor')) {
-            return;
-        }
-        try {
-            var chLocal = global.chart;
-            if (chLocal && typeof chLocal.hideContextMenu === 'function') {
-                chLocal.hideContextMenu();
-            }
-        } catch (_) {}
-        try {
-            global.parent.postMessage({
-                type: 'iframe-dismiss-contextmenu',
-                source: panelId,
-            }, '*');
-        } catch (_) {}
-    }
-    global.addEventListener('mousedown', onDismissParentContextMenu, true);
-    global.addEventListener('pointerdown', onDismissParentContextMenu, true);
 
     global.MultichartCmdBridge = {
         panelId:      panelId,

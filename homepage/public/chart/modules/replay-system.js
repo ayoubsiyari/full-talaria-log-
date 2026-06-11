@@ -5841,7 +5841,6 @@ class ReplaySystem {
         };
 
         const initiator = initiatorChart || this.chart;
-        const deferViewportToReady = !!onReady && initiator === this.chart;
         const isEmbedInitiator = typeof initiator._isMultichartEmbedPanel === 'function'
             && initiator._isMultichartEmbedPanel();
 
@@ -5941,26 +5940,32 @@ class ReplaySystem {
                 this.chart.priceOffset = savedPriceOffset;
                 this.chart.priceZoom = savedPriceZoom;
             }
-            if (!deferViewportToReady) {
-                if (typeof this.chart._finishReplayTfSwitchViewport === 'function') {
-                    this.chart._finishReplayTfSwitchViewport(this);
-                } else if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
-                    this.chart._ensureMultichartViewportVisible({
-                        centerPlayhead: true,
-                        resetPriceScale: true,
-                        forceRecenter: true,
-                        render: true,
+            if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
+                const ok = this.chart._ensureMultichartViewportVisible({
+                    centerPlayhead: true,
+                    resetPriceScale: true,
+                    forceRecenter: true,
+                    render: true,
+                });
+                if (!ok && typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => {
+                        this.chart._ensureMultichartViewportVisible({
+                            centerPlayhead: true,
+                            resetPriceScale: true,
+                            forceRecenter: true,
+                            render: true,
+                        });
                     });
-                } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
-                    this.syncReplayViewportToPlayhead(this.chart, {
-                        centerPlayhead: true,
-                        resetPriceScale: false,
-                        render: true,
-                    });
-                } else if (typeof this.chart.render === 'function') {
-                    this.chart.renderPending = true;
-                    this.chart.render();
                 }
+            } else if (typeof this.syncReplayViewportToPlayhead === 'function') {
+                this.syncReplayViewportToPlayhead(this.chart, {
+                    centerPlayhead: true,
+                    resetPriceScale: false,
+                    render: true,
+                });
+            } else if (typeof this.chart.render === 'function') {
+                this.chart.renderPending = true;
+                this.chart.render();
             }
             this.updateSlider();
             this.updateTimeDisplay();
