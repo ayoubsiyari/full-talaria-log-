@@ -7338,10 +7338,25 @@ class Chart {
                 const restoredTf = this._normalizeBacktestTimeframe(v.timeframe);
                 if (restoredTf && restoredTf !== this.currentTimeframe) {
                     if (this.isBacktestMode && this.replaySystem && this.replaySystem.isActive) {
-                        // Initial load already fetched native bars for restoredTf; sync UI only.
                         this.currentTimeframe = restoredTf;
                         this._persistBacktestTimeframeChoice(restoredTf);
                         this._syncBacktestTimeframeUi(restoredTf);
+                        // Resample loaded master to restoredTf — never infer/override TF from
+                        // bar spacing (weekend gaps on daily were flipping 1D → 1W).
+                        try {
+                            const src = (Array.isArray(this._panelFullRawData) && this._panelFullRawData.length)
+                                ? this._panelFullRawData
+                                : ((this.replaySystem && Array.isArray(this.replaySystem.fullRawData)
+                                    && this.replaySystem.fullRawData.length)
+                                    ? this.replaySystem.fullRawData
+                                    : this.rawData);
+                            if (Array.isArray(src) && src.length > 0) {
+                                this.data = this.resampleData(src, restoredTf);
+                                if (typeof this._trimLastDataBarToReplayPlayhead === 'function') {
+                                    this._trimLastDataBarToReplayPlayhead();
+                                }
+                            }
+                        } catch (_rs) { /* ignore */ }
                         try { this._emitTimeframeChanged(); } catch (_eTf) { /* ignore */ }
                     } else if (!this.isBacktestMode) {
                         this.currentTimeframe = restoredTf;
