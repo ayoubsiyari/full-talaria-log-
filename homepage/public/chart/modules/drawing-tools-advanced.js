@@ -3281,9 +3281,10 @@ class BaseRiskRewardTool extends BaseDrawing {
             lowerY
         };
 
-        if (this._shouldCreateHandles(renderOpts)) this.createHandles(this.group, scales);
-
-        this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
+        if (this._shouldCreateHandles(renderOpts)) {
+            this.createHandles(this.group, scales);
+            this.createCornerHandles(scales, zoneX1, zoneX2, upperY, lowerY);
+        }
 
         // Primary entry hit rect first (below); extra TP/SL/E drag lines after (on top) so E2 is draggable
         // and does not lose events to this wide strip.
@@ -3645,6 +3646,103 @@ class BaseRiskRewardTool extends BaseDrawing {
         this.cornerDragState = null;
     }
 
+    /** Reposition preserved handles during live pan/zoom redraws (skipHandles path). */
+    updateHandlePositions(scales) {
+        if (!this.group || this.group.empty() || !Array.isArray(this.points) || this.points.length < 3) return;
+
+        const entry = this.points[0];
+        const stop = this.points[1];
+        const target = this.points[2];
+        const toPixel = (index) => (scales.chart && scales.chart.dataIndexToPixel)
+            ? scales.chart.dataIndexToPixel(index)
+            : scales.xScale(index);
+
+        const entryX = toPixel(entry.x);
+        const rightIndex = Math.max(entry.x, stop.x, target.x);
+        const zoneX2 = toPixel(rightIndex);
+        const zoneWidth = Math.max(1, zoneX2 - entryX);
+
+        const yForIndex = (index) => {
+            if (index === 0) return scales.yScale(entry.y);
+            if (index === 1) return scales.yScale(stop.y);
+            if (index === 2) return scales.yScale(target.y);
+            return null;
+        };
+
+        this.group.selectAll('.resize-handle, .resize-handle-hit').each(function() {
+            const idx = parseInt(d3.select(this).attr('data-point-index'), 10);
+            const y = yForIndex(idx);
+            if (!Number.isFinite(entryX) || !Number.isFinite(y)) return;
+            d3.select(this).attr('cx', entryX).attr('cy', y);
+        });
+
+        const priceYFromRole = (role) => {
+            if (role === 'rr-be-line' && this.meta.rrBreakevenLine && Number.isFinite(this.meta.rrBreakevenLine.y)) {
+                return scales.yScale(this.meta.rrBreakevenLine.y);
+            }
+            const m = role.match(/^rr-extra-(target|entry|stop)-(\d+)$/);
+            if (!m) return null;
+            const list = m[1] === 'target' ? this.meta.extraTargets
+                : (m[1] === 'entry' ? this.meta.extraEntries : this.meta.extraStops);
+            const row = list && list[parseInt(m[2], 10)];
+            return row && Number.isFinite(row.y) ? scales.yScale(row.y) : null;
+        }.bind(this);
+
+        this.group.selectAll('.rr-extra-handle-group').each(function() {
+            const g = d3.select(this);
+            const role = g.attr('data-handle-role') || '';
+            const yy = priceYFromRole(role);
+            if (!Number.isFinite(yy)) return;
+            g.selectAll('circle').each(function() {
+                const cx = parseFloat(d3.select(this).attr('cx'));
+                const atRight = Number.isFinite(cx) && Number.isFinite(zoneX2)
+                    && Math.abs(cx - zoneX2) <= Math.abs(cx - entryX);
+                d3.select(this)
+                    .attr('cx', atRight ? zoneX2 : entryX)
+                    .attr('cy', yy);
+            });
+        });
+
+        this.group.selectAll('rect.rr-extra-drag-hit, rect.rr-primary-entry-drag-hit, rect.rr-primary-leg-drag-hit').each(function() {
+            const sel = d3.select(this);
+            const h = parseFloat(sel.attr('height')) || 16;
+            const cy = parseFloat(sel.attr('y')) + h / 2;
+            sel.attr('x', entryX).attr('width', zoneWidth);
+            if (Number.isFinite(cy)) sel.attr('y', cy - h / 2);
+        });
+
+        const hasMultiEntry = (this.meta.extraEntries || []).length > 0;
+        let midLineY;
+        if (hasMultiEntry && typeof this._getWeightedAverageEntryPrice === 'function') {
+            const wAvg = this._getWeightedAverageEntryPrice();
+            midLineY = Number.isFinite(wAvg) ? scales.yScale(wAvg) : scales.yScale(entry.y);
+        } else {
+            midLineY = scales.yScale(entry.y);
+        }
+        const stopY = scales.yScale(stop.y);
+        const targetY = scales.yScale(target.y);
+        const cornerYs = hasMultiEntry ? [midLineY] : [midLineY, stopY, targetY];
+        const cornerNodes = this.group.selectAll('.custom-handle-group .custom-handle').nodes();
+        let cornerIdx = 0;
+        cornerNodes.forEach((node) => {
+            const role = node.getAttribute('data-handle-role') || '';
+            if (!role.includes('corner')) return;
+            const y = cornerYs[Math.min(cornerIdx, cornerYs.length - 1)];
+            cornerIdx += 1;
+            if (!Number.isFinite(zoneX2) || !Number.isFinite(y)) return;
+            d3.select(node).attr('cx', zoneX2).attr('cy', y);
+        });
+
+        const plusR = 9;
+        const plusOutsideGap = 12;
+        const plusX = zoneX2 + plusOutsideGap + plusR;
+        this.group.selectAll('.rr-plus-visible, .rr-plus-hit').each(function() {
+            const cy = parseFloat(d3.select(this).attr('cy'));
+            if (!Number.isFinite(plusX) || !Number.isFinite(cy)) return;
+            d3.select(this).attr('cx', plusX);
+        });
+    }
+
     // Match default drawing handle visuals (same size/style as other tools)
     createHandles(group, scales) {
         const handleRadius = 3;
@@ -3762,6 +3860,10 @@ class BaseRiskRewardTool extends BaseDrawing {
         const handleRadius = 3;
         const handleStroke = '#2962FF';
         const handleStrokeWidth = 2;
+
+        if (this.group) {
+            this.group.selectAll('.custom-handle-group').remove();
+        }
         
         // Right-edge width handles (ew-resize). Left-side blue rings are price-only (vertical).
         // Multi-entry: single width handle on the weighted *avg entry* line (middle), not on E1 — avoids

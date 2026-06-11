@@ -2657,6 +2657,15 @@ class DrawingToolsManager {
         this._applyDrawingDragTransform(drawing, null);
     }
 
+    /** Full geometry + handle rebuild after a committed whole-shape move (not live skipHandles path). */
+    _renderDrawingAfterGeometryCommit(drawing) {
+        if (!drawing) return;
+        this.renderDrawing(drawing, { liveRender: false });
+        if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
+            drawing.showAxisHighlights();
+        }
+    }
+
     /**
      * Apply a pixel translate() on the SVG group back into drawing.points (single render at drag end).
      * @returns {boolean} true when points were updated
@@ -6998,10 +7007,7 @@ class DrawingToolsManager {
                             }
                             if (didMove) {
                                 self._refreshDrawingTimestampAnchors(item.drawing);
-                                self.renderDrawing(item.drawing);
-                                if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
-                                    item.drawing.showAxisHighlights();
-                                }
+                                self._renderDrawingAfterGeometryCommit(item.drawing);
                             }
                             setAnchoredVWAPMovingState(item.drawing, false);
                         });
@@ -7017,10 +7023,7 @@ class DrawingToolsManager {
                         }
                         if (didMove) {
                             self._refreshDrawingTimestampAnchors(drawing);
-                            self.renderDrawing(drawing);
-                            if (drawing.selected && typeof drawing.showAxisHighlights === 'function') {
-                                drawing.showAxisHighlights();
-                            }
+                            self._renderDrawingAfterGeometryCommit(drawing);
                         }
                         setAnchoredVWAPMovingState(drawing, false);
                         beforeState = null;
@@ -7424,10 +7427,7 @@ class DrawingToolsManager {
                 }
                 if (didMove) {
                     this._refreshDrawingTimestampAnchors(item.drawing);
-                    this.renderDrawing(item.drawing);
-                    if (item.drawing.selected && typeof item.drawing.showAxisHighlights === 'function') {
-                        item.drawing.showAxisHighlights();
-                    }
+                    this._renderDrawingAfterGeometryCommit(item.drawing);
                 }
 
                 const index = this.drawings.indexOf(item.drawing);

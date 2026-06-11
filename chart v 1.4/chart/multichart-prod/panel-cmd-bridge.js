@@ -461,6 +461,73 @@
         return null;
     }
 
+    /** Mirror payload from host tile A (includes mid-tick pause state in _savedTickState). */
+    function readParentReplayMirrorPayload() {
+        try {
+            var pc = global.parent && global.parent !== global ? global.parent.chart : null;
+            var prs = pc && pc.replaySystem;
+            if (!prs || !prs.isActive) return null;
+            var ts = Number(prs.replayTimestamp);
+            if (!Number.isFinite(ts)) return null;
+
+            var tickProgress = 0;
+            var tickElapsedMs = 0;
+            var animSrc = null;
+
+            // Host pause() clears tickProgress but keeps partial candle in _savedTickState.
+            if (prs._savedTickState) {
+                tickProgress = Number(prs._savedTickState.tickProgress) || 0;
+                tickElapsedMs = Number(prs._savedTickState.tickElapsedMs) || 0;
+                animSrc = prs._savedTickState.animatingCandle;
+            }
+            if (!animSrc && prs.animatingCandle) {
+                tickProgress = Number(prs.tickProgress) || tickProgress;
+                tickElapsedMs = Number(prs.tickElapsedMs) || tickElapsedMs;
+                animSrc = prs.animatingCandle;
+            }
+
+            var payload = {
+                timestamp: ts,
+                isPlaying: !!prs.isPlaying,
+                tickProgress: tickProgress,
+                tickElapsedMs: tickElapsedMs,
+                hostFileId: readParentHostFileId(),
+                ticksPerCandle: prs.currentTicksPerCandle || prs.ticksPerCandle || 72,
+            };
+
+            if (animSrc && tickProgress > 0) {
+                payload.animatedCandle = {
+                    t: Number(animSrc.t),
+                    o: Number(animSrc.open != null ? animSrc.open : animSrc.o),
+                    h: Number(animSrc.high != null ? animSrc.high : animSrc.h),
+                    l: Number(animSrc.low != null ? animSrc.low : animSrc.l),
+                    c: Number(animSrc.close != null ? animSrc.close : animSrc.c),
+                    v: Number(animSrc.volume != null ? animSrc.volume : animSrc.v) || 0,
+                };
+            }
+            return payload;
+        } catch (_) {}
+        return null;
+    }
+
+    function applyParentReplayMirror(ch, seekTs, isPlayingOverride) {
+        var rs = ch && ch.replaySystem;
+        if (!rs || !rs.isActive || typeof rs.applyMultichartMirrorFrame !== 'function') {
+            return false;
+        }
+        var payload = readParentReplayMirrorPayload();
+        if (!payload) return false;
+        if (Number.isFinite(seekTs)) payload.timestamp = seekTs;
+        if (typeof isPlayingOverride === 'boolean') payload.isPlaying = isPlayingOverride;
+        if (!payload.animatedCandle || !(Number(payload.tickProgress) > 0)) return false;
+        try {
+            return !!rs.applyMultichartMirrorFrame(payload);
+        } catch (e) {
+            warn('applyParentReplayMirror threw', e && e.message);
+            return false;
+        }
+    }
+
     /**
      * Independent-pair iframes can lag when mirror frames arrive faster than
      * /bars prefetch. Coalesce to the latest ts and refetch once per frame.
@@ -618,6 +685,8 @@
             coalescedSeekTs = null;
             if (seekTs == null) return;
             if (isViewportSettling(ch)) return;
+            // Mid-tick pause/resume: keep partial forming candle (host _savedTickState).
+            if (applyParentReplayMirror(ch, seekTs, false)) return;
             // Prefer the SAME render path as the play-time frame stream so pause/scrub
             // doesn't visibly re-fit the viewport and snap back. Fall back to a full
             // seek (which can refetch) only when the mirror can't render this ts.
@@ -1527,7 +1596,10 @@
                     // scrolls with playback on every panel, same as tile A.
                     rsP.autoScrollEnabled = true;
                     rsP.userHasPanned = false;
-                    var playheadTs = readParentReplayTimestamp();
+                    var parentMirror = readParentReplayMirrorPayload();
+                    var playheadTs = parentMirror && Number.isFinite(Number(parentMirror.timestamp))
+                        ? Number(parentMirror.timestamp)
+                        : readParentReplayTimestamp();
                     if (!Number.isFinite(playheadTs) && Number.isFinite(rsP.replayTimestamp)) {
                         playheadTs = Number(rsP.replayTimestamp);
                     }
@@ -1543,13 +1615,19 @@
                         if (Number.isFinite(playheadTs)
                             && typeof rsP.applyMultichartMirrorFrame === 'function') {
                             try {
-                                rsP.applyMultichartMirrorFrame({
-                                    timestamp: playheadTs,
-                                    isPlaying: true,
-                                    tickProgress: rsP.tickProgress || 0,
-                                    tickElapsedMs: rsP.tickElapsedMs || 0,
-                                    hostFileId: readParentHostFileId(),
-                                });
+                                var resumePayload = readParentReplayMirrorPayload();
+                                if (!resumePayload) {
+                                    resumePayload = {
+                                        timestamp: playheadTs,
+                                        isPlaying: true,
+                                        tickProgress: 0,
+                                        tickElapsedMs: 0,
+                                        hostFileId: readParentHostFileId(),
+                                    };
+                                } else {
+                                    resumePayload.isPlaying = true;
+                                }
+                                rsP.applyMultichartMirrorFrame(resumePayload);
                             } catch (_) {}
                         }
                         drainPendingPlay(ch);
@@ -1569,6 +1647,8 @@
                     ch._multichartPassivePlayActive = false;
                     var rsPa = ch.replaySystem;
                     if (!rsPa || !rsPa.isActive) return;
+                    // Freeze at host's partial tick (same frozen candle as tile A).
+                    applyParentReplayMirror(ch, readParentReplayTimestamp(), false);
                     drainPendingPlay(ch);
                     return;
                 }

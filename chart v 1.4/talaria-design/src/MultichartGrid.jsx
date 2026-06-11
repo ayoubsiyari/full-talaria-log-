@@ -2674,24 +2674,28 @@ export default function MultichartGrid({
                     patchedRs.pause = function () {
                         const result = patchOriginalPause();
                         broadcastToIframes("replayPause", {});
-                        // Send one final replayTick so iframes snap to
-                        // the exact pause position (drift correction).
+                        // Mid-tick pause: mirror frozen forming candle (not a bare timestamp seek).
                         try {
-                            const ts = Number(this.replayTimestamp);
-                            if (Number.isFinite(ts)) {
-                                const mgr = managerRef.current;
-                                if (mgr) {
-                                    for (const c of mgr.charts.values()) {
-                                        if (!c || c.host || !c.ready) continue;
-                                        try {
-                                            if (typeof mgr.sendCommandNoReply === "function") {
-                                                mgr.sendCommandNoReply(c.id, "replayTick", { timestamp: ts });
-                                            } else {
-                                                mgr.sendCommand(c.id, "replayTick", { timestamp: ts });
-                                            }
-                                        } catch (_) {}
+                            if (typeof this._buildMultichartReplayFrameDetail === "function") {
+                                const detail = this._buildMultichartReplayFrameDetail();
+                                if (this._savedTickState) {
+                                    detail.tickProgress = Number(this._savedTickState.tickProgress) || 0;
+                                    detail.tickElapsedMs = Number(this._savedTickState.tickElapsedMs) || 0;
+                                    const ac = this._savedTickState.animatingCandle;
+                                    if (ac) {
+                                        detail.animatedCandle = {
+                                            t: ac.t,
+                                            o: ac.open,
+                                            h: ac.high,
+                                            l: ac.low,
+                                            c: ac.close,
+                                            v: ac.volume || 0,
+                                        };
                                     }
                                 }
+                                detail.isPlaying = false;
+                                lastReplayFrameBroadcastAt = performance.now();
+                                broadcastReplayFrameToIframes(detail);
                             }
                         } catch (_) {}
                         return result;
