@@ -2405,7 +2405,17 @@ export default function MultichartGrid({
         };
 
         const onMultichartReplayFrame = (ev) => {
-            coalescedFrameDetail = ev && ev.detail;
+            const detail = ev && ev.detail;
+            if (!detail || !Number.isFinite(Number(detail.timestamp))) return;
+            const hostRs = window.chart && window.chart.replaySystem;
+            const hostPlaying = !!(hostRs && hostRs.isActive && hostRs.isPlaying);
+            // During play, stream every host animation frame so B/C/D match tile A.
+            // When paused (step/scrub), coalesce to ~30fps to limit iframe CPU.
+            if (hostPlaying) {
+                broadcastReplayFrameToIframes(detail);
+                return;
+            }
+            coalescedFrameDetail = detail;
             if (coalescedFrameScheduled) return;
             coalescedFrameScheduled = true;
             window.requestAnimationFrame(flushCoalescedReplayFrame);
@@ -2525,6 +2535,39 @@ export default function MultichartGrid({
         let patchOriginalSetMode = null;
         let patchOriginalSetStepTf = null;
         let patchOriginalGoTo = null;
+        let patchOriginalRequestStepFwd = null;
+        let patchOriginalRequestStepBack = null;
+        let patchOriginalStepFwd = null;
+        let patchOriginalStepBack = null;
+        // After host step forward/back: snap every iframe to the same bar immediately
+        // (same path as goToReplayTimestamp + replayFrame mirror on tile A).
+        const syncPanelsAfterHostStep = (rs) => {
+            if (!rs || !rs.isActive) return;
+            const ts = Number(rs.replayTimestamp);
+            const idx = rs.currentIndex;
+            if (!Number.isFinite(ts)) return;
+            replayStateRef.current.lastBroadcastTs = ts;
+            replayStateRef.current.everEntered = true;
+            replayStateRef.current.lastReplayDedupe = Number.isFinite(idx)
+                ? `${ts}:${idx}`
+                : String(ts);
+            forceAllPanelsToTimestamp(ts);
+            let detail = null;
+            if (typeof rs._buildMultichartReplayFrameDetail === "function") {
+                try { detail = rs._buildMultichartReplayFrameDetail(); } catch (_) {}
+            }
+            if (detail && Number.isFinite(Number(detail.timestamp))) {
+                lastReplayFrameBroadcastAt = performance.now();
+                broadcastReplayFrameToIframes(detail);
+            }
+        };
+        const wrapStepWithPanelSync = (original) => function (...args) {
+            const result = original.apply(this, args);
+            try {
+                Promise.resolve().then(() => syncPanelsAfterHostStep(this));
+            } catch (_) {}
+            return result;
+        };
         // Authoritative "force every panel to the parent's exact candle".
         // Shared by the goToReplayTimestamp guard AND the
         // replayVirtualTimeChanged listener so there is ONE place that
@@ -2734,6 +2777,23 @@ export default function MultichartGrid({
                     };
                 }
 
+                if (typeof patchedRs.requestStepForward === "function") {
+                    patchOriginalRequestStepFwd = patchedRs.requestStepForward.bind(patchedRs);
+                    patchedRs.requestStepForward = wrapStepWithPanelSync(patchOriginalRequestStepFwd);
+                }
+                if (typeof patchedRs.requestStepBackward === "function") {
+                    patchOriginalRequestStepBack = patchedRs.requestStepBackward.bind(patchedRs);
+                    patchedRs.requestStepBackward = wrapStepWithPanelSync(patchOriginalRequestStepBack);
+                }
+                if (typeof patchedRs.stepForward === "function") {
+                    patchOriginalStepFwd = patchedRs.stepForward.bind(patchedRs);
+                    patchedRs.stepForward = wrapStepWithPanelSync(patchOriginalStepFwd);
+                }
+                if (typeof patchedRs.stepBackward === "function") {
+                    patchOriginalStepBack = patchedRs.stepBackward.bind(patchedRs);
+                    patchedRs.stepBackward = wrapStepWithPanelSync(patchOriginalStepBack);
+                }
+
                 patchedRs.__multichartExitPatched = true;
                 return;
             }
@@ -2761,6 +2821,10 @@ export default function MultichartGrid({
                     if (patchOriginalSetMode)  patchedRs.setPlaybackMode = patchOriginalSetMode;
                     if (patchOriginalSetStepTf) patchedRs.setStepTimeframe = patchOriginalSetStepTf;
                     if (patchOriginalGoTo)     patchedRs.goToReplayTimestamp = patchOriginalGoTo;
+                    if (patchOriginalRequestStepFwd) patchedRs.requestStepForward = patchOriginalRequestStepFwd;
+                    if (patchOriginalRequestStepBack) patchedRs.requestStepBackward = patchOriginalRequestStepBack;
+                    if (patchOriginalStepFwd) patchedRs.stepForward = patchOriginalStepFwd;
+                    if (patchOriginalStepBack) patchedRs.stepBackward = patchOriginalStepBack;
                     delete patchedRs.__multichartExitPatched;
                 } catch (_) {}
             }
