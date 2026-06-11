@@ -5108,13 +5108,6 @@ class Chart {
         this._panLoading = false;
         this._chartViewRestored = false;
 
-        this.candleWidth = DEFAULT_CANDLE_WIDTH;
-        this.priceZoom = 1;
-        this.priceOffset = 0;
-        this.autoScale = true;
-        this.manualCenterPrice = null;
-        this.manualRange = null;
-
         if (replay.isActive) {
             // Display TF switch during replay: keep finer native master; resample display only when possible.
             if (ctx.replaceReplayMaster === true) {
@@ -22890,11 +22883,10 @@ class Chart {
     }
 
     /**
-     * Snapshot the current visible wall-clock window before a timeframe switch.
-     * Captured while `this.data` still holds the OLD timeframe so the new TF can
-     * be positioned on the same time region (TradingView-style "same chart
-     * position across timeframes"), instead of resetting to the latest candle.
-     * Stored on `this._tfSwitchViewport`; consumed by _restoreTfSwitchViewport().
+     * Snapshot viewport state before a timeframe switch (old TF still on screen).
+     * TradingView-style: keep horizontal zoom + anchor the playhead / last candle
+     * at the same pixel X on the new TF. Stored on `this._tfSwitchViewport`;
+     * consumed by _restoreTfSwitchViewport().
      */
     _captureTfSwitchViewport() {
         this._tfSwitchViewport = null;
@@ -22961,9 +22953,10 @@ class Chart {
 
         const newBarMs = this._estimateTimeframeStepMs();
         const margin = (Number.isFinite(newBarMs) && newBarMs > 0) ? newBarMs : 0;
-        // Bail out (→ jumpToLatest) when the captured center isn't in the new
+        const anchorCheckTs = Number.isFinite(vp.anchorTs) ? vp.anchorTs : vp.centerTs;
+        // Bail out (→ jumpToLatest) when the captured anchor isn't in the new
         // data window; restoring there would land on an empty region.
-        if (vp.centerTs < firstTs - margin || vp.centerTs > lastTs + margin) {
+        if (anchorCheckTs < firstTs - margin || anchorCheckTs > lastTs + margin) {
             return false;
         }
 
@@ -22971,15 +22964,9 @@ class Chart {
         const plotW = this.w - m.l - m.r;
         if (!(plotW > 0)) return false;
 
-        // Recompute candleWidth so the SAME wall-clock span fills the plot on the
-        // new timeframe (keeps the visible time range identical, like TradingView).
-        let targetCandleWidth = vp.candleWidth;
-        if (Number.isFinite(vp.spanMs) && vp.spanMs > 0 && Number.isFinite(newBarMs) && newBarMs > 0) {
-            const barsAcross = vp.spanMs / newBarMs;
-            if (Number.isFinite(barsAcross) && barsAcross >= 1) {
-                targetCandleWidth = this._candleWidthForSpacing(plotW / barsAcross);
-            }
-        }
+        // TradingView parity: keep the same horizontal zoom (candle width); only
+        // reposition so the playhead / last candle stays at the same screen X.
+        const targetCandleWidth = vp.candleWidth;
 
         // Preserve the user's manual Y scale; otherwise let autoScale refit.
         if (vp.autoScale === false) {
