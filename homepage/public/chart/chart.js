@@ -23012,7 +23012,9 @@ class Chart {
      * Retries while data keeps arriving and a left gap remains.
      */
     _fillViewportHistoryAfterTfSwitch(attempt = 0) {
-        if (attempt > 12) return;
+        // Big-TF tiles pull many 1m chunks (shared-master design fetches at 1m),
+        // so allow more iterations than a single coarse-TF fetch would need.
+        if (attempt > 28) return;
         // Loaders bail while a switch is mid-flight — retry shortly.
         if (this._timeframeSwitching || this._pairSwitchLoading) {
             setTimeout(() => this._fillViewportHistoryAfterTfSwitch(attempt), 60);
@@ -23069,10 +23071,20 @@ class Chart {
             // Mirroring is instant; poll quickly to catch the host's fetch result.
             pollMs = pulled ? 40 : 140;
         } else if (replay && replay.isActive) {
-            // Single chart / independent tile: same path as dragging replay left.
-            if (typeof this._scheduleReplayPanLoadLeft === 'function') {
-                this._scheduleReplayPanLoadLeft();
+            // Single chart / independent tile. Drive the forced backward fetch
+            // directly (skip the loader's 40ms debounce indirection) so chunks
+            // fire back-to-back — big-TF tiles need several 1m chunks and this
+            // keeps them as close to single-chart speed as the 2000-bar cap allows.
+            const hasMoreLeft = !this._serverCursors
+                || this._serverCursors.hasMoreLeft !== false
+                || (this.isBacktestMode
+                    && typeof this._backtestReplayHasUnloadHistoryLeft === 'function'
+                    && this._backtestReplayHasUnloadHistoryLeft());
+            if (!hasMoreLeft && !this._panLoading) return;
+            if (!this._panLoading && typeof this.checkViewportLoadMore === 'function') {
+                this.checkViewportLoadMore('backward', true);
             }
+            pollMs = 90;
         } else {
             const hasMoreLeft = !this._serverCursors || this._serverCursors.hasMoreLeft !== false;
             if (!hasMoreLeft) return;
