@@ -2449,8 +2449,10 @@ class Chart {
 
                 this.resize();
                 if (typeof this._resetViewportToDefault === 'function') {
+                    // Pair switch: clean right-anchored, auto-scaled view (latest
+                    // candle at the right edge, like TradingView) — not centered.
                     this._resetViewportToDefault({
-                        centerPlayhead: true,
+                        centerPlayhead: false,
                         forceRecenter: true,
                         render: false,
                     });
@@ -5910,8 +5912,10 @@ class Chart {
                 }
             }
 
+            // Pair switch: clean right-anchored, auto-scaled view (latest candle at
+            // the right edge, like TradingView) — not centered.
             this._scheduleCoalescedViewportCommit({
-                centerPlayhead: true,
+                centerPlayhead: false,
                 forceRecenter: true,
                 render: true,
                 endPairSwitch: pairLoadUiActive,
@@ -6327,8 +6331,10 @@ class Chart {
                 });
                 if (this.replaySystem.isActive
                     && typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                    // Refresh / session start: clean right-anchored, auto-scaled view
+                    // (latest candle at the right edge, like TradingView) — not centered.
                     this.replaySystem.syncReplayViewportToPlayhead(this, {
-                        centerPlayhead: true,
+                        centerPlayhead: false,
                         resetPriceScale: true,
                         render: true,
                     });
@@ -7076,8 +7082,10 @@ class Chart {
                     this._pendingReplayState = null;
                     if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
                         try {
+                            // Refresh: clean right-anchored, auto-scaled view (latest
+                            // candle at the right edge, like TradingView) — not centered.
                             this.replaySystem.syncReplayViewportToPlayhead(this, {
-                                centerPlayhead: true,
+                                centerPlayhead: false,
                                 resetPriceScale: true,
                                 render: true,
                             });
@@ -23025,13 +23033,10 @@ class Chart {
             try { this.resize(); } catch (_e) { /* ignore */ }
         }
         this._restoreOrJumpAfterTfSwitch();
-        const replay = this.replaySystem;
-        if (replay && replay.isActive && this._chartViewRestored) {
-            replay.userHasPanned = true;
-        }
-        // TradingView parity: with horizontal zoom preserved, the new TF can have
-        // fewer loaded bars than the old one, leaving empty space on the left.
-        // Auto-load older history to fill it instead of waiting for a manual pan.
+        // Keep the playhead right-anchored and following (no userHasPanned lock) so
+        // the latest candle stays at the right edge as replay advances.
+        // The new TF can have fewer loaded bars than the old one, leaving empty space
+        // on the left — auto-load older history to fill it instead of a manual pan.
         if (typeof setTimeout === 'function') {
             setTimeout(() => this._fillViewportHistoryAfterTfSwitch(0), 0);
         }
@@ -23137,20 +23142,18 @@ class Chart {
      * candle so the chart is never left on an empty/offscreen region.
      */
     _restoreOrJumpAfterTfSwitch() {
-        if (this._restoreTfSwitchViewport()) {
-            return;
-        }
+        // User preference: refresh / TF switch / pair switch always reset to a clean
+        // TradingView-style view — auto price scale + latest candle right-anchored.
+        // No viewport preservation (the old _restoreTfSwitchViewport path is skipped).
+        this._tfSwitchViewport = null;
         if (this.data && this.data.length > 0) {
-            const replay = this.replaySystem;
-            const inReplay = !!(replay && replay.isActive);
             // Must run synchronously before _endTimeframeSwitching() paints the new TF.
             this._resetViewportToDefault({
                 centerPlayhead: false,
-                forceRecenter: !inReplay,
+                forceRecenter: true,
                 render: false,
             });
         } else {
-            this._tfSwitchViewport = null;
             this._chartViewRestored = false;
             this.fitToView();
         }
