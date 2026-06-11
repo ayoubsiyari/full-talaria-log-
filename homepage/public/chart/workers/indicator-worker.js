@@ -896,15 +896,7 @@ function calculateAO(data, fastLen, slowLen) {
     return fast.map((v, i) => (v != null && slow[i] != null) ? v - slow[i] : null);
 }
 
-function calculateADR(data, period) {
-    period = period || 14;
-    return data.map((_, i) => {
-        if (i < period - 1) return null;
-        let sumRange = 0;
-        for (let j = 0; j < period; j++) sumRange += (data[i - j].h - data[i - j].l);
-        return sumRange / period;
-    });
-}
+// ADR is calculated on the main thread only (timezone-aware daily sessions).
 
 function calculateStochRSI(data, rsiPeriod, stochLen, smoothK, smoothD, source) {
     rsiPeriod = rsiPeriod || 14; stochLen = stochLen || 14;
@@ -1130,7 +1122,7 @@ function calcIndicator(type, data, params) {
         case 'rsi': return calculateRSIIndicatorData(data, params);
         case 'macd': case 'ppo': return calculateMACD(data, params.fast, params.slow, params.signal, params.source || 'close', { oscillatorMaType: params.oscillatorMaType, signalMaType: params.signalMaType });
         case 'stoch': case 'stochastic': return calculateStochastic(data, params.period, params.smoothK, params.smoothD);
-        case 'adr': return calculateADR(data, Math.max(1, parseInt(params.period, 10) || 14));
+        case 'adr': return null; // main-thread only
         case 'volume': return { active: true };
         case 'sessions': return calculateSessions(data, params);
         case 'killzones': case 'ictkz': return calculateKillzones(data, params);

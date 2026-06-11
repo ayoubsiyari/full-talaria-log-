@@ -1122,7 +1122,7 @@ function calcIndicator(type, data, params) {
         case 'rsi': return calculateRSIIndicatorData(data, params);
         case 'macd': case 'ppo': return calculateMACD(data, params.fast, params.slow, params.signal, params.source || 'close', { oscillatorMaType: params.oscillatorMaType, signalMaType: params.signalMaType });
         case 'stoch': case 'stochastic': return calculateStochastic(data, params.period, params.smoothK, params.smoothD);
-        case 'adr': return calculateADR(data, Math.max(1, parseInt(params.period, 10) || 14));
+        case 'adr': return null; // main-thread only
         case 'volume': return { active: true };
         case 'sessions': return calculateSessions(data, params);
         case 'killzones': case 'ictkz': return calculateKillzones(data, params);

@@ -12575,6 +12575,63 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
         }
     };
 
+    Chart.prototype._renderAdrPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!Array.isArray(values) || !values.length) return;
+        const barCount = Array.isArray(this.data) ? this.data.length : 0;
+        if (barCount > 0 && values.length !== barCount) {
+            try { recalcAdrIndicator(this, indicator); } catch (_) {}
+            values = this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : values;
+            if (!Array.isArray(values) || values.length !== barCount) return;
+        }
+
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        const dom = this._finalizePanelRange(indicator, min, max);
+        const aMin = dom.min;
+        const aMax = dom.max;
+        const aSpan = Math.max(1e-9, aMax - aMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
+
+        const lineColor = resolve(style.color || '#26a69a', style.lineOpacity);
+        const plotStyle = style.lineStyle || 'Step line';
+        this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, plotStyle, style.lineDashStyle || 'Solid');
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{ y: currentY, text: last.toFixed(2), color: lineColor }];
+        }
+    };
+
     Chart.prototype._renderAtrPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
         if (!values || !values.length) return;
         const style = indicator.style || {};

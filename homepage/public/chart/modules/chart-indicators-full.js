@@ -5338,6 +5338,7 @@
                 indicator.params.period = Math.max(1, parseInt(params.period, 10) || 14);
                 indicator.style.color = params.color || '#26a69a';
                 indicator.style.lineWidth = params.lineWidth || 2;
+                indicator.style.lineStyle = params.lineStyle || 'Step line';
                 indicator.overlay = false;
                 indicator.separatePanel = true;
                 indicator.name = 'ADR(' + indicator.params.period + ')';
@@ -7120,6 +7121,18 @@
         chart.indicators.data[indicator.id] = calculateSupertrend(chart.data, period, multiplier);
     }
 
+    /** ADR requires timezone-aware daily session keys — always recalc on the main thread. */
+    function recalcAdrIndicator(chart, indicator) {
+        if (!chart || !indicator || !Array.isArray(chart.data) || !chart.data.length) return;
+        if (!chart.indicators.data) chart.indicators.data = {};
+        indicator.type = 'adr';
+        indicator.overlay = false;
+        indicator.separatePanel = true;
+        indicator.params.period = Math.max(1, parseInt(indicator.params && indicator.params.period, 10) || 14);
+        indicator.name = 'ADR(' + indicator.params.period + ')';
+        chart.indicators.data[indicator.id] = calculateADR(chart.data, indicator.params.period);
+    }
+
     /**
      * Calculate all active indicators in a background Web Worker.
      * Falls back to synchronous recalculateIndicators() if worker is unavailable.
@@ -7148,7 +7161,7 @@
         chart.indicators.active.forEach(function(ind) {
             // Multi-pass MAs, Supertrend, + ICT/session types stay on main thread.
             var workerSkip = [
-                'dema', 'tema', 'hma', 'supertrend',
+                'dema', 'tema', 'hma', 'supertrend', 'adr',
                 'cotnet', 'sessions', 'killzones', 'ictkz', 'sessionsplus', 'openingrange', 'or',
                 'ictpd', 'ictasian', 'ictote', 'ictfvg', 'ictsesspd'
             ];
@@ -7156,6 +7169,11 @@
             ind.type = indType;
             if (indType === 'supertrend') {
                 try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                didSyncOverlayRecalc = true;
+                return;
+            }
+            if (indType === 'adr') {
+                try { recalcAdrIndicator(chart, ind); } catch (_) {}
                 didSyncOverlayRecalc = true;
                 return;
             }
@@ -7206,6 +7224,8 @@
                 const t = String(ind.type || '').toLowerCase();
                 if (t === 'supertrend') {
                     try { recalcSupertrendOverlay(chart, ind); } catch (_) {}
+                } else if (t === 'adr') {
+                    try { recalcAdrIndicator(chart, ind); } catch (_) {}
                 } else if (t === 'dema' || t === 'tema' || t === 'hma') {
                     try { recalcMultiPassOverlayMa(chart, ind); } catch (_) {}
                 } else if (t === 'rsi' && ind.params && ind.params.divergenceEnabled) {
@@ -8913,6 +8933,9 @@ Chart.prototype.renderSeparatePanelIndicators = function(opts) {
             return;
         } else if (indicator.type === 'atr') {
             this._renderAtrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
+            return;
+        } else if (indicator.type === 'adr') {
+            this._renderAdrPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
             return;
         } else if (indicator.type === 'stddev') {
             this._renderStddevPanel(ctx, m, indTop, indBottom, panelHeight, indicator, indicatorData, visibleStart, visibleEnd);
@@ -12549,6 +12572,63 @@ Chart.prototype.drawLiquidityEqLines = function(data, style, startIndex = 0, end
             indicator._axisLabelY = tags[tags.length - 1].y;
             indicator._axisLabelText = tags[tags.length - 1].text;
             indicator._axisLabelColor = tags[tags.length - 1].color;
+        }
+    };
+
+    Chart.prototype._renderAdrPanel = function(ctx, m, panelTop, panelBottom, panelHeight, indicator, values, visibleStart, visibleEnd) {
+        if (!Array.isArray(values) || !values.length) return;
+        const barCount = Array.isArray(this.data) ? this.data.length : 0;
+        if (barCount > 0 && values.length !== barCount) {
+            try { recalcAdrIndicator(this, indicator); } catch (_) {}
+            values = this.indicators && this.indicators.data ? this.indicators.data[indicator.id] : values;
+            if (!Array.isArray(values) || values.length !== barCount) return;
+        }
+
+        const style = indicator.style || {};
+        const resolve = this._resolveIndicatorBandLineColor.bind(this);
+        let min = Infinity;
+        let max = -Infinity;
+        for (let i = visibleStart; i < visibleEnd && i < values.length; i++) {
+            const val = values[i];
+            if (val !== null && val !== undefined && !isNaN(val)) {
+                min = Math.min(min, val);
+                max = Math.max(max, val);
+            }
+        }
+        if (min === Infinity || max === -Infinity) return;
+
+        const range = max - min || 1;
+        min = min - range * 0.1;
+        max = max + range * 0.1;
+        const dom = this._finalizePanelRange(indicator, min, max);
+        const aMin = dom.min;
+        const aMax = dom.max;
+        const aSpan = Math.max(1e-9, aMax - aMin);
+        const scaleY = v => {
+            if (v === null || v === undefined) return null;
+            let y = panelBottom - 5 - ((v - aMin) / aSpan) * (panelHeight - 10);
+            if (!Number.isFinite(y)) return null;
+            return Math.max(panelTop + 2, Math.min(panelBottom - 2, y));
+        };
+
+        this._drawPanelAxisTicks(ctx, m, aMin, aMax, scaleY, 2);
+
+        const lineColor = resolve(style.color || '#26a69a', style.lineOpacity);
+        const plotStyle = style.lineStyle || 'Step line';
+        this._drawPanelLine(ctx, m, values, lineColor, style.lineWidth || 2, visibleStart, visibleEnd, scaleY, panelTop, panelBottom, plotStyle, style.lineDashStyle || 'Solid');
+
+        let last = null;
+        for (let i = Math.min(visibleEnd - 1, values.length - 1); i >= visibleStart; i--) {
+            if (values[i] !== null && !isNaN(values[i])) { last = values[i]; break; }
+        }
+        indicator._displayColor = lineColor;
+        indicator._displayLabel = last !== null ? last.toFixed(2) : '';
+        if (last !== null && Number.isFinite(last)) {
+            const currentY = scaleY(last);
+            indicator._axisLabelY = currentY;
+            indicator._axisLabelText = last.toFixed(2);
+            indicator._axisLabelColor = lineColor;
+            indicator._axisLabelTags = [{ y: currentY, text: last.toFixed(2), color: lineColor }];
         }
     };
 

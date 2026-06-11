@@ -5942,7 +5942,9 @@ class ReplaySystem {
                 this.chart.priceZoom = savedPriceZoom;
             }
             if (!deferViewportToReady) {
-                if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
+                if (typeof this.chart._finishReplayTfSwitchViewport === 'function') {
+                    this.chart._finishReplayTfSwitchViewport(this);
+                } else if (isEmbedInitiator && typeof this.chart._ensureMultichartViewportVisible === 'function') {
                     this.chart._ensureMultichartViewportVisible({
                         centerPlayhead: true,
                         resetPriceScale: true,

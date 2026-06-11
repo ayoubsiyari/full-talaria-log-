@@ -1829,13 +1829,27 @@ class Chart {
         if (typeof this._warmBtTfCacheFromParent === 'function') {
             this._warmBtTfCacheFromParent(normalizedTf);
         }
+        // Resample from host 1m master before partial TF caches (prefetch playhead windows).
+        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
+            return true;
+        }
+        const replay = this.replaySystem;
+        if (replay?.isActive) {
+            const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+            if (!this._shouldReplaceReplayMasterForTfSwitch(previousTf, normalizedTf, replay)) {
+                if (this._independentPanelTimeframeSwitch(normalizedTf)) {
+                    return true;
+                }
+                if (this._applyClientResampleTimeframeSwitch(normalizedTf, { replayPath: true })) {
+                    return true;
+                }
+                return false;
+            }
+        }
         if (await this._applyBacktestTimeframeFromCache(normalizedTf)) {
             return true;
         }
         if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
-            return true;
-        }
-        if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
             return true;
         }
         if (this._independentPanelTimeframeSwitch(normalizedTf)) {
@@ -2799,7 +2813,9 @@ class Chart {
         }
 
         const finish = () => {
-            // Viewport is owned by replaySystem.onTimeframeChange for embed initiators.
+            if (this.data && this.data.length > 0) {
+                this._finishReplayTfSwitchViewport(replay);
+            }
             if (typeof this._endTimeframeSwitching === 'function') this._endTimeframeSwitching();
             this._scheduleIndicatorsAfterTimeframe();
         };
@@ -2807,7 +2823,6 @@ class Chart {
         if (typeof replay.onTimeframeChange === 'function') {
             replay.onTimeframeChange(this, { onReady: finish });
         } else {
-            this._syncMultichartReplayViewportAfterTfSwitch(replay, playheadTs);
             finish();
         }
         return true;
@@ -4417,7 +4432,15 @@ class Chart {
         const replayPath = !!options.replayPath;
         this._logTfSwitch(replayPath ? 'client-resample-replay' : 'client-resample-live', { to: normalizedTf });
         this._commitTimeframeChange(normalizedTf);
-        this.data = this.resampleData(this.rawData, normalizedTf);
+        let resampleSource = this.rawData;
+        const replay = this.replaySystem;
+        if (replayPath && replay?.isActive && Array.isArray(replay.fullRawData) && replay.fullRawData.length) {
+            const floorIdx = replay.sessionStartIndex || 0;
+            let endIdx = typeof replay.currentIndex === 'number' ? replay.currentIndex : replay.fullRawData.length - 1;
+            endIdx = Math.max(floorIdx, Math.min(endIdx, replay.fullRawData.length - 1));
+            resampleSource = replay.fullRawData.slice(0, endIdx + 1);
+        }
+        this.data = this.resampleData(resampleSource, normalizedTf);
         if (this.currentFileId) {
             this._saveTfDataCache(this.currentFileId, normalizedTf);
         }
@@ -4425,14 +4448,11 @@ class Chart {
             this.compareOverlay.refreshForTimeframe(normalizedTf);
         }
         if (replayPath && this.replaySystem && this.replaySystem.isActive) {
+            const rsResample = this.replaySystem;
             this.replaySystem.onTimeframeChange(this, {
                 onReady: () => {
                     if (this.data && this.data.length > 0) {
-                        this._resetViewportToDefault({
-                            centerPlayhead: true,
-                            forceRecenter: true,
-                            render: false,
-                        });
+                        this._finishReplayTfSwitchViewport(rsResample);
                     }
                     this._endTimeframeSwitching();
                 },
@@ -4600,6 +4620,38 @@ class Chart {
         if (!Array.isArray(rawData) || rawData.length < 2) return NaN;
         const step = Number(rawData[1].t) - Number(rawData[0].t);
         return Number.isFinite(step) && step > 0 ? step : NaN;
+    }
+
+    /** True when cached bars include replayTimestamp (prefetch windows can be playhead-only slices). */
+    _btTfCacheCoversTimestamp(entry, ts, marginMs = 0) {
+        if (!entry || !Array.isArray(entry.rawData) || !entry.rawData.length) return false;
+        const t = Number(ts);
+        if (!Number.isFinite(t)) return true;
+        const first = Number(entry.rawData[0]?.t);
+        const last = Number(entry.rawData[entry.rawData.length - 1]?.t);
+        if (!Number.isFinite(first) || !Number.isFinite(last)) return false;
+        const nativeTf = String(entry.nativeRawFetchTf || '').toLowerCase().trim();
+        const periodMs = this.parseTimeframe(nativeTf) || this._measureRawDataStepMs(entry.rawData) || 60_000;
+        const margin = Number.isFinite(marginMs) && marginMs > 0 ? marginMs : periodMs * 2;
+        return t >= first - margin && t <= last + margin;
+    }
+
+    /**
+     * After replay TF switch: keep the user's wall-clock window when they panned,
+     * otherwise center on the playhead and prefetch left history.
+     */
+    _finishReplayTfSwitchViewport(replay) {
+        const userPanned = !!(replay && replay.isActive && replay.userHasPanned);
+        if (userPanned && this._restoreTfSwitchViewport()) {
+            try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_) {}
+            return;
+        }
+        this._resetViewportToDefault({
+            centerPlayhead: true,
+            forceRecenter: !userPanned,
+            render: false,
+        });
+        try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_) {}
     }
 
     /** True when cached rawData bar period matches the cache slot timeframe (1d slot ≠ 1m bars). */
@@ -4884,8 +4936,6 @@ class Chart {
                 try { replay.play(); } catch (_e5) { /* ignore */ }
             }
 
-            try { this._snapReplayViewportAfterTfSwitch(replay, { deferBackwardPrefetch: false }); } catch (_r2) { /* ignore */ }
-
             if (!shouldResumePlay && omTf && typeof omTf.updatePositions === 'function') {
                 try { omTf.updatePositions(); } catch (_eOm) { /* ignore */ }
             }
@@ -5052,16 +5102,8 @@ class Chart {
                 try { replay.updateChartData(true); } catch (_e2) { /* ignore */ }
             }
 
-            if (typeof replay.syncReplayViewportToPlayhead === 'function') {
-                this._resetViewportToDefault({
-                    centerPlayhead: true,
-                    forceRecenter: true,
-                    render: false,
-                });
-                this._endTimeframeSwitching();
-            } else {
-                this._endTimeframeSwitching();
-            }
+            this._finishReplayTfSwitchViewport(replay);
+            this._endTimeframeSwitching();
 
             if (this.compareOverlay && typeof this.compareOverlay.refreshForTimeframe === 'function') {
                 this.compareOverlay.refreshForTimeframe(normalizedTf);
@@ -5107,9 +5149,23 @@ class Chart {
         const replay = this.replaySystem;
         if (!replay) return false;
 
+        const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
+        if (replay.isActive
+            && !this._shouldReplaceReplayMasterForTfSwitch(previousTf, timeframe, replay)) {
+            return false;
+        }
+        const playheadMs = this._resolveMultichartReplayPlayheadMs()
+            ?? this._captureReplayPlayheadMs(replay);
+        const vp = this._tfSwitchViewport;
+        const vpMargin = (vp && Number.isFinite(vp.spanMs) && vp.spanMs > 0)
+            ? Math.floor(vp.spanMs / 2)
+            : 0;
+        if (!this._btTfCacheCoversTimestamp(entry, playheadMs, vpMargin)) {
+            return false;
+        }
+
         const session = this.backtestingSession || {};
         const sessionEndMs = this._getBacktestSessionEndMs(session);
-        const previousTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
         const prevTfMs = this.parseTimeframe(previousTf);
         const newTfMs = this.parseTimeframe(timeframe);
         const switchingToFiner = replay.isActive
@@ -17239,12 +17295,34 @@ class Chart {
         const loadId = ++this._timeframeLoadSeq;
 
         const playheadMs = savedReplayTimestamp ?? this._captureReplayPlayheadMs(replay);
-        const historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
+        let historyRange = Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch >= 86400000
             ? (this._getBacktestInitialFetchRange(timeframe, session)
                 || this._getBacktestSessionEndFetchRange(sessionEndMs))
             : (Number.isFinite(playheadMs)
                 ? this._getBacktestReplayFetchRange(timeframe, session, playheadMs)
                 : this._getBacktestSessionEndFetchRange(sessionEndMs));
+        const vp = this._tfSwitchViewport;
+        if (historyRange && vp && Number.isFinite(vp.centerTs)) {
+            const halfSpan = Number.isFinite(vp.spanMs) && vp.spanMs > 0
+                ? Math.floor(vp.spanMs / 2)
+                : 0;
+            const needStart = halfSpan > 0 ? vp.centerTs - halfSpan : vp.centerTs;
+            const needEnd = halfSpan > 0 ? vp.centerTs + halfSpan : vp.centerTs;
+            if (historyRange.startTs != null) {
+                historyRange.startTs = Math.min(historyRange.startTs, Math.floor(needStart));
+            } else {
+                historyRange.startTs = Math.floor(needStart);
+            }
+            if (historyRange.endTs != null) {
+                historyRange.endTs = Math.max(historyRange.endTs, Math.ceil(needEnd));
+            } else {
+                historyRange.endTs = Math.ceil(needEnd);
+            }
+            if (Number.isFinite(playheadMs)) {
+                historyRange.startTs = Math.min(historyRange.startTs, Math.floor(playheadMs));
+                historyRange.endTs = Math.max(historyRange.endTs, Math.ceil(playheadMs));
+            }
+        }
         const fetchOpts = {
             skipSessionDates: true,
             limit: this._backtestFetchLimitForTimeframe(timeframe),
