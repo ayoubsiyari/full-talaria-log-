@@ -508,6 +508,7 @@ class DrawingSettingsPanel {
         };
 
         this._rrMirrorSummaryRefresh = null;
+        this._rrGeomLiveHandler = null;
 
         // Timeframe visibility defaults
 
@@ -26073,22 +26074,35 @@ applyTemplate(drawing, templateId, modal) {
     /**
      * Refresh RR tool settings mirror from the order panel and summary numbers (when modal is open).
      */
-    refreshRiskRewardMirror() {
+    refreshRiskRewardMirror(drawingOpt) {
+        const dm = this.drawingManager
+            || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager)
+            || (typeof window !== 'undefined' && window.drawingManager);
+        let drawing = drawingOpt || null;
+        if (!drawing && dm?.selectedDrawing
+            && (dm.selectedDrawing.type === 'long-position' || dm.selectedDrawing.type === 'short-position')) {
+            drawing = dm.selectedDrawing;
+        }
+        if (!drawing) drawing = this.currentDrawing;
+        if (!drawing || (drawing.type !== 'long-position' && drawing.type !== 'short-position')) return;
+
+        if (typeof drawing.ensureRiskSettings === 'function') {
+            drawing.ensureRiskSettings();
+        }
+        if (typeof drawing.recalculateLotSizeFromRisk === 'function') {
+            drawing.recalculateLotSizeFromRisk();
+        }
 
         const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
-
+        if (om && typeof om.pushRiskRewardToolToManager === 'function') {
+            om.pushRiskRewardToolToManager(drawing);
+        }
         if (om && typeof om.syncRrSettingsMirrorFromPanel === 'function') {
-
             om.syncRrSettingsMirrorFromPanel();
-
         }
-
         if (typeof this._rrMirrorSummaryRefresh === 'function') {
-
             this._rrMirrorSummaryRefresh();
-
         }
-
     }
 
 
@@ -30481,15 +30495,43 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
+        const resolveLiveDrawing = () => {
+
+            const dm = this.drawingManager
+                || (typeof window !== 'undefined' && window.drawingManager)
+                || (typeof window !== 'undefined' && window.chart && window.chart.drawingManager);
+
+            if (dm && Array.isArray(dm.drawings) && drawing && drawing.id) {
+
+                const tracked = dm.drawings.find((d) => d && d.id === drawing.id);
+
+                if (tracked) return tracked;
+
+            }
+
+            return drawing;
+
+        };
+
+
+
         const refreshRisk = (propagate = false) => {
 
-            drawing.ensureRiskSettings?.();
+            const live = resolveLiveDrawing();
+
+            live.ensureRiskSettings?.();
+
+            if (typeof live.recalculateLotSizeFromRisk === 'function') {
+
+                live.recalculateLotSizeFromRisk();
+
+            }
 
 
 
             const om = typeof window !== 'undefined' ? window.chart?.orderManager : null;
 
-            const state = (drawing.meta && drawing.meta.risk) ? drawing.meta.risk : {};
+            const state = (live.meta && live.meta.risk) ? live.meta.risk : {};
 
 
 
@@ -30529,13 +30571,13 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            let entry = toFiniteNumber(state.entryPrice, drawing.points?.[0]?.y || 0);
+            let entry = toFiniteNumber(live.points?.[0]?.y, state.entryPrice || 0);
 
-            const extras = (drawing.meta?.extraEntries || []).filter((r) => r && Number.isFinite(r.y));
+            const extras = (live.meta?.extraEntries || []).filter((r) => r && Number.isFinite(r.y));
 
-            if (extras.length && typeof drawing._getWeightedAverageEntryPrice === 'function') {
+            if (extras.length && typeof live._getWeightedAverageEntryPrice === 'function') {
 
-                const w = drawing._getWeightedAverageEntryPrice();
+                const w = live._getWeightedAverageEntryPrice();
 
                 if (Number.isFinite(w)) entry = w;
 
@@ -30543,9 +30585,25 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
 
-            const stop = toFiniteNumber(state.stopPrice, drawing.points?.[1]?.y || entry);
+            let stop = toFiniteNumber(live.points?.[1]?.y, state.stopPrice ?? entry);
 
-            const target = toFiniteNumber(state.targetPrice, drawing.points?.[2]?.y || entry);
+            let target = toFiniteNumber(live.points?.[2]?.y, state.targetPrice ?? entry);
+
+            if (typeof live.getAggregatedStopPrice === 'function') {
+
+                const aggStop = live.getAggregatedStopPrice();
+
+                if (Number.isFinite(aggStop)) stop = aggStop;
+
+            }
+
+            if (typeof live.getAggregatedTargetPrice === 'function') {
+
+                const aggTarget = live.getAggregatedTargetPrice();
+
+                if (Number.isFinite(aggTarget)) target = aggTarget;
+
+            }
 
 
 
@@ -30562,6 +30620,12 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
 
 
             let qty = toFiniteNumber(state.lotSize, 0.01);
+
+            if (Number.isFinite(live.meta?.risk?.lotSize) && live.meta.risk.lotSize > 0) {
+
+                qty = live.meta.risk.lotSize;
+
+            }
 
             if (om && typeof om.calculatePositionFromRisk === 'function') {
 
@@ -30634,6 +30698,34 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
             setTimeout(() => om.syncRrSettingsMirrorFromPanel(), 0);
 
         }
+
+
+
+        if (this._rrGeomLiveHandler) {
+
+            window.removeEventListener('v9DrawingGeometryLive', this._rrGeomLiveHandler);
+
+        }
+
+        const drawingId = drawing.id;
+
+        this._rrGeomLiveHandler = (ev) => {
+
+            const detail = ev && ev.detail;
+
+            if (!detail || !drawingId || detail.id !== drawingId) return;
+
+            if (detail.type !== 'long-position' && detail.type !== 'short-position') return;
+
+            if (typeof this.refreshRiskRewardMirror === 'function') {
+
+                this.refreshRiskRewardMirror();
+
+            }
+
+        };
+
+        window.addEventListener('v9DrawingGeometryLive', this._rrGeomLiveHandler);
 
 
 
@@ -32795,6 +32887,16 @@ body.light-mode .drawing-style-editor .drawing-settings-tab-header .tab-button.a
             this._dropdownCloseHandler = null;
 
         }
+
+        if (this._rrGeomLiveHandler) {
+
+            window.removeEventListener('v9DrawingGeometryLive', this._rrGeomLiveHandler);
+
+            this._rrGeomLiveHandler = null;
+
+        }
+
+        this._rrMirrorSummaryRefresh = null;
 
         
 

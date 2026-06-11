@@ -31,6 +31,63 @@ function cpBuildColor(r, g, b, a) {
   return a>=1 ? `#${toHex2(r)}${toHex2(g)}${toHex2(b)}` : `rgba(${r},${g},${b},${+a.toFixed(2)})`;
 }
 
+/** Selected long/short position drawing from the live chart (optional orientation filter). */
+function resolveSelectedRrDrawing(expectedOrientation) {
+  const dm = typeof window !== "undefined" ? (window.chart?.drawingManager || window.drawingManager) : null;
+  const drawing = dm?.selectedDrawing;
+  if (!drawing || (drawing.type !== "long-position" && drawing.type !== "short-position")) return null;
+  if (expectedOrientation === "long" && drawing.type !== "long-position") return null;
+  if (expectedOrientation === "short" && drawing.type !== "short-position") return null;
+  return drawing;
+}
+
+/** Read entry/stop/target/qty/risk from a live RR tool instance. */
+function extractRrGeometrySnapshot(drawing) {
+  if (!drawing?.points || drawing.points.length < 3) return null;
+  if (typeof drawing.ensureRiskSettings === "function") drawing.ensureRiskSettings();
+  if (typeof drawing.recalculateLotSizeFromRisk === "function") drawing.recalculateLotSizeFromRisk();
+
+  const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+  const risk = drawing.meta?.risk || {};
+
+  let entry = Number(drawing.points[0]?.y);
+  if (typeof drawing._getWeightedAverageEntryPrice === "function") {
+    const w = drawing._getWeightedAverageEntryPrice();
+    if (Number.isFinite(w)) entry = w;
+  }
+  let stop = Number(drawing.points[1]?.y);
+  let target = Number(drawing.points[2]?.y);
+  if (typeof drawing.getAggregatedStopPrice === "function") {
+    const s = drawing.getAggregatedStopPrice();
+    if (Number.isFinite(s)) stop = s;
+  }
+  if (typeof drawing.getAggregatedTargetPrice === "function") {
+    const t = drawing.getAggregatedTargetPrice();
+    if (Number.isFinite(t)) target = t;
+  }
+
+  if (om && typeof om.pushRiskRewardToolToManager === "function") {
+    om.pushRiskRewardToolToManager(drawing);
+  }
+
+  let qty = Number(risk.lotSize);
+  const oq = parseFloat(typeof document !== "undefined" ? document.getElementById("orderQuantity")?.value || "" : "");
+  if (Number.isFinite(oq) && oq > 0) qty = oq;
+
+  const riskAmt = Number(risk.riskAmountUSD ?? risk.riskAmount) || 100;
+  const pipSize = om?.pipSize || 0.0001;
+
+  return {
+    id: drawing.id,
+    entry: Number.isFinite(entry) ? entry : 0,
+    stop: Number.isFinite(stop) ? stop : 0,
+    target: Number.isFinite(target) ? target : 0,
+    qty: Number.isFinite(qty) ? qty : 0,
+    riskAmount: riskAmt,
+    pipSize,
+  };
+}
+
 // ── Color Picker Popup ───────────────────────────────────────────────────────
 const ColorPickerPopup = ({ pos, h, s, v, a, hexStr, c, F, onSVChange, onHChange, onAChange, onHexChange, onClose, onDragStart, dragging, animation, hideAlpha }) => {
   const rgb = hsvToRgb(h, s, v);
@@ -515,6 +572,7 @@ const TalariaV8b = () => {
     labelFontSize:"11", labelColor:"#ffffff", showPriceLabels:true, showTimeLabels:false,
   });
   const [rrInputs, setRrInputs] = useState({ riskAmount:"100", qty:"1" });
+  const [rrLiveGeom, setRrLiveGeom] = useState(null);
   const [vwapLocked, setVwapLocked] = useState(false);
   const [vpLocked, setVpLocked] = useState(false);
   const [avLocked, setAvLocked] = useState(false);
@@ -1103,6 +1161,42 @@ const TalariaV8b = () => {
   const isElliottTool = ["elliott5","elliottABC","elliottTri","elliottWXY","elliottWXYXZ"].includes(tlSubTool.icon);
   const isPatternTool = tool === "pattern";
   const isRRTool = tlSubTool.icon === "longPos" || tlSubTool.icon === "shortPos";
+  const rrExpectedOrientation = tlSubTool.icon === "longPos" ? "long" : tlSubTool.icon === "shortPos" ? "short" : null;
+
+  const syncRrLiveFromChart = (drawingOpt) => {
+    const drawing = drawingOpt || resolveSelectedRrDrawing(rrExpectedOrientation);
+    const snap = extractRrGeometrySnapshot(drawing);
+    if (!snap) return;
+    setRrLiveGeom({ entry: snap.entry, stop: snap.stop, target: snap.target, pipSize: snap.pipSize });
+    setRrInputs((prev) => ({
+      ...prev,
+      riskAmount: String(Math.round(snap.riskAmount)),
+      qty: snap.qty > 0 ? String(parseFloat(snap.qty.toFixed(2))) : prev.qty,
+    }));
+  };
+
+  useEffect(() => {
+    if (!isRRTool || !tlSettOpen) return;
+    syncRrLiveFromChart();
+  }, [isRRTool, tlSettOpen, tlSettTab, tlSubTool.icon]);
+
+  useEffect(() => {
+    if (!isRRTool) return;
+    const onGeomLive = (ev) => {
+      if (!tlSettOpen) return;
+      const detail = ev?.detail;
+      if (!detail || (detail.type !== "long-position" && detail.type !== "short-position")) return;
+      if (rrExpectedOrientation === "long" && detail.type !== "long-position") return;
+      if (rrExpectedOrientation === "short" && detail.type !== "short-position") return;
+      const dm = window.chart?.drawingManager || window.drawingManager;
+      const drawing = (Array.isArray(dm?.drawings) ? dm.drawings.find((d) => d && d.id === detail.id) : null)
+        || (dm?.selectedDrawing?.id === detail.id ? dm.selectedDrawing : null);
+      if (!drawing) return;
+      syncRrLiveFromChart(drawing);
+    };
+    window.addEventListener("v9DrawingGeometryLive", onGeomLive);
+    return () => window.removeEventListener("v9DrawingGeometryLive", onGeomLive);
+  }, [isRRTool, tlSettOpen, tlSubTool.icon, rrExpectedOrientation]);
 
   useEffect(() => {
     if (tool !== "trendline" && tool !== "rect" && tool !== "channel" && tool !== "brush2" && tool !== "fib" && tool !== "pattern") { setTlSettOpen(false); setTlBarDrop(null); }
@@ -4114,10 +4208,17 @@ const TalariaV8b = () => {
             {/* ── INPUT TAB (RR tool: Long/Short Position) ── */}
             {tlSettTab==="input" && isRRTool && (()=>{
               const riskAmt = parseFloat(rrInputs.riskAmount)||100;
-              const entry = 1.18032, sl = 1.17982, tp = 1.18135;
-              const slDist = Math.abs(entry - sl), tpDist = Math.abs(tp - entry);
+              const pipSize = rrLiveGeom?.pipSize || window.chart?.orderManager?.pipSize || 0.0001;
+              const entry = rrLiveGeom?.entry ?? 0;
+              const sl = rrLiveGeom?.stop ?? 0;
+              const tp = rrLiveGeom?.target ?? 0;
+              const slDist = Math.abs(entry - sl);
+              const tpDist = Math.abs(tp - entry);
+              const slPips = pipSize > 0 ? slDist / pipSize : 0;
+              const tpPips = pipSize > 0 ? tpDist / pipSize : 0;
               const rrRatio = slDist > 0 ? tpDist / slDist : 0;
               const tpAmt = slDist > 0 ? riskAmt * rrRatio : 0;
+              const hasGeom = entry > 0 && (sl > 0 || tp > 0);
               const lbl = {fontSize:12,color:c.ts,flex:1};
               const val = {fontSize:12,fontWeight:700,color:c.tx,fontVariantNumeric:"tabular-nums"};
               const inpStyle = {width:70,height:24,background:c.well,border:`1px solid ${c.br}`,outline:"none",
@@ -4150,33 +4251,33 @@ const TalariaV8b = () => {
                 <div style={{fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.1em",marginBottom:6}}>POSITION DETAILS</div>
                 <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
                   <span style={lbl}>Entry</span>
-                  <span style={val}>{entry.toFixed(5)}</span>
+                  <span style={val}>{hasGeom ? entry.toFixed(5) : "—"}</span>
                 </div>
                 <div style={{marginBottom:4}}>
                   <div style={{display:"flex",alignItems:"center",marginBottom:2}}>
                     <span style={lbl}>Stop Loss</span>
-                    <span style={{...val,color:c.rd}}>{sl.toFixed(5)}</span>
+                    <span style={{...val,color:c.rd}}>{hasGeom ? sl.toFixed(5) : "—"}</span>
                   </div>
                   <div style={{display:"flex",gap:10,paddingLeft:0}}>
-                    <span style={{fontSize:10,color:c.tm}}>{(slDist/entry*100).toFixed(3)}%</span>
-                    <span style={{fontSize:10,color:c.tm}}>{(slDist*10000).toFixed(1)} pips</span>
+                    <span style={{fontSize:10,color:c.tm}}>{hasGeom && entry ? (slDist/entry*100).toFixed(3) : "—"}%</span>
+                    <span style={{fontSize:10,color:c.tm}}>{hasGeom ? slPips.toFixed(1) : "—"} pips</span>
                     <span style={{fontSize:10,color:c.tm}}>— ${riskAmt.toFixed(0)}</span>
                   </div>
                 </div>
                 <div style={{marginBottom:6}}>
                   <div style={{display:"flex",alignItems:"center",marginBottom:2}}>
                     <span style={lbl}>Take Profit</span>
-                    <span style={{...val,color:c.gn}}>{tp.toFixed(5)}</span>
+                    <span style={{...val,color:c.gn}}>{hasGeom ? tp.toFixed(5) : "—"}</span>
                   </div>
                   <div style={{display:"flex",gap:10}}>
-                    <span style={{fontSize:10,color:c.tm}}>{(tpDist/entry*100).toFixed(3)}%</span>
-                    <span style={{fontSize:10,color:c.tm}}>{(tpDist*10000).toFixed(1)} pips</span>
-                    <span style={{fontSize:10,color:c.gn}}>+${tpAmt.toFixed(0)}</span>
+                    <span style={{fontSize:10,color:c.tm}}>{hasGeom && entry ? (tpDist/entry*100).toFixed(3) : "—"}%</span>
+                    <span style={{fontSize:10,color:c.tm}}>{hasGeom ? tpPips.toFixed(1) : "—"} pips</span>
+                    <span style={{fontSize:10,color:c.gn}}>+${hasGeom ? tpAmt.toFixed(0) : "0"}</span>
                   </div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",padding:"5px 8px",background:c.hv2,border:`1px solid ${c.br}`}}>
                   <span style={lbl}>R:R Ratio</span>
-                  <span style={{...val,color:rrRatio>=1?c.acL:c.rd,fontSize:14}}>{rrRatio.toFixed(2)}R</span>
+                  <span style={{...val,color:rrRatio>=1?c.acL:c.rd,fontSize:14}}>{hasGeom ? `${rrRatio.toFixed(2)}R` : "—"}</span>
                 </div>
               </>);
             })()}
