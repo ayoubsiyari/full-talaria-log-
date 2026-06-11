@@ -802,6 +802,16 @@
                 }
                 return;
 
+            case 'iframe-dismiss-contextmenu':
+                // Iframe panel click — close the unified host context menu.
+                try {
+                    var chDismiss = global.chart;
+                    if (chDismiss && typeof chDismiss.hideContextMenu === 'function') {
+                        chDismiss.hideContextMenu();
+                    }
+                } catch (_) {}
+                return;
+
             case 'multichart-global-toast':
                 // replay-system: "already at end" / session-end toasts from iframe panels.
                 if (typeof msg.message === 'string' && msg.message.length) {

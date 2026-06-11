@@ -2043,6 +2043,10 @@ export default function MultichartGrid({
         // user is interacting with tile A.
         const wrapper = document.getElementById(HOST_WRAPPER_ID);
         const onHostPointerDown = () => {
+            try {
+                const ch = window.chart;
+                if (ch && typeof ch.hideContextMenu === "function") ch.hideContextMenu();
+            } catch (_) {}
             const prev = focusedPanelIdRef.current;
             focusPanelById(HOST_PANEL_ID);
             const grid = window.__multichartGrid;

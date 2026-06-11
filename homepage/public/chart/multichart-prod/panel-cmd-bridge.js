@@ -2312,6 +2312,28 @@
     }
     global.addEventListener('contextmenu', onContextMenu, { capture: true });
 
+    // ─── dismiss host context menu on iframe click ──────────────────────
+    //
+    // Right-click menus are rendered on the HOST chart (see iframe-contextmenu
+    // forward above). chart.js's document mousedown listener only runs inside
+    // each iframe's document, so clicking empty chart area in a panel never
+    // reached the host menu. Forward primary-button presses to the parent.
+    function onDismissHostContextMenu(e) {
+        if (!e || e.button === 2) return;
+        try {
+            var ch = global.chart;
+            if (ch && typeof ch.hideContextMenu === 'function') ch.hideContextMenu();
+        } catch (_) {}
+        try {
+            global.parent.postMessage({
+                type:   'iframe-dismiss-contextmenu',
+                source: panelId,
+            }, '*');
+        } catch (_) {}
+    }
+    global.addEventListener('mousedown', onDismissHostContextMenu, { capture: true });
+    global.addEventListener('pointerdown', onDismissHostContextMenu, { capture: true });
+
     global.MultichartCmdBridge = {
         panelId:      panelId,
         applyCommand: applyCommand,
