@@ -1835,6 +1835,14 @@ class Chart {
         if (await this._applyBacktestTimeframeFromParentCache(normalizedTf)) {
             return true;
         }
+        // Independent tiles (different pair than the host): behave like a single
+        // chart. Fall through to _refetchBacktestTimeframeCore so the server serves
+        // the native display-TF table (ohlcv_<tf>) and the master + backward fills
+        // are all at the display TF (no 1m-master resample). Same-pair only below.
+        if (typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair()) {
+            return false;
+        }
         if (this._multichartSamePairTimeframeResampleFromParent(normalizedTf)) {
             return true;
         }
@@ -2198,9 +2206,14 @@ class Chart {
         this.isBacktestMode = true;
 
         const displayTf = this._normalizeBacktestTimeframe(o.timeframe || this.currentTimeframe) || '1m';
-        // Backtest replay playhead always advances on 1m master bars (same as tile A).
-        // Display TF is resampled client-side so every panel stays candle-for-candle.
-        const masterTf = '1m';
+        // Same-pair tiles + host advance on a shared 1m master (host tick mirroring)
+        // and resample client-side. Independent tiles (a different pair than the host)
+        // run a NATIVE display-TF master so the server serves ohlcv_<tf> directly —
+        // big-TF history loads far fewer bars and fills as fast as a single chart.
+        const independentMaster = String(this.currentFileId || '') !== fileId
+            && typeof this._shouldAnchorPairSwitchToHostPlayhead === 'function'
+            && this._shouldAnchorPairSwitchToHostPlayhead(fileId);
+        const masterTf = independentMaster ? displayTf : '1m';
 
         const replayTs = Number.isFinite(Number(o.replayTimestamp))
             ? Number(o.replayTimestamp)
@@ -4289,7 +4302,12 @@ class Chart {
 
     /** Timeframe for replay pan-load: use display TF when zoomed out (1D view loads daily bars). */
     _getReplayPanFetchTimeframe() {
-        if (this._usesMultichartReplayMaster()) {
+        // Same-pair tiles + host share the 1m master (tick mirroring). Independent
+        // tiles run a native display-TF master, so fetch the native TF directly
+        // (server returns ohlcv_<tf>) instead of pulling 1m and resampling.
+        const independent = typeof this._isIndependentMultichartPair === 'function'
+            && this._isIndependentMultichartPair();
+        if (this._usesMultichartReplayMaster() && !independent) {
             return '1m';
         }
         const displayTf = String(this.currentTimeframe || '1m').toLowerCase().trim();
@@ -5134,6 +5152,15 @@ class Chart {
                 if (sessionStartMs != null && typeof replay._findLastRawIndexAtOrBefore === 'function') {
                     const floorHit = replay._findLastRawIndexAtOrBefore(replay.fullRawData, sessionStartMs);
                     replay.sessionStartIndex = floorHit >= 0 ? floorHit : 0;
+                }
+                // Independent tiles run a native display-TF master. The cut/seek
+                // mirror (applyMultichartReplayCut / _applyIndependentPanelReplaySlice)
+                // slices _panelFullRawData by timestamp, so keep it pointed at the
+                // freshly hot-swapped native master instead of the stale 1m series.
+                if (typeof this._isIndependentMultichartPair === 'function'
+                    && this._isIndependentMultichartPair()
+                    && Array.isArray(replay.fullRawData)) {
+                    this._panelFullRawData = [...replay.fullRawData];
                 }
             } else {
                 replay._fullRawDataMatchesTF = false;
@@ -16514,11 +16541,9 @@ class Chart {
             // must refetch native bars at the replay playhead instead.
             if (this.isBacktestMode && this.currentFileId) {
                 if (this._isMultichartEmbedPanel()) {
-                    // Independent pair: client-resample from the 1m master (no refetch).
-                    if (this._isIndependentMultichartPair()
-                        && this._independentPanelTimeframeSwitch(normalizedTf)) {
-                        return Promise.resolve();
-                    }
+                    // Same-pair tiles share the host's 1m master (tick mirroring);
+                    // independent tiles use a native display-TF master (like a single
+                    // chart) so the server serves ohlcv_<tf> directly — fast fills.
                     return this._multichartReplayTimeframeSwitch(normalizedTf);
                 }
                 return this._applyBacktestTimeframeFromCache(normalizedTf)
