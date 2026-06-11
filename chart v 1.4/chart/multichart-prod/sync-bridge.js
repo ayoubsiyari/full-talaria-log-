@@ -1291,6 +1291,11 @@
                 } else if (drawing != null) {
                     drawingData = JSON.parse(JSON.stringify(drawing));
                 }
+                // Same anchor payload as chart.js native broadcastDrawingChange so
+                // live update/move on the host maps to each peer's local bar indices.
+                if (drawingData && typeof chart._buildDrawingSyncAnchors === 'function') {
+                    drawingData = chart._buildDrawingSyncAnchors(drawingData);
+                }
             } catch (e) {
                 warn('drawing serialize failed', action, e && e.message);
                 drawingData = null;

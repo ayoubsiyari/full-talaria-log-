@@ -3213,18 +3213,50 @@ class ReplaySystem {
         // Calculate target timestamp (next timeframe boundary)
         const targetTimestamp = currentTimestamp + tfMs;
         
-        // Check raw data candle interval (time between first two candles)
-        let rawCandleIntervalMs = 60000; // default 1 minute
-        if (this.fullRawData.length > 1) {
-            rawCandleIntervalMs = this.fullRawData[1].t - this.fullRawData[0].t;
+        // Walk to the first bar at/after the target wall-clock time. We must NOT
+        // derive a fixed candles-to-skip from the first two bars: the replay
+        // master is often NON-uniform (hybrid: native display-TF history on the
+        // left + a 1m window around the playhead). A global step computed from the
+        // daily history would collapse 5m → round(5min/1day)=0 → a single 1m step,
+        // so the INTERVAL appeared to do nothing. A timestamp scan honours the
+        // selected interval against the actual (finer) bars near the playhead.
+        const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
+        return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+    }
+
+    /**
+     * First index in fullRawData whose timestamp is >= ts, searching from
+     * `fromIndex`. Binary search (fullRawData is time-sorted ascending).
+     * Returns fullRawData.length if no bar reaches ts.
+     */
+    _firstRawIndexAtOrAfter(ts, fromIndex = 0) {
+        const arr = this.fullRawData;
+        if (!Array.isArray(arr) || !arr.length) return 0;
+        let lo = Math.max(0, fromIndex | 0);
+        let hi = arr.length; // exclusive
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (Number(arr[mid].t) < ts) lo = mid + 1;
+            else hi = mid;
         }
-        
-        // Calculate how many raw candles to skip
-        const candlesToSkip = Math.max(1, Math.round(tfMs / rawCandleIntervalMs));
-        const targetIndex = Math.min(this.currentIndex + candlesToSkip, this.fullRawData.length - 1);
-        
-        
-        return targetIndex;
+        return lo;
+    }
+
+    /**
+     * Last index in fullRawData whose timestamp is <= ts (or 0). Binary search.
+     */
+    _lastRawIndexAtOrBeforeTs(ts) {
+        const arr = this.fullRawData;
+        if (!Array.isArray(arr) || !arr.length) return 0;
+        let lo = 0;
+        let hi = arr.length - 1;
+        let ans = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (Number(arr[mid].t) <= ts) { ans = mid; lo = mid + 1; }
+            else hi = mid - 1;
+        }
+        return ans;
     }
 
     /**
@@ -3266,13 +3298,13 @@ class ReplaySystem {
             return Math.max(this.currentIndex - 1, minIdx);
         }
 
-        let rawCandleIntervalMs = 60000;
-        if (this.fullRawData.length > 1) {
-            rawCandleIntervalMs = this.fullRawData[1].t - this.fullRawData[0].t;
-        }
-
-        const candlesToSkip = Math.max(1, Math.round(tfMs / rawCandleIntervalMs));
-        return Math.max(minIdx, this.currentIndex - candlesToSkip);
+        // Mirror of calculateNextIndex: target a wall-clock boundary instead of a
+        // fixed candle count, so the INTERVAL is honoured against the actual
+        // (possibly non-uniform / hybrid) bar spacing near the playhead.
+        const currentTimestamp = this.fullRawData[this.currentIndex].t;
+        const targetTimestamp = currentTimestamp - tfMs;
+        const targetIndex = this._lastRawIndexAtOrBeforeTs(targetTimestamp);
+        return Math.max(minIdx, Math.min(targetIndex, this.currentIndex - 1));
     }
 
     /**

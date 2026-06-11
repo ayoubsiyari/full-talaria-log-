@@ -2522,10 +2522,31 @@ class DrawingToolsManager {
         return drawing.id;
     }
 
+    /**
+     * True when cross-panel drawing sync is active (legacy panelManager OR
+     * multichart iframe grid via sync-bridge). Live edit/move broadcasts were
+     * gated only on panelManager, so multichart showed new shapes on peers
+     * (finalize add has no gate) but not drag/resize updates.
+     */
+    _isCrossPanelDrawingSyncEnabled() {
+        if (!this.chart || typeof this.chart.broadcastDrawingChange !== 'function') return false;
+        if (window.panelManager && window.panelManager.syncSettings && window.panelManager.syncSettings.drawings) {
+            return window.panelManager.currentLayout !== '1';
+        }
+        if (typeof window !== 'undefined') {
+            if (window.__multichartHostBridge || window.__multichartBridge) return true;
+            const grid = window.__multichartGrid;
+            if (grid && grid.syncMode && grid.syncMode.drawings !== false) return true;
+            if (document.documentElement && document.documentElement.classList.contains('multichart-embed')) {
+                return !!window.__multichartBridge;
+            }
+        }
+        return false;
+    }
+
     _syncLivePreviewDrawing(tempDrawing) {
         if (!tempDrawing || !this.chart || !this.chart.broadcastDrawingChange) return;
-        if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
-        if (window.panelManager.currentLayout === '1') return;
+        if (!this._isCrossPanelDrawingSyncEnabled()) return;
 
         if (!this._liveSyncDrawingId) this._liveSyncDrawingId = this._nextLiveSyncId();
         tempDrawing.id = this._liveSyncDrawingId;
@@ -2771,8 +2792,7 @@ class DrawingToolsManager {
         if (!drawing) return;
         this._notifyV9DrawingGeometryLive(drawing, pointsOverride);
         if (!this.chart || !this.chart.broadcastDrawingChange) return;
-        if (!window.panelManager || !window.panelManager.syncSettings || !window.panelManager.syncSettings.drawings) return;
-        if (window.panelManager.currentLayout === '1') return;
+        if (!this._isCrossPanelDrawingSyncEnabled()) return;
 
         // Throttle: max ~60 fps for live edit broadcasts to keep UI responsive
         const now = performance.now();
