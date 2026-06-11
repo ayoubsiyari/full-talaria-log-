@@ -23034,9 +23034,42 @@ class Chart {
             : (Array.isArray(this.data) ? this.data.length : 0);
         const beforeLen = measureLen();
 
-        if (replay && replay.isActive) {
-            // Same proven path as dragging the replay chart left: parent-extend for
-            // same-pair multichart tiles, else a server /bars fetch (host + single).
+        // Resolve the host chart once (same-pair multichart tile only).
+        let host = null;
+        const sameAsHost = typeof this._multichartSamePairAsHost === 'function'
+            && this._multichartSamePairAsHost(this.currentFileId);
+        if (sameAsHost) {
+            try {
+                if (window.parent && window.parent !== window) host = window.parent.chart;
+            } catch (_e) { host = null; }
+        }
+
+        let pollMs = 260;
+
+        if (replay && replay.isActive && sameAsHost && host) {
+            // FAST PATH (multichart): mirror everything the host already holds in
+            // one shot — instant, no network. Then, if the host itself is short,
+            // force ONE shared fetch on the host so every tile mirrors the same
+            // bars instead of each tile doing its own /bars round-trip.
+            let pulled = false;
+            if (typeof this._tryExtendReplayMasterFromParent === 'function') {
+                try { pulled = !!this._tryExtendReplayMasterFromParent(); } catch (_e) { pulled = false; }
+            }
+            if (!pulled) {
+                const hostHasLeft = !host._serverCursors
+                    || host._serverCursors.hasMoreLeft !== false
+                    || (host.isBacktestMode
+                        && typeof host._backtestReplayHasUnloadHistoryLeft === 'function'
+                        && host._backtestReplayHasUnloadHistoryLeft());
+                if (!hostHasLeft && !host._panLoading) return; // host has nothing more
+                if (typeof host.checkViewportLoadMore === 'function') {
+                    try { host.checkViewportLoadMore('backward', true); } catch (_e) { /* ignore */ }
+                }
+            }
+            // Mirroring is instant; poll quickly to catch the host's fetch result.
+            pollMs = pulled ? 40 : 140;
+        } else if (replay && replay.isActive) {
+            // Single chart / independent tile: same path as dragging replay left.
             if (typeof this._scheduleReplayPanLoadLeft === 'function') {
                 this._scheduleReplayPanLoadLeft();
             }
@@ -23046,14 +23079,13 @@ class Chart {
             this.checkViewportLoadMore('backward', true);
         }
 
-        // Poll slower than the loader's debounce (≤200ms) so we don't keep
-        // resetting its timer; only re-trigger once the prior load settles.
         setTimeout(() => {
             const grew = measureLen() > beforeLen;
-            const busy = this._panLoading || this._replayPanLoadTimer;
+            // Keep going while data is arriving here OR a shared host fetch is in flight.
+            const busy = this._panLoading || this._replayPanLoadTimer || (host && host._panLoading);
             if (!grew && !busy) return; // nothing more to load
             this._fillViewportHistoryAfterTfSwitch(attempt + 1);
-        }, 260);
+        }, pollMs);
     }
 
     /**
