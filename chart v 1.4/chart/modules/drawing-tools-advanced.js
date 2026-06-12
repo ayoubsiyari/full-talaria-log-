@@ -2410,7 +2410,6 @@ class BaseRiskRewardTool extends BaseDrawing {
             const labelFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif';
             const labelTextColor = this.style.textColor || this.style.labelTextColor || '#FFFFFF';
             const edgeLabelRadius = 8;
-            const centerLabelRadius = 10;
             const edgeSnapGap = 0;
             const compressedGap = 18;
             const wideSnapThreshold = 260;
@@ -2591,7 +2590,7 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('font-weight', labelFontWeight)
                 .attr('font-family', labelFontFamily);
 
-            const centerLineHeight = Math.round(labelFontSize * 1.2);
+            const centerLineHeight = Math.round(labelFontSize * 1.15);
 
             let centerLine0 = null;
             if (centerInfoLine0) {
@@ -2612,17 +2611,28 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .text(centerInfoLine2);
 
             const centerTextBBox = centerTextNode.node().getBBox();
-            const centerPaddingX = 16;
-            const centerPaddingY = 9;
+            const centerPaddingX = labelPaddingX;
+            const centerPaddingY = labelPaddingY;
             const centerWidth = centerTextBBox.width + (centerPaddingX * 2);
             const centerHeight = centerTextBBox.height + (centerPaddingY * 2);
 
-            primaryEntryHitHeight = Math.max(26, centerHeight + 4);
+            primaryEntryHitHeight = Math.max(22, centerHeight + 4);
 
             const centerRectX = zoneCenterX - (centerWidth / 2);
 
             const centerLineYpx = hasMultiEntry ? avgEntryYpx : entryY;
-            const centerRectY = centerLineYpx - (centerHeight / 2);
+            const bodyHeightPx = Math.max(0, bodyBotPx - bodyTopPx);
+            const isVertCompressed = bodyHeightPx < 140;
+            const isLabelCompressed = zoneWidth < wideSnapThreshold || isVertCompressed;
+            let centerRectY;
+            if (isLabelCompressed) {
+                // Match TP/SL edge labels: when compressed, nudge toward the target zone instead of straddling entry.
+                centerRectY = this.isLong
+                    ? (centerLineYpx - centerHeight - compressedGap)
+                    : (centerLineYpx + compressedGap);
+            } else {
+                centerRectY = centerLineYpx - (centerHeight / 2);
+            }
 
             const centerInfoFill = this.isLong ? stopLabelFill : targetLabelFill;
 
@@ -2632,9 +2642,9 @@ class BaseRiskRewardTool extends BaseDrawing {
                 .attr('width', centerWidth)
                 .attr('height', centerHeight)
                 .attr('fill', centerInfoFill)
-                .attr('stroke', '#ffffff')
-                .attr('stroke-width', 2)
-                .attr('rx', centerLabelRadius);
+                .attr('stroke', 'rgba(255,255,255,0.35)')
+                .attr('stroke-width', 1)
+                .attr('rx', edgeLabelRadius);
             if (hasMultiEntry) {
                 centerPillRect.style('pointer-events', 'all').style('cursor', 'move');
             } else {
