@@ -662,17 +662,24 @@ class OrderManager {
         const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
             ? String(chart.currentFileId)
             : '';
+        const pt = this._positionTicker(position);
+        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
+
         if (posFile && chartFile) {
             return posFile === chartFile;
         }
-        const pt = this._positionTicker(position);
-        if (pt) {
-            const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
-            if (!cs || pt !== cs) return false;
 
-            // Multi-panel: trades without sourceFileId used to match every tile sharing a ticker,
-            // even when panels pointed at different uploads — journal overlays then fought wrong OHLC.
-            // Restrict symbol-only matches to charts that share the focused panel's dataset when possible.
+        if (chartFile) {
+            if (!pt || !cs || pt !== cs) return false;
+            if (typeof this.resolveFileIdForTicker === 'function') {
+                const expectedFile = this.resolveFileIdForTicker(pt);
+                if (expectedFile && expectedFile !== chartFile) return false;
+            }
+            return true;
+        }
+
+        if (pt) {
+            if (!cs || pt !== cs) return false;
             if (this._isMultiPanelLayout() && chartFile && !posFile) {
                 let activeFile = '';
                 try {
@@ -689,8 +696,68 @@ class OrderManager {
             }
             return true;
         }
-        // No dataset id and no ticker — do not paint this trade on arbitrary charts (was: main chart only).
         return false;
+    }
+
+    /** Drop in-memory marker rows (and DOM) that do not belong on this chart surface. */
+    _pruneMarkerRegistriesForChart(chart) {
+        const ch = chart || this.chart;
+        if (!ch) return;
+
+        const belongsOnChart = (orderRef) => {
+            if (!orderRef) return false;
+            return this._positionTickerMatchesChartSymbol(orderRef, ch);
+        };
+
+        const removeMarkerDom = (m) => {
+            try {
+                if (m?.marker?.remove) m.marker.remove();
+                else if (m?.line?.remove) m.line.remove();
+            } catch (_) {}
+        };
+
+        const hostChart = (m) => (m?.chart || this.chart);
+
+        (this.entryMarkers || []).forEach((m) => {
+            if (hostChart(m) !== ch) return;
+            const ref = m.order || this._orderRefForMarkerOrderId(m.orderId);
+            if (!belongsOnChart(ref)) removeMarkerDom(m);
+        });
+        this.entryMarkers = (this.entryMarkers || []).filter((m) => {
+            if (hostChart(m) !== ch) return true;
+            const ref = m.order || this._orderRefForMarkerOrderId(m.orderId);
+            return belongsOnChart(ref);
+        });
+
+        (this.exitMarkers || []).forEach((m) => {
+            if (hostChart(m) !== ch) return;
+            const ref = this._orderRefForMarkerOrderId(m.orderId);
+            if (!belongsOnChart(ref)) removeMarkerDom(m);
+        });
+        this.exitMarkers = (this.exitMarkers || []).filter((m) => {
+            if (hostChart(m) !== ch) return true;
+            return belongsOnChart(this._orderRefForMarkerOrderId(m.orderId));
+        });
+
+        (this.partialCloseMarkers || []).forEach((m) => {
+            if (hostChart(m) !== ch) return;
+            const ref = this._orderRefForMarkerOrderId(m.orderId);
+            if (!belongsOnChart(ref)) removeMarkerDom(m);
+        });
+        this.partialCloseMarkers = (this.partialCloseMarkers || []).filter((m) => {
+            if (hostChart(m) !== ch) return true;
+            return belongsOnChart(this._orderRefForMarkerOrderId(m.orderId));
+        });
+
+        (this.tradeConnectors || []).forEach((tc) => {
+            if (hostChart(tc) !== ch) return;
+            const ref = this._orderRefForMarkerOrderId(tc.orderId);
+            if (!belongsOnChart(ref)) removeMarkerDom(tc);
+        });
+        this.tradeConnectors = (this.tradeConnectors || []).filter((tc) => {
+            if (hostChart(tc) !== ch) return true;
+            return belongsOnChart(this._orderRefForMarkerOrderId(tc.orderId));
+        });
     }
 
     _stripOrderDrawingLayersFromChart(chart) {
@@ -837,9 +904,6 @@ class OrderManager {
         try {
             this._redrawMfeMaeMarkersFromState();
         } catch (_) {}
-        try {
-            this._redrawClosedJournalTradeMarkers();
-        } catch (_) {}
         charts.forEach((c) => {
             if (c && typeof c.render === 'function') {
                 c.renderPending = true;
@@ -864,6 +928,8 @@ class OrderManager {
             // Full strip + reset (same idea as multi-panel): removes orphan SVG and stale DOM refs in
             // orderLines/slLines/... so a symbol switch cannot leave another pair's visuals on the canvas.
             this._stripOrderDrawingLayersFromChart(this.chart);
+            this._clearClosedTradeMarkerRegistry();
+            this.entryMarkers = [];
             this.orderLines = [];
             this.splitGroupAvgLines = [];
             this.multiTPAvgLines = [];
@@ -871,15 +937,6 @@ class OrderManager {
             this.tpLines = [];
             this.beLines = [];
             this.pendingTargetLines = [];
-            if (this.entryMarkers && this.entryMarkers.length) {
-                this.entryMarkers.forEach((m) => {
-                    try {
-                        if (m.marker) m.marker.remove();
-                    } catch (e) { /* ignore */ }
-                });
-                this.entryMarkers = [];
-            }
-            this._clearClosedTradeMarkerRegistry();
 
             (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
@@ -899,9 +956,6 @@ class OrderManager {
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
                 this._redrawMfeMaeMarkersFromState();
-            } catch (_) {}
-            try {
-                this._redrawClosedJournalTradeMarkers();
             } catch (_) {}
             if (this.chart && typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
@@ -31853,12 +31907,7 @@ class OrderManager {
         const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
         const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
         const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
-        let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
-        if ((!sourceFileId || String(sourceFileId) === '') && ticker
-            && typeof this.resolveFileIdForTicker === 'function') {
-            const fid = this.resolveFileIdForTicker(ticker);
-            if (fid) sourceFileId = fid;
-        }
+        const sourceFileId = trade.sourceFileId ?? trade.source_file_id;
 
         return {
             ...trade,
@@ -32893,8 +32942,11 @@ class OrderManager {
             if (!c?.scales?.yScale) return;
 
             const order = markerData.order;
-            const entryRef = order
-                ? { openTime: order.openTime, openPrice: order.openPrice, entryMarkerTimeMs: order.entryMarkerTimeMs }
+            const orderRef = order || this._orderRefForMarkerOrderId(markerData.orderId);
+            if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+
+            const entryRef = orderRef
+                ? { openTime: orderRef.openTime, openPrice: orderRef.openPrice, entryMarkerTimeMs: orderRef.entryMarkerTimeMs }
                 : { openTime: time, openPrice: price };
             const dataIndex = this._chartIndexForEntryMarkerOnChart(c, entryRef);
             if (dataIndex === -1) return;
@@ -32939,7 +32991,7 @@ class OrderManager {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(orderId);
-                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -32980,9 +33032,11 @@ class OrderManager {
         }
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
-            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
+            this.partialCloseMarkers.forEach(({ orderId, marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
+                const orderRef = this._orderRefForMarkerOrderId(orderId);
+                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -33027,7 +33081,7 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(tc.orderId);
-                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const entryRef = {
                     openTime: tc.entryTime,
@@ -35139,6 +35193,7 @@ class OrderManager {
             return;
         }
 
+        this._pruneMarkerRegistriesForChart(ch);
         this._updateEntryMarkersForChart(ch);
 
         // Exit/partial markers and connectors store their host chart; update all whenever any surface renders.
