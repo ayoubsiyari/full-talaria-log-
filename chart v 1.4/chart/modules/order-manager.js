@@ -383,7 +383,25 @@ class OrderManager {
         const findIn = (list) => (list || []).find(
             (p) => p && (p.id === orderId || String(p.id) === sid)
         );
-        return findIn(this.openPositions) || findIn(this.closedPositions) || null;
+        const os = this.orderService;
+        return findIn(this.openPositions)
+            || findIn(this.closedPositions)
+            || (os ? findIn(os.openPositions) : null)
+            || (os ? findIn(os.closedPositions) : null)
+            || null;
+    }
+
+    _getClosedPositionsForMarkerRedraw() {
+        const out = [];
+        const seen = new Set();
+        const add = (p) => {
+            if (!p || p.id == null || seen.has(p.id)) return;
+            seen.add(p.id);
+            out.push(p);
+        };
+        (this.closedPositions || []).forEach(add);
+        (this.orderService?.closedPositions || []).forEach(add);
+        return out;
     }
 
     /** Drop entry/exit/connector markers on `chart` that belong to another instrument. */
@@ -440,7 +458,10 @@ class OrderManager {
     _redrawClosedTradeMarkersForChart(ch) {
         if (!ch) return;
         if (this.showTradeMarkers === false) return;
-        (this.closedPositions || []).forEach((pos) => {
+        if (!ch.scales?.yScale && typeof ch.calculateScales === 'function') {
+            try { ch.calculateScales(); } catch (_) {}
+        }
+        this._getClosedPositionsForMarkerRedraw().forEach((pos) => {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) return;
             try { this.drawEntryMarker(pos, ch); } catch (_) {}
             if (Array.isArray(pos.partialCloses)) {
@@ -468,6 +489,32 @@ class OrderManager {
                 } catch (_) {}
             }
         });
+    }
+
+    /** After pair switch: redraw closed-trade arrows once chart data + scales are ready. */
+    _scheduleClosedTradeMarkersRedraw(chart) {
+        const ch = chart || this.chart;
+        if (!ch) return;
+        const run = () => {
+            try {
+                this._redrawClosedTradeMarkersForChart(ch);
+                if (typeof this.updateOrderLines === 'function') {
+                    this.updateOrderLines(ch);
+                }
+            } catch (_) {}
+        };
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => requestAnimationFrame(run));
+        } else {
+            setTimeout(run, 32);
+        }
+        if (typeof window !== 'undefined') {
+            const onData = () => {
+                window.removeEventListener('chartDataLoaded', onData);
+                run();
+            };
+            window.addEventListener('chartDataLoaded', onData, { once: true });
+        }
     }
 
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
@@ -724,8 +771,8 @@ class OrderManager {
         const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
             ? String(chart.currentFileId)
             : '';
-        if (posFile && chartFile) {
-            return posFile === chartFile;
+        if (posFile && chartFile && posFile === chartFile) {
+            return true;
         }
         const pt = this._positionTicker(position);
         if (pt) {
@@ -895,7 +942,7 @@ class OrderManager {
         });
 
         charts.forEach((ch) => {
-            try { this._redrawClosedTradeMarkersForChart(ch); } catch (_) {}
+            try { this._scheduleClosedTradeMarkersRedraw(ch); } catch (_) {}
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
@@ -958,7 +1005,7 @@ class OrderManager {
                 } catch (e) { /* ignore */ }
             });
             try {
-                this._redrawClosedTradeMarkersForChart(this.chart);
+                this._scheduleClosedTradeMarkersRedraw(this.chart);
             } catch (_) {}
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
