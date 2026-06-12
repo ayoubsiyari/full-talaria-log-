@@ -3049,16 +3049,25 @@ class OrderManager {
 
         const accountRuntime = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
         if (accountRuntime) {
-            const balance = Number.parseFloat(accountRuntime.balance);
-            const equity = Number.parseFloat(accountRuntime.equity);
             const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
             const sessionCurrentTime = Number.parseFloat(accountRuntime.session_current_time);
-            if (Number.isFinite(balance)) this.balance = balance;
-            if (Number.isFinite(equity)) this.equity = equity;
             if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
             if (Number.isFinite(sessionCurrentTime) && this.orderService?.multiInstrumentSession) {
                 this.orderService.multiInstrumentSession.current_time = sessionCurrentTime;
             }
+        }
+
+        // Closed-trade P&L lives in the journal — stale account_runtime snapshots often still
+        // show the starting balance after refresh even when journal rows have netPnL.
+        const hasJournalTrades = Array.isArray(this.tradeJournal) && this.tradeJournal.length > 0;
+        if (hasJournalTrades) {
+            this.recomputeAccountFromJournal();
+        } else if (accountRuntime) {
+            const balance = Number.parseFloat(accountRuntime.balance);
+            const equity = Number.parseFloat(accountRuntime.equity);
+            if (Number.isFinite(balance)) this.balance = balance;
+            if (Number.isFinite(equity)) this.equity = equity;
+            this._syncReplayHeaderStatsFromAccount();
         }
 
         const orderCounters = state.order_counters && typeof state.order_counters === 'object' ? state.order_counters : null;
@@ -3147,7 +3156,9 @@ class OrderManager {
         const startingBalance = Number.isFinite(base) ? base : 0;
         const realizedPnL = Array.isArray(this.tradeJournal)
             ? this.tradeJournal.reduce((sum, trade) => {
-                const pnl = Number.parseFloat(trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? 0);
+                const pnl = Number.parseFloat(
+                    trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? trade?.net_pnl ?? trade?.profit ?? 0
+                );
                 return sum + (Number.isFinite(pnl) ? pnl : 0);
             }, 0)
             : 0;

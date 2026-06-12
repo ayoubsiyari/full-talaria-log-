@@ -790,7 +790,19 @@ class DrawingToolsManager {
         if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
             this.chart._setChartPanDomOverflow(true);
         }
-        this.setDrawingsClipDuringChartPan(true);
+        // Shape resize/drag uses group translate — keep plot clip so fills/lines stay under axes.
+        // Chart pan alone relaxes clip via setDrawingsClipDuringChartPan() in chart.js.
+        this._panClipRelaxed = false;
+        this.updateClipPath();
+        const clipUrl = this._clipUrl();
+        if (clipUrl) {
+            if (this.drawingsGroup && !this.drawingsGroup.empty()) {
+                this.drawingsGroup.attr('clip-path', clipUrl);
+            }
+            if (this.tempGroup && !this.tempGroup.empty()) {
+                this.tempGroup.attr('clip-path', clipUrl);
+            }
+        }
     }
 
     _endDrawingLiveInteraction() {
@@ -800,7 +812,6 @@ class DrawingToolsManager {
         if (this.chart && typeof this.chart._setChartPanDomOverflow === 'function') {
             this.chart._setChartPanDomOverflow(false);
         }
-        this.setDrawingsClipDuringChartPan(false);
     }
 
     /** Move drawing by pixel delta with full re-render (avoids transform + overflow:hidden clip). */

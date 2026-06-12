@@ -7101,11 +7101,15 @@ class Chart {
         const backupHasRuntime = this._sessionStateHasRuntimeOrderState(backup);
         if (backupHasRuntime && typeof om.restoreRuntimeOrderStateFromSession === 'function') {
             om.restoreRuntimeOrderStateFromSession(backup);
-            if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
-                om._syncReplayHeaderStatsFromAccount();
-            }
         } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
+        }
+        if (Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0
+            && typeof om.recomputeAccountFromJournal === 'function') {
+            om.recomputeAccountFromJournal();
+        }
+        if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
+            om._syncReplayHeaderStatsFromAccount();
         }
 
         if (typeof om.updateJournalTab === 'function') {
@@ -7275,11 +7279,18 @@ class Chart {
             }
             if (runtimeSource && this.orderManager && typeof this.orderManager.restoreRuntimeOrderStateFromSession === 'function') {
                 this.orderManager.restoreRuntimeOrderStateFromSession(runtimeSource);
-                if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
-                    this.orderManager._syncReplayHeaderStatsFromAccount();
-                }
             } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
                 this.orderManager.recomputeAccountFromJournal();
+            }
+            // Journal is canonical for closed-trade balance; reconcile after every restore path.
+            if (this.orderManager
+                && Array.isArray(this.orderManager.tradeJournal)
+                && this.orderManager.tradeJournal.length > 0
+                && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
+                this.orderManager.recomputeAccountFromJournal();
+            }
+            if (this.orderManager && typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
+                this.orderManager._syncReplayHeaderStatsFromAccount();
             }
 
             if (this.orderManager) {
