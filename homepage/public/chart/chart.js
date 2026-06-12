@@ -7104,12 +7104,13 @@ class Chart {
         } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
         }
-        if (Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0
-            && typeof om.recomputeAccountFromJournal === 'function') {
+        if (typeof om.reconcileAccountAfterSessionRestore === 'function') {
+            om.reconcileAccountAfterSessionRestore();
+        } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
-        }
-        if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
-            om._syncReplayHeaderStatsFromAccount();
+            if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
+                om._syncReplayHeaderStatsFromAccount();
+            }
         }
 
         if (typeof om.updateJournalTab === 'function') {
@@ -7283,14 +7284,13 @@ class Chart {
                 this.orderManager.recomputeAccountFromJournal();
             }
             // Journal is canonical for closed-trade balance; reconcile after every restore path.
-            if (this.orderManager
-                && Array.isArray(this.orderManager.tradeJournal)
-                && this.orderManager.tradeJournal.length > 0
-                && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
+            if (this.orderManager && typeof this.orderManager.reconcileAccountAfterSessionRestore === 'function') {
+                this.orderManager.reconcileAccountAfterSessionRestore();
+            } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
                 this.orderManager.recomputeAccountFromJournal();
-            }
-            if (this.orderManager && typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
-                this.orderManager._syncReplayHeaderStatsFromAccount();
+                if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
+                    this.orderManager._syncReplayHeaderStatsFromAccount();
+                }
             }
 
             if (this.orderManager) {
@@ -7482,6 +7482,10 @@ class Chart {
                 console.warn('⚠️ Failed to load trading session state', e);
                 this._applyTradingSessionFromLocalBackupOnly(sessionId);
             } finally {
+                const omFin = this.orderManager;
+                if (omFin && typeof omFin.reconcileAccountAfterSessionRestore === 'function') {
+                    try { omFin.reconcileAccountAfterSessionRestore(); } catch (_eBal) { /* ignore */ }
+                }
                 if (this._sessionStateLoadPromises && this._sessionStateLoadPromises[sid] === settledPromise) {
                     delete this._sessionStateLoadPromises[sid];
                 }

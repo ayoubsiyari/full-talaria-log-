@@ -3061,7 +3061,11 @@ class OrderManager {
         // show the starting balance after refresh even when journal rows have netPnL.
         const hasJournalTrades = Array.isArray(this.tradeJournal) && this.tradeJournal.length > 0;
         if (hasJournalTrades) {
-            this.recomputeAccountFromJournal();
+            if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
+                this.reconcileAccountAfterSessionRestore();
+            } else {
+                this.recomputeAccountFromJournal();
+            }
         } else if (accountRuntime) {
             const balance = Number.parseFloat(accountRuntime.balance);
             const equity = Number.parseFloat(accountRuntime.equity);
@@ -3151,20 +3155,82 @@ class OrderManager {
         }
     }
 
+    _extractJournalTradePnl(trade) {
+        if (!trade || typeof trade !== 'object') return 0;
+        const pnl = Number.parseFloat(
+            trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? trade.net_pnl ?? trade.profit ?? 0
+        );
+        return Number.isFinite(pnl) ? pnl : 0;
+    }
+
     recomputeAccountFromJournal() {
         const base = Number.parseFloat(this.initialBalance);
         const startingBalance = Number.isFinite(base) ? base : 0;
-        const realizedPnL = Array.isArray(this.tradeJournal)
-            ? this.tradeJournal.reduce((sum, trade) => {
-                const pnl = Number.parseFloat(
-                    trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? trade?.net_pnl ?? trade?.profit ?? 0
-                );
-                return sum + (Number.isFinite(pnl) ? pnl : 0);
-            }, 0)
-            : 0;
+        const journalIds = new Set();
+        let realizedPnL = 0;
+        if (Array.isArray(this.tradeJournal)) {
+            this.tradeJournal.forEach((trade) => {
+                const tid = trade?.tradeId ?? trade?.id;
+                if (tid != null && tid !== '') journalIds.add(String(tid));
+                realizedPnL += this._extractJournalTradePnl(trade);
+            });
+        }
+        // Same-session closed rows not yet written into tradeJournal (refresh mid-flight).
+        (this.closedPositions || []).forEach((pos) => {
+            if (pos?.id != null && journalIds.has(String(pos.id))) return;
+            const pnl = Number.parseFloat(pos?.pnl ?? pos?.netPnL ?? pos?.realizedPnL ?? 0);
+            if (Number.isFinite(pnl)) realizedPnL += pnl;
+        });
 
         this.balance = startingBalance + realizedPnL;
         this._syncReplayHeaderStatsFromAccount();
+        return realizedPnL;
+    }
+
+    /**
+     * When journal has closed-trade P&L but balance still equals starting balance, re-apply ledger math.
+     */
+    _reconcileAccountIfBalanceLooksStale() {
+        const journal = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
+        if (journal.length === 0) return false;
+        const base = Number.parseFloat(this.initialBalance);
+        if (!Number.isFinite(base)) return false;
+        let journalPnl = 0;
+        journal.forEach((t) => { journalPnl += this._extractJournalTradePnl(t); });
+        if (Math.abs(journalPnl) < 0.0001) return false;
+        const bal = Number.parseFloat(this.balance);
+        const stuckAtStart = Number.isFinite(bal) && Math.abs(bal - base) < 0.01;
+        const expected = base + journalPnl;
+        if (stuckAtStart || (Number.isFinite(bal) && Math.abs(bal - expected) > 0.02)) {
+            this.recomputeAccountFromJournal();
+            return true;
+        }
+        return false;
+    }
+
+    /** After GET /state or local backup restore — journal is canonical for realized balance. */
+    reconcileAccountAfterSessionRestore() {
+        this.recomputeAccountFromJournal();
+        this._reconcileAccountIfBalanceLooksStale();
+        this._syncReplayHeaderStatsFromAccount();
+        try {
+            if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                this.eventBus.emit('account:updated', {
+                    balance: this.balance,
+                    equity: this.equity,
+                    realizedPnL: this.realizedPnL,
+                });
+            }
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talaria:account-reconciled', {
+                    detail: {
+                        balance: this.balance,
+                        equity: this.equity,
+                        initialBalance: this.initialBalance,
+                    },
+                }));
+            }
+        } catch (_e) { /* ignore */ }
     }
 
     _computeAdvancedAnalytics() {
@@ -3717,6 +3783,9 @@ class OrderManager {
                 const om = window.chart && window.chart.orderManager;
                 if (!om) return;
                 const hasJournal = Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0;
+                if (hasJournal && typeof om.reconcileAccountAfterSessionRestore === 'function') {
+                    try { om.reconcileAccountAfterSessionRestore(); } catch (_e) { /* ignore */ }
+                }
                 if (om._journalMarkerRestorePending || hasJournal) {
                     if (typeof om._scheduleSessionMarkerRedraw === 'function') {
                         om._scheduleSessionMarkerRedraw();
@@ -3726,6 +3795,15 @@ class OrderManager {
                 }
             });
         }
+
+        // Session journal often loads async after init — retry reconcile so balance is not stuck at start.
+        [500, 1500, 4000].forEach((ms) => {
+            setTimeout(() => {
+                if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
+                    try { this.reconcileAccountAfterSessionRestore(); } catch (_e) { /* ignore */ }
+                }
+            }, ms);
+        });
         
         // Load MFE/MAE settings from localStorage
         try {
@@ -3781,10 +3859,8 @@ class OrderManager {
         if (session && rawStart !== undefined && rawStart !== null && rawStart !== '') {
             const pb = parseFloat(rawStart);
             if (Number.isFinite(pb) && pb > 0) {
-                this.balance = pb;
                 this.initialBalance = pb;
-                this.equity = pb;
-                console.log(`💰 Starting balance: $${this.balance} | Initial: $${this.initialBalance}`);
+                console.log(`💰 Starting balance: $${this.initialBalance} | Initial: $${this.initialBalance}`);
             } else {
                 console.log(`⚠️ Invalid session balance, using default: $${this.balance}`);
             }
@@ -3793,7 +3869,11 @@ class OrderManager {
         }
 
         // Rebuild account state from persisted closed trades after refresh/load.
-        this.recomputeAccountFromJournal();
+        if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
+            this.reconcileAccountAfterSessionRestore();
+        } else {
+            this.recomputeAccountFromJournal();
+        }
         
         // Create UI
         this.createOrderButtons();
@@ -3859,18 +3939,13 @@ class OrderManager {
         const pb = parseFloat(rawStart);
         if (!Number.isFinite(pb) || pb <= 0) return;
         this.initialBalance = pb;
-        this.balance = pb;
-        this.equity = pb;
         if (this.orderService) {
             this.orderService.initialBalance = pb;
-            this.orderService.balance = pb;
-            this.orderService.equity = pb;
         }
-        if (typeof this.recomputeAccountFromJournal === 'function') {
+        if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
+            this.reconcileAccountAfterSessionRestore();
+        } else if (typeof this.recomputeAccountFromJournal === 'function') {
             this.recomputeAccountFromJournal();
-        }
-        if (typeof this._syncReplayHeaderStatsFromAccount === 'function') {
-            this._syncReplayHeaderStatsFromAccount();
         }
         if (typeof this.updatePositionsPanel === 'function') {
             try {

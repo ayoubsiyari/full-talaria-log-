@@ -71,9 +71,8 @@ class OrderService {
         if (raw !== undefined && raw !== null && raw !== '') {
             const startBalance = parseFloat(raw);
             if (Number.isFinite(startBalance) && startBalance > 0) {
-                this.balance = startBalance;
                 this.initialBalance = startBalance;
-                this.equity = startBalance;
+                // Current balance/equity are owned by OrderManager.recomputeAccountFromJournal().
             }
         }
         const leverageFromSession = Number.parseFloat(session.leverageNumber || session.leverage || 30);
