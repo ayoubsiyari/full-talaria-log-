@@ -67,8 +67,7 @@ function extractRrGeometrySnapshot(drawing) {
   }
 
   if (om && typeof om.pushRiskRewardToolToManager === "function") {
-    // Coordinates tab readout only — never overwrite draft preview entry from live geometry events.
-    om.pushRiskRewardToolToManager(drawing, { skipEntry: true });
+    om.pushRiskRewardToolToManager(drawing);
   }
 
   let qty = Number(risk.lotSize);

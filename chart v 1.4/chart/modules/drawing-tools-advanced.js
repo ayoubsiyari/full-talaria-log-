@@ -1981,15 +1981,19 @@ class BaseRiskRewardTool extends BaseDrawing {
             : primaryEntry.toFixed(precOut);
         try {
             if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('talaria:rr-order-prefilled', {
-                    detail: {
-                        side: direction,
-                        orderType,
-                        entry: entryOut,
-                        sl: slPrice,
-                        tp: tpPrice,
-                    },
-                }));
+                if (typeof orderManager._dispatchRrOrderPrefilledEvent === 'function') {
+                    orderManager._dispatchRrOrderPrefilledEvent();
+                } else {
+                    window.dispatchEvent(new CustomEvent('talaria:rr-order-prefilled', {
+                        detail: {
+                            side: direction,
+                            orderType,
+                            entry: entryOut,
+                            sl: slPrice,
+                            tp: tpPrice,
+                        },
+                    }));
+                }
             }
         } catch (_) { /* ignore */ }
     }

@@ -12605,15 +12605,12 @@ class OrderManager {
             if (multipleTPSettings) multipleTPSettings.classList.add('is-hidden');
         }
 
-        this.updateOrderPanelPrice();
-
-        // Selected R/R tool: open flow resets multi-TP / multi-entry and entry from market — re-apply tool state.
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
         if (rrSelectedOpen) {
-            this._previewEntryDecoupledFromRR = false;
-            this._previewEntryLinkedToRiskReward = false;
-            // Market draft entry comes from updateOrderPanelPrice() above — sync SL/TP/qty from RR only.
-            this.pushRiskRewardToolToManager(rrSelectedOpen, { skipEntry: true });
+            // RR is the source — entry, SL, and TP all come from the tool (not live market only).
+            this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
+        } else {
+            this.updateOrderPanelPrice();
         }
 
         // Perform initial calculations and setup after panel is visible
@@ -12749,7 +12746,14 @@ class OrderManager {
         if (this.editingPendingOrderId) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
-        this.pushRiskRewardToolToManager(d, { skipEntry: true });
+        this.pushRiskRewardToolToManager(d, this._previewEntryDecoupledFromRR ? { skipEntry: true } : {});
+        if (!this._previewEntryDecoupledFromRR) {
+            this._previewEntryLinkedToRiskReward = true;
+            this.tpManuallyPositioned = true;
+            this.slManuallyPositioned = true;
+            this._autoDetectOrderTypeFromEntry();
+            this._dispatchRrOrderPrefilledEvent();
+        }
         requestAnimationFrame(() => {
             this.updatePreviewLines();
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
@@ -20518,6 +20522,37 @@ class OrderManager {
         return null;
     }
 
+    _dispatchRrOrderPrefilledEvent() {
+        try {
+            if (typeof window === 'undefined') return;
+            const entry = document.getElementById('orderEntryPrice')?.value;
+            const ot = this.orderType
+                || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
+                || 'market';
+            window.dispatchEvent(new CustomEvent('talaria:rr-order-prefilled', {
+                detail: {
+                    side: this.orderSide,
+                    orderType: ot,
+                    entry,
+                },
+            }));
+        } catch (_) { /* ignore */ }
+    }
+
+    /**
+     * When an RR tool is selected, sync entry + SL + TP from the tool into the open order draft.
+     */
+    _syncRiskRewardDrawingToOpenOrderPanel(drawing) {
+        if (!drawing) return;
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = true;
+        this.pushRiskRewardToolToManager(drawing);
+        this.tpManuallyPositioned = true;
+        this.slManuallyPositioned = true;
+        this._autoDetectOrderTypeFromEntry();
+        this._dispatchRrOrderPrefilledEvent();
+    }
+
     _isDraftOrderPreviewActive() {
         if (this._orderPlacedAwaitingReset) return false;
         const v9Open = typeof window !== 'undefined'
@@ -20559,7 +20594,6 @@ class OrderManager {
         if (opts.forceEntry) return false;
         if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
-        if (this._previewEntryLinkedToRiskReward) return true;
         if (this._previewEntryDecoupledFromRR) return true;
         if (!drawing?.points?.[0]) return false;
         const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
