@@ -32034,7 +32034,30 @@ class OrderManager {
             redrawn += 1;
         });
 
+        this._lastJournalClosedMarkersDrawn = redrawn;
         return redrawn;
+    }
+
+    /** True once replay playhead (saved or default) is applied — journal markers need full OHLC slice. */
+    _replayReadyForJournalMarkerSync() {
+        const rs = this._playbackReplaySystem();
+        if (!rs?.isActive) return true;
+        if (this.chart?._pendingReplayState) return false;
+        if (this._expectsReplayPlayheadRestore && !rs._persistedPlayheadApplied) return false;
+        return true;
+    }
+
+    _countClosedJournalTradesForActiveChart() {
+        let n = 0;
+        (this.tradeJournal || []).forEach((trade) => {
+            const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+            const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+            const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
+            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
+            const pos = this._positionLikeFromJournalTrade(trade);
+            if (pos && this._positionVisibleOnAnyLayoutChart(pos)) n += 1;
+        });
+        return n;
     }
 
     /** Build scales before marker draw (refresh / pair switch may run before first render). */
@@ -32054,22 +32077,33 @@ class OrderManager {
      */
     _syncJournalMarkersAfterSessionRestore() {
         if (!this._ensureChartReadyForOrderMarkers()) return false;
+        if (!this._replayReadyForJournalMarkerSync()) return false;
+
         const hasWork = (this.tradeJournal || []).length > 0
             || (this.openPositions || []).length > 0
             || (this.pendingOrders || []).length > 0;
         if (!hasWork) {
             this._journalMarkerRestorePending = false;
+            this._expectsReplayPlayheadRestore = false;
             return false;
         }
         try {
+            const expectedClosed = this._countClosedJournalTradesForActiveChart();
             if (typeof this.syncOrderVisualsToActiveChart === 'function') {
                 this.syncOrderVisualsToActiveChart();
             } else {
                 this.redrawPreservedTradeMarkers();
             }
-            this._journalMarkerRestorePending = false;
+            const drawnClosed = Number(this._lastJournalClosedMarkersDrawn) || 0;
+            const replayReady = this._replayReadyForJournalMarkerSync();
+            if (replayReady && (expectedClosed === 0 || drawnClosed >= expectedClosed)) {
+                this._journalMarkerRestorePending = false;
+                this._expectsReplayPlayheadRestore = false;
+            }
             console.log('🎨 Session marker restore: journal', (this.tradeJournal || []).length,
-                'open', (this.openPositions || []).length);
+                'expectedClosed', expectedClosed, 'drawnClosed', drawnClosed,
+                'open', (this.openPositions || []).length,
+                'dataBars', this.chart?.data?.length || 0);
             return true;
         } catch (e) {
             console.warn('Session marker restore failed:', e);
@@ -32083,7 +32117,7 @@ class OrderManager {
      */
     _scheduleSessionMarkerRedraw() {
         this._journalMarkerRestorePending = true;
-        const delays = [0, 150, 400, 900, 1800, 3000];
+        const delays = [0, 200, 500, 1200, 2500, 4500];
         delays.forEach((ms) => {
             setTimeout(() => {
                 if (!this._journalMarkerRestorePending) return;

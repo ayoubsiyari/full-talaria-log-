@@ -7092,6 +7092,11 @@ class Chart {
             om.restoreIdCountersFromJournal();
         }
         om._journalMarkerRestorePending = true;
+        om._expectsReplayPlayheadRestore = !!(
+            backup.replay
+            && typeof backup.replay === 'object'
+            && (backup.replay.replayTimestamp != null || backup.replay.currentIndex != null)
+        );
 
         const backupHasRuntime = this._sessionStateHasRuntimeOrderState(backup);
         if (backupHasRuntime && typeof om.restoreRuntimeOrderStateFromSession === 'function') {
@@ -7245,6 +7250,11 @@ class Chart {
                     this.orderManager.restoreIdCountersFromJournal();
                 }
                 this.orderManager._journalMarkerRestorePending = true;
+                this.orderManager._expectsReplayPlayheadRestore = !!(
+                    state.replay
+                    && typeof state.replay === 'object'
+                    && (state.replay.replayTimestamp != null || state.replay.currentIndex != null)
+                );
                 if (typeof this.orderManager.persistJournal === 'function' && !this._restoredFromLocalBackupOnly) {
                     this.orderManager.persistJournal();
                 }
