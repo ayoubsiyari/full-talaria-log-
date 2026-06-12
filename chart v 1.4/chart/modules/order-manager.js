@@ -384,23 +384,75 @@ class OrderManager {
             (p) => p && (p.id === orderId || String(p.id) === sid)
         );
         const os = this.orderService;
-        return findIn(this.openPositions)
+        const fromMemory = findIn(this.openPositions)
             || findIn(this.closedPositions)
             || (os ? findIn(os.openPositions) : null)
-            || (os ? findIn(os.closedPositions) : null)
-            || null;
+            || (os ? findIn(os.closedPositions) : null);
+        if (fromMemory) return fromMemory;
+        const fromJournal = (this.tradeJournal || []).find(
+            (t) => t && (t.tradeId === orderId || t.id === orderId
+                || String(t.tradeId) === sid || String(t.id) === sid)
+        );
+        if (fromJournal) {
+            return this._journalEntryToMarkerPosition(fromJournal) || fromJournal;
+        }
+        return null;
+    }
+
+    /** Rebuild a closed position shape from a persisted journal row (for chart markers after refresh). */
+    _journalEntryToMarkerPosition(trade) {
+        if (!trade || typeof trade !== 'object') return null;
+        const id = trade.tradeId != null ? trade.tradeId : trade.id;
+        if (id == null) return null;
+        const openTime = trade.openTime ?? trade.entryTime;
+        const closeTime = trade.closeTime ?? trade.exitTime;
+        const openPrice = trade.openPrice ?? trade.entryPrice;
+        const closePrice = trade.closePrice ?? trade.exitPrice;
+        const status = String(trade.status || '').toLowerCase();
+        const isClosed = status === 'closed' || (closeTime != null && closePrice != null);
+        if (!isClosed || openTime == null || openPrice == null) return null;
+
+        const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
+        let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
+        if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
+            const fid = this.resolveFileIdForTicker(ticker);
+            if (fid) sourceFileId = fid;
+        }
+
+        return {
+            id,
+            tradeId: id,
+            type: trade.type || trade.direction || 'BUY',
+            ticker: ticker || undefined,
+            symbol: trade.symbol || ticker || undefined,
+            sourceFileId: sourceFileId || undefined,
+            openTime: Number(openTime),
+            openPrice: Number(openPrice),
+            closeTime: closeTime != null ? Number(closeTime) : undefined,
+            closePrice: closePrice != null ? Number(closePrice) : undefined,
+            pnl: trade.pnl ?? trade.netPnL ?? trade.realizedPnL ?? 0,
+            closeType: trade.closeType || 'MANUAL',
+            partialCloses: Array.isArray(trade.partialCloses) ? trade.partialCloses : undefined,
+            entryMarkerTimeMs: trade.entryMarkerTimeMs,
+        };
     }
 
     _getClosedPositionsForMarkerRedraw() {
         const out = [];
         const seen = new Set();
         const add = (p) => {
-            if (!p || p.id == null || seen.has(p.id)) return;
-            seen.add(p.id);
+            if (!p || p.id == null) return;
+            const key = String(p.id);
+            if (seen.has(key)) return;
+            seen.add(key);
             out.push(p);
         };
         (this.closedPositions || []).forEach(add);
         (this.orderService?.closedPositions || []).forEach(add);
+        (this.tradeJournal || []).forEach((trade) => {
+            const pos = this._journalEntryToMarkerPosition(trade);
+            if (pos) add(pos);
+        });
         return out;
     }
 
@@ -31996,6 +32048,14 @@ class OrderManager {
             try { this.drawPendingOrderLine(po); } catch (_) {}
             try { this.drawPendingOrderTargets(po); } catch (_) {}
         });
+
+        // Redraw closed-trade markers from journal + in-memory closed positions (survives refresh).
+        try {
+            const charts = this._isMultiPanelLayout()
+                ? (this._collectLayoutCharts() || [])
+                : [this.chart].filter(Boolean);
+            charts.forEach((ch) => this._redrawClosedTradeMarkersForChart(ch));
+        } catch (_) {}
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         try {

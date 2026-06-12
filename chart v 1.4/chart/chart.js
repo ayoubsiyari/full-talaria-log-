@@ -7081,6 +7081,9 @@ class Chart {
                     if (typeof om.redrawPreservedTradeMarkers === 'function') {
                         om.redrawPreservedTradeMarkers();
                     }
+                    if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
+                        om._scheduleClosedTradeMarkersRedraw(om.chart);
+                    }
                 } catch (e) {
                     /* ignore */
                 }
@@ -7089,6 +7092,17 @@ class Chart {
             setTimeout(redrawLater, 500);
         } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
+            const redrawJournalMarkers = () => {
+                try {
+                    if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
+                        om._scheduleClosedTradeMarkersRedraw(om.chart);
+                    }
+                } catch (e) {
+                    /* ignore */
+                }
+            };
+            window.addEventListener('chartDataLoaded', redrawJournalMarkers, { once: true });
+            setTimeout(redrawJournalMarkers, 500);
         }
 
         if (typeof om.updateJournalTab === 'function') {
@@ -7251,6 +7265,9 @@ class Chart {
                         if (typeof om.redrawPreservedTradeMarkers === 'function') {
                             om.redrawPreservedTradeMarkers();
                         }
+                        if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
+                            om._scheduleClosedTradeMarkersRedraw(om.chart);
+                        }
                     } catch (e) {
                         /* ignore */
                     }
@@ -7259,6 +7276,18 @@ class Chart {
                 setTimeout(redrawLater, 500);
             } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
                 this.orderManager.recomputeAccountFromJournal();
+                const om = this.orderManager;
+                const redrawJournalMarkers = () => {
+                    try {
+                        if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
+                            om._scheduleClosedTradeMarkersRedraw(om.chart);
+                        }
+                    } catch (e) {
+                        /* ignore */
+                    }
+                };
+                window.addEventListener('chartDataLoaded', redrawJournalMarkers, { once: true });
+                setTimeout(redrawJournalMarkers, 500);
             }
 
             if (this.orderManager) {
