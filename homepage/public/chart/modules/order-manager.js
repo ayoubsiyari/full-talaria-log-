@@ -15470,6 +15470,44 @@ class OrderManager {
     }
     
     /**
+     * BUY/LONG → ascending TP prices (closest above entry = TP1).
+     * SELL/SHORT → descending TP prices (closest below entry = TP1).
+     */
+    _isBuyOrderSide(side) {
+        const s = String(side || 'BUY').toUpperCase();
+        return s === 'BUY' || s === 'LONG';
+    }
+
+    /** Map array index → 1-based TP label rank from price order. */
+    _tpRankMapForTargets(tpTargets, side) {
+        const rankByArrayIndex = new Map();
+        if (!Array.isArray(tpTargets) || !tpTargets.length) return rankByArrayIndex;
+        const isBuy = this._isBuyOrderSide(side);
+        [...tpTargets.entries()]
+            .map(([i, t]) => ({ i, p: Number(t && t.price) }))
+            .filter((x) => Number.isFinite(x.p) && x.p > 0)
+            .sort((a, b) => (isBuy ? a.p - b.p : b.p - a.p))
+            .forEach((x, rank) => {
+                rankByArrayIndex.set(x.i, rank + 1);
+            });
+        return rankByArrayIndex;
+    }
+
+    _tpRankForTarget(tpTargets, arrayIndex, side) {
+        return this._tpRankMapForTargets(tpTargets, side).get(arrayIndex) ?? (arrayIndex + 1);
+    }
+
+    /** Sort tpTargets closest-to-entry first; returns true when order changed. */
+    _reorderTpTargetsByPriceForSide(tpTargets, side) {
+        if (!Array.isArray(tpTargets) || tpTargets.length < 2) return false;
+        const isBuy = this._isBuyOrderSide(side);
+        const before = tpTargets.map((t) => `${t?.id}:${t?.price}`).join('|');
+        tpTargets.sort((a, b) => (isBuy ? a.price - b.price : b.price - a.price));
+        const after = tpTargets.map((t) => `${t?.id}:${t?.price}`).join('|');
+        return before !== after;
+    }
+
+    /**
      * Validate multiple TP targets
      */
     validateTPTargets() {
@@ -15554,13 +15592,7 @@ class OrderManager {
         });
         
         // Auto-sort TPs into progressive order (closest to entry first)
-        this.tpTargets.sort((a, b) => {
-            if (this.orderSide === 'BUY') {
-                return a.price - b.price;
-            } else {
-                return b.price - a.price;
-            }
-        });
+        this._reorderTpTargetsByPriceForSide(this.tpTargets, this.orderSide);
         
         return errors;
     }
@@ -16802,15 +16834,7 @@ class OrderManager {
             this._ensureUnsetMultiTPPreviewPrices(tpPrice);
             // Draw full lines for targets that have a price set
             const tpColors = ['#089981', '#089981', '#089981', '#089981', '#089981'];
-            const isBuyPv = (this.orderSide || 'BUY') === 'BUY';
-            const previewTpRank = new Map();
-            [...this.tpTargets.entries()]
-                .map(([i, t]) => ({ i, p: Number(t && t.price) }))
-                .filter((x) => x.p > 0 && Number.isFinite(x.p))
-                .sort((a, b) => (isBuyPv ? a.p - b.p : b.p - a.p))
-                .forEach((x, rank) => {
-                    previewTpRank.set(x.i, rank + 1);
-                });
+            const previewTpRank = this._tpRankMapForTargets(this.tpTargets, this.orderSide);
             this.tpTargets.forEach((target, index) => {
                 if (target.price > 0) {
                     const color = tpColors[Math.min(index, tpColors.length - 1)];
@@ -17435,8 +17459,10 @@ class OrderManager {
                             tpInput.value = self.formatPrice(newPrice);
                         }
                         
-                        // Keep label clean — just "TPn"; the profit is shown in the info segment
-                        const targetNum = lineData.targetIndex + 1;
+                        // Label by price rank (SELL: highest TP = TP1; BUY: lowest TP = TP1)
+                        const targetNum = self._tpRankForTarget(
+                            self.tpTargets, lineData.targetIndex, self.orderSide
+                        );
                         lineData.label = `TP${targetNum}`;
                         
                         // Re-render label so the profit segment updates with new price
@@ -17952,6 +17978,10 @@ class OrderManager {
                 // Final calculation and update
                 self.calculateAdvancedRiskReward();
                 self.updatePlaceButtonText();
+
+                if (lineData.targetIndex !== undefined && self.tpTargets?.length > 1) {
+                    self._reorderTpTargetsByPriceForSide(self.tpTargets, self.orderSide);
+                }
 
                 // Full preview redraw after drag. While dragging, updatePreviewLines() is skipped, so
                 // multi-entry "below min lot" fade + place button state would stay stale; Entry#1 / Entry#N
@@ -27666,6 +27696,18 @@ class OrderManager {
                 if (priceText) {
                     priceText.text(self.formatPrice(newPrice));
                 }
+
+                // Live relabel by price rank while dragging (SELL: higher price = TP1)
+                if (labelText && order.tpTargets?.length > 1) {
+                    const tpRank = self._tpRankForTarget(
+                        order.tpTargets, targetIndex, order.type || order.side
+                    );
+                    const curLabel = labelText.text() || '';
+                    const m = curLabel.match(/^TP\d+/);
+                    if (m) {
+                        labelText.text(curLabel.replace(/^TP\d+/, `TP${tpRank}`));
+                    }
+                }
                 
                 // TP floating indicators removed — info already on labels
                 
@@ -27725,11 +27767,31 @@ class OrderManager {
                     }
                 }
             }
+
+            let reordered = false;
+            const reorderSiblings = order.isSplitEntry && order.splitGroupId
+                ? self._getSplitGroupOpenPositions(order) : [order];
+            for (const sib of reorderSiblings) {
+                if (sib.tpTargets?.length > 1
+                    && self._reorderTpTargetsByPriceForSide(sib.tpTargets, sib.type || sib.side)) {
+                    reordered = true;
+                }
+            }
             
             // Final update (all panels)
-            self._refreshOrderLineVisualsAfterDrag(ctx);
+            if (reordered) {
+                self.drawSLTPLines(order, ctx);
+                self._refreshOrderLineVisualsAfterDrag(ctx);
+            } else {
+                self._refreshOrderLineVisualsAfterDrag(ctx);
+            }
             
-            console.log(`✅ Multi-TP drag ended: TP${targetIndex + 1} @ ${finalPrice.toFixed(5)}`);
+            const finalRank = self._tpRankForTarget(
+                order.tpTargets,
+                Math.max(0, (order.tpTargets || []).indexOf(target)),
+                order.type || order.side
+            );
+            console.log(`✅ Multi-TP drag ended: TP${finalRank} @ ${finalPrice.toFixed(5)}`);
             
             // Show pip distance moved
             const pipsMoved = Math.abs(finalPrice - dragStartPrice) / self.pipSize;
@@ -30201,6 +30263,13 @@ class OrderManager {
         }
 
         const chart = targetChart || this.chart;
+        const livePending = this._findPendingOrderById(pendingOrder.id);
+        if (!livePending || livePending.status !== 'PENDING') {
+            try { this.removePendingOrderLine(pendingOrder.id); } catch (_e) { /* ignore */ }
+            return;
+        }
+        pendingOrder = livePending;
+
         console.log(`🎨 Drawing pending ${pendingOrder.orderType} order line for ${pendingOrder.direction} #${pendingOrder.id}`);
 
         if (!chart?.svg) {
@@ -30565,15 +30634,22 @@ class OrderManager {
      */
     refreshPendingOrderGraphicsForChart(pendingOrder, chart) {
         if (!pendingOrder || pendingOrder.id == null || !chart?.svg) return;
+        const orderId = pendingOrder.id;
         try {
-            this.removePendingOrderLine(pendingOrder.id);
+            this.removePendingOrderLine(orderId);
         } catch (_e) { /* ignore */ }
         try {
-            this.removePendingSLTPLines(pendingOrder.id);
+            this.removePendingSLTPLines(orderId);
         } catch (_e) { /* ignore */ }
         try {
-            this.removeMultiTPAvgLine(pendingOrder.id);
+            this.removeMultiTPAvgLine(orderId);
         } catch (_e) { /* ignore */ }
+
+        const live = this._findPendingOrderById(orderId);
+        if (!live || live.status !== 'PENDING') {
+            return;
+        }
+        pendingOrder = live;
 
         if (!this._positionTickerMatchesChartSymbol(pendingOrder, chart)) return;
 
@@ -30605,20 +30681,28 @@ class OrderManager {
         if (!pendingOrder || pendingOrder.id == null || !chart) return;
         const om = this;
         const id = pendingOrder.id;
+        const isStillPending = () => {
+            const po = om._findPendingOrderById(id);
+            return po && po.status === 'PENDING';
+        };
         const hasEntryLine = () => (om.orderLines || []).some(
             (ol) => ol && ol.isPending && ol.orderId === id && (ol.chart || om.chart) === chart
         );
+        const refreshLive = () => {
+            if (!isStillPending()) return false;
+            const po = om._findPendingOrderById(id);
+            if (!po) return false;
+            om.refreshPendingOrderGraphicsForChart(po, chart);
+            return true;
+        };
         let left = maxRaf;
         const onData = () => {
-            try {
-                om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
-            } catch (_e) { /* ignore */ }
+            try { refreshLive(); } catch (_e) { /* ignore */ }
         };
         const tick = () => {
-            try {
-                om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
-            } catch (_e) { /* ignore */ }
-            if (hasEntryLine()) return;
+            if (!isStillPending()) return;
+            try { refreshLive(); } catch (_e) { /* ignore */ }
+            if (!isStillPending() || hasEntryLine()) return;
             left -= 1;
             if (left <= 0) return;
             if (typeof requestAnimationFrame === 'function') {
@@ -30630,10 +30714,8 @@ class OrderManager {
                 window.addEventListener('chartDataLoaded', onData, { once: true });
             } catch (_e) { /* ignore */ }
         }
-        try {
-            om.refreshPendingOrderGraphicsForChart(pendingOrder, chart);
-        } catch (_e) { /* ignore */ }
-        if (!hasEntryLine() && typeof requestAnimationFrame === 'function') {
+        try { refreshLive(); } catch (_e) { /* ignore */ }
+        if (isStillPending() && !hasEntryLine() && typeof requestAnimationFrame === 'function') {
             requestAnimationFrame(tick);
         }
     }
@@ -31622,6 +31704,18 @@ class OrderManager {
             this._removeSplitGroupTPAvgIfEmpty(splitGroupId, orderId);
         } else {
             this.removeMultiTPAvgLine(orderId);
+        }
+
+        // Drop cancelled leg price from multi-entry ladder so preview does not flash Entry#1
+        // when placing the next leg after cancel (stale multiEntryLevels[0].price).
+        if (this.isMultiEntryMode && this.multiEntryLevels?.length && pendingOrder.splitIndex != null) {
+            const levelIdx = Number(pendingOrder.splitIndex) - 1;
+            if (levelIdx >= 0 && levelIdx < this.multiEntryLevels.length) {
+                this.multiEntryLevels[levelIdx].price = 0;
+                if (typeof this.syncMultiEntryToSplitEntries === 'function') {
+                    this.syncMultiEntryToSplitEntries();
+                }
+            }
         }
 
         if (wasSplitEntry && splitGroupId) {
@@ -33917,15 +34011,7 @@ class OrderManager {
             const nonHitTargets = order.tpTargets.filter((t, i) => this._tpTargetStillActiveOnChart(order, t, i));
             console.log(`  🎯 Drawing ${nonHitTargets.length} TP lines for order #${order.id} (${order.tpTargets.length - nonHitTargets.length} hit)`);
             // TP1 = first hit at price for long (lowest TP); labels follow price order, not raw array order.
-            const isBuyTp = order.type === 'BUY' || order.side === 'BUY';
-            const rankByArrayIndex = new Map();
-            [...order.tpTargets.entries()]
-                .map(([i, t]) => ({ i, p: Number(t && t.price) }))
-                .filter((x) => Number.isFinite(x.p))
-                .sort((a, b) => (isBuyTp ? a.p - b.p : b.p - a.p))
-                .forEach((x, rank) => {
-                    rankByArrayIndex.set(x.i, rank + 1);
-                });
+            const rankByArrayIndex = this._tpRankMapForTargets(order.tpTargets, order.type || order.side);
 
             order.tpTargets.forEach((target, index) => {
                 if (this._tpTargetStillActiveOnChart(order, target, index)) {
@@ -35170,6 +35256,7 @@ class OrderManager {
             // One label stack per chart line (order + TP rung), not per rounded price — otherwise
             // two ladder rungs that map to the same toFixed(5) price would hide the second (e.g. TP1 when TP2 updates).
             const updatedTPLineKeys = new Set();
+            const tpRankMapsByOrder = new Map();
             
             tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
@@ -35243,6 +35330,13 @@ class OrderManager {
                             const dispPct = groupData?.percentage != null ? groupData.percentage : percentage;
                             valStr = `${Number(dispPct).toFixed(0)}%`;
                         }
+                        if (!tpRankMapsByOrder.has(orderId)) {
+                            tpRankMapsByOrder.set(
+                                orderId,
+                                this._tpRankMapForTargets(position.tpTargets, position.type || position.side)
+                            );
+                        }
+                        const tpRank = tpRankMapsByOrder.get(orderId).get(targetIndex) ?? (targetIndex + 1);
                         // Split-entry: one chart row uses full group lot size (aligned with SL / Avg Entry).
                         // Multiple unrelated positions at the same TP price still sum per-position qty.
                         const totalQty = (groupData && groupData.positions.length === 1 && groupData.splitGroupTotalQty != null)
@@ -35254,8 +35348,8 @@ class OrderManager {
                             ? groupData.totalSliceLots
                             : totalQty * (ladderPctNum / 100);
                         labelStr = numPositions > 1
-                            ? `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
-                            : `TP${targetIndex + 1} (${valStr}) ${targetLots.toFixed(2)}`;
+                            ? `TP${tpRank} (${valStr}) ${targetLots.toFixed(2)} (${numPositions}×)`
+                            : `TP${tpRank} (${valStr}) ${targetLots.toFixed(2)}`;
                     } else {
                         const totalTpQty = (groupData && groupData.positions.length === 1 && groupData.splitGroupTotalQty != null)
                             ? groupData.splitGroupTotalQty

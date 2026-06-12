@@ -650,6 +650,15 @@ function v9ActiveChartInstance() {
   return typeof window !== "undefined" ? (window.chart || null) : null;
 }
 
+/** chart.js compact ticker → V9 toolbar label (EURJPY → EUR/JPY). */
+function v9NormalizeToolbarSymbol(s) {
+  if (!s || typeof s !== "string") return s;
+  const u = s.toUpperCase().replace(/\s+/g, "");
+  if (u.includes("/")) return u;
+  if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + "/" + u.slice(3);
+  return u;
+}
+
 /** Minutes east of UTC for `timeZone` at instant `dateMs` (DST-aware). */
 function offsetMinutesForTimezone(timeZone, dateMs) {
   const date = new Date(dateMs);
@@ -9013,6 +9022,10 @@ const TalariaV8bLive = () => {
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
   const [symbolOpen, setSymbolOpen] = useState(false);
   const [symbol, setSymbol] = useState("EUR/JPY");
+  const symbolRef = useRef("EUR/JPY");
+  const pendingSymbolRef = useRef(null);
+  const symbolLoadGenRef = useRef(0);
+  symbolRef.current = symbol;
   // Pairs available in the active backtest session (read from chart.js / userStorage).
   // Each entry: { ticker: 'EUR/JPY', fileId: 12 }. Empty until session loads.
   const [sessionPairs, setSessionPairs] = useState([]);
@@ -9291,19 +9304,17 @@ const TalariaV8bLive = () => {
   // symbol in compact form ('EURJPY'); V9's pair list uses 'EUR/JPY'.
   // Normalize 6-char FX pairs to slash-separated form so V9 finds the entry.
   useEffect(() => {
-    const normalizeSymbol = (s) => {
-      if (!s || typeof s !== 'string') return s;
-      const u = s.toUpperCase().replace(/\s+/g, '');
-      if (u.includes('/')) return u;
-      // 6-letter FX (EURJPY → EUR/JPY)
-      if (/^[A-Z]{6}$/.test(u)) return u.slice(0, 3) + '/' + u.slice(3);
-      return u;
-    };
-
     let lastSeen = null;
     const apply = (raw, source) => {
-      const sym = normalizeSymbol(raw);
-      if (!sym || sym === lastSeen) return;
+      const sym = v9NormalizeToolbarSymbol(raw);
+      if (!sym) return;
+      // While a user-initiated pair load is in flight, keep the picker highlight
+      // stable — reconcile from chart when the load promise settles.
+      if (pendingSymbolRef.current) return;
+      if (sym === symbolRef.current) {
+        lastSeen = sym;
+        return;
+      }
       lastSeen = sym;
       console.log("[V9 sym] from", source, "->", sym);
       setSymbol(sym);
@@ -9332,7 +9343,7 @@ const TalariaV8bLive = () => {
               resolved = chart.resolveSessionTickerForFileId(session, fid);
           } catch (_) {}
           if (resolved && String(resolved).trim())
-            return normalizeSymbol(String(resolved).trim());
+            return v9NormalizeToolbarSymbol(String(resolved).trim());
           const rawLabel =
             (info && (info.symbolName || info.symbol || info.displaySymbol || info.display_symbol || info.name))
             || info?.ticker
@@ -9342,7 +9353,7 @@ const TalariaV8bLive = () => {
             if (chart?._formatPairTicker && (attempt || info?.fileName || info?.name))
               attempt = chart._formatPairTicker(attempt, info?.fileName || info?.name || "") || attempt;
           } catch (_) {}
-          let out = normalizeSymbol(attempt);
+          let out = v9NormalizeToolbarSymbol(attempt);
           // Quote-only keys (CHF, USD, …) — only substitute session/chart symbol when there is a single instrument.
           const instCount =
             session.instruments && typeof session.instruments === "object"
@@ -9354,7 +9365,7 @@ const TalariaV8bLive = () => {
               session.symbol || session.pair || session.symbolName
               || chart?.currentSymbol
               || null;
-            if (fb) out = normalizeSymbol(String(fb).trim());
+            if (fb) out = v9NormalizeToolbarSymbol(String(fb).trim());
           }
           return out;
         };
@@ -9372,7 +9383,7 @@ const TalariaV8bLive = () => {
               ? String(assetClass).trim()
               : null;
           pairs.push({
-            ticker: normalizeSymbol(String(ticker).trim()),
+            ticker: v9NormalizeToolbarSymbol(String(ticker).trim()),
             fileId: fid,
             assetClass: ac,
           });
@@ -9420,12 +9431,12 @@ const TalariaV8bLive = () => {
           for (const s of session.symbols) {
             const nm = s?.symbolName || s?.symbol || s?.ticker;
             const assetHint = s.asset_class ?? s.asset ?? null;
-            if (nm) pushPair(normalizeSymbol(String(nm).trim()), s.fileId ?? null, assetHint);
+            if (nm) pushPair(v9NormalizeToolbarSymbol(String(nm).trim()), s.fileId ?? null, assetHint);
           }
         }
         if (pairs.length === 0 && Array.isArray(session.instrumentTickers)) {
           for (const t of session.instrumentTickers) {
-            pushPair(normalizeSymbol(t), null, null);
+            pushPair(v9NormalizeToolbarSymbol(t), null, null);
           }
         }
         if (pairs.length) setSessionPairs(pairs);
@@ -9517,7 +9528,9 @@ const TalariaV8bLive = () => {
   // the correct pair before chart.js finishes resolving tickers. Mirror compact ticker here.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const compact = String(symbol || "")
+    const compact = String(
+      (typeof window !== "undefined" && window.chart?.currentSymbol) || symbol || ""
+    )
       .toUpperCase()
       .replace(/[^A-Z]/g, "");
     try {
@@ -9609,7 +9622,7 @@ const TalariaV8bLive = () => {
   };
 
   const routeSessionFileLoadToSelectedPanel = (fileId) => {
-    if (fileId == null) return;
+    if (fileId == null) return Promise.resolve(false);
     const fid = typeof fileId === "string" ? fileId : String(fileId);
     try {
       const grid = window.__multichartGrid;
@@ -9617,25 +9630,29 @@ const TalariaV8bLive = () => {
         const panelId = typeof grid.getFocusedPanelId === "function"
           ? grid.getFocusedPanelId()
           : null;
-        grid.loadFileOnPanel(panelId, fid, { force: true }).catch((err) => {
-          console.warn("[V9 sym] loadFileOnPanel failed", panelId, err);
-        });
-        return;
+        return grid.loadFileOnPanel(panelId, fid, { force: true })
+          .then(() => true)
+          .catch((err) => {
+            console.warn("[V9 sym] loadFileOnPanel failed", panelId, err);
+            throw err;
+          });
       }
       if (grid && typeof grid.runCommand === "function") {
         const panelId = typeof grid.getFocusedPanelId === "function"
           ? grid.getFocusedPanelId()
           : null;
         const opts = panelId ? { panelId } : undefined;
-        grid.runCommand("loadFile", { fileId: fid, force: true }, opts).catch((err) => {
-          console.warn("[V9 sym] loadFile on panel failed", panelId, err);
-        });
-        return;
+        return grid.runCommand("loadFile", { fileId: fid, force: true }, opts)
+          .then(() => true)
+          .catch((err) => {
+            console.warn("[V9 sym] loadFile on panel failed", panelId, err);
+            throw err;
+          });
       }
       const pm = window.panelManager;
       if (!pm || !v9IsMultiPanelLayoutActive()) {
         const ch = window.chart;
-        if (!ch) return;
+        if (!ch) return Promise.resolve(false);
         const useBacktestHostLoader = !!(ch.isBacktestMode || ch.backtestingSession)
           && typeof ch.loadMultichartPanelFromHost === "function";
         const finalizePairLoad = () => {
@@ -9647,35 +9664,82 @@ const TalariaV8bLive = () => {
           const replayTs = typeof ch._resolveMultichartReplayPlayheadMs === "function"
             ? ch._resolveMultichartReplayPlayheadMs()
             : undefined;
-          void ch.loadMultichartPanelFromHost({
+          return ch.loadMultichartPanelFromHost({
             fileId: fid,
             force: true,
             replayTimestamp: replayTs,
-          }).then(finalizePairLoad).catch((err) => {
+          }).then(finalizePairLoad).then(() => true).catch((err) => {
             console.warn("[V9 sym] loadMultichartPanelFromHost failed", err);
-          });
-        } else if (typeof ch.loadFileData === "function") {
-          void ch.loadFileData(fid).then((ok) => {
-            if (ok) finalizePairLoad();
-          }).catch((err) => {
-            console.warn("[V9 sym] loadFileData failed", err);
+            throw err;
           });
         }
-        return;
+        if (typeof ch.loadFileData === "function") {
+          return ch.loadFileData(fid).then((ok) => {
+            if (ok) finalizePairLoad();
+            if (!ok) throw new Error("loadFileData returned false");
+            return true;
+          }).catch((err) => {
+            console.warn("[V9 sym] loadFileData failed", err);
+            throw err;
+          });
+        }
+        return Promise.resolve(false);
       }
       const panel = pm.panels?.[pm.selectedPanelIndex ?? 0];
       const pc = panel?.chartInstance;
       const isMain = !!(panel && (panel.isMainChart || pc === window.chart));
       if (isMain && window.chart && typeof window.chart.loadFileData === "function") {
-        window.chart.loadFileData(fid);
-      } else if (pc && typeof pc.loadPanelFileData === "function") {
-        void pc.loadPanelFileData(fid);
-      } else if (window.chart && typeof window.chart.loadFileData === "function") {
-        window.chart.loadFileData(fid);
+        return window.chart.loadFileData(fid).then((ok) => !!ok);
       }
+      if (pc && typeof pc.loadPanelFileData === "function") {
+        return pc.loadPanelFileData(fid).then(() => true);
+      }
+      if (window.chart && typeof window.chart.loadFileData === "function") {
+        return window.chart.loadFileData(fid).then((ok) => !!ok);
+      }
+      return Promise.resolve(false);
     } catch (err) {
       console.warn("[V9 sym] routeSessionFileLoadToSelectedPanel failed", err);
+      return Promise.reject(err);
     }
+  };
+
+  const reconcileToolbarSymbolFromChart = (fallbackId) => {
+    const ch = v9ActiveChartInstance();
+    const raw = ch?.currentSymbol;
+    if (raw) {
+      const sym = v9NormalizeToolbarSymbol(String(raw).trim());
+      if (sym) {
+        pendingSymbolRef.current = null;
+        setSymbol(sym);
+        return;
+      }
+    }
+    pendingSymbolRef.current = null;
+    if (fallbackId) setSymbol(fallbackId);
+  };
+
+  const selectSessionSymbol = (symbolId, fileIdFromEntry) => {
+    const loadFid = v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry);
+    if (loadFid == null) {
+      console.warn("[V9 sym] no fileId for symbol", symbolId);
+      return;
+    }
+    const gen = ++symbolLoadGenRef.current;
+    pendingSymbolRef.current = symbolId;
+    setSymbol(symbolId);
+    setSymbolOpen(false);
+    setSymbolSearch("");
+
+    routeSessionFileLoadToSelectedPanel(loadFid)
+      .then(() => {
+        if (gen !== symbolLoadGenRef.current) return;
+        reconcileToolbarSymbolFromChart(symbolId);
+      })
+      .catch(() => {
+        if (gen !== symbolLoadGenRef.current) return;
+        reconcileToolbarSymbolFromChart(null);
+      });
   };
 
   // ─── SYNC TIMEFRAME → chart.js ───────────────────────────────────────────
@@ -9806,6 +9870,7 @@ const TalariaV8bLive = () => {
       if (ci) {
         const raw = ci.currentSymbol ?? ci.symbol;
         if (raw) {
+          pendingSymbolRef.current = null;
           const sym = normalizeSymbol(String(raw).trim());
           if (sym) setSymbol(sym);
         }
@@ -9834,6 +9899,7 @@ const TalariaV8bLive = () => {
     const onMultichartFocusChanged = (e) => {
       const d = e?.detail || {};
       if (d.symbol) {
+        pendingSymbolRef.current = null;
         const sym = normalizeSymbol(String(d.symbol).trim());
         if (sym) setSymbol(sym);
       }
@@ -30379,16 +30445,7 @@ const TalariaV8bLive = () => {
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
                         onClick={(e)=>{
                           e.stopPropagation();
-                          setSymbol(s.id);
-                          setSymbolOpen(false);
-                          setSymbolSearch("");
-                          const loadFid = v9ResolveSessionFileId(sessionPairs, s.id, s.fileId);
-                          if (loadFid != null) {
-                            try { routeSessionFileLoadToSelectedPanel(loadFid); }
-                            catch (err) { console.warn("[V9 sym] session file load failed", err); }
-                          } else {
-                            console.warn("[V9 sym] no fileId for symbol", s.id);
-                          }
+                          selectSessionSymbol(s.id, s.fileId);
                         }}
                         style={{display:"flex",alignItems:"center",gap:9,padding:"5px 14px",cursor:"default",position:"relative",
                           background:isAct?c.acD:isH?c.hv2:"transparent",
@@ -34863,16 +34920,9 @@ const TalariaV8bLive = () => {
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSymbol(s.id);
+                            selectSessionSymbol(s.id, s.fileId);
                             setOpSymOpen(false);
                             setOpSymSearch("");
-                            const loadFid = v9ResolveSessionFileId(sessionPairs, s.id, s.fileId);
-                            if (loadFid != null) {
-                              try { routeSessionFileLoadToSelectedPanel(loadFid); }
-                              catch (err) { console.warn("[V9 op-sym] session file load failed", err); }
-                            } else {
-                              console.warn("[V9 op-sym] no fileId for symbol", s.id);
-                            }
                           }}
                           onMouseEnter={() => setHov(`opsym-${s.id}`)} onMouseLeave={() => setHov(null)}
                           style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", cursor:"default", position:"relative",
