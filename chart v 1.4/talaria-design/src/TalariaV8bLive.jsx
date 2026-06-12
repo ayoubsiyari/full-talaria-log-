@@ -8481,6 +8481,104 @@ const SYMBOLS_DATA = [
   ]},
 ];
 
+const V9_KNOWN_SYMBOL_CATALOG = SYMBOLS_DATA.flatMap((c) =>
+  c.items.map((it) => ({ ...it, cat: c.cat }))
+);
+
+function v9NormSymKey(x) {
+  return String(x || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "");
+}
+
+function v9ParseFxPairForDropdown(raw) {
+  const u = String(raw || "").toUpperCase().replace(/\s+/g, "");
+  if (u.includes("/")) {
+    const p = u.split("/").filter(Boolean);
+    if (p.length === 2 && p[0].length === 3 && p[1].length === 3) {
+      return {
+        id: `${p[0]}/${p[1]}`,
+        name: `${p[0]} / ${p[1]}`,
+        type: "forex",
+        base: p[0],
+        quote: p[1],
+        cat: "BACKTEST",
+      };
+    }
+  }
+  if (/^[A-Z]{6}$/.test(u)) {
+    return {
+      id: `${u.slice(0, 3)}/${u.slice(3)}`,
+      name: `${u.slice(0, 3)} / ${u.slice(3)}`,
+      type: "forex",
+      base: u.slice(0, 3),
+      quote: u.slice(3),
+      cat: "BACKTEST",
+    };
+  }
+  return null;
+}
+
+function v9BuildSessionSymbolEntry(ticker, fileId, assetClass, known = V9_KNOWN_SYMBOL_CATALOG) {
+  const badgeAsset =
+    assetClass != null && String(assetClass).trim() ? String(assetClass).trim() : undefined;
+  const withBadge = (row) => (badgeAsset ? { ...row, badgeAsset } : row);
+  let found = known.find((s) => s.id === ticker);
+  if (!found && ticker) found = known.find((s) => v9NormSymKey(s.id) === v9NormSymKey(ticker));
+  if (found) return withBadge({ ...found, fileId });
+  const parts = (ticker || "").split("/");
+  if (parts.length === 2 && parts[0].length === 3 && parts[1].length === 3) {
+    const b = parts[0].toUpperCase();
+    const q = parts[1].toUpperCase();
+    return withBadge({
+      id: `${b}/${q}`,
+      name: `${b} / ${q}`,
+      type: "forex",
+      base: b,
+      quote: q,
+      cat: "FOREX",
+      fileId,
+    });
+  }
+  const fx = v9ParseFxPairForDropdown(ticker);
+  if (fx) return withBadge({ ...fx, fileId });
+  return withBadge({ id: ticker, name: ticker, type: "other", cat: "BACKTEST", fileId });
+}
+
+/** Session pair list for symbol dropdowns — same source as header MARKETS picker. */
+function v9BuildSessionSymbolGroups(sessionPairs, fallbackSymbol) {
+  const items =
+    sessionPairs?.length > 0
+      ? sessionPairs.map((p) => v9BuildSessionSymbolEntry(p.ticker, p.fileId, p.assetClass))
+      : [v9BuildSessionSymbolEntry(fallbackSymbol, null, null)];
+  const byCat = {};
+  items.forEach((it) => {
+    const k = it.cat || "BACKTEST";
+    (byCat[k] ||= []).push(it);
+  });
+  return Object.entries(byCat).map(([cat, catItems]) => ({ cat, items: catItems }));
+}
+
+function v9FilterSessionSymbolGroups(groups, searchQuery) {
+  const q = String(searchQuery || "").toLowerCase();
+  return groups
+    .map(({ cat, items }) => {
+      const filtered = items.filter(
+        (s) =>
+          !q ||
+          s.id.toLowerCase().startsWith(q) ||
+          s.name.toLowerCase().split(/[\s/\-]+/).some((w) => w.startsWith(q))
+      );
+      return filtered.length ? { cat, items: filtered } : null;
+    })
+    .filter(Boolean);
+}
+
+function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
+  if (fileIdFromEntry != null) return fileIdFromEntry;
+  if (!sessionPairs?.length) return null;
+  const hit = sessionPairs.find((p) => v9NormSymKey(p.ticker) === v9NormSymKey(symbolId));
+  return hit?.fileId ?? null;
+}
+
 const EMOJI_CATS = [
   { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
   { id:"people",   icon:"👶", label:"People",   emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","🫀","🧠","🦷","🦴","👶","🧒","👦","👧","🧑","👱","👩","🧔","👴","👵","👲","👳","🧕","💂","👮","👷","🤴","👸","🧙","🧚","🧛","🧟","🧞","🧜","🧝"] },
@@ -30058,60 +30156,11 @@ const TalariaV8bLive = () => {
             </div>
           </div>
           <div className="tlr-scroll" style={{maxHeight:320,overflowY:"auto",padding:"4px 0"}}>
-            {(()=>{
-              // Build the dropdown list from the active backtest session's pairs.
-              // sessionPairs is populated by the polling effect from
-              // window.chart.backtestingSession (or userStorage fallback).
-              // If the session isn't loaded yet, fall back to a single entry
-              // built from the current symbol so the dropdown is never empty.
-              const known = SYMBOLS_DATA.flatMap(c=>c.items.map(it=>({...it,cat:c.cat})));
-              const normSymKey = (x) => String(x||"").toUpperCase().replace(/\s+/g,"").replace(/\//g,"");
-              const parseFxPair = (raw) => {
-                const u = String(raw||"").toUpperCase().replace(/\s+/g,"");
-                if (u.includes("/")) {
-                  const p = u.split("/").filter(Boolean);
-                  if (p.length===2 && p[0].length===3 && p[1].length===3)
-                    return { id:`${p[0]}/${p[1]}`, name:`${p[0]} / ${p[1]}`, type:"forex", base:p[0], quote:p[1], cat:"BACKTEST" };
-                }
-                if (/^[A-Z]{6}$/.test(u))
-                  return { id:`${u.slice(0,3)}/${u.slice(3)}`, name:`${u.slice(0,3)} / ${u.slice(3)}`, type:"forex", base:u.slice(0,3), quote:u.slice(3), cat:"BACKTEST" };
-                return null;
-              };
-              const buildEntry = (ticker, fileId, assetClass) => {
-                const badgeAsset =
-                  assetClass != null && String(assetClass).trim()
-                    ? String(assetClass).trim()
-                    : undefined;
-                const withBadge = (row) => (badgeAsset ? { ...row, badgeAsset } : row);
-                let found = known.find(s=>s.id===ticker);
-                if (!found && ticker)
-                  found = known.find(s=>normSymKey(s.id)===normSymKey(ticker));
-                if (found) return withBadge({ ...found, fileId });
-                const parts = (ticker||"").split("/");
-                if(parts.length===2 && parts[0].length===3 && parts[1].length===3){
-                  const b = parts[0].toUpperCase(), q = parts[1].toUpperCase();
-                  return withBadge({ id:`${b}/${q}`, name:`${b} / ${q}`, type:"forex", base:b, quote:q, cat:"FOREX", fileId });
-                }
-                const fx = parseFxPair(ticker);
-                if (fx) return withBadge({ ...fx, fileId });
-                return withBadge({ id:ticker, name:ticker, type:"other", cat:"BACKTEST", fileId });
-              };
-              const items = (sessionPairs.length
-                ? sessionPairs.map(p=>buildEntry(p.ticker, p.fileId, p.assetClass))
-                : [buildEntry(symbol, null, null)]
-              );
-              // Group by cat (FOREX, FUTURES, etc.) so the visual grouping is preserved.
-              const byCat = {};
-              items.forEach(it=>{ const k=it.cat||"BACKTEST"; (byCat[k] ||= []).push(it); });
-              return Object.entries(byCat).map(([cat,items])=>({cat,items}));
-            })().map(({cat,items})=>{
-              const q=symbolSearch.toLowerCase();
-              const filtered = items.filter(s=>!q||s.id.toLowerCase().startsWith(q)||s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
-              if(filtered.length===0) return null;
+            {v9FilterSessionSymbolGroups(v9BuildSessionSymbolGroups(sessionPairs, symbol), symbolSearch).map(({cat,items})=>{
               return (
                 <div key={cat}>
                   <div style={{padding:"5px 14px 3px",fontSize:9,fontWeight:800,color:c.tm,letterSpacing:"0.08em"}}>{cat}</div>
-                  {filtered.map(s=>{
+                  {items.map(s=>{
                     const isAct=symbol===s.id;
                     const isH=hov===`sym-${s.id}`;
                     return (
@@ -30123,12 +30172,7 @@ const TalariaV8bLive = () => {
                           setSymbol(s.id);
                           setSymbolOpen(false);
                           setSymbolSearch("");
-                          let loadFid = s.fileId;
-                          if (loadFid == null && sessionPairs.length) {
-                            const normKey = (x) => String(x || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "");
-                            const hit = sessionPairs.find((p) => normKey(p.ticker) === normKey(s.id));
-                            if (hit && hit.fileId != null) loadFid = hit.fileId;
-                          }
+                          const loadFid = v9ResolveSessionFileId(sessionPairs, s.id, s.fileId);
                           if (loadFid != null) {
                             try { routeSessionFileLoadToSelectedPanel(loadFid); }
                             catch (err) { console.warn("[V9 sym] session file load failed", err); }
@@ -34554,32 +34598,46 @@ const TalariaV8bLive = () => {
         )}
         {/* Order panel symbol picker — portal to body (same as size picker) */}
         {typeof document !== "undefined" && opSymOpen && orderPanelOpen && createPortal(
-          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSymPos.top, left:opSymPos.left, zIndex:10060, width:160, background:c.sf, border:`1px solid ${c.brH}`, boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`, fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
+          <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{ position:"fixed", top:opSymPos.top, left:opSymPos.left, zIndex:10060, width:190, background:c.sf, border:`1px solid ${c.brH}`, boxShadow:`0 8px 32px rgba(0,0,0,0.7), 0 0 16px ${c.acG}`, fontFamily:F, animation:"tlrDropIn 0.15s ease" }}>
             <div style={{ height:2, background:`linear-gradient(90deg,${c.ac},${c.acL},${c.ac})` }}/>
             <div style={{ padding:"5px 8px 4px", borderBottom:`1px solid ${c.br}` }}>
+              <div style={{ fontSize:9, fontWeight:700, color:c.tm, letterSpacing:"0.06em", marginBottom:4 }}>SESSION</div>
               <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${c.brH}`, padding:"3px 7px", gap:5 }}>
                 <I n="search" s={11} cl={c.tm}/>
-                <input autoFocus type="text" placeholder="Search…" value={opSymSearch} onChange={e=>setOpSymSearch(e.target.value)}
+                <input autoFocus type="text" placeholder="Search symbol…" value={opSymSearch} onChange={e=>setOpSymSearch(e.target.value)}
                   style={{ flex:1, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontFamily:F, padding:0 }}/>
               </div>
             </div>
             <div className="tlr-scroll" style={{ maxHeight:280, overflowY:"auto", padding:"4px 0" }}>
-              {SYMBOLS_DATA.map(({cat,items}) => {
-                const q = opSymSearch.toLowerCase();
-                const filtered = items.filter(s => !q || s.id.toLowerCase().startsWith(q) || s.name.toLowerCase().split(/[\s/\-]+/).some(w=>w.startsWith(q)));
-                if (!filtered.length) return null;
-                return (
+              {v9FilterSessionSymbolGroups(v9BuildSessionSymbolGroups(sessionPairs, symbol), opSymSearch).map(({ cat, items }) => (
                   <div key={cat}>
                     <div style={{ padding:"4px 12px 2px", fontSize:8, fontWeight:800, color:c.tm, letterSpacing:"0.08em" }}>{cat}</div>
-                    {filtered.map(s => {
+                    {items.map(s => {
                       const isAct = symbol === s.id;
                       const isH = hov === `opsym-${s.id}`;
                       return (
-                        <div key={s.id} onClick={() => { setSymbol(s.id); setOpSymOpen(false); setOpSymSearch(""); }}
+                        <div key={s.id}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSymbol(s.id);
+                            setOpSymOpen(false);
+                            setOpSymSearch("");
+                            const loadFid = v9ResolveSessionFileId(sessionPairs, s.id, s.fileId);
+                            if (loadFid != null) {
+                              try { routeSessionFileLoadToSelectedPanel(loadFid); }
+                              catch (err) { console.warn("[V9 op-sym] session file load failed", err); }
+                            } else {
+                              console.warn("[V9 op-sym] no fileId for symbol", s.id);
+                            }
+                          }}
                           onMouseEnter={() => setHov(`opsym-${s.id}`)} onMouseLeave={() => setHov(null)}
                           style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", cursor:"default", position:"relative",
                                    background:isAct?c.acD:isH?c.hv2:"transparent", transition:"background 0.1s" }}>
                           {isAct && <div style={{ position:"absolute", left:0, top:"15%", bottom:"15%", width:2, background:`linear-gradient(180deg,transparent,${c.acL},transparent)`, boxShadow:`0 0 6px ${c.acG}` }}/>}
+                          <div style={{ display:"flex", alignItems:"center", position:"relative", minWidth:34, height:14, flexShrink:0 }}>
+                            <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
+                          </div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize:11, fontWeight:isAct?700:600, color:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
@@ -34588,8 +34646,7 @@ const TalariaV8bLive = () => {
                       );
                     })}
                   </div>
-                );
-              })}
+              ))}
             </div>
           </div>,
           document.body
