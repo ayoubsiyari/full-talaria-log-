@@ -1732,6 +1732,7 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
+        orderManager._previewEntryDecoupledFromRR = false;
         this.ensureRiskSettings();
         const entryList = this._allEntryPrices();
         // Primary leg = tool zone boundary (points[0] first in _allEntryPrices). Never use a mean here:

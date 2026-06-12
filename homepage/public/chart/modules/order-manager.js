@@ -128,6 +128,8 @@ class OrderManager {
         this.multiTPAvgLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
+        /** When true, RR tool push/pull must not overwrite draft preview entry price. */
+        this._previewEntryDecoupledFromRR = false;
         this._pendingPreviewConnector = null; // Vertical limit/stop preview guide (SVG line)
         this._pendingPreviewConnectorDots = []; // Intersection dots on entry/TP/SL levels
         this.entryMarkers = [];
@@ -12530,6 +12532,7 @@ class OrderManager {
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
             this.isDraggingPreviewLine = false;
+            this._previewEntryDecoupledFromRR = false;
 
             (this._collectLayoutCharts() || []).forEach((c) => {
                 if (c && typeof c.updateSVGPointerEvents === 'function') {
@@ -12604,7 +12607,8 @@ class OrderManager {
         // Selected R/R tool: open flow resets multi-TP / multi-entry and entry from market — re-apply tool state.
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
         if (rrSelectedOpen) {
-            this.pushRiskRewardToolToManager(rrSelectedOpen);
+            this._previewEntryDecoupledFromRR = false;
+            this.pushRiskRewardToolToManager(rrSelectedOpen, { forceEntry: true });
         }
 
         // Perform initial calculations and setup after panel is visible
@@ -12639,6 +12643,7 @@ class OrderManager {
 
         this.slManuallyPositioned = false;
         this.tpManuallyPositioned = false;
+        this._previewEntryDecoupledFromRR = false;
 
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
@@ -14013,6 +14018,7 @@ class OrderManager {
                     if (id === 'orderEntryPrice') {
                         this.syncDefaultTargetsToEntry();
                         this._autoDetectOrderTypeFromEntry();
+                        this._markPreviewEntryDecoupledFromRiskRewardIfNeeded();
                     }
                     if (id === 'tpPrice') {
                         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || '0');
@@ -17248,6 +17254,10 @@ class OrderManager {
                 // Set flag to prevent full redraw during drag
                 self.isDraggingPreviewLine = true;
                 self._multichartPostDraftDragBusy(true);
+
+                if (lineData.label === 'Entry' || (lineData.label && String(lineData.label).startsWith('Entry#'))) {
+                    self._previewEntryDecoupledFromRR = true;
+                }
 
                 // Store initial values for comparison
                 lineData.dragStartPrice = lineData.price;
@@ -20496,19 +20506,70 @@ class OrderManager {
         return null;
     }
 
+    _isDraftOrderPreviewActive() {
+        if (this._orderPlacedAwaitingReset) return false;
+        const v9Open = typeof window !== 'undefined'
+            && !!window.__talariaV9ReactOrderUi
+            && !!window.__talariaV9OrderRailOpen;
+        const multichartDraft = typeof window !== 'undefined' && !!window.__talariaMultichartDraftActive;
+        const orderPanelEl = document.getElementById('orderPanel');
+        const panelVisible = orderPanelEl?.classList.contains('visible');
+        return !!(v9Open || panelVisible || multichartDraft);
+    }
+
+    _getRiskRewardDrawingEntryPrice(drawing) {
+        if (!drawing?.points?.[0]) return NaN;
+        let entry = drawing.points[0].y;
+        if (typeof drawing._getWeightedAverageEntryPrice === 'function') {
+            const w = drawing._getWeightedAverageEntryPrice();
+            if (Number.isFinite(w)) entry = w;
+        }
+        return entry;
+    }
+
+    _markPreviewEntryDecoupledFromRiskRewardIfNeeded(drawingOpt) {
+        const drawing = drawingOpt || this._getSelectedRiskRewardDrawing?.();
+        if (!drawing || !this._isDraftOrderPreviewActive()) return;
+        const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
+        const panelEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(panelEntry > 0) || !Number.isFinite(rrEntry)) return;
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
+        const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
+        if (Math.abs(panelEntry - rrEntry) > eps) {
+            this._previewEntryDecoupledFromRR = true;
+        }
+    }
+
+    /**
+     * When a draft preview entry was placed independently of the RR tool, keep it during RR resize/sync.
+     */
+    _shouldPreservePreviewEntryOverRiskReward(drawing, opts = {}) {
+        if (opts.forceEntry) return false;
+        if (!this._isDraftOrderPreviewActive()) return false;
+        if (this._previewEntryDecoupledFromRR) return true;
+        if (!drawing?.points?.[0]) return false;
+        const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
+        const panelEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(panelEntry > 0) || !Number.isFinite(rrEntry)) return false;
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
+        const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
+        return Math.abs(panelEntry - rrEntry) > eps;
+    }
+
     /**
      * Push long/short position tool geometry into the same inputs + tpTargets / multiEntryLevels
      * structures used by the order panel (for shared + / drag math).
      */
-    pushRiskRewardToolToManager(drawing) {
+    pushRiskRewardToolToManager(drawing, opts = {}) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         this.orderSide = isLong ? 'BUY' : 'SELL';
         const entry = drawing.points[0].y;
         const sl = drawing.points[1].y;
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        const preserveEntry = this._shouldPreservePreviewEntryOverRiskReward(drawing, opts);
         const ep = document.getElementById('orderEntryPrice');
-        if (ep) ep.value = entry.toFixed(prec);
+        if (ep && !preserveEntry) ep.value = entry.toFixed(prec);
         const slp = document.getElementById('slPrice');
         if (slp) slp.value = sl.toFixed(prec);
         const allT = typeof drawing._allTargetPrices === 'function' ? drawing._allTargetPrices() : [drawing.points[2].y];
@@ -20623,6 +20684,7 @@ class OrderManager {
             if (numTPInput) numTPInput.value = String(n);
         }
 
+        if (!preserveEntry) {
         const allE = typeof drawing._allEntryPrices === 'function' ? drawing._allEntryPrices() : [entry];
         // Keep primary first (points[0] then extraEntries). Price-sorting made E2 the new points[0] for
         // longs and shifted the R/R zone boundary to the wrong line.
@@ -20667,6 +20729,7 @@ class OrderManager {
                 this._rebalanceLevelAmountsToTarget();
             }
             this.setEntryMode(true);
+        }
         }
 
         const beLineY = drawing.meta?.rrBreakevenLine?.y;
@@ -20718,13 +20781,15 @@ class OrderManager {
     /**
      * Apply risk/reward tool state from order manager (same as panel lists / inputs).
      */
-    pullRiskRewardToolFromManager(drawing) {
+    pullRiskRewardToolFromManager(drawing, opts = {}) {
         if (!drawing || !drawing.points || drawing.points.length < 3) return;
         const isLong = drawing.meta?.orientation === 'long' || drawing.type === 'long-position';
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision() : 5;
+        const preserveEntry = this._shouldPreservePreviewEntryOverRiskReward(drawing, opts);
         const slPx = parseFloat(document.getElementById('slPrice')?.value || '');
         if (Number.isFinite(slPx)) drawing.points[1] = { ...drawing.points[1], y: slPx };
 
+        if (!preserveEntry) {
         // Use ladder row 0 as RR points[0] whenever multi-entry UI is on (including exactly one row).
         if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length >= 1) {
             const lv = [...this.multiEntryLevels].filter((l) => l.price > 0);
@@ -20741,6 +20806,7 @@ class OrderManager {
             const e = parseFloat(document.getElementById('orderEntryPrice')?.value || '');
             if (Number.isFinite(e)) drawing.points[0] = { ...drawing.points[0], y: e };
             drawing.meta.extraEntries = [];
+        }
         }
 
         const mtOn = document.getElementById('multipleTPToggle')?.checked;

@@ -2014,6 +2014,9 @@
                         });
                     }
                     if (args.entryPrice != null) setValSet('orderEntryPrice', args.entryPrice);
+                    if (args.entryPrice != null && typeof omSet._markPreviewEntryDecoupledFromRiskRewardIfNeeded === 'function') {
+                        omSet._markPreviewEntryDecoupledFromRiskRewardIfNeeded();
+                    }
                     setChkSet('enableSL', !!args.slEnabled);
                     if (args.slPrice != null)   setValSet('slPrice', args.slPrice);
                     setChkSet('enableTP', !!args.tpEnabled);
