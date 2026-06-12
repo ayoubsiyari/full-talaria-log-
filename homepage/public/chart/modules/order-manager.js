@@ -12637,6 +12637,9 @@ class OrderManager {
     _resetPanelForNewOrder() {
         this.isDraggingPreviewLine = false;
 
+        this.slManuallyPositioned = false;
+        this.tpManuallyPositioned = false;
+
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
             this._orderPlacedAwaitingReset = true;
@@ -16712,8 +16715,8 @@ class OrderManager {
         };
         
         // Track if TP/SL have been manually positioned (dragged away from entry)
-        if (!this.tpManuallyPositioned) this.tpManuallyPositioned = false;
-        if (!this.slManuallyPositioned) this.slManuallyPositioned = false;
+        if (slEnabled && !(slPrice > 0)) this.slManuallyPositioned = false;
+        if (tpEnabled && !(tpPrice > 0)) this.tpManuallyPositioned = false;
         
         // Calculate TP/SL prices (same logic as in placeAdvancedOrder)
         let tpPrice = 0;
@@ -16869,36 +16872,43 @@ class OrderManager {
         } else {
             // Single TP mode: draw SL before TP when both are badges so TP can sit to the right of SL
             // (entry-anchored layout in positionPreviewLabel).
-            if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
-                this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
-                if (this.previewLines.sl) {
-                    this.previewLines.sl.targetPrice = slPrice;
+            if (slEnabled) {
+                if (this.slManuallyPositioned && slPrice > 0) {
+                    this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                    if (this.previewLines.sl) {
+                        this.previewLines.sl.targetPrice = slPrice;
+                    }
+                } else {
+                    this.slManuallyPositioned = false;
+                    this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
                 }
-            } else if (slEnabled && !this.slManuallyPositioned) {
-                // Match TP: only anchor SL badge on entry when not yet dragged; if slManuallyPositioned
-                // but #slPrice is briefly 0 (multichart host/iframe race), do not redraw at entry.
-                this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
             }
 
-            if (tpEnabled && this.tpManuallyPositioned && tpPrice > 0) {
-                this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
-                if (this.previewLines.tp) {
-                    this.previewLines.tp.targetPrice = tpPrice;
+            if (tpEnabled) {
+                if (this.tpManuallyPositioned && tpPrice > 0) {
+                    this.previewLines.tp = this.drawPreviewLine(tpPrice, '#089981', 'TP', null, true);
+                    if (this.previewLines.tp) {
+                        this.previewLines.tp.targetPrice = tpPrice;
+                    }
+                } else {
+                    this.tpManuallyPositioned = false;
+                    this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#089981', 'TP', tpPrice);
                 }
-            } else if (tpEnabled && !this.tpManuallyPositioned) {
-                this.previewLines.tp = this.drawPreviewBadge(tpBadgeAnchorPrice, '#089981', 'TP', tpPrice);
             }
         }
 
         // Multi-TP mode: SL was not drawn in the branch above — draw it here.
         if (tpEnabled && multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
-            if (slEnabled && this.slManuallyPositioned && slPrice > 0) {
-                this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
-                if (this.previewLines.sl) {
-                    this.previewLines.sl.targetPrice = slPrice;
+            if (slEnabled) {
+                if (this.slManuallyPositioned && slPrice > 0) {
+                    this.previewLines.sl = this.drawPreviewLine(slPrice, '#f23645', 'SL', null, true);
+                    if (this.previewLines.sl) {
+                        this.previewLines.sl.targetPrice = slPrice;
+                    }
+                } else {
+                    this.slManuallyPositioned = false;
+                    this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
                 }
-            } else if (slEnabled && !this.slManuallyPositioned) {
-                this.previewLines.sl = this.drawPreviewBadge(entryPrice, '#f23645', 'SL', slPrice);
             }
         }
         

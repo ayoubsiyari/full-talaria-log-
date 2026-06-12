@@ -2018,6 +2018,10 @@
                     if (args.slPrice != null)   setValSet('slPrice', args.slPrice);
                     setChkSet('enableTP', !!args.tpEnabled);
                     if (args.tpPrice != null)   setValSet('tpPrice', args.tpPrice);
+                    var slPxSet = parseFloat(docSet.getElementById('slPrice')?.value || 0);
+                    var tpPxSet = parseFloat(docSet.getElementById('tpPrice')?.value || 0);
+                    if (!(slPxSet > 0)) omSet.slManuallyPositioned = false;
+                    if (!(tpPxSet > 0)) omSet.tpManuallyPositioned = false;
                     try { global.__talariaMultichartDraftActive = true; } catch (_) {}
                     try { omSet.updatePreviewLines(); } catch (e) {
                         warn('setDraftPreview: updatePreviewLines threw', e && e.message);
