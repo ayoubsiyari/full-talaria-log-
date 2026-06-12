@@ -8663,17 +8663,43 @@ function v9GetCurrentMarketPrice(om) {
   }
 }
 
-/** Match order-manager.js `_autoDetectOrderTypeFromEntry` (market / limit / stop). */
-function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, pipSize) {
+/** Tick-sized band: one step off live price → Limit/Stop (OM uses 1.5× pip for typed entry). */
+function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, om) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) return "market";
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) return "market";
-  const pip = Number.isFinite(pipSize) && pipSize > 0 ? pipSize : 0.0001;
+  const tick = v9OrderPriceTickStep(om);
   const atMarket =
-    Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+    Math.abs(entryPrice - currentPrice) <= Math.max(tick * 0.5, Math.abs(currentPrice) * 1e-10);
   if (atMarket) return "market";
   const side = String(orderSide || "buy").toLowerCase();
   if (side === "buy") return entryPrice > currentPrice ? "stop" : "limit";
   return entryPrice < currentPrice ? "stop" : "limit";
+}
+
+function v9ApplyOrderTypeToOm(inferred, om) {
+  if (!om || !["market", "limit", "stop"].includes(inferred)) return;
+  if (om.orderType !== inferred) om.orderType = inferred;
+  if (typeof document !== "undefined") {
+    document.querySelectorAll("#orderPanel .order-type-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.type === inferred);
+    });
+  }
+  try {
+    om.updatePlaceButtonText?.();
+  } catch (_) {}
+}
+
+function v9SyncOrderTypeFromEntryPrice(om, orderSide) {
+  const entryPx = parseFloat(
+    (typeof document !== "undefined" ? document.getElementById("orderEntryPrice")?.value : "") || "0"
+  );
+  if (!Number.isFinite(entryPx) || entryPx <= 0) return "market";
+  const inferred = v9InferOrderTypeFromEntry(entryPx, v9GetCurrentMarketPrice(om), orderSide, om);
+  v9ApplyOrderTypeToOm(inferred, om);
+  try {
+    om?.updatePreviewLines?.();
+  } catch (_) {}
+  return inferred;
 }
 
 /** Write entry into hidden OM input and flip Market/Limit/Stop tab when price leaves market. */
@@ -8682,23 +8708,12 @@ function v9PushEntryPriceAndDetectOrderType(priceStr, orderSide, om) {
   const entryPx = parseFloat(s);
   if (!Number.isFinite(entryPx) || entryPx <= 0) return "market";
   const el = typeof document !== "undefined" ? document.getElementById("orderEntryPrice") : null;
-  if (el) {
-    if (el.value !== s) {
-      el.value = s;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    } else if (typeof om?._autoDetectOrderTypeFromEntry === "function") {
-      om._autoDetectOrderTypeFromEntry();
-    }
-  } else if (typeof om?._autoDetectOrderTypeFromEntry === "function") {
-    om._autoDetectOrderTypeFromEntry();
+  if (el && el.value !== s) {
+    el.value = s;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  const activeOt =
-    typeof document !== "undefined"
-      ? document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type
-      : null;
-  if (activeOt && ["market", "limit", "stop"].includes(activeOt)) return activeOt;
-  return v9InferOrderTypeFromEntry(entryPx, v9GetCurrentMarketPrice(om), orderSide, om?.pipSize);
+  return v9SyncOrderTypeFromEntryPrice(om, orderSide);
 }
 
 const EMOJI_CATS = [
@@ -13810,7 +13825,10 @@ const TalariaV8bLive = () => {
             const entryPx = parseFloat(entryRows[0]?.price ?? "0");
             if (entryPx > 0) {
               setIn("orderEntryPrice", String(entryPx));
-              if (bridgeLead) om?._autoDetectOrderTypeFromEntry?.();
+              if (bridgeLead) {
+                const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
+                setOrderType((prev) => (prev === ot ? prev : ot));
+              }
             } else if (!bridgeLead) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
@@ -13831,7 +13849,10 @@ const TalariaV8bLive = () => {
             const entryPx = parseFloat(entryRows[0]?.price ?? "0");
             if (entryPx > 0) {
               setIn("orderEntryPrice", String(entryPx));
-              if (bridgeLead) om?._autoDetectOrderTypeFromEntry?.();
+              if (bridgeLead) {
+                const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
+                setOrderType((prev) => (prev === ot ? prev : ot));
+              }
             } else if (!bridgeLead) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
