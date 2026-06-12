@@ -23923,7 +23923,7 @@ class OrderManager {
         const pos = (this.openPositions || []).find((p) => p && p.id === id)
             || (this.orderService?.openPositions || []).find((p) => p && p.id === id);
         if (pos) {
-            try { this.removeEntryMarker(id); } catch (_e0) { /* ignore */ }
+            try { this.removeEntryMarker(id, true); } catch (_e0) { /* ignore */ }
             try { this.removeOrderLine(id); } catch (_e1) { /* ignore */ }
             try { this.removeSLTPLines(id); } catch (_e2) { /* ignore */ }
             try { this.removeMultiTPAvgLine(id); } catch (_e3) { /* ignore */ }
@@ -24101,7 +24101,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId);
+                this.removeEntryMarker(orderId, true);
                 this.removeMfeMaeMarkers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 this._ensurePendingTargetsSurvive();
@@ -25854,7 +25854,7 @@ class OrderManager {
                     this.removeOrderLine(id);
                     this.removeSLTPLines(id);
                     this.removeMultiTPAvgLine(id);
-                    this.removeEntryMarker(id);
+                    this.removeEntryMarker(id, true);
                 } catch (e) {
                     console.error(`❌ Error removing lines for #${id}:`, e);
                 }
@@ -26442,7 +26442,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId);
+                this.removeEntryMarker(orderId, true);
                 this.removeMfeMaeMarkers(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
@@ -26897,7 +26897,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId);
+                this.removeEntryMarker(orderId, true);
                 this.removeMfeMaeMarkers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
@@ -31813,7 +31813,7 @@ class OrderManager {
         posToStrip.forEach(pos => {
             try { this.removeOrderLine(pos.id); } catch (_) {}
             try { this.removeSLTPLines(pos.id); } catch (_) {}
-            try { this.removeEntryMarker(pos.id); } catch (_) {}
+            try { this.removeEntryMarker(pos.id, true); } catch (_) {}
         });
 
         // 3. Update data arrays ----------------------------------------------
@@ -35676,16 +35676,33 @@ class OrderManager {
         }
     }
 
-    removeEntryMarker(orderId) {
+    removeEntryMarker(orderId, opts) {
+        const fullRemove = opts === true || !!(opts && opts.full);
         if (!this.entryMarkers?.length) return;
         const sid = String(orderId);
         this.entryMarkers.forEach((markerData) => {
             if (markerData.orderId !== orderId && String(markerData.orderId) !== sid) return;
-            try { markerData.marker?.remove(); } catch (_) {}
+            if (!markerData.marker) return;
+
+            if (fullRemove) {
+                try { markerData.marker.remove(); } catch (_) {}
+                return;
+            }
+
+            const marker = markerData.marker;
+            const priceBox = marker.select('[data-role="entry-price-box"]');
+            if (!priceBox.empty()) priceBox.remove();
+            const priceText = marker.select('[data-role="entry-price-text"]');
+            if (!priceText.empty()) priceText.remove();
+            const priceLine = marker.select('[data-role="entry-price-line"]');
+            if (!priceLine.empty()) priceLine.remove();
+            markerData.hasPriceElements = false;
         });
-        this.entryMarkers = this.entryMarkers.filter(
-            (m) => m.orderId !== orderId && String(m.orderId) !== sid
-        );
+        if (fullRemove) {
+            this.entryMarkers = this.entryMarkers.filter(
+                (m) => m.orderId !== orderId && String(m.orderId) !== sid
+            );
+        }
     }
 
     /** Closed-trade row: how many entry legs (multi-entry / scaled / journal aggregate). */
