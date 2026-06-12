@@ -8588,6 +8588,28 @@ function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
   return hit?.fileId ?? null;
 }
 
+/** Add a session symbol as a compare overlay (same action as the former OHLC + button). */
+function v9AddCompareSymbol(symbolId, fileId) {
+  if (typeof window === "undefined") return;
+  const ch =
+    typeof window.getActiveChart === "function"
+      ? window.getActiveChart()
+      : window.chart;
+  const fid = fileId != null ? parseInt(fileId, 10) : NaN;
+  if (!Number.isFinite(fid)) {
+    ch?.showNotification?.("No dataset available for this symbol.");
+    return;
+  }
+  const sym = String(symbolId || "").trim();
+  if (ch?.compareOverlay && typeof ch.compareOverlay.addSymbolWithMode === "function") {
+    ch.compareOverlay.addSymbolWithMode(fid, sym, "same-scale");
+    return;
+  }
+  if (typeof window.openCompareSymbolModal === "function") {
+    window.openCompareSymbolModal();
+  }
+}
+
 /** Keep React ENTRY row price aligned with hidden #orderEntryPrice (single entry only). */
 function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
   if (!entryPriceStr) return;
@@ -19923,26 +19945,6 @@ const TalariaV8bLive = () => {
         <div className="ohlc-header">
           <div className="ohlc-symbol-block" style={{ position: "relative", display: "flex", alignItems: "center", gap: 4 }}>
             <span id="chartSymbol" className="ohlc-symbol-text" />
-            <button
-              type="button"
-              className="add-symbol-btn"
-              id="symbolPlusBtn"
-              title="Compare / add symbol"
-              aria-label="Compare or add symbol"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (typeof window.openCompareSymbolModal === "function") {
-                  window.openCompareSymbolModal();
-                }
-              }}
-              style={{ flexShrink: 0, pointerEvents: "auto" }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
-                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
-                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
-              </svg>
-            </button>
             <span className="ohlc-separator">{" · "}</span>
             <span id="chartTimeframe" />
           </div>
@@ -30522,10 +30524,28 @@ const TalariaV8bLive = () => {
                         <div style={{display:"flex",alignItems:"center",position:"relative",minWidth:34,height:14,flexShrink:0}}>
                           <ChartSymbolBadge sym={normalizeSymForBadge(s.id)} asset={chartAssetFromSymbolObj(s)} w={18} h={14} fontFamily={F}/>
                         </div>
-                        <div style={{flex:1}}>
+                        <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:12,fontWeight:isAct?700:600,color:isAct?c.acL:isH?c.tx:c.ts,fontFamily:F,lineHeight:1.2}}>{s.id}</div>
                           <div style={{fontSize:12,color:c.tm,lineHeight:1.2}}>{s.name}</div>
                         </div>
+                        {!isAct && s.fileId != null && (
+                          <button
+                            type="button"
+                            className="add-symbol-btn add-symbol-btn--inline"
+                            title="Compare / add symbol"
+                            aria-label={`Compare ${s.id}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              v9AddCompareSymbol(s.id, s.fileId);
+                            }}
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                              <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                              <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -35003,6 +35023,24 @@ const TalariaV8bLive = () => {
                             <div style={{ fontSize:11, fontWeight:isAct?700:600, color:isAct?c.acL:isH?c.tx:c.ts, lineHeight:1.3 }}>{s.id}</div>
                             <div style={{ fontSize:9, color:c.tm, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.name}</div>
                           </div>
+                          {!isAct && s.fileId != null && (
+                            <button
+                              type="button"
+                              className="add-symbol-btn add-symbol-btn--inline"
+                              title="Compare / add symbol"
+                              aria-label={`Compare ${s.id}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                v9AddCompareSymbol(s.id, s.fileId);
+                              }}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" aria-hidden="true">
+                                <line x1="12" y1="5" x2="12" y2="19" strokeLinecap="round" />
+                                <line x1="5" y1="12" x2="19" y2="12" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       );
                     })}
