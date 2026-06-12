@@ -8579,6 +8579,53 @@ function v9ResolveSessionFileId(sessionPairs, symbolId, fileIdFromEntry) {
   return hit?.fileId ?? null;
 }
 
+/** Keep React ENTRY row price aligned with hidden #orderEntryPrice (single entry only). */
+function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
+  if (!entryPriceStr) return;
+  setEntryRows((rows) => {
+    if (!rows.length || rows.length > 1) return rows;
+    const cur = parseFloat(rows[0].price || "0");
+    const next = parseFloat(entryPriceStr);
+    if (!Number.isFinite(next) || next <= 0) return rows;
+    if (Math.abs(cur - next) < 1e-8) return rows;
+    return [{ ...rows[0], price: entryPriceStr }];
+  });
+}
+
+/** Market orders: entry preview must track live close — not a stale React row price. */
+function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
+  if (!om || om.isDraggingPreviewLine) return;
+  const activeOt =
+    document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
+    om.orderType ||
+    "market";
+  if (activeOt !== "market") return;
+  try {
+    om.updateOrderPanelPrice?.();
+  } catch (_) {}
+  const ep = document.getElementById("orderEntryPrice")?.value ?? "";
+  if (ep) v9ApplyLiveEntryPriceToRows(setEntryRows, ep);
+  try {
+    om.updatePreviewLines?.();
+  } catch (_) {}
+}
+
+/** Mid-edit price strings ("", ".", "26.") — do not mirror/overwrite from hidden OM inputs. */
+function v9IsPartialDecimalInput(str) {
+  const s = String(str ?? "").trim();
+  if (s === "" || s === ".") return true;
+  if (s.endsWith(".")) return true;
+  return false;
+}
+
+function v9NormalizePriceInputOnBlur(raw) {
+  const s = String(raw ?? "").trim();
+  if (s === "" || s === ".") return "0";
+  if (!/^\d*\.?\d*$/.test(s)) return "0";
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? String(n) : "0";
+}
+
 const EMOJI_CATS = [
   { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
   { id:"people",   icon:"👶", label:"People",   emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","🫀","🧠","🦷","🦴","👶","🧒","👦","👧","🧑","👱","👩","🧔","👴","👵","👲","👳","🧕","💂","👮","👷","🤴","👸","🧙","🧚","🧛","🧟","🧞","🧜","🧝"] },
@@ -13677,20 +13724,38 @@ const TalariaV8bLive = () => {
           try {
             om.setEntryMode(false);
           } catch (_) {}
-          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-          if (entryPx > 0) {
-            setIn("orderEntryPrice", String(entryPx));
-          } else {
+          if (orderType === "market") {
             await fillLiveEntryFromFocusedMultichartTile();
+            v9ApplyLiveEntryPriceToRows(
+              setEntryRows,
+              document.getElementById("orderEntryPrice")?.value ?? ""
+            );
+          } else {
+            const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+            if (entryPx > 0) {
+              setIn("orderEntryPrice", String(entryPx));
+            } else {
+              await fillLiveEntryFromFocusedMultichartTile();
+            }
           }
         } else if (!skipPosSync && !omHasMultiEntry) {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
           // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
-          const entryPx = parseFloat(entryRows[0]?.price ?? "0");
-          if (entryPx > 0) {
-            setIn("orderEntryPrice", String(entryPx));
-          } else {
+          // Market orders must always use live close — React entryRows can hold a stale price after
+          // symbol / timeframe / chart-type changes.
+          if (orderType === "market") {
             await fillLiveEntryFromFocusedMultichartTile();
+            v9ApplyLiveEntryPriceToRows(
+              setEntryRows,
+              document.getElementById("orderEntryPrice")?.value ?? ""
+            );
+          } else {
+            const entryPx = parseFloat(entryRows[0]?.price ?? "0");
+            if (entryPx > 0) {
+              setIn("orderEntryPrice", String(entryPx));
+            } else {
+              await fillLiveEntryFromFocusedMultichartTile();
+            }
           }
         }
 
@@ -13829,12 +13894,20 @@ const TalariaV8bLive = () => {
         const slRowPx = String(slRows[0]?.price ?? "0");
         const slPx = parseFloat(slRowPx);
         if (!skipPosSync) {
-          if (slEnabled && slPx > 0) setIn("slPrice", slRowPx);
+          if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
+            setIn("slPrice", slRowPx);
+          }
 
           const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
           const tpPx = parseFloat(tp0?.price ?? "0");
-          if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled !== false && tpPx > 0) {
-            setIn("tpPrice", String(tp0.price));
+          const tpRowPx = String(tp0?.price ?? "0");
+          if (
+            !tpMultiActive &&
+            tpActive.length <= 1 &&
+            tp0?.enabled !== false &&
+            (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
+          ) {
+            setIn("tpPrice", tpRowPx);
           }
 
           om?.calculatePositionFromRisk?.();
@@ -13897,6 +13970,27 @@ const TalariaV8bLive = () => {
 
     return () => clearTimeout(tid);
   }, [orderPanelOpen, buySell, orderType, sizeMode, riskVal, riskBasis, slEnabled, slRows, entryRows, tpRows, currentSymbol.type, symbol]);
+
+  // Market preview entry must re-anchor to live price after chart context changes.
+  useEffect(() => {
+    if (!orderPanelOpen || orderType !== "market") return;
+    const refresh = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const om = window.chart?.orderManager;
+          v9RefreshMarketOrderEntryFromChart(om, setEntryRows);
+        });
+      });
+    };
+    window.addEventListener("chartDataLoaded", refresh);
+    window.addEventListener("timeframeChanged", refresh);
+    window.addEventListener("multichartFocusChanged", refresh);
+    return () => {
+      window.removeEventListener("chartDataLoaded", refresh);
+      window.removeEventListener("timeframeChanged", refresh);
+      window.removeEventListener("multichartFocusChanged", refresh);
+    };
+  }, [orderPanelOpen, orderType, symbol]);
 
   // Multichart focus change: when the user clicks a different panel, clear the
   // draft preview on the previously focused surface (host or iframe) so stale
@@ -13965,8 +14059,21 @@ const TalariaV8bLive = () => {
             const now = Date.now();
             if (now - omHeaderRecalcRef.current > 50) {
               omHeaderRecalcRef.current = now;
-              om.calculatePositionFromRisk?.();
-              om.calculateAdvancedRiskReward?.();
+              const activeOt =
+                document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
+                om.orderType;
+              if (activeOt === "market" && !om.isDraggingPreviewLine) {
+                try {
+                  om.updateOrderPanelPrice?.();
+                } catch (_) {}
+              } else {
+                try {
+                  om.calculatePositionFromRisk?.();
+                } catch (_) {}
+              }
+              try {
+                om.calculateAdvancedRiskReward?.();
+              } catch (_) {}
             }
           }
         } catch (_) {}
@@ -14084,6 +14191,7 @@ const TalariaV8bLive = () => {
             const r0 = rows[0];
             return [{ ...r0, price: ep, risk: r0.risk }];
           }
+          if (v9IsPartialDecimalInput(rows[0].price)) return rows;
           const epp = parseFloat(ep);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(epp) && Number.isFinite(cur) && Math.abs(cur - epp) < 1e-8) return rows;
@@ -14098,6 +14206,7 @@ const TalariaV8bLive = () => {
       if (!rrLocked) {
         setSlRows((rows) => {
           if (!rows.length) return rows;
+          if (v9IsPartialDecimalInput(rows[0].price)) return rows;
           const slpN = parseFloat(slp);
           const cur = parseFloat(rows[0].price || "0");
           if (Number.isFinite(slpN) && Number.isFinite(cur) && Math.abs(cur - slpN) < 1e-8) return rows;
@@ -14154,6 +14263,7 @@ const TalariaV8bLive = () => {
             return [{ ...r0, price: tpp, qty: r0.qty ?? "100", enabled: tpOn }];
           }
           const r0 = rows[0];
+          if (v9IsPartialDecimalInput(r0.price)) return rows;
           const tppN = parseFloat(tpp);
           const curP = parseFloat(r0.price || "0");
           const priceChg = !Number.isFinite(tppN) || !Number.isFinite(curP) || Math.abs(curP - tppN) >= 1e-8;
@@ -33357,7 +33467,7 @@ const TalariaV8bLive = () => {
                           <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
                             <input type="text" value={row.price}
                               onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"price",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updRow(row.id,"price",isNaN(n)?"0":String(n)); }}
+                              onBlur={e => { updRow(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value)); }}
                               style={{ width:46, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
@@ -33488,8 +33598,18 @@ const TalariaV8bLive = () => {
           {(() => {
             const sizeUnit = currentSymbol.type==="futures" ? "Contracts" : "Lots";
             const slRow = slRows[0];
-            const updSl  = (val) => { markOrderControlBridge(); setSlRows([{...slRow, price:val}]); };
-            const stepSl = (dir) => { markOrderControlBridge(); setSlRows([{...slRow, price:String(Math.max(0, parseFloat(slRow.price||"0")+dir))}]); };
+            const updSl = (val) => {
+              markOrderControlBridge();
+              setSlRows((rows) => (rows.length ? [{ ...rows[0], price: val }] : rows));
+            };
+            const stepSl = (dir) => {
+              markOrderControlBridge();
+              setSlRows((rows) => {
+                if (!rows.length) return rows;
+                const r0 = rows[0];
+                return [{ ...r0, price: String(Math.max(0, parseFloat(r0.price || "0") + dir)) }];
+              });
+            };
             const arw = (onClick, up, hk) => {
               const isH = swHov === hk;
               return (
@@ -33597,7 +33717,7 @@ const TalariaV8bLive = () => {
                       <div style={{ flex:1, display:"flex", alignItems:"center", background:c.well, border:`1px solid ${slEnabled?"rgba(255,80,104,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 5px", gap:2, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", opacity:slEnabled?1:0.38, transition:"border-color 0.15s, opacity 0.15s" }}>
                         <input type="text" value={slRow.price} disabled={!slEnabled}
                           onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updSl(e.target.value); }}
-                          onBlur={e => { const n=parseFloat(e.target.value); updSl(isNaN(n)?"0":String(n)); }}
+                          onBlur={e => { updSl(v9NormalizePriceInputOnBlur(e.target.value)); }}
                           style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:slEnabled?c.rd:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                         <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                           {arw(()=>stepSl(1),  true,  "sl-up")}
@@ -34143,7 +34263,7 @@ const TalariaV8bLive = () => {
                           <div style={{ display:"flex", alignItems:"center", background:c.well, border:`1px solid ${row.enabled?"rgba(0,212,161,0.35)":"rgba(140,160,255,0.22)"}`, height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)", transition:"border-color 0.15s" }}>
                             <input type="text" value={row.price} disabled={!row.enabled}
                               onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updTp(row.id,"price",e.target.value); }}
-                              onBlur={e => { const n=parseFloat(e.target.value); updTp(row.id,"price",isNaN(n)?"0":String(n)); }}
+                              onBlur={e => { updTp(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value)); }}
                               style={{ width:58, background:"transparent", border:"none", outline:"none", color:row.enabled?c.gn:c.ts, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepTp(row.id,"price", 1), true,  `tp-${row.id}-up`)}
