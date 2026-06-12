@@ -16714,10 +16714,6 @@ class OrderManager {
             avgEntry: null // Multi-entry weighted average (dashed)
         };
         
-        // Track if TP/SL have been manually positioned (dragged away from entry)
-        if (slEnabled && !(slPrice > 0)) this.slManuallyPositioned = false;
-        if (tpEnabled && !(tpPrice > 0)) this.tpManuallyPositioned = false;
-        
         // Calculate TP/SL prices (same logic as in placeAdvancedOrder)
         let tpPrice = 0;
         let slPrice = 0;
@@ -16740,6 +16736,10 @@ class OrderManager {
                 slPrice = slPriceInput;
             }
         }
+
+        // Reset manual-position flags when price was cleared (panel reset / multichart sync).
+        if (slEnabled && !(slPrice > 0)) this.slManuallyPositioned = false;
+        if (tpEnabled && !(tpPrice > 0)) this.tpManuallyPositioned = false;
 
         let tpBadgeAnchorPrice = entryPrice;
         if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
