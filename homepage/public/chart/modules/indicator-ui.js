@@ -4708,16 +4708,11 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
 
     if (indicatorType === 'rsi') {
         return {
+            excludeFlexIds: ['showMa', 'maColor', 'maLineStyle', 'maLineWidth', 'showBg', 'bgColor'],
             sections: [{
                 header: true,
                 rows: [
                     v9PlotRow('RSI', 'color', 'lineStyle', 'lineWidth', 'showLine')
-                ]
-            }, {
-                title: 'RSI-based MA',
-                header: true,
-                rows: [
-                    v9PlotRow('RSI-based MA', 'maColor', 'maLineStyle', 'maLineWidth', 'showMa')
                 ]
             }, {
                 title: 'RSI Upper Band',
@@ -4732,14 +4727,9 @@ function v9BuildIndicatorStyleLayout(indicatorType) {
                 bandLevelHeader: true,
                 levelRows: [v9LevelRow('oversoldValue', 'showOversold', 'oversoldColor', 'oversoldLineStyle', 'oversoldLineWidth')]
             }, {
-                title: 'RSI Background',
-                rows: [v9ColorRow('Background', 'bgColor', 'showBg')]
+                rows: [v9ColorRow('Overbought area color fill', 'obGradientColor', 'showObGradient')]
             }, {
-                title: 'Overbought Gradient Fill',
-                rows: [v9ColorRow('Gradient', 'obGradientColor', 'showObGradient')]
-            }, {
-                title: 'Oversold Gradient Fill',
-                rows: [v9ColorRow('Gradient', 'osGradientColor', 'showOsGradient')]
+                rows: [v9ColorRow('Oversold area color fill', 'osGradientColor', 'showOsGradient')]
             }],
             footers: footers
         };

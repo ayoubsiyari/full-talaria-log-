@@ -1739,8 +1739,12 @@ class BaseRiskRewardTool extends BaseDrawing {
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
-        orderManager._previewEntryDecoupledFromRR = false;
-        orderManager._previewEntryLinkedToRiskReward = true;
+        if (typeof orderManager._setPreviewEntrySource === 'function') {
+            orderManager._setPreviewEntrySource('riskReward');
+        } else {
+            orderManager._previewEntryDecoupledFromRR = false;
+            orderManager._previewEntryLinkedToRiskReward = true;
+        }
         this.ensureRiskSettings();
         const entryList = this._allEntryPrices();
         // Primary leg = tool zone boundary (points[0] first in _allEntryPrices). Never use a mean here:

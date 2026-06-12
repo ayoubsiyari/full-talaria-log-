@@ -128,6 +128,8 @@ class OrderManager {
         this.multiTPAvgLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
+        /** 'market' | 'riskReward' | 'manual' — who owns draft preview entry price. */
+        this._previewEntrySource = 'market';
         /** When true, RR tool push/pull must not overwrite draft preview entry price. */
         this._previewEntryDecoupledFromRR = false;
         /** Set by RR Execute prefill — entry is intentionally at RR level (limit/stop), not live market. */
@@ -12534,8 +12536,7 @@ class OrderManager {
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
             this.isDraggingPreviewLine = false;
-            this._previewEntryDecoupledFromRR = false;
-            this._previewEntryLinkedToRiskReward = false;
+            this._setPreviewEntrySource('market');
 
             (this._collectLayoutCharts() || []).forEach((c) => {
                 if (c && typeof c.updateSVGPointerEvents === 'function') {
@@ -12607,14 +12608,12 @@ class OrderManager {
 
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
 
-        // Fresh draft: market entry at live price. RR tool only supplies SL/TP here — full entry sync is RR Execute only.
-        this._previewEntryDecoupledFromRR = false;
-        this._previewEntryLinkedToRiskReward = false;
-        this.updateOrderPanelPrice();
         if (rrSelectedOpen) {
-            this.pushRiskRewardToolToManager(rrSelectedOpen, { skipEntry: true });
-            this.tpManuallyPositioned = true;
-            this.slManuallyPositioned = true;
+            this._setPreviewEntrySource('riskReward');
+            this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
+        } else {
+            this._setPreviewEntrySource('market');
+            this.updateOrderPanelPrice();
         }
 
         // Perform initial calculations and setup after panel is visible
@@ -12649,8 +12648,7 @@ class OrderManager {
 
         this.slManuallyPositioned = false;
         this.tpManuallyPositioned = false;
-        this._previewEntryDecoupledFromRR = false;
-        this._previewEntryLinkedToRiskReward = false;
+        this._setPreviewEntrySource('market');
 
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
@@ -12750,7 +12748,14 @@ class OrderManager {
         if (this.editingPendingOrderId) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
-        this.pushRiskRewardToolToManager(d, { skipEntry: true });
+        if (this._previewEntrySource === 'manual') {
+            this.pushRiskRewardToolToManager(d, { skipEntry: true });
+            this.tpManuallyPositioned = true;
+            this.slManuallyPositioned = true;
+        } else {
+            this._setPreviewEntrySource('riskReward');
+            this._syncRiskRewardDrawingToOpenOrderPanel(d);
+        }
         requestAnimationFrame(() => {
             this.updatePreviewLines();
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {
@@ -13274,9 +13279,11 @@ class OrderManager {
                 });
                 btn.classList.add('active');
                 
-                // Show entry price warning for market orders
                 if (this.orderType === 'market') {
+                    this._setPreviewEntrySource('market');
                     this.updateOrderPanelPrice();
+                } else if (this._previewEntrySource === 'market') {
+                    this._setPreviewEntrySource('manual');
                 }
                 
                 // Update preview lines when order type changes
@@ -15764,7 +15771,7 @@ class OrderManager {
      */
     updateOrderPanelPrice() {
         if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
-        if (this._previewEntryLinkedToRiskReward) return;
+        if (this._previewEntrySource !== 'market') return;
         const ot = this.orderType
             || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
             || 'market';
@@ -17268,8 +17275,7 @@ class OrderManager {
                 self._multichartPostDraftDragBusy(true);
 
                 if (lineData.label === 'Entry' || (lineData.label && String(lineData.label).startsWith('Entry#'))) {
-                    self._previewEntryDecoupledFromRR = true;
-                    self._previewEntryLinkedToRiskReward = false;
+                    self._setPreviewEntrySource('manual');
                 }
 
                 // Store initial values for comparison
@@ -20519,6 +20525,13 @@ class OrderManager {
         return null;
     }
 
+    _setPreviewEntrySource(source) {
+        const s = source === 'riskReward' || source === 'manual' ? source : 'market';
+        this._previewEntrySource = s;
+        this._previewEntryLinkedToRiskReward = s === 'riskReward';
+        this._previewEntryDecoupledFromRR = s === 'manual';
+    }
+
     _dispatchRrOrderPrefilledEvent() {
         try {
             if (typeof window === 'undefined') return;
@@ -20541,8 +20554,7 @@ class OrderManager {
      */
     _syncRiskRewardDrawingToOpenOrderPanel(drawing) {
         if (!drawing) return;
-        this._previewEntryDecoupledFromRR = false;
-        this._previewEntryLinkedToRiskReward = true;
+        this._setPreviewEntrySource('riskReward');
         this.pushRiskRewardToolToManager(drawing);
         this.tpManuallyPositioned = true;
         this.slManuallyPositioned = true;
@@ -20580,7 +20592,7 @@ class OrderManager {
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
         const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
         if (Math.abs(panelEntry - rrEntry) > eps) {
-            this._previewEntryDecoupledFromRR = true;
+            this._setPreviewEntrySource('manual');
         }
     }
 
@@ -20591,14 +20603,9 @@ class OrderManager {
         if (opts.forceEntry) return false;
         if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
-        if (this._previewEntryDecoupledFromRR) return true;
-        if (!drawing?.points?.[0]) return false;
-        const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
-        const panelEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
-        if (!(panelEntry > 0) || !Number.isFinite(rrEntry)) return false;
-        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
-        const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
-        return Math.abs(panelEntry - rrEntry) > eps;
+        if (this._previewEntrySource === 'manual') return true;
+        if (this._previewEntrySource === 'market') return true;
+        return false;
     }
 
     /**

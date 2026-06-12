@@ -8602,9 +8602,18 @@ function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
 }
 
 /** Market orders: entry preview must track live close — not a stale React row price. */
+function v9ShouldAnchorEntryToLiveMarket(om) {
+  if (!om) return true;
+  const src = om._previewEntrySource;
+  if (src === "riskReward" || src === "manual") return false;
+  if (src === "market") return true;
+  return !om._previewEntryLinkedToRiskReward;
+}
+
+/** Market orders: entry preview must track live close — not a stale React row price. */
 function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   if (!om || om.isDraggingPreviewLine) return;
-  if (om._previewEntryLinkedToRiskReward) return;
+  if (!v9ShouldAnchorEntryToLiveMarket(om)) return;
   const activeOt =
     document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
     om.orderType ||
@@ -13682,7 +13691,7 @@ const TalariaV8bLive = () => {
     const refresh = () => {
       if (cancelled) return;
       const om = window.chart?.orderManager;
-      if (om?._previewEntryLinkedToRiskReward) return;
+      if (!v9ShouldAnchorEntryToLiveMarket(om)) return;
       const domOt = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
       const activeOt = domOt || orderType;
       if (activeOt !== "market") return;
@@ -13921,7 +13930,7 @@ const TalariaV8bLive = () => {
           const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
           const domOtSingle = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
           const activeOtSingle = domOtSingle || orderType;
-          if (activeOtSingle === "market" && !bridgeLead && !om?._previewEntryLinkedToRiskReward) {
+          if (activeOtSingle === "market" && !bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -13935,7 +13944,7 @@ const TalariaV8bLive = () => {
                 const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
                 setOrderType((prev) => (prev === ot ? prev : ot));
               }
-            } else if (!bridgeLead && !om?._previewEntryLinkedToRiskReward) {
+            } else if (!bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
           }
@@ -13947,7 +13956,7 @@ const TalariaV8bLive = () => {
           const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
           const domOtMain = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
           const activeOtMain = domOtMain || orderType;
-          if (activeOtMain === "market" && !bridgeLead && !om?._previewEntryLinkedToRiskReward) {
+          if (activeOtMain === "market" && !bridgeLead && v9ShouldAnchorEntryToLiveMarket(om)) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -14271,7 +14280,7 @@ const TalariaV8bLive = () => {
                 document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
                 om.orderType;
               if (activeOt === "market" && !om.isDraggingPreviewLine && !isOmBridgeLead(omPanelBridgeRef.current.control)
-                  && !om._previewEntryLinkedToRiskReward) {
+                  && v9ShouldAnchorEntryToLiveMarket(om)) {
                 try {
                   om.updateOrderPanelPrice?.();
                 } catch (_) {}
@@ -24991,7 +25000,9 @@ const TalariaV8bLive = () => {
             const extended = !!(section && (section.bandLevelHeader || section.zeroLevelHeader));
             const hidePlot = row.hidePlotStyle === true || hideStylePickers;
             const cols = styleRowCols(extended ? (hidePlot ? gcBandNoPlot : gcBand) : (hidePlot ? gcNoPlot : gc));
-            const rowLabel = section && section.zeroLevelHeader ? "Zero" : "Value";
+            const rowLabel = section && section.zeroLevelHeader
+              ? "Zero"
+              : (section && section.bandLevelHeader && section.title ? section.title : "Value");
             return (
               <div key={row.valueId} style={{ display: "grid", gridTemplateColumns: cols, columnGap: cg, alignItems: "center", height: 30, ...(i ? { marginTop: 8 } : {}) }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
@@ -25021,7 +25032,7 @@ const TalariaV8bLive = () => {
               const bandHdrCols = hideStylePickers ? gcAlign : bandGridCols(section);
               return (
               <div key={`ind-sec-${si}`}>
-                {section.title && (
+                {section.title && !section.bandLevelHeader && (
                   <div style={{ fontSize: 10, fontWeight: 800, color: c.tm, letterSpacing: "0.08em", marginTop: si ? 14 : 0, marginBottom: 4 }}>
                     {section.title}
                   </div>
@@ -25315,10 +25326,11 @@ const TalariaV8bLive = () => {
           ? inTab.filter((p) => !inputFlexExclude.has(p.id))
           : inTab;
         const inputStyleGrid = inputLayout?.sections?.length ? renderIndicatorStyleGrid(inputLayout) : null;
-        const styleLayoutIds = (() => {
+        const styleLayoutMeta = (() => {
           const buildFn = typeof window.__v9BuildIndicatorStyleLayout === "function" ? window.__v9BuildIndicatorStyleLayout : null;
           const layout = buildFn ? buildFn(ctx.indicatorType) : null;
           const ids = new Set();
+          const exclude = new Set(layout?.excludeFlexIds || []);
           if (layout && layout.sections) {
             layout.sections.forEach((sec) => {
               if (sec.checkboxRow && sec.checkboxRow.showId) ids.add(sec.checkboxRow.showId);
@@ -25348,10 +25360,13 @@ const TalariaV8bLive = () => {
             });
             (layout.footers || []).forEach((f) => { if (f.id) ids.add(f.id); });
           }
-          return ids;
+          return { ids, exclude };
         })();
+        const styleLayoutIds = styleLayoutMeta.ids;
+        const styleFlexExclude = styleLayoutMeta.exclude;
         const styleFlexParams = inTab.filter((p) => {
           if (p.type === "heading" || p.type === "divider" || p.type === "sessionInput" || p.type === "timeRange") return false;
+          if (styleFlexExclude.has(p.id)) return false;
           if (styleLayoutIds.has(p.id)) return false;
           if (p.type === "number" && /opacity$/i.test(String(p.id || ""))) return false;
           return true;
