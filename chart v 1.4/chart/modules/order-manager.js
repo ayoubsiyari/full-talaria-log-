@@ -31791,6 +31791,93 @@ class OrderManager {
     }
 
     /**
+     * Build a position-shaped object from a persisted journal row (for marker redraw after refresh).
+     * @param {object} trade
+     * @returns {object|null}
+     */
+    _positionLikeFromJournalTrade(trade) {
+        if (!trade || typeof trade !== 'object') return null;
+        const id = trade.tradeId != null ? trade.tradeId : trade.id;
+        const openTime = trade.openTime != null ? trade.openTime : trade.entryTime;
+        const openPrice = trade.openPrice != null ? trade.openPrice : trade.entryPrice;
+        if (id == null || openTime == null || openPrice == null) return null;
+
+        const type = String(trade.type || trade.direction || 'BUY').toUpperCase();
+        const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
+        const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+        const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+
+        return {
+            ...trade,
+            id,
+            type,
+            openTime,
+            openPrice: Number.parseFloat(openPrice),
+            closeTime: closeTime != null ? Number(closeTime) : undefined,
+            closePrice: closePrice != null ? Number.parseFloat(closePrice) : undefined,
+            quantity: Number.parseFloat(trade.quantity) || 0,
+            ticker,
+            symbol: trade.symbol || ticker,
+            partialCloses: Array.isArray(trade.partialCloses) ? trade.partialCloses : undefined,
+            closeType: trade.closeType || trade.exitType || 'MANUAL',
+            pnl: Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0,
+        };
+    }
+
+    /**
+     * Redraw entry/exit markers for closed trades loaded from the persisted journal.
+     * Chart markers are in-memory only; journal rows survive refresh but were never repainted.
+     * @param {Set<string|number>} [skipIds] - trades already redrawn (e.g. replay preserve pass)
+     */
+    _redrawClosedJournalTradeMarkers(skipIds) {
+        const skip = skipIds || new Set();
+        const openIds = new Set((this.openPositions || []).map((p) => p.id));
+        const pendingIds = new Set((this.pendingOrders || []).map((p) => p.id));
+        let redrawn = 0;
+
+        (this.tradeJournal || []).forEach((trade) => {
+            const id = trade.tradeId != null ? trade.tradeId : trade.id;
+            if (id == null || skip.has(id) || openIds.has(id) || pendingIds.has(id)) return;
+
+            const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+            const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+            if (closeTime == null || closePrice == null) return;
+
+            const pos = this._positionLikeFromJournalTrade(trade);
+            if (!pos) return;
+
+            try { this.drawEntryMarker(pos); } catch (_) {}
+
+            if (Array.isArray(pos.partialCloses)) {
+                pos.partialCloses.forEach((pc) => {
+                    try {
+                        this.drawPartialCloseMarker(pos, {
+                            closePrice: pc.closePrice,
+                            closeTime: pc.closeTime,
+                            pnl: pc.pnl || 0,
+                            percentage: pc.percentage || 1,
+                            type: pc.type || 'TP',
+                        });
+                    } catch (_) {}
+                });
+            }
+
+            try {
+                this.drawExitMarker(pos, {
+                    closePrice: Number(closePrice),
+                    closeTime: Number(closeTime),
+                    pnl: pos.pnl || 0,
+                    type: pos.closeType || 'MANUAL',
+                });
+            } catch (_) {}
+
+            redrawn += 1;
+        });
+
+        return redrawn;
+    }
+
+    /**
      * Redraw entry/exit markers, partial-close markers, and trade connectors
      * for closed positions that were preserved during a selective "Go back".
      * Also redraws visuals for any open positions and pending orders that survived.
@@ -31799,10 +31886,12 @@ class OrderManager {
     redrawPreservedTradeMarkers() {
         const preserved = this._preservedClosedForRedraw;
         this._preservedClosedForRedraw = null;
+        const preservedIds = new Set();
 
         // Redraw closed-trade markers
         if (preserved && preserved.length) {
             preserved.forEach(pos => {
+                if (pos && pos.id != null) preservedIds.add(pos.id);
                 try { this.drawEntryMarker(pos); } catch (_) {}
 
                 // Partial close markers
@@ -31834,6 +31923,8 @@ class OrderManager {
             });
         }
 
+        const journalClosedRedrawn = this._redrawClosedJournalTradeMarkers(preservedIds);
+
         // Redraw open position visuals
         (this.openPositions || []).forEach(pos => {
             try { this.drawOrderLine(pos); } catch (_) {}
@@ -31856,7 +31947,8 @@ class OrderManager {
         } catch (_) {}
         this._renderAllLayoutCharts();
         console.log('🎨 redrawPreservedTradeMarkers: redrawn markers for',
-            (preserved || []).length, 'closed +',
+            (preserved || []).length, 'preserved closed +',
+            journalClosedRedrawn, 'journal closed +',
             (this.openPositions || []).length, 'open +',
             (this.pendingOrders || []).length, 'pending');
     }

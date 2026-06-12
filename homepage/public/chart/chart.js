@@ -6787,6 +6787,29 @@ class Chart {
     }
 
     /**
+     * Order entry/exit markers are SVG overlays — they must be repainted after session restore
+     * once OHLC is on the chart (journal survives refresh; marker DOM does not).
+     */
+    _scheduleOrderMarkersRedrawAfterSessionRestore(orderManager) {
+        const om = orderManager || this._getOrderManagerForSessionPersistence();
+        if (!om || typeof om.redrawPreservedTradeMarkers !== 'function') return;
+
+        const redrawLater = () => {
+            try {
+                om.redrawPreservedTradeMarkers();
+            } catch (_) {
+                /* ignore */
+            }
+        };
+
+        if (Array.isArray(this.data) && this.data.length > 0) {
+            setTimeout(redrawLater, 0);
+        }
+        window.addEventListener('chartDataLoaded', redrawLater, { once: true });
+        setTimeout(redrawLater, 500);
+    }
+
+    /**
      * When PATCH /api/sessions/:id/state fails (Failed to fetch), persist journal + balance in
      * localStorage so refresh still restores until nginx /api is fixed.
      */
@@ -7072,19 +7095,10 @@ class Chart {
             if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
                 om._syncReplayHeaderStatsFromAccount();
             }
-            const redrawLater = () => {
-                try {
-                    if (typeof om.redrawPreservedTradeMarkers === 'function') {
-                        om.redrawPreservedTradeMarkers();
-                    }
-                } catch (e) {
-                    /* ignore */
-                }
-            };
-            window.addEventListener('chartDataLoaded', redrawLater, { once: true });
-            setTimeout(redrawLater, 500);
+            this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
         } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
+            this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
         }
 
         if (typeof om.updateJournalTab === 'function') {
@@ -7240,24 +7254,12 @@ class Chart {
                 if (typeof this.orderManager._syncReplayHeaderStatsFromAccount === 'function') {
                     this.orderManager._syncReplayHeaderStatsFromAccount();
                 }
-                // Session restore can run before OHLC is ready; redraw lines/markers after data exists.
-                const om = this.orderManager;
-                const redrawLater = () => {
-                    try {
-                        if (typeof om.redrawPreservedTradeMarkers === 'function') {
-                            om.redrawPreservedTradeMarkers();
-                        }
-                    } catch (e) {
-                        /* ignore */
-                    }
-                };
-                window.addEventListener('chartDataLoaded', redrawLater, { once: true });
-                setTimeout(redrawLater, 500);
             } else if (this.orderManager && typeof this.orderManager.recomputeAccountFromJournal === 'function') {
                 this.orderManager.recomputeAccountFromJournal();
             }
 
             if (this.orderManager) {
+                this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
                 }
