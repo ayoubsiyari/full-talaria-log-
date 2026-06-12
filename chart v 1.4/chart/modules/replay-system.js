@@ -3252,21 +3252,23 @@ class ReplaySystem {
             return this.currentIndex + 1;
         }
         
-        // Get current candle timestamp
+        // Align to the same bucket boundaries resampleData uses (floor(t/tfMs)*tfMs).
+        // Adding tfMs to the raw bar timestamp (e.g. Mon 15:00 + 1d → Tue 15:00) skips
+        // partial buckets and on 1D + 1m master can advance several display candles at once.
         const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        
-        // Calculate target timestamp (next timeframe boundary)
-        const targetTimestamp = currentTimestamp + tfMs;
-        
-        // Walk to the first bar at/after the target wall-clock time. We must NOT
-        // derive a fixed candles-to-skip from the first two bars: the replay
-        // master is often NON-uniform (hybrid: native display-TF history on the
-        // left + a 1m window around the playhead). A global step computed from the
-        // daily history would collapse 5m → round(5min/1day)=0 → a single 1m step,
-        // so the INTERVAL appeared to do nothing. A timestamp scan honours the
-        // selected interval against the actual (finer) bars near the playhead.
+        const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+        const targetTimestamp = currentBucket + tfMs;
+
         const targetIndex = this._firstRawIndexAtOrAfter(targetTimestamp, this.currentIndex + 1);
         return Math.min(Math.max(targetIndex, this.currentIndex + 1), this.fullRawData.length - 1);
+    }
+
+    /** Bucket start for replay step/resample (matches chart resampleData). */
+    _replayBucketStart(ts, tfMs) {
+        const t = Number(ts);
+        const ms = Number(tfMs);
+        if (!Number.isFinite(t) || !Number.isFinite(ms) || ms <= 0) return t;
+        return Math.floor(t / ms) * ms;
     }
 
     /**
@@ -3343,12 +3345,9 @@ class ReplaySystem {
             return Math.max(this.currentIndex - 1, minIdx);
         }
 
-        // Mirror of calculateNextIndex: target a wall-clock boundary instead of a
-        // fixed candle count, so the INTERVAL is honoured against the actual
-        // (possibly non-uniform / hybrid) bar spacing near the playhead.
         const currentTimestamp = this.fullRawData[this.currentIndex].t;
-        const targetTimestamp = currentTimestamp - tfMs;
-        const targetIndex = this._lastRawIndexAtOrBeforeTs(targetTimestamp);
+        const currentBucket = this._replayBucketStart(currentTimestamp, tfMs);
+        const targetIndex = this._lastRawIndexAtOrBeforeTs(currentBucket - 1);
         return Math.max(minIdx, Math.min(targetIndex, this.currentIndex - 1));
     }
 
