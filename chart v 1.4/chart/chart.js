@@ -6796,16 +6796,17 @@ class Chart {
     _scheduleOrderMarkersRedrawAfterSessionRestore(orderManager) {
         const om = orderManager || this._getOrderManagerForSessionPersistence();
         if (!om) return;
+        om._journalMarkerRestorePending = true;
         if (typeof om._scheduleSessionMarkerRedraw === 'function') {
             om._scheduleSessionMarkerRedraw();
             return;
         }
-        if (typeof om.redrawPreservedTradeMarkers !== 'function') return;
-        const delays = [0, 100, 300, 800, 1500, 2500];
+        if (typeof om.syncOrderVisualsToActiveChart !== 'function') return;
+        const delays = [0, 150, 400, 900, 1800, 3000];
         delays.forEach((ms) => {
             setTimeout(() => {
                 try {
-                    om.redrawPreservedTradeMarkers();
+                    om.syncOrderVisualsToActiveChart();
                 } catch (_) {}
             }, ms);
         });
@@ -7090,6 +7091,7 @@ class Chart {
         if (typeof om.restoreIdCountersFromJournal === 'function') {
             om.restoreIdCountersFromJournal();
         }
+        om._journalMarkerRestorePending = true;
 
         const backupHasRuntime = this._sessionStateHasRuntimeOrderState(backup);
         if (backupHasRuntime && typeof om.restoreRuntimeOrderStateFromSession === 'function') {
@@ -7242,6 +7244,7 @@ class Chart {
                 if (typeof this.orderManager.restoreIdCountersFromJournal === 'function') {
                     this.orderManager.restoreIdCountersFromJournal();
                 }
+                this.orderManager._journalMarkerRestorePending = true;
                 if (typeof this.orderManager.persistJournal === 'function' && !this._restoredFromLocalBackupOnly) {
                     this.orderManager.persistJournal();
                 }

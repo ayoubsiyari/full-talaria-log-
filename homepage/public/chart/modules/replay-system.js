@@ -2771,6 +2771,11 @@ class ReplaySystem {
         if (this.isPlaying) {
             this._multichartBroadcastReplayFrame();
         }
+
+        const om = this.chart && this.chart.orderManager;
+        if (om && om._journalMarkerRestorePending && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
+            try { om._syncJournalMarkersAfterSessionRestore(); } catch (_) {}
+        }
         
     }
 

@@ -655,20 +655,44 @@ class OrderManager {
         });
     }
 
+    _normalizeMarkerTimestamp(ts) {
+        if (ts == null) return ts;
+        const n = Number(ts);
+        if (!Number.isFinite(n)) {
+            if (typeof ts === 'string') {
+                const parsed = Date.parse(ts);
+                if (Number.isFinite(parsed)) return parsed;
+            }
+            return ts;
+        }
+        return n < 1e11 ? n * 1000 : n;
+    }
+
     _positionTickerMatchesChartSymbol(position, chart) {
         if (!chart || !position) return false;
+        const pt = this._positionTicker(position);
+        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
         const posFileRaw = position.sourceFileId ?? position.source_file_id;
         const posFile = posFileRaw != null && String(posFileRaw) !== '' ? String(posFileRaw) : '';
         const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
             ? String(chart.currentFileId)
             : '';
-        const pt = this._positionTicker(position);
-        const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
+
+        // Single-chart backtest: ticker is authoritative (sourceFileId can be stale after dataset changes).
+        if (!this._isMultiPanelLayout()) {
+            if (pt && cs) return pt === cs;
+            if (posFile && chartFile) return posFile === chartFile;
+            if (pt && chartFile && typeof this.resolveFileIdForTicker === 'function') {
+                const resolved = this.resolveFileIdForTicker(pt);
+                if (resolved && String(resolved) === chartFile) return true;
+            }
+            return false;
+        }
 
         if (posFile && chartFile && posFile === chartFile) return true;
 
         if (pt && cs && pt === cs) {
-            if (this._isMultiPanelLayout() && chartFile && !posFile) {
+            if (chartFile && !posFile) {
                 let activeFile = '';
                 try {
                     const active = typeof window !== 'undefined' && typeof window.getActiveChart === 'function'
@@ -689,8 +713,6 @@ class OrderManager {
             const resolved = this.resolveFileIdForTicker(pt);
             if (resolved && String(resolved) === chartFile) return true;
         }
-
-        if (posFile && chartFile && posFile === chartFile) return true;
 
         return false;
     }
@@ -3080,6 +3102,9 @@ class OrderManager {
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        try {
+            this._redrawClosedJournalTradeMarkers();
+        } catch (_) {}
     }
 
     groupJournalByTicker() {
@@ -3653,7 +3678,13 @@ class OrderManager {
             OrderManager._closedJournalDataHookInstalled = true;
             window.addEventListener('chartDataLoaded', () => {
                 const om = window.chart && window.chart.orderManager;
-                if (om && typeof om._scheduleClosedJournalMarkerRedraw === 'function') {
+                if (!om) return;
+                const hasJournal = Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0;
+                if (om._journalMarkerRestorePending || hasJournal) {
+                    if (typeof om._scheduleSessionMarkerRedraw === 'function') {
+                        om._scheduleSessionMarkerRedraw();
+                    }
+                } else if (typeof om._scheduleClosedJournalMarkerRedraw === 'function') {
                     om._scheduleClosedJournalMarkerRedraw();
                 }
             });
@@ -31914,13 +31945,16 @@ class OrderManager {
     _positionLikeFromJournalTrade(trade) {
         if (!trade || typeof trade !== 'object') return null;
         const id = trade.tradeId != null ? trade.tradeId : trade.id;
-        const openTime = trade.openTime != null ? trade.openTime : trade.entryTime;
+        const openTime = this._normalizeMarkerTimestamp(
+            trade.openTime != null ? trade.openTime : trade.entryTime
+        );
         const openPrice = trade.openPrice != null ? trade.openPrice : trade.entryPrice;
         if (id == null || openTime == null || openPrice == null) return null;
 
         const type = String(trade.type || trade.direction || 'BUY').toUpperCase();
         const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
-        const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+        const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+        const closeTime = closeTimeRaw != null ? this._normalizeMarkerTimestamp(closeTimeRaw) : undefined;
         const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
         let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
         if ((!sourceFileId || String(sourceFileId) === '') && ticker
@@ -31964,8 +31998,9 @@ class OrderManager {
             const id = trade.tradeId != null ? trade.tradeId : trade.id;
             if (id == null || skip.has(id) || openIds.has(id) || pendingIds.has(id)) return;
 
-            const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+            const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
             const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+            const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
             if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
 
             const pos = this._positionLikeFromJournalTrade(trade);
@@ -32014,21 +32049,45 @@ class OrderManager {
     }
 
     /**
+     * Full strip + redraw of order visuals for the active chart (most reliable after refresh).
+     * @returns {boolean}
+     */
+    _syncJournalMarkersAfterSessionRestore() {
+        if (!this._ensureChartReadyForOrderMarkers()) return false;
+        const hasWork = (this.tradeJournal || []).length > 0
+            || (this.openPositions || []).length > 0
+            || (this.pendingOrders || []).length > 0;
+        if (!hasWork) {
+            this._journalMarkerRestorePending = false;
+            return false;
+        }
+        try {
+            if (typeof this.syncOrderVisualsToActiveChart === 'function') {
+                this.syncOrderVisualsToActiveChart();
+            } else {
+                this.redrawPreservedTradeMarkers();
+            }
+            this._journalMarkerRestorePending = false;
+            console.log('🎨 Session marker restore: journal', (this.tradeJournal || []).length,
+                'open', (this.openPositions || []).length);
+            return true;
+        } catch (e) {
+            console.warn('Session marker restore failed:', e);
+            return false;
+        }
+    }
+
+    /**
      * Repaint journal + open/pending markers after session restore or OHLC load.
      * Multiple retries cover replay viewport sync and late chartView restore on refresh.
      */
     _scheduleSessionMarkerRedraw() {
-        if (this._sessionMarkerRedrawGen == null) this._sessionMarkerRedrawGen = 0;
-        const gen = ++this._sessionMarkerRedrawGen;
-        const delays = [0, 100, 300, 800, 1500, 2500];
+        this._journalMarkerRestorePending = true;
+        const delays = [0, 150, 400, 900, 1800, 3000];
         delays.forEach((ms) => {
             setTimeout(() => {
-                if (gen !== this._sessionMarkerRedrawGen) return;
-                try {
-                    if (!this._ensureChartReadyForOrderMarkers()) return;
-                    this.redrawPreservedTradeMarkers();
-                    this._renderAllLayoutCharts();
-                } catch (_) {}
+                if (!this._journalMarkerRestorePending) return;
+                this._syncJournalMarkersAfterSessionRestore();
             }, ms);
         });
     }
