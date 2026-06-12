@@ -5954,6 +5954,18 @@ class Chart {
                     console.warn('⚠️ Failed to save drawings before pair switch', e);
                 }
             }
+            if (
+                this.orderManager &&
+                typeof this.orderManager.saveTradeMarkersForFile === 'function' &&
+                this.currentFileId != null &&
+                String(this.currentFileId) !== String(targetFileId)
+            ) {
+                try {
+                    this.orderManager.saveTradeMarkersForFile(String(this.currentFileId));
+                } catch (e) {
+                    console.warn('⚠️ Failed to save trade markers before pair switch', e);
+                }
+            }
 
             this.rawData = [];
             this.data = [];
@@ -6093,6 +6105,9 @@ class Chart {
             }
 
             if (this.orderManager) {
+                if (typeof this.orderManager.loadTradeMarkersForFile === 'function') {
+                    try { this.orderManager.loadTradeMarkersForFile(targetFileId); } catch (_) {}
+                }
                 if (typeof this.orderManager.syncPipFromActiveSymbol === 'function') {
                     this.orderManager.syncPipFromActiveSymbol();
                 }
@@ -6125,9 +6140,18 @@ class Chart {
                 pairSwitchLoadSeq: pairSwitchLoadSeq,
                 onDone: () => {
                     const om = this.orderManager;
-                    if (om && typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
-                        try { om._scheduleClosedTradeMarkersRedraw(this); } catch (_) {}
-                    }
+                    if (!om) return;
+                    try {
+                        if (typeof om.loadTradeMarkersForFile === 'function') {
+                            om.loadTradeMarkersForFile(this.currentFileId);
+                        }
+                        if (typeof om._redrawClosedTradeMarkersForChart === 'function') {
+                            om._redrawClosedTradeMarkersForChart(this);
+                            if (typeof om.updateOrderLines === 'function') {
+                                om.updateOrderLines(this);
+                            }
+                        }
+                    } catch (_) {}
                 },
             });
             if (pairLoadUiActive) pairSwitchEndDeferred = true;
@@ -6600,6 +6624,20 @@ class Chart {
             return `chart_drawings_s${sessionId}_${fileId}`;
         }
         return `chart_drawings_${fileId}`;
+    }
+
+    /** localStorage key for closed-trade chart markers (same session + file scoping as drawings). */
+    getTradeMarkersStorageKey(fileIdOverride = null) {
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.currentFileId || 'default');
+        const sessionId = typeof this.getActiveTradingSessionId === 'function'
+            ? this.getActiveTradingSessionId()
+            : null;
+        if (sessionId) {
+            return `chart_trade_markers_s${sessionId}_${fileId}`;
+        }
+        return `chart_trade_markers_${fileId}`;
     }
 
     /** Session GET /state returned drawings before OHLC existed — applied after DrawingToolsManager finishes its first load. */
@@ -7084,11 +7122,17 @@ class Chart {
             }
             const redrawLater = () => {
                 try {
+                    if (typeof om.loadTradeMarkersForFile === 'function') {
+                        om.loadTradeMarkersForFile();
+                    }
                     if (typeof om.redrawPreservedTradeMarkers === 'function') {
                         om.redrawPreservedTradeMarkers();
                     }
-                    if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
-                        om._scheduleClosedTradeMarkersRedraw(om.chart);
+                    if (typeof om._redrawClosedTradeMarkersForChart === 'function') {
+                        om._redrawClosedTradeMarkersForChart(om.chart);
+                        if (typeof om.updateOrderLines === 'function') {
+                            om.updateOrderLines(om.chart);
+                        }
                     }
                 } catch (e) {
                     /* ignore */
@@ -7100,8 +7144,14 @@ class Chart {
             om.recomputeAccountFromJournal();
             const redrawJournalMarkers = () => {
                 try {
-                    if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
-                        om._scheduleClosedTradeMarkersRedraw(om.chart);
+                    if (typeof om.loadTradeMarkersForFile === 'function') {
+                        om.loadTradeMarkersForFile();
+                    }
+                    if (typeof om._redrawClosedTradeMarkersForChart === 'function') {
+                        om._redrawClosedTradeMarkersForChart(om.chart);
+                        if (typeof om.updateOrderLines === 'function') {
+                            om.updateOrderLines(om.chart);
+                        }
                     }
                 } catch (e) {
                     /* ignore */
@@ -7268,11 +7318,17 @@ class Chart {
                 const om = this.orderManager;
                 const redrawLater = () => {
                     try {
+                        if (typeof om.loadTradeMarkersForFile === 'function') {
+                            om.loadTradeMarkersForFile();
+                        }
                         if (typeof om.redrawPreservedTradeMarkers === 'function') {
                             om.redrawPreservedTradeMarkers();
                         }
-                        if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
-                            om._scheduleClosedTradeMarkersRedraw(om.chart);
+                        if (typeof om._redrawClosedTradeMarkersForChart === 'function') {
+                            om._redrawClosedTradeMarkersForChart(om.chart);
+                            if (typeof om.updateOrderLines === 'function') {
+                                om.updateOrderLines(om.chart);
+                            }
                         }
                     } catch (e) {
                         /* ignore */
@@ -7285,8 +7341,14 @@ class Chart {
                 const om = this.orderManager;
                 const redrawJournalMarkers = () => {
                     try {
-                        if (typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
-                            om._scheduleClosedTradeMarkersRedraw(om.chart);
+                        if (typeof om.loadTradeMarkersForFile === 'function') {
+                            om.loadTradeMarkersForFile();
+                        }
+                        if (typeof om._redrawClosedTradeMarkersForChart === 'function') {
+                            om._redrawClosedTradeMarkersForChart(om.chart);
+                            if (typeof om.updateOrderLines === 'function') {
+                                om.updateOrderLines(om.chart);
+                            }
                         }
                     } catch (e) {
                         /* ignore */

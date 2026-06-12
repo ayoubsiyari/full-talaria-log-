@@ -133,6 +133,8 @@ class OrderManager {
         this.entryMarkers = [];
         this.exitMarkers = [];
         this.tradeConnectors = [];
+        /** Per-file closed-trade marker records loaded from localStorage (same idea as chart drawings). */
+        this._persistedTradeMarkersForFile = [];
         this.editingPendingOrderId = null;
         this._draggingPendingOrderIds = new Set();
         /** True while dragging a pending order's TP/SL/BE target line — avoids align pass + full reposition fighting the drag handler. */
@@ -453,7 +455,135 @@ class OrderManager {
             const pos = this._journalEntryToMarkerPosition(trade);
             if (pos) add(pos);
         });
+        (this._persistedTradeMarkersForFile || []).forEach((rec) => {
+            const pos = this._serializeTradeMarkerRecord(rec) || rec;
+            if (pos) add(pos);
+        });
         return out;
+    }
+
+    /** localStorage key for trade markers — mirrors chart.getDrawingsStorageKey / DrawingToolsManager. */
+    getTradeMarkersStorageKey(fileIdOverride = null) {
+        if (this.chart && typeof this.chart.getTradeMarkersStorageKey === 'function') {
+            return this.chart.getTradeMarkersStorageKey(fileIdOverride);
+        }
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.chart?.currentFileId || 'default');
+        const sessionId = this.chart?.getActiveTradingSessionId?.();
+        return sessionId ? `chart_trade_markers_s${sessionId}_${fileId}` : `chart_trade_markers_${fileId}`;
+    }
+
+    _serializeTradeMarkerRecord(source) {
+        if (!source || source.id == null) return null;
+        const ticker = String(source.ticker || source.symbol || '').replace('/', '').toUpperCase();
+        const openTime = source.openTime ?? source.entryTime;
+        const closeTime = source.closeTime ?? source.exitTime;
+        const openPrice = source.openPrice ?? source.entryPrice;
+        const closePrice = source.closePrice ?? source.exitPrice;
+        if (openTime == null || openPrice == null) return null;
+        return {
+            id: source.id,
+            tradeId: source.tradeId != null ? source.tradeId : source.id,
+            type: source.type || source.direction || 'BUY',
+            ticker: ticker || undefined,
+            symbol: source.symbol || ticker || undefined,
+            sourceFileId: source.sourceFileId ?? source.source_file_id ?? undefined,
+            openTime: Number(openTime),
+            openPrice: Number(openPrice),
+            closeTime: closeTime != null ? Number(closeTime) : undefined,
+            closePrice: closePrice != null ? Number(closePrice) : undefined,
+            pnl: source.pnl ?? source.netPnL ?? source.realizedPnL ?? 0,
+            closeType: source.closeType || 'MANUAL',
+            quantity: source.quantity,
+            partialCloses: Array.isArray(source.partialCloses) ? source.partialCloses : undefined,
+            entryMarkerTimeMs: source.entryMarkerTimeMs,
+        };
+    }
+
+    _tradeMarkerRecordMatchesFile(rec, fileId) {
+        if (!rec || fileId == null || String(fileId) === '') return true;
+        const fid = String(fileId);
+        const sf = rec.sourceFileId ?? rec.source_file_id;
+        if (sf != null && String(sf) !== '' && String(sf) === fid) return true;
+        const tk = this._normalizeTicker(rec.ticker || rec.symbol);
+        if (tk && typeof this.resolveFileIdForTicker === 'function') {
+            const resolved = this.resolveFileIdForTicker(tk);
+            if (resolved && String(resolved) === fid) return true;
+        }
+        return sf == null || String(sf) === '';
+    }
+
+    _collectTradeMarkerRecordsForFile(fileId) {
+        const out = [];
+        const seen = new Set();
+        const add = (rec) => {
+            if (!rec || rec.id == null) return;
+            const key = String(rec.id);
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(rec);
+        };
+        (this.closedPositions || []).forEach((p) => {
+            const rec = this._serializeTradeMarkerRecord(p);
+            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
+        });
+        (this.orderService?.closedPositions || []).forEach((p) => {
+            const rec = this._serializeTradeMarkerRecord(p);
+            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
+        });
+        (this.tradeJournal || []).forEach((t) => {
+            const rec = this._serializeTradeMarkerRecord(this._journalEntryToMarkerPosition(t) || t);
+            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
+        });
+        return out;
+    }
+
+    /** Persist closed-trade markers for a dataset id (call before pair switch, like saveDrawings). */
+    saveTradeMarkersForFile(fileIdOverride = null) {
+        if (typeof localStorage === 'undefined') return;
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.chart?.currentFileId || 'default');
+        const key = this.getTradeMarkersStorageKey(fileId);
+        const data = this._collectTradeMarkerRecordsForFile(fileId);
+        try {
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn('⚠️ Failed to save trade markers for file', fileId, e);
+        }
+    }
+
+    /** Load persisted markers for the active dataset (call after OHLC ingest, like loadDrawings). */
+    loadTradeMarkersForFile(fileIdOverride = null) {
+        if (typeof localStorage === 'undefined') {
+            this._persistedTradeMarkersForFile = [];
+            return [];
+        }
+        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
+            ? String(fileIdOverride)
+            : (this.chart?.currentFileId || 'default');
+        const key = this.getTradeMarkersStorageKey(fileId);
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) {
+                this._persistedTradeMarkersForFile = [];
+                return [];
+            }
+            const parsed = JSON.parse(raw);
+            this._persistedTradeMarkersForFile = Array.isArray(parsed) ? parsed : [];
+            return this._persistedTradeMarkersForFile;
+        } catch (e) {
+            this._persistedTradeMarkersForFile = [];
+            return [];
+        }
+    }
+
+    _persistTradeMarkerOnClose(position) {
+        try {
+            const fid = position?.sourceFileId ?? position?.source_file_id ?? this._chartSourceFileId();
+            this.saveTradeMarkersForFile(fid);
+        } catch (_) {}
     }
 
     /** Drop entry/exit/connector markers on `chart` that belong to another instrument. */
@@ -507,57 +637,14 @@ class OrderManager {
         });
     }
 
-    /** Remove entry/exit/connector markers for one order on a chart surface (before redraw). */
-    _removeTradeMarkersForOrderOnChart(orderId, chart) {
-        if (orderId == null || !chart) return;
-        const sid = String(orderId);
-        const onChart = (m) => (m?.chart || this.chart) === chart;
-        const idMatch = (id) => id === orderId || String(id) === sid;
-
-        (this.entryMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
-            try { m.marker?.remove(); } catch (_) {}
-        });
-        this.entryMarkers = (this.entryMarkers || []).filter(
-            (m) => !onChart(m) || !idMatch(m.orderId)
-        );
-
-        (this.exitMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
-            try { m.marker?.remove(); } catch (_) {}
-        });
-        this.exitMarkers = (this.exitMarkers || []).filter(
-            (m) => !onChart(m) || !idMatch(m.orderId)
-        );
-
-        (this.partialCloseMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
-            try { m.marker?.remove(); } catch (_) {}
-        });
-        this.partialCloseMarkers = (this.partialCloseMarkers || []).filter(
-            (m) => !onChart(m) || !idMatch(m.orderId)
-        );
-
-        (this.tradeConnectors || []).filter((tc) => onChart(tc) && idMatch(tc.orderId)).forEach((tc) => {
-            try { tc.line?.remove(); } catch (_) {}
-        });
-        this.tradeConnectors = (this.tradeConnectors || []).filter(
-            (tc) => !onChart(tc) || !idMatch(tc.orderId)
-        );
-
-        try {
-            chart.svg?.selectAll?.(`.entry-marker-${sid}, .exit-marker-${sid}, .trade-connector-${sid}`)?.remove();
-        } catch (_) {}
-    }
-
     _redrawClosedTradeMarkersForChart(ch) {
         if (!ch) return;
         if (this.showTradeMarkers === false) return;
         if (!ch.scales?.yScale && typeof ch.calculateScales === 'function') {
             try { ch.calculateScales(); } catch (_) {}
         }
-        const toDraw = this._getClosedPositionsForMarkerRedraw().filter(
-            (pos) => this._positionTickerMatchesChartSymbol(pos, ch)
-        );
-        toDraw.forEach((pos) => this._removeTradeMarkersForOrderOnChart(pos.id, ch));
-        toDraw.forEach((pos) => {
+        this._getClosedPositionsForMarkerRedraw().forEach((pos) => {
+            if (!this._positionTickerMatchesChartSymbol(pos, ch)) return;
             try { this.drawEntryMarker(pos, ch); } catch (_) {}
             if (Array.isArray(pos.partialCloses)) {
                 pos.partialCloses.forEach((pc) => {
@@ -586,7 +673,7 @@ class OrderManager {
         });
     }
 
-    /** After pair switch / refresh: redraw closed-trade arrows once chart data + scales are ready. */
+    /** Redraw closed-trade markers once chart data + scales are ready (session restore / delayed load). */
     _scheduleClosedTradeMarkersRedraw(chart) {
         const ch = chart || this.chart;
         if (!ch) return;
@@ -603,7 +690,6 @@ class OrderManager {
         } else {
             setTimeout(run, 32);
         }
-        [120, 500, 1200].forEach((ms) => setTimeout(run, ms));
         if (typeof window !== 'undefined') {
             const onData = () => {
                 window.removeEventListener('chartDataLoaded', onData);
@@ -1012,9 +1098,6 @@ class OrderManager {
             });
             this.entryMarkers = [];
         }
-        this.exitMarkers = [];
-        this.partialCloseMarkers = [];
-        this.tradeConnectors = [];
 
         (this.openPositions || []).forEach((pos) => {
             charts.forEach((ch) => {
@@ -1044,7 +1127,7 @@ class OrderManager {
         });
 
         charts.forEach((ch) => {
-            try { this._scheduleClosedTradeMarkersRedraw(ch); } catch (_) {}
+            try { this._redrawClosedTradeMarkersForChart(ch); } catch (_) {}
         });
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
@@ -1090,9 +1173,6 @@ class OrderManager {
                 });
                 this.entryMarkers = [];
             }
-            this.exitMarkers = [];
-            this.partialCloseMarkers = [];
-            this.tradeConnectors = [];
 
             (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
@@ -1110,7 +1190,7 @@ class OrderManager {
                 } catch (e) { /* ignore */ }
             });
             try {
-                this._scheduleClosedTradeMarkersRedraw(this.chart);
+                this._redrawClosedTradeMarkersForChart(this.chart);
             } catch (_) {}
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
@@ -3238,6 +3318,8 @@ class OrderManager {
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+
+        try { this.loadTradeMarkersForFile(); } catch (_) {}
 
         const charts = this._isMultiPanelLayout()
             ? (this._collectLayoutCharts() || [])
@@ -24195,6 +24277,7 @@ class OrderManager {
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
         this.closedPositions.push(position);
+        try { this._persistTradeMarkerOnClose(position); } catch (_) {}
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
         if (this.orderService && typeof this.orderService.emit === 'function') {
@@ -26444,6 +26527,7 @@ class OrderManager {
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
+            try { this._persistTradeMarkerOnClose(position); } catch (_) {}
 
             if (this.orderService && typeof this.orderService.emit === 'function') {
                 try {
@@ -33032,11 +33116,7 @@ class OrderManager {
                 ? { openTime: order.openTime, openPrice: order.openPrice, entryMarkerTimeMs: order.entryMarkerTimeMs }
                 : { openTime: time, openPrice: price };
             const dataIndex = this._chartIndexForEntryMarkerOnChart(c, entryRef);
-            if (dataIndex === -1 || !marker) {
-                try { marker?.style?.('display', 'none'); } catch (_) {}
-                return;
-            }
-            try { marker.style('display', null); } catch (_) {}
+            if (dataIndex === -1) return;
 
             const candleSpacing = c.getCandleSpacing();
             const x = c.dataIndexToPixel(dataIndex);
@@ -33088,11 +33168,7 @@ class OrderManager {
                 if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
-                if (dataIndex === -1 || !marker) {
-                    try { marker?.style?.('display', 'none'); } catch (_) {}
-                    return;
-                }
-                try { marker.style('display', null); } catch (_) {}
+                if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
@@ -33137,11 +33213,7 @@ class OrderManager {
                 if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
-                if (dataIndex === -1 || !marker) {
-                    try { marker?.style?.('display', 'none'); } catch (_) {}
-                    return;
-                }
-                try { marker.style('display', null); } catch (_) {}
+                if (dataIndex === -1) return;
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
@@ -33192,11 +33264,7 @@ class OrderManager {
                 };
                 const eIdx = this._chartIndexForEntryMarkerOnChart(ch, entryRef);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
-                if (eIdx === -1 || xIdx === -1 || !tc.line) {
-                    try { tc.line?.style?.('display', 'none'); } catch (_) {}
-                    return;
-                }
-                try { tc.line.style('display', null); } catch (_) {}
+                if (eIdx === -1 || xIdx === -1) return;
                 tc.line
                     .attr('x1', ch.dataIndexToPixel(eIdx))
                     .attr('y1', mainY(tc.entryPrice))
