@@ -2014,7 +2014,8 @@
                         });
                     }
                     if (args.entryPrice != null) setValSet('orderEntryPrice', args.entryPrice);
-                    if (args.entryPrice != null && typeof omSet._markPreviewEntryDecoupledFromRiskRewardIfNeeded === 'function') {
+                    if (args.entryPrice != null && typeof omSet._markPreviewEntryDecoupledFromRiskRewardIfNeeded === 'function'
+                        && !omSet._previewEntryLinkedToRiskReward) {
                         omSet._markPreviewEntryDecoupledFromRiskRewardIfNeeded();
                     }
                     setChkSet('enableSL', !!args.slEnabled);

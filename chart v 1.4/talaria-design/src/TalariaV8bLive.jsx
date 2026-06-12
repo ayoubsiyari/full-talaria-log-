@@ -8604,6 +8604,7 @@ function v9ApplyLiveEntryPriceToRows(setEntryRows, entryPriceStr) {
 /** Market orders: entry preview must track live close — not a stale React row price. */
 function v9RefreshMarketOrderEntryFromChart(om, setEntryRows) {
   if (!om || om.isDraggingPreviewLine) return;
+  if (om._previewEntryLinkedToRiskReward) return;
   const activeOt =
     document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
     om.orderType ||
@@ -13654,6 +13655,26 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("talaria:order-panel-visibility", onVis);
   }, []);
 
+  // RR tool Execute → prefill hidden #orderPanel; sync React rail immediately (don't wait for poll / market refresh).
+  useEffect(() => {
+    const onRrPrefill = (ev) => {
+      const d = ev?.detail;
+      if (!d) return;
+      if (d.orderType === "limit" || d.orderType === "stop" || d.orderType === "market") {
+        setOrderType(d.orderType);
+      }
+      if (d.side === "BUY" || d.side === "SELL") {
+        setBuySell(d.side === "BUY" ? "buy" : "sell");
+      }
+      if (d.entry != null && String(d.entry) !== "") {
+        v9ApplyLiveEntryPriceToRows(setEntryRows, String(d.entry));
+      }
+      if (!orderPanelOpen) setOrderPanelOpen(true);
+    };
+    window.addEventListener("talaria:rr-order-prefilled", onRrPrefill);
+    return () => window.removeEventListener("talaria:rr-order-prefilled", onRrPrefill);
+  }, [orderPanelOpen]);
+
   const prevOrderPanelOpenRef = useRef(undefined);
   useLayoutEffect(() => {
     if (prevOrderPanelOpenRef.current === undefined) {
@@ -13881,7 +13902,9 @@ const TalariaV8bLive = () => {
             om.setEntryMode(false);
           } catch (_) {}
           const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
-          if (orderType === "market" && !bridgeLead) {
+          const domOtSingle = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
+          const activeOtSingle = domOtSingle || orderType;
+          if (activeOtSingle === "market" && !bridgeLead && !om?._previewEntryLinkedToRiskReward) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -13895,7 +13918,7 @@ const TalariaV8bLive = () => {
                 const ot = v9SyncOrderTypeFromEntryPrice(om, buySell);
                 setOrderType((prev) => (prev === ot ? prev : ot));
               }
-            } else if (!bridgeLead) {
+            } else if (!bridgeLead && !om?._previewEntryLinkedToRiskReward) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
           }
@@ -13905,7 +13928,9 @@ const TalariaV8bLive = () => {
           // Market orders must always use live close — React entryRows can hold a stale price after
           // symbol / timeframe / chart-type changes (but not while user is stepping/editing entry).
           const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
-          if (orderType === "market" && !bridgeLead) {
+          const domOtMain = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
+          const activeOtMain = domOtMain || orderType;
+          if (activeOtMain === "market" && !bridgeLead && !om?._previewEntryLinkedToRiskReward) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -14228,7 +14253,8 @@ const TalariaV8bLive = () => {
               const activeOt =
                 document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
                 om.orderType;
-              if (activeOt === "market" && !om.isDraggingPreviewLine && !isOmBridgeLead(omPanelBridgeRef.current.control)) {
+              if (activeOt === "market" && !om.isDraggingPreviewLine && !isOmBridgeLead(omPanelBridgeRef.current.control)
+                  && !om._previewEntryLinkedToRiskReward) {
                 try {
                   om.updateOrderPanelPrice?.();
                 } catch (_) {}

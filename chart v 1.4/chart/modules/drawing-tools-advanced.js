@@ -1717,22 +1717,30 @@ class BaseRiskRewardTool extends BaseDrawing {
         const riskAmount = this.meta.risk?.riskAmountUSD || this.meta.risk?.riskAmount || 100;
 
         // Open the order panel FIRST, then pre-fill values after panel initialization
-        if (typeof orderManager.openOrderPanel === 'function') {
-            orderManager.openOrderPanel();
-        } else if (typeof orderManager.toggleOrderPanel === 'function') {
-            orderManager.toggleOrderPanel();
+        const panel = typeof document !== 'undefined' ? document.getElementById('orderPanel') : null;
+        const panelWasOpen = !!(panel && panel.classList.contains('visible'));
+        if (!panelWasOpen) {
+            if (typeof orderManager.toggleOrderPanel === 'function') {
+                orderManager.toggleOrderPanel();
+            } else if (typeof orderManager.openOrderPanel === 'function') {
+                orderManager.openOrderPanel();
+            }
+        } else if (typeof orderManager.exitOrderPlacedAwaitingReset === 'function') {
+            orderManager.exitOrderPlacedAwaitingReset();
         }
-        
-        // Pre-fill values AFTER panel opens (need delay because toggleOrderPanel resets values)
+
+        // Pre-fill after panel open. When the rail was already open, skip syncOrderPanel race — prefill now.
         const self = this;
+        const delayMs = panelWasOpen ? 0 : 200;
         setTimeout(() => {
             self.prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount);
             console.log('📋 Order panel pre-filled with position tool values');
-        }, 200);
+        }, delayMs);
     }
 
     prefillOrderPanel(orderManager, direction, entryPrice, slPrice, tpPrice, quantity, riskAmount) {
         orderManager._previewEntryDecoupledFromRR = false;
+        orderManager._previewEntryLinkedToRiskReward = true;
         this.ensureRiskSettings();
         const entryList = this._allEntryPrices();
         // Primary leg = tool zone boundary (points[0] first in _allEntryPrices). Never use a mean here:
@@ -1950,11 +1958,40 @@ class BaseRiskRewardTool extends BaseDrawing {
         if (typeof orderManager.calculatePositionFromRisk === 'function') {
             orderManager.calculatePositionFromRisk();
         }
-        
+        if (typeof orderManager.calculateAdvancedRiskReward === 'function') {
+            orderManager.calculateAdvancedRiskReward();
+        }
+        if (typeof orderManager.updatePlaceButtonText === 'function') {
+            orderManager.updatePlaceButtonText();
+        }
+        if (typeof orderManager.updatePreviewLines === 'function') {
+            orderManager.updatePreviewLines();
+        }
+
         // Also set on orderManager for calculations
         if (orderManager.tpPrice !== undefined) orderManager.tpPrice = tpPrice;
         if (orderManager.slPrice !== undefined) orderManager.slPrice = slPrice;
         if (orderManager.entryPrice !== undefined) orderManager.entryPrice = primaryEntry;
+
+        const precOut = typeof orderManager.getPricePrecision === 'function'
+            ? orderManager.getPricePrecision(primaryEntry)
+            : 5;
+        const entryOut = typeof orderManager.formatPrice === 'function'
+            ? orderManager.formatPrice(primaryEntry)
+            : primaryEntry.toFixed(precOut);
+        try {
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('talaria:rr-order-prefilled', {
+                    detail: {
+                        side: direction,
+                        orderType,
+                        entry: entryOut,
+                        sl: slPrice,
+                        tp: tpPrice,
+                    },
+                }));
+            }
+        } catch (_) { /* ignore */ }
     }
 
     /** Remove RR drag-hit layers that use `custom-handle` and survive reuseGroup clears. */
