@@ -666,16 +666,10 @@ class OrderManager {
         const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
 
         if (posFile && chartFile) {
-            return posFile === chartFile;
-        }
-
-        if (chartFile) {
-            if (!pt || !cs || pt !== cs) return false;
-            if (typeof this.resolveFileIdForTicker === 'function') {
-                const expectedFile = this.resolveFileIdForTicker(pt);
-                if (expectedFile && expectedFile !== chartFile) return false;
-            }
-            return true;
+            if (posFile === chartFile) return true;
+            // Legacy rows may carry a stale file id — still show when ticker matches this chart.
+            if (pt && cs && pt === cs) return true;
+            return false;
         }
 
         if (pt) {
@@ -904,6 +898,9 @@ class OrderManager {
         try {
             this._redrawMfeMaeMarkersFromState();
         } catch (_) {}
+        try {
+            this._redrawClosedJournalTradeMarkers();
+        } catch (_) {}
         charts.forEach((c) => {
             if (c && typeof c.render === 'function') {
                 c.renderPending = true;
@@ -956,6 +953,9 @@ class OrderManager {
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
                 this._redrawMfeMaeMarkersFromState();
+            } catch (_) {}
+            try {
+                this._redrawClosedJournalTradeMarkers();
             } catch (_) {}
             if (this.chart && typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
@@ -3643,6 +3643,16 @@ class OrderManager {
         
         // Trade journal: loaded from API (GET /api/sessions/:id/state) — not localStorage.
         this.tradeJournal = [];
+
+        if (typeof window !== 'undefined' && !OrderManager._closedJournalDataHookInstalled) {
+            OrderManager._closedJournalDataHookInstalled = true;
+            window.addEventListener('chartDataLoaded', () => {
+                const om = window.chart && window.chart.orderManager;
+                if (om && typeof om._scheduleClosedJournalMarkerRedraw === 'function') {
+                    om._scheduleClosedJournalMarkerRedraw();
+                }
+            });
+        }
         
         // Load MFE/MAE settings from localStorage
         try {
@@ -31944,7 +31954,7 @@ class OrderManager {
 
             const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
             const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
-            if (closeTime == null || closePrice == null) return;
+            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
 
             const pos = this._positionLikeFromJournalTrade(trade);
             if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) return;
@@ -31978,6 +31988,16 @@ class OrderManager {
         });
 
         return redrawn;
+    }
+
+    /** Repaint closed-trade markers when OHLC range grows (pan/load) — debounced. */
+    _scheduleClosedJournalMarkerRedraw() {
+        clearTimeout(this._closedJournalRedrawTimer);
+        this._closedJournalRedrawTimer = setTimeout(() => {
+            try {
+                this._redrawClosedJournalTradeMarkers();
+            } catch (_) {}
+        }, 80);
     }
 
     /**
@@ -32054,6 +32074,7 @@ class OrderManager {
             journalClosedRedrawn, 'journal closed +',
             (this.openPositions || []).length, 'open +',
             (this.pendingOrders || []).length, 'pending');
+        this._scheduleClosedJournalMarkerRedraw();
     }
     
     /**
@@ -32943,7 +32964,7 @@ class OrderManager {
 
             const order = markerData.order;
             const orderRef = order || this._orderRefForMarkerOrderId(markerData.orderId);
-            if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+            if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
 
             const entryRef = orderRef
                 ? { openTime: orderRef.openTime, openPrice: orderRef.openPrice, entryMarkerTimeMs: orderRef.entryMarkerTimeMs }
@@ -32991,7 +33012,7 @@ class OrderManager {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(orderId);
-                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -33036,7 +33057,7 @@ class OrderManager {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(orderId);
-                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -33081,7 +33102,7 @@ class OrderManager {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
                 const orderRef = this._orderRefForMarkerOrderId(tc.orderId);
-                if (!orderRef || !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
+                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const entryRef = {
                     openTime: tc.entryTime,
@@ -35193,7 +35214,6 @@ class OrderManager {
             return;
         }
 
-        this._pruneMarkerRegistriesForChart(ch);
         this._updateEntryMarkersForChart(ch);
 
         // Exit/partial markers and connectors store their host chart; update all whenever any surface renders.
