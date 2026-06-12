@@ -12608,7 +12608,8 @@ class OrderManager {
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
         if (rrSelectedOpen) {
             this._previewEntryDecoupledFromRR = false;
-            this.pushRiskRewardToolToManager(rrSelectedOpen, { forceEntry: true });
+            // Market draft entry comes from updateOrderPanelPrice() above — sync SL/TP/qty from RR only.
+            this.pushRiskRewardToolToManager(rrSelectedOpen, { skipEntry: true });
         }
 
         // Perform initial calculations and setup after panel is visible
@@ -20545,6 +20546,7 @@ class OrderManager {
      */
     _shouldPreservePreviewEntryOverRiskReward(drawing, opts = {}) {
         if (opts.forceEntry) return false;
+        if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
         if (this._previewEntryDecoupledFromRR) return true;
         if (!drawing?.points?.[0]) return false;
