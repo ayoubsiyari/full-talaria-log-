@@ -1667,6 +1667,7 @@ export default function MultichartGrid({
                         priceAtCursor: msg.priceAtCursor,
                         priceText:     msg.priceText,
                         symbolName:    msg.symbolName,
+                        currentPrice:  msg.currentPrice,
                     });
                 },
             });

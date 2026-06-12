@@ -27894,22 +27894,32 @@ class Chart {
 
         // ── 1. Buy / Sell / Add Order ──────────────────────────────
         if (priceAtCursor && priceText && this.orderManager) {
+            const currentPrice = (overrides && overrides.currentPrice != null)
+                ? overrides.currentPrice
+                : this.resolveEffectiveCurrentPrice(this.data);
+            // BUY: above current = stop, at/below = limit
+            // SELL: below current = stop, at/above = limit
+            const buyOrderType = (Number.isFinite(currentPrice) && priceAtCursor > currentPrice)
+                ? 'stop' : 'limit';
+            const sellOrderType = (Number.isFinite(currentPrice) && priceAtCursor < currentPrice)
+                ? 'stop' : 'limit';
+
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'buy',
-                label: `Buy 1 ${symbolName} @ ${priceText} limit`,
+                label: `Buy 1 ${symbolName} @ ${priceText} ${buyOrderType}`,
                 shortcut: '⇧ B',
                 onClick: () => {
-                    this.openOrderPanelFromContext({ side: 'BUY', orderType: 'limit', entryPrice: priceAtCursor });
+                    this.openOrderPanelFromContext({ side: 'BUY', orderType: buyOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
                 }
             });
 
             this.addTradingViewContextMenuItem(menu, {
                 icon: 'sell',
-                label: `Sell 1 ${symbolName} @ ${priceText} stop`,
+                label: `Sell 1 ${symbolName} @ ${priceText} ${sellOrderType}`,
                 shortcut: '⇧ S',
                 onClick: () => {
-                    this.openOrderPanelFromContext({ side: 'SELL', orderType: 'stop', entryPrice: priceAtCursor });
+                    this.openOrderPanelFromContext({ side: 'SELL', orderType: sellOrderType, entryPrice: priceAtCursor });
                     this.hideContextMenu();
                 }
             });
