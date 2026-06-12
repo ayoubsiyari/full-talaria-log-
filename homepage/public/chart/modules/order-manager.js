@@ -17147,8 +17147,37 @@ class OrderManager {
         // Entry preview uses a full-width invisible hit strip; SL badge sits left of TP and can
         // end up underneath other preview layers — move badges to top for reliable drags.
         this._raiseEntryAnchoredPreviewBadgesToFront();
+        if (this.editingPendingOrderId) {
+            this._syncEditingPendingOrderTargetsFromPanel();
+        }
         } finally {
             this._previewTargetChart = null;
+        }
+    }
+
+    /**
+     * While editing a pending order, mirror SL/TP clears from the panel onto the live pending order.
+     */
+    _syncEditingPendingOrderTargetsFromPanel() {
+        const orderId = this.editingPendingOrderId;
+        if (!orderId) return;
+        const po = this._findPendingOrderById(orderId);
+        if (!po || po.status !== 'PENDING') return;
+
+        const slEnabled = !!document.getElementById('enableSL')?.checked;
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const tpEnabled = !!document.getElementById('enableTP')?.checked;
+        const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+        const multiTp = !!document.getElementById('multipleTPToggle')?.checked;
+
+        if (po.stopLoss && (!slEnabled || !(slPrice > 0))) {
+            this.removePendingStopLoss(orderId);
+            return;
+        }
+
+        const hasTp = !!(po.takeProfit || (po.tpTargets && po.tpTargets.length > 0));
+        if (hasTp && (!tpEnabled || (!multiTp && !(tpPrice > 0)))) {
+            this.removePendingTakeProfit(orderId);
         }
     }
 
@@ -35061,6 +35090,34 @@ class OrderManager {
     }
     
     /**
+     * Redraw pending entry badges/lines immediately after SL/TP target removal (no chart click needed).
+     */
+    _refreshPendingOrderAfterTargetChange(orderId) {
+        const po = this._findPendingOrderById(orderId);
+        if (!po) return;
+        const charts = this._isMultiPanelLayout()
+            ? (this._collectLayoutCharts() || [])
+            : [this.chart].filter(Boolean);
+        for (const ch of charts) {
+            if (!ch?.svg) continue;
+            this.drawPendingOrderTargets(po, ch);
+            this._drawExecutedOrderConnectors(ch);
+            if (ch.scales?.yScale) {
+                this.positionPendingOrderTargets(ch);
+                this.updateOrderLines(ch);
+            }
+        }
+        if (typeof this._updateMultiTPAvgLines === 'function') {
+            charts.forEach((ch) => {
+                if (ch?.scales?.yScale) this._updateMultiTPAvgLines(ch);
+            });
+        }
+        this._cleanupOrphanedYAxisHighlights();
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        this._renderAllLayoutCharts();
+    }
+
+    /**
      * Remove Stop Loss from a pending order
      */
     removePendingStopLoss(orderId) {
@@ -35074,8 +35131,7 @@ class OrderManager {
         }
 
         this.removePendingSLTPLines(orderId);
-        this.drawPendingOrderTargets(po, this.chart);
-        this._drawExecutedOrderConnectors(this.chart);
+        this._refreshPendingOrderAfterTargetChange(orderId);
         console.log(`✅ Pending SL removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from pending order`, 'info');
     }
@@ -35095,11 +35151,10 @@ class OrderManager {
         }
 
         this.removePendingSLTPLines(orderId);
-        this.drawPendingOrderTargets(po, this.chart);
-        this._drawExecutedOrderConnectors(this.chart);
         const avgKey = `splitgrp_${po.splitGroupId}`;
         const avgIdx = (this.multiTPAvgLines || []).findIndex(g => g.orderId === avgKey || g.orderId === po.id);
         if (avgIdx !== -1) this._destroyMultiTPAvgEntry(avgIdx);
+        this._refreshPendingOrderAfterTargetChange(orderId);
         console.log(`✅ Pending TP removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from pending order`, 'info');
     }

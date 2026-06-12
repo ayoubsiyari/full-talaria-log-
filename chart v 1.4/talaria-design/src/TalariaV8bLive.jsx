@@ -14119,6 +14119,8 @@ const TalariaV8bLive = () => {
         if (!skipPosSync) {
           if (slEnabled && (slPx > 0 || v9IsPartialDecimalInput(slRowPx))) {
             setIn("slPrice", slRowPx);
+          } else if (!slEnabled) {
+            setIn("slPrice", "0");
           }
 
           const tpMultiActive = !!document.getElementById("multipleTPToggle")?.checked;
@@ -14131,6 +14133,8 @@ const TalariaV8bLive = () => {
             (tpPx > 0 || v9IsPartialDecimalInput(tpRowPx))
           ) {
             setIn("tpPrice", tpRowPx);
+          } else if (!tpMultiActive && tpActive.length <= 1 && tp0?.enabled === false) {
+            setIn("tpPrice", "0");
           }
 
           om?.calculatePositionFromRisk?.();
