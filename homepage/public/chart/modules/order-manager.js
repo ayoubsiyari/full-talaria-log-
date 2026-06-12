@@ -2999,6 +2999,7 @@ class OrderManager {
         const patch = {
             pending_orders: safeClone(this.pendingOrders),
             open_positions: safeClone(this.openPositions),
+            closed_positions: safeClone(this.closedPositions),
             account_runtime,
             order_counters,
         };
@@ -3043,9 +3044,25 @@ class OrderManager {
                 return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
             })
             : null;
+        const closedPositions = Array.isArray(state.closed_positions)
+            ? state.closed_positions.map((position) => {
+                const ticker = normalizeTradeTicker(position);
+                const sym = position?.symbol && String(position.symbol).toUpperCase() !== 'UNKNOWN' ? position.symbol : (ticker || position?.symbol || '');
+                let sourceFileId = position.sourceFileId || position.source_file_id;
+                if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
+                    const fid = this.resolveFileIdForTicker(ticker);
+                    if (fid) sourceFileId = fid;
+                }
+                return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
+            })
+            : null;
 
         if (pendingOrders) this.pendingOrders = pendingOrders;
         if (openPositions) this.openPositions = openPositions;
+        if (closedPositions) {
+            this.closedPositions = closedPositions;
+            if (this.orderService) this.orderService.closedPositions = closedPositions;
+        }
 
         const accountRuntime = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
         if (accountRuntime) {
@@ -3059,8 +3076,9 @@ class OrderManager {
 
         // Closed-trade P&L lives in the journal — stale account_runtime snapshots often still
         // show the starting balance after refresh even when journal rows have netPnL.
-        const hasJournalTrades = Array.isArray(this.tradeJournal) && this.tradeJournal.length > 0;
-        if (hasJournalTrades) {
+        const hasLedgerTrades = (Array.isArray(this.tradeJournal) && this.tradeJournal.length > 0)
+            || (Array.isArray(this.closedPositions) && this.closedPositions.length > 0);
+        if (hasLedgerTrades) {
             if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
                 this.reconcileAccountAfterSessionRestore();
             } else {
@@ -3157,10 +3175,30 @@ class OrderManager {
 
     _extractJournalTradePnl(trade) {
         if (!trade || typeof trade !== 'object') return 0;
-        const pnl = Number.parseFloat(
+        const direct = Number.parseFloat(
             trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? trade.net_pnl ?? trade.profit ?? 0
         );
-        return Number.isFinite(pnl) ? pnl : 0;
+        if (Number.isFinite(direct) && Math.abs(direct) > 0.00001) return direct;
+        const entry = Number.parseFloat(trade.entryPrice ?? trade.openPrice);
+        const exit = Number.parseFloat(trade.exitPrice ?? trade.closePrice);
+        const qty = Number.parseFloat(trade.quantity);
+        if (Number.isFinite(entry) && Number.isFinite(exit) && Number.isFinite(qty) && qty > 0
+            && typeof this._enginePnL === 'function') {
+            const dir = String(trade.direction ?? trade.type ?? 'BUY').toUpperCase();
+            try {
+                const computed = this._enginePnL(
+                    dir,
+                    entry,
+                    exit,
+                    qty,
+                    exit,
+                    trade.ticker || trade.symbol || this._getActiveTicker?.(),
+                    trade.instrument_settings || null
+                );
+                if (Number.isFinite(computed)) return computed;
+            } catch (_e) { /* ignore */ }
+        }
+        return Number.isFinite(direct) ? direct : 0;
     }
 
     recomputeAccountFromJournal() {

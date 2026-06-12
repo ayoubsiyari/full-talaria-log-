@@ -6767,6 +6767,7 @@ class Chart {
         if (!state || typeof state !== 'object') return false;
         if (Array.isArray(state.pending_orders) && state.pending_orders.length > 0) return true;
         if (Array.isArray(state.open_positions) && state.open_positions.length > 0) return true;
+        if (Array.isArray(state.closed_positions) && state.closed_positions.length > 0) return true;
         return this._sessionStateHasMeaningfulAccountRuntime(state.account_runtime);
     }
 
@@ -6949,6 +6950,7 @@ class Chart {
                     journal: journalSource,
                     pending_orders: safeClone(om.pendingOrders),
                     open_positions: safeClone(om.openPositions),
+                    closed_positions: safeClone(om.closedPositions),
                     account_runtime: {
                         balance: om.balance,
                         equity: om.equity,

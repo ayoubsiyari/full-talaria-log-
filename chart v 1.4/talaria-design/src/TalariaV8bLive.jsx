@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { applyV9ThemeSettingsToChart, resolveV9TimezoneToId, axisTextNeedsContrastFix, contrastingAxisTextColor } from "./v9ThemeSync.js";
-import { buildLiveTradeRowsFromOrderManager } from "./orderManagerTradeRows.js";
+import { buildLiveTradeRowsFromOrderManager, syncOrderManagerBalanceFromLedger } from "./orderManagerTradeRows.js";
 import {
   FlagSvg,
   ChartSymbolBadge,
@@ -11595,23 +11595,29 @@ const TalariaV8bLive = () => {
     const tick = () => {
       const chart = v9ActiveChartInstance();
       const om = typeof window !== "undefined" ? window.chart?.orderManager : null;
+      const ledger = syncOrderManagerBalanceFromLedger(om);
       const ms = getV9ChartBarTimeMs(chart);
       const s = settingsRef.current;
       const use12 = s?.timeFormat === "12h";
-      const { text: pnlStr, nonNeg: pnlNonNeg } = formatV9HudSessionPnl(om);
+      const startBal = ledger?.startingBalance ?? Number(om?.initialBalance);
+      const eq = ledger?.equity ?? Number(om?.equity);
+      const pnlDelta = Number.isFinite(startBal) && Number.isFinite(eq) ? eq - startBal : NaN;
+      const pnlStr = Number.isFinite(pnlDelta)
+        ? { text: `${pnlDelta >= 0 ? "+" : ""}${pnlDelta.toFixed(2)}`, nonNeg: pnlDelta >= 0 }
+        : formatV9HudSessionPnl(om);
       setReplayHud({
         dateLine: formatV9HudDateLine(ms),
         clock: formatV9HudClock(ms, use12),
         tzLabel: v9HudTzShortLabel(s?.timezone),
-        balanceStr: formatV9AccountNum(om?.balance),
-        equityStr: formatV9AccountNum(om?.equity),
-        pnlStr,
-        pnlNonNeg,
+        balanceStr: formatV9AccountNum(ledger?.balance ?? om?.balance),
+        equityStr: formatV9AccountNum(ledger?.equity ?? om?.equity),
+        pnlStr: pnlStr.text,
+        pnlNonNeg: pnlStr.nonNeg,
       });
-      const bal = Number(om?.balance);
-      const eq = Number(om?.equity);
+      const bal = Number(ledger?.balance ?? om?.balance);
+      const eqNum = Number(ledger?.equity ?? om?.equity);
       setAccountBalance((prev) => (Number.isFinite(bal) ? bal : prev));
-      setAccountEquity((prev) => (Number.isFinite(eq) ? eq : prev));
+      setAccountEquity((prev) => (Number.isFinite(eqNum) ? eqNum : prev));
     };
     tick();
     const id = window.setInterval(tick, 500);

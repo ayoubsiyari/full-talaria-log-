@@ -17971,6 +17971,7 @@ async def get_trading_session_state(session_id: int, request: Request):
                 else {},
                 "pending_orders": state.get("pending_orders") if isinstance(state.get("pending_orders"), list) else [],
                 "open_positions": state.get("open_positions") if isinstance(state.get("open_positions"), list) else [],
+                "closed_positions": state.get("closed_positions") if isinstance(state.get("closed_positions"), list) else [],
                 "account_runtime": state.get("account_runtime") if isinstance(state.get("account_runtime"), dict) else {},
                 "order_counters": state.get("order_counters") if isinstance(state.get("order_counters"), dict) else {},
                 "replay": state.get("replay") if isinstance(state.get("replay"), dict) else {},

@@ -35,6 +35,86 @@ function v9UsdPnLParts(n) {
   return { text, pc: n >= 0 ? "gn" : "rd" };
 }
 
+/** Sum P&L from a journal row or closed position (same fields the trade table uses). */
+export function extractOrderManagerTradePnl(trade, om) {
+  if (!trade || typeof trade !== "object") return 0;
+  const direct = Number.parseFloat(
+    trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? trade.net_pnl ?? trade.profit ?? 0
+  );
+  if (Number.isFinite(direct) && Math.abs(direct) > 0.00001) return direct;
+  const entry = Number.parseFloat(trade.entryPrice ?? trade.openPrice);
+  const exit = Number.parseFloat(trade.exitPrice ?? trade.closePrice);
+  const qty = Number.parseFloat(trade.quantity);
+  if (Number.isFinite(entry) && Number.isFinite(exit) && Number.isFinite(qty) && qty > 0
+      && om && typeof om._enginePnL === "function") {
+    const dir = String(trade.direction ?? trade.type ?? "BUY").toUpperCase();
+    try {
+      const computed = om._enginePnL(
+        dir,
+        entry,
+        exit,
+        qty,
+        exit,
+        trade.ticker || trade.symbol,
+        trade.instrument_settings || null
+      );
+      if (Number.isFinite(computed)) return computed;
+    } catch (_) {}
+  }
+  return Number.isFinite(direct) ? direct : 0;
+}
+
+/** Balance / equity from journal + closedPositions + open unrealized — matches the trades table. */
+export function computeV9AccountSummaryFromOrderManager(om) {
+  if (!om) return null;
+  const base = Number.parseFloat(om.initialBalance);
+  const startingBalance = Number.isFinite(base) ? base : 10000;
+  const journalIds = new Set();
+  let realized = 0;
+  (om.tradeJournal || []).forEach((t) => {
+    const id = t?.tradeId ?? t?.id;
+    if (id != null && id !== "") journalIds.add(String(id));
+    realized += extractOrderManagerTradePnl(t, om);
+  });
+  (om.closedPositions || []).forEach((p) => {
+    if (p?.id != null && journalIds.has(String(p.id))) return;
+    realized += extractOrderManagerTradePnl(p, om);
+  });
+  let unrealized = 0;
+  (om.openPositions || []).forEach((p) => {
+    const u = Number.parseFloat(p?.unrealizedPnL);
+    if (Number.isFinite(u)) unrealized += u;
+  });
+  const balance = startingBalance + realized;
+  const equity = balance + unrealized;
+  return { balance, equity, realizedPnL: realized, unrealizedPnL: unrealized, startingBalance };
+}
+
+/** Push ledger-derived balance onto orderManager (HUD + sizing read om.balance). */
+export function syncOrderManagerBalanceFromLedger(om) {
+  const s = computeV9AccountSummaryFromOrderManager(om);
+  if (!om || !s) return s;
+  om.balance = s.balance;
+  om.equity = s.equity;
+  om.realizedPnL = s.realizedPnL;
+  om.unrealizedPnL = s.unrealizedPnL;
+  if (om.orderService) {
+    om.orderService.balance = s.balance;
+    om.orderService.equity = s.equity;
+    if (Number.isFinite(s.startingBalance)) om.orderService.initialBalance = s.startingBalance;
+  }
+  try {
+    if (om.eventBus && typeof om.eventBus.emit === "function") {
+      om.eventBus.emit("account:updated", {
+        balance: s.balance,
+        equity: s.equity,
+        realizedPnL: s.realizedPnL,
+      });
+    }
+  } catch (_) {}
+  return s;
+}
+
 function resolvePositionOrderType(o) {
   if (!o) return "market";
   const raw = o.orderType ?? o._fillOrderType;
@@ -174,7 +254,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
     seenIds.add(tid);
 
     const sortMs = Number.isFinite(tClose) ? tClose : Number.isFinite(tOpen) ? tOpen : 0;
-    const pnlN = Number.parseFloat(j.netPnL ?? j.realizedPnL ?? j.pnl ?? 0);
+    const pnlN = extractOrderManagerTradePnl(j, om);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
 
     const tpTxt =
@@ -323,7 +403,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
     const tOpen = o.openTime;
     const tClose = o.closeTime;
     const sortMs = Number.isFinite(tClose) ? tClose : tOpen || 0;
-    const pnlN = Number.parseFloat(o.pnl);
+    const pnlN = extractOrderManagerTradePnl(o, om);
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
@@ -359,3 +439,4 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
   rows.sort((a, b) => (b._sortMs || 0) - (a._sortMs || 0));
   return rows;
 }
+
