@@ -790,7 +790,7 @@ class OrderManager {
         s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge,.order-tp-badges').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
-        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
+        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-tp-pct-control"],[class*="pending-tp-pct-dec"],[class*="pending-tp-pct-inc"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-split-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
@@ -15460,7 +15460,6 @@ class OrderManager {
         if (po.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(po, 'pending');
         }
-        this.positionPendingOrderTargets(this.chart);
         if (typeof this._updateMultiTPAvgLines === 'function') {
             this._updateMultiTPAvgLines(this.chart);
         }
@@ -31194,6 +31193,22 @@ class OrderManager {
         ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();
         ch.svg.selectAll('[class*="pending-tp-delete"]').remove();
         ch.svg.selectAll('[class*="pending-tp-split"]').remove();
+        ch.svg.selectAll('[class*="pending-tp-pct-control"]').remove();
+        ch.svg.selectAll('[class*="pending-tp-pct-dec"]').remove();
+        ch.svg.selectAll('[class*="pending-tp-pct-inc"]').remove();
+        // Drop stale overlay refs so +/- / X / split controls are recreated in sync with labels
+        if (this.pendingTargetLines?.length) {
+            this.pendingTargetLines.forEach((entry) => {
+                if (entry.chart !== ch) return;
+                (entry.targets || []).forEach((target) => {
+                    target._pctDecBtn = null;
+                    target._pctIncBtn = null;
+                    target._deleteBtn = null;
+                    target._splitBtn = null;
+                    target._tpPlusBadge = null;
+                });
+            });
+        }
 
         if (!this.pendingTargetLines?.length) return;
 
@@ -31203,6 +31218,7 @@ class OrderManager {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
                 const y = ch.scales.yScale(target.price);
+                if (!Number.isFinite(y)) return;
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
@@ -31915,6 +31931,10 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(`.pending-tp-pct-control.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(`.pending-tp-pct-dec.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(`.pending-tp-pct-inc.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(`.pending-tp-split.pending-tp-${orderId}`).remove();
         });
     }
     
@@ -35103,7 +35123,6 @@ class OrderManager {
             this.drawPendingOrderTargets(po, ch);
             this._drawExecutedOrderConnectors(ch);
             if (ch.scales?.yScale) {
-                this.positionPendingOrderTargets(ch);
                 this.updateOrderLines(ch);
             }
         }
