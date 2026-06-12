@@ -32002,9 +32002,11 @@ class OrderManager {
             const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
             const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
             if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) return;
 
             const pos = this._positionLikeFromJournalTrade(trade);
             if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) return;
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, pos.openTime)) return;
 
             try { this.drawEntryMarker(pos); } catch (_) {}
 
@@ -32054,8 +32056,10 @@ class OrderManager {
             const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
             const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
             if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) return;
             const pos = this._positionLikeFromJournalTrade(trade);
-            if (pos && this._positionVisibleOnAnyLayoutChart(pos)) n += 1;
+            if (pos && this._positionVisibleOnAnyLayoutChart(pos)
+                && this._isMarkerTimeVisibleInReplay(this.chart, pos.openTime)) n += 1;
         });
         return n;
     }
@@ -32094,10 +32098,7 @@ class OrderManager {
             } else {
                 this.redrawPreservedTradeMarkers();
             }
-            const drawnClosed = (this.exitMarkers || []).filter((m) => {
-                const ref = this._orderRefForMarkerOrderId(m.orderId);
-                return ref && this._positionVisibleOnAnyLayoutChart(ref);
-            }).length;
+            const drawnClosed = Number(this._lastJournalClosedMarkersDrawn) || 0;
             const replayReady = this._replayReadyForJournalMarkerSync();
             if (replayReady && (expectedClosed === 0 || drawnClosed >= expectedClosed)) {
                 this._journalMarkerRestorePending = false;
@@ -32220,24 +32221,47 @@ class OrderManager {
     }
     
     /**
-     * Find the candle index that contains a given timestamp (works across timeframe changes).
-     * Falls back to nearest candle if no exact/containing match.
+     * In replay, only show markers once virtual playhead has reached the event time.
+     * Prevents journal markers snapping to the last loaded bar when future candles are not sliced yet.
      */
-    _findCandleIndexForTime(chartData, timestamp) {
+    _isMarkerTimeVisibleInReplay(ch, timeMs) {
+        const chart = ch || this.chart;
+        const rs = (chart && chart.replaySystem) || this._playbackReplaySystem();
+        if (!rs?.isActive) return true;
+        const t = Number(timeMs);
+        if (!Number.isFinite(t)) return false;
+        const playhead = Number(rs.replayTimestamp);
+        if (!Number.isFinite(playhead)) return true;
+        return t <= playhead + 1;
+    }
+
+    /**
+     * Find the candle index that contains a given timestamp (works across timeframe changes).
+     * @param {object[]} chartData
+     * @param {number} timestamp
+     * @param {{ skipNearestFallback?: boolean }} [opts]
+     */
+    _findCandleIndexForTime(chartData, timestamp, opts = {}) {
+        if (!Array.isArray(chartData) || chartData.length === 0) return -1;
+        const ts = Number(timestamp);
+        if (!Number.isFinite(ts)) return -1;
+
         // Exact match first
-        let idx = chartData.findIndex(d => d.t === timestamp);
+        let idx = chartData.findIndex(d => d.t === ts);
         if (idx !== -1) return idx;
 
         // Find the candle whose period contains the timestamp (handles TF changes)
         for (let i = 0; i < chartData.length; i++) {
             const nextT = i < chartData.length - 1 ? chartData[i + 1].t : Infinity;
-            if (timestamp >= chartData[i].t && timestamp < nextT) return i;
+            if (ts >= chartData[i].t && ts < nextT) return i;
         }
 
-        // Nearest candle fallback
+        if (opts.skipNearestFallback) return -1;
+
+        // Nearest candle fallback (non-replay / legacy only)
         let closest = -1, minD = Infinity;
         chartData.forEach((d, i) => {
-            const diff = Math.abs(d.t - timestamp);
+            const diff = Math.abs(d.t - ts);
             if (diff < minD) { minD = diff; closest = i; }
         });
         return closest;
@@ -32254,12 +32278,14 @@ class OrderManager {
         const ct = Number(closeTime);
         if (!Number.isFinite(ct)) return -1;
 
-        // Must use this chart's replay driver (same as _getCurrentCandleForChart). OrderManager's
-        // this.replaySystem can disagree with ch.replaySystem → anim.t match fails, then
-        // _findCandleIndexForTime maps TP exits to the wrong column (marker in empty space).
         const rs = (ch && ch.replaySystem) || this._playbackReplaySystem();
+        const replayActive = !!rs?.isActive;
 
-        if (rs?.isActive) {
+        if (replayActive && !this._isMarkerTimeVisibleInReplay(ch, ct)) {
+            return -1;
+        }
+
+        if (replayActive) {
             const live = this._getCurrentCandleForChart(ch);
             if (live && Number.isFinite(Number(live.t)) && ct === Number(live.t)) {
                 return data.length - 1;
@@ -32272,7 +32298,7 @@ class OrderManager {
             }
         }
 
-        return this._findCandleIndexForTime(data, closeTime);
+        return this._findCandleIndexForTime(data, ct, { skipNearestFallback: replayActive });
     }
 
     /**
@@ -35339,10 +35365,57 @@ class OrderManager {
         });
     }
     
+    /** Remove entry/exit/connector markers whose event time is still in replay future. */
+    _pruneReplayFutureTradeMarkers() {
+        const rs = this._playbackReplaySystem();
+        if (!rs?.isActive) return;
+        const playhead = Number(rs.replayTimestamp);
+        if (!Number.isFinite(playhead)) return;
+
+        const isFuture = (t) => Number.isFinite(Number(t)) && Number(t) > playhead + 1;
+        const removeDom = (m) => {
+            try {
+                if (m?.marker?.remove) m.marker.remove();
+                else if (m?.line?.remove) m.line.remove();
+            } catch (_) {}
+        };
+
+        if (this.entryMarkers?.length) {
+            this.entryMarkers = this.entryMarkers.filter((m) => {
+                if (!isFuture(m.time)) return true;
+                removeDom(m);
+                return false;
+            });
+        }
+        if (this.exitMarkers?.length) {
+            this.exitMarkers = this.exitMarkers.filter((m) => {
+                if (!isFuture(m.time)) return true;
+                removeDom(m);
+                return false;
+            });
+        }
+        if (this.partialCloseMarkers?.length) {
+            this.partialCloseMarkers = this.partialCloseMarkers.filter((m) => {
+                if (!isFuture(m.time)) return true;
+                removeDom(m);
+                return false;
+            });
+        }
+        if (this.tradeConnectors?.length) {
+            this.tradeConnectors = this.tradeConnectors.filter((tc) => {
+                const t = tc.exitTime ?? tc.entryTime;
+                if (!isFuture(t)) return true;
+                removeDom(tc);
+                return false;
+            });
+        }
+    }
+
     /**
      * Update order line positions
      */
     updateOrderLines(sourceChart) {
+        this._pruneReplayFutureTradeMarkers();
         if (sourceChart === undefined && this._isMultiPanelLayout()) {
             this._collectLayoutCharts().forEach((c) => {
                 if (c?.scales?.yScale) this.updateOrderLines(c);

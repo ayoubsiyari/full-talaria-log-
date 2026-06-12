@@ -2790,11 +2790,18 @@ class ReplaySystem {
         const om = this.chart && this.chart.orderManager;
         if (om) {
             const len = this.chart.data?.length || 0;
+            const playhead = Number(this.replayTimestamp);
             if (len > (om._lastJournalMarkerDataLen || 0)) {
                 om._lastJournalMarkerDataLen = len;
                 if (Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0) {
                     om._journalMarkerRestorePending = true;
                 }
+            } else if (Number.isFinite(playhead) && playhead > (om._lastMarkerRedrawPlayhead || 0)
+                && Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0) {
+                om._journalMarkerRestorePending = true;
+            }
+            if (Number.isFinite(playhead)) {
+                om._lastMarkerRedrawPlayhead = playhead;
             }
             if (om._journalMarkerRestorePending && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
                 clearTimeout(om._replayMarkerSyncDebounce);
