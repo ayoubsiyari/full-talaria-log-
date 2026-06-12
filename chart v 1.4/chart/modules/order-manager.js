@@ -507,14 +507,57 @@ class OrderManager {
         });
     }
 
+    /** Remove entry/exit/connector markers for one order on a chart surface (before redraw). */
+    _removeTradeMarkersForOrderOnChart(orderId, chart) {
+        if (orderId == null || !chart) return;
+        const sid = String(orderId);
+        const onChart = (m) => (m?.chart || this.chart) === chart;
+        const idMatch = (id) => id === orderId || String(id) === sid;
+
+        (this.entryMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
+            try { m.marker?.remove(); } catch (_) {}
+        });
+        this.entryMarkers = (this.entryMarkers || []).filter(
+            (m) => !onChart(m) || !idMatch(m.orderId)
+        );
+
+        (this.exitMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
+            try { m.marker?.remove(); } catch (_) {}
+        });
+        this.exitMarkers = (this.exitMarkers || []).filter(
+            (m) => !onChart(m) || !idMatch(m.orderId)
+        );
+
+        (this.partialCloseMarkers || []).filter((m) => onChart(m) && idMatch(m.orderId)).forEach((m) => {
+            try { m.marker?.remove(); } catch (_) {}
+        });
+        this.partialCloseMarkers = (this.partialCloseMarkers || []).filter(
+            (m) => !onChart(m) || !idMatch(m.orderId)
+        );
+
+        (this.tradeConnectors || []).filter((tc) => onChart(tc) && idMatch(tc.orderId)).forEach((tc) => {
+            try { tc.line?.remove(); } catch (_) {}
+        });
+        this.tradeConnectors = (this.tradeConnectors || []).filter(
+            (tc) => !onChart(tc) || !idMatch(tc.orderId)
+        );
+
+        try {
+            chart.svg?.selectAll?.(`.entry-marker-${sid}, .exit-marker-${sid}, .trade-connector-${sid}`)?.remove();
+        } catch (_) {}
+    }
+
     _redrawClosedTradeMarkersForChart(ch) {
         if (!ch) return;
         if (this.showTradeMarkers === false) return;
         if (!ch.scales?.yScale && typeof ch.calculateScales === 'function') {
             try { ch.calculateScales(); } catch (_) {}
         }
-        this._getClosedPositionsForMarkerRedraw().forEach((pos) => {
-            if (!this._positionTickerMatchesChartSymbol(pos, ch)) return;
+        const toDraw = this._getClosedPositionsForMarkerRedraw().filter(
+            (pos) => this._positionTickerMatchesChartSymbol(pos, ch)
+        );
+        toDraw.forEach((pos) => this._removeTradeMarkersForOrderOnChart(pos.id, ch));
+        toDraw.forEach((pos) => {
             try { this.drawEntryMarker(pos, ch); } catch (_) {}
             if (Array.isArray(pos.partialCloses)) {
                 pos.partialCloses.forEach((pc) => {
@@ -543,7 +586,7 @@ class OrderManager {
         });
     }
 
-    /** After pair switch: redraw closed-trade arrows once chart data + scales are ready. */
+    /** After pair switch / refresh: redraw closed-trade arrows once chart data + scales are ready. */
     _scheduleClosedTradeMarkersRedraw(chart) {
         const ch = chart || this.chart;
         if (!ch) return;
@@ -560,6 +603,7 @@ class OrderManager {
         } else {
             setTimeout(run, 32);
         }
+        [120, 500, 1200].forEach((ms) => setTimeout(run, ms));
         if (typeof window !== 'undefined') {
             const onData = () => {
                 window.removeEventListener('chartDataLoaded', onData);
@@ -872,6 +916,9 @@ class OrderManager {
         s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         s.selectAll('.trade-connector').remove();
+        if (this.entryMarkers?.length) {
+            this.entryMarkers = this.entryMarkers.filter((m) => (m.chart || this.chart) !== chart);
+        }
         if (this.tradeConnectors?.length) {
             this.tradeConnectors = this.tradeConnectors.filter((tc) => (tc.chart || this.chart) !== chart);
         }
@@ -965,6 +1012,9 @@ class OrderManager {
             });
             this.entryMarkers = [];
         }
+        this.exitMarkers = [];
+        this.partialCloseMarkers = [];
+        this.tradeConnectors = [];
 
         (this.openPositions || []).forEach((pos) => {
             charts.forEach((ch) => {
@@ -1040,6 +1090,9 @@ class OrderManager {
                 });
                 this.entryMarkers = [];
             }
+            this.exitMarkers = [];
+            this.partialCloseMarkers = [];
+            this.tradeConnectors = [];
 
             (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
@@ -3150,6 +3203,10 @@ class OrderManager {
         this.tpLines = [];
         this.beLines = [];
         this.pendingTargetLines = [];
+        this.entryMarkers = [];
+        this.exitMarkers = [];
+        this.partialCloseMarkers = [];
+        this.tradeConnectors = [];
         (this._collectLayoutCharts() || []).forEach((c) => this._stripOrderDrawingLayersFromChart(c));
 
         this.openPositions.forEach((position) => {
@@ -3181,6 +3238,13 @@ class OrderManager {
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+
+        const charts = this._isMultiPanelLayout()
+            ? (this._collectLayoutCharts() || [])
+            : [this.chart].filter(Boolean);
+        charts.forEach((c) => {
+            try { this._scheduleClosedTradeMarkersRedraw(c); } catch (_) {}
+        });
     }
 
     groupJournalByTicker() {
@@ -3481,6 +3545,14 @@ class OrderManager {
         ).replace('/', '').toUpperCase();
         if (!entry.ticker) entry.ticker = symbol;
         if (!entry.symbol) entry.symbol = symbol;
+
+        const posFile = position.sourceFileId ?? position.source_file_id;
+        if (posFile != null && String(posFile) !== '' && entry.sourceFileId == null) {
+            entry.sourceFileId = String(posFile);
+        }
+        if (position.entryMarkerTimeMs != null && entry.entryMarkerTimeMs == null) {
+            entry.entryMarkerTimeMs = position.entryMarkerTimeMs;
+        }
 
         if (entry.entryTime == null) entry.entryTime = openTime;
         if (entry.exitTime == null) entry.exitTime = closeTime;
@@ -32960,7 +33032,11 @@ class OrderManager {
                 ? { openTime: order.openTime, openPrice: order.openPrice, entryMarkerTimeMs: order.entryMarkerTimeMs }
                 : { openTime: time, openPrice: price };
             const dataIndex = this._chartIndexForEntryMarkerOnChart(c, entryRef);
-            if (dataIndex === -1) return;
+            if (dataIndex === -1 || !marker) {
+                try { marker?.style?.('display', 'none'); } catch (_) {}
+                return;
+            }
+            try { marker.style('display', null); } catch (_) {}
 
             const candleSpacing = c.getCandleSpacing();
             const x = c.dataIndexToPixel(dataIndex);
@@ -33012,7 +33088,11 @@ class OrderManager {
                 if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
-                if (dataIndex === -1) return;
+                if (dataIndex === -1 || !marker) {
+                    try { marker?.style?.('display', 'none'); } catch (_) {}
+                    return;
+                }
+                try { marker.style('display', null); } catch (_) {}
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
@@ -33057,7 +33137,11 @@ class OrderManager {
                 if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
-                if (dataIndex === -1) return;
+                if (dataIndex === -1 || !marker) {
+                    try { marker?.style?.('display', 'none'); } catch (_) {}
+                    return;
+                }
+                try { marker.style('display', null); } catch (_) {}
 
                 const candle = ch.data[dataIndex];
                 const candleSpacing = ch.getCandleSpacing();
@@ -33108,7 +33192,11 @@ class OrderManager {
                 };
                 const eIdx = this._chartIndexForEntryMarkerOnChart(ch, entryRef);
                 const xIdx = this._chartIndexForCloseMarkerOnChart(ch, tc.exitTime);
-                if (eIdx === -1 || xIdx === -1) return;
+                if (eIdx === -1 || xIdx === -1 || !tc.line) {
+                    try { tc.line?.style?.('display', 'none'); } catch (_) {}
+                    return;
+                }
+                try { tc.line.style('display', null); } catch (_) {}
                 tc.line
                     .attr('x1', ch.dataIndexToPixel(eIdx))
                     .attr('y1', mainY(tc.entryPrice))

@@ -6123,6 +6123,12 @@ class Chart {
                 render: true,
                 endPairSwitch: pairLoadUiActive,
                 pairSwitchLoadSeq: pairSwitchLoadSeq,
+                onDone: () => {
+                    const om = this.orderManager;
+                    if (om && typeof om._scheduleClosedTradeMarkersRedraw === 'function') {
+                        try { om._scheduleClosedTradeMarkersRedraw(this); } catch (_) {}
+                    }
+                },
             });
             if (pairLoadUiActive) pairSwitchEndDeferred = true;
 
