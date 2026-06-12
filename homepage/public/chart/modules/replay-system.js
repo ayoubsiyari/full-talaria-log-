@@ -2788,27 +2788,33 @@ class ReplaySystem {
         }
 
         const om = this.chart && this.chart.orderManager;
-        if (om) {
+        if (om && Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0) {
             const len = this.chart.data?.length || 0;
-            const playhead = Number(this.replayTimestamp);
             if (len > (om._lastJournalMarkerDataLen || 0)) {
                 om._lastJournalMarkerDataLen = len;
-                if (Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0) {
-                    om._journalMarkerRestorePending = true;
-                }
-            } else if (Number.isFinite(playhead) && playhead > (om._lastMarkerRedrawPlayhead || 0)
-                && Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0) {
-                om._journalMarkerRestorePending = true;
             }
-            if (Number.isFinite(playhead)) {
-                om._lastMarkerRedrawPlayhead = playhead;
+            if (Number.isFinite(Number(this.replayTimestamp))) {
+                om._lastMarkerRedrawPlayhead = Number(this.replayTimestamp);
             }
-            if (om._journalMarkerRestorePending && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
-                clearTimeout(om._replayMarkerSyncDebounce);
-                om._replayMarkerSyncDebounce = setTimeout(() => {
-                    try { om._syncJournalMarkersAfterSessionRestore(); } catch (_) {}
-                }, 40);
-            }
+            om._journalMarkerRestorePending = true;
+            clearTimeout(om._replayMarkerSyncDebounce);
+            om._replayMarkerSyncDebounce = setTimeout(() => {
+                try {
+                    if (typeof om._redrawJournalMarkersForReplayPlayhead === 'function') {
+                        om._redrawJournalMarkersForReplayPlayhead();
+                    }
+                    if (om._journalMarkerRestorePending
+                        && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
+                        om._syncJournalMarkersAfterSessionRestore();
+                    }
+                } catch (_) {}
+            }, 40);
+        } else if (om && om._journalMarkerRestorePending
+            && typeof om._syncJournalMarkersAfterSessionRestore === 'function') {
+            clearTimeout(om._replayMarkerSyncDebounce);
+            om._replayMarkerSyncDebounce = setTimeout(() => {
+                try { om._syncJournalMarkersAfterSessionRestore(); } catch (_) {}
+            }, 40);
         }
 
     }

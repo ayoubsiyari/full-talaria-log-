@@ -2282,6 +2282,7 @@
         var priceAtCursor = null;
         var priceText = null;
         var symbolName = null;
+        var currentPrice = null;
         try {
             var ch = global.chart;
             if (ch && ch.yScale) {
@@ -2291,6 +2292,9 @@
                     ? ch.getPriceDecimals(priceRange)
                     : 2;
                 priceText = priceAtCursor.toFixed(decimals);
+            }
+            if (ch && typeof ch.resolveEffectiveCurrentPrice === 'function') {
+                currentPrice = ch.resolveEffectiveCurrentPrice(ch.data);
             }
             if (ch && typeof ch.getContextMenuSymbolName === 'function') {
                 symbolName = ch.getContextMenuSymbolName();
@@ -2311,6 +2315,7 @@
                 priceAtCursor: priceAtCursor,
                 priceText: priceText,
                 symbolName: symbolName,
+                currentPrice: currentPrice,
             }, '*');
         } catch (_) {}
     }

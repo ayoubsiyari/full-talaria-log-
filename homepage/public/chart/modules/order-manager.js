@@ -3389,6 +3389,18 @@ class OrderManager {
      * @param {object} position - open position or representative leg (e.g. first scaled/split entry)
      * @param {{ closeTime: number, closePrice?: number }} ctx
      */
+    _resolvePositionOrderType(position) {
+        if (!position) return 'market';
+        const raw = position.orderType ?? position._fillOrderType;
+        if (raw != null && String(raw).trim()) {
+            const t = String(raw).toLowerCase();
+            if (t === 'limit' || t === 'stop' || t === 'market') return t;
+        }
+        if (position.wasLimitOrder) return 'limit';
+        if (position.wasStopOrder) return 'stop';
+        return 'market';
+    }
+
     _enrichJournalEntryForPersistence(entry, position, ctx = {}) {
         if (!entry || !position) return entry;
         const closeTime = ctx.closeTime != null ? ctx.closeTime : (entry.closeTime ?? entry.exitTime);
@@ -3413,6 +3425,10 @@ class OrderManager {
 
         if (entry.entryTime == null) entry.entryTime = openTime;
         if (entry.exitTime == null) entry.exitTime = closeTime;
+        if (entry.entryMarkerTimeMs == null && position.entryMarkerTimeMs != null) {
+            entry.entryMarkerTimeMs = position.entryMarkerTimeMs;
+        }
+        if (entry.openTime == null) entry.openTime = openTime;
         if (!entry.entryDate) entry.entryDate = entryDate.toISOString();
         if (!entry.exitDate) entry.exitDate = exitDate.toISOString();
         if (entry.holdingTimeMs == null) entry.holdingTimeMs = holdingTimeMs;
@@ -3521,6 +3537,10 @@ class OrderManager {
 
         if (closePrice != null && entry.exitPrice == null) entry.exitPrice = closePrice;
         if (closePrice != null && entry.closePrice == null) entry.closePrice = closePrice;
+
+        if (!entry.orderType) {
+            entry.orderType = this._resolvePositionOrderType(position);
+        }
 
         return entry;
     }
@@ -7330,6 +7350,7 @@ class OrderManager {
             ticker: symbol,
             sourceFileId: order.sourceFileId ?? order.source_file_id ?? null,
             direction: order.type, // BUY or SELL
+            orderType: this._resolvePositionOrderType(order),
             setup: setupStr,
             strategy_variables: order.strategyVariables || null,
             post_strategy_variables: postTradeNotes?.postStrategyVariables || null,
@@ -7409,6 +7430,7 @@ class OrderManager {
             closePrice: closeData.closePrice,
             openTime: order.openTime,
             closeTime: closeData.closeTime,
+            entryMarkerTimeMs: order.entryMarkerTimeMs ?? null,
             riskAmount: order.riskAmount,
             pnl: closeData.pnl
         };
@@ -22454,6 +22476,7 @@ class OrderManager {
                         sourceFileId: this._chartSourceFileId(),
                         instrument_settings: activeInstrumentSettings,
                         type: this.orderSide,
+                        orderType: 'market',
                         openPrice: fillPx,
                         openTime: marketFillTimeMs,
                         entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
@@ -22867,6 +22890,7 @@ class OrderManager {
             sourceFileId: this._chartSourceFileId(),
             instrument_settings: activeInstrumentSettings,
             type: this.orderSide,
+            orderType: 'market',
             openPrice: entryPrice,
             openTime: marketFillTimeMs,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
@@ -23326,6 +23350,7 @@ class OrderManager {
                 sourceFileId: this._chartSourceFileId(),
                 instrument_settings: activeInstrumentSettings,
                 type: this.orderSide,
+                orderType: 'market',
                 openPrice: entryPrice,
                 openTime: marketFillTimeMsTool,
                 entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
@@ -24163,6 +24188,7 @@ class OrderManager {
                 tradeId: position.id,
                 type: position.type,
                 direction: position.type,
+                orderType: this._resolvePositionOrderType(position),
                 symbol: position.ticker || position.symbol || this._getActiveTicker() || 'UNKNOWN',
                 ticker: position.ticker || position.symbol || this._getActiveTicker() || 'UNKNOWN',
                 sourceFileId: position.sourceFileId ?? position.source_file_id ?? null,
@@ -24852,6 +24878,7 @@ class OrderManager {
             sourceFileId: pendingOrder.sourceFileId || this._chartSourceFileId(),
             instrument_settings: pendingOrder.instrument_settings || this._getActiveInstrumentSettings(),
             type: pendingOrder.direction,
+            orderType: pendingOrder.orderType || (pendingOrder.wasStopOrder ? 'stop' : 'limit'),
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
             openTime: currentCandle.t,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
@@ -31971,6 +31998,7 @@ class OrderManager {
             openPrice: Number.parseFloat(openPrice),
             closeTime: closeTime != null ? Number(closeTime) : undefined,
             closePrice: closePrice != null ? Number.parseFloat(closePrice) : undefined,
+            entryMarkerTimeMs: trade.entryMarkerTimeMs ?? trade.entry_marker_time_ms ?? undefined,
             quantity: Number.parseFloat(trade.quantity) || 0,
             ticker,
             symbol: trade.symbol || ticker,
@@ -32006,7 +32034,6 @@ class OrderManager {
 
             const pos = this._positionLikeFromJournalTrade(trade);
             if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) return;
-            if (!this._isMarkerTimeVisibleInReplay(this.chart, pos.openTime)) return;
 
             try { this.drawEntryMarker(pos); } catch (_) {}
 
@@ -32045,34 +32072,33 @@ class OrderManager {
         const rs = this._playbackReplaySystem();
         if (!rs?.isActive) return true;
         if (this.chart?._pendingReplayState) return false;
-        if (this._expectsReplayPlayheadRestore && !rs._persistedPlayheadApplied) return false;
         return true;
     }
 
-    _countClosedJournalTradesForActiveChart() {
-        let n = 0;
-        (this.tradeJournal || []).forEach((trade) => {
-            const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
-            const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
-            const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
-            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
-            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) return;
-            const pos = this._positionLikeFromJournalTrade(trade);
-            if (pos && this._positionVisibleOnAnyLayoutChart(pos)
-                && this._isMarkerTimeVisibleInReplay(this.chart, pos.openTime)) n += 1;
-        });
-        return n;
-    }
+    /**
+     * Redraw journal/open markers for trades whose candles are in the loaded replay slice.
+     * Called on every replay frame advance — markers are NOT stored separately; they are
+     * rebuilt from persisted journal rows (entryTime/exitTime/entryMarkerTimeMs).
+     */
+    _redrawJournalMarkersForReplayPlayhead() {
+        if (!this._ensureChartReadyForOrderMarkers()) return;
+        this._pruneReplayFutureTradeMarkers();
 
-    /** Build scales before marker draw (refresh / pair switch may run before first render). */
-    _ensureChartReadyForOrderMarkers(chart) {
-        const ch = chart || this.chart;
-        if (!ch || !Array.isArray(ch.data) || ch.data.length === 0) return false;
-        if (typeof ch.calculateScales === 'function'
-            && (!ch.scales || typeof ch.scales.yScale !== 'function')) {
-            try { ch.calculateScales(); } catch (_) {}
+        const closedRedrawn = this._redrawClosedJournalTradeMarkers();
+
+        (this.openPositions || []).forEach((pos) => {
+            if (!this._isPositionForActiveChart(pos)) return;
+            const entryT = pos.entryMarkerTimeMs ?? pos.openTime;
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, entryT)) return;
+            try { this.drawEntryMarker(pos); } catch (_) {}
+        });
+
+        if (typeof this.updateOrderLines === 'function') {
+            try { this.updateOrderLines(); } catch (_) {}
         }
-        return !!(ch.svg && ch.scales && typeof ch.scales.yScale === 'function');
+        if (closedRedrawn > 0 || (this.openPositions || []).length > 0) {
+            this._renderAllLayoutCharts();
+        }
     }
 
     /**
@@ -32092,27 +32118,53 @@ class OrderManager {
             return false;
         }
         try {
-            const expectedClosed = this._countClosedJournalTradesForActiveChart();
             if (typeof this.syncOrderVisualsToActiveChart === 'function') {
                 this.syncOrderVisualsToActiveChart();
             } else {
                 this.redrawPreservedTradeMarkers();
             }
+            this._redrawJournalMarkersForReplayPlayhead();
+            const expectedClosed = this._countClosedJournalTradesForActiveChart();
             const drawnClosed = Number(this._lastJournalClosedMarkersDrawn) || 0;
-            const replayReady = this._replayReadyForJournalMarkerSync();
-            if (replayReady && (expectedClosed === 0 || drawnClosed >= expectedClosed)) {
-                this._journalMarkerRestorePending = false;
-                this._expectsReplayPlayheadRestore = false;
-            }
             console.log('🎨 Session marker restore: journal', (this.tradeJournal || []).length,
                 'expectedClosed', expectedClosed, 'drawnClosed', drawnClosed,
                 'open', (this.openPositions || []).length,
-                'dataBars', this.chart?.data?.length || 0);
+                'dataBars', this.chart?.data?.length || 0,
+                'replayIdx', this._playbackReplaySystem()?.currentIndex);
+            if (expectedClosed === 0 || drawnClosed >= expectedClosed) {
+                this._journalMarkerRestorePending = false;
+            }
+            this._expectsReplayPlayheadRestore = false;
             return true;
         } catch (e) {
             console.warn('Session marker restore failed:', e);
             return false;
         }
+    }
+
+    _countClosedJournalTradesForActiveChart() {
+        let n = 0;
+        (this.tradeJournal || []).forEach((trade) => {
+            const closeTimeRaw = trade.closeTime != null ? trade.closeTime : trade.exitTime;
+            const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+            const closeTime = this._normalizeMarkerTimestamp(closeTimeRaw);
+            if (closeTime == null || !Number.isFinite(Number.parseFloat(closePrice))) return;
+            if (!this._isMarkerTimeVisibleInReplay(this.chart, closeTime)) return;
+            const pos = this._positionLikeFromJournalTrade(trade);
+            if (pos && this._positionVisibleOnAnyLayoutChart(pos)) n += 1;
+        });
+        return n;
+    }
+
+    /** Build scales before marker draw (refresh / pair switch may run before first render). */
+    _ensureChartReadyForOrderMarkers(chart) {
+        const ch = chart || this.chart;
+        if (!ch || !Array.isArray(ch.data) || ch.data.length === 0) return false;
+        if (typeof ch.calculateScales === 'function'
+            && (!ch.scales || typeof ch.scales.yScale !== 'function')) {
+            try { ch.calculateScales(); } catch (_) {}
+        }
+        return !!(ch.svg && ch.scales && typeof ch.scales.yScale === 'function');
     }
 
     /**
@@ -32135,8 +32187,7 @@ class OrderManager {
         clearTimeout(this._closedJournalRedrawTimer);
         this._closedJournalRedrawTimer = setTimeout(() => {
             try {
-                if (!this._ensureChartReadyForOrderMarkers()) return;
-                this._redrawClosedJournalTradeMarkers();
+                this._redrawJournalMarkersForReplayPlayhead();
             } catch (_) {}
         }, 80);
     }
@@ -32221,18 +32272,44 @@ class OrderManager {
     }
     
     /**
-     * In replay, only show markers once virtual playhead has reached the event time.
-     * Prevents journal markers snapping to the last loaded bar when future candles are not sliced yet.
+     * In replay, show markers only when their timestamp falls inside the loaded OHLC slice
+     * (0..currentIndex). Future bars are not loaded yet — do not snap markers onto the last bar.
      */
+    _estimateRawBarPeriodMs(fullRawData, index) {
+        if (!Array.isArray(fullRawData) || fullRawData.length < 2) return 60000;
+        const i = Math.max(0, Math.min(index, fullRawData.length - 2));
+        const a = Number(fullRawData[i]?.t);
+        const b = Number(fullRawData[i + 1]?.t);
+        if (Number.isFinite(a) && Number.isFinite(b) && b > a) return b - a;
+        return 60000;
+    }
+
     _isMarkerTimeVisibleInReplay(ch, timeMs) {
         const chart = ch || this.chart;
         const rs = (chart && chart.replaySystem) || this._playbackReplaySystem();
-        if (!rs?.isActive) return true;
+        if (!rs?.isActive || !Array.isArray(rs.fullRawData) || rs.fullRawData.length === 0) {
+            return true;
+        }
         const t = Number(timeMs);
         if (!Number.isFinite(t)) return false;
-        const playhead = Number(rs.replayTimestamp);
-        if (!Number.isFinite(playhead)) return true;
-        return t <= playhead + 1;
+
+        const floor = rs.sessionStartIndex || 0;
+        const endIdx = Math.min(Math.max(rs.currentIndex, floor), rs.fullRawData.length - 1);
+        const firstBar = rs.fullRawData[floor];
+        const lastBar = rs.fullRawData[endIdx];
+        if (!firstBar || !lastBar) return false;
+
+        const firstT = Number(firstBar.t);
+        const lastT = Number(lastBar.t);
+        if (!Number.isFinite(firstT) || !Number.isFinite(lastT)) return false;
+
+        const nextAfterLast = rs.fullRawData[endIdx + 1];
+        const sliceEndExclusive = nextAfterLast && Number.isFinite(Number(nextAfterLast.t))
+            ? Number(nextAfterLast.t)
+            : lastT + this._estimateRawBarPeriodMs(rs.fullRawData, endIdx);
+
+        if (t < firstT) return false;
+        return t < sliceEndExclusive;
     }
 
     /**
@@ -35365,14 +35442,12 @@ class OrderManager {
         });
     }
     
-    /** Remove entry/exit/connector markers whose event time is still in replay future. */
+    /** Remove entry/exit/connector markers whose event time is outside the loaded replay slice. */
     _pruneReplayFutureTradeMarkers() {
         const rs = this._playbackReplaySystem();
         if (!rs?.isActive) return;
-        const playhead = Number(rs.replayTimestamp);
-        if (!Number.isFinite(playhead)) return;
 
-        const isFuture = (t) => Number.isFinite(Number(t)) && Number(t) > playhead + 1;
+        const isHidden = (t, ch) => !this._isMarkerTimeVisibleInReplay(ch || this.chart, t);
         const removeDom = (m) => {
             try {
                 if (m?.marker?.remove) m.marker.remove();
@@ -35382,29 +35457,33 @@ class OrderManager {
 
         if (this.entryMarkers?.length) {
             this.entryMarkers = this.entryMarkers.filter((m) => {
-                if (!isFuture(m.time)) return true;
+                const ch = m.chart || this.chart;
+                if (!isHidden(m.time, ch)) return true;
                 removeDom(m);
                 return false;
             });
         }
         if (this.exitMarkers?.length) {
             this.exitMarkers = this.exitMarkers.filter((m) => {
-                if (!isFuture(m.time)) return true;
+                const ch = m.chart || this.chart;
+                if (!isHidden(m.time, ch)) return true;
                 removeDom(m);
                 return false;
             });
         }
         if (this.partialCloseMarkers?.length) {
             this.partialCloseMarkers = this.partialCloseMarkers.filter((m) => {
-                if (!isFuture(m.time)) return true;
+                const ch = m.chart || this.chart;
+                if (!isHidden(m.time, ch)) return true;
                 removeDom(m);
                 return false;
             });
         }
         if (this.tradeConnectors?.length) {
             this.tradeConnectors = this.tradeConnectors.filter((tc) => {
+                const ch = tc.chart || this.chart;
                 const t = tc.exitTime ?? tc.entryTime;
-                if (!isFuture(t)) return true;
+                if (!isHidden(t, ch)) return true;
                 removeDom(tc);
                 return false;
             });
@@ -36478,7 +36557,7 @@ class OrderManager {
                     symbol: normalizeTickerSymbol(pos),
                     direction: pos.type,
                     quantity: pos.quantity,
-                    orderType: 'MARKET',
+                    orderType: pos.orderType ? String(pos.orderType).toUpperCase() : this._resolvePositionOrderType(pos).toUpperCase(),
                     entryPrice: pos.openPrice,
                     currentPrice: currentPrice,
                     pnl: pos.unrealizedPnL || 0,
@@ -36499,7 +36578,9 @@ class OrderManager {
                         symbol: normalizeTickerSymbol(trade),
                         direction: trade.direction || trade.type,
                         quantity: trade.quantity,
-                        orderType: 'MARKET',
+                        orderType: trade.orderType
+                            ? String(trade.orderType).toUpperCase()
+                            : (trade.wasLimitOrder ? 'LIMIT' : trade.wasStopOrder ? 'STOP' : 'MARKET'),
                         entryPrice: trade.entryPrice || trade.openPrice,
                         currentPrice: trade.exitPrice || trade.closePrice,
                         pnl: getTradePnl(trade),
@@ -38786,6 +38867,7 @@ class OrderManager {
             tradeId: scaledInfo.groupId,
             type: scaledInfo.side,
             direction: scaledInfo.side,
+            orderType: this._resolvePositionOrderType(firstEntry),
             symbol: firstEntry.symbol || 'USD',
             quantity: totalQty,
             openPrice: avgEntry,

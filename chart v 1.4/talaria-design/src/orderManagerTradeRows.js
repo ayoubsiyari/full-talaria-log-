@@ -35,6 +35,18 @@ function v9UsdPnLParts(n) {
   return { text, pc: n >= 0 ? "gn" : "rd" };
 }
 
+function resolvePositionOrderType(o) {
+  if (!o) return "market";
+  const raw = o.orderType ?? o._fillOrderType;
+  if (raw != null && String(raw).trim()) {
+    const t = String(raw).toLowerCase();
+    if (t === "limit" || t === "stop" || t === "market") return t;
+  }
+  if (o.wasLimitOrder) return "limit";
+  if (o.wasStopOrder) return "stop";
+  return "market";
+}
+
 function findJournalEntry(om, tradeId) {
   const id = Number(tradeId);
   if (!Number.isFinite(id) || !Array.isArray(om?.tradeJournal)) return null;
@@ -171,7 +183,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
         : "—";
     const slTxt =
       j.stopLoss != null && Number.isFinite(Number.parseFloat(j.stopLoss)) ? fmtPx(j.stopLoss) : "—";
-    const ot = j.orderType ? typeLabel(j.orderType) : "Market";
+    const ot = typeLabel(resolvePositionOrderType(j));
 
     rows.push({
       id: `#${tid}`,
@@ -282,7 +294,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
     const { text: pnlText, pc } = v9UsdPnLParts(uPnL);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
-    const ot = o.orderType ? typeLabel(o.orderType) : "Market";
+    const ot = typeLabel(resolvePositionOrderType(o));
     const row = {
       id: `#${o.id}`,
       omId: o.id,
@@ -315,7 +327,7 @@ export function buildLiveTradeRowsFromOrderManager(om, theme) {
     const { text: pnlText, pc } = v9UsdPnLParts(pnlN);
     const tpTxt = o.takeProfit != null && Number.isFinite(Number.parseFloat(o.takeProfit)) ? fmtPx(o.takeProfit) : "—";
     const slTxt = o.stopLoss != null && Number.isFinite(Number.parseFloat(o.stopLoss)) ? fmtPx(o.stopLoss) : "—";
-    const ot = o.orderType ? typeLabel(o.orderType) : "Market";
+    const ot = typeLabel(resolvePositionOrderType(o));
     const row = {
       id: `#${o.id}`,
       omId: o.id,
