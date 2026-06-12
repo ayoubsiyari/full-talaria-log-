@@ -8652,6 +8652,55 @@ function v9StepOrderPrice(currentStr, dir, om) {
   return Number.isFinite(next) ? next.toFixed(prec) : "0";
 }
 
+function v9GetCurrentMarketPrice(om) {
+  try {
+    const candle = om?.getCurrentCandle?.();
+    const px = candle?.c ?? candle?.close;
+    const n = Number(px);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+/** Match order-manager.js `_autoDetectOrderTypeFromEntry` (market / limit / stop). */
+function v9InferOrderTypeFromEntry(entryPrice, currentPrice, orderSide, pipSize) {
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) return "market";
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return "market";
+  const pip = Number.isFinite(pipSize) && pipSize > 0 ? pipSize : 0.0001;
+  const atMarket =
+    Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+  if (atMarket) return "market";
+  const side = String(orderSide || "buy").toLowerCase();
+  if (side === "buy") return entryPrice > currentPrice ? "stop" : "limit";
+  return entryPrice < currentPrice ? "stop" : "limit";
+}
+
+/** Write entry into hidden OM input and flip Market/Limit/Stop tab when price leaves market. */
+function v9PushEntryPriceAndDetectOrderType(priceStr, orderSide, om) {
+  const s = String(priceStr ?? "");
+  const entryPx = parseFloat(s);
+  if (!Number.isFinite(entryPx) || entryPx <= 0) return "market";
+  const el = typeof document !== "undefined" ? document.getElementById("orderEntryPrice") : null;
+  if (el) {
+    if (el.value !== s) {
+      el.value = s;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    } else if (typeof om?._autoDetectOrderTypeFromEntry === "function") {
+      om._autoDetectOrderTypeFromEntry();
+    }
+  } else if (typeof om?._autoDetectOrderTypeFromEntry === "function") {
+    om._autoDetectOrderTypeFromEntry();
+  }
+  const activeOt =
+    typeof document !== "undefined"
+      ? document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type
+      : null;
+  if (activeOt && ["market", "limit", "stop"].includes(activeOt)) return activeOt;
+  return v9InferOrderTypeFromEntry(entryPx, v9GetCurrentMarketPrice(om), orderSide, om?.pipSize);
+}
+
 const EMOJI_CATS = [
   { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
   { id:"people",   icon:"👶", label:"People",   emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","🫀","🧠","🦷","🦴","👶","🧒","👦","👧","🧑","👱","👩","🧔","👴","👵","👲","👳","🧕","💂","👮","👷","🤴","👸","🧙","🧚","🧛","🧟","🧞","🧜","🧝"] },
@@ -13750,7 +13799,8 @@ const TalariaV8bLive = () => {
           try {
             om.setEntryMode(false);
           } catch (_) {}
-          if (orderType === "market") {
+          const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
+          if (orderType === "market" && !bridgeLead) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -13760,7 +13810,8 @@ const TalariaV8bLive = () => {
             const entryPx = parseFloat(entryRows[0]?.price ?? "0");
             if (entryPx > 0) {
               setIn("orderEntryPrice", String(entryPx));
-            } else {
+              if (bridgeLead) om?._autoDetectOrderTypeFromEntry?.();
+            } else if (!bridgeLead) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
           }
@@ -13768,8 +13819,9 @@ const TalariaV8bLive = () => {
           // Preview lines require #orderEntryPrice > 0 (order-manager.js updatePreviewLines). The V8b
           // mock defaults entry to "0"; writing that wipes the live price updateOrderPanelPrice() set.
           // Market orders must always use live close — React entryRows can hold a stale price after
-          // symbol / timeframe / chart-type changes.
-          if (orderType === "market") {
+          // symbol / timeframe / chart-type changes (but not while user is stepping/editing entry).
+          const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
+          if (orderType === "market" && !bridgeLead) {
             await fillLiveEntryFromFocusedMultichartTile();
             v9ApplyLiveEntryPriceToRows(
               setEntryRows,
@@ -13779,7 +13831,8 @@ const TalariaV8bLive = () => {
             const entryPx = parseFloat(entryRows[0]?.price ?? "0");
             if (entryPx > 0) {
               setIn("orderEntryPrice", String(entryPx));
-            } else {
+              if (bridgeLead) om?._autoDetectOrderTypeFromEntry?.();
+            } else if (!bridgeLead) {
               await fillLiveEntryFromFocusedMultichartTile();
             }
           }
@@ -14088,7 +14141,7 @@ const TalariaV8bLive = () => {
               const activeOt =
                 document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type ||
                 om.orderType;
-              if (activeOt === "market" && !om.isDraggingPreviewLine) {
+              if (activeOt === "market" && !om.isDraggingPreviewLine && !isOmBridgeLead(omPanelBridgeRef.current.control)) {
                 try {
                   om.updateOrderPanelPrice?.();
                 } catch (_) {}
@@ -33236,15 +33289,23 @@ const TalariaV8bLive = () => {
             const stepRow = (id, field, dir, step = 1) => {
               markOrderControlBridge();
               const omStep = window.chart?.orderManager;
+              if (field === "price") {
+                const row = entryRows.find((r) => r.id === id);
+                if (!row) return;
+                const newPrice = v9StepOrderPrice(row.price, dir, omStep);
+                const ot = v9PushEntryPriceAndDetectOrderType(newPrice, buySell, omStep);
+                setOrderType((prev) => (prev === ot ? prev : ot));
+                setEntryRows((rows) =>
+                  rows.map((r) => (r.id === id ? { ...r, price: newPrice } : r))
+                );
+                return;
+              }
               setEntryRows((rows) => {
                 const next = rows.map((r) => {
                   if (r.id !== id) return r;
                   if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
                     const base = Math.round(parseFloat(r[field] || "0") || 0);
                     return { ...r, [field]: String(Math.max(0, base + dir)) };
-                  }
-                  if (field === "price") {
-                    return { ...r, [field]: v9StepOrderPrice(r[field], dir, omStep) };
                   }
                   return {
                     ...r,
@@ -33497,7 +33558,13 @@ const TalariaV8bLive = () => {
                           <div style={{ display:"flex", alignItems:"center", background:c.well, border:"1px solid rgba(140,160,255,0.22)", height:20, padding:"0 3px 0 4px", gap:2, flexShrink:0, boxSizing:"border-box", boxShadow:"inset 0 1px 2px rgba(0,0,0,0.2)" }}>
                             <input type="text" value={row.price}
                               onChange={e => { if(/^\d*\.?\d*$/.test(e.target.value)) updRow(row.id,"price",e.target.value); }}
-                              onBlur={e => { updRow(row.id,"price", v9NormalizePriceInputOnBlur(e.target.value)); }}
+                              onBlur={e => {
+                                const norm = v9NormalizePriceInputOnBlur(e.target.value);
+                                updRow(row.id, "price", norm);
+                                const omBlur = window.chart?.orderManager;
+                                const ot = v9PushEntryPriceAndDetectOrderType(norm, buySell, omBlur);
+                                setOrderType((prev) => (prev === ot ? prev : ot));
+                              }}
                               style={{ width:46, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             <div style={{ display:"flex", flexDirection:"column", gap:0, flexShrink:0 }}>
                               {arw(()=>stepRow(row.id,"price", 1), true,  `ep-${row.id}-up`)}
