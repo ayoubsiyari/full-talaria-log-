@@ -12380,6 +12380,31 @@ const TalariaV8bLive = () => {
     });
   }, [orderPanelOpen, sizeMode, riskVal, currentSymbol.type]);
 
+  /** $-mode: SIZE (`riskVal`) is USD risk — sync single ENTRY row amount. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "$") return;
+    const want = String(Math.max(0, parseFloat(riskVal || "0")));
+    if (!(parseFloat(want) > 0)) return;
+    setEntryRows((rows) => {
+      if (rows.length !== 1) return rows;
+      const r0 = rows[0];
+      if (String(r0.risk ?? "") === want) return rows;
+      return [{ ...r0, risk: want }];
+    });
+  }, [orderPanelOpen, sizeMode, riskVal]);
+
+  /** %-mode: SIZE (`riskVal`) is risk % — sync single ENTRY row split. */
+  useEffect(() => {
+    if (!orderPanelOpen || sizeMode !== "%") return;
+    const want = String(Math.max(0, Math.min(100, parseFloat(riskVal || "0"))));
+    setEntryRows((rows) => {
+      if (rows.length !== 1) return rows;
+      const r0 = rows[0];
+      if (String(r0.risk ?? "") === want) return rows;
+      return [{ ...r0, risk: want }];
+    });
+  }, [orderPanelOpen, sizeMode, riskVal]);
+
   /** $-mode: TP row $ amounts must sum to order basis (SIZE / entry total), not a stale partial. */
   useEffect(() => {
     if (!orderPanelOpen || sizeMode !== "$") return;
@@ -13842,6 +13867,7 @@ const TalariaV8bLive = () => {
             const now = Date.now();
             if (now - omHeaderRecalcRef.current > 50) {
               omHeaderRecalcRef.current = now;
+              om.calculatePositionFromRisk?.();
               om.calculateAdvancedRiskReward?.();
             }
           }
@@ -13902,6 +13928,17 @@ const TalariaV8bLive = () => {
         const rwd0 = document.getElementById("rewardAmount")?.textContent?.trim() || "$0";
         setOmRiskSummaryTxt((prev) => (prev === rsk0 ? prev : rsk0));
         setOmRewardSummaryTxt((prev) => (prev === rwd0 ? prev : rwd0));
+        const oqNumHdr = parseFloat(document.getElementById("orderQuantity")?.value ?? "");
+        const qtyStrHdr = Number.isFinite(oqNumHdr) ? String(oqNumHdr) : "0";
+        setOmOrderQtyTxt((prev) => (prev === qtyStrHdr ? prev : qtyStrHdr));
+        const entryInfosHdr = Array.from(
+          document.querySelectorAll("#multiEntryRows .multi-entry-row-info")
+        ).map((el) => el.textContent?.replace(/\s+/g, " ").trim() || "");
+        setOmEntryRowStatLines((prev) =>
+          prev.length === entryInfosHdr.length && prev.every((v, i) => v === entryInfosHdr[i])
+            ? prev
+            : entryInfosHdr
+        );
       };
       syncOmHeaderAndMargin();
 
@@ -33030,23 +33067,43 @@ const TalariaV8bLive = () => {
                     [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
                   };
                 });
-                if (field === "risk" && sizeMode === "#") {
-                  const total = next.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
-                  if (next.length === 1) {
-                    const r0 = next.find((x) => x.id === id) || next[0];
-                    const single = parseFloat(r0.risk) || 0;
-                    setRiskVal(
-                      currentSymbol.type === "futures"
-                        ? String(Math.max(0, Math.round(single)))
-                        : String(Math.max(0, single))
-                    );
-                  } else if (total > 0) {
-                    setRiskVal(
-                      currentSymbol.type === "futures"
-                        ? String(Math.floor(total))
-                        : String(total)
-                    );
-                  }
+                if (field === "risk") {
+                  const syncEntryRiskToSize = (rowsAfter) => {
+                    const total = rowsAfter.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                    if (sizeMode === "#") {
+                      if (rowsAfter.length === 1) {
+                        const r0 = rowsAfter.find((x) => x.id === id) || rowsAfter[0];
+                        const single = parseFloat(r0.risk) || 0;
+                        setRiskVal(
+                          currentSymbol.type === "futures"
+                            ? String(Math.max(0, Math.round(single)))
+                            : String(Math.max(0, single))
+                        );
+                      } else if (total > 0) {
+                        setRiskVal(
+                          currentSymbol.type === "futures"
+                            ? String(Math.floor(total))
+                            : String(total)
+                        );
+                      }
+                    } else if (sizeMode === "$") {
+                      if (rowsAfter.length === 1) {
+                        const r0 = rowsAfter.find((x) => x.id === id) || rowsAfter[0];
+                        setRiskVal(String(Math.max(0, parseFloat(r0.risk) || 0)));
+                      } else if (total > 0) {
+                        setRiskVal(String(total));
+                      }
+                    } else if (sizeMode === "%") {
+                      if (rowsAfter.length === 1) {
+                        const r0 = rowsAfter.find((x) => x.id === id) || rowsAfter[0];
+                        const pct = Math.max(0, Math.min(100, parseFloat(r0.risk) || 0));
+                        setRiskVal(String(pct));
+                      } else if (total > 0) {
+                        setRiskVal(String(Math.min(100, total)));
+                      }
+                    }
+                  };
+                  syncEntryRiskToSize(next);
                 }
                 return next;
               });
@@ -33281,6 +33338,8 @@ const TalariaV8bLive = () => {
                                 let v;
                                 if (sizeMode === "#" && currentSymbol.type === "futures") {
                                   v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                } else if (sizeMode === "%") {
+                                  v = String(Math.max(0, Math.min(100, isNaN(n) ? 0 : n)));
                                 } else {
                                   v = isNaN(n) ? "0" : String(n);
                                 }
@@ -33300,6 +33359,30 @@ const TalariaV8bLive = () => {
                                         : String(total)
                                     );
                                   }
+                                } else if (sizeMode === "$") {
+                                  if (entryRows.length === 1) {
+                                    setRiskVal(v);
+                                  } else {
+                                    const old = parseFloat(row.risk) || 0;
+                                    const neu = parseFloat(v) || 0;
+                                    const total =
+                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                      old +
+                                      neu;
+                                    setRiskVal(String(total));
+                                  }
+                                } else if (sizeMode === "%") {
+                                  if (entryRows.length === 1) {
+                                    setRiskVal(v);
+                                  } else {
+                                    const old = parseFloat(row.risk) || 0;
+                                    const neu = parseFloat(v) || 0;
+                                    const total =
+                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                      old +
+                                      neu;
+                                    setRiskVal(String(Math.min(100, total)));
+                                  }
                                 }
                                 updRow(row.id, "risk", v);
                               }}
@@ -33312,7 +33395,7 @@ const TalariaV8bLive = () => {
                           </div>
                           {/* Pct · lots inline — prefer OM-rendered line from hidden #multiEntryRows when present */}
                           <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", whiteSpace:"nowrap", flexShrink:0 }}>
-                            {omEntryRowStatLines[i]
+                            {entryRows.length > 1 && omEntryRowStatLines[i]
                               ? omEntryRowStatLines[i]
                               : sizeMode==="$"
                                 ? futuresMinRiskHint
