@@ -21190,6 +21190,166 @@ class Chart {
     }
 
     /**
+     * Tick size for an arbitrary symbol (compare overlay left axes).
+     * Mirrors getTickSize() but does not depend on this.currentSymbol.
+     */
+    getTickSizeForSymbol(symbol, options = {}) {
+        const symKey = String(symbol || '').trim();
+        if (symKey && typeof window !== 'undefined' && window.marketCalcEngine) {
+            const tryKeys = [
+                symKey,
+                symKey.replace(/\//g, ''),
+                symKey.replace(/-/g, ''),
+                symKey.replace(/\s+/g, '')
+            ];
+            const seen = new Set();
+            for (const c of tryKeys) {
+                if (!c || seen.has(c)) continue;
+                seen.add(c);
+                try {
+                    const calc = window.marketCalcEngine.getCalculator(c);
+                    const specs = calc && calc.specs;
+                    if (specs) {
+                        if (Number.isFinite(specs.tickSize) && specs.tickSize > 0) return specs.tickSize;
+                        if (specs.type === 'forex') {
+                            const pip = Number.isFinite(specs.pipSize) && specs.pipSize > 0 ? specs.pipSize : null;
+                            const sub = (Number.isFinite(specs.precision) && specs.precision >= 0)
+                                ? Math.pow(10, -specs.precision)
+                                : null;
+                            if (pip && sub) return Math.min(pip, sub);
+                            if (pip) return pip;
+                            if (sub) return sub;
+                        }
+                        if (Number.isFinite(specs.pipSize) && specs.pipSize > 0) return specs.pipSize;
+                        if (Number.isFinite(specs.precision) && specs.precision >= 0) {
+                            return Math.pow(10, -specs.precision);
+                        }
+                    }
+                } catch (_) { /* try next */ }
+            }
+        }
+        const altData = options && options.data;
+        if (altData && altData.length && typeof this._inferPrecisionFromSeriesBars === 'function') {
+            const inferred = this._inferPrecisionFromSeriesBars(altData);
+            if (Number.isFinite(inferred) && inferred >= 0) return Math.pow(10, -inferred);
+        }
+        const range = Number(options.priceRange);
+        const dec = typeof this.getPriceDecimalsForSymbol === 'function'
+            ? this.getPriceDecimalsForSymbol(symKey, range, options)
+            : this._decimalsFromPriceRangeHeuristic(Math.abs(range || 0));
+        return Math.pow(10, -Math.max(0, dec));
+    }
+
+    /**
+     * Pip/tick-aligned Y ticks for an arbitrary price domain (compare overlay axes).
+     */
+    _getYPriceTicksForDomain(lo, hi, numYTicks, symbol, options = {}) {
+        const loN = Math.min(lo, hi);
+        const hiN = Math.max(lo, hi);
+        const span = hiN - loN;
+        const want = Math.max(6, Math.min(18, Number(numYTicks) > 0 ? Math.floor(numYTicks) : 10));
+        const maxTicks = want + 5;
+        const minTicks = Math.max(4, want - 5);
+
+        if (!(span > 0) || !Number.isFinite(span)) {
+            return [loN, hiN];
+        }
+
+        const tickSize = this.getTickSizeForSymbol(symbol, { ...options, priceRange: span });
+        if (!Number.isFinite(tickSize) || tickSize <= 0 || tickSize > span * 0.999) {
+            const n = Math.max(2, want);
+            const step = span / (n - 1);
+            const ticks = [];
+            for (let i = 0; i < n; i++) ticks.push(loN + step * i);
+            return ticks;
+        }
+
+        const multCandidates = [];
+        for (let exp = -12; exp <= 18; exp++) {
+            const b = Math.pow(10, exp);
+            multCandidates.push(1 * b, 2 * b, 5 * b);
+        }
+        multCandidates.sort((a, b) => a - b);
+
+        let chosenIdx = -1;
+        for (let i = 0; i < multCandidates.length; i++) {
+            const step = multCandidates[i] * tickSize;
+            const n = this._buildAlignedPriceTicks(loN, hiN, step).length;
+            if (n <= maxTicks) {
+                chosenIdx = i;
+                break;
+            }
+        }
+        if (chosenIdx < 0) {
+            const n = Math.max(2, want);
+            const step = span / (n - 1);
+            const ticks = [];
+            for (let i = 0; i < n; i++) ticks.push(loN + step * i);
+            return ticks;
+        }
+
+        while (chosenIdx > 0) {
+            const stepFiner = multCandidates[chosenIdx - 1] * tickSize;
+            const ticksFiner = this._buildAlignedPriceTicks(loN, hiN, stepFiner);
+            if (ticksFiner.length > maxTicks) break;
+            chosenIdx--;
+            if (ticksFiner.length >= minTicks) break;
+        }
+
+        const step = multCandidates[chosenIdx] * tickSize;
+        const ticks = this._buildAlignedPriceTicks(loN, hiN, step);
+        if (ticks.length < 2) {
+            const n = Math.max(2, want);
+            const linearStep = span / (n - 1);
+            const out = [];
+            for (let i = 0; i < n; i++) out.push(loN + linearStep * i);
+            return out;
+        }
+        return ticks;
+    }
+
+    /**
+     * Width needed for a price axis strip (same rules as _syncAdaptivePriceAxisMargin).
+     */
+    _measurePriceAxisStripWidth(lo, hi, numYTicks, symbol, options = {}) {
+        if (!this.ctx) return 48;
+        const loN = Math.min(lo, hi);
+        const hiN = Math.max(lo, hi);
+        const span = hiN - loN;
+        const priceHeight = options.priceHeight;
+        const ch = Number.isFinite(priceHeight) && priceHeight > 0
+            ? priceHeight
+            : (this.h - this.margin.t - this.margin.b);
+        const tickCount = Math.max(8, Math.min(15, Math.floor(ch / 60)));
+        const wantTicks = Number(numYTicks) > 0 ? numYTicks : tickCount;
+        const decimals = typeof this.getPriceDecimalsForSymbol === 'function'
+            ? this.getPriceDecimalsForSymbol(symbol, span, options)
+            : this.getPriceDecimals(span);
+        const yTicks = this._getYPriceTicksForDomain(loN, hiN, wantTicks, symbol, options);
+        const fs = this.chartSettings.scaleTextSize || 12;
+        let maxW = 0;
+        const measure = (weightPrefix) => {
+            this.ctx.font = weightPrefix ? `${weightPrefix} ${fs}px Roboto` : `${fs}px Roboto`;
+            return (num) => {
+                const t = Number(num).toFixed(decimals);
+                const w = this.ctx.measureText(t).width;
+                if (w > maxW) maxW = w;
+            };
+        };
+        const mTick = measure(false);
+        yTicks.forEach(mTick);
+        mTick(loN);
+        mTick(hiN);
+        const mLive = measure('500');
+        mLive(loN);
+        mLive(hiN);
+        const padding = 16;
+        const minW = 48;
+        const maxWCap = 340;
+        return Math.max(minW, Math.min(maxWCap, Math.ceil(maxW + padding)));
+    }
+
+    /**
      * Draw axis highlight zones for selected drawings (canvas-based, behind labels)
      */
     drawAxisHighlightZones() {
