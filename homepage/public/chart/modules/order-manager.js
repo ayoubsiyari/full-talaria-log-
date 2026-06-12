@@ -133,8 +133,6 @@ class OrderManager {
         this.entryMarkers = [];
         this.exitMarkers = [];
         this.tradeConnectors = [];
-        /** Per-file closed-trade marker records loaded from localStorage (same idea as chart drawings). */
-        this._persistedTradeMarkersForFile = [];
         this.editingPendingOrderId = null;
         this._draggingPendingOrderIds = new Set();
         /** True while dragging a pending order's TP/SL/BE target line — avoids align pass + full reposition fighting the drag handler. */
@@ -377,326 +375,6 @@ class OrderManager {
 
     _positionTicker(position) {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
-    }
-
-    _resolveOrderById(orderId) {
-        if (orderId == null) return null;
-        const sid = String(orderId);
-        const findIn = (list) => (list || []).find(
-            (p) => p && (p.id === orderId || String(p.id) === sid)
-        );
-        const os = this.orderService;
-        const fromMemory = findIn(this.openPositions)
-            || findIn(this.closedPositions)
-            || (os ? findIn(os.openPositions) : null)
-            || (os ? findIn(os.closedPositions) : null);
-        if (fromMemory) return fromMemory;
-        const fromJournal = (this.tradeJournal || []).find(
-            (t) => t && (t.tradeId === orderId || t.id === orderId
-                || String(t.tradeId) === sid || String(t.id) === sid)
-        );
-        if (fromJournal) {
-            return this._journalEntryToMarkerPosition(fromJournal) || fromJournal;
-        }
-        return null;
-    }
-
-    /** Rebuild a closed position shape from a persisted journal row (for chart markers after refresh). */
-    _journalEntryToMarkerPosition(trade) {
-        if (!trade || typeof trade !== 'object') return null;
-        const id = trade.tradeId != null ? trade.tradeId : trade.id;
-        if (id == null) return null;
-        const openTime = trade.openTime ?? trade.entryTime;
-        const closeTime = trade.closeTime ?? trade.exitTime;
-        const openPrice = trade.openPrice ?? trade.entryPrice;
-        const closePrice = trade.closePrice ?? trade.exitPrice;
-        const status = String(trade.status || '').toLowerCase();
-        const isClosed = status === 'closed' || (closeTime != null && closePrice != null);
-        if (!isClosed || openTime == null || openPrice == null) return null;
-
-        const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
-        let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
-        if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
-            const fid = this.resolveFileIdForTicker(ticker);
-            if (fid) sourceFileId = fid;
-        }
-
-        return {
-            id,
-            tradeId: id,
-            type: trade.type || trade.direction || 'BUY',
-            ticker: ticker || undefined,
-            symbol: trade.symbol || ticker || undefined,
-            sourceFileId: sourceFileId || undefined,
-            openTime: Number(openTime),
-            openPrice: Number(openPrice),
-            closeTime: closeTime != null ? Number(closeTime) : undefined,
-            closePrice: closePrice != null ? Number(closePrice) : undefined,
-            pnl: trade.pnl ?? trade.netPnL ?? trade.realizedPnL ?? 0,
-            closeType: trade.closeType || 'MANUAL',
-            partialCloses: Array.isArray(trade.partialCloses) ? trade.partialCloses : undefined,
-            entryMarkerTimeMs: trade.entryMarkerTimeMs,
-        };
-    }
-
-    _getClosedPositionsForMarkerRedraw() {
-        const out = [];
-        const seen = new Set();
-        const add = (p) => {
-            if (!p || p.id == null) return;
-            const key = String(p.id);
-            if (seen.has(key)) return;
-            seen.add(key);
-            out.push(p);
-        };
-        (this.closedPositions || []).forEach(add);
-        (this.orderService?.closedPositions || []).forEach(add);
-        (this.tradeJournal || []).forEach((trade) => {
-            const pos = this._journalEntryToMarkerPosition(trade);
-            if (pos) add(pos);
-        });
-        (this._persistedTradeMarkersForFile || []).forEach((rec) => {
-            const pos = this._serializeTradeMarkerRecord(rec) || rec;
-            if (pos) add(pos);
-        });
-        return out;
-    }
-
-    /** localStorage key for trade markers — mirrors chart.getDrawingsStorageKey / DrawingToolsManager. */
-    getTradeMarkersStorageKey(fileIdOverride = null) {
-        if (this.chart && typeof this.chart.getTradeMarkersStorageKey === 'function') {
-            return this.chart.getTradeMarkersStorageKey(fileIdOverride);
-        }
-        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
-            ? String(fileIdOverride)
-            : (this.chart?.currentFileId || 'default');
-        const sessionId = this.chart?.getActiveTradingSessionId?.();
-        return sessionId ? `chart_trade_markers_s${sessionId}_${fileId}` : `chart_trade_markers_${fileId}`;
-    }
-
-    _serializeTradeMarkerRecord(source) {
-        if (!source || source.id == null) return null;
-        const ticker = String(source.ticker || source.symbol || '').replace('/', '').toUpperCase();
-        const openTime = source.openTime ?? source.entryTime;
-        const closeTime = source.closeTime ?? source.exitTime;
-        const openPrice = source.openPrice ?? source.entryPrice;
-        const closePrice = source.closePrice ?? source.exitPrice;
-        if (openTime == null || openPrice == null) return null;
-        return {
-            id: source.id,
-            tradeId: source.tradeId != null ? source.tradeId : source.id,
-            type: source.type || source.direction || 'BUY',
-            ticker: ticker || undefined,
-            symbol: source.symbol || ticker || undefined,
-            sourceFileId: source.sourceFileId ?? source.source_file_id ?? undefined,
-            openTime: Number(openTime),
-            openPrice: Number(openPrice),
-            closeTime: closeTime != null ? Number(closeTime) : undefined,
-            closePrice: closePrice != null ? Number(closePrice) : undefined,
-            pnl: source.pnl ?? source.netPnL ?? source.realizedPnL ?? 0,
-            closeType: source.closeType || 'MANUAL',
-            quantity: source.quantity,
-            partialCloses: Array.isArray(source.partialCloses) ? source.partialCloses : undefined,
-            entryMarkerTimeMs: source.entryMarkerTimeMs,
-        };
-    }
-
-    _tradeMarkerRecordMatchesFile(rec, fileId) {
-        if (!rec || fileId == null || String(fileId) === '') return true;
-        const fid = String(fileId);
-        const sf = rec.sourceFileId ?? rec.source_file_id;
-        if (sf != null && String(sf) !== '' && String(sf) === fid) return true;
-        const tk = this._normalizeTicker(rec.ticker || rec.symbol);
-        if (tk && typeof this.resolveFileIdForTicker === 'function') {
-            const resolved = this.resolveFileIdForTicker(tk);
-            if (resolved && String(resolved) === fid) return true;
-        }
-        return sf == null || String(sf) === '';
-    }
-
-    _collectTradeMarkerRecordsForFile(fileId) {
-        const out = [];
-        const seen = new Set();
-        const add = (rec) => {
-            if (!rec || rec.id == null) return;
-            const key = String(rec.id);
-            if (seen.has(key)) return;
-            seen.add(key);
-            out.push(rec);
-        };
-        (this.closedPositions || []).forEach((p) => {
-            const rec = this._serializeTradeMarkerRecord(p);
-            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
-        });
-        (this.orderService?.closedPositions || []).forEach((p) => {
-            const rec = this._serializeTradeMarkerRecord(p);
-            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
-        });
-        (this.tradeJournal || []).forEach((t) => {
-            const rec = this._serializeTradeMarkerRecord(this._journalEntryToMarkerPosition(t) || t);
-            if (rec && this._tradeMarkerRecordMatchesFile(rec, fileId)) add(rec);
-        });
-        return out;
-    }
-
-    /** Persist closed-trade markers for a dataset id (call before pair switch, like saveDrawings). */
-    saveTradeMarkersForFile(fileIdOverride = null) {
-        if (typeof localStorage === 'undefined') return;
-        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
-            ? String(fileIdOverride)
-            : (this.chart?.currentFileId || 'default');
-        const key = this.getTradeMarkersStorageKey(fileId);
-        const data = this._collectTradeMarkerRecordsForFile(fileId);
-        try {
-            localStorage.setItem(key, JSON.stringify(data));
-        } catch (e) {
-            console.warn('⚠️ Failed to save trade markers for file', fileId, e);
-        }
-    }
-
-    /** Load persisted markers for the active dataset (call after OHLC ingest, like loadDrawings). */
-    loadTradeMarkersForFile(fileIdOverride = null) {
-        if (typeof localStorage === 'undefined') {
-            this._persistedTradeMarkersForFile = [];
-            return [];
-        }
-        const fileId = fileIdOverride != null && String(fileIdOverride) !== ''
-            ? String(fileIdOverride)
-            : (this.chart?.currentFileId || 'default');
-        const key = this.getTradeMarkersStorageKey(fileId);
-        try {
-            const raw = localStorage.getItem(key);
-            if (!raw) {
-                this._persistedTradeMarkersForFile = [];
-                return [];
-            }
-            const parsed = JSON.parse(raw);
-            this._persistedTradeMarkersForFile = Array.isArray(parsed) ? parsed : [];
-            return this._persistedTradeMarkersForFile;
-        } catch (e) {
-            this._persistedTradeMarkersForFile = [];
-            return [];
-        }
-    }
-
-    _persistTradeMarkerOnClose(position) {
-        try {
-            const fid = position?.sourceFileId ?? position?.source_file_id ?? this._chartSourceFileId();
-            this.saveTradeMarkersForFile(fid);
-        } catch (_) {}
-    }
-
-    /** Drop entry/exit/connector markers on `chart` that belong to another instrument. */
-    _purgeTradeMarkersNotMatchingChart(chart) {
-        const ch = chart || this.chart;
-        if (!ch) return;
-        const onChart = (m) => (m?.chart || this.chart) === ch;
-        const matches = (order) => !!order && this._positionTickerMatchesChartSymbol(order, ch);
-
-        (this.entryMarkers || []).forEach((m) => {
-            if (!onChart(m)) return;
-            if (!matches(m.order)) {
-                try { m.marker?.remove(); } catch (_) {}
-            }
-        });
-        this.entryMarkers = (this.entryMarkers || []).filter(
-            (m) => !onChart(m) || matches(m.order)
-        );
-
-        (this.exitMarkers || []).forEach((m) => {
-            if (!onChart(m)) return;
-            if (!matches(this._resolveOrderById(m.orderId))) {
-                try { m.marker?.remove(); } catch (_) {}
-            }
-        });
-        this.exitMarkers = (this.exitMarkers || []).filter((m) => {
-            if (!onChart(m)) return true;
-            return matches(this._resolveOrderById(m.orderId));
-        });
-
-        (this.partialCloseMarkers || []).forEach((m) => {
-            if (!onChart(m)) return;
-            if (!matches(this._resolveOrderById(m.orderId))) {
-                try { m.marker?.remove(); } catch (_) {}
-            }
-        });
-        this.partialCloseMarkers = (this.partialCloseMarkers || []).filter((m) => {
-            if (!onChart(m)) return true;
-            return matches(this._resolveOrderById(m.orderId));
-        });
-
-        (this.tradeConnectors || []).forEach((tc) => {
-            if (!onChart(tc)) return;
-            if (!matches(this._resolveOrderById(tc.orderId))) {
-                try { tc.line?.remove(); } catch (_) {}
-            }
-        });
-        this.tradeConnectors = (this.tradeConnectors || []).filter((tc) => {
-            if (!onChart(tc)) return true;
-            return matches(this._resolveOrderById(tc.orderId));
-        });
-    }
-
-    _redrawClosedTradeMarkersForChart(ch) {
-        if (!ch) return;
-        if (this.showTradeMarkers === false) return;
-        if (!ch.scales?.yScale && typeof ch.calculateScales === 'function') {
-            try { ch.calculateScales(); } catch (_) {}
-        }
-        this._getClosedPositionsForMarkerRedraw().forEach((pos) => {
-            if (!this._positionTickerMatchesChartSymbol(pos, ch)) return;
-            try { this.drawEntryMarker(pos, ch); } catch (_) {}
-            if (Array.isArray(pos.partialCloses)) {
-                pos.partialCloses.forEach((pc) => {
-                    try {
-                        this.drawPartialCloseMarker(pos, {
-                            closePrice: pc.closePrice,
-                            closeTime: pc.closeTime,
-                            pnl: pc.pnl || 0,
-                            percentage: pc.percentage || 1,
-                            type: pc.type || 'TP',
-                            targetId: pc.targetId,
-                        }, ch);
-                    } catch (_) {}
-                });
-            }
-            if (pos.closePrice && pos.closeTime) {
-                try {
-                    this.drawExitMarker(pos, {
-                        closePrice: pos.closePrice,
-                        closeTime: pos.closeTime,
-                        pnl: pos.pnl || 0,
-                        type: pos.closeType || 'MANUAL',
-                    }, ch);
-                } catch (_) {}
-            }
-        });
-    }
-
-    /** Redraw closed-trade markers once chart data + scales are ready (session restore / delayed load). */
-    _scheduleClosedTradeMarkersRedraw(chart) {
-        const ch = chart || this.chart;
-        if (!ch) return;
-        const run = () => {
-            try {
-                this._redrawClosedTradeMarkersForChart(ch);
-                if (typeof this.updateOrderLines === 'function') {
-                    this.updateOrderLines(ch);
-                }
-            } catch (_) {}
-        };
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => requestAnimationFrame(run));
-        } else {
-            setTimeout(run, 32);
-        }
-        if (typeof window !== 'undefined') {
-            const onData = () => {
-                window.removeEventListener('chartDataLoaded', onData);
-                run();
-            };
-            window.addEventListener('chartDataLoaded', onData, { once: true });
-        }
     }
 
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
@@ -953,8 +631,8 @@ class OrderManager {
         const chartFile = chart.currentFileId != null && String(chart.currentFileId) !== ''
             ? String(chart.currentFileId)
             : '';
-        if (posFile && chartFile && posFile === chartFile) {
-            return true;
+        if (posFile && chartFile) {
+            return posFile === chartFile;
         }
         const pt = this._positionTicker(position);
         if (pt) {
@@ -1002,9 +680,6 @@ class OrderManager {
         s.selectAll('.mfe-mae-marker-root').remove();
         s.selectAll('.exit-marker, [class*="exit-marker-"], .partial-close-marker, [class*="partial-close-marker-"]').remove();
         s.selectAll('.trade-connector').remove();
-        if (this.entryMarkers?.length) {
-            this.entryMarkers = this.entryMarkers.filter((m) => (m.chart || this.chart) !== chart);
-        }
         if (this.tradeConnectors?.length) {
             this.tradeConnectors = this.tradeConnectors.filter((tc) => (tc.chart || this.chart) !== chart);
         }
@@ -1126,10 +801,6 @@ class OrderManager {
             });
         });
 
-        charts.forEach((ch) => {
-            try { this._redrawClosedTradeMarkersForChart(ch); } catch (_) {}
-        });
-
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         try {
             this._redrawMfeMaeMarkersFromState();
@@ -1189,9 +860,6 @@ class OrderManager {
                     this.drawPendingOrderTargets(po);
                 } catch (e) { /* ignore */ }
             });
-            try {
-                this._redrawClosedTradeMarkersForChart(this.chart);
-            } catch (_) {}
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
                 this._redrawMfeMaeMarkersFromState();
@@ -3283,10 +2951,6 @@ class OrderManager {
         this.tpLines = [];
         this.beLines = [];
         this.pendingTargetLines = [];
-        this.entryMarkers = [];
-        this.exitMarkers = [];
-        this.partialCloseMarkers = [];
-        this.tradeConnectors = [];
         (this._collectLayoutCharts() || []).forEach((c) => this._stripOrderDrawingLayersFromChart(c));
 
         this.openPositions.forEach((position) => {
@@ -3318,15 +2982,6 @@ class OrderManager {
 
         if (typeof this.updateOrderLines === 'function') this.updateOrderLines();
         if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
-
-        try { this.loadTradeMarkersForFile(); } catch (_) {}
-
-        const charts = this._isMultiPanelLayout()
-            ? (this._collectLayoutCharts() || [])
-            : [this.chart].filter(Boolean);
-        charts.forEach((c) => {
-            try { this._scheduleClosedTradeMarkersRedraw(c); } catch (_) {}
-        });
     }
 
     groupJournalByTicker() {
@@ -3627,14 +3282,6 @@ class OrderManager {
         ).replace('/', '').toUpperCase();
         if (!entry.ticker) entry.ticker = symbol;
         if (!entry.symbol) entry.symbol = symbol;
-
-        const posFile = position.sourceFileId ?? position.source_file_id;
-        if (posFile != null && String(posFile) !== '' && entry.sourceFileId == null) {
-            entry.sourceFileId = String(posFile);
-        }
-        if (position.entryMarkerTimeMs != null && entry.entryMarkerTimeMs == null) {
-            entry.entryMarkerTimeMs = position.entryMarkerTimeMs;
-        }
 
         if (entry.entryTime == null) entry.entryTime = openTime;
         if (entry.exitTime == null) entry.exitTime = closeTime;
@@ -24129,7 +23776,7 @@ class OrderManager {
         const pos = (this.openPositions || []).find((p) => p && p.id === id)
             || (this.orderService?.openPositions || []).find((p) => p && p.id === id);
         if (pos) {
-            try { this.removeEntryMarker(id, true); } catch (_e0) { /* ignore */ }
+            try { this.removeEntryMarker(id); } catch (_e0) { /* ignore */ }
             try { this.removeOrderLine(id); } catch (_e1) { /* ignore */ }
             try { this.removeSLTPLines(id); } catch (_e2) { /* ignore */ }
             try { this.removeMultiTPAvgLine(id); } catch (_e3) { /* ignore */ }
@@ -24277,7 +23924,6 @@ class OrderManager {
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
         this.closedPositions.push(position);
-        try { this._persistTradeMarkerOnClose(position); } catch (_) {}
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
         if (this.orderService && typeof this.orderService.emit === 'function') {
@@ -24308,7 +23954,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId, true);
+                this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 this._ensurePendingTargetsSurvive();
@@ -26061,7 +25707,7 @@ class OrderManager {
                     this.removeOrderLine(id);
                     this.removeSLTPLines(id);
                     this.removeMultiTPAvgLine(id);
-                    this.removeEntryMarker(id, true);
+                    this.removeEntryMarker(id);
                 } catch (e) {
                     console.error(`❌ Error removing lines for #${id}:`, e);
                 }
@@ -26527,7 +26173,6 @@ class OrderManager {
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
-            try { this._persistTradeMarkerOnClose(position); } catch (_) {}
 
             if (this.orderService && typeof this.orderService.emit === 'function') {
                 try {
@@ -26650,7 +26295,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId, true);
+                this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
@@ -27105,7 +26750,7 @@ class OrderManager {
                 this.removeOrderLine(orderId);
                 this.removeSLTPLines(orderId);
                 this.removeMultiTPAvgLine(orderId);
-                this.removeEntryMarker(orderId, true);
+                this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
@@ -32021,7 +31666,7 @@ class OrderManager {
         posToStrip.forEach(pos => {
             try { this.removeOrderLine(pos.id); } catch (_) {}
             try { this.removeSLTPLines(pos.id); } catch (_) {}
-            try { this.removeEntryMarker(pos.id, true); } catch (_) {}
+            try { this.removeEntryMarker(pos.id); } catch (_) {}
         });
 
         // 3. Update data arrays ----------------------------------------------
@@ -32204,14 +31849,6 @@ class OrderManager {
             try { this.drawPendingOrderLine(po); } catch (_) {}
             try { this.drawPendingOrderTargets(po); } catch (_) {}
         });
-
-        // Redraw closed-trade markers from journal + in-memory closed positions (survives refresh).
-        try {
-            const charts = this._isMultiPanelLayout()
-                ? (this._collectLayoutCharts() || [])
-                : [this.chart].filter(Boolean);
-            charts.forEach((ch) => this._redrawClosedTradeMarkersForChart(ch));
-        } catch (_) {}
 
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         try {
@@ -33103,7 +32740,6 @@ class OrderManager {
     
     _updateEntryMarkersForChart(ch) {
         if (!this.entryMarkers?.length || !ch?.scales?.yScale) return;
-        this._purgeTradeMarkersNotMatchingChart(ch);
         this.entryMarkers.forEach((markerData) => {
             const { marker, time, price, type } = markerData;
             const c = markerData.chart || this.chart;
@@ -33111,7 +32747,6 @@ class OrderManager {
             if (!c?.scales?.yScale) return;
 
             const order = markerData.order;
-            if (order && !this._positionTickerMatchesChartSymbol(order, c)) return;
             const entryRef = order
                 ? { openTime: order.openTime, openPrice: order.openPrice, entryMarkerTimeMs: order.entryMarkerTimeMs }
                 : { openTime: time, openPrice: price };
@@ -33152,20 +32787,11 @@ class OrderManager {
         });
     }
 
-    _updateExitAndPartialMarkersOnMain(sourceChart) {
-        if (sourceChart) {
-            this._purgeTradeMarkersNotMatchingChart(sourceChart);
-        } else if (this._isMultiPanelLayout()) {
-            this._collectLayoutCharts().forEach((c) => this._purgeTradeMarkersNotMatchingChart(c));
-        } else {
-            this._purgeTradeMarkersNotMatchingChart(this.chart);
-        }
+    _updateExitAndPartialMarkersOnMain() {
         if (this.exitMarkers && this.exitMarkers.length > 0) {
-            this.exitMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch, orderId }) => {
+            this.exitMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
-                const ord = this._resolveOrderById(orderId);
-                if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -33206,11 +32832,9 @@ class OrderManager {
         }
 
         if (this.partialCloseMarkers && this.partialCloseMarkers.length > 0) {
-            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch, orderId }) => {
+            this.partialCloseMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
-                const ord = this._resolveOrderById(orderId);
-                if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const partialY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -33254,8 +32878,6 @@ class OrderManager {
             this.tradeConnectors.forEach((tc) => {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
-                const ord = this._resolveOrderById(tc.orderId);
-                if (ord && !this._positionTickerMatchesChartSymbol(ord, ch)) return;
                 const mainY = ch.scales.yScale;
                 const entryRef = {
                     openTime: tc.entryTime,
@@ -35370,7 +34992,7 @@ class OrderManager {
         this._updateEntryMarkersForChart(ch);
 
         // Exit/partial markers and connectors store their host chart; update all whenever any surface renders.
-        this._updateExitAndPartialMarkersOnMain(ch);
+        this._updateExitAndPartialMarkersOnMain();
 
         ch.svg.selectAll('.y-axis-pending-highlight').remove();
         ch.svg.selectAll('.y-axis-entry-highlight').remove();
@@ -35892,33 +35514,35 @@ class OrderManager {
         }
     }
 
-    removeEntryMarker(orderId, opts) {
-        const fullRemove = opts === true || !!(opts && opts.full);
-        if (!this.entryMarkers?.length) return;
-        const sid = String(orderId);
-        this.entryMarkers.forEach((markerData) => {
-            if (markerData.orderId !== orderId && String(markerData.orderId) !== sid) return;
-            if (!markerData.marker) return;
+    removeEntryMarker(orderId) {
+        if (!this.entryMarkers || this.entryMarkers.length === 0) {
+            return;
+        }
 
-            if (fullRemove) {
-                try { markerData.marker.remove(); } catch (_) {}
+        this.entryMarkers.forEach(markerData => {
+            if (markerData.orderId !== orderId || !markerData.marker) {
                 return;
             }
 
             const marker = markerData.marker;
+
             const priceBox = marker.select('[data-role="entry-price-box"]');
-            if (!priceBox.empty()) priceBox.remove();
+            if (!priceBox.empty()) {
+                priceBox.remove();
+            }
+
             const priceText = marker.select('[data-role="entry-price-text"]');
-            if (!priceText.empty()) priceText.remove();
+            if (!priceText.empty()) {
+                priceText.remove();
+            }
+
             const priceLine = marker.select('[data-role="entry-price-line"]');
-            if (!priceLine.empty()) priceLine.remove();
+            if (!priceLine.empty()) {
+                priceLine.remove();
+            }
+
             markerData.hasPriceElements = false;
         });
-        if (fullRemove) {
-            this.entryMarkers = this.entryMarkers.filter(
-                (m) => m.orderId !== orderId && String(m.orderId) !== sid
-            );
-        }
     }
 
     /** Closed-trade row: how many entry legs (multi-entry / scaled / journal aggregate). */

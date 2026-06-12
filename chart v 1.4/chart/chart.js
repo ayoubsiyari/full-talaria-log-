@@ -5980,10 +5980,6 @@ class Chart {
             // ticker-based checks briefly see the OLD pair name on the NEW dataset (wrong trade markers).
             this.currentSymbol = targetTicker || (session.fileName ? session.fileName.replace(/\.(csv|CSV)$/, '').toUpperCase() : this.currentSymbol);
 
-            if (this.orderManager && typeof this.orderManager._purgeTradeMarkersNotMatchingChart === 'function') {
-                try { this.orderManager._purgeTradeMarkersNotMatchingChart(this); } catch (_) {}
-            }
-
             this._nativeRawFetchTf = result.nativeRawFetchTf || requestTimeframe;
             if (anchorToHostPlayhead && isBacktestSession) {
                 this._nativeRawFetchTf = '1m';
