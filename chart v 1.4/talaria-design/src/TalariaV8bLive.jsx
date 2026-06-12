@@ -13468,15 +13468,19 @@ const TalariaV8bLive = () => {
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
         } else {
-          // Lot-size: do not push prior $/% `riskVal` into lots (e.g. "100" dollars → wrong 100 lots).
-          // After the tab switch, #orderQuantity already reflects the last risk-based size — use that.
-          const oqEl = document.getElementById("orderQuantity");
-          const oq = parseFloat(String(oqEl?.value ?? "").replace(/,/g, "") || "0");
-          let lotStr = riskVal;
-          if (Number.isFinite(oq) && oq > 0 && om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
-            lotStr = om._formatQty(om._roundQtyToStep(oq));
-          } else if (Number.isFinite(oq) && oq > 0) {
-            lotStr = String(oq);
+          // Lot-size (#): `riskVal` is lots/contracts in the rail SIZE field.
+          // Entry edits sync into `riskVal` via onBlur/stepRow before this runs.
+          // Only seed from #orderQuantity when OM leads (e.g. switching $/% → # tab).
+          let lotCore = parseFloat(riskVal || "0");
+          if (!isOmBridgeLead(omPanelBridgeRef.current.control)) {
+            const oq = parseFloat(
+              String(document.getElementById("orderQuantity")?.value ?? "").replace(/,/g, "") || "0"
+            );
+            if (Number.isFinite(oq) && oq > 0) lotCore = oq;
+          }
+          let lotStr = String(lotCore);
+          if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
+            lotStr = om._formatQty(om._roundQtyToStep(lotCore));
           }
           setIn("lotSizeAmount", lotStr);
           queueMicrotask(() => {
@@ -33026,12 +33030,23 @@ const TalariaV8bLive = () => {
                     [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
                   };
                 });
-                if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures" && next.length === 1) {
-                  const r0 = next.find((x) => x.id === id) || next[0];
-                  queueMicrotask(() => {
-                    markOrderControlBridge();
-                    setRiskVal(String(r0.risk));
-                  });
+                if (field === "risk" && sizeMode === "#") {
+                  const total = next.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0);
+                  if (next.length === 1) {
+                    const r0 = next.find((x) => x.id === id) || next[0];
+                    const single = parseFloat(r0.risk) || 0;
+                    setRiskVal(
+                      currentSymbol.type === "futures"
+                        ? String(Math.max(0, Math.round(single)))
+                        : String(Math.max(0, single))
+                    );
+                  } else if (total > 0) {
+                    setRiskVal(
+                      currentSymbol.type === "futures"
+                        ? String(Math.floor(total))
+                        : String(total)
+                    );
+                  }
                 }
                 return next;
               });
@@ -33263,18 +33278,30 @@ const TalariaV8bLive = () => {
                               }}
                               onBlur={e => {
                                 const n = parseFloat(e.target.value);
+                                let v;
                                 if (sizeMode === "#" && currentSymbol.type === "futures") {
-                                  const v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
-                                  updRow(row.id, "risk", v);
-                                  if (entryRows.length === 1) {
-                                    queueMicrotask(() => {
-                                      markOrderControlBridge();
-                                      setRiskVal(v);
-                                    });
-                                  }
-                                  return;
+                                  v = String(Math.max(0, Math.round(isNaN(n) ? 0 : n)));
+                                } else {
+                                  v = isNaN(n) ? "0" : String(n);
                                 }
-                                updRow(row.id, "risk", isNaN(n) ? "0" : String(n));
+                                if (sizeMode === "#") {
+                                  if (entryRows.length === 1) {
+                                    setRiskVal(v);
+                                  } else {
+                                    const old = parseFloat(row.risk) || 0;
+                                    const neu = parseFloat(v) || 0;
+                                    const total =
+                                      entryRows.reduce((s, r) => s + (parseFloat(r.risk) || 0), 0) -
+                                      old +
+                                      neu;
+                                    setRiskVal(
+                                      currentSymbol.type === "futures"
+                                        ? String(Math.floor(total))
+                                        : String(total)
+                                    );
+                                  }
+                                }
+                                updRow(row.id, "risk", v);
                               }}
                               style={{ width:26, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:11, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", padding:0, textAlign:"left" }}/>
                             {sizeMode==="#" && <span style={{ fontSize:9, color:c.ts, flexShrink:0, lineHeight:1, whiteSpace:"nowrap" }}>{sizeUnit}</span>}
