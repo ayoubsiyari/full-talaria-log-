@@ -665,15 +665,9 @@ class OrderManager {
         const pt = this._positionTicker(position);
         const cs = chart.currentSymbol ? this._normalizeTicker(chart.currentSymbol) : '';
 
-        if (posFile && chartFile) {
-            if (posFile === chartFile) return true;
-            // Legacy rows may carry a stale file id — still show when ticker matches this chart.
-            if (pt && cs && pt === cs) return true;
-            return false;
-        }
+        if (posFile && chartFile && posFile === chartFile) return true;
 
-        if (pt) {
-            if (!cs || pt !== cs) return false;
+        if (pt && cs && pt === cs) {
             if (this._isMultiPanelLayout() && chartFile && !posFile) {
                 let activeFile = '';
                 try {
@@ -690,6 +684,14 @@ class OrderManager {
             }
             return true;
         }
+
+        if (pt && !cs && chartFile && typeof this.resolveFileIdForTicker === 'function') {
+            const resolved = this.resolveFileIdForTicker(pt);
+            if (resolved && String(resolved) === chartFile) return true;
+        }
+
+        if (posFile && chartFile && posFile === chartFile) return true;
+
         return false;
     }
 
@@ -783,6 +785,9 @@ class OrderManager {
         }
         if (this.mfeMaeMarkers?.length) {
             this.mfeMaeMarkers = this.mfeMaeMarkers.filter((m) => (m.chart || this.chart) !== chart);
+        }
+        if (this.entryMarkers?.length) {
+            this.entryMarkers = this.entryMarkers.filter((m) => (m.chart || this.chart) !== chart);
         }
         s.selectAll('text[class*="pip-indicator"]').remove();
         s.selectAll('text[class*="dollar-indicator"]').remove();
@@ -31917,7 +31922,12 @@ class OrderManager {
         const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
         const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
         const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
-        const sourceFileId = trade.sourceFileId ?? trade.source_file_id;
+        let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
+        if ((!sourceFileId || String(sourceFileId) === '') && ticker
+            && typeof this.resolveFileIdForTicker === 'function') {
+            const fid = this.resolveFileIdForTicker(ticker);
+            if (fid) sourceFileId = fid;
+        }
 
         return {
             ...trade,
@@ -31943,6 +31953,8 @@ class OrderManager {
      * @param {Set<string|number>} [skipIds] - trades already redrawn (e.g. replay preserve pass)
      */
     _redrawClosedJournalTradeMarkers(skipIds) {
+        if (!this._ensureChartReadyForOrderMarkers()) return 0;
+
         const skip = skipIds || new Set();
         const openIds = new Set((this.openPositions || []).map((p) => p.id));
         const pendingIds = new Set((this.pendingOrders || []).map((p) => p.id));
@@ -31990,11 +32002,43 @@ class OrderManager {
         return redrawn;
     }
 
+    /** Build scales before marker draw (refresh / pair switch may run before first render). */
+    _ensureChartReadyForOrderMarkers(chart) {
+        const ch = chart || this.chart;
+        if (!ch || !Array.isArray(ch.data) || ch.data.length === 0) return false;
+        if (typeof ch.calculateScales === 'function'
+            && (!ch.scales || typeof ch.scales.yScale !== 'function')) {
+            try { ch.calculateScales(); } catch (_) {}
+        }
+        return !!(ch.svg && ch.scales && typeof ch.scales.yScale === 'function');
+    }
+
+    /**
+     * Repaint journal + open/pending markers after session restore or OHLC load.
+     * Multiple retries cover replay viewport sync and late chartView restore on refresh.
+     */
+    _scheduleSessionMarkerRedraw() {
+        if (this._sessionMarkerRedrawGen == null) this._sessionMarkerRedrawGen = 0;
+        const gen = ++this._sessionMarkerRedrawGen;
+        const delays = [0, 100, 300, 800, 1500, 2500];
+        delays.forEach((ms) => {
+            setTimeout(() => {
+                if (gen !== this._sessionMarkerRedrawGen) return;
+                try {
+                    if (!this._ensureChartReadyForOrderMarkers()) return;
+                    this.redrawPreservedTradeMarkers();
+                    this._renderAllLayoutCharts();
+                } catch (_) {}
+            }, ms);
+        });
+    }
+
     /** Repaint closed-trade markers when OHLC range grows (pan/load) — debounced. */
     _scheduleClosedJournalMarkerRedraw() {
         clearTimeout(this._closedJournalRedrawTimer);
         this._closedJournalRedrawTimer = setTimeout(() => {
             try {
+                if (!this._ensureChartReadyForOrderMarkers()) return;
                 this._redrawClosedJournalTradeMarkers();
             } catch (_) {}
         }, 80);
@@ -32007,6 +32051,8 @@ class OrderManager {
      * Must be called AFTER updateChartData() so chart scales are current.
      */
     redrawPreservedTradeMarkers() {
+        if (!this._ensureChartReadyForOrderMarkers()) return;
+
         const preserved = this._preservedClosedForRedraw;
         this._preservedClosedForRedraw = null;
         const preservedIds = new Set();

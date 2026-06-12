@@ -6539,6 +6539,9 @@ class Chart {
                     });
                 }
                 this.loadTradingSessionStateIfNeeded();
+                if (this.orderManager) {
+                    this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
+                }
                 this._pendingReplayRestore = null;
                 this.updateLoaderProgress(100, 'Replay mode active!');
                 this.updateLoaderStep(3, 'completed');
@@ -6792,21 +6795,20 @@ class Chart {
      */
     _scheduleOrderMarkersRedrawAfterSessionRestore(orderManager) {
         const om = orderManager || this._getOrderManagerForSessionPersistence();
-        if (!om || typeof om.redrawPreservedTradeMarkers !== 'function') return;
-
-        const redrawLater = () => {
-            try {
-                om.redrawPreservedTradeMarkers();
-            } catch (_) {
-                /* ignore */
-            }
-        };
-
-        if (Array.isArray(this.data) && this.data.length > 0) {
-            setTimeout(redrawLater, 0);
+        if (!om) return;
+        if (typeof om._scheduleSessionMarkerRedraw === 'function') {
+            om._scheduleSessionMarkerRedraw();
+            return;
         }
-        window.addEventListener('chartDataLoaded', redrawLater, { once: true });
-        setTimeout(redrawLater, 500);
+        if (typeof om.redrawPreservedTradeMarkers !== 'function') return;
+        const delays = [0, 100, 300, 800, 1500, 2500];
+        delays.forEach((ms) => {
+            setTimeout(() => {
+                try {
+                    om.redrawPreservedTradeMarkers();
+                } catch (_) {}
+            }, ms);
+        });
     }
 
     /**
@@ -7095,10 +7097,8 @@ class Chart {
             if (typeof om._syncReplayHeaderStatsFromAccount === 'function') {
                 om._syncReplayHeaderStatsFromAccount();
             }
-            this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
         } else if (typeof om.recomputeAccountFromJournal === 'function') {
             om.recomputeAccountFromJournal();
-            this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
         }
 
         if (typeof om.updateJournalTab === 'function') {
@@ -7113,11 +7113,22 @@ class Chart {
             if (this.replaySystem && this.replaySystem.isActive && typeof this.replaySystem.applyPersistedState === 'function') {
                 this.replaySystem.applyPersistedState(backup.replay);
                 this._pendingReplayState = null;
+                if (typeof this.replaySystem.syncReplayViewportToPlayhead === 'function') {
+                    try {
+                        this.replaySystem.syncReplayViewportToPlayhead(this, {
+                            centerPlayhead: false,
+                            resetPriceScale: true,
+                            render: true,
+                        });
+                    } catch (_) { /* ignore */ }
+                }
                 if (this.drawingManager && typeof this.drawingManager.refreshDrawingsForTimeframe === 'function') {
                     try { this.drawingManager.refreshDrawingsForTimeframe(); } catch (_) { /* ignore */ }
                 }
             }
         }
+
+        this._scheduleOrderMarkersRedrawAfterSessionRestore(om);
 
         // Drawings: chart_drawings API + dm.loadDrawings() — not session backup blob.
 
@@ -7259,7 +7270,6 @@ class Chart {
             }
 
             if (this.orderManager) {
-                this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
                 if (typeof this.orderManager.updateJournalTab === 'function') {
                     this.orderManager.updateJournalTab();
                 }
@@ -7436,6 +7446,10 @@ class Chart {
             );
             if (indicatorsToRestore.length > 0) {
                 this._queuePersistedIndicatorsRestore(indicatorsToRestore);
+            }
+
+            if (this.orderManager) {
+                this._scheduleOrderMarkersRedrawAfterSessionRestore(this.orderManager);
             }
 
                 // Server state was applied this load; next refresh compares backup.savedAt to this for stale-server vs fresh-backup.
