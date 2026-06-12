@@ -8626,6 +8626,32 @@ function v9NormalizePriceInputOnBlur(raw) {
   return Number.isFinite(n) ? String(n) : "0";
 }
 
+/** One price increment for entry/SL/TP steppers — chart tick grid, then OM pip, then display precision. */
+function v9OrderPriceTickStep(om) {
+  const chart = typeof window !== "undefined" ? window.chart : null;
+  if (chart && typeof chart.getTickSize === "function") {
+    const tick = chart.getTickSize();
+    if (Number.isFinite(tick) && tick > 0) return tick;
+  }
+  if (om && Number.isFinite(om.pipSize) && om.pipSize > 0) return om.pipSize;
+  const prec =
+    om && typeof om.getPricePrecision === "function" ? om.getPricePrecision() : 5;
+  return Math.pow(10, -prec);
+}
+
+function v9StepOrderPrice(currentStr, dir, om) {
+  const cur = parseFloat(currentStr);
+  const base = Number.isFinite(cur) ? cur : 0;
+  const step = v9OrderPriceTickStep(om);
+  let next = Math.max(0, base + dir * step);
+  const prec =
+    om && typeof om.getPricePrecision === "function" ? om.getPricePrecision() : 5;
+  if (om && typeof om.formatPrice === "function") {
+    return om.formatPrice(next, prec);
+  }
+  return Number.isFinite(next) ? next.toFixed(prec) : "0";
+}
+
 const EMOJI_CATS = [
   { id:"smileys",  icon:"😀", label:"Smileys",  emojis:["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","🙃","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤭","🤫","🤔","🤐","🤨","😐","😑","😶","😏","😒","🙄","😬","🥴","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","🤠","🥳","😎","🤓","🧐","😢","😭","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾"] },
   { id:"people",   icon:"👶", label:"People",   emojis:["👋","🤚","🖐","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🙏","✍️","💅","🤳","💪","🦵","🦶","👂","🦻","👃","👀","👁","👅","🫀","🧠","🦷","🦴","👶","🧒","👦","👧","🧑","👱","👩","🧔","👴","👵","👲","👳","🧕","💂","👮","👷","🤴","👸","🧙","🧚","🧛","🧟","🧞","🧜","🧝"] },
@@ -33209,12 +33235,16 @@ const TalariaV8bLive = () => {
             };
             const stepRow = (id, field, dir, step = 1) => {
               markOrderControlBridge();
+              const omStep = window.chart?.orderManager;
               setEntryRows((rows) => {
                 const next = rows.map((r) => {
                   if (r.id !== id) return r;
                   if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
                     const base = Math.round(parseFloat(r[field] || "0") || 0);
                     return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  if (field === "price") {
+                    return { ...r, [field]: v9StepOrderPrice(r[field], dir, omStep) };
                   }
                   return {
                     ...r,
@@ -33604,10 +33634,11 @@ const TalariaV8bLive = () => {
             };
             const stepSl = (dir) => {
               markOrderControlBridge();
+              const omStep = window.chart?.orderManager;
               setSlRows((rows) => {
                 if (!rows.length) return rows;
                 const r0 = rows[0];
-                return [{ ...r0, price: String(Math.max(0, parseFloat(r0.price || "0") + dir)) }];
+                return [{ ...r0, price: v9StepOrderPrice(r0.price, dir, omStep) }];
               });
             };
             const arw = (onClick, up, hk) => {
@@ -33968,12 +33999,16 @@ const TalariaV8bLive = () => {
             const updTp  = (id, field, val) => { markOrderControlBridge(); setTpRows(rows => rows.map(r => r.id===id ? {...r, [field]:val} : r)); };
             const stepTp = (id, field, dir, step = 1) => {
               markOrderControlBridge();
+              const omStep = window.chart?.orderManager;
               setTpRows((rows) => {
                 const next = rows.map((r) => {
                   if (r.id !== id) return r;
                   if (field === "qty" && sizeMode === "#" && currentSymbol.type === "futures") {
                     const base = Math.round(parseFloat(r[field] || "0") || 0);
                     return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  }
+                  if (field === "price") {
+                    return { ...r, [field]: v9StepOrderPrice(r[field], dir, omStep) };
                   }
                   return {
                     ...r,
