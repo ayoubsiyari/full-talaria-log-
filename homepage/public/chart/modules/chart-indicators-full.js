@@ -7847,12 +7847,16 @@
 
         ctx.save();
 
-        // Clip to main price plot only — exclude volume band and separate indicator panels below.
+        // Clip overlay lines to the main pane plus axis margins so values outside the visible
+        // price range continue under the price/time panels (drawAxes paints over them afterward).
         const plotLayout = typeof this._getMainPricePlotLayout === 'function'
             ? this._getMainPricePlotLayout()
-            : { m: m, plotHeight: this.h - m.t - m.b };
+            : { m: m, plotHeight: this.h - m.t - m.b, indPanelH: 0 };
+        const indPanelH = plotLayout.indPanelH || 0;
+        const clipTop = 0;
+        const clipBottom = indPanelH > 0 ? (this.h - m.b) : this.h;
         ctx.beginPath();
-        ctx.rect(plotLayout.m.l, plotLayout.m.t, this.w - plotLayout.m.l - plotLayout.m.r, plotLayout.plotHeight);
+        ctx.rect(m.l, clipTop, this.w - m.l, clipBottom - clipTop);
         ctx.clip();
 
         const visibleStart = Number.isFinite(this.visibleStartIndex) ? this.visibleStartIndex : 0;
@@ -10204,18 +10208,14 @@ Chart.prototype.drawLineIndicator = function(data, color, lineWidth, startIndex,
     const baselineY = Number.isFinite(options.baselineY) ? options.baselineY : (this.h - m.b);
     const breakOnNull = style === 'Line with breaks' || style === 'Step line with breaks' || style === 'Area with breaks';
     const inView = function(x) { return x >= m.l - 50 && x <= this.w - m.r + 50; }.bind(this);
-    const plotLayout = typeof this._getMainPricePlotLayout === 'function'
-        ? this._getMainPricePlotLayout()
-        : { m: m, plotHeight: this.h - m.t - m.b };
-    const plotYMin = plotLayout.m.t;
-    const plotYMax = plotLayout.m.t + plotLayout.plotHeight;
     const panelTopOpt = options.panelTop;
     const panelBottomOpt = options.panelBottom;
     const inPlotY = function(y) {
         if (Number.isFinite(panelTopOpt) && Number.isFinite(panelBottomOpt) && panelBottomOpt > panelTopOpt) {
             return Number.isFinite(y) && y >= panelTopOpt && y <= panelBottomOpt;
         }
-        return Number.isFinite(y) && y >= plotYMin && y <= plotYMax;
+        // Main-chart overlays: keep drawing through out-of-range Y; clip + axes hide the excess.
+        return Number.isFinite(y);
     };
 
     // At sub-pixel bar spacing many consecutive indices map to the SAME screen X.
