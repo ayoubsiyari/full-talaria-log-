@@ -12606,11 +12606,15 @@ class OrderManager {
         }
 
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
+
+        // Fresh draft: market entry at live price. RR tool only supplies SL/TP here — full entry sync is RR Execute only.
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
+        this.updateOrderPanelPrice();
         if (rrSelectedOpen) {
-            // RR is the source — entry, SL, and TP all come from the tool (not live market only).
-            this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
-        } else {
-            this.updateOrderPanelPrice();
+            this.pushRiskRewardToolToManager(rrSelectedOpen, { skipEntry: true });
+            this.tpManuallyPositioned = true;
+            this.slManuallyPositioned = true;
         }
 
         // Perform initial calculations and setup after panel is visible
@@ -12746,14 +12750,7 @@ class OrderManager {
         if (this.editingPendingOrderId) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
-        this.pushRiskRewardToolToManager(d, this._previewEntryDecoupledFromRR ? { skipEntry: true } : {});
-        if (!this._previewEntryDecoupledFromRR) {
-            this._previewEntryLinkedToRiskReward = true;
-            this.tpManuallyPositioned = true;
-            this.slManuallyPositioned = true;
-            this._autoDetectOrderTypeFromEntry();
-            this._dispatchRrOrderPrefilledEvent();
-        }
+        this.pushRiskRewardToolToManager(d, { skipEntry: true });
         requestAnimationFrame(() => {
             this.updatePreviewLines();
             if (this.chart && typeof this.chart.updateSVGPointerEvents === 'function') {

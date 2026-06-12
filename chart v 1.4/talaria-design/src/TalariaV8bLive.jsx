@@ -13675,6 +13675,23 @@ const TalariaV8bLive = () => {
     return () => window.removeEventListener("talaria:rr-order-prefilled", onRrPrefill);
   }, [orderPanelOpen]);
 
+  // Opening the rail: market drafts must anchor to live price (not a stale React row or RR entry).
+  useEffect(() => {
+    if (!orderPanelOpen) return;
+    let cancelled = false;
+    const refresh = () => {
+      if (cancelled) return;
+      const om = window.chart?.orderManager;
+      if (om?._previewEntryLinkedToRiskReward) return;
+      const domOt = document.querySelector("#orderPanel .order-type-btn.active")?.dataset?.type;
+      const activeOt = domOt || orderType;
+      if (activeOt !== "market") return;
+      v9RefreshMarketOrderEntryFromChart(om, setEntryRows);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(refresh));
+    return () => { cancelled = true; };
+  }, [orderPanelOpen, orderType]);
+
   const prevOrderPanelOpenRef = useRef(undefined);
   useLayoutEffect(() => {
     if (prevOrderPanelOpenRef.current === undefined) {
