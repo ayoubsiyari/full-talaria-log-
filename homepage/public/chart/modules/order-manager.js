@@ -522,6 +522,37 @@ class OrderManager {
         return this._positionTickerMatchesChartSymbol(position, this.chart);
     }
 
+    /** True when a trade belongs on at least one visible chart surface (main or multichart tile). */
+    _positionVisibleOnAnyLayoutChart(position) {
+        const charts = this._isMultiPanelLayout()
+            ? (this._collectLayoutCharts() || [])
+            : [this.chart].filter(Boolean);
+        if (!charts.length || !position) return false;
+        return charts.some((ch) => this._positionTickerMatchesChartSymbol(position, ch));
+    }
+
+    /** Resolve order id → position/journal ref for marker symbol guards. */
+    _orderRefForMarkerOrderId(orderId) {
+        if (orderId == null) return null;
+        const idStr = String(orderId);
+        const open = (this.openPositions || []).find((p) => p && String(p.id) === idStr);
+        if (open) return open;
+        const journal = (this.tradeJournal || []).find(
+            (t) => t && String(t.tradeId != null ? t.tradeId : t.id) === idStr
+        );
+        if (journal) {
+            return this._positionLikeFromJournalTrade(journal) || journal;
+        }
+        return null;
+    }
+
+    /** Drop closed-trade marker registries (pair switch reuses the same Chart instance). */
+    _clearClosedTradeMarkerRegistry() {
+        this.exitMarkers = [];
+        this.tradeConnectors = [];
+        this.partialCloseMarkers = [];
+    }
+
     _isMultiPanelLayout() {
         const pm = typeof window !== 'undefined' ? window.panelManager : null;
         return !!(pm && pm.currentLayout && String(pm.currentLayout) !== '1');
@@ -773,6 +804,7 @@ class OrderManager {
             });
             this.entryMarkers = [];
         }
+        this._clearClosedTradeMarkerRegistry();
 
         (this.openPositions || []).forEach((pos) => {
             charts.forEach((ch) => {
@@ -804,6 +836,9 @@ class OrderManager {
         if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
         try {
             this._redrawMfeMaeMarkersFromState();
+        } catch (_) {}
+        try {
+            this._redrawClosedJournalTradeMarkers();
         } catch (_) {}
         charts.forEach((c) => {
             if (c && typeof c.render === 'function') {
@@ -844,6 +879,7 @@ class OrderManager {
                 });
                 this.entryMarkers = [];
             }
+            this._clearClosedTradeMarkerRegistry();
 
             (this.openPositions || []).forEach((pos) => {
                 if (!this._isPositionForActiveChart(pos)) return;
@@ -863,6 +899,9 @@ class OrderManager {
             if (typeof this.updateSLTPLines === 'function') this.updateSLTPLines();
             try {
                 this._redrawMfeMaeMarkersFromState();
+            } catch (_) {}
+            try {
+                this._redrawClosedJournalTradeMarkers();
             } catch (_) {}
             if (this.chart && typeof this.chart.render === 'function') {
                 this.chart.renderPending = true;
@@ -3282,6 +3321,11 @@ class OrderManager {
         ).replace('/', '').toUpperCase();
         if (!entry.ticker) entry.ticker = symbol;
         if (!entry.symbol) entry.symbol = symbol;
+        if (!entry.sourceFileId && !entry.source_file_id) {
+            const fid = position.sourceFileId ?? position.source_file_id
+                ?? (typeof this._chartSourceFileId === 'function' ? this._chartSourceFileId() : null);
+            if (fid != null && String(fid) !== '') entry.sourceFileId = String(fid);
+        }
 
         if (entry.entryTime == null) entry.entryTime = openTime;
         if (entry.exitTime == null) entry.exitTime = closeTime;
@@ -7184,6 +7228,7 @@ class OrderManager {
             tradeId: order.id,
             symbol: symbol,
             ticker: symbol,
+            sourceFileId: order.sourceFileId ?? order.source_file_id ?? null,
             direction: order.type, // BUY or SELL
             setup: setupStr,
             strategy_variables: order.strategyVariables || null,
@@ -24018,7 +24063,9 @@ class OrderManager {
                 tradeId: position.id,
                 type: position.type,
                 direction: position.type,
-                symbol: position.symbol || 'USD',
+                symbol: position.ticker || position.symbol || this._getActiveTicker() || 'UNKNOWN',
+                ticker: position.ticker || position.symbol || this._getActiveTicker() || 'UNKNOWN',
+                sourceFileId: position.sourceFileId ?? position.source_file_id ?? null,
                 quantity: position.quantity,
                 openPrice: position.openPrice,
                 closePrice: closePrice,
@@ -31806,6 +31853,12 @@ class OrderManager {
         const ticker = String(trade.ticker || trade.symbol || '').replace('/', '').toUpperCase();
         const closeTime = trade.closeTime != null ? trade.closeTime : trade.exitTime;
         const closePrice = trade.closePrice != null ? trade.closePrice : trade.exitPrice;
+        let sourceFileId = trade.sourceFileId ?? trade.source_file_id;
+        if ((!sourceFileId || String(sourceFileId) === '') && ticker
+            && typeof this.resolveFileIdForTicker === 'function') {
+            const fid = this.resolveFileIdForTicker(ticker);
+            if (fid) sourceFileId = fid;
+        }
 
         return {
             ...trade,
@@ -31818,6 +31871,7 @@ class OrderManager {
             quantity: Number.parseFloat(trade.quantity) || 0,
             ticker,
             symbol: trade.symbol || ticker,
+            sourceFileId: sourceFileId != null && String(sourceFileId) !== '' ? String(sourceFileId) : undefined,
             partialCloses: Array.isArray(trade.partialCloses) ? trade.partialCloses : undefined,
             closeType: trade.closeType || trade.exitType || 'MANUAL',
             pnl: Number.parseFloat(trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? 0) || 0,
@@ -31844,7 +31898,7 @@ class OrderManager {
             if (closeTime == null || closePrice == null) return;
 
             const pos = this._positionLikeFromJournalTrade(trade);
-            if (!pos) return;
+            if (!pos || !this._positionVisibleOnAnyLayoutChart(pos)) return;
 
             try { this.drawEntryMarker(pos); } catch (_) {}
 
@@ -32881,9 +32935,11 @@ class OrderManager {
 
     _updateExitAndPartialMarkersOnMain() {
         if (this.exitMarkers && this.exitMarkers.length > 0) {
-            this.exitMarkers.forEach(({ marker, time, price, isBuyExit, chart: mch }) => {
+            this.exitMarkers.forEach(({ orderId, marker, time, price, isBuyExit, chart: mch }) => {
                 const ch = mch || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
+                const orderRef = this._orderRefForMarkerOrderId(orderId);
+                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const dataIndex = this._chartIndexForCloseMarkerOnChart(ch, time);
                 if (dataIndex === -1) return;
@@ -32970,6 +33026,8 @@ class OrderManager {
             this.tradeConnectors.forEach((tc) => {
                 const ch = tc.chart || this.chart;
                 if (!ch?.scales?.yScale || !ch.data) return;
+                const orderRef = this._orderRefForMarkerOrderId(tc.orderId);
+                if (orderRef && !this._positionTickerMatchesChartSymbol(orderRef, ch)) return;
                 const mainY = ch.scales.yScale;
                 const entryRef = {
                     openTime: tc.entryTime,
