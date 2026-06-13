@@ -31222,6 +31222,13 @@ const TalariaV8bLive = () => {
                 <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
                 <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
 
+                <a className="chart-brand brand-lockup" href="/" title="Talaria Homepage">
+                  <img src="/chart/modules/logo-08.png" alt="Talaria logo symbol" className="logo-top logo-dark" />
+                  <img src="/chart/modules/logo-09.png" alt="Talaria logo symbol" className="logo-top logo-light" />
+                  <span className="logo-bottom logo-dark">Talaria-Log</span>
+                  <span className="logo-bottom logo-light">Talaria-Log</span>
+                </a>
+
                 {/* OHLC: chart.js owns #chartSymbol / #chartTimeframe + OHLC values; memoized subtree +
                     multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
                 {mainOhlcInfoEl}
