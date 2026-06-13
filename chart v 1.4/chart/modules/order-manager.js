@@ -33114,9 +33114,13 @@ class OrderManager {
             if (active) {
                 this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
                 line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
-                    .attr('filter', 'url(#trade-connector-glow)');
+                    .attr('filter', 'url(#trade-connector-glow)')
+                    .style('visibility', 'visible')
+                    .style('opacity', 1);
             } else {
-                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
+                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null)
+                    .style('visibility', 'hidden')
+                    .style('opacity', 0);
             }
         }
     }
@@ -33531,7 +33535,9 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-dasharray', '1 3')
             .attr('stroke-linecap', 'round')
-            .style('pointer-events', 'none');
+            .style('pointer-events', 'none')
+            .style('visibility', 'hidden')
+            .style('opacity', 0);
 
         if (!this.tradeConnectors) this.tradeConnectors = [];
         this.tradeConnectors.push({
@@ -33955,11 +33961,12 @@ class OrderManager {
             });
         }
 
-        // Toggle trade connector lines
+        // Toggle trade connector lines (always hidden unless a marker is hovered)
         if (this.tradeConnectors && this.tradeConnectors.length > 0) {
             this.tradeConnectors.forEach(({ line }) => {
                 if (line) {
-                    line.style('visibility', show ? 'visible' : 'hidden');
+                    line.style('visibility', 'hidden').style('opacity', 0);
+                    if (!show) line.attr('filter', null);
                 }
             });
         }
