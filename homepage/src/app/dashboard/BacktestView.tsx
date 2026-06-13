@@ -497,6 +497,20 @@ export function BacktestView() {
     });
   }, [registerOnSaved, loadSessions]);
 
+  // Refresh KPIs when returning from chart tab (trades persist to SQL, not always in-memory).
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadSessions();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadSessions]);
+
   useEffect(() => {
     if (!journalSession) {
       setJournalRows([]);

@@ -1505,6 +1505,7 @@ class CompareOverlay {
         // backwards time index so line/area never draws a bogus diagonal across gaps.
         const points = [];
         let lastOkMain = -2;
+        let lastOkOverlayTime = null;
         paneData.forEach((candle) => {
             const closePrice = candle.c !== undefined ? candle.c : candle.close;
             if (closePrice === undefined || isNaN(closePrice)) return;
@@ -1521,9 +1522,18 @@ class CompareOverlay {
             
             if (x < margin.l - 50 || x > chartWidth + margin.l + 50) return;
             
-            const newSegment = lastOkMain === -1 || mainIndex < lastOkMain;
+            const newSegment = lastOkMain === -1
+                || mainIndex < lastOkMain
+                || this._shouldBreakCompareLineSegment(
+                    lastOkMain === -1 ? null : lastOkMain,
+                    lastOkOverlayTime,
+                    mainIndex,
+                    candle.t,
+                    mainData
+                );
             points.push({ candle, x, mainIndex, newSegment });
             lastOkMain = mainIndex;
+            lastOkOverlayTime = candle.t;
         });
         
         // Draw based on display type
@@ -3600,17 +3610,28 @@ class CompareOverlay {
                 
                 const mapped = [];
                 let lastMi = -2;
+                let lastOverlayTime = null;
                 overlayData.forEach((candle) => {
                     const mainIndex = this.findClosestIndex(mainData, candle.t, startIdx, endIdx);
                     if (mainIndex === -1) {
                         lastMi = -1;
+                        lastOverlayTime = null;
                         return;
                     }
                     const x = Math.round(this.chart.dataIndexToPixel(mainIndex));
                     const y = Math.round(overlayYScale(candle.c));
-                    const breakSeg = lastMi === -1 || mainIndex < lastMi;
+                    const breakSeg = lastMi === -1
+                        || mainIndex < lastMi
+                        || this._shouldBreakCompareLineSegment(
+                            lastMi === -1 ? null : lastMi,
+                            lastOverlayTime,
+                            mainIndex,
+                            candle.t,
+                            mainData
+                        );
                     mapped.push({ x, y, breakSeg });
                     lastMi = mainIndex;
+                    lastOverlayTime = candle.t;
                 });
                 
                 let seg = [];
@@ -4028,6 +4049,43 @@ class CompareOverlay {
         }
     }
     
+    /** Max bar spacing before compare line breaks (weekends, session holes, missing candles). */
+    _getCompareLineGapThresholdMs() {
+        const tfKey = String(this.chart.currentTimeframe || '1m').toLowerCase().trim();
+        let tfMs = 60 * 1000;
+        if (this.chart && typeof this.chart.parseTimeframe === 'function') {
+            const parsed = this.chart.parseTimeframe(tfKey);
+            if (Number.isFinite(parsed) && parsed > 0) tfMs = parsed;
+        } else {
+            tfMs = this.getTimeframeDuration(tfKey);
+        }
+        return tfMs * 1.51;
+    }
+
+    /**
+     * True when the next compare point must start a new polyline (no diagonal across a gap).
+     */
+    _shouldBreakCompareLineSegment(prevMainIndex, prevOverlayTime, mainIndex, overlayTime, mainData) {
+        if (prevMainIndex == null || prevMainIndex < 0) return false;
+        if (mainIndex < 0) return true;
+        if (mainIndex < prevMainIndex) return true;
+        if (mainIndex - prevMainIndex > 1) return true;
+
+        const gapMs = this._getCompareLineGapThresholdMs();
+
+        if (Number.isFinite(prevOverlayTime) && Number.isFinite(overlayTime)) {
+            if (overlayTime - prevOverlayTime > gapMs) return true;
+        }
+
+        if (mainData && prevMainIndex >= 0 && mainIndex > prevMainIndex) {
+            const t0 = mainData[prevMainIndex]?.t;
+            const t1 = mainData[mainIndex]?.t;
+            if (Number.isFinite(t0) && Number.isFinite(t1) && t1 - t0 > gapMs) return true;
+        }
+
+        return false;
+    }
+
     findClosestIndex(data, timestamp, startIdx, endIdx) {
         let closestIdx = -1;
         let minDiff = Infinity;

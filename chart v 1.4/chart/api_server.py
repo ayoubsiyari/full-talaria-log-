@@ -17875,7 +17875,14 @@ async def list_all_sessions_kpis(request: Request):
         for s in sessions:
             st = _get_or_create_trading_session_state(db, session_id=s.id, user_id=s.user_id)
             state = _parse_json_dict(st.state_json)
-            journal = state.get("journal") if isinstance(state.get("journal"), list) else []
+            journal = sjs.resolve_session_journal(
+                db,
+                s.id,
+                s.user_id,
+                state,
+                journal_trade_model=TradingSessionJournalTrade,
+                sync_fn=_sync_trading_session_journal_trades,
+            )
             session_public = _session_public_dict(s)
             analytics = _compute_session_analytics(session_public, journal)
             sanitized = _sanitize_for_json(analytics)
