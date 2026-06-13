@@ -709,6 +709,7 @@ class OrderManager {
 
     /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
     _eventInPriceAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
         const ch = chart || this.chart;
         if (!ch?.svg?.node) return false;
         const plotRight = this._orderPlotRightX(ch);
@@ -716,6 +717,44 @@ class OrderManager {
         if (!Number.isFinite(clientX)) return false;
         const rect = ch.svg.node().getBoundingClientRect();
         return (clientX - rect.left) >= plotRight - 1;
+    }
+
+    /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
+    _eventInTimeAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
+        const ch = chart || this.chart;
+        if (!ch?.svg?.node) return false;
+        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
+        if (!Number.isFinite(clientY)) return false;
+        const rect = ch.svg.node().getBoundingClientRect();
+        const bottomMargin = Number(ch?.margin?.b) || 30;
+        const grabStrip = 10;
+        const stripTop = rect.top + rect.height - bottomMargin;
+        return clientY >= (stripTop + bottomMargin - grabStrip - 1);
+    }
+
+    /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
+    _eventInChartAxisZone(e, zoneId) {
+        if (typeof document === 'undefined' || !zoneId) return false;
+        const zone = document.getElementById(zoneId);
+        if (!zone) return false;
+        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
+        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+        const r = zone.getBoundingClientRect();
+        return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    }
+
+    /** Left X of a preview label group (for capping horizontal hit targets). */
+    _previewLineLabelStartX(lineData, ch) {
+        if (!lineData?.labelGroup) return null;
+        const transform = lineData.labelGroup.attr('transform') || '';
+        const match = /translate\(([^,]+),/.exec(transform);
+        const x = match ? parseFloat(match[1]) : NaN;
+        if (Number.isFinite(x)) return x;
+        const bbox = lineData.labelDimensions || lineData.labelGroup.node()?.getBBox?.();
+        const width = bbox?.width ?? 0;
+        return Math.max(0, (Number(ch?.w) || 0) - width - 175);
     }
 
     /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
@@ -16744,7 +16783,11 @@ class OrderManager {
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
 
-        const plotRight = this._orderPlotRightX(pc);
+        const syncPreviewHitWidth = (ld) => {
+            if (!ld?.hitLine || ld.isBadge) return;
+            const labelX = this._previewLineLabelStartX(ld, pc);
+            ld.hitLine.attr('x2', this._orderLineHitEndX(pc, labelX));
+        };
         
         // Update entry line position
         if (this.previewLines.entry) {
@@ -16760,9 +16803,9 @@ class OrderManager {
             if (this.previewLines.entry.hitLine) {
                 this.previewLines.entry.hitLine
                     .attr('y1', entryY)
-                    .attr('y2', entryY)
-                    .attr('x2', plotRight);
+                    .attr('y2', entryY);
             }
+            syncPreviewHitWidth(this.previewLines.entry);
 
             updateLabelY(this.previewLines.entry, entryY);
             updateYAxisHighlight(this.previewLines.entry, entryY);
@@ -16782,9 +16825,9 @@ class OrderManager {
             if (this.previewLines.tp.hitLine) {
                 this.previewLines.tp.hitLine
                     .attr('y1', tpY)
-                    .attr('y2', tpY)
-                    .attr('x2', plotRight);
+                    .attr('y2', tpY);
             }
+            syncPreviewHitWidth(this.previewLines.tp);
 
             updateLabelY(this.previewLines.tp, tpY);
             updateYAxisHighlight(this.previewLines.tp, tpY);
@@ -16804,9 +16847,9 @@ class OrderManager {
             if (this.previewLines.sl.hitLine) {
                 this.previewLines.sl.hitLine
                     .attr('y1', slY)
-                    .attr('y2', slY)
-                    .attr('x2', plotRight);
+                    .attr('y2', slY);
             }
+            syncPreviewHitWidth(this.previewLines.sl);
 
             updateLabelY(this.previewLines.sl, slY);
             updateYAxisHighlight(this.previewLines.sl, slY);
@@ -16842,9 +16885,9 @@ class OrderManager {
                     if (tpLine.hitLine) {
                         tpLine.hitLine
                             .attr('y1', tpY)
-                            .attr('y2', tpY)
-                            .attr('x2', plotRight);
+                            .attr('y2', tpY);
                     }
+                    syncPreviewHitWidth(tpLine);
 
                     updateLabelY(tpLine, tpY);
                     updateYAxisHighlight(tpLine, tpY);
@@ -16866,9 +16909,9 @@ class OrderManager {
             if (this.previewLines.be.hitLine) {
                 this.previewLines.be.hitLine
                     .attr('y1', beY)
-                    .attr('y2', beY)
-                    .attr('x2', plotRight);
+                    .attr('y2', beY);
             }
+            syncPreviewHitWidth(this.previewLines.be);
 
             updateLabelY(this.previewLines.be, beY);
             updateYAxisHighlight(this.previewLines.be, beY);
@@ -16889,9 +16932,9 @@ class OrderManager {
                     if (splitLine.hitLine) {
                         splitLine.hitLine
                             .attr('y1', splitY)
-                            .attr('y2', splitY)
-                            .attr('x2', plotRight);
+                            .attr('y2', splitY);
                     }
+                    syncPreviewHitWidth(splitLine);
 
                     updateLabelY(splitLine, splitY);
                     updateYAxisHighlight(splitLine, splitY);
@@ -16911,9 +16954,9 @@ class OrderManager {
             if (this.previewLines.avgEntry.hitLine) {
                 this.previewLines.avgEntry.hitLine
                     .attr('y1', avgY)
-                    .attr('y2', avgY)
-                    .attr('x2', plotRight);
+                    .attr('y2', avgY);
             }
+            syncPreviewHitWidth(this.previewLines.avgEntry);
             updateLabelY(this.previewLines.avgEntry, avgY);
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
         }
@@ -17372,7 +17415,6 @@ class OrderManager {
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
         const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
-        const plotRight = this._orderPlotRightX(chart);
 
         const line = chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
@@ -17390,7 +17432,7 @@ class OrderManager {
         const hitLine = chart.svg.append('line')
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
-            .attr('x2', isDraggable ? plotRight : chart.w)
+            .attr('x2', isDraggable ? this._orderLineHitEndX(chart, null) : chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -17560,6 +17602,7 @@ class OrderManager {
             .filter((event) => {
                 const ch = lineData._previewChart || self._getPreviewChart();
                 if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 const t = event.sourceEvent && event.sourceEvent.target;
                 if (t && typeof t.closest === 'function') {
                     if (t.closest('.preview-tp-sl-close-btn')) return false;
@@ -19954,7 +19997,7 @@ class OrderManager {
             ld.line.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.hitLine) {
-            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderPlotRightX(ch));
+            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderLineHitEndX(ch, this._previewLineLabelStartX(ld, ch)));
         }
         if (ld.priceText) {
             const totalLots = this._calcMultiEntryTotalLots();
@@ -22298,9 +22341,8 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // End at label edge by default; preview TP/SL extends visually to axis but hit area stays in plot.
+        // Visual line may extend toward the axis; hit target stops at the label column / plot edge.
         let lineEndX = Math.max(0, x);
-        const plotRight = this._orderPlotRightX(ch);
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
         const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
         const isEntryTpSl = lineData.label === 'SL'
@@ -22316,9 +22358,7 @@ class OrderManager {
             .attr('x1', 0)
             .attr('x2', lineEndX);
         if (lineData.hitLine) {
-            const hitEndX = isPreviewOrder && (isEntryTpSl || isBePreview)
-                ? plotRight
-                : Math.min(lineEndX, plotRight);
+            const hitEndX = this._orderLineHitEndX(ch, x);
             lineData.hitLine
                 .attr('x1', 0)
                 .attr('x2', hitEndX);

@@ -21,6 +21,7 @@ const body = `/**
  * Server secrets (FINNHUB_API_KEY, etc.) live in chart/.env for api_server.py only.
  */
 window.__CHART_ENV = window.__CHART_ENV || {};
+window.__CHART_ENV.DISABLE_ECONOMIC_CALENDAR_API = false;
 `;
 
 fs.writeFileSync(outPath, body, 'utf8');

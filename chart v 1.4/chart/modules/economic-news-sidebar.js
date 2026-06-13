@@ -1180,14 +1180,11 @@
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
-        var rng = getCalendarFetchRange();
-        if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
-            loadCalendar();
-        } else {
+        if (isEconomicCalendarApiDisabled()) {
             render();
-            startCountdownLoop();
-            requestChartMarkerRedraw();
+            return;
         }
+        loadCalendar(true);
     };
 
     window.refreshEconomicNewsSidebar = function () {
@@ -1290,6 +1287,9 @@
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
+                disabled: isEconomicCalendarApiDisabled(),
+                loadedRangeKey: state.loadedRangeKey,
+                eventCount: state.events ? state.events.length : 0,
                 filters: {
                     impactHigh: state.filters.impactHigh,
                     impactMedium: state.filters.impactMedium,
@@ -1346,4 +1346,12 @@
             };
         }
     };
+
+    if (!isEconomicCalendarApiDisabled()) {
+        setTimeout(function () {
+            if (!state.loading && !state.loaded) {
+                loadCalendar();
+            }
+        }, 300);
+    }
 })();

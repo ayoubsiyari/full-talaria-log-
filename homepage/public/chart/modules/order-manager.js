@@ -709,6 +709,7 @@ class OrderManager {
 
     /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
     _eventInPriceAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
         const ch = chart || this.chart;
         if (!ch?.svg?.node) return false;
         const plotRight = this._orderPlotRightX(ch);
@@ -716,6 +717,44 @@ class OrderManager {
         if (!Number.isFinite(clientX)) return false;
         const rect = ch.svg.node().getBoundingClientRect();
         return (clientX - rect.left) >= plotRight - 1;
+    }
+
+    /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
+    _eventInTimeAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
+        const ch = chart || this.chart;
+        if (!ch?.svg?.node) return false;
+        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
+        if (!Number.isFinite(clientY)) return false;
+        const rect = ch.svg.node().getBoundingClientRect();
+        const bottomMargin = Number(ch?.margin?.b) || 30;
+        const grabStrip = 10;
+        const stripTop = rect.top + rect.height - bottomMargin;
+        return clientY >= (stripTop + bottomMargin - grabStrip - 1);
+    }
+
+    /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
+    _eventInChartAxisZone(e, zoneId) {
+        if (typeof document === 'undefined' || !zoneId) return false;
+        const zone = document.getElementById(zoneId);
+        if (!zone) return false;
+        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
+        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+        const r = zone.getBoundingClientRect();
+        return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    }
+
+    /** Left X of a preview label group (for capping horizontal hit targets). */
+    _previewLineLabelStartX(lineData, ch) {
+        if (!lineData?.labelGroup) return null;
+        const transform = lineData.labelGroup.attr('transform') || '';
+        const match = /translate\(([^,]+),/.exec(transform);
+        const x = match ? parseFloat(match[1]) : NaN;
+        if (Number.isFinite(x)) return x;
+        const bbox = lineData.labelDimensions || lineData.labelGroup.node()?.getBBox?.();
+        const width = bbox?.width ?? 0;
+        return Math.max(0, (Number(ch?.w) || 0) - width - 175);
     }
 
     /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
