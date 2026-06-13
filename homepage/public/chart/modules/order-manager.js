@@ -12775,7 +12775,8 @@ class OrderManager {
             }
         }
 
-        lineData.priceText = priceText;
+        const detailSel = lineData.labelGroup.select('.order-level-toast-detail');
+        lineData.priceText = detailSel.empty() ? null : detailSel;
         this.positionPreviewLabel(lineData, overrideY);
     }
 

@@ -30465,6 +30465,7 @@ const TalariaV8bLive = () => {
                     const isH=hov===`sym-${s.id}`;
                     return (
                       <div key={s.id}
+                        className={!isAct ? "symbol-market-row" : undefined}
                         onMouseDown={(e)=>e.stopPropagation()}
                         onMouseEnter={()=>setHov(`sym-${s.id}`)} onMouseLeave={()=>setHov(null)}
                         onClick={(e)=>{
@@ -34992,6 +34993,7 @@ const TalariaV8bLive = () => {
                       const isH = hov === `opsym-${s.id}`;
                       return (
                         <div key={s.id}
+                          className={!isAct ? "symbol-market-row" : undefined}
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
