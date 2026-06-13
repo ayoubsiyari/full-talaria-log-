@@ -18,6 +18,7 @@ import {
   defaultGotoDateIsoFromChart,
   executeGotoItem,
   presetToGotoItem,
+  isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 
 // ── Multichart layout picker constants ───────────────────────────────────────
@@ -35356,12 +35357,16 @@ const TalariaV8bLive = () => {
               {Array.from({length:new Date(gotoCalViewY,gotoCalViewM,1).getDay()}).map((_,i)=><div key={"e"+i}/>)}
               {Array.from({length:new Date(gotoCalViewY,gotoCalViewM+1,0).getDate()}).map((_,i)=>{
                 const day=i+1;
+                const mo=String(gotoCalViewM+1).padStart(2,"0");
+                const dy=String(day).padStart(2,"0");
+                const iso=`${gotoCalViewY}-${mo}-${dy}`;
+                const disabled=isGotoCalendarDayDisabled(iso);
                 const isSel=selY===gotoCalViewY&&selMo===gotoCalViewM&&selD===day;
-                const isH=hov===`gcal-${day}`;
+                const isH=!disabled&&hov===`gcal-${day}`;
                 return(
-                  <div key={day} onClick={e=>{e.stopPropagation();const mo=String(gotoCalViewM+1).padStart(2,"0");const dy=String(day).padStart(2,"0");const iso=`${gotoCalViewY}-${mo}-${dy}`;setGotoNewDate(iso);setGotoDateInput(`${dy}-${MON_SHORT[gotoCalViewM]}-${gotoCalViewY}`);setGotoCalOpen(false);setGotoCalMode("days");}}
-                    onMouseEnter={()=>setHov(`gcal-${day}`)} onMouseLeave={()=>setHov(null)}
-                    style={{...cellSx(isSel,isH),fontSize:12,padding:"4px 0",fontWeight:isSel?700:400}}>
+                  <div key={day} onClick={e=>{e.stopPropagation();if(disabled)return;setGotoNewDate(iso);setGotoDateInput(`${dy}-${MON_SHORT[gotoCalViewM]}-${gotoCalViewY}`);setGotoCalOpen(false);setGotoCalMode("days");}}
+                    onMouseEnter={()=>{if(!disabled)setHov(`gcal-${day}`);}} onMouseLeave={()=>setHov(null)}
+                    style={{...cellSx(isSel,isH),fontSize:12,padding:"4px 0",fontWeight:isSel?700:400,opacity:disabled?0.28:1,cursor:disabled?"not-allowed":"default"}}>
                     {day}
                   </div>
                 );

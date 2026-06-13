@@ -4811,6 +4811,121 @@ class Chart {
         return Number.isFinite(t) ? Math.floor(t) : null;
     }
 
+    _getBacktestSessionStartMs(session) {
+        const sess = session || this.backtestingSession || {};
+        const r = sess.startDate || sess.start_date;
+        if (!r) return null;
+        const t = new Date(r).getTime();
+        return Number.isFinite(t) ? Math.floor(t) : null;
+    }
+
+    /**
+     * Backtest session window + replay floor for Go To / seek validation.
+     */
+    getBacktestSessionBounds() {
+        const session = this.backtestingSession || {};
+        const replay = this.replaySystem;
+        const startMs = this._getBacktestSessionStartMs(session);
+        const endMs = this._getBacktestSessionEndMs(session);
+        let minIndex = 0;
+        let playheadMs = null;
+        let currentIndex = null;
+        let allowBack = true;
+        const isBacktest = !!(this.isBacktestMode || this._isSessionBacktestStyle(session));
+
+        if (replay && replay.isActive) {
+            minIndex = replay.sessionStartIndex || 0;
+            if (typeof replay.currentIndex === 'number') {
+                currentIndex = replay.currentIndex;
+            }
+            playheadMs = this._getReplayPlayheadMs();
+            if (typeof replay.isBackNavigationAllowed === 'function') {
+                allowBack = replay.isBackNavigationAllowed();
+            }
+        }
+
+        let effectiveStartMs = startMs;
+        if (effectiveStartMs == null && replay && replay.isActive
+            && Array.isArray(replay.fullRawData) && minIndex >= 0) {
+            const bar = replay.fullRawData[minIndex];
+            if (bar && Number.isFinite(bar.t)) {
+                effectiveStartMs = bar.t;
+            }
+        }
+
+        return {
+            isBacktest,
+            startMs: effectiveStartMs,
+            endMs,
+            minIndex,
+            playheadMs,
+            currentIndex,
+            allowBackNavigation: allowBack,
+        };
+    }
+
+    /**
+     * Block Go To / replay seeks outside the backtest period or before playhead when forward-only.
+     * @returns {{ ok: boolean, message?: string }}
+     */
+    validateGoToJump({ targetTimestamp, targetIndex } = {}) {
+        const replay = this.replaySystem;
+        if (!replay || !replay.isActive) {
+            return { ok: true };
+        }
+
+        const bounds = this.getBacktestSessionBounds();
+        let idx = Number.isFinite(targetIndex) ? targetIndex : null;
+        let ts = Number.isFinite(targetTimestamp)
+            ? this.normalizeTimestampMs(targetTimestamp)
+            : null;
+
+        if (idx == null && ts != null && Array.isArray(replay.fullRawData)) {
+            if (typeof replay._findLastRawIndexAtOrBefore === 'function') {
+                idx = replay._findLastRawIndexAtOrBefore(replay.fullRawData, ts);
+            }
+            if (idx < 0 && typeof this.findGoToTargetIndex === 'function') {
+                idx = this.findGoToTargetIndex(replay.fullRawData, ts);
+            }
+        }
+
+        if (ts == null && idx != null && replay.fullRawData && replay.fullRawData[idx]) {
+            ts = this.normalizeTimestampMs(replay.fullRawData[idx].t);
+        }
+
+        if (bounds.isBacktest && bounds.startMs != null && ts != null && ts < bounds.startMs) {
+            return { ok: false, message: 'Cannot go before the backtest session start date.' };
+        }
+        if (bounds.isBacktest && idx != null && idx < (bounds.minIndex || 0)) {
+            return { ok: false, message: 'Cannot go before the backtest session start date.' };
+        }
+        if (bounds.isBacktest && bounds.endMs != null && ts != null && ts > bounds.endMs) {
+            return { ok: false, message: 'Cannot go past the backtest session end date.' };
+        }
+
+        if (!bounds.allowBackNavigation) {
+            if (idx != null && bounds.currentIndex != null && idx < bounds.currentIndex) {
+                return { ok: false, message: 'Backward navigation is disabled for this session.' };
+            }
+            if (ts != null && bounds.playheadMs != null) {
+                const playhead = this.normalizeTimestampMs(bounds.playheadMs);
+                if (Number.isFinite(playhead) && ts < playhead) {
+                    return { ok: false, message: 'Backward navigation is disabled for this session.' };
+                }
+            }
+        }
+
+        return { ok: true };
+    }
+
+    _showGoToBlocked(message) {
+        if (typeof this.showNotification === 'function') {
+            this.showNotification(message, 'warning');
+        } else {
+            console.warn(message);
+        }
+    }
+
     /** Active replay virtual time (intraday moment preserved across coarse TF switches). */
     _getReplayPlayheadMs() {
         const rs = this.replaySystem;
@@ -15458,7 +15573,11 @@ class Chart {
             usingReplay = true;
             currentIndex = this.replaySystem.currentIndex;
         }
-        
+
+        const allowBack = !(usingReplay && typeof this.replaySystem.isBackNavigationAllowed === 'function'
+            && !this.replaySystem.isBackNavigationAllowed());
+        const floorIdx = usingReplay ? (this.replaySystem.sessionStartIndex || 0) : 0;
+
         // Find next bar that touches this price
         let targetIndex = -1;
         for (let i = currentIndex + 1; i < sourceData.length; i++) {
@@ -15469,9 +15588,9 @@ class Chart {
             }
         }
         
-        if (targetIndex === -1) {
-            // Try searching backwards
-            for (let i = currentIndex - 1; i >= 0; i--) {
+        if (targetIndex === -1 && allowBack) {
+            // Try searching backwards only when session policy allows rollback
+            for (let i = currentIndex - 1; i >= floorIdx; i--) {
                 const bar = sourceData[i];
                 if (bar.h >= targetPrice && bar.l <= targetPrice) {
                     targetIndex = i;
@@ -15481,12 +15600,20 @@ class Chart {
         }
         
         if (targetIndex === -1) {
-            const msg = `No bar found at price ${targetPrice}`;
+            const msg = allowBack
+                ? `No bar found at price ${targetPrice}`
+                : `No forward bar found at price ${targetPrice}`;
             if (typeof this.showNotification === 'function') {
                 this.showNotification(msg, 'warning');
             } else {
                 console.warn(msg);
             }
+            return false;
+        }
+
+        const jumpCheck = this.validateGoToJump({ targetIndex });
+        if (!jumpCheck.ok) {
+            this._showGoToBlocked(jumpCheck.message);
             return false;
         }
         
@@ -15625,6 +15752,17 @@ class Chart {
 
     handleGoToAction(action) {
         if (!action) return;
+
+        const backNavBlocked = this.replaySystem
+            && typeof this.replaySystem.isBackNavigationAllowed === 'function'
+            && !this.replaySystem.isBackNavigationAllowed();
+        const backwardActions = new Set([
+            'prev-high', 'prev-low', 'prev-asian-high', 'prev-asian-low',
+        ]);
+        if (backNavBlocked && backwardActions.has(action)) {
+            this._showGoToBlocked('Backward navigation is disabled for this session.');
+            return;
+        }
 
         if (action.startsWith('preset-')) {
             this.goToPreset(action.replace('preset-', ''));
@@ -16025,6 +16163,12 @@ class Chart {
             return;
         }
 
+        const jumpCheck = this.validateGoToJump({ targetIndex });
+        if (!jumpCheck.ok) {
+            this._showGoToBlocked(jumpCheck.message);
+            return;
+        }
+
         const targetBar = sourceData[targetIndex];
         const targetDate = new Date(targetBar.t);
 
@@ -16360,6 +16504,12 @@ class Chart {
             return false;
         }
 
+        const jumpCheck = this.validateGoToJump({ targetIndex });
+        if (!jumpCheck.ok) {
+            this._showGoToBlocked(jumpCheck.message);
+            return false;
+        }
+
         const replay = this.replaySystem;
         const previousAutoScrollEnabled = replay.autoScrollEnabled;
 
@@ -16374,7 +16524,8 @@ class Chart {
                 const maxIndex = Array.isArray(replay.fullRawData) && replay.fullRawData.length > 0
                     ? replay.fullRawData.length - 1
                     : 0;
-                replay.currentIndex = Math.max(0, Math.min(targetIndex, maxIndex));
+                const minIdx = replay.sessionStartIndex || 0;
+                replay.currentIndex = Math.max(minIdx, Math.min(targetIndex, maxIndex));
                 if (Array.isArray(replay.fullRawData) && replay.fullRawData[replay.currentIndex]) {
                     replay.replayTimestamp = replay.fullRawData[replay.currentIndex].t;
                 }
@@ -16658,6 +16809,17 @@ class Chart {
             if (closestIndex === -1) {
                 alert('Could not find data for the specified date/time');
                 return;
+            }
+
+            if (usingReplay) {
+                const jumpCheck = this.validateGoToJump({
+                    targetTimestamp: normalizedTarget,
+                    targetIndex: closestIndex,
+                });
+                if (!jumpCheck.ok) {
+                    this._showGoToBlocked(jumpCheck.message);
+                    return;
+                }
             }
 
             const closestCandle = sourceData[closestIndex];

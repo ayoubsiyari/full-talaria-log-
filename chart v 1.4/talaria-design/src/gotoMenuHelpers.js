@@ -212,6 +212,59 @@ function notifyChart(message, kind = "warning") {
   }
 }
 
+function validateGotoOnChart(ch, { targetTimestamp, targetIndex } = {}) {
+  if (!ch || typeof ch.validateGoToJump !== "function") return { ok: true };
+  return ch.validateGoToJump({ targetTimestamp, targetIndex });
+}
+
+/** Session date bounds for Go To UI (backtest start/end). */
+export function getGotoDateBounds() {
+  const ch = typeof window !== "undefined" ? window.chart : null;
+  if (!ch || typeof ch.getBacktestSessionBounds !== "function") return null;
+  const b = ch.getBacktestSessionBounds();
+  if (!b?.isBacktest) return null;
+
+  const toIso = (ms) => {
+    if (!Number.isFinite(ms)) return null;
+    const tm = window.timezoneManager;
+    if (tm && typeof tm.convertToTimezone === "function") {
+      const d = tm.convertToTimezone(ms);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    }
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  let minDateIso = toIso(b.startMs);
+  let maxDateIso = toIso(b.endMs);
+
+  if (b.allowBackNavigation === false && Number.isFinite(b.playheadMs)) {
+    const playIso = toIso(b.playheadMs);
+    if (playIso && (!minDateIso || playIso > minDateIso)) {
+      minDateIso = playIso;
+    }
+  }
+
+  return {
+    minDateIso,
+    maxDateIso,
+    allowBackNavigation: b.allowBackNavigation !== false,
+    playheadMs: b.playheadMs,
+  };
+}
+
+function isGotoDateIsoDisabled(iso, bounds) {
+  if (!bounds || !iso) return false;
+  if (bounds.minDateIso && iso < bounds.minDateIso) return true;
+  if (bounds.maxDateIso && iso > bounds.maxDateIso) return true;
+  return false;
+}
+
+/** True when calendar day (YYYY-MM-DD) is outside backtest session window. */
+export function isGotoCalendarDayDisabled(dateIso) {
+  return isGotoDateIsoDisabled(dateIso, getGotoDateBounds());
+}
+
 /**
  * Execute a Go To item using existing chart replay APIs (no custom seek logic).
  */
@@ -233,7 +286,8 @@ export function executeGotoItem(item, { fallbackDateIso } = {}) {
       return false;
     }
     if (typeof ch.jumpToPrice === "function") {
-      return ch.jumpToPrice(p) !== false;
+      const ok = ch.jumpToPrice(p) !== false;
+      return ok;
     }
     return false;
   }
@@ -253,6 +307,13 @@ export function executeGotoItem(item, { fallbackDateIso } = {}) {
     notifyChart("Could not resolve date/time for Go To", "warning");
     return false;
   }
+
+  const jumpCheck = validateGotoOnChart(ch, { targetTimestamp: ms });
+  if (!jumpCheck.ok) {
+    notifyChart(jumpCheck.message || "Go To blocked by session rules", "warning");
+    return false;
+  }
+
   if (typeof ch.jumpToTimestamp === "function") {
     void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
     return true;

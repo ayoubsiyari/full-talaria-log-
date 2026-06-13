@@ -12218,6 +12218,8 @@ class OrderManager {
         if (kind === 'entry') {
             if (!this.isMultiEntryMode) {
                 this.setEntryMode(true);
+            } else if (this.multiEntryLevels.length < 2) {
+                this.setEntryMode(true);
             } else {
                 this.updatePreviewLines();
                 this.calculateAdvancedRiskReward();
@@ -19192,8 +19194,12 @@ class OrderManager {
                 orderTypeSection.style.pointerEvents = 'none';
             }
 
-            if (this.multiEntryLevels.length === 0) {
-                const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            if (this.multiEntryLevels.length < 2) {
+                const preservedPrimary = this.multiEntryLevels.length === 1 ? this.multiEntryLevels[0] : null;
+                this.multiEntryLevels = [];
+                const currentPrice = preservedPrimary?.price > 0
+                    ? preservedPrimary.price
+                    : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
                 const psMode = this.positionSizeMode || 'risk-usd';
                 let amt1;
                 let amt2;
@@ -19208,6 +19214,9 @@ class OrderManager {
                     const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
                     amt1 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
                     amt2 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
+                }
+                if (preservedPrimary?.amount > 0) {
+                    amt1 = preservedPrimary.amount;
                 }
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
@@ -19258,6 +19267,7 @@ class OrderManager {
             }
 
             this.clearSplitEntries();
+            this.multiEntryLevels = [];
         }
 
         this.updatePreviewLines();
@@ -19839,11 +19849,24 @@ class OrderManager {
     removeMultiEntryLevel(id) {
         const ix = this.multiEntryLevels.findIndex((l) => l.id === id);
         if (ix === -1) return;
+
+        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
+
         if (this.multiEntryLevels.length <= 1) {
-            this.toggleEntryMode();
+            if (this.multiEntryLevels.length === 1 && this.multiEntryLevels[0].price > 0) {
+                const entryInput = document.getElementById('orderEntryPrice');
+                if (entryInput) entryInput.value = this.formatPrice(this.multiEntryLevels[0].price);
+            }
+            this.multiEntryLevels = [];
+            if (this.isMultiEntryMode) {
+                this.setEntryMode(false);
+            } else {
+                this.renderMultiEntryRows();
+                this.syncMultiEntryToSplitEntries();
+            }
             return;
         }
-        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
+
         // Scale remaining levels proportionally to restore the total risk/lot target
         // (equalizeMultiEntryAmounts resets to equal split — this preserves relative weights)
         this._rebalanceLevelAmountsToTarget();
@@ -29189,7 +29212,16 @@ class OrderManager {
         if (!isPending) return;
         const po = this.pendingOrders.find(p => p.id === orderId);
         if (!po) return;
-        if (po.isSplitEntry) return;
+        if (po.isSplitEntry) {
+            const members = this._getSplitGroupPendingOrders(po);
+            if (members.length > 1) return;
+            const gid = po.splitGroupId;
+            if (gid != null) this.removeSplitGroupAvgLine(gid);
+            po.isSplitEntry = false;
+            po.splitGroupId = undefined;
+            po.splitIndex = undefined;
+            po.splitTotal = undefined;
+        }
 
         const price = parseFloat(this.formatPrice(newPrice));
         const halfQty = +(po.quantity / 2).toFixed(2) || po.quantity;
@@ -32443,6 +32475,14 @@ class OrderManager {
                     survivor.splitGroupId = undefined;
                     survivor.splitIndex = undefined;
                     survivor.splitTotal = undefined;
+                    survivor.quantity = (survivor.quantity || 0) + cancelledQty;
+                    survivor.placedQuantity = survivor.quantity;
+                    if (cancelledRisk > 0) {
+                        survivor.riskAmount = Math.round(((survivor.riskAmount || 0) + cancelledRisk) * 100) / 100;
+                        survivor.originalRiskAmount = Math.round(
+                            ((survivor.originalRiskAmount || survivor.riskAmount || 0) + cancelledRisk) * 100
+                        ) / 100;
+                    }
                     if (!survivor.takeProfit && cancelledTP) survivor.takeProfit = cancelledTP;
                     if (!survivor.stopLoss && cancelledSL) survivor.stopLoss = cancelledSL;
                     if (!survivor.tpTargets && cancelledTPTargets) survivor.tpTargets = cancelledTPTargets;
