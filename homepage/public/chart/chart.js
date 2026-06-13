@@ -15445,7 +15445,7 @@ class Chart {
     jumpToPrice(targetPrice) {
         if (!this.data || this.data.length === 0) {
             console.warn('No data loaded');
-            return;
+            return false;
         }
         
         let sourceData = this.data;
@@ -15481,19 +15481,30 @@ class Chart {
         }
         
         if (targetIndex === -1) {
-            return;
+            const msg = `No bar found at price ${targetPrice}`;
+            if (typeof this.showNotification === 'function') {
+                this.showNotification(msg, 'warning');
+            } else {
+                console.warn(msg);
+            }
+            return false;
         }
         
         if (usingReplay) {
-            this.replaySystem.currentIndex = targetIndex;
-            this.replaySystem.updateChartData(true);
+            if (typeof this.jumpReplayToIndex === 'function') {
+                this.jumpReplayToIndex(targetIndex, { forceScroll: true });
+            } else {
+                this.replaySystem.currentIndex = targetIndex;
+                this.replaySystem.updateChartData(true);
+            }
         } else {
             const targetBar = sourceData[targetIndex];
             const targetDate = new Date(targetBar.t);
             const dateStr = this.formatDateForInput(targetDate);
             this.jumpToDate(dateStr);
         }
-        
+
+        return true;
     }
     
     /**
@@ -15672,7 +15683,15 @@ class Chart {
             const currentTs = current.t;
             const candidateTs = candidate.t;
             if (candidateTs <= currentTs) return false;
-            
+
+            const tm = window.timezoneManager;
+            if (tm && typeof tm.convertToTimezone === 'function') {
+                const d = tm.convertToTimezone(candidateTs);
+                const h = d.getUTCHours();
+                const m = d.getUTCMinutes();
+                return h === targetHour && m >= targetMinute;
+            }
+
             const d = new Date(candidateTs);
             return d.getHours() === targetHour && d.getMinutes() >= targetMinute;
         }, { alertMessage: `No session found at ${targetHour}:${String(targetMinute).padStart(2, '0')}` });
@@ -16010,8 +16029,12 @@ class Chart {
         const targetDate = new Date(targetBar.t);
 
         if (usingReplay) {
-            this.replaySystem.currentIndex = targetIndex;
-            this.replaySystem.updateChartData(true);
+            if (typeof this.jumpReplayToIndex === 'function') {
+                this.jumpReplayToIndex(targetIndex, { forceScroll: true });
+            } else {
+                this.replaySystem.currentIndex = targetIndex;
+                this.replaySystem.updateChartData(true);
+            }
         } else {
             const dateStr = this.formatDateForInput(targetDate);
             const hh = String(targetDate.getHours()).padStart(2, '0');

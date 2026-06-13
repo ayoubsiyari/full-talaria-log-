@@ -10,6 +10,15 @@ import {
   resolveSessionChartSymbol,
 } from "./chartSymbolBadge.jsx";
 import MultichartGrid from "./MultichartGrid.jsx";
+import {
+  loadGotoState,
+  saveGotoState,
+  parseGotoTimeParts,
+  buildGotoTimestampMs,
+  defaultGotoDateIsoFromChart,
+  executeGotoItem,
+  presetToGotoItem,
+} from "./gotoMenuHelpers.js";
 
 // ── Multichart layout picker constants ───────────────────────────────────────
 // Lifted to module scope (Phase 7.2.3) so BOTH the existing right-panel
@@ -9021,11 +9030,7 @@ const TalariaV8bLive = () => {
   const [rbPressed, setRbPressed] = useState(false);
   const rbPressTimer = useRef(null);
   const [gotoOpen, setGotoOpen] = useState(false);
-  const [gotoItems, setGotoItems] = useState([
-    {id:1,type:"datetime",label:"09 Jan 2009",time:"07:00",repeat:"none",pinned:true,dateIso:"2009-01-09"},
-    {id:2,type:"session",label:"NY Open",time:"13:30",pinned:true},
-    {id:4,type:"price",label:"126.500",pinned:true},
-  ]);
+  const [gotoItems, setGotoItems] = useState(() => loadGotoState().pinned);
   const [gotoAddType, setGotoAddType] = useState("datetime");
   const [gotoTab, setGotoTab] = useState("pinned");
   const [gotoNewDate, setGotoNewDate] = useState("2009-01-09");
@@ -9044,13 +9049,7 @@ const TalariaV8bLive = () => {
   const [gotoCalYearBase, setGotoCalYearBase] = useState(2004); // start of 12-year grid
   const [gotoDateInput, setGotoDateInput] = useState("09-Jan-2009");
   const [gotoTimeInput, setGotoTimeInput] = useState("07:00");
-  const [gotoPresets, setGotoPresets] = useState([
-    {id:"ny",  label:"New York Open",  time:"13:30 UTC", color:"#4A6AFF"},
-    {id:"lon", label:"London Open",    time:"08:00 UTC", color:"#00D4A1"},
-    {id:"tok", label:"Tokyo Open",     time:"00:00 UTC", color:"#FF8C42"},
-    {id:"syd", label:"Sydney Open",    time:"22:00 UTC", color:"#B06AFF"},
-    {id:"fra", label:"Frankfurt Open", time:"07:00 UTC", color:"#C9A84C"},
-  ]);
+  const [gotoPresets, setGotoPresets] = useState(() => loadGotoState().presets);
   const [ddPos, setDdPos] = useState({ top: 60, left: 40 }); // position for dropdown
   const [symbolOpen, setSymbolOpen] = useState(false);
   const [symbol, setSymbol] = useState("EUR/JPY");
@@ -12809,55 +12808,9 @@ const TalariaV8bLive = () => {
   const currentChartType = chartTypeMap[chartType] || { icon: "candle", label: chartType };
   const gotoNextId = () => Date.now() + Math.random();
 
-  const parseGotoTimeParts = (timeStr) => {
-    if (!timeStr) return [0, 0];
-    const s = String(timeStr).replace(/\s*UTC\s*/gi, "").trim();
-    const segs = s.split(":");
-    return [parseInt(segs[0], 10) || 0, parseInt(segs[1], 10) || 0];
-  };
-
-  const buildGotoTimestampMs = (dateIso, timeStr) => {
-    if (!dateIso || typeof dateIso !== "string") return null;
-    const p = dateIso.split("-").map((x) => parseInt(x, 10));
-    if (p.length < 3 || !p.every((n) => Number.isFinite(n))) return null;
-    const [y, mo, d] = p;
-    const [hh, mm] = parseGotoTimeParts(timeStr);
-    const tm = typeof window !== "undefined" ? window.timezoneManager : null;
-    const utc = Date.UTC(y, mo - 1, d, hh, mm, 0, 0);
-    return tm ? utc - tm.getOffsetMs() : new Date(y, mo - 1, d, hh, mm, 0, 0).getTime();
-  };
-
-  const defaultGotoDateIsoFromChart = () => {
-    const ch = typeof window !== "undefined" ? window.chart : null;
-    if (!ch) return null;
-    const t =
-      ch.replaySystem?.fullRawData?.[0]?.t ??
-      ch.rawData?.[0]?.t ??
-      ch.data?.[0]?.t;
-    if (!Number.isFinite(t)) return null;
-    const d = new Date(t);
-    // Use UTC calendar parts so presets/session times align with chart bar timestamps (ms since epoch).
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-  };
-
-  const executeGotoItem = (item) => {
-    if (!item) return;
-    const ch = typeof window !== "undefined" ? window.chart : null;
-    if (!ch) return;
-    if (item.type === "price") {
-      const raw = String(item.label ?? "").replace(/[^0-9.-]/g, "");
-      const p = parseFloat(raw);
-      if (Number.isFinite(p) && typeof ch.jumpToPrice === "function") ch.jumpToPrice(p);
-      return;
-    }
-    const timeStr = item.time || "00:00";
-    const dateIso = item.dateIso || defaultGotoDateIsoFromChart() || gotoNewDate;
-    const ms = buildGotoTimestampMs(dateIso, timeStr);
-    if (ms == null || !Number.isFinite(ms)) return;
-    if (typeof ch.jumpToTimestamp === "function") {
-      void ch.jumpToTimestamp(ms, { showLoadingOverlay: true });
-    }
-  };
+  useEffect(() => {
+    saveGotoState(gotoItems, gotoPresets);
+  }, [gotoItems, gotoPresets]);
 
   // Always use effective zoom 1: CSS `zoom` on the shell broke hit-testing vs visually
   // stacked layers (left rail, floating bars) in Chromium — clicks registered on #chart-container
@@ -12876,7 +12829,7 @@ const TalariaV8bLive = () => {
 
   // Console: window.__TALARIA_V9_UI_REV__ — if missing/stale, the loaded bundle is not the latest build.
   useEffect(() => {
-    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260524a15-replay-play-pause-fix";
+    if (typeof window !== "undefined") window.__TALARIA_V9_UI_REV__ = "20260612-goto-menu-full";
   }, []);
 
   useEffect(() => {
@@ -31561,7 +31514,6 @@ const TalariaV8bLive = () => {
                 const typeTag=(item)=>item.type==="price"?"PX":item.type==="session"?"SX":"DT";
                 const typeColor=(item)=>item.type==="price"?c.gold:item.type==="session"?c.gn:c.acL;
                 const tabAccentGoto=(id)=>id==="pinned"?c.gold:c.acL;
-                const addItem=(item)=>{setGotoPresets(prev=>[...prev,{...item,id:gotoNextId()}]);};
                 const iSt={background:c.well,border:`1px solid ${c.brH}`,color:c.tx,fontSize:13,padding:"6px 9px",fontFamily:F,outline:"none",width:"100%",boxSizing:"border-box",colorScheme:c.inputScheme};
                 return(
                 <div data-sdrop="1" onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",zIndex:11000,background:c.sf,border:`1px solid ${c.brH}`,boxShadow:`0 12px 48px rgba(0,0,0,0.8),0 0 18px ${c.acG}`,width:300,fontFamily:F,display:"flex",flexDirection:"column",animation:closing.has("goto")?"tlrPopOut 0.13s ease both":"tlrPopIn 0.15s ease both",maxHeight:480}}>
@@ -31621,7 +31573,7 @@ const TalariaV8bLive = () => {
                           const isPinH=hov===`gip-${item.id}`;
                           return(
                             <div key={item.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(item);closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(item,{fallbackDateIso:gotoNewDate});closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gi-${item.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:10,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?`${item.color||c.gold}11`:"transparent",
@@ -31670,7 +31622,7 @@ const TalariaV8bLive = () => {
                           const isPinned=gotoItems.some(x=>x.label===s.label&&x.pinned);
                           return(
                             <div key={s.id}
-                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem({type:"datetime",label:s.label,time:s.time,color:s.color});closePopup(setGotoOpen,"goto");}}
+                              onClick={e=>{if(e.target.closest("[data-gotoact]"))return;e.stopPropagation();executeGotoItem(presetToGotoItem(s,defaultGotoDateIsoFromChart()||gotoNewDate),{fallbackDateIso:gotoNewDate});closePopup(setGotoOpen,"goto");}}
                               onMouseEnter={()=>setHov(`gs-${s.id}`)} onMouseLeave={()=>setHov(null)}
                               style={{display:"flex",alignItems:"center",gap:8,padding:"7px 14px",cursor:"default",position:"relative",
                                 background:isH?"rgba(0,212,161,0.06)":"transparent",
@@ -31712,20 +31664,28 @@ const TalariaV8bLive = () => {
                     {gotoTab==="create"&&(()=>{
                       const crTabs=[{t:"datetime",l:"Date & Time"},{t:"price",l:"Price"}];
                       const crIdx=crTabs.findIndex(x=>x.t===gotoAddType);
+                      const buildGotoPayload=(extra)=>{
+                        if(extra.type==="datetime") return {...extra,dateIso:gotoNewDate,repeat:gotoNewRepeat};
+                        if(extra.type==="price"){
+                          const decimals=(settings.precision||"0.00000").split(".")[1]?.length||5;
+                          const p=parseFloat(gotoNewPrice);
+                          return {...extra,label:gotoNewName||(Number.isFinite(p)?p.toFixed(decimals):extra.label)};
+                        }
+                        return extra;
+                      };
                       const doAdd=(extra)=>{
-                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
-                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");
+                        const payload=buildGotoPayload(extra);
+                        setGotoPresets(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId()}]);
+                        setGotoItems(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId(),pinned:true}]);
+                        setGotoNewName("");setGotoNewColor("#4A6AFF");
                       };
                       const doAddAndGo=(extra)=>{
-                        const payload=extra.type==="datetime"?{...extra,dateIso:gotoNewDate}:extra;
-                        addItem({...payload,color:gotoNewColor});setGotoNewName("");setGotoNewColor("#4A6AFF");closePopup(setGotoOpen,"goto");
-                        if(extra.type==="datetime"){
-                          const ms=buildGotoTimestampMs(gotoNewDate,gotoNewTime);
-                          if(ms!=null&&typeof window.chart?.jumpToTimestamp==="function")void window.chart.jumpToTimestamp(ms,{showLoadingOverlay:true});
-                        }else if(extra.type==="price"){
-                          const p=parseFloat(gotoNewPrice);
-                          if(Number.isFinite(p)&&typeof window.chart?.jumpToPrice==="function")window.chart.jumpToPrice(p);
-                        }
+                        const payload=buildGotoPayload(extra);
+                        setGotoPresets(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId()}]);
+                        setGotoItems(prev=>[...prev,{...payload,color:gotoNewColor,id:gotoNextId(),pinned:true}]);
+                        setGotoNewName("");setGotoNewColor("#4A6AFF");
+                        closePopup(setGotoOpen,"goto");
+                        executeGotoItem(payload,{fallbackDateIso:gotoNewDate});
                       };
                       const Chevron=({open})=>(
                         <svg width={8} height={8} viewBox="0 0 8 8" fill="none">
