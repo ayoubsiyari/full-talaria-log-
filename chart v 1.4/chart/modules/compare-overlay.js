@@ -2983,6 +2983,11 @@ class CompareOverlay {
             this.updateLegend();
             this.updateOverlayLegend();
             
+            if (this.chart.replaySystem?.isActive) {
+                this._lastReplaySyncKey = null;
+                this.syncForReplay();
+            }
+
             // Trigger chart re-render
             this.chart.render();
             
@@ -3306,6 +3311,85 @@ class CompareOverlay {
         });
 
         return layouts;
+    }
+
+    /** Binary-search slice of sorted OHLC rows up to replay playhead (inclusive). */
+    _sliceRawToTimestamp(bars, maxT) {
+        if (!Array.isArray(bars) || !bars.length || !Number.isFinite(maxT)) return [];
+        let lo = 0;
+        let hi = bars.length - 1;
+        let end = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            const t = Number(bars[mid].t);
+            if (Number.isFinite(t) && t <= maxT) {
+                end = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return end < 0 ? [] : bars.slice(0, end + 1);
+    }
+
+    _buildReplaySyncKey() {
+        const ch = this.chart;
+        const rs = ch?.replaySystem;
+        if (!rs?.isActive || !Array.isArray(ch.rawData) || !ch.rawData.length) return 'live';
+        const maxT = ch.rawData[ch.rawData.length - 1].t;
+        const playhead = typeof ch._getReplayPlayheadMs === 'function'
+            ? ch._getReplayPlayheadMs()
+            : rs.replayTimestamp;
+        return `${rs.currentIndex}|${ch.currentTimeframe}|${maxT}|${playhead}`;
+    }
+
+    _trimOverlayDataToPlayhead(data) {
+        const ch = this.chart;
+        if (!Array.isArray(data) || !data.length) return data;
+        if (typeof ch._trimBarOhlcToReplayPlayhead !== 'function') return data;
+        const rs = ch.replaySystem;
+        if (!rs?.isActive) return data;
+        const tf = ch.currentTimeframe || '1m';
+        const tfMs = typeof ch.parseTimeframe === 'function' ? ch.parseTimeframe(tf) : null;
+        const lastIdx = data.length - 1;
+        const trimmed = ch._trimBarOhlcToReplayPlayhead(data[lastIdx], data, lastIdx, tfMs);
+        if (trimmed === data[lastIdx]) return data;
+        const out = data.slice();
+        out[lastIdx] = trimmed;
+        return out;
+    }
+
+    /**
+     * Keep compare overlay series aligned with replay playhead — slice rawData like
+     * replay-system does for the main chart, then resample + trim the forming bar.
+     */
+    syncForReplay() {
+        const ch = this.chart;
+        if (!ch || !this.overlays.length) return;
+
+        const rs = ch.replaySystem;
+        const inReplay = !!(rs && rs.isActive && Array.isArray(ch.rawData) && ch.rawData.length);
+        const syncKey = inReplay ? this._buildReplaySyncKey() : 'live';
+        if (this._lastReplaySyncKey === syncKey) return;
+        this._lastReplaySyncKey = syncKey;
+
+        const tf = ch.currentTimeframe || '1m';
+
+        for (const overlay of this.overlays) {
+            if (!overlay.rawData?.length) continue;
+
+            if (inReplay) {
+                const maxT = ch.rawData[ch.rawData.length - 1].t;
+                const rawSlice = this._sliceRawToTimestamp(overlay.rawData, maxT);
+                const base = rawSlice.length ? rawSlice : overlay.rawData.slice(0, 1);
+                overlay.data = this.resampleData(base, tf);
+                overlay.data = this._trimOverlayDataToPlayhead(overlay.data);
+            } else {
+                overlay.data = this.resampleData(overlay.rawData, tf);
+            }
+        }
+
+        try { this.updateOverlayLegend(); } catch (_) { /* ignore */ }
     }
 
     /**
@@ -4214,6 +4298,8 @@ class CompareOverlay {
         for (const overlay of this.overlays) {
             overlay.data = this.resampleData(overlay.rawData || [], timeframe);
         }
+        this._lastReplaySyncKey = null;
+        this.syncForReplay();
         if (Array.isArray(this.linkedPanes)) {
             this.linkedPanes.forEach((pane) => {
                 pane.data = this.resampleData(pane.rawData || [], timeframe);

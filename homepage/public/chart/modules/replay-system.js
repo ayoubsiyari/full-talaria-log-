@@ -2467,6 +2467,7 @@ class ReplaySystem {
                 this.chart.drawingManager.redrawAll();
             }
             
+            this._syncCompareOverlaysForReplay();
             this.chart.scheduleRender();
         }
         
@@ -2631,6 +2632,15 @@ class ReplaySystem {
         return true;
     }
 
+    _syncCompareOverlaysForReplay() {
+        const co = this.chart && this.chart.compareOverlay;
+        if (co && typeof co.syncForReplay === 'function') {
+            try { co.syncForReplay(); } catch (e) {
+                console.warn('[replay] compare overlay sync failed', e);
+            }
+        }
+    }
+
     /**
      * Update chart data based on current replay position
      * @param {boolean} autoScroll - Whether to auto-scroll to latest candles (default: true)
@@ -2688,6 +2698,7 @@ class ReplaySystem {
             if (typeof this.chart.bumpDataVersion === 'function') {
                 this.chart.bumpDataVersion();
             }
+            this._syncCompareOverlaysForReplay();
         } catch (error) {
             console.error('❌ Error resampling data:', error);
             return;
@@ -3974,11 +3985,15 @@ class ReplaySystem {
         const slicedRaw = this.fullRawData.slice(0, sliceEnd);
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
+        if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
+            this.chart._trimLastDataBarToReplayPlayhead();
+        }
         
         // Bump data version
         if (typeof this.chart.bumpDataVersion === 'function') {
             this.chart.bumpDataVersion();
         }
+        this._syncCompareOverlaysForReplay();
         
         // Recalculate indicators
         if (typeof this.chart.recalculateIndicators === 'function') {
@@ -4473,11 +4488,15 @@ class ReplaySystem {
         // Update chart data
         this.chart.rawData = slicedRaw;
         this.chart.data = this.chart.resampleData(slicedRaw, this.chart.currentTimeframe);
+        if (typeof this.chart._trimLastDataBarToReplayPlayhead === 'function') {
+            this.chart._trimLastDataBarToReplayPlayhead();
+        }
         
         // Bump data version if available
         if (typeof this.chart.bumpDataVersion === 'function') {
             this.chart.bumpDataVersion();
         }
+        this._syncCompareOverlaysForReplay();
         
         // Recalculate indicators
         if (typeof this.chart.recalculateIndicators === 'function') {
