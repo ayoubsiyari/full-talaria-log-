@@ -25513,16 +25513,8 @@ class Chart {
                     e.target.closest('[data-talaria-sp-drag-zone]')
                 ));
                 const continueOverlayPan = this.drag.type === 'pan' && !onCanvas && overSeparatePanelLayer;
-                const isAxisDrag = this.drag.type === 'priceAxis'
-                    || this.drag.type === 'timeAxis'
-                    || this.drag.type === 'separatePanelAxis';
-                // Order overlay (margin shield, y-axis pills) sits above canvas — axis drags
-                // started via forwarded mousedown must keep receiving moves while over SVG.
-                const overSvgOverlay = !!(this.svg?.node() && e.target && e.target !== this.canvas
-                    && (e.target === this.svg.node() || this.svg.node().contains(e.target)));
-                const continueAxisOverOverlay = isAxisDrag && overSvgOverlay;
 
-                if (isOutside || continueOverlayPan || continueAxisOverOverlay) {
+                if (isOutside || continueOverlayPan) {
                     if (continueOverlayPan) {
                         this.mouseX = mx;
                         this.mouseY = my;
@@ -25534,7 +25526,7 @@ class Chart {
                     if (this.drag.type === 'separatePanelAxis' && this.drag.separatePanelSlot &&
                         typeof this.separatePanelAxisDragStep === 'function') {
                         this.separatePanelAxisDragStep(this.drag.separatePanelSlot, dy, my);
-                        this._scheduleAxisZoomRender();
+                        this.scheduleRender();
                     } else if (this.drag.type === 'priceAxis' && this.yScale) {
                         const sensitivity = 0.002;
                         const zoomFactor = Math.max(0.01, 1 - dy * sensitivity);
@@ -25547,7 +25539,7 @@ class Chart {
                         const rangeChange = newRange - oldRange;
                         this.priceOffset -= rangeChange * (0.5 - cursorRatio);
                         this.priceZoom = newZoom;
-                        this._scheduleAxisZoomRender();
+                        this.scheduleRender();
                     } else if (this.drag.type === 'timeAxis') {
                         const sensitivity = 0.001;
                         const zoomFactor = 1 + dx * sensitivity;
@@ -25561,7 +25553,7 @@ class Chart {
                         const newSpacing = this.getCandleSpacing();
                         this.offsetX = rightEdge - m.l - lastVisibleIdx * newSpacing;
                         this.constrainOffset();
-                        this._scheduleAxisZoomRender();
+                        this.scheduleRender();
                         this.dispatchScrollSync();
                     } else if (this.drag.type === 'pan') {
                         if (continueOverlayPan) {
@@ -25639,10 +25631,7 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('dblclick', e => {
             const [mx, my] = this._eventCanvasLocalXY(e);
-            const detectedMode = detectCursorMode(mx, my);
-            const mode = (detectedMode === 'priceAxis' || detectedMode === 'timeAxis' || detectedMode === 'separatePanelAxis')
-                ? detectedMode
-                : (this.cursor.mode || detectedMode);
+            const mode = this.cursor.mode || detectCursorMode(mx, my);
 
             if ((mode === 'chart' || mode === 'separatePanelPlot')
                 && typeof this.handleSeparatePanelIndicatorDoubleClick === 'function'
