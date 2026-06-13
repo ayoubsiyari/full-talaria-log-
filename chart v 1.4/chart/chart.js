@@ -5500,6 +5500,21 @@ class Chart {
             savedReplayTimestamp = sessionEndMs;
         }
 
+        const switchingToFinerFromCtx = Number.isFinite(prevTfMs) && prevTfMs > 0
+            && Number.isFinite(newTfMsForSwitch) && newTfMsForSwitch > 0
+            && newTfMsForSwitch < prevTfMs;
+        let effectivePlayhead = savedReplayTimestamp;
+        const coarseEnd = ctx.coarsePeriodExclusiveEndTs;
+        if (switchingToFinerFromCtx && Number.isFinite(effectivePlayhead) && Number.isFinite(coarseEnd)) {
+            const nativeStep = this._getNativeRawStepMs() || newTfMsForSwitch || 60000;
+            if (effectivePlayhead >= coarseEnd) {
+                effectivePlayhead = coarseEnd - nativeStep;
+            }
+        }
+        if (Number.isFinite(effectivePlayhead)) {
+            savedReplayTimestamp = effectivePlayhead;
+        }
+
         if (savedReplayTimestamp != null && typeof replay.applyPersistedState === 'function') {
             try {
                 replay.applyPersistedState({
@@ -17632,9 +17647,13 @@ class Chart {
             const bar = replay.fullRawData[idx];
             if (bar && Number.isFinite(bar.t)) ts = bar.t;
         }
-        if (!Number.isFinite(ts) && Array.isArray(this.data) && this.data.length > 0) {
-            const lastBar = this.data[this.data.length - 1];
-            if (lastBar && Number.isFinite(lastBar.t)) ts = lastBar.t;
+        // Do not fall back to display `data[last]` during replay — coarse TF resample can
+        // make that bucket start/end differ from the walk-forward playhead and leak bars on 1m↔1H.
+        if (!Number.isFinite(ts) && !(replay.isActive)) {
+            if (Array.isArray(this.data) && this.data.length > 0) {
+                const lastBar = this.data[this.data.length - 1];
+                if (lastBar && Number.isFinite(lastBar.t)) ts = lastBar.t;
+            }
         }
         if (!Number.isFinite(ts)) {
             try {

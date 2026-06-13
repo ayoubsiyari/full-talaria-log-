@@ -137,6 +137,23 @@ class ReplaySystem {
         return false;
     }
 
+    /**
+     * Walk-forward slice must never extend past replayTimestamp — TF switches (1m↔1H) can
+     * leave currentIndex ahead of the playhead and paint unreplayed 1m bars.
+     */
+    _clampCurrentIndexToReplayTimestamp() {
+        if (!Number.isFinite(this.replayTimestamp) || !Array.isArray(this.fullRawData) || !this.fullRawData.length) {
+            return;
+        }
+        const idxAtPlayhead = this._findLastRawIndexAtOrBefore(this.fullRawData, this.replayTimestamp);
+        if (idxAtPlayhead < 0) return;
+        const floorIdx = this.sessionStartIndex || 0;
+        const capped = Math.min(Math.max(idxAtPlayhead, floorIdx), this.fullRawData.length - 1);
+        if (this.currentIndex > capped) {
+            this.currentIndex = capped;
+        }
+    }
+
     applyPersistedState(state) {
         if (!state || typeof state !== 'object') return false;
         if (!this.isActive || !this.fullRawData || this.fullRawData.length === 0) return false;
@@ -2657,6 +2674,8 @@ class ReplaySystem {
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
+        this._clampCurrentIndexToReplayTimestamp();
+
         // Keep virtual replay time aligned with the current bar. Without this, multi-panel charts
         // that load a different pair (_panelFullRawData) still use a stale replayTimestamp in
         // syncPanelCharts() until the next play/tick advances it — so "go back" looked correct on
@@ -3979,6 +3998,8 @@ class ReplaySystem {
         if (this.currentIndex < 0) this.currentIndex = 0;
         if (this.currentIndex >= this.fullRawData.length) this.currentIndex = this.fullRawData.length - 1;
 
+        this._clampCurrentIndexToReplayTimestamp();
+
         // Keep fast-mode rendering aligned with canonical resampleData()
         // so OHLC is identical to normal replay updates for all timeframes.
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
@@ -4557,6 +4578,9 @@ class ReplaySystem {
                     const panelSlice = pc._panelFullRawData.slice(0, idx + 1);
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                    if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
+                        pc._trimLastDataBarToReplayPlayhead();
+                    }
                     appliedSlice = true;
                 }
 
@@ -6081,6 +6105,29 @@ class ReplaySystem {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
 
+        const restoreSavedPlayhead = () => {
+            if (Number.isFinite(savedReplayTimestamp)
+                && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
+                this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
+            } else {
+                this.currentIndex = savedCurrentIndex;
+                if (Number.isFinite(savedReplayTimestamp)) {
+                    this.replayTimestamp = savedReplayTimestamp;
+                } else if (this.fullRawData[this.currentIndex]) {
+                    this.replayTimestamp = this.fullRawData[this.currentIndex].t;
+                }
+            }
+            this._clampCurrentIndexToReplayTimestamp();
+            this.tickProgress = savedTickProgress;
+            this.tickElapsedMs = savedTickElapsedMs;
+            if (!wasPlaying) {
+                this.animatingCandle = null;
+                this._savedTickState = null;
+            }
+        };
+
+        restoreSavedPlayhead();
+
         try {
             this.updateChartData(false);
             if (!isEmbedInitiator) {
@@ -6139,12 +6186,13 @@ class ReplaySystem {
             signalReady();
         }
 
-        // Order checks during the try block are deferred while _timeframeChanging is set.
-        // Re-arm strict guards and run one fill pass after the lock lifts (paused replay).
+        // Order checks only after playhead + walk-forward slice are restored (paused replay).
         if (!wasPlaying) {
             const guardTsAfter = Number.isFinite(Number(guardTs)) ? Number(guardTs) : null;
-            const runPostTfOrderCheck = () => {
+            const runPostTfFinalize = () => {
                 if (changeSeq !== this._tfChangeSeq) return;
+                restoreSavedPlayhead();
+                try { this.updateChartData(false); } catch (_uc) { /* ignore */ }
                 const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
                 if (guardTsAfter != null && omAfter && typeof omAfter._refreshAllGuardsToTimestamp === 'function') {
                     try { omAfter._refreshAllGuardsToTimestamp(guardTsAfter, Infinity); } catch (_g) { /* ignore */ }
@@ -6153,31 +6201,20 @@ class ReplaySystem {
                     try { omAfter.updatePositions(); } catch (_u) { /* ignore */ }
                 }
             };
-            if (typeof queueMicrotask === 'function') queueMicrotask(runPostTfOrderCheck);
-            else setTimeout(runPostTfOrderCheck, 0);
+            if (typeof queueMicrotask === 'function') queueMicrotask(runPostTfFinalize);
+            else setTimeout(runPostTfFinalize, 0);
         }
 
         // Defer play resume only — must not block TF unlock or overlay lift.
+        if (wasPlaying) {
         this._tfChangeRestoreTimer = setTimeout(() => {
             this._tfChangeRestoreTimer = null;
             if (changeSeq !== this._tfChangeSeq) return;
             try {
-                if (Number.isFinite(savedReplayTimestamp)
-                    && typeof this.syncCurrentIndexFromReplayTimestamp === 'function') {
-                    this.syncCurrentIndexFromReplayTimestamp(savedReplayTimestamp);
-                } else {
-                    this.currentIndex = savedCurrentIndex;
-                    if (Number.isFinite(savedReplayTimestamp)) {
-                        this.replayTimestamp = savedReplayTimestamp;
-                    } else if (this.fullRawData[this.currentIndex]) {
-                        this.replayTimestamp = this.fullRawData[this.currentIndex].t;
-                    }
-                }
-                this.tickProgress = savedTickProgress;
-                this.tickElapsedMs = savedTickElapsedMs;
+                restoreSavedPlayhead();
 
                 const nextCandle = this.fullRawData[this.currentIndex + 1];
-                if (wasPlaying && nextCandle && savedTickProgress > 0) {
+                if (nextCandle && savedTickProgress > 0) {
                     const tickPath = this.getTickPath(nextCandle);
                     const pathIndex = Math.min(savedTickProgress - 1, tickPath.length - 1);
                     const currentPrice = pathIndex >= 0 ? tickPath[pathIndex] : nextCandle.o;
@@ -6205,15 +6242,14 @@ class ReplaySystem {
                     this.updateChartWithAnimatedCandle();
                 }
 
-                if (wasPlaying) {
-                    this._preserveTickProgress = true;
-                    this.speed = this.normalizeSpeed(savedSpeed);
-                    this.play();
-                }
+                this._preserveTickProgress = true;
+                this.speed = this.normalizeSpeed(savedSpeed);
+                this.play();
             } catch (e) {
                 console.warn('replay onTimeframeChange resume:', e);
             }
         }, 0);
+        }
     }
     
     /**
@@ -6348,6 +6384,7 @@ class ReplaySystem {
             return;
         }
 
+        this._clampCurrentIndexToReplayTimestamp();
         const sliceEnd = Math.max(this.currentIndex + 1, 1);
         const slicedRawData = this.fullRawData.slice(0, sliceEnd);
         if (!mainAlreadyAligned && this.isActive) {
@@ -6404,6 +6441,9 @@ class ReplaySystem {
                     preArmPanelGuards();
                     pc.rawData = slicedRawData;
                     pc.data = pc.resampleData(slicedRawData, pc.currentTimeframe);
+                    if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
+                        pc._trimLastDataBarToReplayPlayhead();
+                    }
                     appliedSlice = true;
                 } else if (hasOwnData) {
                     const idx = this._resolvePanelRawEndIndexForReplay(pc._panelFullRawData, replayTs);
@@ -6411,6 +6451,9 @@ class ReplaySystem {
                     preArmPanelGuards();
                     pc.rawData = panelSlice;
                     pc.data = pc.resampleData(panelSlice, pc.currentTimeframe);
+                    if (typeof pc._trimLastDataBarToReplayPlayhead === 'function') {
+                        pc._trimLastDataBarToReplayPlayhead();
+                    }
                     appliedSlice = true;
                 }
 
