@@ -31,7 +31,7 @@
             impactHigh: true,
             impactMedium: true,
             impactLow: false,
-            pairOnly: true,
+            pairOnly: false,
             /** Empty = all countries; otherwise list of 2-letter (or EU) codes from country multiselect. */
             countryCodes: []
         }
@@ -442,8 +442,8 @@
         if (!passesCountryUserFilter(e)) return false;
         if (!state.filters.pairOnly) return true;
         var pair = parseForexPair(getCurrentChartSymbol());
-        // If we cannot resolve a 6-letter FX pair, do not show every release — that looked like a broken filter.
-        if (!pair) return false;
+        // Symbol not resolved yet (V9/chart still loading) — show all until pair is known.
+        if (!pair) return true;
         return eventMatchesChartPair(e, pair);
     }
 
@@ -829,7 +829,12 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            var hint = 'No events match your filters or search. Try other impact levels, countries, or clear the search.';
+            var hint;
+            if (!state.events || state.events.length === 0) {
+                hint = 'No economic events returned for this date range. Check FINNHUB_API_KEY on the chart API server, or try a more recent chart window.';
+            } else {
+                hint = 'No events match your filters or search. Try turning off “Current pair only”, other impact levels, or clear the search.';
+            }
             if (hasRoots) {
                 setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             }
