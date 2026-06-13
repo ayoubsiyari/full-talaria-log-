@@ -22382,10 +22382,33 @@ class OrderManager {
             });
         }
         this._pendingPreviewConnectorDots = [];
+        const ch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (ch?.svg) {
+            ch.svg.selectAll('.preview-pending-connector').remove();
+        }
+    }
+
+    /** Shared X for preview + live TP/SL vertical connectors (right of chart, left of price axis). */
+    _orderConnectorAnchorX(ch) {
+        if (!ch) return 0;
+        const yAxisWidth = ch.margin?.r || 70;
+        return ch.w - yAxisWidth - 6;
+    }
+
+    /** Redraw vertical entry↔TP/SL connectors on every layout surface (after place/cancel/close). */
+    _refreshOrderConnectors(ch) {
+        const charts = ch
+            ? [ch]
+            : (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [this.chart]);
+        (charts || []).forEach((c) => {
+            if (c && typeof this._drawExecutedOrderConnectors === 'function') {
+                this._drawExecutedOrderConnectors(c);
+            }
+        });
     }
 
     /**
-     * Pre-place preview: vertical dashed guide through Entry + TP + SL (TradingView-style).
+     * Pre-place preview: vertical guide through Entry + TP + SL (same anchor as live orders).
      * Does not replace horizontal TP/SL lines — those stay full width to the label edge.
      */
     _syncPendingLimitStopConnector() {
@@ -22421,35 +22444,7 @@ class OrderManager {
         const yBot = Math.max(...ys);
         if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
 
-        const leftXs = [];
-        const pushLeftX = (ld) => {
-            if (!ld?.labelGroup) return;
-            const tr = ld.labelGroup.attr('transform') || '';
-            const m = /translate\(([^,]+),/.exec(tr);
-            const lx = m ? parseFloat(m[1]) : NaN;
-            if (Number.isFinite(lx)) leftXs.push(lx);
-        };
-        const anchorLine = (this.isMultiEntryMode && this.previewLines.avgEntry) ? this.previewLines.avgEntry : this.previewLines.entry;
-        pushLeftX(anchorLine);
-        if (tpOn) pushLeftX(this.previewLines.tp);
-        if (slOn) pushLeftX(this.previewLines.sl);
-        if (!leftXs.length) return;
-        const entryGroup = anchorLine?.labelGroup;
-        let entryW = anchorLine?.labelDimensions?.width || 0;
-        if (this.isDraggingPreviewLine && entryGroup?.node()?.getBBox) {
-            try {
-                const bb = entryGroup.node().getBBox();
-                if (bb && Number.isFinite(bb.width) && bb.width > 0) entryW = bb.width;
-            } catch (_e) { /* ignore */ }
-        }
-        const trEntry = entryGroup?.attr('transform') || '';
-        const mEntry = /translate\(([^,]+),/.exec(trEntry);
-        const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
-        // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 50; // px past entry label — nudge toward axis, away from badges
-        const anchorX = Number.isFinite(entryX)
-            ? Math.max(0, Math.min(ch.w - 1, entryX + entryW + connectorPadRight))
-            : Math.max(0, Math.min(ch.w - 1, Math.min(...leftXs)));
+        const connX = this._orderConnectorAnchorX(ch);
         const entryY = ch.scales.yScale(entryPx);
         const tpY = (tpOn && tpPx > 0) ? ch.scales.yScale(tpPx) : null;
         const slY = (slOn && slPx > 0) ? ch.scales.yScale(slPx) : null;
@@ -22461,25 +22456,25 @@ class OrderManager {
 
         const tpColor = '#26a69a';
         const slColor = '#f23645';
+        const entryColor = (this.orderSide || 'BUY') === 'BUY' ? '#2962ff' : '#f23645';
         const dotStroke = '#0f172a';
 
         const drawSegment = (y1, y2, color) => {
             connectorGroup.append('line')
-                .attr('x1', anchorX).attr('x2', anchorX)
+                .attr('x1', connX).attr('x2', connX)
                 .attr('y1', y1).attr('y2', y2)
                 .attr('stroke', color)
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
-                .attr('opacity', 0.9);
+                .attr('opacity', 0.7);
         };
         const drawDot = (y, color) => connectorGroup.append('circle')
             .attr('class', 'preview-pending-connector-dot')
-            .attr('cx', anchorX).attr('cy', y)
+            .attr('cx', connX).attr('cy', y)
             .attr('r', 2.5)
             .attr('fill', color)
             .attr('stroke', dotStroke)
-            .attr('stroke-width', 1)
-            .attr('opacity', 0.95);
+            .attr('stroke-width', 1);
 
         this._pendingPreviewConnectorDots = [];
 
@@ -22489,7 +22484,7 @@ class OrderManager {
         if (Number.isFinite(entryY) && Number.isFinite(slY)) {
             drawSegment(entryY, slY, slColor);
         }
-        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#eab308'));
+        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, entryColor));
         if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, tpColor));
         if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, slColor));
         try {
@@ -32115,7 +32110,11 @@ class OrderManager {
                 if (lineData.line) lineData.line.remove();
                 if (lineData.dragHitLine) lineData.dragHitLine.remove();
                 if (lineData.labelBox) lineData.labelBox.remove();
+                if (lineData.labelAccent) lineData.labelAccent.remove();
                 if (lineData.labelText) lineData.labelText.remove();
+                if (lineData.pnlBox) lineData.pnlBox.remove();
+                if (lineData.pnlText) lineData.pnlText.remove();
+                if (lineData.pnlAccent) lineData.pnlAccent.remove();
                 if (lineData.priceBox) lineData.priceBox.remove();
                 if (lineData.priceText) lineData.priceText.remove();
                 if (lineData.closeBtn) lineData.closeBtn.remove();
@@ -32148,6 +32147,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-tp-pct-inc.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-split.pending-tp-${orderId}`).remove();
         });
+        this._refreshOrderConnectors();
     }
     
     /**
@@ -34469,6 +34469,7 @@ class OrderManager {
             if (orderLine.line) orderLine.line.remove();
             if (orderLine.dragHitLine) orderLine.dragHitLine.remove();
             if (orderLine.labelBox) orderLine.labelBox.remove();
+            if (orderLine.labelAccent) orderLine.labelAccent.remove();
             if (orderLine.labelText) orderLine.labelText.remove();
             if (orderLine.arrow) orderLine.arrow.remove();
             if (orderLine.priceBox) orderLine.priceBox.remove();
@@ -34476,6 +34477,7 @@ class OrderManager {
             if (orderLine.closeBtn) orderLine.closeBtn.remove();
             if (orderLine.pnlBox) orderLine.pnlBox.remove();
             if (orderLine.pnlText) orderLine.pnlText.remove();
+            if (orderLine.pnlAccent) orderLine.pnlAccent.remove();
             if (orderLine.slBadge) orderLine.slBadge.remove();
             if (orderLine.tpBadge) orderLine.tpBadge.remove();
             if (orderLine.tpBadgesContainer) orderLine.tpBadgesContainer.remove();
@@ -34486,6 +34488,7 @@ class OrderManager {
         // Remove from array
         this.orderLines = this.orderLines.filter(ol => ol.orderId !== orderId);
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
+        this._refreshOrderConnectors();
     }
     
     /** All open legs in a split / multi-entry group (deduped by **id** only — same row may appear in manager + service lists). */
@@ -35424,17 +35427,7 @@ class OrderManager {
         
         console.log(`✅ All SL/TP/BE lines removed for order #${orderId}`);
 
-        // Drop stale vertical TP/SL connectors immediately after a close (otherwise they lag until next render).
-        try {
-            const charts = typeof this._collectLayoutCharts === 'function'
-                ? this._collectLayoutCharts()
-                : [this.chart];
-            charts.forEach((c) => {
-                if (c && typeof this._drawExecutedOrderConnectors === 'function') {
-                    this._drawExecutedOrderConnectors(c);
-                }
-            });
-        } catch (_) {}
+        this._refreshOrderConnectors();
     }
 
     /**
@@ -36905,6 +36898,13 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
+            const shiftX = (el) => {
+                if (!el) return;
+                const ax = parseFloat(el.attr('x'));
+                if (Number.isFinite(ax)) el.attr('x', ax - dx);
+            };
+            shiftX(sl.labelAccent);
+            shiftX(sl.pnlAccent);
             if (sl.labelText) sl.labelText.attr('x', parseFloat(sl.labelText.attr('x')) - dx);
             if (sl.pnlBox) sl.pnlBox.attr('x', parseFloat(sl.pnlBox.attr('x')) - dx);
             if (sl.pnlText) sl.pnlText.attr('x', parseFloat(sl.pnlText.attr('x')) - dx);
@@ -36926,6 +36926,13 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
+            const shiftX = (el) => {
+                if (!el) return;
+                const ax = parseFloat(el.attr('x'));
+                if (Number.isFinite(ax)) el.attr('x', ax - dx);
+            };
+            shiftX(tp.labelAccent);
+            shiftX(tp.pnlAccent);
             if (tp.labelText) tp.labelText.attr('x', parseFloat(tp.labelText.attr('x')) - dx);
             if (tp.pnlBox) tp.pnlBox.attr('x', parseFloat(tp.pnlBox.attr('x')) - dx);
             if (tp.pnlText) tp.pnlText.attr('x', parseFloat(tp.pnlText.attr('x')) - dx);
@@ -36961,6 +36968,13 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
+            const shiftX = (el) => {
+                if (!el) return;
+                const ax = parseFloat(el.attr('x'));
+                if (Number.isFinite(ax)) el.attr('x', ax - dx);
+            };
+            shiftX(ol.labelAccent);
+            shiftX(ol.pnlAccent);
             if (ol.labelText) ol.labelText.attr('x', parseFloat(ol.labelText.attr('x')) - dx);
             if (ol.arrow) ol.arrow.attr('x', parseFloat(ol.arrow.attr('x')) - dx);
             if (ol.pnlBox) ol.pnlBox.attr('x', parseFloat(ol.pnlBox.attr('x')) - dx);
@@ -37023,8 +37037,7 @@ class OrderManager {
         if (!ch?.svg || !ch?.scales?.yScale) return;
         ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
-        const yAxisWidth = ch.margin?.r || 70;
-        const connX = ch.w - yAxisWidth - 6;
+        const connX = this._orderConnectorAnchorX(ch);
 
         for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
