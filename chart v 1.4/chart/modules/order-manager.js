@@ -16342,6 +16342,48 @@ class OrderManager {
      * relative to the current market price. Called when the user edits the
      * entry price input manually.
      */
+    _resolveOrderTypeFromEntryPrice(entryPrice, currentPrice) {
+        const entry = Number(entryPrice);
+        const current = Number(currentPrice);
+        if (!Number.isFinite(entry) || entry <= 0) return this.orderType || 'market';
+        if (!Number.isFinite(current) || current <= 0) return this.orderType || 'market';
+
+        const pip = this.pipSize || 0.0001;
+        const atMarket = Math.abs(entry - current) <= Math.max(pip * 1.5, Math.abs(current) * 1e-10);
+
+        if (atMarket) return 'market';
+        if ((this.orderSide || 'BUY').toUpperCase() === 'BUY') {
+            return entry > current ? 'stop' : 'limit';
+        }
+        return entry < current ? 'stop' : 'limit';
+    }
+
+    /**
+     * When dragging the preview entry line, snap to live price if the drag is
+     * near market (price tolerance or within ~8px on the chart).
+     */
+    _snapEntryDragPriceToMarketIfNear(entryPrice, currentPrice, chart) {
+        const entry = Number(entryPrice);
+        const current = Number(currentPrice);
+        if (!Number.isFinite(entry) || !Number.isFinite(current) || current <= 0) return entry;
+
+        const pip = this.pipSize || 0.0001;
+        const tol = Math.max(pip * 1.5, Math.abs(current) * 1e-10);
+        if (Math.abs(entry - current) <= tol) {
+            return parseFloat(this.formatPrice(current));
+        }
+
+        const yScale = chart?.scales?.yScale;
+        if (typeof yScale === 'function') {
+            const yEntry = yScale(entry);
+            const yMarket = yScale(current);
+            if (Number.isFinite(yEntry) && Number.isFinite(yMarket) && Math.abs(yEntry - yMarket) <= 8) {
+                return parseFloat(this.formatPrice(current));
+            }
+        }
+        return entry;
+    }
+
     _autoDetectOrderTypeFromEntry() {
         const entryInput = document.getElementById('orderEntryPrice');
         if (!entryInput) return;
@@ -16352,16 +16394,10 @@ class OrderManager {
         const currentPrice = currentCandle?.c || currentCandle?.close || 0;
         if (!currentPrice || currentPrice <= 0) return;
 
-        const pip = this.pipSize || 0.0001;
-        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+        const newType = this._resolveOrderTypeFromEntryPrice(entryPrice, currentPrice);
 
-        let newType;
-        if (atMarket) {
-            newType = 'market';
-        } else if (this.orderSide === 'BUY') {
-            newType = entryPrice > currentPrice ? 'stop' : 'limit';
-        } else {
-            newType = entryPrice < currentPrice ? 'stop' : 'limit';
+        if (newType === 'market') {
+            this._setPreviewEntrySource('market');
         }
 
         if (this.orderType !== newType) {
@@ -18089,13 +18125,39 @@ class OrderManager {
                     const currentPrice = currentCandle?.c || currentCandle?.close || null;
                     
                     if (currentPrice) {
-                        let newOrderType;
-                        if (self.orderSide === 'BUY') {
-                            // BUY: above price = STOP, below price = LIMIT
-                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
+                        const snappedPrice = self._snapEntryDragPriceToMarketIfNear(newPrice, currentPrice, ch);
+                        if (snappedPrice !== newPrice) {
+                            newPrice = snappedPrice;
+                            lineData.price = newPrice;
+                            clampedY = ch.scales.yScale(newPrice);
+                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                            lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+                            if (lineData.hitLine) {
+                                lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                            }
+                            const snappedFormatted = self.formatPrice(newPrice);
+                            if (entryInput) entryInput.value = snappedFormatted;
+                            if (lineData.priceText) lineData.priceText.text(snappedFormatted);
+                            const bboxSnap = lineData.labelDimensions;
+                            const heightSnap = bboxSnap?.height || 0;
+                            const currentTransformSnap = lineData.labelGroup.attr('transform');
+                            const currentXSnap = parseFloat(currentTransformSnap?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                            lineData.labelGroup.attr('transform', `translate(${currentXSnap}, ${clampedY - heightSnap / 2})`);
+                            self.adjustPreviewLineForLabel(lineData);
+                            if (lineData.yAxisHighlight) {
+                                const highlightHeight = 22;
+                                const highlightY = clampedY - highlightHeight / 2;
+                                const highlightX = parseFloat(lineData.yAxisHighlight.attr('transform').match(/translate\(([\d.]+)/)?.[1] || 0);
+                                lineData.yAxisHighlight.attr('transform', `translate(${highlightX}, ${highlightY})`);
+                                lineData.yAxisHighlight.select('.y-axis-price-text').text(snappedFormatted);
+                            }
+                        }
+
+                        const newOrderType = self._resolveOrderTypeFromEntryPrice(newPrice, currentPrice);
+                        if (newOrderType === 'market') {
+                            self._setPreviewEntrySource('market');
                         } else {
-                            // SELL: below price = STOP, above price = LIMIT
-                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
+                            self._setPreviewEntrySource('manual');
                         }
                         
                         // Update order type if changed
@@ -18205,12 +18267,18 @@ class OrderManager {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || 0;
                     if (currentPrice > 0) {
-                        let newOrderType;
-                        if (self.orderSide === 'BUY') {
-                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
-                        } else {
-                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
+                        const snappedPrice = self._snapEntryDragPriceToMarketIfNear(newPrice, currentPrice, ch);
+                        if (snappedPrice !== newPrice) {
+                            newPrice = snappedPrice;
+                            lineData.price = newPrice;
+                            clampedY = ch.scales.yScale(newPrice);
+                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
+                            lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+                            if (lineData.hitLine) {
+                                lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                            }
                         }
+                        const newOrderType = self._resolveOrderTypeFromEntryPrice(newPrice, currentPrice);
                         if (lineData.orderType !== newOrderType) {
                             lineData.orderType = newOrderType;
                             // Extract level number from label
@@ -18614,6 +18682,11 @@ class OrderManager {
 
             // Drag to set this target's price
             const drag = d3.drag()
+                .filter((event) => {
+                    if (self._eventInPriceAxisZone(event, ch)) return false;
+                    if (self._eventInTimeAxisZone(event, ch)) return false;
+                    return !event.button;
+                })
                 .on('start', () => {
                     badgeGroup.style('opacity', 0.8);
                     self._multichartPostDraftDragBusy(true);
@@ -18690,6 +18763,11 @@ class OrderManager {
 
         // Make badge draggable - when dragged, convert to full line
         const drag = d3.drag()
+            .filter((event) => {
+                if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
+                return !event.button;
+            })
             .on('start', () => {
                 badgeGroup.style('opacity', 0.8);
                 self._multichartPostDraftDragBusy(true);
@@ -22447,8 +22525,8 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // Visual line may extend toward the axis; hit target stops at the label column / plot edge.
-        let lineEndX = Math.max(0, x);
+        // Visual line may extend to the axis; hit target stops at the label column / plot edge.
+        let lineEndX = ch.w;
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
         const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
         const isEntryTpSl = lineData.label === 'SL'
@@ -22456,8 +22534,8 @@ class OrderManager {
             || lineData.label === 'Entry'
             || lineData.label === 'Avg Entry'
             || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
-        if (isPreviewOrder && (isEntryTpSl || isBePreview)) {
-            lineEndX = ch.w;
+        if (!isPreviewOrder || !(isEntryTpSl || isBePreview)) {
+            lineEndX = Math.max(0, x);
         }
 
         lineData.line
@@ -30772,7 +30850,7 @@ class OrderManager {
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
                 const splitHitEnd = this._orderLineHitEndX(ch, labelBoxX);
-                ml.line?.attr('x2', Math.max(0, labelBoxX));
+                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
                 ml.dragHitLine?.attr('x2', splitHitEnd);
 
                 let memberCx = labelBoxX + lbw + gap;
@@ -31095,8 +31173,8 @@ class OrderManager {
                 labelText
                     .attr('x', labelBoxX + 10)
                     .attr('y', finalY + 4);
-                line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
-                dragHitLine.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
+                line.attr('x1', 0).attr('x2', chart.w).attr('y1', finalY).attr('y2', finalY);
+                dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, labelBoxX)).attr('y1', finalY).attr('y2', finalY);
                 
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
@@ -31846,7 +31924,7 @@ class OrderManager {
                 const hitEndX = this._orderLineHitEndX(ch, translateX);
                 target.line
                     .attr('x1', 0)
-                    .attr('x2', Math.max(0, translateX))
+                    .attr('x2', ch.w)
                     .style('pointer-events', 'none');
                 if (target.hitLine) {
                     target.hitLine.attr('x1', 0).attr('x2', hitEndX);
@@ -32022,7 +32100,7 @@ class OrderManager {
                     ? dragLabelX
                     : (ch.w - dims.width - marginRight);
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
-                target.line.attr('x2', Math.max(0, translateX));
+                target.line.attr('x1', 0).attr('x2', ch.w);
                 if (target.hitLine) {
                     target.hitLine.attr('x1', 0).attr('x2', self._orderLineHitEndX(ch, translateX));
                 }
@@ -35856,7 +35934,7 @@ class OrderManager {
                     const lx = parseFloat(labelBox.attr('x'));
                     if (Number.isFinite(lx)) slHitEnd = Math.min(slHitEnd, lx);
                 }
-                line.attr('x1', 0).attr('x2', slHitEnd).attr('y1', y).attr('y2', y);
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
 
                 this._styleOpenSlProfitProtectionVisuals(position, line, {
                     labelBox,
@@ -36155,7 +36233,7 @@ class OrderManager {
                     const lx = parseFloat(labelBox.attr('x'));
                     if (Number.isFinite(lx)) tpHitEnd = Math.min(tpHitEnd, lx);
                 }
-                line.attr('x1', 0).attr('x2', tpHitEnd).attr('y1', y).attr('y2', y);
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
@@ -36246,7 +36324,7 @@ class OrderManager {
                 .attr('y', y + 4);
 
             beHitEnd = Math.min(beHitEnd, startX);
-            line.attr('x2', beHitEnd);
+            line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
             if (hitLine) hitLine.attr('x2', beHitEnd);
 
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
