@@ -28318,6 +28318,7 @@ class OrderManager {
         const onMouseDown = (e) => {
             if (e.target.closest('.pending-order-close-btn')) return;
             if (e.target.closest('.pending-entry-plus-badge')) return;
+            if (self._eventInPriceAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -28531,6 +28532,7 @@ class OrderManager {
 
         const onMouseDown = (e) => {
             if (e.target.closest('.order-close-btn')) return;
+            if (self._eventInPriceAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -30581,8 +30583,8 @@ class OrderManager {
                 if (!Number.isFinite(oy)) continue;
                 const boxY = oy - boxH / 2;
 
-                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                ml.line?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
 
                 if (ml.priceBox) ml.priceBox.style('display', 'none');
                 if (ml.priceText) ml.priceText.style('display', 'none');
@@ -30776,8 +30778,7 @@ class OrderManager {
             .attr('stroke-linecap', 'butt')
             .attr('stroke-dasharray', null)
             .attr('opacity', 0.85)
-            .style('pointer-events', 'all')
-            .style('cursor', 'ns-resize');
+            .style('pointer-events', 'none');
         const dragHitLine = chart.svg.append('line')
             .attr('class', `pending-order-hit-line pending-${pendingOrder.id}`)
             .attr('stroke', lineColor)
@@ -30850,6 +30851,10 @@ class OrderManager {
         let dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
 
         const drag = d3.drag()
+            .filter((event) => {
+                if (self._eventInPriceAxisZone(event, chart)) return false;
+                return !event.button;
+            })
             .on('start', function() {
                 isDragging = true;
                 self._isDraggingOrderLine = true;
@@ -31246,7 +31251,7 @@ class OrderManager {
                 .attr('stroke-linecap', 'butt')
                 .attr('stroke-dasharray', null)
                 .attr('opacity', 0.85)
-                .style('pointer-events', isDraggable ? 'all' : 'none')
+                .style('pointer-events', 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
             const labelGroup = chart.svg.append('g')
@@ -31426,17 +31431,11 @@ class OrderManager {
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
-                    .attr('x1', 0)
-                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
                 if (target.hitLine) {
-                    target.hitLine
-                        .attr('x1', 0)
-                        .attr('x2', ch.w)
-                        .attr('y1', y)
-                        .attr('y2', y);
+                    target.hitLine.attr('y1', y).attr('y2', y);
                 }
 
                 const labelGroup = target.labelGroup;
@@ -31691,6 +31690,15 @@ class OrderManager {
                     target._splitBtn = null;
                 }
 
+                const hitEndX = this._orderLineHitEndX(ch, translateX);
+                target.line
+                    .attr('x1', 0)
+                    .attr('x2', Math.max(0, translateX))
+                    .style('pointer-events', 'none');
+                if (target.hitLine) {
+                    target.hitLine.attr('x1', 0).attr('x2', hitEndX);
+                }
+
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
 
                 if (isDraggable && entry.pendingOrder && !target.dragApplied) {
@@ -31795,6 +31803,10 @@ class OrderManager {
         const marginRight = 120;
 
         const drag = d3.drag()
+            .filter((event) => {
+                if (self._eventInPriceAxisZone(event, ch)) return false;
+                return !event.button;
+            })
             .on('start', function() {
                 isDragging = true;
                 // Do NOT set _isDraggingPendingTarget here: mousedown alone (click) fires start+end
@@ -31858,7 +31870,7 @@ class OrderManager {
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x2', Math.max(0, translateX));
                 if (target.hitLine) {
-                    target.hitLine.attr('x1', 0).attr('x2', ch.w);
+                    target.hitLine.attr('x1', 0).attr('x2', self._orderLineHitEndX(ch, translateX));
                 }
 
                 const cBtnR = 10;
@@ -34583,8 +34595,7 @@ class OrderManager {
                         .attr('class', `tp-price-box tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', color)
                         .attr('rx', 2)
-                        .style('pointer-events', 'all')
-                        .style('cursor', 'ns-resize');
+                        .style('pointer-events', 'none');
                     
                     const tpPriceText = chart.svg.append('text')
                         .attr('class', `tp-price-text tp-${order.id} tp-target-${tpKey}`)
@@ -34593,8 +34604,7 @@ class OrderManager {
                         .attr('font-weight', '600')
                         .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .attr('text-anchor', 'middle')
-                        .style('pointer-events', 'all')
-                        .style('cursor', 'ns-resize')
+                        .style('pointer-events', 'none')
                         .text(this.formatPrice(target.price));
 
                     // − / + share (open position multi-TP): same redistribution as preview/pending
@@ -34793,8 +34803,7 @@ class OrderManager {
                 .attr('class', `tp-price-box tp-${order.id}`)
                 .attr('fill', '#089981')
                 .attr('rx', 2)
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize');
+                .style('pointer-events', 'none');
             
             // Price text
             const tpPriceText = chart.svg.append('text')
@@ -34804,8 +34813,7 @@ class OrderManager {
                 .attr('font-weight', '600')
                 .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize')
+                .style('pointer-events', 'none')
                 .text(this.formatPrice(order.takeProfit));
             
             // Make TP line draggable (pass all elements for full drag area)
