@@ -25,6 +25,9 @@ function trimTouchCandleForReplayFill(orderManager, candle) {
     return ctx._trimBarOhlcToReplayPlayhead(candle, null, -1, tfMs);
 }
 
+/** Hard cap on take-profit levels (preview, pending, and open positions). */
+const MAX_TP_TARGETS = 5;
+
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -12175,6 +12178,55 @@ class OrderManager {
         }
     }
 
+    /** Max TP rows allowed for preview/panel (futures also capped by whole-contract qty). */
+    _getMaxTpTargets(overrideQty) {
+        let cap = MAX_TP_TARGETS;
+        if (this.marketType === 'futures') {
+            let q;
+            if (overrideQty != null && Number.isFinite(Number(overrideQty))) {
+                q = Math.floor(Number(overrideQty));
+            } else {
+                q = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || '0'));
+            }
+            const futuresCap = !Number.isFinite(q) || q < 1 ? 1 : Math.min(q, MAX_TP_TARGETS);
+            cap = Math.min(cap, futuresCap);
+        }
+        return cap;
+    }
+
+    _getEffectiveTpTargetCount(source) {
+        if (source?.tpTargets?.length) return source.tpTargets.length;
+        if (Number(source?.takeProfit) > 0) return 1;
+        return 0;
+    }
+
+    _canAddMoreTpTargets(currentCount, overrideQty) {
+        const n = Number(currentCount) || 0;
+        return n < this._getMaxTpTargets(overrideQty);
+    }
+
+    _notifyTpTargetCapReached(overrideQty) {
+        const max = this._getMaxTpTargets(overrideQty);
+        this.showNotification(`Maximum ${max} take-profit levels`, 'warning', 3500);
+    }
+
+    _syncTpAddButtonsUi() {
+        const atCap = !this._canAddMoreTpTargets(this.tpTargets?.length || 0);
+        const hide = this._isOrderEntryPlusUiDisabled() || atCap;
+        const addTPButton = document.getElementById('addTPTarget');
+        const tpMultiAddBtn = document.getElementById('tpMultiAddBtn');
+        [addTPButton, tpMultiAddBtn].forEach((el) => {
+            if (!el) return;
+            if (hide) {
+                el.style.display = 'none';
+                el.onclick = null;
+            } else {
+                el.style.display = '';
+                el.onclick = () => { this.addTPTarget(); };
+            }
+        });
+    }
+
     /**
      * Green + on preview: enable only the mode that matches where the button was placed
      * (entry row → multi-entry only; TP row / TP badge → multi-TP only). Never both at once.
@@ -12469,7 +12521,8 @@ class OrderManager {
 
             // + add another TP (same behavior as pending multi-TP split)
             if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()
-                && this._orderQtyAllowsEntryTpSplitAffordances()) {
+                && this._orderQtyAllowsEntryTpSplitAffordances()
+                && this._canAddMoreTpTargets(this.tpTargets?.length || 0)) {
                 const splitBtnR = 9;
                 const self = this;
                 const splitG = lineData.labelGroup.append('g')
@@ -13700,6 +13753,9 @@ class OrderManager {
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
+            if (parseFloat(document.getElementById('orderEntryPrice')?.value || '0') > 0) {
+                this._autoDetectOrderTypeFromEntry();
+            }
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
         };
         
@@ -13711,32 +13767,17 @@ class OrderManager {
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
+            if (parseFloat(document.getElementById('orderEntryPrice')?.value || '0') > 0) {
+                this._autoDetectOrderTypeFromEntry();
+            }
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
         };
         
-        // Order type buttons
+        // Order type buttons — Limit/Stop tabs resolve automatically from entry vs market.
         document.querySelectorAll('.order-type-btn').forEach(btn => {
             btn.onclick = () => {
-                // Update order type
-                this.orderType = btn.dataset.type;
-                console.log(`📝 Order type changed to: ${this.orderType.toUpperCase()}`);
-                
-                // Update button styling
-                document.querySelectorAll('.order-type-btn').forEach(b => {
-                    b.style.cssText = '';
-                    b.classList.remove('active');
-                });
-                btn.classList.add('active');
-                
-                if (this.orderType === 'market') {
-                    this._setPreviewEntrySource('market');
-                    this.updateOrderPanelPrice();
-                } else if (this._previewEntrySource === 'market') {
-                    this._setPreviewEntrySource('manual');
-                }
-                
-                // Update preview lines when order type changes
-                this.updatePreviewLines();
+                this._applyOrderTypeFromUi(btn.dataset.type);
+                console.log(`📝 Order type: ${this.orderType.toUpperCase()} (requested ${String(btn.dataset.type || '').toUpperCase()})`);
             };
         });
         
@@ -14401,7 +14442,8 @@ class OrderManager {
         if (numTPInput) {
             numTPInput.oninput = () => {
                 const num = parseInt(numTPInput.value || 2);
-                if (num >= 2 && num <= 10 && this.tpTargets) {
+                const maxTp = this._getMaxTpTargets();
+                if (num >= 2 && num <= maxTp && this.tpTargets) {
                     // Auto-recalculate when number changes
                     this.calculateTPTargetsFromNumber(num);
                 }
@@ -15459,12 +15501,7 @@ class OrderManager {
         this.tpTargets = [];
 
         let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
-        nTargets = Math.min(nTargets, 10);
-        if (this.marketType === 'futures') {
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
-            nTargets = Math.min(nTargets, cap);
-        }
+        nTargets = Math.min(nTargets, this._getMaxTpTargets());
         const numEl = document.getElementById('numTPTargets');
         if (numEl) numEl.value = String(nTargets);
         
@@ -15544,20 +15581,17 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
-        // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
-        if (numInput) {
-            const currentNum = parseInt(numInput.value || 2, 10);
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const futuresCap = this.marketType === 'futures'
-                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
-                : 10;
-            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
-            if (currentNum < hardCap) {
-                numInput.value = String(currentNum + 1);
-                this.calculateTPTargetsFromNumber(currentNum + 1);
-            }
+        if (!numInput) return;
+        const currentNum = parseInt(numInput.value || 2, 10);
+        const maxTp = this._getMaxTpTargets();
+        if (currentNum >= maxTp) {
+            this._notifyTpTargetCapReached();
+            this._syncTpAddButtonsUi();
+            return;
         }
+        numInput.value = String(currentNum + 1);
+        this.calculateTPTargetsFromNumber(currentNum + 1);
     }
     
     /**
@@ -16185,6 +16219,7 @@ class OrderManager {
         if (mirrorList && this.tpTargets) {
             this._renderTPTargetsInto(mirrorList, 'rrMirror_', mirrorBlend || null);
         }
+        this._syncTpAddButtonsUi();
     }
     
     /**
@@ -16362,41 +16397,93 @@ class OrderManager {
     }
 
     /**
+     * Infer market / limit / stop from entry price vs current market.
+     * @returns {'market'|'limit'|'stop'|null} null when inputs are invalid
+     */
+    _inferOrderTypeFromEntryPrice(entryPrice, orderSide = null, currentPrice = null) {
+        const ep = Number.parseFloat(entryPrice);
+        if (!Number.isFinite(ep) || ep <= 0) return null;
+        let cp = currentPrice;
+        if (cp == null || !Number.isFinite(Number.parseFloat(cp))) {
+            const candle = this.getCurrentCandle();
+            cp = candle?.c ?? candle?.close ?? 0;
+        }
+        cp = Number.parseFloat(cp);
+        if (!Number.isFinite(cp) || cp <= 0) return null;
+        const pip = this.pipSize || 0.0001;
+        const atMarket = Math.abs(ep - cp) <= Math.max(pip * 1.5, Math.abs(cp) * 1e-10);
+        if (atMarket) return 'market';
+        const side = String(orderSide || this.orderSide || 'BUY').toUpperCase();
+        if (side === 'BUY') return ep > cp ? 'stop' : 'limit';
+        return ep < cp ? 'stop' : 'limit';
+    }
+
+    /**
      * Auto-detect order type (market / limit / stop) based on the entry price
      * relative to the current market price. Called when the user edits the
-     * entry price input manually.
+     * entry price input manually or selects Limit/Stop in the panel.
+     * @returns {'market'|'limit'|'stop'|null}
      */
     _autoDetectOrderTypeFromEntry() {
         const entryInput = document.getElementById('orderEntryPrice');
-        if (!entryInput) return;
+        if (!entryInput) return null;
         const entryPrice = parseFloat(entryInput.value || '0');
-        if (!entryPrice || entryPrice <= 0) return;
+        if (!entryPrice || entryPrice <= 0) return null;
 
-        const currentCandle = this.getCurrentCandle();
-        const currentPrice = currentCandle?.c || currentCandle?.close || 0;
-        if (!currentPrice || currentPrice <= 0) return;
+        const newType = this._inferOrderTypeFromEntryPrice(entryPrice);
+        if (!newType) return null;
 
-        const pip = this.pipSize || 0.0001;
-        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
-
-        let newType;
-        if (atMarket) {
-            newType = 'market';
-        } else if (this.orderSide === 'BUY') {
-            newType = entryPrice > currentPrice ? 'stop' : 'limit';
-        } else {
-            newType = entryPrice < currentPrice ? 'stop' : 'limit';
-        }
-
+        const prevType = this.orderType;
         if (this.orderType !== newType) {
             this.orderType = newType;
-            document.querySelectorAll('.order-type-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.type === newType);
-            });
+            if (newType === 'market') {
+                this._setPreviewEntrySource('market');
+            } else if (this._previewEntrySource === 'market') {
+                this._setPreviewEntrySource('manual');
+            }
             this.updatePlaceButtonText();
-            // Keep draft entry tag in sync (LIMIT ↔ STOP ↔ MARKET) when market moves vs fixed entry
-            
         }
+
+        document.querySelectorAll('.order-type-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === this.orderType);
+        });
+
+        if (this.orderType !== prevType) {
+            this.updatePreviewLines();
+        }
+        return this.orderType;
+    }
+
+    /**
+     * Apply order-type tab from the panel — Limit/Stop always resolve via entry vs market.
+     */
+    _applyOrderTypeFromUi(requestedType) {
+        const t = String(requestedType || 'market').toLowerCase();
+        if (t === 'market') {
+            this.orderType = 'market';
+            this._setPreviewEntrySource('market');
+            this.updateOrderPanelPrice();
+        } else if (t === 'limit' || t === 'stop') {
+            if (this._previewEntrySource === 'market') {
+                this._setPreviewEntrySource('manual');
+            }
+            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || '0');
+            if (entryPrice > 0) {
+                this._autoDetectOrderTypeFromEntry();
+            } else {
+                this.orderType = t;
+            }
+        } else {
+            this.orderType = t;
+        }
+
+        document.querySelectorAll('.order-type-btn').forEach(b => {
+            b.style.cssText = '';
+            b.classList.toggle('active', b.dataset.type === this.orderType);
+        });
+        this.updatePreviewLines();
+        this.calculateAdvancedRiskReward();
+        this.updatePlaceButtonText();
     }
 
     /**
@@ -18093,50 +18180,24 @@ class OrderManager {
                     }
                     
                     // Auto-detect order type based on entry position relative to current price
-                    const currentCandle = self.getCurrentCandle();
-                    const currentPrice = currentCandle?.c || currentCandle?.close || null;
-                    
-                    if (currentPrice) {
-                        let newOrderType;
-                        if (self.orderSide === 'BUY') {
-                            // BUY: above price = STOP, below price = LIMIT
-                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
-                        } else {
-                            // SELL: below price = STOP, above price = LIMIT
-                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
+                    const newOrderType = self._inferOrderTypeFromEntryPrice(newPrice);
+                    if (newOrderType && newOrderType !== 'market' && self.orderType !== newOrderType) {
+                        const oldType = self.orderType;
+                        self.orderType = newOrderType;
+                        if (self._previewEntrySource === 'market') {
+                            self._setPreviewEntrySource('manual');
                         }
-                        
-                        // Update order type if changed
-                        if (self.orderType !== newOrderType) {
-                            const oldType = self.orderType;
-                            self.orderType = newOrderType;
-                            
-                            console.log(`🔄 Auto-detected order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)}, Current: ${currentPrice.toFixed(5)})`);
-                            
-                            // Update order type buttons in panel
-                            document.querySelectorAll('.order-type-btn').forEach(btn => {
-                                if (btn.dataset.type === newOrderType) {
-                                    btn.classList.add('active');
-                                } else {
-                                    btn.classList.remove('active');
-                                }
-                            });
-                            
-                            // Update the Place Order button text
-                            self.updatePlaceButtonText();
-                            
-                            // Save current X position before re-rendering
-                            const currentTransform = lineData.labelGroup.attr('transform');
-                            const savedX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                            
-                            // Re-render entry label to show new type
-                            self.renderPreviewLabel(lineData, clampedY);
-                            
-                            // Restore X position after re-render
-                            const newTransform = lineData.labelGroup.attr('transform');
-                            const newY = parseFloat(newTransform?.match(/translate\([^,]+,\s*([\d.]+)/)?.[1] || 0);
-                            lineData.labelGroup.attr('transform', `translate(${savedX}, ${newY})`);
-                        }
+                        console.log(`🔄 Auto-detected order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)})`);
+                        document.querySelectorAll('.order-type-btn').forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.type === newOrderType);
+                        });
+                        self.updatePlaceButtonText();
+                        const currentTransform = lineData.labelGroup.attr('transform');
+                        const savedX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                        self.renderPreviewLabel(lineData, clampedY);
+                        const newTransform = lineData.labelGroup.attr('transform');
+                        const newY = parseFloat(newTransform?.match(/translate\([^,]+,\s*([\d.]+)/)?.[1] || 0);
+                        lineData.labelGroup.attr('transform', `translate(${savedX}, ${newY})`);
                     }
                     
                     // Update TP/SL badge positions if they haven't been manually positioned
@@ -20656,6 +20717,18 @@ class OrderManager {
      * Add a new TP target from split drag
      */
     addTPFromSplit(price) {
+        let projectedLen = this.tpTargets?.length || 0;
+        if (projectedLen === 0) {
+            const originalTPPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (originalTPPrice > 0) projectedLen = 1;
+        }
+        if (projectedLen + 1 > this._getMaxTpTargets()) {
+            this._notifyTpTargetCapReached();
+            this._syncTpAddButtonsUi();
+            this.updatePreviewLines();
+            return;
+        }
+
         // Enable multiple TP if not already (without triggering change event that initializes)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
         const multipleTPSettings = document.getElementById('multipleTPSettings');
@@ -29011,6 +29084,13 @@ class OrderManager {
         if (!source) return;
 
         const price = parseFloat(this.formatPrice(newPrice));
+        const projectedCount = !source.tpTargets || source.tpTargets.length === 0
+            ? (Number(source.takeProfit) > 0 ? 2 : 1)
+            : source.tpTargets.length + 1;
+        if (projectedCount > this._getMaxTpTargets(source.quantity)) {
+            this._notifyTpTargetCapReached(source.quantity);
+            return;
+        }
 
         if (!source.tpTargets || source.tpTargets.length === 0) {
             const origTP = source.takeProfit || 0;
@@ -31724,7 +31804,11 @@ class OrderManager {
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const canPendingTpSplit = target.type === 'TP'
                     && !this._isOrderEntryPlusUiDisabled()
-                    && this._orderQtyAllowsEntryTpSplitAffordances(entry.pendingOrder?.quantity);
+                    && this._orderQtyAllowsEntryTpSplitAffordances(entry.pendingOrder?.quantity)
+                    && this._canAddMoreTpTargets(
+                        this._getEffectiveTpTargetCount(entry.pendingOrder),
+                        entry.pendingOrder?.quantity
+                    );
                 const closeBtnR = 9;
                 const splitBtnR = canPendingTpSplit ? 9 : 0;
                 const closeBtnGap = 6;
@@ -33363,6 +33447,135 @@ class OrderManager {
     }
 
     /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
+    /** Toast stack palette (matches talaria-toast-stack.js / nav-badge-tooltip). */
+    _tradeMarkerToastTheme() {
+        const light = typeof document !== 'undefined' && document.body?.classList.contains('light-mode');
+        return {
+            light,
+            bg: light ? '#E8EBF6' : '#0F1119',
+            border: light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)',
+            text: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
+            muted: light ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.58)',
+            accentDefault: light ? '#2F55E8' : '#4A6AFF',
+        };
+    }
+
+    _accentColorForTradeMarkerTag(tag, fallbackColor) {
+        const t = String(tag || '').toUpperCase();
+        const th = this._tradeMarkerToastTheme();
+        if (t.includes('TP')) return th.light ? '#059669' : '#22c55e';
+        if (t.includes('SL') || t.includes('STOP')) return '#ef4444';
+        if (t === 'BUY') return th.light ? '#059669' : '#22c55e';
+        if (t === 'SELL') return '#ef4444';
+        if (t.includes('BE')) return '#f59e0b';
+        return fallbackColor || th.accentDefault;
+    }
+
+    /**
+     * Build hover tooltip for entry/exit markers — same shell as bottom toasts
+     * (Exo 2, #0F1119, subtle border, 3px left accent stripe).
+     * @returns {import('d3-selection').Selection} tooltip root group
+     */
+    _buildTradeMarkerToastTooltip(parentGroup, opts) {
+        const o = opts || {};
+        const th = this._tradeMarkerToastTheme();
+        const lines = o.lines || [];
+        const lineH = 14;
+        const padT = 6;
+        const padR = 11;
+        const padB = 6;
+        const padL = 14;
+        const stripeW = 3;
+        const minW = 118;
+        const textW = lines.reduce((mx, ln) => {
+            const len = String(ln.text || '').length;
+            return Math.max(mx, len * 6.4 + padL + padR);
+        }, minW);
+        const ttW = Math.max(minW, Math.ceil(textW));
+        const ttH = padT + padB + lines.length * lineH;
+        const sz = 12;
+        const ttX = (o.anchorX || 0) + 14;
+        const above = !!o.above;
+        const ttY = above
+            ? (o.anchorY || 0) - sz - ttH
+            : (o.anchorY || 0) + sz;
+
+        const tagLine = lines.find((ln) => ln.kind === 'tag');
+        const accent = o.accentColor
+            || this._accentColorForTradeMarkerTag(tagLine?.text, o.fallbackAccent);
+        const tagColor = o.tagColor || accent;
+
+        const ttGroup = parentGroup.append('g')
+            .attr('data-role', o.tooltipRole || 'exit-tooltip')
+            .attr('data-tt-w', ttW)
+            .attr('data-tt-h', ttH)
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
+        const shell = ttGroup.append('g')
+            .attr('data-role', 'tt-shell')
+            .attr('transform', `translate(${ttX}, ${ttY})`);
+
+        shell.append('rect')
+            .attr('data-role', 'tt-bg')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', ttW)
+            .attr('height', ttH)
+            .attr('fill', th.bg)
+            .attr('stroke', th.border)
+            .attr('stroke-width', 1);
+
+        shell.append('rect')
+            .attr('data-role', 'tt-accent')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', stripeW)
+            .attr('height', ttH)
+            .attr('fill', accent);
+
+        lines.forEach((line, i) => {
+            let fill = th.muted;
+            let weight = 600;
+            if (line.kind === 'price') {
+                fill = th.text;
+                weight = 700;
+            } else if (line.kind === 'tag') {
+                fill = tagColor;
+                weight = 700;
+            }
+            const t = shell.append('text')
+                .attr('x', padL + 1)
+                .attr('y', padT + (i + 1) * lineH - 4)
+                .attr('fill', line.fill || fill)
+                .attr('font-size', '11px')
+                .attr('font-weight', weight)
+                .attr('font-family', "'Exo 2', Roboto, sans-serif")
+                .text(line.text);
+            if (line.role) t.attr('data-role', line.role);
+        });
+
+        return ttGroup;
+    }
+
+    _repositionTradeMarkerTooltip(tt, x, arrowCY, above) {
+        if (!tt || tt.empty()) return;
+        const ttH = parseFloat(tt.attr('data-tt-h') || 55);
+        const sz = 12;
+        const ttX = x + 14;
+        const ttY = above ? arrowCY - sz - ttH : arrowCY + sz;
+        const shell = tt.select('[data-role="tt-shell"]');
+        if (!shell.empty()) {
+            shell.attr('transform', `translate(${ttX}, ${ttY})`);
+            return;
+        }
+        const ttRect = tt.select('rect');
+        if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+        tt.selectAll('text').each(function(_d, i) {
+            d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+        });
+    }
+
     _tradeMarkerTooltipTag(hitType, order) {
         const t = String(hitType || 'MANUAL').toUpperCase();
         if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL' || t === 'TP' || t.startsWith('TP')) return 'TP';
@@ -33545,41 +33758,19 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        // Hover tooltip group (hidden by default)
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'entry-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
+        // Hover tooltip — toast shell (Exo 2, left accent stripe)
         const sideLabel = isBuy ? 'BUY' : 'SELL';
-        const lines = [
-            `${order.openPrice.toFixed(5)}`,
-            `${order.quantity.toFixed(2)} lots`,
-            sideLabel,
-        ];
-
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const ttH = lines.length * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        lines.forEach((txt, i) => {
-            const tagLine = i === lines.length - 1;
-            ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
-                .attr('fill', tagLine ? color : (i === 0 ? '#f8fafc' : '#cbd5e1'))
-                .attr('font-size', '10px')
-                .attr('font-weight', tagLine || i === 0 ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(txt);
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'entry-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: !isBuy,
+            fallbackAccent: color,
+            lines: [
+                { text: `${order.openPrice.toFixed(5)}`, kind: 'price' },
+                { text: `${order.quantity.toFixed(2)} lots`, kind: 'muted' },
+                { text: sideLabel, kind: 'tag', role: 'entry-tag-text' },
+            ],
         });
 
         const self = this;
@@ -33722,40 +33913,20 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'exit-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
         const tag = this._tradeMarkerTooltipTag(closeData.type, order);
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const nLines = 3;
-        const ttH = nLines * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        const ttLine = (i, text, opts = {}) => {
-            const t = ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + i * lineH - 3)
-                .attr('fill', opts.fill || '#e2e8f0')
-                .attr('font-size', '10px')
-                .attr('font-weight', opts.bold ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(text);
-            if (opts.role) t.attr('data-role', opts.role);
-        };
-
-        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
-        ttLine(2, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
-        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'exit-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: isBuyExit,
+            fallbackAccent: color,
+            tagColor: color,
+            lines: [
+                { text: this.formatPrice(closeData.closePrice), kind: 'price', role: 'exit-price-text' },
+                { text: `${order.quantity.toFixed(2)} lots`, kind: 'muted', role: 'exit-lots-text' },
+                { text: tag, kind: 'tag', role: 'exit-tag-text' },
+            ],
+        });
 
         const self = this;
         markerGroup
@@ -33943,41 +34114,21 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        const ttGroup = markerGroup.append('g')
-            .attr('data-role', 'exit-tooltip')
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
         const percentText = closeData.percentage ? `${(closeData.percentage * 100).toFixed(0)}%` : '';
         const tag = `TP ${percentText}`.trim();
-        const lineH = 15, ttPad = 5, ttW = 118;
-        const nLines = 3;
-        const ttH = nLines * lineH + ttPad * 2;
-        const ttX = x + 14;
-        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-
-        ttGroup.append('rect')
-            .attr('x', ttX).attr('y', ttY)
-            .attr('width', ttW).attr('height', ttH)
-            .attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)')
-            .attr('stroke', color).attr('stroke-width', 1);
-
-        const ttLine = (i, text, opts = {}) => {
-            const t = ttGroup.append('text')
-                .attr('x', ttX + ttPad + 2)
-                .attr('y', ttY + ttPad + i * lineH - 3)
-                .attr('fill', opts.fill || '#e2e8f0')
-                .attr('font-size', '10px')
-                .attr('font-weight', opts.bold ? '700' : '400')
-                .attr('font-family', 'Roboto, sans-serif')
-                .text(text);
-            if (opts.role) t.attr('data-role', opts.role);
-        };
-
-        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
-        ttLine(2, `${closeQuantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
-        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
+        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
+            tooltipRole: 'exit-tooltip',
+            anchorX: x,
+            anchorY: arrowCY,
+            above: isBuyExit,
+            fallbackAccent: color,
+            tagColor: color,
+            lines: [
+                { text: this.formatPrice(closeData.closePrice), kind: 'price', role: 'exit-price-text' },
+                { text: `${closeQuantity.toFixed(2)} lots`, kind: 'muted', role: 'exit-lots-text' },
+                { text: tag, kind: 'tag', role: 'exit-tag-text' },
+            ],
+        });
 
         const self = this;
         markerGroup
@@ -34061,14 +34212,7 @@ class OrderManager {
 
             const tt = marker.select('[data-role="entry-tooltip"]');
             if (!tt.empty()) {
-                const ttX = x + 14;
-                const ttRect = tt.select('rect');
-                const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
-                if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                tt.selectAll('text').each(function(d, i) {
-                    d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                });
+                this._repositionTradeMarkerTooltip(tt, x, arrowCY, !isBuy);
             }
         });
     }
@@ -34107,14 +34251,7 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    const ttX = x + 14;
-                    const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                    tt.selectAll('text').each(function(d, i) {
-                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                    });
+                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
                 }
             });
         }
@@ -34152,14 +34289,7 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    const ttX = x + 14;
-                    const ttRect = tt.select('rect');
-                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
-                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
-                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-                    tt.selectAll('text').each(function(d, i) {
-                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-                    });
+                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
                 }
             });
         }
@@ -34731,7 +34861,11 @@ class OrderManager {
             openPosQtyForTpSplit = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
         }
         const canOpenTpSplitPlus = !this._isOrderEntryPlusUiDisabled()
-            && this._orderQtyAllowsEntryTpSplitAffordances(openPosQtyForTpSplit);
+            && this._orderQtyAllowsEntryTpSplitAffordances(openPosQtyForTpSplit)
+            && this._canAddMoreTpTargets(
+                this._getEffectiveTpTargetCount(order),
+                openPosQtyForTpSplit
+            );
 
         // Draw Take Profit lines (check for multiple TPs first)
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
@@ -38862,7 +38996,7 @@ class OrderManager {
                 </div>
                 <div id="modalMultipleTPSettings" style="display: none;">
                     <label style="display: block; font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Number of Targets</label>
-                    <input type="number" id="modalNumTPTargets" value="3" min="2" max="10" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
+                    <input type="number" id="modalNumTPTargets" value="3" min="2" max="5" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
                 </div>
             </div>
             
