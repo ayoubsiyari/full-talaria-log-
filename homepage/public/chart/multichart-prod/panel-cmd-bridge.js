@@ -2007,6 +2007,7 @@
                     if (btSet) btSet.classList.toggle('active', sideSet === 'BUY');
                     if (stSet) stSet.classList.toggle('active', sideSet === 'SELL');
                     var otSet = (args.type === 'limit' || args.type === 'stop') ? args.type : 'market';
+                    omSet.orderType = otSet;
                     var typeBtnsSet = docSet.querySelectorAll('#orderPanel .order-type-btn');
                     if (typeBtnsSet && typeBtnsSet.forEach) {
                         typeBtnsSet.forEach(function (b) {

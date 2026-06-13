@@ -784,6 +784,11 @@ class OrderManager {
         return Math.max(0, (Number(ch?.w) || 0) - width - 175);
     }
 
+    /** Full canvas width for visible order/preview lines (extends into price margin). */
+    _orderLineVisualEndX(chart) {
+        return Math.max(0, Number(chart?.w) || 0);
+    }
+
     /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
     _orderLineHitEndX(chart, labelStartX = null) {
         const plotRight = this._orderPlotRightX(chart);
@@ -17105,22 +17110,6 @@ class OrderManager {
         if (widthChanged) {
             this.alignPreviewLabels();
             this._reflowEntryAnchoredTpSlBadges();
-        } else {
-            // Vertical-only pan: x2 was reset to full width — clip back to label edge (no gap).
-            const clipPreviewToLabel = (ld) => {
-                if (ld && ld.line && ld.labelGroup && !ld.isBadge) this.adjustPreviewLineForLabel(ld);
-            };
-            clipPreviewToLabel(this.previewLines.entry);
-            clipPreviewToLabel(this.previewLines.tp);
-            clipPreviewToLabel(this.previewLines.sl);
-            clipPreviewToLabel(this.previewLines.be);
-            clipPreviewToLabel(this.previewLines.avgEntry);
-            if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
-                this.previewLines.multipleTPs.forEach(clipPreviewToLabel);
-            }
-            if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
-                this.previewLines.splitEntries.forEach(clipPreviewToLabel);
-            }
         }
 
         this._syncPendingLimitStopConnector();
@@ -22525,18 +22514,8 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // Visual line may extend to the axis; hit target stops at the label column / plot edge.
-        let lineEndX = ch.w;
-        const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
-        const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
-        const isEntryTpSl = lineData.label === 'SL'
-            || lineData.label === 'TP'
-            || lineData.label === 'Entry'
-            || lineData.label === 'Avg Entry'
-            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
-        if (!isPreviewOrder || !(isEntryTpSl || isBePreview)) {
-            lineEndX = Math.max(0, x);
-        }
+        // Visual line always reaches the price axis; only the invisible hit target is capped.
+        const lineEndX = this._orderLineVisualEndX(ch);
 
         lineData.line
             .attr('x1', 0)

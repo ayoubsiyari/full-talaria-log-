@@ -3475,6 +3475,7 @@ export default function MultichartGrid({
                         if (bt) bt.classList.toggle("active", sideSet === "BUY");
                         if (st) st.classList.toggle("active", sideSet === "SELL");
                         const otSet = (args.type === "limit" || args.type === "stop") ? args.type : "market";
+                        omSet.orderType = otSet;
                         document.querySelectorAll("#orderPanel .order-type-btn").forEach((b) => {
                             b.classList.toggle("active", b.getAttribute("data-type") === otSet);
                         });
