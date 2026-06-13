@@ -1740,9 +1740,65 @@ class OrderManager {
      *   moves with replay ticks/candles.
      * - Other instruments: same session tick index + that bar's OHLC (deterministic path) so
      *   dock PnL moves smoothly; else panel last close, else cached bar close.
+     * - While replay is paused on the fill bar: freeze at entry mark so pair/TF resample does
+     *   not show phantom profit before playback advances.
      */
+    _barBucketStartMs(chart, tMs) {
+        const t = Number(tMs);
+        if (!Number.isFinite(t)) return NaN;
+        const ch = chart || this.chart;
+        if (!ch) return t;
+        let tfMs = null;
+        if (typeof ch.parseTimeframe === 'function') {
+            tfMs = ch.parseTimeframe(ch.currentTimeframe);
+        }
+        if (typeof ch._getBarPeriodStartMs === 'function') {
+            const start = ch._getBarPeriodStartMs(t, null, -1, tfMs);
+            if (Number.isFinite(start)) return start;
+        }
+        if (Number.isFinite(tfMs) && tfMs > 0) return Math.floor(t / tfMs) * tfMs;
+        return t;
+    }
+
+    _replayPlayheadTimeMs(chart) {
+        const rs = this._playbackReplaySystem();
+        if (rs && Number.isFinite(rs.replayTimestamp)) return Number(rs.replayTimestamp);
+        const ch = chart || this._getOrderContextChart() || this.chart;
+        const c = ch ? this._getCurrentCandleForChart(ch) : null;
+        const t = c && Number(c.t);
+        return Number.isFinite(t) ? t : NaN;
+    }
+
+    /** True when replay is paused and playhead is still on the bar where the position opened. */
+    _shouldFreezeOpenPnlAtFillMark(position, chart) {
+        const rs = this._playbackReplaySystem();
+        if (!rs || !rs.isActive || rs.isPlaying) return false;
+        const ch = chart || this._getOrderContextChart() || this.chart;
+        if (!ch || !position) return false;
+        const fillBarT = position._slNoTriggerBeforeTime ?? position.entryMarkerTimeMs ?? position.openTime;
+        if (fillBarT == null) return false;
+        const playT = this._replayPlayheadTimeMs(ch);
+        if (!Number.isFinite(playT)) return false;
+        const fillBucket = this._barBucketStartMs(ch, fillBarT);
+        const playBucket = this._barBucketStartMs(ch, playT);
+        return Number.isFinite(fillBucket) && fillBucket === playBucket;
+    }
+
+    _markPriceForOpenPosition(position, chart) {
+        if (!position) return null;
+        const ch = chart || this._getOrderContextChart() || this.chart;
+        const candle = this._getCurrentCandleForChart(ch);
+        if (!candle) return null;
+        return this._resolveUnrealizedMarkPrice(position, candle);
+    }
+
     _resolveUnrealizedMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
+        const oc = this._getOrderContextChart() || this.chart;
+        if (this._shouldFreezeOpenPnlAtFillMark(position, oc)) {
+            const fillMark = Number(position._fillMarkPrice ?? position.openPrice);
+            if (Number.isFinite(fillMark)) return fillMark;
+        }
         const tMs = Number(currentCandle.t);
         if (!Number.isFinite(tMs)) return null;
         const posTicker = this._positionTicker(position);
@@ -23654,6 +23710,7 @@ class OrderManager {
             type: this.orderSide,
             orderType: 'market',
             openPrice: entryPrice,
+            _fillMarkPrice: entryPrice,
             openTime: marketFillTimeMs,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: quantity,
@@ -25643,6 +25700,7 @@ class OrderManager {
             type: pendingOrder.direction,
             orderType: pendingOrder.orderType || (pendingOrder.wasStopOrder ? 'stop' : 'limit'),
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
+            _fillMarkPrice: executionPrice,
             openTime: currentCandle.t,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: pendingOrder.quantity,
@@ -30598,15 +30656,17 @@ class OrderManager {
                     const legs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     for (const leg of legs) {
                         totalPnl += Number(leg.partialClosePnL) || 0;
-                        if (currentPrice > 0) {
-                            totalPnl += this.estimatePnLForPriceLevel(side, leg.openPrice, currentPrice, leg.quantity || 0, sym);
+                        const markPx = this._markPriceForOpenPosition(leg, ch);
+                        if (Number.isFinite(markPx) && markPx > 0) {
+                            totalPnl += this.estimatePnLForPriceLevel(side, leg.openPrice, markPx, leg.quantity || 0, sym);
                         }
                     }
                 } else {
                     const realizedPartials = Number(source.partialClosePnL) || 0;
                     let unrealized = 0;
-                    if (currentPrice > 0) {
-                        unrealized = this.estimatePnLForPriceLevel(side, entryPrice, currentPrice, qty, sym);
+                    const markPx = this._markPriceForOpenPosition(source, ch);
+                    if (Number.isFinite(markPx) && markPx > 0) {
+                        unrealized = this.estimatePnLForPriceLevel(side, entryPrice, markPx, qty, sym);
                     }
                     totalPnl = realizedPartials + unrealized;
                 }
@@ -30740,11 +30800,12 @@ class OrderManager {
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
-            if (currentPrice > 0) {
-                for (const o of openOrders) {
-                    if (o.status === 'OPEN') {
-                        const sym = o.ticker || o.symbol || this._getSymbol();
-                        totalPnl += this.estimatePnLForPriceLevel(o.type, o.openPrice, currentPrice, o.quantity, sym);
+            for (const o of openOrders) {
+                if (o.status === 'OPEN') {
+                    const sym = o.ticker || o.symbol || this._getSymbol();
+                    const markPx = this._markPriceForOpenPosition(o, ch);
+                    if (Number.isFinite(markPx) && markPx > 0) {
+                        totalPnl += this.estimatePnLForPriceLevel(o.type, o.openPrice, markPx, o.quantity, sym);
                     }
                 }
             }
@@ -30859,9 +30920,10 @@ class OrderManager {
 
                 // Live P&L
                 if (!isPending && ml.pnlBox && ml.pnlText && od) {
-                    if (currentPrice > 0) {
+                    const markPx = this._markPriceForOpenPosition(od, ch);
+                    if (Number.isFinite(markPx) && markPx > 0) {
                         const sym = od.ticker || od.symbol || this._getSymbol();
-                        const livePnl = this.estimatePnLForPriceLevel(od.type, od.openPrice, currentPrice, od.quantity, sym);
+                        const livePnl = this.estimatePnLForPriceLevel(od.type, od.openPrice, markPx, od.quantity, sym);
                         const s = livePnl >= 0 ? '+' : '';
                         const pc = livePnl >= 0 ? '#22c55e' : '#ef4444';
                         ml.pnlText.text(`${s}$${livePnl.toFixed(2)}`).attr('fill', pc);
@@ -36565,11 +36627,10 @@ class OrderManager {
 
                 // Live P&L for open (non-pending) positions
                 if (!isPending && pnlBox && pnlText && orderData) {
-                    const currentCandle = this._getCurrentCandleForChart(ch);
-                    const currentPrice = currentCandle ? currentCandle.c : 0;
-                    if (currentPrice > 0) {
+                    const markPx = this._markPriceForOpenPosition(orderData, ch);
+                    if (Number.isFinite(markPx) && markPx > 0) {
                         const orderSym = orderData.ticker || orderData.symbol || this._getSymbol();
-                        const unrealizedPnl = this.estimatePnLForPriceLevel(orderData.type, orderData.openPrice, currentPrice, orderData.quantity, orderSym);
+                        const unrealizedPnl = this.estimatePnLForPriceLevel(orderData.type, orderData.openPrice, markPx, orderData.quantity, orderSym);
                         const realizedPartials = Number(orderData.partialClosePnL) || 0;
                         const livePnl = unrealizedPnl + realizedPartials;
                         const sign = livePnl >= 0 ? '+' : '';
