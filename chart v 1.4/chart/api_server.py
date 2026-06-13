@@ -8521,6 +8521,17 @@ def _proxy_finnhub_json(upstream_url: str):
             body = e.read().decode(errors="replace")[:1200]
         except Exception:
             pass
+        if e.code in (401, 403):
+            hint = (
+                "Your Finnhub API key does not include the Economic Calendar endpoint. "
+                "Upgrade your Finnhub plan (finnhub.io/pricing) or use a key with calendar access."
+            )
+            if body and "don't have access" in body.lower():
+                raise HTTPException(status_code=e.code, detail=hint) from e
+            raise HTTPException(
+                status_code=e.code,
+                detail=f"Finnhub HTTP {e.code}: {body or e.reason}. {hint}",
+            ) from e
         raise HTTPException(
             status_code=502,
             detail=f"Finnhub HTTP {e.code}: {body or e.reason}",
