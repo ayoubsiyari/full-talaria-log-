@@ -704,6 +704,186 @@ class OrderManager {
         });
     }
 
+    /** Right edge of the plot area — order hit targets must not extend into the price axis strip. */
+    _orderPlotRightX(chart) {
+        const ch = chart || this.chart;
+        return Math.max(0, (Number(ch?.w) || 0) - (Number(ch?.margin?.r) || 70));
+    }
+
+    /** Pointer in chart layout px — same space as chart.js detectCursorMode / updateCrosshair. */
+    _pointerChartLocalXY(e, chart) {
+        const ch = chart || this.chart;
+        if (!ch) return null;
+        if (typeof ch._eventCanvasLocalXY === 'function') {
+            try {
+                const xy = ch._eventCanvasLocalXY(e);
+                if (Array.isArray(xy) && xy.length >= 2
+                    && Number.isFinite(xy[0]) && Number.isFinite(xy[1])) {
+                    return xy;
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        const source = (e?.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
+        const svg = ch.svg?.node?.();
+        if (!source || !svg) return null;
+        const clientX = source.clientX;
+        const clientY = source.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+        const rect = svg.getBoundingClientRect();
+        return [clientX - rect.left, clientY - rect.top];
+    }
+
+    /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
+    _eventInPriceAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
+        const ch = chart || this.chart;
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return mx > w - (Number(m.r) || 70)
+            && my > (Number(m.t) || 0)
+            && my < h - (Number(m.b) || 30);
+    }
+
+    /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
+    _eventInTimeAxisZone(e, chart) {
+        if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
+        const ch = chart || this.chart;
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return my > h - (Number(m.b) || 30)
+            && mx > (Number(m.l) || 0)
+            && mx < w - (Number(m.r) || 70);
+    }
+
+    /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
+    _eventInChartAxisZone(e, zoneId) {
+        if (typeof document === 'undefined' || !zoneId) return false;
+        const zone = document.getElementById(zoneId);
+        if (!zone) return false;
+        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
+        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
+        const r = zone.getBoundingClientRect();
+        return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+    }
+
+    /** Left X of a preview label group (for capping horizontal hit targets). */
+    _previewLineLabelStartX(lineData, ch) {
+        if (!lineData?.labelGroup) return null;
+        const transform = lineData.labelGroup.attr('transform') || '';
+        const match = /translate\(([^,]+),/.exec(transform);
+        const x = match ? parseFloat(match[1]) : NaN;
+        if (Number.isFinite(x)) return x;
+        const bbox = lineData.labelDimensions || lineData.labelGroup.node()?.getBBox?.();
+        const width = bbox?.width ?? 0;
+        return Math.max(0, (Number(ch?.w) || 0) - width - 175);
+    }
+
+    /** Full canvas width for visible order/preview lines (extends into price margin). */
+    _orderLineVisualEndX(chart) {
+        return Math.max(0, Number(chart?.w) || 0);
+    }
+
+    /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
+    _orderLineHitEndX(chart, labelStartX = null) {
+        const plotRight = this._orderPlotRightX(chart);
+        const safePlotRight = Math.max(0, plotRight - 2);
+        if (Number.isFinite(labelStartX) && labelStartX > 0) {
+            return Math.min(safePlotRight, labelStartX);
+        }
+        return safePlotRight;
+    }
+
+    /**
+     * Transparent rect over the price margin — sits above order hit targets so axis
+     * clicks (incl. y-axis price pills) scale the chart instead of dragging levels.
+     */
+    _ensureOrderPriceMarginShield(chart) {
+        const ch = chart || this.chart;
+        if (!ch?.svg) return;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        const plotRight = this._orderPlotRightX(ch);
+        const plotTop = Number(m.t) || 0;
+        const plotBot = h - (Number(m.b) || 30);
+        const shieldW = Math.max(0, w - plotRight);
+        const shieldH = Math.max(0, plotBot - plotTop);
+        if (shieldW <= 0 || shieldH <= 0) return;
+
+        let shield = ch.svg.select('rect.order-price-margin-shield');
+        if (shield.empty()) {
+            const self = this;
+            const forwardMouseToCanvas = (ev, type) => {
+                const targetChart = ch;
+                if (!self._eventInPriceAxisZone(ev, targetChart)) return;
+                const canvas = targetChart.canvas;
+                if (!canvas) return;
+                if (targetChart.cursor) targetChart.cursor.mode = 'priceAxis';
+                canvas.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: ev.clientX,
+                    clientY: ev.clientY,
+                    button: ev.button,
+                    buttons: ev.buttons,
+                    shiftKey: ev.shiftKey,
+                    ctrlKey: ev.ctrlKey,
+                    altKey: ev.altKey,
+                    metaKey: ev.metaKey
+                }));
+            };
+            shield = ch.svg.append('rect')
+                .attr('class', 'order-price-margin-shield')
+                .attr('fill', 'transparent')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .on('mousedown.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    forwardMouseToCanvas(ev, 'mousedown');
+                })
+                .on('dblclick.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    forwardMouseToCanvas(ev, 'dblclick');
+                })
+                .on('wheel.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    const canvas = ch.canvas;
+                    if (canvas) {
+                        canvas.dispatchEvent(new WheelEvent('wheel', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: ev.clientX,
+                            clientY: ev.clientY,
+                            deltaY: ev.deltaY,
+                            deltaX: ev.deltaX,
+                            shiftKey: ev.shiftKey,
+                            ctrlKey: ev.ctrlKey,
+                            altKey: ev.altKey
+                        }));
+                    }
+                });
+        }
+
+        shield
+            .attr('x', plotRight)
+            .attr('y', plotTop)
+            .attr('width', shieldW)
+            .attr('height', shieldH);
+
+        try {
+            if (typeof shield.raise === 'function') shield.raise();
+        } catch (_e) { /* ignore */ }
+    }
+
     /**
      * Charts that may host draft preview SVG (layout panels + whichever surface getActiveChart() uses).
      * Used when scrubbing preview on panel close so lines cannot linger on a non-listed instance.
@@ -16647,6 +16827,12 @@ class OrderManager {
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
 
+        const syncPreviewHitWidth = (ld) => {
+            if (!ld?.hitLine || ld.isBadge) return;
+            const labelX = this._previewLineLabelStartX(ld, pc);
+            ld.hitLine.attr('x2', this._orderLineHitEndX(pc, labelX));
+        };
+        
         // Update entry line position
         if (this.previewLines.entry) {
             const entryY = pc.scales.yScale(this.previewLines.entry.price);
@@ -16663,6 +16849,8 @@ class OrderManager {
                     .attr('y1', entryY)
                     .attr('y2', entryY);
             }
+            syncPreviewHitWidth(this.previewLines.entry);
+
             updateLabelY(this.previewLines.entry, entryY);
             updateYAxisHighlight(this.previewLines.entry, entryY);
         }
@@ -16683,6 +16871,8 @@ class OrderManager {
                     .attr('y1', tpY)
                     .attr('y2', tpY);
             }
+            syncPreviewHitWidth(this.previewLines.tp);
+
             updateLabelY(this.previewLines.tp, tpY);
             updateYAxisHighlight(this.previewLines.tp, tpY);
         }
@@ -16703,6 +16893,8 @@ class OrderManager {
                     .attr('y1', slY)
                     .attr('y2', slY);
             }
+            syncPreviewHitWidth(this.previewLines.sl);
+
             updateLabelY(this.previewLines.sl, slY);
             updateYAxisHighlight(this.previewLines.sl, slY);
         }
@@ -16739,6 +16931,8 @@ class OrderManager {
                             .attr('y1', tpY)
                             .attr('y2', tpY);
                     }
+                    syncPreviewHitWidth(tpLine);
+
                     updateLabelY(tpLine, tpY);
                     updateYAxisHighlight(tpLine, tpY);
                 }
@@ -16761,6 +16955,8 @@ class OrderManager {
                     .attr('y1', beY)
                     .attr('y2', beY);
             }
+            syncPreviewHitWidth(this.previewLines.be);
+
             updateLabelY(this.previewLines.be, beY);
             updateYAxisHighlight(this.previewLines.be, beY);
         }
@@ -16782,6 +16978,8 @@ class OrderManager {
                             .attr('y1', splitY)
                             .attr('y2', splitY);
                     }
+                    syncPreviewHitWidth(splitLine);
+
                     updateLabelY(splitLine, splitY);
                     updateYAxisHighlight(splitLine, splitY);
                 }
@@ -16802,6 +17000,7 @@ class OrderManager {
                     .attr('y1', avgY)
                     .attr('y2', avgY);
             }
+            syncPreviewHitWidth(this.previewLines.avgEntry);
             updateLabelY(this.previewLines.avgEntry, avgY);
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
         }
@@ -16814,6 +17013,7 @@ class OrderManager {
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
+        this._ensureOrderPriceMarginShield(pc);
     }
 
     updatePreviewLines() {
@@ -17259,7 +17459,7 @@ class OrderManager {
         const hitLine = chart.svg.append('line')
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
-            .attr('x2', chart.w)
+            .attr('x2', isDraggable ? this._orderLineHitEndX(chart, null) : chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -17318,6 +17518,7 @@ class OrderManager {
             this.makePreviewLineDraggable(lineData);
         }
 
+        this._ensureOrderPriceMarginShield(chart);
         return lineData;
     }
 
@@ -17428,6 +17629,8 @@ class OrderManager {
         const drag = d3.drag()
             .filter((event) => {
                 const ch = lineData._previewChart || self._getPreviewChart();
+                if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 const t = event.sourceEvent && event.sourceEvent.target;
                 if (t && typeof t.closest === 'function') {
                     if (t.closest('.preview-tp-sl-close-btn')) return false;
@@ -18283,6 +18486,8 @@ class OrderManager {
             // Drag to set this target's price
             const drag = d3.drag()
                 .filter((event) => {
+                    if (self._eventInPriceAxisZone(event, ch)) return false;
+                    if (self._eventInTimeAxisZone(event, ch)) return false;
                     return !event.button;
                 })
                 .on('start', () => {
@@ -18362,6 +18567,8 @@ class OrderManager {
         // Make badge draggable - when dragged, convert to full line
         const drag = d3.drag()
             .filter((event) => {
+                if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 return !event.button;
             })
             .on('start', () => {
@@ -19798,7 +20005,7 @@ class OrderManager {
             ld.line.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.hitLine) {
-            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', ch.w);
+            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderLineHitEndX(ch, this._previewLineLabelStartX(ld, ch)));
         }
         if (ld.priceText) {
             const totalLots = this._calcMultiEntryTotalLots();
@@ -22154,26 +22361,17 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // End at label edge by default; preview TP/SL extends to right axis price.
-        let lineEndX = Math.max(0, x);
-        const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
-        const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
-        const isEntryTpSl = lineData.label === 'SL'
-            || lineData.label === 'TP'
-            || lineData.label === 'Entry'
-            || lineData.label === 'Avg Entry'
-            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
-        if (isPreviewOrder && (isEntryTpSl || isBePreview)) {
-            lineEndX = ch.w;
-        }
+        // Visual line always reaches the price axis; only the invisible hit target is capped.
+        const lineEndX = this._orderLineVisualEndX(ch);
 
         lineData.line
             .attr('x1', 0)
             .attr('x2', lineEndX);
         if (lineData.hitLine) {
+            const hitEndX = this._orderLineHitEndX(ch, x);
             lineData.hitLine
                 .attr('x1', 0)
-                .attr('x2', lineEndX);
+                .attr('x2', hitEndX);
         }
     }
 
@@ -27597,6 +27795,9 @@ class OrderManager {
                 e.target.closest('.tp-close-btn')) {
                 return;
             }
+            if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
+            
             e.preventDefault();
             e.stopPropagation();
             
@@ -28038,6 +28239,8 @@ class OrderManager {
         const priceTextNode = priceText?.node();
         
         const onMouseDown = function(e) {
+            if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             
@@ -28241,6 +28444,8 @@ class OrderManager {
         const onMouseDown = (e) => {
             if (e.target.closest('.pending-order-close-btn')) return;
             if (e.target.closest('.pending-entry-plus-badge')) return;
+            if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -28454,6 +28659,8 @@ class OrderManager {
 
         const onMouseDown = (e) => {
             if (e.target.closest('.order-close-btn')) return;
+            if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -30561,8 +30768,9 @@ class OrderManager {
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
+                const splitHitEnd = this._orderLineHitEndX(ch, labelBoxX);
                 ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x2', splitHitEnd);
 
                 let memberCx = labelBoxX + lbw + gap;
 
@@ -30797,6 +31005,8 @@ class OrderManager {
 
         const drag = d3.drag()
             .filter((event) => {
+                if (self._eventInPriceAxisZone(event, chart)) return false;
+                if (self._eventInTimeAxisZone(event, chart)) return false;
                 return !event.button;
             })
             .on('start', function() {
@@ -31042,6 +31252,7 @@ class OrderManager {
             chart.renderPending = true;
             chart.render();
         }
+        this._ensureOrderPriceMarginShield(chart);
     }
 
     /**
@@ -31395,15 +31606,56 @@ class OrderManager {
                     isPreview: false,
                     height: 24
                 });
-                const labelWidth = toastDims.width;
+                let labelWidth = toastDims.width;
                 const labelHeight = toastDims.height;
                 const pnlBoxW = 0;
+
+                const isMultiTP = !!target.isPendingMultiTP;
+                const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
+                target.pctArrowsWidth = showPctArrows ? (18 + 2) * 2 : 0;
+
+                // −/+ inside the toast row (same row as profit detail)
+                if (showPctArrows) {
+                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
+                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                    const poId = entry.pendingOrder.id;
+                    const tIdx = target.tpTargetIndex;
+                    const badgeY = (labelHeight - 18) / 2;
+                    const badgeGap = 2;
+                    let bx = labelWidth + 4;
+                    const dec = this._appendOrderLevelBadgeToGroup(labelGroup, 'minus', {
+                        className: 'tp-percentage-control pending-tp-pct-dec',
+                        x: bx,
+                        y: badgeY,
+                        stopMousedown: true,
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            this.adjustPendingTPPercentage(poId, tIdx, -5);
+                        },
+                    });
+                    bx += dec.size + badgeGap;
+                    const inc = this._appendOrderLevelBadgeToGroup(labelGroup, 'plus', {
+                        className: 'tp-percentage-control pending-tp-pct-inc',
+                        x: bx,
+                        y: badgeY,
+                        stopMousedown: true,
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            this.adjustPendingTPPercentage(poId, tIdx, +5);
+                        },
+                    });
+                    labelWidth = bx + inc.size;
+                } else {
+                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
+                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                }
 
                 const totalLabelW = labelWidth + pnlBoxW;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
 
-                // Layout: Label+PnL → [−][+] (multi-TP share) → [X] → [+] split
-                const isMultiTP = !!target.isPendingMultiTP;
+                // Layout: Label+PnL(+−/+) → [X] → [+] split
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const canPendingTpSplit = target.type === 'TP'
                     && !this._isOrderEntryPlusUiDisabled()
@@ -31415,13 +31667,9 @@ class OrderManager {
                 const closeBtnR = 9;
                 const splitBtnR = canPendingTpSplit ? 9 : 0;
                 const closeBtnGap = 6;
-                const arrowSize = 18;
-                const arrowGap = 2;
-                const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
-                target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) * 2 : 0;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
                 const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
-                const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
+                const badgesW = xBtnW + splitW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
@@ -31430,53 +31678,6 @@ class OrderManager {
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
                 let xAfterLabel = translateX + totalLabelW + closeBtnGap;
-                if (showPctArrows) {
-                    const poId = entry.pendingOrder.id;
-                    const tIdx = target.tpTargetIndex;
-                    if (!target._pctDecBtn || !target._pctDecBtn.node()?.parentNode) {
-                        if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
-                        if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
-                        target._pctDecBtn = this._createOrderLevelBadgeOnChart(
-                            ch.svg,
-                            `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`,
-                            'minus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    this.adjustPendingTPPercentage(poId, tIdx, -5);
-                                },
-                            }
-                        );
-                        target._pctIncBtn = this._createOrderLevelBadgeOnChart(
-                            ch.svg,
-                            `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`,
-                            'plus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    this.adjustPendingTPPercentage(poId, tIdx, +5);
-                                },
-                            }
-                        );
-                    }
-                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
-                    try {
-                        if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
-                    } catch (_) {}
-                    xAfterLabel += arrowSize + arrowGap;
-                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
-                    try {
-                        if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
-                    } catch (_) {}
-                    xAfterLabel += arrowSize + arrowGap;
-                } else {
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
-                }
 
                 // X close/delete button for SL, single TP, and multi-TP targets
                 if (needsCloseBtn) {
@@ -31507,7 +31708,7 @@ class OrderManager {
                             }
                         );
                     }
-                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    target._deleteBtn.attr('transform', `translate(${closeBtnX - closeBtnR}, ${y - closeBtnR})`);
                     try {
                         if (typeof target._deleteBtn.raise === 'function') target._deleteBtn.raise();
                     } catch (_) {}
@@ -31538,7 +31739,7 @@ class OrderManager {
                             }
                         );
                     }
-                    target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
+                    target._splitBtn.attr('transform', `translate(${splitX - splitBtnR}, ${y - splitBtnR})`);
                     try {
                         if (typeof target._splitBtn.raise === 'function') target._splitBtn.raise();
                     } catch (_) {}
@@ -31547,7 +31748,7 @@ class OrderManager {
                     target._splitBtn = null;
                 }
 
-                const hitEndX = ch.w;
+                const hitEndX = this._orderLineHitEndX(ch, translateX);
                 target.line
                     .attr('x1', 0)
                     .attr('x2', ch.w)
@@ -31661,6 +31862,8 @@ class OrderManager {
 
         const drag = d3.drag()
             .filter((event) => {
+                if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 return !event.button;
             })
             .on('start', function() {
@@ -31726,33 +31929,21 @@ class OrderManager {
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
                 target.line.attr('x1', 0).attr('x2', ch.w);
                 if (target.hitLine) {
-                    target.hitLine.attr('x1', 0).attr('x2', ch.w);
+                    target.hitLine.attr('x1', 0).attr('x2', self._orderLineHitEndX(ch, translateX));
                 }
 
                 const cBtnR = 9;
                 const cBtnGap = 6;
                 const sBtnR = 9;
                 const sBtnGap = 6;
-                const arrowSize = 18;
-                const arrowGap = 2;
-                const pctExtra = target.pctArrowsWidth || 0;
-                const xBase = translateX + dims.width + cBtnGap;
-                if (target._pctDecBtn) {
-                    const badgeR = arrowSize / 2;
-                    target._pctDecBtn.attr('transform', `translate(${xBase + badgeR}, ${clampedY})`);
-                }
-                if (target._pctIncBtn) {
-                    const badgeR = arrowSize / 2;
-                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap + badgeR}, ${clampedY})`);
-                }
                 if (target._deleteBtn) {
-                    const closeBtnX = translateX + dims.width + pctExtra + cBtnGap + cBtnR;
-                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${clampedY})`);
+                    const closeBtnX = translateX + dims.width + cBtnGap + cBtnR;
+                    this._positionOrderLevelBadgeAtCenter(target._deleteBtn, closeBtnX, clampedY, cBtnR);
                 }
                 if (target._splitBtn) {
                     const hasClose = !!target._deleteBtn;
-                    const splitX = translateX + dims.width + pctExtra + (hasClose ? cBtnR * 2 + cBtnGap : 0) + sBtnGap + sBtnR;
-                    target._splitBtn.attr('transform', `translate(${splitX}, ${clampedY})`);
+                    const splitX = translateX + dims.width + (hasClose ? cBtnR * 2 + cBtnGap : 0) + sBtnGap + sBtnR;
+                    this._positionOrderLevelBadgeAtCenter(target._splitBtn, splitX, clampedY, sBtnR);
                 }
                 
                 if (target.priceHighlight) {
@@ -33214,6 +33405,19 @@ class OrderManager {
         host.on('mouseenter', hover).on('mouseleave', reset);
     }
 
+    /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
+    _positionOrderLevelBadgeAtRow(btn, xLeft, lineY, r = 9, boxH = 22) {
+        if (!btn) return;
+        const yTop = lineY - boxH / 2 + (boxH - r * 2) / 2;
+        btn.attr('transform', `translate(${Number(xLeft)}, ${Number(yTop)})`);
+    }
+
+    /** Center-anchored chart badge (circle center at xCenter, lineY). */
+    _positionOrderLevelBadgeAtCenter(btn, xCenter, lineY, r = 9) {
+        if (!btn) return;
+        btn.attr('transform', `translate(${Number(xCenter) - r}, ${Number(lineY) - r})`);
+    }
+
     /**
      * Inline circle badge inside a preview label group.
      * @returns {{ group, size: number, r: number }}
@@ -33273,10 +33477,14 @@ class OrderManager {
             .style('cursor', 'pointer');
         const bg = btn.append('circle')
             .attr('class', 'order-level-badge-bg order-overlay-sublayer')
+            .attr('cx', r)
+            .attr('cy', r)
             .attr('r', r)
             .attr('stroke-width', 1);
         const txt = btn.append('text')
             .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
+            .attr('x', r)
+            .attr('y', r)
             .attr('font-size', kind === 'check' ? '12px' : '13px')
             .attr('font-weight', '700')
             .attr('font-family', this._orderLevelLabelFontFamily())
@@ -33381,7 +33589,7 @@ class OrderManager {
         closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
 
         if (dragHitLine) {
-            dragHitLine.attr('x1', 0).attr('x2', Math.max(0, startX));
+            dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, startX));
         }
     }
 
@@ -34879,62 +35087,70 @@ class OrderManager {
                         .style('pointer-events', 'none')
                         .text(this.formatPrice(target.price));
 
-                    // − / + share (open position multi-TP): same toast circle badges as preview/pending
+                    // − / + share (open position multi-TP): same redistribution as preview/pending
                     let tpPctDecBtn = null;
                     let tpPctIncBtn = null;
                     const tpPctArrowSize = 18;
                     const tpPctArrowGap = 2;
                     const tpPctArrowsW = nonHitTargets.length > 1 ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0;
+                    const tpBadgeR = tpPctArrowSize / 2;
                     if (nonHitTargets.length > 1) {
                         const oid = order.id;
                         const tIdx = index;
                         const self = this;
-                        tpPctDecBtn = this._createOrderLevelBadgeOnChart(
-                            chart.svg,
-                            `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${tpKey}`,
-                            'minus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    self.adjustOpenPositionTPPercentage(oid, tIdx, -5);
-                                },
-                            }
-                        );
-                        tpPctIncBtn = this._createOrderLevelBadgeOnChart(
-                            chart.svg,
-                            `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${tpKey}`,
-                            'plus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    self.adjustOpenPositionTPPercentage(oid, tIdx, +5);
-                                },
-                            }
-                        );
+                        tpPctDecBtn = chart.svg.append('g')
+                            .attr('class', `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${tpKey}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        tpPctDecBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
+                        tpPctDecBtn.append('text').attr('x', tpPctArrowSize / 2).attr('y', tpPctArrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
+                        tpPctDecBtn.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                self.adjustOpenPositionTPPercentage(oid, tIdx, -5);
+                            });
+                        tpPctIncBtn = chart.svg.append('g')
+                            .attr('class', `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${tpKey}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        tpPctIncBtn.append('rect').attr('width', tpPctArrowSize).attr('height', tpPctArrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
+                        tpPctIncBtn.append('text').attr('x', tpPctArrowSize / 2).attr('y', tpPctArrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                        tpPctIncBtn.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                self.adjustOpenPositionTPPercentage(oid, tIdx, +5);
+                            });
                     }
                     
                     // Make multiple TP line draggable
                     this.makeLineDraggableMultiTP(tpLine, tpLabelBox, tpLabelText, tpPriceBox, tpPriceText, order, index, target, chart);
                     
-                    // × remove this TP target
-                    const tpDeleteBtn = this._createOrderLevelBadgeOnChart(
-                        chart.svg,
-                        `tp-delete-btn tp-${order.id} tp-target-${tpKey}`,
-                        'close',
-                        {
-                            stopMousedown: true,
-                            onClick: (event) => {
-                                event.stopPropagation();
-                                this._deleteTPTarget(order.id, index, false, tpKey);
-                            },
-                        }
-                    );
+                    // X button to delete this TP target
+                    const tpDeleteBtn = chart.svg.append('g')
+                        .attr('class', `tp-delete-btn tp-${order.id} tp-target-${tpKey}`)
+                        .attr('pointer-events', 'all')
+                        .style('cursor', 'pointer');
+                    tpDeleteBtn.append('circle')
+                        .attr('r', 8)
+                        .attr('fill', '#0f172a')
+                        .attr('stroke', color).attr('stroke-width', 1.2);
+                    tpDeleteBtn.append('text')
+                        .attr('fill', '#e2e8f0').attr('font-size', '12px').attr('font-weight', '700')
+                        .attr('text-anchor', 'middle').attr('dy', '0.35em')
+                        .style('pointer-events', 'none').text('×');
+                    tpDeleteBtn.on('mousedown', (e) => e.stopPropagation());
+                    tpDeleteBtn.on('click', (event) => {
+                        event.stopPropagation();
+                        this._deleteTPTarget(order.id, index, false, tpKey);
+                    });
 
-                    // + split button for multi-TP (adds another target)
+                    // TP+ split button for multi-TP (adds another target)
                     let tpMultiSplitBtn = null;
                     if (canOpenTpSplitPlus) {
                         tpMultiSplitBtn = this._createSplitPlusButton(
@@ -34948,7 +35164,8 @@ class OrderManager {
                             const dist = Math.abs(highestTP - entry) || Math.abs(lowestTP - entry);
                             const newTP = order.type === 'BUY' ? highestTP + dist * 0.3 : lowestTP - dist * 0.3;
                             this._splitTPAtPrice(order.id, newTP, false);
-                        }
+                        },
+                        8
                     );
                     }
 
@@ -35930,6 +36147,8 @@ class OrderManager {
                 }
                 
                 const y = ch.scales.yScale(position.stopLoss);
+                const plotRight = this._orderPlotRightX(ch);
+                let slHitEnd = plotRight;
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -35964,6 +36183,10 @@ class OrderManager {
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
                 }
 
+                if (labelBox) {
+                    const lx = parseFloat(labelBox.attr('x'));
+                    if (Number.isFinite(lx)) slHitEnd = Math.min(slHitEnd, lx);
+                }
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
 
@@ -36192,6 +36415,8 @@ class OrderManager {
                 }
                 
                 const y = ch.scales.yScale(tpPrice);
+                const plotRight = this._orderPlotRightX(ch);
+                let tpHitEnd = plotRight;
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -36205,6 +36430,7 @@ class OrderManager {
                     const deleteBtnR = 9;
                     const tpPctArrowSize = 18;
                     const tpPctArrowGap = 2;
+                    const tpBadgeR = tpPctArrowSize / 2;
                     const pctW = (pctArrowsWidth != null && pctArrowsWidth > 0)
                         ? pctArrowsWidth
                         : ((pctDecBtn && pctIncBtn) ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0);
@@ -36212,17 +36438,19 @@ class OrderManager {
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
-                    const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
+                    const pnlTextBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
+                    const pnlStripInnerGap = pctW > 0 ? 4 : 0;
+                    const pnlStripBW = pnlTextBW + (pctW > 0 ? pnlStripInnerGap + pctW : 0);
 
-                    // Layout: Label → PnL → [−][+] share → [Delete] → [Split+] → CloseBtn
+                    // Layout: Label → [PnL + −/+ strip] → [Delete] → [Split+] → CloseBtn
                     const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
-                    const badgesW = pctW + deleteSpace + splitSpace;
+                    const badgesW = deleteSpace + splitSpace;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap
-                        - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
+                        - badgesW - (pnlStripBW > 0 ? pnlStripBW + gap : 0) - labelBW;
 
                     let cx = startX;
                     const stripeW = 3;
@@ -36232,11 +36460,17 @@ class OrderManager {
                     labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
                     cx += labelBW + gap;
 
-                    // PnL box
-                    if (pnlBox && pnlText && pnlBW > 0) {
-                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
+                    // PnL strip (profit text + −/+ share in one toast row)
+                    if (pnlBox && pnlText && pnlStripBW > 0) {
+                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlStripBW).attr('height', boxH);
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
-                        cx += pnlBW + gap;
+                        if (pctDecBtn && pctIncBtn && pctW > 0) {
+                            let bx = cx + pnlTextBW + pnlStripInnerGap;
+                            this._positionOrderLevelBadgeAtRow(pctDecBtn, bx, y, tpBadgeR, boxH);
+                            bx += tpPctArrowSize + tpPctArrowGap;
+                            this._positionOrderLevelBadgeAtRow(pctIncBtn, bx, y, tpBadgeR, boxH);
+                        }
+                        cx += pnlStripBW + gap;
                     }
 
                     this._styleLegacyOrderLevelToastChrome(
@@ -36246,31 +36480,26 @@ class OrderManager {
                     );
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
 
-                    // − / + TP share (open multi-TP) — center-anchored circle badges (r=9)
-                    if (pctDecBtn && pctIncBtn && pctW > 0) {
-                        const badgeR = tpPctArrowSize / 2;
-                        pctDecBtn.attr('transform', `translate(${cx + badgeR}, ${y})`);
-                        cx += tpPctArrowSize + tpPctArrowGap;
-                        pctIncBtn.attr('transform', `translate(${cx + badgeR}, ${y})`);
-                        cx += tpPctArrowSize + tpPctArrowGap;
-                    }
-
                     // × delete button (multi-TP only)
                     if (deleteBtn) {
-                        deleteBtn.style('display', null)
-                            .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
+                        deleteBtn.style('display', null);
+                        this._positionOrderLevelBadgeAtCenter(deleteBtn, cx + deleteBtnR, y);
                         cx += deleteBtnR * 2 + gap;
                     }
 
                     // + split button
                     if (splitBtn) {
-                        splitBtn.attr('transform', `translate(${cx + splitBtnR}, ${y})`);
+                        this._positionOrderLevelBadgeAtCenter(splitBtn, cx + splitBtnR, y);
                         cx += splitBtnR * 2 + gap;
                     }
 
-                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    this._positionOrderLevelBadgeAtCenter(closeBtn, closeBtnX, y);
                 }
 
+                if (labelBox) {
+                    const lx = parseFloat(labelBox.attr('x'));
+                    if (Number.isFinite(lx)) tpHitEnd = Math.min(tpHitEnd, lx);
+                }
                 line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 this._applyOrderLevelLineStyle(line, false);
                 
@@ -36330,16 +36559,18 @@ class OrderManager {
             const pad = 8;
             const yAxisWidth = 70;
             
+            const plotRight = this._orderPlotRightX(ch);
+            let beHitEnd = plotRight;
+
             line
                 .attr('x1', 0)
-                .attr('x2', ch.w)
                 .attr('y1', y)
-                .attr('y2', y);
+                .attr('y2', y)
+                .style('pointer-events', 'none');
             
             if (hitLine) {
                 hitLine
                     .attr('x1', 0)
-                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
             }
@@ -36359,6 +36590,10 @@ class OrderManager {
             labelText
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
+
+            beHitEnd = Math.min(beHitEnd, startX);
+            line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+            if (hitLine) hitLine.attr('x2', beHitEnd);
 
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
@@ -36671,7 +36906,7 @@ class OrderManager {
                         const lx = parseFloat(labelBox.attr('x'));
                         if (Number.isFinite(lx)) labelStartX = lx;
                     }
-                    const hitEndX = ch.w;
+                    const hitEndX = this._orderLineHitEndX(ch, labelStartX);
                     if (dragHitLine) {
                         dragHitLine
                             .attr('x1', 0)
@@ -36705,6 +36940,7 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        this._ensureOrderPriceMarginShield(ch);
     }
 
     /**
@@ -36784,6 +37020,16 @@ class OrderManager {
             if (tp.labelText) tp.labelText.attr('x', parseFloat(tp.labelText.attr('x')) - dx);
             if (tp.pnlBox) tp.pnlBox.attr('x', parseFloat(tp.pnlBox.attr('x')) - dx);
             if (tp.pnlText) tp.pnlText.attr('x', parseFloat(tp.pnlText.attr('x')) - dx);
+            const shiftBadge = (badge) => {
+                if (!badge || badge.style('display') === 'none') return;
+                const bt = badge.attr('transform');
+                if (bt) {
+                    const bm = bt.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
+                    if (bm) badge.attr('transform', `translate(${parseFloat(bm[1]) - dx}, ${bm[2]})`);
+                }
+            };
+            shiftBadge(tp.pctDecBtn);
+            shiftBadge(tp.pctIncBtn);
             if (tp.deleteBtn) {
                 const ct = tp.deleteBtn.attr('transform');
                 if (ct) {
