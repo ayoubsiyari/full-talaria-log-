@@ -30621,6 +30621,10 @@ class OrderManager {
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
 
+                const splitHitEnd = this._orderLineHitEndX(ch, labelBoxX);
+                ml.line?.attr('x2', Math.max(0, labelBoxX));
+                ml.dragHitLine?.attr('x2', splitHitEnd);
+
                 let memberCx = labelBoxX + lbw + gap;
 
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
@@ -36059,16 +36063,18 @@ class OrderManager {
             const pad = 8;
             const yAxisWidth = 70;
             
+            const plotRight = this._orderPlotRightX(ch);
+            let beHitEnd = plotRight;
+
             line
                 .attr('x1', 0)
-                .attr('x2', ch.w)
                 .attr('y1', y)
-                .attr('y2', y);
+                .attr('y2', y)
+                .style('pointer-events', 'none');
             
             if (hitLine) {
                 hitLine
                     .attr('x1', 0)
-                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
             }
@@ -36088,6 +36094,10 @@ class OrderManager {
             labelText
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
+
+            beHitEnd = Math.min(beHitEnd, startX);
+            line.attr('x2', beHitEnd);
+            if (hitLine) hitLine.attr('x2', beHitEnd);
 
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
