@@ -12291,34 +12291,15 @@ class OrderManager {
         if (this._isOrderEntryPlusUiDisabled()) return;
         if (!this._orderQtyAllowsEntryTpSplitAffordances()) return;
         const self = this;
-        const btnR = 9;
-        const g = lineData.labelGroup.append('g')
-            .attr('class', 'preview-enable-multi-modes-btn')
-            .attr('data-activator-kind', kind)
-            .attr('transform', `translate(${startX}, ${(height - btnR * 2) / 2})`)
-            .style('cursor', 'pointer');
-        const bg = g.append('circle')
-            .attr('r', btnR)
-            .attr('cx', btnR)
-            .attr('cy', btnR)
-            .attr('fill', '#0f172a')
-            .attr('stroke', '#089981')
-            .attr('stroke-width', 1.2);
-        g.append('text')
-            .attr('x', btnR)
-            .attr('y', btnR)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#089981')
-            .attr('font-size', '12px')
-            .attr('font-weight', '700')
-            .text('+');
-        g.on('click', (e) => {
-            e.stopPropagation();
-            self._applyPreviewActivator(kind);
-        })
-            .on('mouseenter', () => bg.attr('fill', '#0d4d40'))
-            .on('mouseleave', () => bg.attr('fill', '#0f172a'));
+        const r = 9;
+        this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
+            className: 'preview-enable-multi-modes-btn',
+            x: startX,
+            y: (height - r * 2) / 2,
+            onClick: () => self._applyPreviewActivator(kind),
+        });
+        lineData.labelGroup.select('.preview-enable-multi-modes-btn')
+            .attr('data-activator-kind', kind);
     }
 
     _applyPreviewActivator(kind) {
@@ -12391,197 +12372,71 @@ class OrderManager {
         const isSingleTpPreviewLine = lineData.label === 'TP' && !lineData.isBadge && lineData.targetIndex === undefined;
         const isSingleSlPreviewLine = lineData.label === 'SL' && !lineData.isBadge;
         if ((isSingleTpPreviewLine || isSingleSlPreviewLine) && !lineData.isAvgEntryLine) {
-            const closeSize = 18;
-            const closeGroup = lineData.labelGroup.append('g')
-                .attr('class', 'tp-close-btn preview-tp-sl-close-btn')
-                .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
-                .style('cursor', 'pointer');
-
-            closeGroup.append('circle')
-                .attr('cx', closeSize / 2)
-                .attr('cy', closeSize / 2)
-                .attr('r', closeSize / 2)
-                .attr('fill', 'rgba(239, 68, 68, 0.3)')
-                .attr('stroke', '#ef4444')
-                .attr('stroke-width', 1.5);
-
-            closeGroup.append('text')
-                .attr('x', closeSize / 2)
-                .attr('y', closeSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#ef4444')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
-                .text('✕');
-
             const self = this;
-            closeGroup
-                .on('mouseenter', function() {
-                    d3.select(this).select('circle')
-                        .attr('fill', 'rgba(239, 68, 68, 0.5)');
-                })
-                .on('mouseleave', function() {
-                    d3.select(this).select('circle')
-                        .attr('fill', 'rgba(239, 68, 68, 0.3)');
-                })
-                .on('click', (event) => {
-                    event.stopPropagation();
+            const badge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                className: 'tp-close-btn preview-tp-sl-close-btn',
+                x: offsetX,
+                y: (height - 18) / 2,
+                onClick: () => {
                     if (isSingleTpPreviewLine) self._removePreviewSingleTP();
                     else self._removePreviewSingleSL();
-                });
-
-            offsetX += closeSize + gap;
+                },
+            });
+            offsetX += badge.size + gap;
         }
 
         // Add +/- arrows for multiple TP lines (after segments); X when at least one multi-TP row exists
         if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length > 1) {
-            const arrowSize = 18;
             const arrowGap = 2;
-            
-            // Decrease arrow (-)
-            const decreaseGroup = lineData.labelGroup.append('g')
-                .attr('class', 'tp-percentage-control')
-                .attr('transform', `translate(${offsetX}, ${(height - arrowSize) / 2})`)
-                .style('cursor', 'pointer')
-                .on('click', (event) => {
+            const dec = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'minus', {
+                className: 'tp-percentage-control',
+                x: offsetX,
+                y: (height - 18) / 2,
+                onClick: (event) => {
                     event.stopPropagation();
                     this.adjustTPPercentage(lineData.targetIndex, -5);
-                });
-            
-            decreaseGroup.append('rect')
-                .attr('width', arrowSize)
-                .attr('height', arrowSize)
-                .attr('rx', 4)
-                .attr('fill', 'rgba(239, 68, 68, 0.2)')
-                .attr('stroke', '#ef4444')
-                .attr('stroke-width', 1);
-            
-            decreaseGroup.append('text')
-                .attr('x', arrowSize / 2)
-                .attr('y', arrowSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#ef4444')
-                .attr('font-size', '14px')
-                .attr('font-weight', '700')
-                .text('−');
-            
-            offsetX += arrowSize + arrowGap;
-            
-            // Increase arrow (+)
-            const increaseGroup = lineData.labelGroup.append('g')
-                .attr('class', 'tp-percentage-control')
-                .attr('transform', `translate(${offsetX}, ${(height - arrowSize) / 2})`)
-                .style('cursor', 'pointer')
-                .on('click', (event) => {
+                },
+            });
+            offsetX += dec.size + arrowGap;
+            const inc = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
+                className: 'tp-percentage-control',
+                x: offsetX,
+                y: (height - 18) / 2,
+                onClick: (event) => {
                     event.stopPropagation();
                     this.adjustTPPercentage(lineData.targetIndex, +5);
-                });
-            
-            increaseGroup.append('rect')
-                .attr('width', arrowSize)
-                .attr('height', arrowSize)
-                .attr('rx', 4)
-                .attr('fill', 'rgba(8, 153, 129, 0.2)')
-                .attr('stroke', '#089981')
-                .attr('stroke-width', 1);
-            
-            increaseGroup.append('text')
-                .attr('x', arrowSize / 2)
-                .attr('y', arrowSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#089981')
-                .attr('font-size', '14px')
-                .attr('font-weight', '700')
-                .text('+');
-            
-            offsetX += arrowSize + arrowGap;
+                },
+            });
+            offsetX += inc.size + arrowGap;
         }
 
         if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length >= 1) {
-            const closeSize = 18;
-            const closeGroup = lineData.labelGroup.append('g')
-                .attr('class', 'tp-close-btn preview-tp-sl-close-btn')
-                .attr('transform', `translate(${offsetX}, ${(height - closeSize) / 2})`)
-                .style('cursor', 'pointer');
-
-            closeGroup.append('circle')
-                .attr('cx', closeSize / 2)
-                .attr('cy', closeSize / 2)
-                .attr('r', closeSize / 2)
-                .attr('fill', 'rgba(239, 68, 68, 0.3)')
-                .attr('stroke', '#ef4444')
-                .attr('stroke-width', 1.5);
-
-            closeGroup.append('text')
-                .attr('x', closeSize / 2)
-                .attr('y', closeSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#ef4444')
-                .attr('font-size', '11px')
-                .attr('font-weight', '700')
-                .text('✕');
-
-            closeGroup
-                .on('mouseenter', function() {
-                    d3.select(this).select('circle')
-                        .attr('fill', 'rgba(239, 68, 68, 0.5)');
-                })
-                .on('mouseleave', function() {
-                    d3.select(this).select('circle')
-                        .attr('fill', 'rgba(239, 68, 68, 0.3)');
-                })
-                .on('click', (event) => {
+            const closeBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                className: 'tp-close-btn preview-tp-sl-close-btn',
+                x: offsetX,
+                y: (height - 18) / 2,
+                onClick: (event) => {
                     event.stopPropagation();
                     const key = lineData.targetId != null ? lineData.targetId : lineData.targetIndex;
                     if (key != null) this.removeTPTarget(key);
-                });
+                },
+            });
+            offsetX += closeBadge.size + gap;
 
-            offsetX += closeSize + gap;
-
-            // + add another TP (same behavior as pending multi-TP split)
             if (document.getElementById('multipleTPToggle')?.checked && !this._isOrderEntryPlusUiDisabled()
                 && this._orderQtyAllowsEntryTpSplitAffordances()
                 && this._canAddMoreTpTargets(this.tpTargets?.length || 0)) {
-                const splitBtnR = 9;
                 const self = this;
-                const splitG = lineData.labelGroup.append('g')
-                    .attr('class', 'preview-tp-split-add-btn')
-                    .attr('transform', `translate(${offsetX}, ${(height - splitBtnR * 2) / 2})`)
-                    .style('cursor', 'pointer');
-                const sbc = splitG.append('circle')
-                    .attr('r', splitBtnR)
-                    .attr('cx', splitBtnR)
-                    .attr('cy', splitBtnR)
-                    .attr('fill', '#0f172a')
-                    .attr('stroke', '#089981')
-                    .attr('stroke-width', 1.2);
-                splitG.append('text')
-                    .attr('x', splitBtnR)
-                    .attr('y', splitBtnR)
-                    .attr('dy', '0.35em')
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#089981')
-                    .attr('font-size', '14px')
-                    .attr('font-weight', '700')
-                    .text('+');
-                splitG
-                    .on('click', (e) => {
+                const splitBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
+                    className: 'preview-tp-split-add-btn',
+                    x: offsetX,
+                    y: (height - 18) / 2,
+                    onClick: (e) => {
                         e.stopPropagation();
                         self._splitPreviewTPFromLine(lineData.price);
-                    })
-                    .on('mouseenter', () => {
-                        sbc.attr('fill', '#089981');
-                        splitG.select('text').attr('fill', '#ffffff');
-                    })
-                    .on('mouseleave', () => {
-                        sbc.attr('fill', '#0f172a');
-                        splitG.select('text').attr('fill', '#089981');
-                    });
-                offsetX += splitBtnR * 2 + gap;
+                    },
+                });
+                offsetX += splitBadge.size + gap;
             }
         }
         
@@ -12672,83 +12527,27 @@ class OrderManager {
         if (showActionBadges && !isBadge) {
             const currentBBox = lineData.labelGroup.node().getBBox();
             let actX = currentBBox.x + currentBBox.width + gap;
-            const actSize = height;
-            const actRadius = 6;
             const self = this;
-
-            // Place order badge (✓)
-            const placeGroup = lineData.labelGroup.append('g')
-                .attr('class', 'entry-action-btn entry-place-btn')
-                .attr('transform', `translate(${actX}, 0)`)
-                .style('cursor', 'pointer');
-
-            placeGroup.append('rect')
-                .attr('width', actSize)
-                .attr('height', actSize)
-                .attr('rx', actRadius)
-                .attr('fill', 'rgba(34, 197, 94, 0.15)')
-                .attr('stroke', '#22c55e')
-                .attr('stroke-width', 1.2);
-
-            placeGroup.append('text')
-                .attr('x', actSize / 2)
-                .attr('y', actSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#22c55e')
-                .attr('font-size', '13px')
-                .attr('font-weight', '700')
-                .text('✓');
-
-            placeGroup
-                .on('mouseenter', function() {
-                    d3.select(this).select('rect').attr('fill', 'rgba(34, 197, 94, 0.35)');
-                })
-                .on('mouseleave', function() {
-                    d3.select(this).select('rect').attr('fill', 'rgba(34, 197, 94, 0.15)');
-                })
-                .on('click', function(event) {
+            const r = 9;
+            const placeBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'check', {
+                className: 'entry-action-btn entry-place-btn',
+                x: actX,
+                y: (height - r * 2) / 2,
+                onClick: (event) => {
                     event.stopPropagation();
                     self.placeAdvancedOrder({ keepPanelOpen: true });
-                });
-
-            actX += actSize + gap;
-
-            // Cancel order badge (✕)
-            const cancelGroup = lineData.labelGroup.append('g')
-                .attr('class', 'entry-action-btn entry-cancel-btn')
-                .attr('transform', `translate(${actX}, 0)`)
-                .style('cursor', 'pointer');
-
-            cancelGroup.append('rect')
-                .attr('width', actSize)
-                .attr('height', actSize)
-                .attr('rx', actRadius)
-                .attr('fill', 'rgba(239, 68, 68, 0.15)')
-                .attr('stroke', '#ef4444')
-                .attr('stroke-width', 1.2);
-
-            cancelGroup.append('text')
-                .attr('x', actSize / 2)
-                .attr('y', actSize / 2)
-                .attr('dy', '0.35em')
-                .attr('text-anchor', 'middle')
-                .attr('fill', '#ef4444')
-                .attr('font-size', '12px')
-                .attr('font-weight', '700')
-                .text('✕');
-
-            cancelGroup
-                .on('mouseenter', function() {
-                    d3.select(this).select('rect').attr('fill', 'rgba(239, 68, 68, 0.35)');
-                })
-                .on('mouseleave', function() {
-                    d3.select(this).select('rect').attr('fill', 'rgba(239, 68, 68, 0.15)');
-                })
-                .on('click', function(event) {
+                },
+            });
+            actX += placeBadge.size + gap;
+            this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                className: 'entry-action-btn entry-cancel-btn',
+                x: actX,
+                y: (height - r * 2) / 2,
+                onClick: (event) => {
                     event.stopPropagation();
                     self.closeOrderRailFromChartCancel();
-                });
+                },
+            });
         }
 
         // Green +: only until that mode is on — then use purple + on each entry/TP line to add levels.
@@ -17835,6 +17634,7 @@ class OrderManager {
                     if (t.closest('.split-handle')) return false;
                     if (t.closest('.preview-entry-level-delete-btn')) return false;
                     if (t.closest('.preview-enable-multi-modes-btn')) return false;
+                    if (t.closest('.order-level-badge')) return false;
                 }
                 return true;
             })
@@ -17961,12 +17761,8 @@ class OrderManager {
                 }
 
                 lineData.price = newPrice;
-                lineData.line.attr('y1', clampedY).attr('y2', clampedY);
-                if (lineData.hitLine) {
-                    lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
-                }
-                
                 const formattedPrice = self.formatPrice(newPrice);
+                self._syncPreviewDragVisuals(lineData, clampedY, newPrice);
                 // Sync SL input before $/lot label math (multi-entry uses #slPrice for per-level lots).
                 if (lineData.label === 'SL') {
                     self.slManuallyPositioned = true;
@@ -18007,24 +17803,6 @@ class OrderManager {
                         lineData.pipIndicator.remove();
                         lineData.pipIndicator = null;
                     }
-                }
-                
-                // Update label Y position without recalculating X (prevents horizontal jumping)
-                const bbox = lineData.labelDimensions;
-                const height = bbox?.height || 0;
-                const currentTransform = lineData.labelGroup.attr('transform');
-                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                const translateY = clampedY - height / 2;
-                lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
-                self.adjustPreviewLineForLabel(lineData);
-                
-                // Update Y-axis price highlight for ALL lines (Entry, TP, SL, BE, etc.)
-                if (lineData.yAxisHighlight) {
-                    const highlightHeight = 22;
-                    const highlightY = clampedY - highlightHeight / 2;
-                    const highlightX = parseFloat(lineData.yAxisHighlight.attr('transform').match(/translate\(([\d.]+)/)?.[1] || 0);
-                    lineData.yAxisHighlight.attr('transform', `translate(${highlightX}, ${highlightY})`);
-                    lineData.yAxisHighlight.select('.y-axis-price-text').text(formattedPrice);
                 }
                 
                 if (lineData.label === 'TP') {
@@ -18077,20 +17855,15 @@ class OrderManager {
                         );
                         lineData.label = `TP${targetNum}`;
                         
-                        // Re-render label so the profit segment updates with new price
-                        if (lineData.labelGroup) {
-                            self.renderPreviewLabel(lineData, clampedY);
-                            self.adjustPreviewLineForLabel(lineData);
+                        if (lineData.priceText && !lineData.priceText.empty()) {
+                            lineData.priceText.text(self._formatMultiTpInfoText(lineData.label, newPrice));
                         }
                         
-                        // Recalculate risk/reward to update profit display
-                        self.calculateAdvancedRiskReward();
-                        
-                        // Re-render the targets list to update validation and show updated percentages
-                        self.renderTPTargets();
-
-                        // Live-update Avg TP line position during drag
-                        if (ch) self._updateMultiTPAvgLines(ch);
+                        throttledCalculate(() => {
+                            self.calculateAdvancedRiskReward();
+                            self.renderTPTargets();
+                            if (ch) self._updateMultiTPAvgLines(ch);
+                        });
                     }
                 } else if (lineData.label === 'SL') {
                     // Input synced above so _formatTpSlInfoText / panel match while dragging
@@ -31222,31 +30995,14 @@ class OrderManager {
 
                 const finalY = chart.scales.yScale(newPrice);
 
-                // Update line position
-                line.attr('y1', finalY).attr('y2', finalY);
-                dragHitLine.attr('y1', finalY).attr('y2', finalY);
-                
-                const boxHeight = 18;
-                const boxY = finalY - boxHeight / 2;
-                const yAxisWidth = 70;
-                
-                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${finalY})`);
-                
-                const labelTextBbox = labelText.node().getBBox();
-                const labelBoxWidth = labelTextBbox.width + 20;
-                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
-                
-                labelBox
-                    .attr('x', labelBoxX)
-                    .attr('y', boxY)
-                    .attr('width', labelBoxWidth)
-                    .attr('height', boxHeight);
-                
-                labelText
-                    .attr('x', labelBoxX + 10)
-                    .attr('y', finalY + 4);
-                line.attr('x1', 0).attr('x2', chart.w).attr('y1', finalY).attr('y2', finalY);
-                dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, labelBoxX)).attr('y1', finalY).attr('y2', finalY);
+                self._positionPendingEntryDragVisuals(chart, pendingOrder, {
+                    line,
+                    dragHitLine,
+                    labelBox,
+                    labelAccent,
+                    labelText,
+                    closeBtn
+                }, finalY);
                 
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
@@ -31815,36 +31571,32 @@ class OrderManager {
                     if (!target._pctDecBtn || !target._pctDecBtn.node()?.parentNode) {
                         if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
                         if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
-                        const decG = ch.svg.append('g')
-                            .attr('class', `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`)
-                            .attr('pointer-events', 'all')
-                            .style('cursor', 'pointer');
-                        decG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
-                            .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
-                        decG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
-                        decG.on('mousedown', (e) => e.stopPropagation())
-                            .on('click', (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                this.adjustPendingTPPercentage(poId, tIdx, -5);
-                            });
-                        const incG = ch.svg.append('g')
-                            .attr('class', `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`)
-                            .attr('pointer-events', 'all')
-                            .style('cursor', 'pointer');
-                        incG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
-                            .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
-                        incG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
-                            .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
-                        incG.on('mousedown', (e) => e.stopPropagation())
-                            .on('click', (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                this.adjustPendingTPPercentage(poId, tIdx, +5);
-                            });
-                        target._pctDecBtn = decG;
-                        target._pctIncBtn = incG;
+                        target._pctDecBtn = this._createOrderLevelBadgeOnChart(
+                            ch.svg,
+                            `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`,
+                            'minus',
+                            {
+                                stopMousedown: true,
+                                onClick: (e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    this.adjustPendingTPPercentage(poId, tIdx, -5);
+                                },
+                            }
+                        );
+                        target._pctIncBtn = this._createOrderLevelBadgeOnChart(
+                            ch.svg,
+                            `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`,
+                            'plus',
+                            {
+                                stopMousedown: true,
+                                onClick: (e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    this.adjustPendingTPPercentage(poId, tIdx, +5);
+                                },
+                            }
+                        );
                     }
                     target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
                     try {
@@ -31866,39 +31618,29 @@ class OrderManager {
                     const closeBtnX = xAfterLabel + closeBtnR;
                     if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
                         if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
-                        const dbg = ch.svg.append('g')
-                            .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
-                            .attr('pointer-events', 'all')
-                            .style('cursor', 'pointer');
-                        dbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', closeBtnR)
-                            .attr('fill', '#0f172a').attr('stroke', '#e2e8f0').attr('stroke-width', 1.2);
-                        dbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#e2e8f0').attr('font-size', '14px')
-                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
-                            .style('pointer-events', 'none').text('×');
-                        dbg.on('mousedown', (e) => e.stopPropagation());
-                        dbg.on('click', (event) => {
-                            event.stopPropagation();
-                            if (isMultiTP) {
-                                this._deleteTPTarget(
-                                    entry.pendingOrder.id,
-                                    target.tpTargetIndex,
-                                    true,
-                                    target.targetId
-                                );
-                            } else if (target.type === 'SL') {
-                                this.removePendingStopLoss(entry.pendingOrder.id);
-                            } else if (target.type === 'TP') {
-                                this.removePendingTakeProfit(entry.pendingOrder.id);
+                        target._deleteBtn = this._createOrderLevelBadgeOnChart(
+                            ch.svg,
+                            `pending-tp-delete pending-tp-${entry.pendingOrder.id}`,
+                            'close',
+                            {
+                                stopMousedown: true,
+                                onClick: (event) => {
+                                    event.stopPropagation();
+                                    if (isMultiTP) {
+                                        this._deleteTPTarget(
+                                            entry.pendingOrder.id,
+                                            target.tpTargetIndex,
+                                            true,
+                                            target.targetId
+                                        );
+                                    } else if (target.type === 'SL') {
+                                        this.removePendingStopLoss(entry.pendingOrder.id);
+                                    } else if (target.type === 'TP') {
+                                        this.removePendingTakeProfit(entry.pendingOrder.id);
+                                    }
+                                },
                             }
-                        });
-                        dbg.on('mouseover', function() {
-                            dbg.select('circle').attr('fill', target.type === 'SL' ? '#f23645' : '#22c55e');
-                            dbg.select('text').attr('fill', '#ffffff');
-                        }).on('mouseout', function() {
-                            dbg.select('circle').attr('fill', '#0f172a');
-                            dbg.select('text').attr('fill', '#e2e8f0');
-                        });
-                        target._deleteBtn = dbg;
+                        );
                     }
                     target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
                     try {
@@ -31912,34 +31654,24 @@ class OrderManager {
                     const splitX = xAfterLabel + splitBtnR;
                     if (!target._splitBtn || !target._splitBtn.node()?.parentNode) {
                         if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
-                        const sbg = ch.svg.append('g')
-                            .attr('class', `pending-tp-split pending-tp-${entry.pendingOrder.id}`)
-                            .attr('pointer-events', 'all')
-                            .style('cursor', 'pointer');
-                        sbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', splitBtnR)
-                            .attr('fill', '#0f172a').attr('stroke', '#089981').attr('stroke-width', 1.2);
-                        sbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#089981').attr('font-size', '14px')
-                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
-                            .style('pointer-events', 'none').text('+');
-                        sbg.on('mousedown', (e) => e.stopPropagation());
-                        sbg.on('click', (event) => {
-                            event.stopPropagation();
-                            event.preventDefault();
-                            const po = entry.pendingOrder;
-                            const ep = po.entryPrice;
-                            const tp = target.price;
-                            const dist = Math.abs(tp - ep);
-                            const newTP = po.direction === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
-                            this._splitTPAtPrice(po.id, newTP, true);
-                        });
-                        sbg.on('mouseover', function() {
-                            sbg.select('circle').attr('fill', '#089981');
-                            sbg.select('text').attr('fill', '#ffffff');
-                        }).on('mouseout', function() {
-                            sbg.select('circle').attr('fill', '#0f172a');
-                            sbg.select('text').attr('fill', '#089981');
-                        });
-                        target._splitBtn = sbg;
+                        target._splitBtn = this._createOrderLevelBadgeOnChart(
+                            ch.svg,
+                            `pending-tp-split pending-tp-${entry.pendingOrder.id}`,
+                            'plus',
+                            {
+                                stopMousedown: true,
+                                onClick: (event) => {
+                                    event.stopPropagation();
+                                    event.preventDefault();
+                                    const po = entry.pendingOrder;
+                                    const ep = po.entryPrice;
+                                    const tp = target.price;
+                                    const dist = Math.abs(tp - ep);
+                                    const newTP = po.direction === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+                                    this._splitTPAtPrice(po.id, newTP, true);
+                                },
+                            }
+                        );
                     }
                     target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
                     try {
@@ -32124,7 +31856,7 @@ class OrderManager {
                     target.hitLine.attr('y1', clampedY).attr('y2', clampedY);
                 }
                 
-                const dims = target.labelDimensions || { width: 80, height: 20 };
+                const dims = self._refreshPendingTargetLabelDimensions(target);
                 const translateX = Number.isFinite(dragLabelX)
                     ? dragLabelX
                     : (ch.w - dims.width - marginRight);
@@ -32134,9 +31866,9 @@ class OrderManager {
                     target.hitLine.attr('x1', 0).attr('x2', self._orderLineHitEndX(ch, translateX));
                 }
 
-                const cBtnR = 10;
+                const cBtnR = 9;
                 const cBtnGap = 6;
-                const sBtnR = 10;
+                const sBtnR = 9;
                 const sBtnGap = 6;
                 const arrowSize = 18;
                 const arrowGap = 2;
@@ -33582,6 +33314,204 @@ class OrderManager {
         const h = parseFloat(labelBox.attr('height'));
         if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(h)) {
             labelAccent.attr('x', x).attr('y', y).attr('height', h);
+        }
+    }
+
+    /** Shared circle-badge spec for × / + / − / ✓ controls on order levels. */
+    _orderLevelBadgeKindSpec(kind) {
+        const th = this._tradeMarkerToastTheme();
+        const green = th.light ? '#059669' : '#22c55e';
+        const map = {
+            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
+            plus: { glyph: '+', accent: green, hoverAccent: green },
+            minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
+            check: { glyph: '✓', accent: green, hoverAccent: green },
+        };
+        return map[kind] || map.close;
+    }
+
+    _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
+        const accent = spec.hoverAccent || spec.accent;
+        const reset = () => {
+            bg.attr('fill', th.bg).attr('stroke', th.border);
+            txt.attr('fill', th.muted);
+        };
+        const hover = () => {
+            bg.attr('fill', accent).attr('stroke', accent);
+            txt.attr('fill', '#ffffff');
+        };
+        reset();
+        host.on('mouseenter', hover).on('mouseleave', reset);
+    }
+
+    /**
+     * Inline circle badge inside a preview label group.
+     * @returns {{ group, size: number, r: number }}
+     */
+    _appendOrderLevelBadgeToGroup(parentGroup, kind, opts = {}) {
+        const o = opts || {};
+        const r = o.r ?? 9;
+        const size = r * 2;
+        const spec = this._orderLevelBadgeKindSpec(kind);
+        const th = this._tradeMarkerToastTheme();
+        const x = o.x ?? 0;
+        const y = o.y ?? 0;
+        const g = parentGroup.append('g')
+            .attr('class', `order-level-badge order-level-badge--${kind} ${o.className || ''}`.trim())
+            .attr('transform', `translate(${x}, ${y})`)
+            .style('cursor', 'pointer');
+        const bg = g.append('circle')
+            .attr('class', 'order-level-badge-bg')
+            .attr('cx', r)
+            .attr('cy', r)
+            .attr('r', r)
+            .attr('stroke-width', 1);
+        const txt = g.append('text')
+            .attr('class', 'order-level-badge-glyph')
+            .attr('x', r)
+            .attr('y', r)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', kind === 'check' ? '12px' : '13px')
+            .attr('font-weight', '700')
+            .attr('font-family', this._orderLevelLabelFontFamily())
+            .text(spec.glyph);
+        this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
+        if (o.onClick) {
+            g.on('click', (e) => {
+                e.stopPropagation();
+                o.onClick(e);
+            });
+        }
+        if (o.stopMousedown) {
+            g.on('mousedown', (e) => e.stopPropagation());
+        }
+        return { group: g, size, r };
+    }
+
+    /**
+     * Circle badge on chart SVG (pending/executed rows) — transform applied by caller.
+     */
+    _createOrderLevelBadgeOnChart(svg, cssClass, kind, opts = {}) {
+        const o = opts || {};
+        const r = o.r ?? 9;
+        const spec = this._orderLevelBadgeKindSpec(kind);
+        const th = this._tradeMarkerToastTheme();
+        const btn = svg.append('g')
+            .attr('class', `order-level-badge order-level-badge--${kind} ${cssClass || ''}`.trim())
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        const bg = btn.append('circle')
+            .attr('class', 'order-level-badge-bg order-overlay-sublayer')
+            .attr('r', r)
+            .attr('stroke-width', 1);
+        const txt = btn.append('text')
+            .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
+            .attr('font-size', kind === 'check' ? '12px' : '13px')
+            .attr('font-weight', '700')
+            .attr('font-family', this._orderLevelLabelFontFamily())
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .style('pointer-events', 'none')
+            .text(spec.glyph);
+        this._wireOrderLevelBadgeHover(btn, bg, txt, th, spec);
+        if (o.onClick) {
+            btn.on('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                o.onClick(e);
+            });
+        }
+        if (o.stopMousedown) {
+            btn.on('mousedown', (e) => e.stopPropagation());
+        }
+        return btn;
+    }
+
+    _refreshPreviewLabelDimensions(lineData) {
+        const node = lineData?.labelGroup?.node?.();
+        if (!node) return lineData?.labelDimensions || { width: 0, height: 0 };
+        try {
+            const bb = node.getBBox();
+            if (bb.width > 0 || bb.height > 0) {
+                lineData.labelDimensions = { width: bb.width, height: bb.height };
+            }
+        } catch (_) { /* ignore */ }
+        return lineData.labelDimensions || { width: 0, height: 24 };
+    }
+
+    _refreshPendingTargetLabelDimensions(target) {
+        const node = target?.labelGroup?.node?.();
+        if (!node) return target?.labelDimensions || { width: 80, height: 24 };
+        try {
+            const bb = node.getBBox();
+            if (bb.width > 0 || bb.height > 0) {
+                target.labelDimensions = { width: bb.width, height: bb.height };
+            }
+        } catch (_) { /* ignore */ }
+        return target.labelDimensions || { width: 80, height: 24 };
+    }
+
+    /** Smooth preview drag: move line + label + axis pill without horizontal snap. */
+    _syncPreviewDragVisuals(lineData, clampedY, newPrice) {
+        if (!lineData?.line) return;
+        lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+        if (lineData.hitLine) {
+            lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+        }
+        const dims = this._refreshPreviewLabelDimensions(lineData);
+        const h = dims.height || 24;
+        const tr = lineData.labelGroup?.attr('transform') || '';
+        const curX = parseFloat(tr.match(/translate\(([\d.-]+)/)?.[1] || '0');
+        const translateY = clampedY - h / 2;
+        lineData.labelGroup?.attr('transform', `translate(${Number.isFinite(curX) ? curX : 0}, ${translateY})`);
+        this.adjustPreviewLineForLabel(lineData);
+        if (lineData.yAxisHighlight) {
+            const highlightHeight = 22;
+            const highlightY = clampedY - highlightHeight / 2;
+            const ht = lineData.yAxisHighlight.attr('transform') || '';
+            const hx = parseFloat(ht.match(/translate\(([\d.-]+)/)?.[1] || '0');
+            lineData.yAxisHighlight.attr('transform', `translate(${hx}, ${highlightY})`);
+            lineData.yAxisHighlight.select('.y-axis-price-text')?.text(this.formatPrice(newPrice));
+        }
+    }
+
+    /** Pending entry drag layout — same toast row math as updateOrderLines. */
+    _positionPendingEntryDragVisuals(chart, pendingOrder, els, y) {
+        const {
+            line, dragHitLine, labelBox, labelAccent, labelText, closeBtn
+        } = els || {};
+        if (!line || !labelBox || !labelText) return;
+        const boxH = 22;
+        const boxY = y - boxH / 2;
+        const pad = 8;
+        const stripeW = 3;
+        const yAxisWidth = 70;
+        const closeBtnR = 9;
+        const closeBtnGap = 6;
+        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
+
+        line.attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y);
+        if (dragHitLine) dragHitLine.attr('y1', y).attr('y2', y);
+
+        const labelTW = labelText.node()?.getBBox()?.width || 0;
+        const labelBW = labelTW + pad * 2 + stripeW;
+        const rightEdge = chart.w - yAxisWidth - 10;
+        const closeBtnX = rightEdge - closeBtnR;
+        const startX = closeBtnX - closeBtnR - closeBtnGap - labelBW;
+
+        labelBox.attr('x', startX).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+        labelText.attr('x', startX + pad + stripeW).attr('y', y + 4);
+        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+        this._styleLegacyOrderLevelToastChrome(
+            { labelBox, labelText, labelAccent },
+            lineColor,
+            { isPreview: false }
+        );
+        closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+
+        if (dragHitLine) {
+            dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, startX));
         }
     }
 
@@ -40123,82 +40053,12 @@ class OrderManager {
      * @param {function} onClickFn - called with (event) on click
      * @returns {object} d3 <g> selection
      */
-    _createCloseCircleButton(svg, cssClass, hoverColor, onClickFn) {
-        const btn = svg.append('g')
-            .attr('class', cssClass)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        const bg = btn.append('circle')
-            .attr('class', 'order-overlay-sublayer')
-            .attr('r', 9)
-            .attr('fill', 'transparent')
-            .attr('stroke', '#787b86')
-            .attr('stroke-width', 1)
-            .style('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        const txt = btn.append('text')
-            .attr('class', 'order-overlay-sublayer')
-            .attr('fill', '#787b86')
-            .attr('font-size', '12px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text('×');
-        btn.on('click', (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-            onClickFn(event);
-        }).on('mouseover', function() {
-            bg.attr('fill', 'rgba(242,54,69,0.2)');
-            txt.attr('fill', '#ffffff');
-        }).on('mouseout', function() {
-            bg.attr('fill', 'transparent');
-            txt.attr('fill', '#787b86');
-        });
-        return btn;
+    _createCloseCircleButton(svg, cssClass, _hoverColor, onClickFn) {
+        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'close', { onClick: onClickFn });
     }
 
-    /**
-     * Build a circular +-split button and return the <g> element.
-     * Replaces the repeated tpSplitBtn/tpMultiSplitBtn pattern.
-     * @param {object} svg - d3 selection
-     * @param {string} cssClass - class string for the <g>
-     * @param {string} color - stroke + text color (green #22c55e)
-     * @param {function} onClickFn - called with (event) on click
-     * @param {number} [r=10] - circle radius (8 for multi-TP small variant)
-     * @returns {object} d3 <g> selection
-     */
-    _createSplitPlusButton(svg, cssClass, color, onClickFn, r = 10) {
-        const btn = svg.append('g')
-            .attr('class', cssClass)
-            .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        const bg = btn.append('circle')
-            .attr('r', r)
-            .attr('fill', '#0f172a')
-            .attr('stroke', color)
-            .attr('stroke-width', 1.2);
-        btn.append('text')
-            .attr('fill', color)
-            .attr('font-size', r >= 10 ? '14px' : '12px')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text('+');
-        btn.on('click', (event) => {
-            event.stopPropagation();
-            event.preventDefault();
-            onClickFn(event);
-        }).on('mouseover', function() {
-            bg.attr('fill', color);
-            btn.select('text').attr('fill', '#ffffff');
-        }).on('mouseout', function() {
-            bg.attr('fill', '#0f172a');
-            btn.select('text').attr('fill', color);
-        });
-        return btn;
+    _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 10) {
+        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'plus', { onClick: onClickFn, r });
     }
 
     /**
