@@ -3,6 +3,28 @@
  * Handles order placement, tracking, and P&L calculation
  */
 
+/** Trim display-bar OHLC to replay playhead (shared helper — safe if class method is stale-cached). */
+function trimTouchCandleForReplayFill(orderManager, candle) {
+    if (!candle || typeof candle !== 'object' || !orderManager) return candle;
+    const ctx = (typeof orderManager._getOrderContextChart === 'function'
+        ? orderManager._getOrderContextChart()
+        : null) || orderManager.chart;
+    if (!ctx || typeof ctx._trimBarOhlcToReplayPlayhead !== 'function') return candle;
+    const playhead = typeof ctx._getReplayPlayheadMs === 'function' ? ctx._getReplayPlayheadMs() : null;
+    const barT = Number(candle.t);
+    if (!Number.isFinite(playhead) || !Number.isFinite(barT)) return candle;
+    const tfMs = typeof ctx.parseTimeframe === 'function'
+        ? ctx.parseTimeframe(ctx.currentTimeframe)
+        : null;
+    if (!Number.isFinite(tfMs) || tfMs <= 0) return candle;
+    const periodEnd = typeof ctx._getBarPeriodEndMs === 'function'
+        ? ctx._getBarPeriodEndMs(barT, null, -1, tfMs)
+        : (barT + tfMs);
+    if (Number.isFinite(periodEnd) && playhead >= periodEnd - 1) return candle;
+    if (playhead <= barT) return candle;
+    return ctx._trimBarOhlcToReplayPlayhead(candle, null, -1, tfMs);
+}
+
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -1711,22 +1733,7 @@ class OrderManager {
      * wicks from minutes the replay has not reached yet (e.g. 15m→1H switch).
      */
     _trimTouchCandleForReplayFill(candle) {
-        if (!candle || typeof candle !== 'object') return candle;
-        const ctx = this._getOrderContextChart() || this.chart;
-        if (!ctx || typeof ctx._trimBarOhlcToReplayPlayhead !== 'function') return candle;
-        const playhead = typeof ctx._getReplayPlayheadMs === 'function' ? ctx._getReplayPlayheadMs() : null;
-        const barT = Number(candle.t);
-        if (!Number.isFinite(playhead) || !Number.isFinite(barT)) return candle;
-        const tfMs = typeof ctx.parseTimeframe === 'function'
-            ? ctx.parseTimeframe(ctx.currentTimeframe)
-            : null;
-        if (!Number.isFinite(tfMs) || tfMs <= 0) return candle;
-        const periodEnd = typeof ctx._getBarPeriodEndMs === 'function'
-            ? ctx._getBarPeriodEndMs(barT, null, -1, tfMs)
-            : (barT + tfMs);
-        if (Number.isFinite(periodEnd) && playhead >= periodEnd - 1) return candle;
-        if (playhead <= barT) return candle;
-        return ctx._trimBarOhlcToReplayPlayhead(candle, null, -1, tfMs);
+        return trimTouchCandleForReplayFill(this, candle);
     }
 
     /**
@@ -1760,7 +1767,7 @@ class OrderManager {
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
         if (candlePlayback) {
-            const evalCandle = this._trimTouchCandleForReplayFill(candle);
+            const evalCandle = trimTouchCandleForReplayFill(this, candle);
             const h = Number.parseFloat(evalCandle.h);
             const l = Number.parseFloat(evalCandle.l);
             if (dir === 'above') return Number.isFinite(h) && h >= lv;
@@ -25228,7 +25235,7 @@ class OrderManager {
             // behind intra-bar tick animation — then high/low never "touch" the order price.
             const onActiveChart = poTicker === activeT;
             const touchCandleRaw = onActiveChart && currentCandle ? currentCandle : bar;
-            const touchCandle = this._trimTouchCandleForReplayFill(touchCandleRaw);
+            const touchCandle = trimTouchCandleForReplayFill(this, touchCandleRaw);
 
             const high = Number.parseFloat(touchCandle.h);
             const low = Number.parseFloat(touchCandle.l);
@@ -25593,7 +25600,7 @@ class OrderManager {
         const parentGuardCandle = this._getMultichartParentGuardCandle();
         const currentCandleRaw = parentGuardCandle || this.getCurrentCandle();
         if (!currentCandleRaw) return;
-        const currentCandle = this._trimTouchCandleForReplayFill(currentCandleRaw);
+        const currentCandle = trimTouchCandleForReplayFill(this, currentCandleRaw);
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = currentCandle.t;
         }
