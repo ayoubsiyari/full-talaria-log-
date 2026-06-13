@@ -12511,9 +12511,21 @@ const TalariaV8b = () => {
         const r=tradeCard;
         const isLong=r.side==="LONG";
         const entryP=parseFloat(r.entry)||0, slP=parseFloat(r.sl)||0, tpP=parseFloat(r.tp)||0;
+        const exitP=r.exit&&r.exit!=="—"?parseFloat(r.exit):NaN;
         const rrRisk=Math.abs(entryP-slP), rrReward=Math.abs(tpP-entryP);
-        const rrVal=rrRisk>0?rrReward/rrRisk:0;
-        const rrStr=rrRisk>0?rrVal.toFixed(2)+"R":"—";
+        const plannedRR=Number.isFinite(r.plannedRR)?r.plannedRR:(rrRisk>0?rrReward/rrRisk:0);
+        let rrVal=null;
+        if(r.status==="closed"){
+          const stored=Number.parseFloat(r.rMultiple);
+          if(Number.isFinite(stored)) rrVal=stored;
+          else if(rrRisk>0&&Number.isFinite(exitP)) rrVal=isLong?(exitP-entryP)/rrRisk:(entryP-exitP)/rrRisk;
+        } else {
+          rrVal=plannedRR;
+        }
+        const rrStr=rrVal==null||!Number.isFinite(rrVal)?"—":`${rrVal>=0?"+":""}${rrVal.toFixed(2)}R`;
+        const rrCol=r.status==="closed"
+          ? (rrVal==null||!Number.isFinite(rrVal)?c.tm:rrVal>0?c.gn:rrVal<0?c.rd:c.tm)
+          : (rrRisk>0?(plannedRR>=1?c.gn:c.rd):c.tm);
         const statusCol=r.status==="open"?c.gn:r.status==="pending"?"#FF8C42":c.tm;
         const isActive=r.status==="open"||r.status==="pending";
         const canEditPre=r.status==="pending"||r.status==="open";
@@ -12625,7 +12637,7 @@ const TalariaV8b = () => {
             <div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${c.br}`,flexShrink:0,background:"rgba(255,255,255,0.012)"}}>
               {[
                 {label:"P&L",      val:r.pnl,  col:r.pc,  big:true},
-                {label:"R:R",      val:rrStr,  col:rrRisk>0?(rrVal>=1?c.gn:c.rd):c.tm},
+                {label:"R:R",      val:rrStr,  col:rrCol},
                 {label:"DURATION", val:r.dur,  col:r.dur==="—"?c.tm:c.ts},
                 {label:"SIZE",     val:r.sz,   col:c.tx, unit:sizeUnit},
               ].map(({label,val,col,big,unit},si)=>(

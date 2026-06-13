@@ -216,6 +216,60 @@ function attachJournalTagsToRow(om, row, order) {
   const j = findJournalEntry(om, row.omId);
   row.preTags = extractPreTagsFromSources(j, order);
   row.postTags = extractPostTagsFromSources(j);
+  attachTradeMetricsToRow(om, row, order, j);
+}
+
+function computePlannedRRFromPrices(entry, sl, tp) {
+  const e = Number.parseFloat(entry);
+  const s = Number.parseFloat(sl);
+  const t = Number.parseFloat(tp);
+  if (!Number.isFinite(e) || !Number.isFinite(s) || !Number.isFinite(t)) return null;
+  const risk = Math.abs(e - s);
+  const reward = Math.abs(t - e);
+  if (!(risk > 0)) return null;
+  return reward / risk;
+}
+
+/** Signed realized R-multiple (negative when the trade lost). */
+export function extractRealizedRMultiple(trade, om, sideHint) {
+  if (!trade || typeof trade !== "object") return null;
+  const stored = Number.parseFloat(trade.rMultiple ?? trade.actual_rr_net);
+  if (Number.isFinite(stored)) return stored;
+  const riskUsd = Number.parseFloat(
+    trade.originalRiskAmount ?? trade.riskAmount ?? trade.riskPerTrade
+  );
+  const pnl = extractOrderManagerTradePnl(trade, om);
+  if (riskUsd > 0 && Number.isFinite(pnl)) return pnl / riskUsd;
+  const entry = Number.parseFloat(trade.entryPrice ?? trade.openPrice);
+  const exit = Number.parseFloat(trade.exitPrice ?? trade.closePrice);
+  const sl = Number.parseFloat(trade.stopLoss);
+  if (!Number.isFinite(entry) || !Number.isFinite(exit) || !Number.isFinite(sl)) return null;
+  const riskPx = Math.abs(entry - sl);
+  if (!(riskPx > 0)) return null;
+  const dir = String(trade.type ?? trade.direction ?? sideHint ?? "BUY").toUpperCase();
+  const isLong = dir !== "SELL" && dir !== "SHORT";
+  const move = isLong ? exit - entry : entry - exit;
+  return move / riskPx;
+}
+
+function attachTradeMetricsToRow(om, row, order, journal) {
+  const src = journal || order;
+  if (!src) return;
+  const entry = order?.openPrice ?? journal?.entryPrice ?? journal?.openPrice ?? row.entry;
+  const sl = order?.stopLoss ?? journal?.stopLoss ?? row.sl;
+  const tp = order?.takeProfit ?? journal?.takeProfit ?? row.tp;
+  const planned = computePlannedRRFromPrices(entry, sl, tp);
+  if (planned != null && Number.isFinite(planned)) row.plannedRR = planned;
+  const riskUsd = Number.parseFloat(
+    journal?.originalRiskAmount ?? journal?.riskAmount ?? journal?.riskPerTrade
+      ?? order?.originalRiskAmount ?? order?.riskAmount
+  );
+  if (Number.isFinite(riskUsd) && riskUsd > 0) row.riskAmount = riskUsd;
+  if (row.status === "closed") {
+    const sideHint = row.side === "SHORT" ? "SELL" : "BUY";
+    const realized = extractRealizedRMultiple(journal || order, om, sideHint);
+    if (realized != null && Number.isFinite(realized)) row.rMultiple = realized;
+  }
 }
 
 function coalesceTimeMs(...vals) {
@@ -265,7 +319,7 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
       j.stopLoss != null && Number.isFinite(Number.parseFloat(j.stopLoss)) ? fmtPx(j.stopLoss) : "—";
     const ot = typeLabel(resolvePositionOrderType(j));
 
-    rows.push({
+    const row = {
       id: `#${tid}`,
       omId: tid,
       _sortMs: sortMs,
@@ -292,7 +346,9 @@ function appendJournalOnlyClosedRows(om, rows, theme, ctx) {
         j.mfe != null && Number.isFinite(Number.parseFloat(j.mfe))
           ? fmtPx(j.mfe)
           : undefined,
-    });
+    };
+    attachTradeMetricsToRow(om, row, null, j);
+    rows.push(row);
   });
 }
 

@@ -7233,16 +7233,22 @@ class OrderManager {
         const hourOfEntry = entryDate.getHours();
         const entryTimeStr = entryDate.toLocaleString();
         
-        // Calculate R:R if closing (use originalRiskAmount for trailing SL accuracy)
-        let rewardToRisk = '';
+        // Calculate R-multiple and planned setup R:R when closing
+        let plannedRR = '';
         let rMultiple = '';
         if (closeData) {
             const riskForCalc = order.originalRiskAmount || order.riskAmount;
             if (riskForCalc) {
-                const rr = Math.abs(closeData.pnl) / riskForCalc;
                 const rm = closeData.pnl / riskForCalc;
-                rewardToRisk = rr.toFixed(2);
                 rMultiple = (rm >= 0 ? '+' : '') + rm.toFixed(2) + 'R';
+            }
+            const entryPx = Number.parseFloat(order.openPrice);
+            const slPx = Number.parseFloat(order.stopLoss);
+            const tpPx = Number.parseFloat(order.takeProfit);
+            if (Number.isFinite(entryPx) && Number.isFinite(slPx) && Number.isFinite(tpPx)) {
+                const riskPx = Math.abs(entryPx - slPx);
+                const rewardPx = Math.abs(tpPx - entryPx);
+                if (riskPx > 0) plannedRR = (rewardPx / riskPx).toFixed(2);
             }
         }
         
@@ -7283,8 +7289,12 @@ class OrderManager {
                     <div style="color: #fff; font-weight: 600;">${new Date(closeData.closeTime).getHours()}:00</div>
                 </div>
                 <div>
-                    <div style="color: #787b86;">R:R Ratio</div>
-                    <div style="color: #fff; font-weight: 600;">${rewardToRisk}:1</div>
+                    <div style="color: #787b86;">Result (R)</div>
+                    <div style="color: #fff; font-weight: 600;">${rMultiple || '—'}</div>
+                </div>
+                <div>
+                    <div style="color: #787b86;">Planned R:R</div>
+                    <div style="color: #fff; font-weight: 600;">${plannedRR ? plannedRR + ':1' : '—'}</div>
                 </div>
             </div>
         ` : '';
@@ -7752,13 +7762,18 @@ class OrderManager {
         const holdingTimeHours = (holdingTime / (1000 * 60 * 60)).toFixed(2);
         const holdingTimeDays = (holdingTime / (1000 * 60 * 60 * 24)).toFixed(2);
         
-        // Calculate reward-to-risk ratio
-        let rewardToRisk = 0;
-        if (order.riskAmount && order.riskAmount > 0) {
-            rewardToRisk = Math.abs(closeData.pnl) / order.riskAmount;
+        // Planned setup R:R (TP distance / SL distance) — stored separately from realized R.
+        let plannedRR = 0;
+        const entryPx = Number.parseFloat(order.openPrice);
+        const slPx = Number.parseFloat(order.stopLoss);
+        const tpPx = Number.parseFloat(order.takeProfit);
+        if (Number.isFinite(entryPx) && Number.isFinite(slPx) && Number.isFinite(tpPx)) {
+            const riskPx = Math.abs(entryPx - slPx);
+            const rewardPx = Math.abs(tpPx - entryPx);
+            if (riskPx > 0) plannedRR = rewardPx / riskPx;
         }
-        
-        // Calculate R-Multiple (actual P&L / ORIGINAL risk amount)
+
+        // Calculate R-Multiple (actual signed P&L / ORIGINAL risk amount)
         // Use originalRiskAmount to ensure trailing SL doesn't affect R calculation
         let rMultiple = 0;
         const riskForCalculation = order.originalRiskAmount || order.riskAmount;
@@ -7809,8 +7824,10 @@ class OrderManager {
             // Financial Metrics
             netPnL: closeData.pnl,
             riskPerTrade: order.riskAmount || 0,
-            rewardToRiskRatio: rewardToRisk.toFixed(2),
+            rewardToRiskRatio: plannedRR > 0 ? plannedRR.toFixed(2) : '',
+            plannedRR: plannedRR > 0 ? plannedRR.toFixed(2) : '',
             rMultiple: rMultiple.toFixed(2),
+            actual_rr_net: rMultiple,
             
             // MFE/MAE Metrics
             mfe: order.mfe || order.openPrice, // Max Favorable Excursion (price level)
