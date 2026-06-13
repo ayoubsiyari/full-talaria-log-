@@ -31,7 +31,7 @@
   --bt-cyan: #88b8cc;
   --bt-cyan-muted: rgba(136, 184, 204, 0.12);
   --bt-mono: var(--font-space-mono, "JetBrains Mono", ui-monospace, monospace);
-  --bt-sans: "Exo 2", system-ui, sans-serif;
+  --bt-sans: var(--font-exo-2, "Exo 2"), system-ui, sans-serif;
   --bt-radius-sm: 5px;
   --bt-radius-md: 8px;
   --bt-radius-lg: 12px;

@@ -14,17 +14,14 @@ import {
 } from "@/lib/marketingSeo";
 import { getSiteUrl } from "@/lib/siteUrl";
 
+/** Arabic / marketing UI — load on demand (no global preload on dashboard routes). */
 const zain = localFont({
   variable: "--font-zain",
+  preload: false,
+  display: "swap",
   src: [
-    { path: "../../font/Zain/Zain-ExtraLight.ttf", weight: "200", style: "normal" },
-    { path: "../../font/Zain/Zain-Light.ttf", weight: "300", style: "normal" },
     { path: "../../font/Zain/Zain-Regular.ttf", weight: "400", style: "normal" },
     { path: "../../font/Zain/Zain-Bold.ttf", weight: "700", style: "normal" },
-    { path: "../../font/Zain/Zain-ExtraBold.ttf", weight: "800", style: "normal" },
-    { path: "../../font/Zain/Zain-Black.ttf", weight: "900", style: "normal" },
-    { path: "../../font/Zain/Zain-Italic.ttf", weight: "400", style: "italic" },
-    { path: "../../font/Zain/Zain-LightItalic.ttf", weight: "300", style: "italic" },
   ],
 });
 
@@ -106,10 +103,6 @@ export default function RootLayout({
     <html lang="en" dir="ltr" className="dark" suppressHydrationWarning>
       <head>
         <JsonLdScript />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-2S8BJ30FJE"
           strategy="afterInteractive"

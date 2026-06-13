@@ -1685,9 +1685,48 @@ class OrderManager {
     _isNoTriggerGuardActive(guardTime, guardTick, candle) {
         if (!guardTime) return false;
         const candleT = Number(candle.t);
-        if (candleT < guardTime) return true;
-        if (candleT > guardTime) return false;
+        const gt = Number(guardTime);
+        if (!Number.isFinite(candleT) || !Number.isFinite(gt)) return false;
+        if (candleT < gt) return true;
+        if (candleT > gt) {
+            if (guardTick === Infinity) {
+                const ctx = this._getOrderContextChart() || this.chart;
+                const playhead = ctx && typeof ctx._getReplayPlayheadMs === 'function'
+                    ? ctx._getReplayPlayheadMs()
+                    : null;
+                if (Number.isFinite(playhead) && playhead > gt && typeof ctx.parseTimeframe === 'function') {
+                    const tfMs = ctx.parseTimeframe(ctx.currentTimeframe);
+                    if (Number.isFinite(tfMs) && tfMs > 0 && gt >= candleT && gt < candleT + tfMs) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * Trim coarse display-bar OHLC to replay playhead so pending/SL/TP checks do not see
+     * wicks from minutes the replay has not reached yet (e.g. 15m→1H switch).
+     */
+    _trimTouchCandleForReplayFill(candle) {
+        if (!candle || typeof candle !== 'object') return candle;
+        const ctx = this._getOrderContextChart() || this.chart;
+        if (!ctx || typeof ctx._trimBarOhlcToReplayPlayhead !== 'function') return candle;
+        const playhead = typeof ctx._getReplayPlayheadMs === 'function' ? ctx._getReplayPlayheadMs() : null;
+        const barT = Number(candle.t);
+        if (!Number.isFinite(playhead) || !Number.isFinite(barT)) return candle;
+        const tfMs = typeof ctx.parseTimeframe === 'function'
+            ? ctx.parseTimeframe(ctx.currentTimeframe)
+            : null;
+        if (!Number.isFinite(tfMs) || tfMs <= 0) return candle;
+        const periodEnd = typeof ctx._getBarPeriodEndMs === 'function'
+            ? ctx._getBarPeriodEndMs(barT, null, -1, tfMs)
+            : (barT + tfMs);
+        if (Number.isFinite(periodEnd) && playhead >= periodEnd - 1) return candle;
+        if (playhead <= barT) return candle;
+        return ctx._trimBarOhlcToReplayPlayhead(candle, null, -1, tfMs);
     }
 
     /**
