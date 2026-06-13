@@ -16347,48 +16347,6 @@ class OrderManager {
      * relative to the current market price. Called when the user edits the
      * entry price input manually.
      */
-    _resolveOrderTypeFromEntryPrice(entryPrice, currentPrice) {
-        const entry = Number(entryPrice);
-        const current = Number(currentPrice);
-        if (!Number.isFinite(entry) || entry <= 0) return this.orderType || 'market';
-        if (!Number.isFinite(current) || current <= 0) return this.orderType || 'market';
-
-        const pip = this.pipSize || 0.0001;
-        const atMarket = Math.abs(entry - current) <= Math.max(pip * 1.5, Math.abs(current) * 1e-10);
-
-        if (atMarket) return 'market';
-        if ((this.orderSide || 'BUY').toUpperCase() === 'BUY') {
-            return entry > current ? 'stop' : 'limit';
-        }
-        return entry < current ? 'stop' : 'limit';
-    }
-
-    /**
-     * When dragging the preview entry line, snap to live price if the drag is
-     * near market (price tolerance or within ~8px on the chart).
-     */
-    _snapEntryDragPriceToMarketIfNear(entryPrice, currentPrice, chart) {
-        const entry = Number(entryPrice);
-        const current = Number(currentPrice);
-        if (!Number.isFinite(entry) || !Number.isFinite(current) || current <= 0) return entry;
-
-        const pip = this.pipSize || 0.0001;
-        const tol = Math.max(pip * 1.5, Math.abs(current) * 1e-10);
-        if (Math.abs(entry - current) <= tol) {
-            return parseFloat(this.formatPrice(current));
-        }
-
-        const yScale = chart?.scales?.yScale;
-        if (typeof yScale === 'function') {
-            const yEntry = yScale(entry);
-            const yMarket = yScale(current);
-            if (Number.isFinite(yEntry) && Number.isFinite(yMarket) && Math.abs(yEntry - yMarket) <= 8) {
-                return parseFloat(this.formatPrice(current));
-            }
-        }
-        return entry;
-    }
-
     _autoDetectOrderTypeFromEntry() {
         const entryInput = document.getElementById('orderEntryPrice');
         if (!entryInput) return;
@@ -16399,10 +16357,16 @@ class OrderManager {
         const currentPrice = currentCandle?.c || currentCandle?.close || 0;
         if (!currentPrice || currentPrice <= 0) return;
 
-        const newType = this._resolveOrderTypeFromEntryPrice(entryPrice, currentPrice);
+        const pip = this.pipSize || 0.0001;
+        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
 
-        if (newType === 'market') {
-            this._setPreviewEntrySource('market');
+        let newType;
+        if (atMarket) {
+            newType = 'market';
+        } else if (this.orderSide === 'BUY') {
+            newType = entryPrice > currentPrice ? 'stop' : 'limit';
+        } else {
+            newType = entryPrice < currentPrice ? 'stop' : 'limit';
         }
 
         if (this.orderType !== newType) {
@@ -18114,39 +18078,13 @@ class OrderManager {
                     const currentPrice = currentCandle?.c || currentCandle?.close || null;
                     
                     if (currentPrice) {
-                        const snappedPrice = self._snapEntryDragPriceToMarketIfNear(newPrice, currentPrice, ch);
-                        if (snappedPrice !== newPrice) {
-                            newPrice = snappedPrice;
-                            lineData.price = newPrice;
-                            clampedY = ch.scales.yScale(newPrice);
-                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
-                            lineData.line.attr('y1', clampedY).attr('y2', clampedY);
-                            if (lineData.hitLine) {
-                                lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
-                            }
-                            const snappedFormatted = self.formatPrice(newPrice);
-                            if (entryInput) entryInput.value = snappedFormatted;
-                            if (lineData.priceText) lineData.priceText.text(snappedFormatted);
-                            const bboxSnap = lineData.labelDimensions;
-                            const heightSnap = bboxSnap?.height || 0;
-                            const currentTransformSnap = lineData.labelGroup.attr('transform');
-                            const currentXSnap = parseFloat(currentTransformSnap?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                            lineData.labelGroup.attr('transform', `translate(${currentXSnap}, ${clampedY - heightSnap / 2})`);
-                            self.adjustPreviewLineForLabel(lineData);
-                            if (lineData.yAxisHighlight) {
-                                const highlightHeight = 22;
-                                const highlightY = clampedY - highlightHeight / 2;
-                                const highlightX = parseFloat(lineData.yAxisHighlight.attr('transform').match(/translate\(([\d.]+)/)?.[1] || 0);
-                                lineData.yAxisHighlight.attr('transform', `translate(${highlightX}, ${highlightY})`);
-                                lineData.yAxisHighlight.select('.y-axis-price-text').text(snappedFormatted);
-                            }
-                        }
-
-                        const newOrderType = self._resolveOrderTypeFromEntryPrice(newPrice, currentPrice);
-                        if (newOrderType === 'market') {
-                            self._setPreviewEntrySource('market');
+                        let newOrderType;
+                        if (self.orderSide === 'BUY') {
+                            // BUY: above price = STOP, below price = LIMIT
+                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
                         } else {
-                            self._setPreviewEntrySource('manual');
+                            // SELL: below price = STOP, above price = LIMIT
+                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
                         }
                         
                         // Update order type if changed
@@ -18256,18 +18194,12 @@ class OrderManager {
                     const currentCandle = self.getCurrentCandle();
                     const currentPrice = currentCandle?.c || currentCandle?.close || 0;
                     if (currentPrice > 0) {
-                        const snappedPrice = self._snapEntryDragPriceToMarketIfNear(newPrice, currentPrice, ch);
-                        if (snappedPrice !== newPrice) {
-                            newPrice = snappedPrice;
-                            lineData.price = newPrice;
-                            clampedY = ch.scales.yScale(newPrice);
-                            clampedY = Math.max(0, Math.min(chartHeight, clampedY));
-                            lineData.line.attr('y1', clampedY).attr('y2', clampedY);
-                            if (lineData.hitLine) {
-                                lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
-                            }
+                        let newOrderType;
+                        if (self.orderSide === 'BUY') {
+                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
+                        } else {
+                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
                         }
-                        const newOrderType = self._resolveOrderTypeFromEntryPrice(newPrice, currentPrice);
                         if (lineData.orderType !== newOrderType) {
                             lineData.orderType = newOrderType;
                             // Extract level number from label
@@ -31327,6 +31259,9 @@ class OrderManager {
         }
         this._ensureOrderPriceMarginShield(chart);
     }
+
+    /**
+     * Re-draw full pending order graphics on one chart (multichart peer mirror after
      * (`addOrder` / `syncPendingOrder`). `registerPendingOrder` only mutates
      * arrays + emits — it does not call drawPendingOrderLine, so peers would
      * otherwise miss full horizontal lines (only stray axis hints).
