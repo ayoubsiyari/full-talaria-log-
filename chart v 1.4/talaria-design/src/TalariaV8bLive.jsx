@@ -11355,7 +11355,7 @@ const TalariaV8bLive = () => {
       );
     }
     try {
-      window.refreshEconomicNewsSidebar?.();
+      window.loadEconomicNewsSidebar?.();
     } catch (_) {}
     const bump = () => setEcoNewsRev((x) => x + 1);
     window.addEventListener("economicCalendarUpdated", bump);
@@ -32528,15 +32528,6 @@ const TalariaV8bLive = () => {
                   </div>
                 );
               }
-              if (st && st.disabled) {
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: "24px 14px", textAlign: "center", color: c.tm, fontSize: 11 }}>
-                      Economic calendar is disabled in chart config. Redeploy the latest chart build.
-                    </div>
-                  </div>
-                );
-              }
               if (!api) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -32771,11 +32762,7 @@ const TalariaV8bLive = () => {
                   {/* News list */}
                   <div className="tlr-scroll" style={{flex:1,overflowY:"auto"}}>
                     {filtered.length===0
-                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>
-                          {st && st.loaded && (st.eventCount ?? 0) === 0
-                            ? "No events returned from Finnhub for this date range. Set FINNHUB_API_KEY on the chart API server and restart trading-chart."
-                            : "No events match filters — try turning off Chart symbol only or add Medium impact."}
-                        </div>
+                      ? <div style={{padding:"32px 14px",textAlign:"center",color:c.tm,fontSize:11}}>No events match filters</div>
                       : filtered.map((ev,idx)=>{
                           const col=impCol[ev.impact];
                           const barCount=ev.impact==="high"?3:ev.impact==="med"?2:1;

@@ -5,15 +5,6 @@
 (function () {
     'use strict';
 
-    function isEconomicCalendarApiDisabled() {
-        try {
-            var env = typeof window !== 'undefined' && window.__CHART_ENV;
-            return !!(env && env.DISABLE_ECONOMIC_CALENDAR_API);
-        } catch (_e) {
-            return false;
-        }
-    }
-
     var FILTER_STORAGE_KEY = 'economicCalendarFilters';
 
     var state = {
@@ -31,7 +22,7 @@
             impactHigh: true,
             impactMedium: true,
             impactLow: false,
-            pairOnly: false,
+            pairOnly: true,
             /** Empty = all countries; otherwise list of 2-letter (or EU) codes from country multiselect. */
             countryCodes: []
         }
@@ -442,8 +433,8 @@
         if (!passesCountryUserFilter(e)) return false;
         if (!state.filters.pairOnly) return true;
         var pair = parseForexPair(getCurrentChartSymbol());
-        // Symbol not resolved yet (V9/chart still loading) — show all until pair is known.
-        if (!pair) return true;
+        // If we cannot resolve a 6-letter FX pair, do not show every release — that looked like a broken filter.
+        if (!pair) return false;
         return eventMatchesChartPair(e, pair);
     }
 
@@ -794,18 +785,6 @@
     function render() {
         var hasRoots = allNewsItemRoots().length > 0;
 
-        if (isEconomicCalendarApiDisabled()) {
-            if (hasRoots) {
-                setNewsItemsHtml(
-                    '<div style="padding:20px;color:#6a6a7a;font-size:13px;text-align:center;">' +
-                    'Economic calendar is temporarily off (Finnhub access pending).' +
-                    '</div>'
-                );
-            }
-            dispatchCalendarUpdated();
-            return;
-        }
-
         if (state.loading) {
             var rng = getCalendarFetchRange();
             var loadLabel = rng.fromStr === rng.toStr
@@ -829,12 +808,7 @@
         }
         var list = filterEvents();
         if (!list.length) {
-            var hint;
-            if (!state.events || state.events.length === 0) {
-                hint = 'No economic events returned for this date range. Check FINNHUB_API_KEY on the chart API server, or try a more recent chart window.';
-            } else {
-                hint = 'No events match your filters or search. Try turning off “Current pair only”, other impact levels, or clear the search.';
-            }
+            var hint = 'No events match your filters or search. Try other impact levels, countries, or clear the search.';
             if (hasRoots) {
                 setNewsItemsHtml('<div style="padding:24px;text-align:center;color:#6a6a7a;">' + escapeHtml(hint) + '</div>');
             }
@@ -889,17 +863,6 @@
     }
 
     async function loadCalendar(force) {
-        if (isEconomicCalendarApiDisabled()) {
-            state.loading = false;
-            state.error = null;
-            state.loaded = true;
-            state.loadedRangeKey = 'disabled';
-            state.events = [];
-            clearChartMarkerCache();
-            stopCountdownLoop();
-            render();
-            return;
-        }
         if (state.loading && !force) return;
         if (!force && lastFetchFinishedAt && (Date.now() - lastFetchFinishedAt < FETCH_COOLDOWN_MS)) return;
         var myId = ++calendarLoadId;
@@ -1180,11 +1143,14 @@
         bindNewsSearchInputs();
         bindNewsFilters();
         syncFilterControlsToDom();
-        if (isEconomicCalendarApiDisabled()) {
+        var rng = getCalendarFetchRange();
+        if (!state.loaded || state.loadedRangeKey !== rng.rangeKey) {
+            loadCalendar();
+        } else {
             render();
-            return;
+            startCountdownLoop();
+            requestChartMarkerRedraw();
         }
-        loadCalendar(true);
     };
 
     window.refreshEconomicNewsSidebar = function () {
@@ -1252,7 +1218,6 @@
 
     /** Called from chart.js render after pan/zoom — reload Finnhub range when visible dates change (long histories). */
     window.__economicCalendarNotifyChartRender = function (chart) {
-        if (isEconomicCalendarApiDisabled()) return;
         var ch = window.chart || window.mainChart;
         if (!chart || chart !== ch || chart.isPanel) return;
         if (calendarPanDebounceTimer) clearTimeout(calendarPanDebounceTimer);
@@ -1287,9 +1252,6 @@
                 tab: state.tab,
                 query: state.query,
                 loaded: state.loaded,
-                disabled: isEconomicCalendarApiDisabled(),
-                loadedRangeKey: state.loadedRangeKey,
-                eventCount: state.events ? state.events.length : 0,
                 filters: {
                     impactHigh: state.filters.impactHigh,
                     impactMedium: state.filters.impactMedium,
@@ -1346,12 +1308,4 @@
             };
         }
     };
-
-    if (!isEconomicCalendarApiDisabled()) {
-        setTimeout(function () {
-            if (!state.loading && !state.loaded) {
-                loadCalendar();
-            }
-        }, 300);
-    }
 })();

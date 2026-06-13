@@ -8498,7 +8498,6 @@ async def api_status():
     else:
         out["questdb"] = "not_configured"
     out["questdb_read_primary"] = questdb_store.questdb_read_primary()
-    out["finnhub_configured"] = bool(_finnhub_api_key())
     return out
 
 
@@ -8506,14 +8505,11 @@ def _finnhub_api_key() -> str:
     return (os.getenv("FINNHUB_API_KEY") or "").strip()
 
 
-def _proxy_finnhub_json(upstream_url: str, api_key: str):
-    """GET JSON from Finnhub — token in X-Finnhub-Token header (not URL)."""
+def _proxy_finnhub_json(upstream_url: str):
+    """GET JSON from Finnhub (server-side token)."""
     req = urllib.request.Request(
         upstream_url,
-        headers={
-            "User-Agent": "TalariaChart/1.0",
-            "X-Finnhub-Token": api_key,
-        },
+        headers={"User-Agent": "TalariaChart/1.0"},
         method="GET",
     )
     try:
@@ -8550,9 +8546,9 @@ def api_finnhub_economic_calendar(
         )
     upstream = (
         "https://finnhub.io/api/v1/calendar/economic"
-        f"?from={quote(from_, safe='')}&to={quote(to, safe='')}"
+        f"?from={quote(from_, safe='')}&to={quote(to, safe='')}&token={quote(key, safe='')}"
     )
-    return _proxy_finnhub_json(upstream, key)
+    return _proxy_finnhub_json(upstream)
 
 
 @app.get("/api/finnhub/news")
@@ -8570,11 +8566,11 @@ def api_finnhub_news(
                 "(FINNHUB_API_KEY=...) or pass it into the trading-chart container, then restart the API."
             ),
         )
-    q = f"category={quote(category, safe='')}"
+    q = f"category={quote(category, safe='')}&token={quote(key, safe='')}"
     if minId is not None and str(minId).strip() != "":
         q += f"&minId={quote(str(minId).strip(), safe='')}"
     upstream = f"https://finnhub.io/api/v1/news?{q}"
-    return _proxy_finnhub_json(upstream, key)
+    return _proxy_finnhub_json(upstream)
 
 
 @app.get("/api/file/{file_id}/tile-meta/{tf}")
