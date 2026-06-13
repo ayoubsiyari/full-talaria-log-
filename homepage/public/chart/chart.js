@@ -25639,7 +25639,10 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         this.canvas.addEventListener('dblclick', e => {
             const [mx, my] = this._eventCanvasLocalXY(e);
-            const mode = this.cursor.mode || detectCursorMode(mx, my);
+            const detectedMode = detectCursorMode(mx, my);
+            const mode = (detectedMode === 'priceAxis' || detectedMode === 'timeAxis' || detectedMode === 'separatePanelAxis')
+                ? detectedMode
+                : (this.cursor.mode || detectedMode);
 
             if ((mode === 'chart' || mode === 'separatePanelPlot')
                 && typeof this.handleSeparatePanelIndicatorDoubleClick === 'function'

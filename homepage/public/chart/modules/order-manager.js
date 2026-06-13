@@ -822,6 +822,25 @@ class OrderManager {
         let shield = ch.svg.select('rect.order-price-margin-shield');
         if (shield.empty()) {
             const self = this;
+            const forwardMouseToCanvas = (ev, type) => {
+                const targetChart = ch;
+                if (!self._eventInPriceAxisZone(ev, targetChart)) return;
+                const canvas = targetChart.canvas;
+                if (!canvas) return;
+                if (targetChart.cursor) targetChart.cursor.mode = 'priceAxis';
+                canvas.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: ev.clientX,
+                    clientY: ev.clientY,
+                    button: ev.button,
+                    buttons: ev.buttons,
+                    shiftKey: ev.shiftKey,
+                    ctrlKey: ev.ctrlKey,
+                    altKey: ev.altKey,
+                    metaKey: ev.metaKey
+                }));
+            };
             shield = ch.svg.append('rect')
                 .attr('class', 'order-price-margin-shield')
                 .attr('fill', 'transparent')
@@ -829,24 +848,11 @@ class OrderManager {
                 .style('cursor', 'ns-resize')
                 .on('mousedown.priceShield', function (ev) {
                     ev.stopPropagation();
-                    const targetChart = ch;
-                    if (self._eventInPriceAxisZone(ev, targetChart)) {
-                        const canvas = targetChart.canvas;
-                        if (canvas) {
-                            canvas.dispatchEvent(new MouseEvent('mousedown', {
-                                bubbles: true,
-                                cancelable: true,
-                                clientX: ev.clientX,
-                                clientY: ev.clientY,
-                                button: ev.button,
-                                buttons: ev.buttons,
-                                shiftKey: ev.shiftKey,
-                                ctrlKey: ev.ctrlKey,
-                                altKey: ev.altKey,
-                                metaKey: ev.metaKey
-                            }));
-                        }
-                    }
+                    forwardMouseToCanvas(ev, 'mousedown');
+                })
+                .on('dblclick.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    forwardMouseToCanvas(ev, 'dblclick');
                 })
                 .on('wheel.priceShield', function (ev) {
                     ev.stopPropagation();
@@ -22395,8 +22401,53 @@ class OrderManager {
         return ch.w - yAxisWidth - 6;
     }
 
+    /** Remove vertical TP/SL connector layers from one SVG root (no yScale required). */
+    _purgeOrderConnectorsFromSvg(svg) {
+        if (!svg || typeof svg.selectAll !== 'function') return;
+        svg.selectAll('.exec-order-connector').remove();
+        svg.selectAll('.preview-pending-connector').remove();
+        svg.selectAll('.preview-pending-connector-dot').remove();
+        svg.selectAll('[class*="split-avg-connector"]').remove();
+    }
+
+    /** Scrub connector layers from every chart surface (main, panels, drawing SVG). */
+    _purgeOrderConnectorsFromAllSurfaces() {
+        const seen = new Set();
+        const purge = (svg) => {
+            const node = svg?.node?.();
+            if (node) {
+                if (seen.has(node)) return;
+                seen.add(node);
+            }
+            this._purgeOrderConnectorsFromSvg(svg);
+        };
+        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg));
+        purge(this.chart?.svg);
+        if (typeof document !== 'undefined' && typeof d3 !== 'undefined') {
+            const roots = [];
+            const dw = document.getElementById('drawingSvg');
+            if (dw) roots.push(dw);
+            document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
+            roots.forEach((el) => {
+                if (!el || seen.has(el)) return;
+                seen.add(el);
+                purge(d3.select(el));
+            });
+        }
+        (this.splitGroupAvgLines || []).forEach((g) => {
+            g._connector = null;
+        });
+        this._pendingPreviewConnector = null;
+        this._pendingPreviewConnectorDots = [];
+    }
+
     /** Redraw vertical entry↔TP/SL connectors on every layout surface (after place/cancel/close). */
     _refreshOrderConnectors(ch) {
+        if (ch?.svg) {
+            this._purgeOrderConnectorsFromSvg(ch.svg);
+        } else {
+            this._purgeOrderConnectorsFromAllSurfaces();
+        }
         const charts = ch
             ? [ch]
             : (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [this.chart]);
@@ -22405,6 +22456,20 @@ class OrderManager {
                 this._drawExecutedOrderConnectors(c);
             }
         });
+    }
+
+    /** Drop open/pending registry rows + connector SVG after any close/cancel path. */
+    _cleanupClosedOrderChartLayers(orderId) {
+        if (orderId == null) return;
+        if (this.orderService?.openPositions?.length) {
+            this.orderService.openPositions = this.orderService.openPositions.filter((p) => p && p.id !== orderId);
+        }
+        if (this.orderService?.pendingOrders?.length) {
+            this.orderService.pendingOrders = this.orderService.pendingOrders.filter((p) => p && p.id !== orderId);
+        }
+        this.pendingOrders = (this.pendingOrders || []).filter((p) => p && p.id !== orderId);
+        this._purgeOrderConnectorsFromAllSurfaces();
+        this._refreshOrderConnectors();
     }
 
     /**
@@ -24647,6 +24712,9 @@ class OrderManager {
         
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
+        if (this.orderService?.openPositions?.length) {
+            this.orderService.openPositions = this.orderService.openPositions.filter((p) => p && p.id !== orderId);
+        }
         this.closedPositions.push(position);
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
@@ -24680,12 +24748,15 @@ class OrderManager {
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
+                this._cleanupClosedOrderChartLayers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 this._ensurePendingTargetsSurvive();
                 // Force a chart redraw to ensure lines are visually removed
                 if (this.chart && this.chart.render) {
                     this.chart.render();
                 }
+                this._purgeOrderConnectorsFromAllSurfaces();
+                this._refreshOrderConnectors();
                 this.updatePositionsPanel();
                 this.updateJournalTab();
                 return;
@@ -24894,6 +24965,7 @@ class OrderManager {
         }
         
         this._ensurePendingTargetsSurvive();
+        this._cleanupClosedOrderChartLayers(orderId);
         this.updatePositionsPanel();
         
         // Show trade journal modal for post-trade notes (modal will UPDATE the journal entry, not create it)
@@ -27043,6 +27115,7 @@ class OrderManager {
                     this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
                 }
                 this._ensurePendingTargetsSurvive();
+                this._cleanupClosedOrderChartLayers(orderId);
                 this.updatePositionsPanel();
                 return;
             }
@@ -27490,6 +27563,7 @@ class OrderManager {
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
+                this._cleanupClosedOrderChartLayers(orderId);
                 this.updatePositionsPanel();
                 return;
             }
@@ -27599,6 +27673,10 @@ class OrderManager {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
             this._cleanupOrphanedYAxisHighlights();
+        }
+        
+        if (!isPartialClose) {
+            this._cleanupClosedOrderChartLayers(orderId);
         }
         
         // Clean up any preview lines that might be lingering
@@ -35370,9 +35448,11 @@ class OrderManager {
                 slToRemove.forEach((slLine) => {
                     if (slLine.line) slLine.line.remove();
                     if (slLine.labelBox) slLine.labelBox.remove();
+                    if (slLine.labelAccent) slLine.labelAccent.remove();
                     if (slLine.labelText) slLine.labelText.remove();
                     if (slLine.pnlBox) slLine.pnlBox.remove();
                     if (slLine.pnlText) slLine.pnlText.remove();
+                    if (slLine.pnlAccent) slLine.pnlAccent.remove();
                     if (slLine.closeBtn) slLine.closeBtn.remove();
                     if (slLine.priceBox) slLine.priceBox.remove();
                     if (slLine.priceText) slLine.priceText.remove();
@@ -35390,9 +35470,11 @@ class OrderManager {
                 tpLinesToRemove.forEach(tpLine => {
                     if (tpLine.line) tpLine.line.remove();
                     if (tpLine.labelBox) tpLine.labelBox.remove();
+                    if (tpLine.labelAccent) tpLine.labelAccent.remove();
                     if (tpLine.labelText) tpLine.labelText.remove();
                     if (tpLine.pnlBox) tpLine.pnlBox.remove();
                     if (tpLine.pnlText) tpLine.pnlText.remove();
+                    if (tpLine.pnlAccent) tpLine.pnlAccent.remove();
                     if (tpLine.closeBtn) tpLine.closeBtn.remove();
                     if (tpLine.splitBtn) tpLine.splitBtn.remove();
                     if (tpLine.priceBox) tpLine.priceBox.remove();
@@ -37034,12 +37116,26 @@ class OrderManager {
     }
 
     _drawExecutedOrderConnectors(ch) {
-        if (!ch?.svg || !ch?.scales?.yScale) return;
-        ch.svg.selectAll('.exec-order-connector').remove();
+        if (!ch?.svg) return;
+        this._purgeOrderConnectorsFromSvg(ch.svg);
+        if (!ch?.scales?.yScale) return;
         const yScale = ch.scales.yScale;
         const connX = this._orderConnectorAnchorX(ch);
 
-        for (const pos of this.openPositions) {
+        const openPositions = [
+            ...(this.openPositions || []),
+            ...(this.orderService?.openPositions || []),
+        ];
+        const seenOpenIds = new Set();
+        const pendingOrders = [
+            ...(this.pendingOrders || []),
+            ...(this.orderService?.pendingOrders || []),
+        ];
+        const seenPendingIds = new Set();
+
+        for (const pos of openPositions) {
+            if (!pos || seenOpenIds.has(pos.id)) continue;
+            seenOpenIds.add(pos.id);
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
             const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
@@ -37092,7 +37188,9 @@ class OrderManager {
             try { cg.lower(); } catch (_) {}
         }
 
-        for (const po of this.pendingOrders) {
+        for (const po of pendingOrders) {
+            if (!po || seenPendingIds.has(po.id)) continue;
+            seenPendingIds.add(po.id);
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
             const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
             const tpPx = po.takeProfit || 0;
