@@ -1113,6 +1113,7 @@ class Chart {
             const navAllowed =
                 session.allowBackNavigation !== false &&
                 session.rollback_allowed !== false &&
+                session.forwardTestingOnly !== true &&
                 String(session.type || '').toLowerCase() !== 'propfirm';
             window.backtestingSettings.allowBackNavigation = navAllowed;
         } catch (e) { /* ignore */ }
@@ -4846,59 +4847,103 @@ class Chart {
     }
 
     /**
+     * Aggregate OHLC from a finer bar series from periodStart up to playhead (inclusive).
+     * @param {Array} series - ascending OHLC rows with .t
+     * @param {number} periodStartMs
+     * @param {number} playheadMs
+     * @returns {{ o,h,l,c,v }|null}
+     */
+    _aggregateFinerBarsWalkForward(series, periodStartMs, playheadMs) {
+        if (!Array.isArray(series) || !series.length) return null;
+        if (!Number.isFinite(periodStartMs) || !Number.isFinite(playheadMs)) return null;
+        if (playheadMs < periodStartMs) return null;
+
+        let o = null;
+        let h = null;
+        let l = null;
+        let c = null;
+        let v = 0;
+        let count = 0;
+
+        for (let i = 0; i < series.length; i++) {
+            const b = series[i];
+            const t = Number(b?.t);
+            if (!Number.isFinite(t)) continue;
+            if (t < periodStartMs) continue;
+            if (t > playheadMs) break;
+
+            const bo = Number(b.o ?? b.open);
+            const bh = Number(b.h ?? b.high);
+            const bl = Number(b.l ?? b.low);
+            const bc = Number(b.c ?? b.close);
+            if (!count && Number.isFinite(bo)) o = bo;
+            if (Number.isFinite(bh)) h = !count ? bh : Math.max(h, bh);
+            if (Number.isFinite(bl)) l = !count ? bl : Math.min(l, bl);
+            if (Number.isFinite(bc)) c = bc;
+            v += Number(b.v ?? b.volume) || 0;
+            count++;
+        }
+
+        if (count > 0 && Number.isFinite(c)) {
+            return { o, h, l, c, v };
+        }
+        return null;
+    }
+
+    /**
      * Walk-forward OHLC up to replay playhead using finer TF cache (1m saved before TF switch).
      * Prevents full-day wicks from triggering TP/SL after 1m→1D switch at an intraday moment.
      */
     _getWalkForwardOhlcToPlayhead(periodStartMs, playheadMs, nativePeriodMs) {
         if (!Number.isFinite(periodStartMs) || !Number.isFinite(playheadMs)) return null;
         if (playheadMs < periodStartMs) return null;
-        const fileId = this.currentFileId;
-        if (!fileId || typeof this._getBtTfDataCache !== 'function') return null;
 
-        const nativeMs = Number.isFinite(nativePeriodMs) && nativePeriodMs > 0
+        const targetCoarseMs = Number.isFinite(nativePeriodMs) && nativePeriodMs > 0
             ? nativePeriodMs
-            : this._getNativeRawStepMs();
-        const candidates = ['1m', '5m', '15m', '30m', '1h', '4h'];
+            : null;
 
-        for (let ci = 0; ci < candidates.length; ci++) {
-            const tf = candidates[ci];
-            const tfMs = this.parseTimeframe(tf);
-            if (!Number.isFinite(tfMs) || tfMs <= 0 || tfMs >= nativeMs) continue;
+        const fileId = this.currentFileId;
+        if (fileId && typeof this._getBtTfDataCache === 'function') {
+            const nativeMs = Number.isFinite(targetCoarseMs) && targetCoarseMs > 0
+                ? targetCoarseMs
+                : this._getNativeRawStepMs();
+            const candidates = ['1m', '5m', '15m', '30m', '1h', '4h'];
 
-            const entry = this._getBtTfDataCache(fileId, tf);
-            const rd = entry?.rawData;
-            if (!Array.isArray(rd) || !rd.length) continue;
+            for (let ci = 0; ci < candidates.length; ci++) {
+                const tf = candidates[ci];
+                const tfMs = this.parseTimeframe(tf);
+                if (!Number.isFinite(tfMs) || tfMs <= 0 || tfMs >= nativeMs) continue;
 
-            let o = null;
-            let h = null;
-            let l = null;
-            let c = null;
-            let v = 0;
-            let count = 0;
+                const entry = this._getBtTfDataCache(fileId, tf);
+                const rd = entry?.rawData;
+                if (!Array.isArray(rd) || !rd.length) continue;
 
-            for (let i = 0; i < rd.length; i++) {
-                const b = rd[i];
-                const t = Number(b?.t);
-                if (!Number.isFinite(t)) continue;
-                if (t < periodStartMs) continue;
-                if (t > playheadMs) break;
-
-                const bo = Number(b.o ?? b.open);
-                const bh = Number(b.h ?? b.high);
-                const bl = Number(b.l ?? b.low);
-                const bc = Number(b.c ?? b.close);
-                if (!count && Number.isFinite(bo)) o = bo;
-                if (Number.isFinite(bh)) h = !count ? bh : Math.max(h, bh);
-                if (Number.isFinite(bl)) l = !count ? bl : Math.min(l, bl);
-                if (Number.isFinite(bc)) c = bc;
-                v += Number(b.v ?? b.volume) || 0;
-                count++;
-            }
-
-            if (count > 0 && Number.isFinite(c)) {
-                return { o, h, l, c, v };
+                const agg = this._aggregateFinerBarsWalkForward(rd, periodStartMs, playheadMs);
+                if (agg) return agg;
             }
         }
+
+        // Client-resample path: replay master / chart slice often holds finer bars (e.g. 15m
+        // master resampled to 1H display) even when _btTfDataCache has no entry yet.
+        const seriesCandidates = [];
+        const rs = this.replaySystem;
+        if (rs && Array.isArray(rs.fullRawData) && rs.fullRawData.length >= 2) {
+            seriesCandidates.push(rs.fullRawData);
+        }
+        if (Array.isArray(this.rawData) && this.rawData.length >= 2) {
+            seriesCandidates.push(this.rawData);
+        }
+
+        for (let si = 0; si < seriesCandidates.length; si++) {
+            const series = seriesCandidates[si];
+            const stepMs = this._measureRawDataStepMs(series);
+            if (!Number.isFinite(stepMs) || stepMs <= 0) continue;
+            if (targetCoarseMs && stepMs >= targetCoarseMs * 0.92) continue;
+
+            const agg = this._aggregateFinerBarsWalkForward(series, periodStartMs, playheadMs);
+            if (agg) return agg;
+        }
+
         return null;
     }
 

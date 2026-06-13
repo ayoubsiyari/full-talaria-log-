@@ -33999,9 +33999,15 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Footer: Loss · Dist */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", borderTop:"1px solid rgba(255,80,104,0.1)" }}>
-                    <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>
+                    {(() => {
+                      const slPnl = parseFloat(String(omRiskSummaryTxt || "").replace(/[^0-9.-]/g, ""));
+                      const slCol = Number.isFinite(slPnl) && slPnl >= 0 ? c.gn : c.rd;
+                      return (
+                    <span style={{ fontSize:9, fontWeight:700, color:slCol, fontVariantNumeric:"tabular-nums" }}>
                       Loss <span style={{ fontWeight:800 }}>{omRiskSummaryTxt}</span>
                     </span>
+                      );
+                    })()}
                     <div style={{ flex:1 }}/>
                     <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums" }}>
                       Dist <span style={{ color:c.ts, fontWeight:700 }}>{omSlDistTxt}</span>{" "}{currentSymbol.type==="futures"?"ticks":"pips"}
@@ -34610,9 +34616,15 @@ const TalariaV8bLive = () => {
                   </div>
                   {/* Footer — always visible */}
                   <div style={{ padding:"2px 6px 3px", display:"flex", alignItems:"center", gap:6, borderTop:"1px solid rgba(0,212,161,0.1)" }}>
-                    <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>
+                    {(() => {
+                      const tpPnl = parseFloat(String(omRewardSummaryTxt || "").replace(/[^0-9.-]/g, ""));
+                      const tpCol = Number.isFinite(tpPnl) && tpPnl >= 0 ? c.gn : c.rd;
+                      return (
+                    <span style={{ fontSize:9, fontWeight:700, color:tpCol, fontVariantNumeric:"tabular-nums" }}>
                       Profit <span style={{ fontWeight:800 }}>{omRewardSummaryTxt}</span>
                     </span>
+                      );
+                    })()}
                     <div style={{ flex:1 }}/>
                     {tpRows.length > 1 && (
                       <span style={{ fontSize:9, color:c.tm, fontVariantNumeric:"tabular-nums", textAlign:"right", lineHeight:1.25, maxWidth:160 }}>
@@ -34894,16 +34906,23 @@ const TalariaV8bLive = () => {
 
           {/* 9 — R:R Bar */}
           {(() => {
-            const moneyNum = (txt) => {
+            const moneyNumSigned = (txt) => {
               const n = parseFloat(String(txt || "").replace(/[^0-9.-]/g, ""));
-              return Number.isFinite(n) ? Math.abs(n) : 0;
+              return Number.isFinite(n) ? n : 0;
             };
-            const risk = moneyNum(omRiskSummaryTxt);
-            const reward = moneyNum(omRewardSummaryTxt);
-            const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+            const riskSigned = moneyNumSigned(omRiskSummaryTxt);
+            const rewardSigned = moneyNumSigned(omRewardSummaryTxt);
+            const riskMag = Math.abs(riskSigned);
+            const rewardMag = Math.abs(rewardSigned);
+            const rr = riskMag > 0 && rewardMag > 0 ? rewardMag / riskMag : 0;
             const rrLabel = rr > 0 && Number.isFinite(rr) ? rr.toFixed(1) : "—";
-            const riskLabel = risk > 0 ? `-${omRiskSummaryTxt.replace(/^-/, "")}` : "$0.00";
-            const rewardLabel = reward > 0 ? `+${omRewardSummaryTxt.replace(/^\+/, "")}` : "$0.00";
+            const fmtSigned = (n) => {
+              if (!Number.isFinite(n) || n === 0) return "$0.00";
+              const sign = n >= 0 ? "+" : "-";
+              return `${sign}$${Math.abs(n).toFixed(2)}`;
+            };
+            const riskLabel = fmtSigned(riskSigned);
+            const rewardLabel = fmtSigned(rewardSigned);
             return (
               <div style={{ flexShrink:0, padding:"5px 8px 4px", borderTop:"1px solid rgba(140,160,255,0.12)" }}>
                 <div style={{ display:"flex", height:5, overflow:"hidden", gap:1 }}>
@@ -34911,13 +34930,13 @@ const TalariaV8bLive = () => {
                   <div style={{ flex:Math.max(0.1,rr || 0.1), background:c.gn, opacity:0.55, boxShadow:`0 0 6px ${c.gn}` }}/>
                 </div>
                 <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", paddingTop:4 }}>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.rd, fontVariantNumeric:"tabular-nums" }}>{riskLabel}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color: riskSigned >= 0 ? c.gn : c.rd, fontVariantNumeric:"tabular-nums" }}>{riskLabel}</span>
                   <div style={{ display:"flex", alignItems:"baseline", gap:1 }}>
                     <span style={{ fontSize:11, fontWeight:800, color:c.rd, fontVariantNumeric:"tabular-nums" }}>1</span>
                     <span style={{ fontSize:10, fontWeight:600, color:c.ts }}>:</span>
                     <span style={{ fontSize:11, fontWeight:800, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rrLabel}</span>
                   </div>
-                  <span style={{ fontSize:9, fontWeight:700, color:c.gn, fontVariantNumeric:"tabular-nums" }}>{rewardLabel}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color: rewardSigned >= 0 ? c.gn : c.rd, fontVariantNumeric:"tabular-nums" }}>{rewardLabel}</span>
                 </div>
               </div>
             );

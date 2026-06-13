@@ -383,6 +383,89 @@ class OrderManager {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
     }
 
+    _getPropFirmSessionRules() {
+        const sess = this.chart?.backtestingSession;
+        if (!sess || sess.type !== 'propfirm') return null;
+        const pr = sess.prop_rules || {};
+        return {
+            maxPosition: Number(sess.maxPosition ?? pr.maxPosition) || 0,
+            maxPositionEnabled: !!(sess.maxPositionEnabled ?? pr.maxPositionEnabled),
+            maxPositionUnit: String(sess.maxPositionUnit ?? pr.maxPositionUnit ?? 'lots').toLowerCase(),
+            maxContracts: Number(sess.maxContracts ?? pr.maxContracts) || 0,
+            maxContractsEnabled: !!(sess.maxContractsEnabled ?? pr.maxContractsEnabled),
+            weekendHold: !!(sess.weekendHold ?? pr.weekendHold)
+        };
+    }
+
+    _sumOpenQuantityForTicker(ticker) {
+        const t = this._normalizeTicker(ticker || this._getActiveTicker());
+        if (!t) return 0;
+        return this.openPositions
+            .filter((p) => p && p.status === 'OPEN' && this._positionTicker(p) === t)
+            .reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
+    }
+
+    _validatePropFirmPositionSize(quantity, ticker) {
+        const rules = this._getPropFirmSessionRules();
+        if (!rules) return { ok: true };
+
+        const q = Number(quantity);
+        if (!Number.isFinite(q) || q <= 0) return { ok: true };
+
+        const isFutures = this.marketType === 'futures';
+        const openQty = this._sumOpenQuantityForTicker(ticker);
+
+        if (isFutures && rules.maxContractsEnabled && rules.maxContracts > 0) {
+            if (q > rules.maxContracts) {
+                return { ok: false, message: `Max contracts per order is ${rules.maxContracts}` };
+            }
+            if (openQty + q > rules.maxContracts) {
+                return { ok: false, message: `Total open contracts would exceed limit of ${rules.maxContracts}` };
+            }
+        }
+
+        if (rules.maxPositionEnabled && rules.maxPosition > 0) {
+            const unit = rules.maxPositionUnit || 'lots';
+            if (!isFutures || unit !== 'contracts') {
+                if (q > rules.maxPosition) {
+                    return { ok: false, message: `Max position size is ${rules.maxPosition} ${unit}` };
+                }
+                if (openQty + q > rules.maxPosition) {
+                    return { ok: false, message: `Total open size would exceed ${rules.maxPosition} ${unit}` };
+                }
+            }
+        }
+
+        return { ok: true };
+    }
+
+    _isWeekendMs(ts) {
+        const day = new Date(ts).getUTCDay();
+        return day === 0 || day === 6;
+    }
+
+    _enforcePropFirmWeekendHold(currentCandle) {
+        const rules = this._getPropFirmSessionRules();
+        if (!rules || rules.weekendHold) return;
+        if (!currentCandle || !this._isWeekendMs(currentCandle.t)) {
+            this._propFirmWeekendClosedBarT = null;
+            return;
+        }
+        if (this._propFirmWeekendClosedBarT === currentCandle.t) return;
+
+        const open = this.openPositions.filter((p) => p && p.status === 'OPEN');
+        if (open.length === 0) return;
+
+        this._propFirmWeekendClosedBarT = currentCandle.t;
+        const px = Number.parseFloat(currentCandle.c);
+        if (!Number.isFinite(px)) return;
+
+        open.slice().forEach((p) => {
+            this.closePositionAtPrice(p.id, px, 'WEEKEND_HOLD');
+        });
+        this.showNotification('Weekend hold not allowed — open positions closed', 'warning', 5000);
+    }
+
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
     _chartSourceFileId() {
         const c = this._getOrderContextChart();
@@ -1638,8 +1721,9 @@ class OrderManager {
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
         if (candlePlayback) {
-            const h = Number.parseFloat(candle.h);
-            const l = Number.parseFloat(candle.l);
+            const evalCandle = this._trimTouchCandleForReplayFill(candle);
+            const h = Number.parseFloat(evalCandle.h);
+            const l = Number.parseFloat(evalCandle.l);
             if (dir === 'above') return Number.isFinite(h) && h >= lv;
             return Number.isFinite(l) && l <= lv;
         }
@@ -11706,6 +11790,7 @@ class OrderManager {
 
         if (label === 'TP') {
             const infoText = this._formatTpSlInfoText('TP', price);
+            const pnlColor = infoText.startsWith('-') ? '#ef4444' : '#22c55e';
             return [
                 {
                     text: 'TP',
@@ -11719,7 +11804,7 @@ class OrderManager {
                     text: infoText,
                     fill: '#0f172a',
                     stroke: '#22c55e',
-                    textColor: '#22c55e',
+                    textColor: pnlColor,
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -11753,6 +11838,7 @@ class OrderManager {
 
         if (label === 'SL') {
             const infoText = this._formatTpSlInfoText('SL', price);
+            const pnlColor = infoText.startsWith('-') ? '#ef4444' : '#22c55e';
             return [
                 {
                     text: 'SL',
@@ -11766,7 +11852,7 @@ class OrderManager {
                     text: infoText,
                     fill: '#0f172a',
                     stroke: '#ef4444',
-                    textColor: '#ef4444',
+                    textColor: pnlColor,
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -14764,10 +14850,7 @@ class OrderManager {
 
             if (refEntry > 0 && slEn && slPx > 0) {
                 const d = Math.abs(refEntry - slPx);
-                let dirOk = true;
-                if (this.orderSide === 'BUY') dirOk = slPx < refEntry;
-                else dirOk = slPx > refEntry;
-                hasValidSL = d > minDistance && dirOk;
+                hasValidSL = d > minDistance;
                 slDistance = d;
             } else {
                 hasValidSL = false;
@@ -14799,7 +14882,6 @@ class OrderManager {
         
         if (tpEnabled) {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
-                // Use effective percentages (same conversion+normalization as placeOrder)
                 const ePcts = this._computeEffectiveTPPercentages(effectiveEntryForReward, qtyForReward, this.orderSide);
                 console.log(`📊 Calculating reward for ${this.tpTargets.length} TP targets, mode: ${this.tpDistributionMode}`);
                 this.tpTargets.forEach((target, index) => {
@@ -14807,55 +14889,40 @@ class OrderManager {
                     console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, raw=${target.percentage}, effectivePct=${ePct.toFixed(1)}%`);
                     if (target.price > 0 && ePct > 0) {
                         const tpPx = Number.parseFloat(target.price);
-                        let priceDiff;
-                        if (this.orderSide === 'BUY') {
-                            priceDiff = tpPx - effectiveEntryForReward;
-                        } else {
-                            priceDiff = effectiveEntryForReward - tpPx;
-                        }
-                        
-                        if (priceDiff > 0) {
-                            const partialQuantity = qtyForReward * (ePct / 100);
-                            const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
-                                this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
-                            reward += partialReward;
-                            console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
-                        }
+                        const partialQuantity = qtyForReward * (ePct / 100);
+                        const partialReward = this.estimatePnLForPriceLevel(
+                            this.orderSide, effectiveEntryForReward, tpPx, partialQuantity);
+                        reward += partialReward;
+                        console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
                     }
                 });
                 console.log(`   Final calculated reward: $${reward.toFixed(2)}`);
             } else if (tpPrice > 0) {
-                let priceDiff;
-                if (this.orderSide === 'BUY') {
-                    priceDiff = tpPrice - effectiveEntryForReward;
-                } else {
-                    priceDiff = effectiveEntryForReward - tpPrice;
-                }
-                
-                if (priceDiff > 0) {
-                    // Multi-entry: sum individual level P&Ls for accurate reward
-                    if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
-                        const ps = this.pipSize || 0.0001;
-                        const pv = this.pipValuePerLot || 10;
-                        const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
-                        reward = 0;
-                        for (const l of this.multiEntryLevels) {
-                            if (!(l.price > 0)) continue;
-                            if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
-                            const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
-                            if (lots > 0) {
-                                reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
-                            }
+                if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+                    const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                    const ps = this.pipSize || 0.0001;
+                    const pv = this.pipValuePerLot || 10;
+                    const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
+                    reward = 0;
+                    for (const l of this.multiEntryLevels) {
+                        if (!(l.price > 0)) continue;
+                        if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
+                        const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
+                        if (lots > 0) {
+                            reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
                         }
-                        reward = Math.max(0, reward);
-                    } else {
-                        reward = Math.max(0, this.estimatePnLForPriceLevel(
-                            this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
                     }
+                } else {
+                    reward = this.estimatePnLForPriceLevel(
+                        this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward);
                 }
             }
         }
+
+        const slPriceForDisplay = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const slDisplayPnl = (hasValidSL && slPriceForDisplay > 0)
+            ? this._computeSignedPnlAtLevel(slContextEntry || effectiveEntryForReward, slPriceForDisplay, qtyForReward)
+            : 0;
         
         // Update UI
         const rewardEl = document.getElementById('rewardAmount');
@@ -14865,58 +14932,52 @@ class OrderManager {
         // Show reward only if TP is actually set (enabled AND different from entry)
         if (rewardEl) {
             if (!hasValidTP) {
-                // No valid TP = unlimited potential gain
                 rewardEl.textContent = '∞';
-                rewardEl.style.color = '#22c55e'; // Green for unlimited potential
-            } else if (reward <= 0) {
-                // TP in wrong direction
+                rewardEl.style.color = '#22c55e';
+            } else if (!Number.isFinite(reward) || reward === 0) {
                 rewardEl.textContent = '$0.00';
-                rewardEl.style.color = '#9ca3af'; // Gray
+                rewardEl.style.color = '#9ca3af';
             } else {
-                rewardEl.textContent = `$${reward.toFixed(2)}`;
-                rewardEl.style.color = '#22c55e'; // Green for positive
+                rewardEl.textContent = this._formatSignedUsdPnl(reward);
+                rewardEl.style.color = reward >= 0 ? '#22c55e' : '#ef4444';
             }
         }
         
-        // Show risk only if SL is actually set (enabled AND different from entry)
+        // Show risk at SL price (signed P&L) when SL is set; sizing budget kept in `risk` for validation
         if (riskEl) {
             if (!hasValidSL) {
-                // No valid SL = unlimited risk (either disabled or same as entry)
                 riskEl.textContent = '∞';
-                riskEl.style.color = '#ef4444'; // Red for unlimited risk warning
-            } else if (risk <= 0) {
-                // SL set but calculated risk is 0
+                riskEl.style.color = '#ef4444';
+            } else if (!Number.isFinite(slDisplayPnl) || slDisplayPnl === 0) {
                 riskEl.textContent = '$0.00';
-                riskEl.style.color = '#9ca3af'; // Gray
+                riskEl.style.color = '#9ca3af';
             } else {
-                riskEl.textContent = `$${risk.toFixed(2)}`;
-                riskEl.style.color = '#ef4444'; // Red for risk
+                riskEl.textContent = this._formatSignedUsdPnl(slDisplayPnl);
+                riskEl.style.color = slDisplayPnl >= 0 ? '#22c55e' : '#ef4444';
             }
             const eqR = Number.parseFloat(this.equity);
-            if (hasValidSL && Number.isFinite(risk) && risk > 0 && Number.isFinite(eqR) && eqR > 0 && risk > eqR * 1.0001) {
-                riskEl.title = `Stop loss risk (~$${risk.toFixed(2)}) exceeds account equity ($${eqR.toFixed(2)}). Margin/leverage does not cap cash loss at stop — reduce contracts or tighten the stop.`;
+            const riskMag = Math.abs(Number.isFinite(risk) && risk > 0 ? risk : slDisplayPnl);
+            if (hasValidSL && Number.isFinite(riskMag) && riskMag > 0 && Number.isFinite(eqR) && eqR > 0 && riskMag > eqR * 1.0001) {
+                riskEl.title = `Stop loss risk (~$${riskMag.toFixed(2)}) exceeds account equity ($${eqR.toFixed(2)}). Margin/leverage does not cap cash loss at stop — reduce contracts or tighten the stop.`;
             } else if (riskEl) {
                 riskEl.removeAttribute('title');
             }
         }
         
-        // Show total (reward - risk)
+        // Show total (signed TP + signed SL outcomes when both set)
         if (totalEl) {
             if (!hasValidSL && !hasValidTP) {
-                // Neither set = undefined
                 totalEl.textContent = '--';
-                totalEl.style.color = '#9ca3af'; // Gray
+                totalEl.style.color = '#9ca3af';
             } else if (!hasValidSL) {
-                // No valid SL = can't calculate net (unlimited risk)
-                totalEl.textContent = '-∞';
-                totalEl.style.color = '#ef4444'; // Red for unlimited risk
-            } else if (!hasValidTP) {
-                // No valid TP = unlimited potential gain minus known risk
                 totalEl.textContent = '∞';
-                totalEl.style.color = '#22c55e'; // Green for unlimited potential
+                totalEl.style.color = '#22c55e';
+            } else if (!hasValidTP) {
+                totalEl.textContent = '-∞';
+                totalEl.style.color = '#ef4444';
             } else {
-                const total = reward - risk;
-                totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
+                const total = reward + slDisplayPnl;
+                totalEl.textContent = this._formatSignedUsdPnl(total);
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
             }
         }
@@ -14928,11 +14989,12 @@ class OrderManager {
             const balSync = (document.querySelector('input[name="balanceType"]:checked')?.value || 'current') === 'current'
                 ? this.balance
                 : this.initialBalance;
-            if (usdIn && modeTP === 'risk-usd' && hasValidTP && reward > 0 && Number.isFinite(reward)) {
-                usdIn.value = parseFloat(reward.toFixed(2));
+            const rewardMag = Math.abs(reward);
+            if (usdIn && modeTP === 'risk-usd' && hasValidTP && rewardMag > 0 && Number.isFinite(rewardMag)) {
+                usdIn.value = parseFloat(rewardMag.toFixed(2));
             }
-            if (pctIn && modeTP === 'risk-percent' && hasValidTP && balSync > 0 && reward > 0 && Number.isFinite(reward)) {
-                pctIn.value = parseFloat(((reward / balSync) * 100).toFixed(2));
+            if (pctIn && modeTP === 'risk-percent' && hasValidTP && balSync > 0 && rewardMag > 0 && Number.isFinite(rewardMag)) {
+                pctIn.value = parseFloat(((rewardMag / balSync) * 100).toFixed(2));
             }
         }
 
@@ -14959,8 +15021,12 @@ class OrderManager {
                 if (!this._syncingTpRRInput) tpRRInput.value = '';
             } else if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
                 tpDistanceDisplay.textContent = '—';
-                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
-                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
+                tpProfitDisplay.textContent = Number.isFinite(reward) && reward !== 0
+                    ? this._formatSignedUsdPnl(reward)
+                    : '$0.00';
+                const rrV = hasValidSL && Math.abs(slDisplayPnl) > 0 && Number.isFinite(reward)
+                    ? Math.abs(reward) / Math.abs(slDisplayPnl)
+                    : (hasValidSL && risk > 0 && Number.isFinite(reward) ? Math.abs(reward) / risk : 0);
                 if (!this._syncingTpRRInput) {
                     tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
                 }
@@ -14975,8 +15041,12 @@ class OrderManager {
                     distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
                 }
                 tpDistanceDisplay.textContent = distText;
-                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
-                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
+                tpProfitDisplay.textContent = Number.isFinite(reward) && reward !== 0
+                    ? this._formatSignedUsdPnl(reward)
+                    : '$0.00';
+                const rrV = hasValidSL && Math.abs(slDisplayPnl) > 0 && Number.isFinite(reward)
+                    ? Math.abs(reward) / Math.abs(slDisplayPnl)
+                    : (hasValidSL && risk > 0 && Number.isFinite(reward) ? Math.abs(reward) / risk : 0);
                 if (!this._syncingTpRRInput) {
                     tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
                 }
@@ -14991,16 +15061,22 @@ class OrderManager {
                 barRiskSeg.style.width = '50%';
                 barRewardSeg.style.width = '50%';
             } else {
-                const rp = risk > 0 ? (risk / balTP) * 100 : 0;
-                const rwp = reward > 0 && Number.isFinite(reward) ? (reward / balTP) * 100 : 0;
-                tpSummaryPctRisk.textContent = risk > 0 ? `-${rp.toFixed(2)}%` : '—';
-                tpSummaryPctReward.textContent = reward > 0 ? `+${rwp.toFixed(2)}%` : '—';
-                const ratio = hasValidSL && risk > 0 && reward > 0 ? reward / risk : 0;
+                const riskMag = Math.abs(Number.isFinite(risk) && risk > 0 ? risk : slDisplayPnl);
+                const rewardMag = Math.abs(reward);
+                const rp = riskMag > 0 ? (riskMag / balTP) * 100 : 0;
+                const rwp = rewardMag > 0 && Number.isFinite(rewardMag) ? (rewardMag / balTP) * 100 : 0;
+                tpSummaryPctRisk.textContent = riskMag > 0
+                    ? `${slDisplayPnl >= 0 ? '+' : '-'}${rp.toFixed(2)}%`
+                    : '—';
+                tpSummaryPctReward.textContent = rewardMag > 0
+                    ? `${reward >= 0 ? '+' : '-'}${rwp.toFixed(2)}%`
+                    : '—';
+                const ratio = riskMag > 0 && rewardMag > 0 ? rewardMag / riskMag : 0;
                 tpSummaryRRDisplay.textContent = ratio > 0 && Number.isFinite(ratio) ? `1 : ${ratio.toFixed(1)}` : '—';
-                const sumBR = risk + reward;
+                const sumBR = riskMag + rewardMag;
                 if (sumBR > 0 && Number.isFinite(sumBR)) {
-                    barRiskSeg.style.width = `${(risk / sumBR) * 100}%`;
-                    barRewardSeg.style.width = `${(reward / sumBR) * 100}%`;
+                    barRiskSeg.style.width = `${(riskMag / sumBR) * 100}%`;
+                    barRewardSeg.style.width = `${(rewardMag / sumBR) * 100}%`;
                 } else {
                     barRiskSeg.style.width = '50%';
                     barRewardSeg.style.width = '50%';
@@ -15036,9 +15112,11 @@ class OrderManager {
                 slPipsDisplay.textContent = distText;
                 slQuantityDisplay.textContent = `${this._formatQty(qtyForReward)} ${cfg.positionLabel}`;
                 if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
-                    const rOk = risk > 0 && Number.isFinite(risk);
-                    slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
-                    slRiskPctDisplay.textContent = this._riskUsdAsPercentValue(rOk ? risk : 0);
+                    const rOk = Number.isFinite(slDisplayPnl) && slDisplayPnl !== 0;
+                    slRiskUsdDisplay.textContent = rOk
+                        ? this._formatSignedUsdPnl(slDisplayPnl)
+                        : '$0.00';
+                    slRiskPctDisplay.textContent = this._riskUsdAsPercentValue(rOk ? Math.abs(slDisplayPnl) : 0);
                 } else if (slRiskUsdDisplay && slRiskPctDisplay) {
                     slRiskUsdDisplay.textContent = '—';
                     slRiskPctDisplay.textContent = '—';
@@ -19630,6 +19708,40 @@ class OrderManager {
     }
 
     /**
+     * Format signed USD P&L for chart labels and panel readouts (+ profit / − loss).
+     */
+    _formatSignedUsdPnl(pnl) {
+        if (!Number.isFinite(pnl)) return '$0.00';
+        const sign = pnl >= 0 ? '+' : '-';
+        return `${sign}$${Math.abs(pnl).toFixed(2)}`;
+    }
+
+    /**
+     * Signed gross P&L at a stop/limit level vs entry (respects multi-entry legs).
+     */
+    _computeSignedPnlAtLevel(entryPx, levelPrice, quantity) {
+        if (!(entryPx > 0) || !(levelPrice > 0) || !(quantity > 0)) return 0;
+        const side = this.orderSide || 'BUY';
+        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+            const ps = this.pipSize || 0.0001;
+            const pv = this.pipValuePerLot || 10;
+            const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
+            let total = 0;
+            for (const l of this.multiEntryLevels) {
+                if (!(l.price > 0)) continue;
+                if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
+                const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
+                if (lots > 0) {
+                    total += this.estimatePnLForPriceLevel(side, l.price, levelPrice, lots);
+                }
+            }
+            return total;
+        }
+        return this.estimatePnLForPriceLevel(side, entryPx, levelPrice, quantity);
+    }
+
+    /**
      * TP/SL distances, R:R, and $ profit on the order panel use weighted average entry when multi-entry is on.
      */
     _formatTpSlInfoText(label, price) {
@@ -19655,18 +19767,16 @@ class OrderManager {
                 totalPnl += this.estimatePnLForPriceLevel(side, level.price, price, lots);
             }
             if (totalLots <= 0) return fallback;
-            const absPnl = Math.abs(totalPnl);
-            const sign = label === 'SL' ? '-' : '+';
-            return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(totalLots)})`;
+            const sign = totalPnl >= 0 ? '+' : '-';
+            return `${sign}$${Math.abs(totalPnl).toFixed(2)}  (${this.formatQuantity(totalLots)})`;
         }
 
         // Single entry
         const entryPx = this._getReferenceEntryForOrderMath();
         if (!(entryPx > 0) || price === entryPx) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, qty);
-        const absPnl = Math.abs(pnl);
-        const sign = label === 'SL' ? '-' : '+';
-        return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(qty)})`;
+        const sign = pnl >= 0 ? '+' : '-';
+        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(qty)})`;
     }
 
     /**
@@ -22368,10 +22478,17 @@ class OrderManager {
         
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
+        const activeTicker = this._getActiveTicker();
+
+        const propSizeCheck = this._validatePropFirmPositionSize(quantity, activeTicker);
+        if (!propSizeCheck.ok) {
+            this.showNotification(propSizeCheck.message, 'error');
+            return;
+        }
+
         // `let` (not `const`) — tick-grid snap below re-assigns this value so all
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
-        const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         // Get TP/SL enabled status
@@ -22660,6 +22777,12 @@ class OrderManager {
                 }
                 totalLots += levelLots;
             });
+
+            const propSizeCheck = this._validatePropFirmPositionSize(totalLots, activeTicker);
+            if (!propSizeCheck.ok) {
+                this.showNotification(propSizeCheck.message, 'error');
+                return;
+            }
 
             const qtyStep = this._getQtyStep();
             const isWholeQtyInstrument = this.marketType === 'futures' || qtyStep >= 1;
@@ -25065,7 +25188,8 @@ class OrderManager {
             // Use the same OHLC the trader sees for this symbol. Background/cache bars can lag
             // behind intra-bar tick animation — then high/low never "touch" the order price.
             const onActiveChart = poTicker === activeT;
-            const touchCandle = onActiveChart && currentCandle ? currentCandle : bar;
+            const touchCandleRaw = onActiveChart && currentCandle ? currentCandle : bar;
+            const touchCandle = this._trimTouchCandleForReplayFill(touchCandleRaw);
 
             const high = Number.parseFloat(touchCandle.h);
             const low = Number.parseFloat(touchCandle.l);
@@ -25428,8 +25552,9 @@ class OrderManager {
             return;
         }
         const parentGuardCandle = this._getMultichartParentGuardCandle();
-        const currentCandle = parentGuardCandle || this.getCurrentCandle();
-        if (!currentCandle) return;
+        const currentCandleRaw = parentGuardCandle || this.getCurrentCandle();
+        if (!currentCandleRaw) return;
+        const currentCandle = this._trimTouchCandleForReplayFill(currentCandleRaw);
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = currentCandle.t;
         }
@@ -25444,6 +25569,9 @@ class OrderManager {
 
         // Keep preview order lines tracking the current price during replay
         this._syncPreviewToReplayPrice();
+
+        // Prop firm: close positions held over weekends when rule disallows it
+        this._enforcePropFirmWeekendHold(currentCandle);
         
         // If no open positions but have MFE/MAE tracking, still continue
         if (this.openPositions.length === 0) {
@@ -31283,10 +31411,12 @@ class OrderManager {
                     .attr('text-anchor', 'middle')
                     .attr('dy', '0.35em');
 
-                const pnlAccent = target.type === 'TP' ? '#089981' : target.type === 'SL' ? '#f23645' : '#fde68a';
-                const pnlBgFill = target.type === 'TP' ? 'rgba(8,153,129,0.15)' : target.type === 'SL' ? 'rgba(242,54,69,0.15)' : 'rgba(245,158,11,0.15)';
                 let pnlBoxW = 0;
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
+                const pnlSigned = hasPnl && target.pnlStr.startsWith('-');
+                const pnlPositive = hasPnl && !pnlSigned;
+                const pnlAccent = pnlPositive ? '#089981' : pnlSigned ? '#f23645' : (target.type === 'TP' ? '#089981' : target.type === 'SL' ? '#f23645' : '#fde68a');
+                const pnlBgFill = pnlPositive ? 'rgba(8,153,129,0.15)' : pnlSigned ? 'rgba(242,54,69,0.15)' : (target.type === 'TP' ? 'rgba(8,153,129,0.15)' : target.type === 'SL' ? 'rgba(242,54,69,0.15)' : 'rgba(245,158,11,0.15)');
                 if (hasPnl) {
                     const pnlText = labelGroup.append('text')
                         .attr('class', 'order-overlay-sublayer pending-target-label-pnl')

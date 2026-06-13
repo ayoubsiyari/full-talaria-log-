@@ -6017,8 +6017,16 @@ class ReplaySystem {
                     }
                 }
                 const omFollow = this._resolveOrderManagerForReplayGuards(initiator);
-                if (omFollow && typeof omFollow._refreshAllGuardsToCurrentCandle === 'function') {
-                    try { omFollow._refreshAllGuardsToCurrentCandle(); } catch (_gu) { /* ignore */ }
+                let followGuardTs = Number.isFinite(this.replayTimestamp) ? this.replayTimestamp : null;
+                if (!Number.isFinite(Number(followGuardTs)) && this.fullRawData && typeof this.currentIndex === 'number') {
+                    const fb = this.fullRawData[this.currentIndex];
+                    followGuardTs = fb != null && Number.isFinite(fb.t) ? fb.t : null;
+                }
+                if (omFollow && typeof omFollow._refreshAllGuardsToTimestamp === 'function'
+                    && Number.isFinite(Number(followGuardTs))) {
+                    try { omFollow._refreshAllGuardsToTimestamp(Number(followGuardTs), Infinity); } catch (_gu) { /* ignore */ }
+                } else if (omFollow && typeof omFollow._refreshAllGuardsToCurrentCandle === 'function') {
+                    try { omFollow._refreshAllGuardsToCurrentCandle(); } catch (_gu2) { /* ignore */ }
                 }
             } catch (e) {
                 console.warn('replay onTimeframeChange (follower panel):', e);
@@ -6065,8 +6073,10 @@ class ReplaySystem {
             const tRaw = rb != null ? Number(rb.t) : NaN;
             guardTs = Number.isFinite(tRaw) ? tRaw : null;
         }
+        // STRICT (Infinity): coarse TF resample must not fill pending orders / hit SL-TP on
+        // already-elapsed playhead wicks (full 1H high/low includes unreplayed minutes).
         if (omPre && typeof omPre._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
-            try { omPre._refreshAllGuardsToTimestamp(Number(guardTs), -1); } catch (_e) { /* ignore */ }
+            try { omPre._refreshAllGuardsToTimestamp(Number(guardTs), Infinity); } catch (_e) { /* ignore */ }
         } else if (omPre && typeof omPre._refreshAllGuardsToCurrentCandle === 'function') {
             try { omPre._refreshAllGuardsToCurrentCandle(); } catch (_e2) { /* ignore */ }
         }
@@ -6118,11 +6128,8 @@ class ReplaySystem {
             }));
 
             const omPost = this._resolveOrderManagerForReplayGuards(this.chart);
-            if (omPost && typeof omPost._refreshAllGuardsToCurrentCandle === 'function') {
-                try { omPost._refreshAllGuardsToCurrentCandle(); } catch (_e3) { /* ignore */ }
-            }
-            if (!wasPlaying && omPost && typeof omPost.updatePositions === 'function') {
-                try { omPost.updatePositions(); } catch (_e5) { /* ignore */ }
+            if (omPost && typeof omPost._refreshAllGuardsToTimestamp === 'function' && Number.isFinite(Number(guardTs))) {
+                try { omPost._refreshAllGuardsToTimestamp(Number(guardTs), Infinity); } catch (_e3) { /* ignore */ }
             }
         } catch (e) {
             console.warn('replay onTimeframeChange:', e);
@@ -6130,6 +6137,24 @@ class ReplaySystem {
             this._tfSwitchSkipHeavyIndicators = false;
             this._timeframeChanging = false;
             signalReady();
+        }
+
+        // Order checks during the try block are deferred while _timeframeChanging is set.
+        // Re-arm strict guards and run one fill pass after the lock lifts (paused replay).
+        if (!wasPlaying) {
+            const guardTsAfter = Number.isFinite(Number(guardTs)) ? Number(guardTs) : null;
+            const runPostTfOrderCheck = () => {
+                if (changeSeq !== this._tfChangeSeq) return;
+                const omAfter = this._resolveOrderManagerForReplayGuards(this.chart);
+                if (guardTsAfter != null && omAfter && typeof omAfter._refreshAllGuardsToTimestamp === 'function') {
+                    try { omAfter._refreshAllGuardsToTimestamp(guardTsAfter, Infinity); } catch (_g) { /* ignore */ }
+                }
+                if (omAfter && typeof omAfter.updatePositions === 'function') {
+                    try { omAfter.updatePositions(); } catch (_u) { /* ignore */ }
+                }
+            };
+            if (typeof queueMicrotask === 'function') queueMicrotask(runPostTfOrderCheck);
+            else setTimeout(runPostTfOrderCheck, 0);
         }
 
         // Defer play resume only — must not block TF unlock or overlay lift.
@@ -6282,6 +6307,9 @@ class ReplaySystem {
 
             mainChart.rawData = slicedRawData;
             mainChart.data = mainChart.resampleData(slicedRawData, mainChart.currentTimeframe);
+            if (typeof mainChart._trimLastDataBarToReplayPlayhead === 'function') {
+                mainChart._trimLastDataBarToReplayPlayhead();
+            }
             if (typeof mainChart.bumpDataVersion === 'function') mainChart.bumpDataVersion();
         } catch (e) {
             console.warn('replay: main chart resample in syncPanelCharts failed', e);
