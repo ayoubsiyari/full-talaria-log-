@@ -707,30 +707,57 @@ class OrderManager {
         return Math.max(0, (Number(ch?.w) || 0) - (Number(ch?.margin?.r) || 70));
     }
 
+    /** Pointer in chart layout px — same space as chart.js detectCursorMode / updateCrosshair. */
+    _pointerChartLocalXY(e, chart) {
+        const ch = chart || this.chart;
+        if (!ch) return null;
+        if (typeof ch._eventCanvasLocalXY === 'function') {
+            try {
+                const xy = ch._eventCanvasLocalXY(e);
+                if (Array.isArray(xy) && xy.length >= 2
+                    && Number.isFinite(xy[0]) && Number.isFinite(xy[1])) {
+                    return xy;
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        const source = (e?.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
+        const svg = ch.svg?.node?.();
+        if (!source || !svg) return null;
+        const clientX = source.clientX;
+        const clientY = source.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+        const rect = svg.getBoundingClientRect();
+        return [clientX - rect.left, clientY - rect.top];
+    }
+
     /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
     _eventInPriceAxisZone(e, chart) {
         if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
         const ch = chart || this.chart;
-        if (!ch?.svg?.node) return false;
-        const plotRight = this._orderPlotRightX(ch);
-        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
-        if (!Number.isFinite(clientX)) return false;
-        const rect = ch.svg.node().getBoundingClientRect();
-        return (clientX - rect.left) >= plotRight - 1;
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return mx > w - (Number(m.r) || 70)
+            && my > (Number(m.t) || 0)
+            && my < h - (Number(m.b) || 30);
     }
 
     /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
     _eventInTimeAxisZone(e, chart) {
         if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
         const ch = chart || this.chart;
-        if (!ch?.svg?.node) return false;
-        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
-        if (!Number.isFinite(clientY)) return false;
-        const rect = ch.svg.node().getBoundingClientRect();
-        const bottomMargin = Number(ch?.margin?.b) || 30;
-        const grabStrip = 10;
-        const stripTop = rect.top + rect.height - bottomMargin;
-        return clientY >= (stripTop + bottomMargin - grabStrip - 1);
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return my > h - (Number(m.b) || 30)
+            && mx > (Number(m.l) || 0)
+            && mx < w - (Number(m.r) || 70);
     }
 
     /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
@@ -760,10 +787,87 @@ class OrderManager {
     /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
     _orderLineHitEndX(chart, labelStartX = null) {
         const plotRight = this._orderPlotRightX(chart);
+        const safePlotRight = Math.max(0, plotRight - 2);
         if (Number.isFinite(labelStartX) && labelStartX > 0) {
-            return Math.min(plotRight, labelStartX);
+            return Math.min(safePlotRight, labelStartX);
         }
-        return plotRight;
+        return safePlotRight;
+    }
+
+    /**
+     * Transparent rect over the price margin — sits above order hit targets so axis
+     * clicks (incl. y-axis price pills) scale the chart instead of dragging levels.
+     */
+    _ensureOrderPriceMarginShield(chart) {
+        const ch = chart || this.chart;
+        if (!ch?.svg) return;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        const plotRight = this._orderPlotRightX(ch);
+        const plotTop = Number(m.t) || 0;
+        const plotBot = h - (Number(m.b) || 30);
+        const shieldW = Math.max(0, w - plotRight);
+        const shieldH = Math.max(0, plotBot - plotTop);
+        if (shieldW <= 0 || shieldH <= 0) return;
+
+        let shield = ch.svg.select('rect.order-price-margin-shield');
+        if (shield.empty()) {
+            const self = this;
+            shield = ch.svg.append('rect')
+                .attr('class', 'order-price-margin-shield')
+                .attr('fill', 'transparent')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .on('mousedown.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    const targetChart = ch;
+                    if (self._eventInPriceAxisZone(ev, targetChart)) {
+                        const canvas = targetChart.canvas;
+                        if (canvas) {
+                            canvas.dispatchEvent(new MouseEvent('mousedown', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: ev.clientX,
+                                clientY: ev.clientY,
+                                button: ev.button,
+                                buttons: ev.buttons,
+                                shiftKey: ev.shiftKey,
+                                ctrlKey: ev.ctrlKey,
+                                altKey: ev.altKey,
+                                metaKey: ev.metaKey
+                            }));
+                        }
+                    }
+                })
+                .on('wheel.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    const canvas = ch.canvas;
+                    if (canvas) {
+                        canvas.dispatchEvent(new WheelEvent('wheel', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: ev.clientX,
+                            clientY: ev.clientY,
+                            deltaY: ev.deltaY,
+                            deltaX: ev.deltaX,
+                            shiftKey: ev.shiftKey,
+                            ctrlKey: ev.ctrlKey,
+                            altKey: ev.altKey
+                        }));
+                    }
+                });
+        }
+
+        shield
+            .attr('x', plotRight)
+            .attr('y', plotTop)
+            .attr('width', shieldW)
+            .attr('height', shieldH);
+
+        try {
+            if (typeof shield.raise === 'function') shield.raise();
+        } catch (_e) { /* ignore */ }
     }
 
     /**
@@ -16783,7 +16887,11 @@ class OrderManager {
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
 
-        const plotRight = this._orderPlotRightX(pc);
+        const syncPreviewHitWidth = (ld) => {
+            if (!ld?.hitLine || ld.isBadge) return;
+            const labelX = this._previewLineLabelStartX(ld, pc);
+            ld.hitLine.attr('x2', this._orderLineHitEndX(pc, labelX));
+        };
         
         // Update entry line position
         if (this.previewLines.entry) {
@@ -16799,9 +16907,9 @@ class OrderManager {
             if (this.previewLines.entry.hitLine) {
                 this.previewLines.entry.hitLine
                     .attr('y1', entryY)
-                    .attr('y2', entryY)
-                    .attr('x2', plotRight);
+                    .attr('y2', entryY);
             }
+            syncPreviewHitWidth(this.previewLines.entry);
 
             updateLabelY(this.previewLines.entry, entryY);
             updateYAxisHighlight(this.previewLines.entry, entryY);
@@ -16821,9 +16929,9 @@ class OrderManager {
             if (this.previewLines.tp.hitLine) {
                 this.previewLines.tp.hitLine
                     .attr('y1', tpY)
-                    .attr('y2', tpY)
-                    .attr('x2', plotRight);
+                    .attr('y2', tpY);
             }
+            syncPreviewHitWidth(this.previewLines.tp);
 
             updateLabelY(this.previewLines.tp, tpY);
             updateYAxisHighlight(this.previewLines.tp, tpY);
@@ -16843,9 +16951,9 @@ class OrderManager {
             if (this.previewLines.sl.hitLine) {
                 this.previewLines.sl.hitLine
                     .attr('y1', slY)
-                    .attr('y2', slY)
-                    .attr('x2', plotRight);
+                    .attr('y2', slY);
             }
+            syncPreviewHitWidth(this.previewLines.sl);
 
             updateLabelY(this.previewLines.sl, slY);
             updateYAxisHighlight(this.previewLines.sl, slY);
@@ -16881,9 +16989,9 @@ class OrderManager {
                     if (tpLine.hitLine) {
                         tpLine.hitLine
                             .attr('y1', tpY)
-                            .attr('y2', tpY)
-                            .attr('x2', plotRight);
+                            .attr('y2', tpY);
                     }
+                    syncPreviewHitWidth(tpLine);
 
                     updateLabelY(tpLine, tpY);
                     updateYAxisHighlight(tpLine, tpY);
@@ -16905,9 +17013,9 @@ class OrderManager {
             if (this.previewLines.be.hitLine) {
                 this.previewLines.be.hitLine
                     .attr('y1', beY)
-                    .attr('y2', beY)
-                    .attr('x2', plotRight);
+                    .attr('y2', beY);
             }
+            syncPreviewHitWidth(this.previewLines.be);
 
             updateLabelY(this.previewLines.be, beY);
             updateYAxisHighlight(this.previewLines.be, beY);
@@ -16928,9 +17036,9 @@ class OrderManager {
                     if (splitLine.hitLine) {
                         splitLine.hitLine
                             .attr('y1', splitY)
-                            .attr('y2', splitY)
-                            .attr('x2', plotRight);
+                            .attr('y2', splitY);
                     }
+                    syncPreviewHitWidth(splitLine);
 
                     updateLabelY(splitLine, splitY);
                     updateYAxisHighlight(splitLine, splitY);
@@ -16950,9 +17058,9 @@ class OrderManager {
             if (this.previewLines.avgEntry.hitLine) {
                 this.previewLines.avgEntry.hitLine
                     .attr('y1', avgY)
-                    .attr('y2', avgY)
-                    .attr('x2', plotRight);
+                    .attr('y2', avgY);
             }
+            syncPreviewHitWidth(this.previewLines.avgEntry);
             updateLabelY(this.previewLines.avgEntry, avgY);
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
         }
@@ -16981,6 +17089,7 @@ class OrderManager {
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
+        this._ensureOrderPriceMarginShield(pc);
     }
 
     updatePreviewLines() {
@@ -17411,7 +17520,6 @@ class OrderManager {
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
         const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
-        const plotRight = this._orderPlotRightX(chart);
 
         const line = chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
@@ -17429,7 +17537,7 @@ class OrderManager {
         const hitLine = chart.svg.append('line')
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
-            .attr('x2', isDraggable ? plotRight : chart.w)
+            .attr('x2', isDraggable ? this._orderLineHitEndX(chart, null) : chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -17488,6 +17596,7 @@ class OrderManager {
             this.makePreviewLineDraggable(lineData);
         }
 
+        this._ensureOrderPriceMarginShield(chart);
         return lineData;
     }
 
@@ -17599,6 +17708,7 @@ class OrderManager {
             .filter((event) => {
                 const ch = lineData._previewChart || self._getPreviewChart();
                 if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 const t = event.sourceEvent && event.sourceEvent.target;
                 if (t && typeof t.closest === 'function') {
                     if (t.closest('.preview-tp-sl-close-btn')) return false;
@@ -19993,7 +20103,7 @@ class OrderManager {
             ld.line.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.hitLine) {
-            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderPlotRightX(ch));
+            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderLineHitEndX(ch, this._previewLineLabelStartX(ld, ch)));
         }
         if (ld.priceText) {
             const totalLots = this._calcMultiEntryTotalLots();
@@ -22337,9 +22447,8 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // End at label edge by default; preview TP/SL extends visually to axis but hit area stays in plot.
+        // Visual line may extend toward the axis; hit target stops at the label column / plot edge.
         let lineEndX = Math.max(0, x);
-        const plotRight = this._orderPlotRightX(ch);
         const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
         const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
         const isEntryTpSl = lineData.label === 'SL'
@@ -22355,9 +22464,7 @@ class OrderManager {
             .attr('x1', 0)
             .attr('x2', lineEndX);
         if (lineData.hitLine) {
-            const hitEndX = isPreviewOrder && (isEntryTpSl || isBePreview)
-                ? plotRight
-                : Math.min(lineEndX, plotRight);
+            const hitEndX = this._orderLineHitEndX(ch, x);
             lineData.hitLine
                 .attr('x1', 0)
                 .attr('x2', hitEndX);
@@ -27713,6 +27820,7 @@ class OrderManager {
                 return;
             }
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             
             e.preventDefault();
             e.stopPropagation();
@@ -28155,6 +28263,7 @@ class OrderManager {
         
         const onMouseDown = function(e) {
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             
@@ -30896,6 +31005,7 @@ class OrderManager {
         const drag = d3.drag()
             .filter((event) => {
                 if (self._eventInPriceAxisZone(event, chart)) return false;
+                if (self._eventInTimeAxisZone(event, chart)) return false;
                 return !event.button;
             })
             .on('start', function() {
@@ -31156,10 +31266,8 @@ class OrderManager {
             chart.renderPending = true;
             chart.render();
         }
+        this._ensureOrderPriceMarginShield(chart);
     }
-
-    /**
-     * Rebuild pending entry + SL/TP/BE SVG on `chart` after multichart mirror
      * (`addOrder` / `syncPendingOrder`). `registerPendingOrder` only mutates
      * arrays + emits — it does not call drawPendingOrderLine, so peers would
      * otherwise miss full horizontal lines (only stray axis hints).
@@ -36475,6 +36583,7 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        this._ensureOrderPriceMarginShield(ch);
     }
 
     /**

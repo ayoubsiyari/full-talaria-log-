@@ -707,30 +707,57 @@ class OrderManager {
         return Math.max(0, (Number(ch?.w) || 0) - (Number(ch?.margin?.r) || 70));
     }
 
+    /** Pointer in chart layout px — same space as chart.js detectCursorMode / updateCrosshair. */
+    _pointerChartLocalXY(e, chart) {
+        const ch = chart || this.chart;
+        if (!ch) return null;
+        if (typeof ch._eventCanvasLocalXY === 'function') {
+            try {
+                const xy = ch._eventCanvasLocalXY(e);
+                if (Array.isArray(xy) && xy.length >= 2
+                    && Number.isFinite(xy[0]) && Number.isFinite(xy[1])) {
+                    return xy;
+                }
+            } catch (_e) { /* ignore */ }
+        }
+        const source = (e?.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
+        const svg = ch.svg?.node?.();
+        if (!source || !svg) return null;
+        const clientX = source.clientX;
+        const clientY = source.clientY;
+        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+        const rect = svg.getBoundingClientRect();
+        return [clientX - rect.left, clientY - rect.top];
+    }
+
     /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
     _eventInPriceAxisZone(e, chart) {
         if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
         const ch = chart || this.chart;
-        if (!ch?.svg?.node) return false;
-        const plotRight = this._orderPlotRightX(ch);
-        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
-        if (!Number.isFinite(clientX)) return false;
-        const rect = ch.svg.node().getBoundingClientRect();
-        return (clientX - rect.left) >= plotRight - 1;
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return mx > w - (Number(m.r) || 70)
+            && my > (Number(m.t) || 0)
+            && my < h - (Number(m.b) || 30);
     }
 
     /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
     _eventInTimeAxisZone(e, chart) {
         if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
         const ch = chart || this.chart;
-        if (!ch?.svg?.node) return false;
-        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
-        if (!Number.isFinite(clientY)) return false;
-        const rect = ch.svg.node().getBoundingClientRect();
-        const bottomMargin = Number(ch?.margin?.b) || 30;
-        const grabStrip = 10;
-        const stripTop = rect.top + rect.height - bottomMargin;
-        return clientY >= (stripTop + bottomMargin - grabStrip - 1);
+        const xy = this._pointerChartLocalXY(e, ch);
+        if (!xy) return false;
+        const [mx, my] = xy;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        return my > h - (Number(m.b) || 30)
+            && mx > (Number(m.l) || 0)
+            && mx < w - (Number(m.r) || 70);
     }
 
     /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
@@ -760,10 +787,87 @@ class OrderManager {
     /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
     _orderLineHitEndX(chart, labelStartX = null) {
         const plotRight = this._orderPlotRightX(chart);
+        const safePlotRight = Math.max(0, plotRight - 2);
         if (Number.isFinite(labelStartX) && labelStartX > 0) {
-            return Math.min(plotRight, labelStartX);
+            return Math.min(safePlotRight, labelStartX);
         }
-        return plotRight;
+        return safePlotRight;
+    }
+
+    /**
+     * Transparent rect over the price margin — sits above order hit targets so axis
+     * clicks (incl. y-axis price pills) scale the chart instead of dragging levels.
+     */
+    _ensureOrderPriceMarginShield(chart) {
+        const ch = chart || this.chart;
+        if (!ch?.svg) return;
+        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const w = Number(ch.w) || 0;
+        const h = Number(ch.h) || 0;
+        const plotRight = this._orderPlotRightX(ch);
+        const plotTop = Number(m.t) || 0;
+        const plotBot = h - (Number(m.b) || 30);
+        const shieldW = Math.max(0, w - plotRight);
+        const shieldH = Math.max(0, plotBot - plotTop);
+        if (shieldW <= 0 || shieldH <= 0) return;
+
+        let shield = ch.svg.select('rect.order-price-margin-shield');
+        if (shield.empty()) {
+            const self = this;
+            shield = ch.svg.append('rect')
+                .attr('class', 'order-price-margin-shield')
+                .attr('fill', 'transparent')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
+                .on('mousedown.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    const targetChart = ch;
+                    if (self._eventInPriceAxisZone(ev, targetChart)) {
+                        const canvas = targetChart.canvas;
+                        if (canvas) {
+                            canvas.dispatchEvent(new MouseEvent('mousedown', {
+                                bubbles: true,
+                                cancelable: true,
+                                clientX: ev.clientX,
+                                clientY: ev.clientY,
+                                button: ev.button,
+                                buttons: ev.buttons,
+                                shiftKey: ev.shiftKey,
+                                ctrlKey: ev.ctrlKey,
+                                altKey: ev.altKey,
+                                metaKey: ev.metaKey
+                            }));
+                        }
+                    }
+                })
+                .on('wheel.priceShield', function (ev) {
+                    ev.stopPropagation();
+                    const canvas = ch.canvas;
+                    if (canvas) {
+                        canvas.dispatchEvent(new WheelEvent('wheel', {
+                            bubbles: true,
+                            cancelable: true,
+                            clientX: ev.clientX,
+                            clientY: ev.clientY,
+                            deltaY: ev.deltaY,
+                            deltaX: ev.deltaX,
+                            shiftKey: ev.shiftKey,
+                            ctrlKey: ev.ctrlKey,
+                            altKey: ev.altKey
+                        }));
+                    }
+                });
+        }
+
+        shield
+            .attr('x', plotRight)
+            .attr('y', plotTop)
+            .attr('width', shieldW)
+            .attr('height', shieldH);
+
+        try {
+            if (typeof shield.raise === 'function') shield.raise();
+        } catch (_e) { /* ignore */ }
     }
 
     /**
@@ -16985,6 +17089,7 @@ class OrderManager {
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
+        this._ensureOrderPriceMarginShield(pc);
     }
 
     updatePreviewLines() {
@@ -17491,6 +17596,7 @@ class OrderManager {
             this.makePreviewLineDraggable(lineData);
         }
 
+        this._ensureOrderPriceMarginShield(chart);
         return lineData;
     }
 
@@ -27714,6 +27820,7 @@ class OrderManager {
                 return;
             }
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             
             e.preventDefault();
             e.stopPropagation();
@@ -28156,6 +28263,7 @@ class OrderManager {
         
         const onMouseDown = function(e) {
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             
@@ -28359,6 +28467,7 @@ class OrderManager {
             if (e.target.closest('.pending-order-close-btn')) return;
             if (e.target.closest('.pending-entry-plus-badge')) return;
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -28573,6 +28682,7 @@ class OrderManager {
         const onMouseDown = (e) => {
             if (e.target.closest('.order-close-btn')) return;
             if (self._eventInPriceAxisZone(e, ctx)) return;
+            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -30897,6 +31007,7 @@ class OrderManager {
         const drag = d3.drag()
             .filter((event) => {
                 if (self._eventInPriceAxisZone(event, chart)) return false;
+                if (self._eventInTimeAxisZone(event, chart)) return false;
                 return !event.button;
             })
             .on('start', function() {
@@ -31157,10 +31268,8 @@ class OrderManager {
             chart.renderPending = true;
             chart.render();
         }
+        this._ensureOrderPriceMarginShield(chart);
     }
-
-    /**
-     * Rebuild pending entry + SL/TP/BE SVG on `chart` after multichart mirror
      * (`addOrder` / `syncPendingOrder`). `registerPendingOrder` only mutates
      * arrays + emits — it does not call drawPendingOrderLine, so peers would
      * otherwise miss full horizontal lines (only stray axis hints).
@@ -31849,6 +31958,7 @@ class OrderManager {
         const drag = d3.drag()
             .filter((event) => {
                 if (self._eventInPriceAxisZone(event, ch)) return false;
+                if (self._eventInTimeAxisZone(event, ch)) return false;
                 return !event.button;
             })
             .on('start', function() {
@@ -36476,6 +36586,7 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        this._ensureOrderPriceMarginShield(ch);
     }
 
     /**
