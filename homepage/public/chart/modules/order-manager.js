@@ -24050,6 +24050,7 @@ class OrderManager {
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
         this.closedPositions.push(position);
+        this._syncOrderServiceOpenAfterClose(orderId);
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
         if (this.orderService && typeof this.orderService.emit === 'function') {
@@ -24242,7 +24243,7 @@ class OrderManager {
         if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
             this.removeSplitGroupAvgLine(position.splitGroupId);
         }
-        this._cleanupOrphanedYAxisHighlights();
+        this._cleanupOrderVisualsAfterClose(orderId);
 
         // Promote remaining open siblings to standalone so SL/TP draw correctly
         if (position.splitGroupId && position.isSplitEntry) {
@@ -25845,6 +25846,10 @@ class OrderManager {
             }
         });
         
+        if (positionsToClose.length > 0) {
+            this._finalizeOrderVisualsAfterBatchClose();
+        }
+        
         // Continue tracking MFE/MAE for closed positions
         this.updateMfeMaeTracking(currentCandle, high, low);
         
@@ -26304,6 +26309,7 @@ class OrderManager {
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
             this.closedPositions.push(position);
+            this._syncOrderServiceOpenAfterClose(orderId);
 
             if (this.orderService && typeof this.orderService.emit === 'function') {
                 try {
@@ -33382,19 +33388,15 @@ class OrderManager {
     }
 
     _refreshOrderConnectorsAfterVisualRemoval() {
-        try {
-            if (typeof this._purgeOrderConnectorsFromAllSurfaces === 'function') {
-                this._purgeOrderConnectorsFromAllSurfaces();
-            }
-            const charts = typeof this._collectLayoutCharts === 'function'
-                ? this._collectLayoutCharts()
-                : [this.chart];
-            (charts || []).forEach((c) => {
-                if (c && typeof this._drawExecutedOrderConnectors === 'function') {
-                    this._drawExecutedOrderConnectors(c);
-                }
-            });
-        } catch (_) { /* ignore */ }
+        this._scheduleOrderConnectorRefreshAfterClose();
+    }
+
+    /** Keep orderService.openPositions in sync so connector redraw does not resurrect closed trades. */
+    _syncOrderServiceOpenAfterClose(orderId) {
+        if (orderId == null || !this.orderService?.openPositions) return;
+        this.orderService.openPositions = this.orderService.openPositions.filter(
+            (p) => p && p.id !== orderId
+        );
     }
 
     /** Sweep DOM orphans (−/+/× badges, connector stubs) after TP/SL hit or line removal. */
@@ -33418,6 +33420,9 @@ class OrderManager {
             svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
             svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
             svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`.order-${oid}`).remove();
+            svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
+            svg.selectAll(`[class*="multi-tp-avg-"][class*="-${oid}"]`).remove();
         };
         const charts = typeof this._collectLayoutCharts === 'function'
             ? this._collectLayoutCharts()
@@ -33438,21 +33443,67 @@ class OrderManager {
     }
 
     _cleanupOrderVisualsAfterClose(orderId) {
+        this._syncOrderServiceOpenAfterClose(orderId);
         this._sweepOrphanedOrderLevelDom(orderId);
-        if (typeof this._purgeOrderConnectorsFromAllSurfaces === 'function') {
-            this._purgeOrderConnectorsFromAllSurfaces();
-        }
-        const charts = typeof this._collectLayoutCharts === 'function'
-            ? this._collectLayoutCharts()
-            : [this.chart];
-        (charts || []).forEach((c) => {
-            if (c?.scales?.yScale && typeof this._drawExecutedOrderConnectors === 'function') {
-                this._drawExecutedOrderConnectors(c);
-            }
-        });
+        this._purgeOrderConnectorsForOrder(orderId);
+        this._purgeOrderConnectorsFromAllSurfaces();
+        this._scheduleOrderConnectorRefreshAfterClose();
         if (typeof this._cleanupOrphanedYAxisHighlights === 'function') {
             this._cleanupOrphanedYAxisHighlights();
         }
+    }
+
+    /** After TP/SL batch or single close: purge connector stubs, then redraw only for remaining orders. */
+    _finalizeOrderVisualsAfterBatchClose() {
+        this._purgeOrderConnectorsFromAllSurfaces();
+        this._scheduleOrderConnectorRefreshAfterClose();
+        if (typeof this._cleanupOrphanedYAxisHighlights === 'function') {
+            this._cleanupOrphanedYAxisHighlights();
+        }
+    }
+
+    _scheduleOrderConnectorRefreshAfterClose() {
+        if (typeof requestAnimationFrame !== 'function') {
+            try {
+                this._purgeOrderConnectorsFromAllSurfaces();
+                const charts = typeof this._collectLayoutCharts === 'function'
+                    ? this._collectLayoutCharts()
+                    : [this.chart];
+                (charts || []).forEach((c) => {
+                    if (c?.scales?.yScale && typeof this._drawExecutedOrderConnectors === 'function') {
+                        this._drawExecutedOrderConnectors(c);
+                    }
+                });
+            } catch (_) { /* ignore */ }
+            return;
+        }
+        if (this._orderConnectorCloseRefreshRaf) {
+            cancelAnimationFrame(this._orderConnectorCloseRefreshRaf);
+        }
+        const redrawConnectors = () => {
+            try {
+                this._purgeOrderConnectorsFromAllSurfaces();
+                const charts = typeof this._collectLayoutCharts === 'function'
+                    ? this._collectLayoutCharts()
+                    : [this.chart];
+                (charts || []).forEach((c) => {
+                    if (c?.scales?.yScale && typeof this._drawExecutedOrderConnectors === 'function') {
+                        this._drawExecutedOrderConnectors(c);
+                    }
+                });
+            } catch (_) { /* ignore */ }
+        };
+        this._orderConnectorCloseRefreshRaf = requestAnimationFrame(() => {
+            this._orderConnectorCloseRefreshRaf = null;
+            try {
+                this._purgeOrderConnectorsFromAllSurfaces();
+            } catch (_) { /* ignore */ }
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(redrawConnectors);
+            } else {
+                redrawConnectors();
+            }
+        });
     }
 
     _invalidateOrderLineBadgeCache(orderId) {
@@ -33550,6 +33601,7 @@ class OrderManager {
         
         if (orderLinesToRemove.length === 0) {
             console.log(`⚠️ No order line found for orderId #${orderId}`);
+            this._purgeOrderConnectorsFromAllSurfaces();
             return;
         }
         
@@ -36137,35 +36189,172 @@ class OrderManager {
         return ch.w - yAxisWidth - 6;
     }
 
-    _purgeOrderConnectorsFromSvg(svg) {
+    _purgeOrderConnectorsForOrder(orderId) {
+        if (orderId == null || typeof document === 'undefined') return;
+        const oid = String(orderId);
+        const closedIds = new Set([oid]);
+        const seen = new Set();
+        const purge = (svg, ch) => {
+            if (!svg?.selectAll) return;
+            const node = svg.node?.();
+            if (node) {
+                if (seen.has(node)) return;
+                seen.add(node);
+            }
+            svg.selectAll(`.exec-order-connector[data-order-id="${oid}"]`).remove();
+            this._purgeClosedOrderConnectorGroups(svg, closedIds);
+            this._purgeDetachedConnectorGraphics(svg, ch);
+            this._purgeOrphanVerticalConnectorLines(svg, ch);
+        };
+        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg, c));
+        purge(this.chart?.svg, this.chart);
+        if (typeof d3 !== 'undefined') {
+            const dw = document.getElementById('drawingSvg');
+            if (dw && !seen.has(dw)) purge(d3.select(dw), this.chart);
+            document.querySelectorAll('#panels-container svg').forEach((el) => {
+                if (!el || seen.has(el)) return;
+                seen.add(el);
+                purge(d3.select(el), null);
+            });
+        }
+    }
+
+    _purgeClosedOrderConnectorGroups(svg, closedIds) {
+        if (!svg?.selectAll || !closedIds?.size) return;
+        svg.selectAll('.exec-order-connector').each(function () {
+            const el = this;
+            const oid = el?.getAttribute?.('data-order-id');
+            if (oid != null && closedIds.has(String(oid))) {
+                try { el.remove(); } catch (_) { /* ignore */ }
+            }
+        });
+    }
+
+    _isConnectorStrokeColor(stroke) {
+        const s = String(stroke || '').toLowerCase().replace(/\s+/g, '');
+        if (!s) return false;
+        const known = new Set(['#26a69a', '#f23645', '#2962ff', '#ef4444', '#22c55e', '#eab308', '#089981', '#ca8a04']);
+        if (known.has(s)) return true;
+        if (s.startsWith('rgb(41,98,255)') || s.startsWith('rgba(41,98,255')) return true;
+        if (s.startsWith('rgb(242,54,69)') || s.startsWith('rgba(242,54,69')) return true;
+        if (s.startsWith('rgb(38,166,154)') || s.startsWith('rgba(38,166,154')) return true;
+        return false;
+    }
+
+    /** Detached vertical stubs at the connector anchor (lost parent group after close). */
+    _purgeDetachedConnectorGraphics(svg, ch) {
+        if (!svg?.selectAll) return;
+        const connX = ch ? this._orderConnectorAnchorX(ch) : null;
+        const w = Number(ch?.w) || 0;
+        const marginR = ch?.margin?.r || 70;
+        const minX = w > 0 ? Math.max(0, w - marginR - 36) : 0;
+        const anchorTol = 12;
+        const nearAnchor = (x) => {
+            if (!Number.isFinite(x)) return false;
+            if (Number.isFinite(connX) && Math.abs(x - connX) <= anchorTol) return true;
+            return minX > 0 && x >= minX;
+        };
+        const isConnectorHost = (node) => {
+            if (!node?.getAttribute) return false;
+            const cls = node.getAttribute('class') || '';
+            return cls.includes('exec-order-connector')
+                || cls.includes('preview-pending-connector')
+                || cls.includes('split-avg-connector');
+        };
+        svg.selectAll('line').each(function () {
+            const el = this;
+            if (!el?.getAttribute || isConnectorHost(el.parentNode)) return;
+            const cls = el.getAttribute('class') || '';
+            if (cls.includes('order-line') || cls.includes('tp-line') || cls.includes('sl-line')
+                || cls.includes('be-line') || cls.includes('pending-') || cls.includes('trade-connector')) return;
+            const x1 = parseFloat(el.getAttribute('x1'));
+            const x2 = parseFloat(el.getAttribute('x2'));
+            if (!Number.isFinite(x1) || !Number.isFinite(x2) || Math.abs(x1 - x2) > 0.5) return;
+            if (!nearAnchor(x1)) return;
+            const stroke = el.getAttribute('stroke') || '';
+            if (!this._isConnectorStrokeColor(stroke)) return;
+            try { el.remove(); } catch (_) { /* ignore */ }
+        }.bind(this));
+        const dotFills = new Set(['#26a69a', '#f23645', '#2962ff', '#eab308', '#089981']);
+        svg.selectAll('circle').each(function () {
+            const el = this;
+            if (!el?.getAttribute || isConnectorHost(el.parentNode)) return;
+            const cls = el.getAttribute('class') || '';
+            if (cls.includes('order-') || cls.includes('pending-')) return;
+            const cx = parseFloat(el.getAttribute('cx'));
+            if (!nearAnchor(cx)) return;
+            const fill = String(el.getAttribute('fill') || '').toLowerCase();
+            if (!dotFills.has(fill) && !this._isConnectorStrokeColor(fill)) return;
+            const r = parseFloat(el.getAttribute('r') || '3');
+            if (!Number.isFinite(r) || r > 4) return;
+            try { el.remove(); } catch (_) { /* ignore */ }
+        }.bind(this));
+    }
+
+    _purgeOrderConnectorsFromSvg(svg, ch) {
         if (!svg || typeof svg.selectAll !== 'function') return;
+        const closedIds = new Set((this.closedPositions || []).map((p) => p?.id).filter((id) => id != null).map(String));
+        this._purgeClosedOrderConnectorGroups(svg, closedIds);
         svg.selectAll('.exec-order-connector').remove();
         svg.selectAll('.preview-pending-connector').remove();
         svg.selectAll('.preview-pending-connector-dot').remove();
         svg.selectAll('[class*="split-avg-connector"]').remove();
+        this._purgeDetachedConnectorGraphics(svg, ch);
+        this._purgeOrphanVerticalConnectorLines(svg, ch);
+    }
+
+    /** Remove detached vertical TP/SL/entry connector stubs (x1≈x2 near y-axis anchor). */
+    _purgeOrphanVerticalConnectorLines(svg, ch) {
+        if (!svg?.selectAll) return;
+        const w = Number(ch?.w) || 0;
+        const marginR = ch?.margin?.r || 70;
+        const minX = w > 0 ? Math.max(0, w - marginR - 36) : 0;
+        const connX = ch ? this._orderConnectorAnchorX(ch) : null;
+        const anchorTol = 12;
+        svg.selectAll('line').each(function () {
+            const el = this;
+            if (!el?.getAttribute) return;
+            const cls = el.getAttribute('class') || '';
+            if (cls.includes('order-line') || cls.includes('tp-line') || cls.includes('sl-line')
+                || cls.includes('be-line') || cls.includes('pending-') || cls.includes('trade-connector')) return;
+            const x1 = parseFloat(el.getAttribute('x1'));
+            const x2 = parseFloat(el.getAttribute('x2'));
+            if (!Number.isFinite(x1) || !Number.isFinite(x2) || Math.abs(x1 - x2) > 0.5) return;
+            const nearAnchor = (Number.isFinite(connX) && Math.abs(x1 - connX) <= anchorTol)
+                || (minX > 0 && x1 >= minX)
+                || minX === 0;
+            if (!nearAnchor) return;
+            const stroke = el.getAttribute('stroke') || '';
+            if (!this._isConnectorStrokeColor(stroke)) return;
+            const sw = parseFloat(el.getAttribute('stroke-width') || '1');
+            if (sw > 3) return;
+            try { el.remove(); } catch (_) { /* ignore */ }
+        }.bind(this));
     }
 
     _purgeOrderConnectorsFromAllSurfaces() {
         const seen = new Set();
-        const purge = (svg) => {
+        const purge = (svg, ch) => {
             const node = svg?.node?.();
             if (node) {
                 if (seen.has(node)) return;
                 seen.add(node);
             }
-            this._purgeOrderConnectorsFromSvg(svg);
+            this._purgeOrderConnectorsFromSvg(svg, ch);
         };
-        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg));
-        purge(this.chart?.svg);
+        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg, c));
+        purge(this.chart?.svg, this.chart);
         if (typeof document !== 'undefined' && typeof d3 !== 'undefined') {
             const roots = [];
             const dw = document.getElementById('drawingSvg');
-            if (dw) roots.push(dw);
-            document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
-            roots.forEach((el) => {
+            if (dw) roots.push({ el: dw, ch: this.chart });
+            document.querySelectorAll('#panels-container svg').forEach((el) => {
+                roots.push({ el, ch: null });
+            });
+            roots.forEach(({ el, ch }) => {
                 if (!el || seen.has(el)) return;
                 seen.add(el);
-                purge(d3.select(el));
+                purge(d3.select(el), ch);
             });
         }
         (this.splitGroupAvgLines || []).forEach((g) => {
@@ -36211,15 +36400,14 @@ class OrderManager {
 
     _drawExecutedOrderConnectors(ch) {
         if (!ch?.svg) return;
-        this._purgeOrderConnectorsFromSvg(ch.svg);
+        this._purgeOrderConnectorsFromSvg(ch.svg, ch);
         if (!ch?.scales?.yScale) return;
         const yScale = ch.scales.yScale;
         const connX = this._orderConnectorAnchorX(ch);
+        const closedIds = new Set((this.closedPositions || []).map((p) => p?.id).filter((id) => id != null).map(String));
+        const managerOpenIds = new Set((this.openPositions || []).map((p) => p?.id).filter((id) => id != null));
 
-        const openPositions = [
-            ...(this.openPositions || []),
-            ...(this.orderService?.openPositions || []),
-        ];
+        const openPositions = [...(this.openPositions || [])];
         const seenOpenIds = new Set();
         const pendingOrders = [
             ...(this.pendingOrders || []),
@@ -36229,7 +36417,8 @@ class OrderManager {
 
         for (const pos of openPositions) {
             if (!pos || seenOpenIds.has(pos.id)) continue;
-            if (pos.status === 'CLOSED') continue;
+            if (pos.status === 'CLOSED' || closedIds.has(String(pos.id))) continue;
+            if (!managerOpenIds.has(pos.id)) continue;
             seenOpenIds.add(pos.id);
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (!this._orderEntryVisualExistsOnChart(pos.id, ch, { pending: false })) continue;
@@ -36240,7 +36429,10 @@ class OrderManager {
             if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
             const entryY = yScale(pos.openPrice);
             if (!Number.isFinite(entryY)) continue;
-            const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
+            const cg = ch.svg.append('g')
+                .attr('class', 'exec-order-connector')
+                .attr('data-order-id', String(pos.id))
+                .style('pointer-events', 'none');
             if (hasMultiTP) {
                 for (const t of pos.tpTargets) {
                     if (t.hit || !(t.price > 0)) continue;
@@ -36295,7 +36487,10 @@ class OrderManager {
             if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
             const entryY = yScale(po.entryPrice);
             if (!Number.isFinite(entryY)) continue;
-            const cg = ch.svg.append('g').attr('class', 'exec-order-connector').style('pointer-events', 'none');
+            const cg = ch.svg.append('g')
+                .attr('class', 'exec-order-connector')
+                .attr('data-order-id', String(po.id))
+                .style('pointer-events', 'none');
             if (hasMultiTP) {
                 for (const t of po.tpTargets) {
                     if (t.hit || !(t.price > 0)) continue;
