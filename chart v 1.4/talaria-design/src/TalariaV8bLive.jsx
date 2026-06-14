@@ -893,6 +893,21 @@ function formatV9AccountNum(n) {
   return x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+const V9_BALANCE_VISIBLE_KEY = "v9BalanceVisible";
+
+function readV9BalanceVisible() {
+  try {
+    const v = typeof window !== "undefined" ? localStorage.getItem(V9_BALANCE_VISIBLE_KEY) : null;
+    return v === null ? true : v === "1";
+  } catch {
+    return true;
+  }
+}
+
+function maskV9AccountValue(visible, text) {
+  return visible ? text : "••••••";
+}
+
 function formatV9HudSessionPnl(om) {
   if (!om) return { text: "—", nonNeg: true };
   const init = Number(om.initialBalance);
@@ -11547,7 +11562,7 @@ const TalariaV8bLive = () => {
 
   const [sessionDemoName, setSessionDemoName] = useState("Talaria V8b");
   const [settingsTab, setSettingsTab] = useState("chart");
-  const [balVis, setBalVis] = useState(true);
+  const [balVis, setBalVis] = useState(readV9BalanceVisible);
   const [sDrop, setSDrop] = useState(null); // which settings dropdown is open
   const [colorPicker, setColorPicker] = useState(null);
   const [cpPos, setCpPos] = useState({ top: 300, left: 500 });
@@ -11556,7 +11571,12 @@ const TalariaV8bLive = () => {
   const [settDropPos, setSettDropPos] = useState({ top: 0, left: 0, w: 0 });
 
   useEffect(() => {
-    if (!settDrop) return;
+    try {
+      localStorage.setItem(V9_BALANCE_VISIBLE_KEY, balVis ? "1" : "0");
+    } catch (_) { /* ignore */ }
+  }, [balVis]);
+
+  useEffect(() => {
     const onDocDown = (e) => {
       const node = e.target;
       if (!(node instanceof Element)) return;
@@ -31741,29 +31761,50 @@ const TalariaV8bLive = () => {
             <div style={{width:1,height:16,background:"rgba(140,160,255,0.18)",margin:"0 0 0 4px",flexShrink:0}}/>
             </div>
             {/* Balance + panel toggle — grid column 3, right-aligned */}
-            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 12px',minWidth:0,maxWidth:'100%'}}>
                 {/* Eye visibility toggle — object-tree style */}
-                <div onClick={()=>setBalVis(v=>!v)} onMouseEnter={()=>setHov('bal-eye')} onMouseLeave={()=>setHov(null)}
-                  style={{width:16,height:16,position:'relative',display:'flex',alignItems:'center',justifyContent:'center',cursor:'default',flexShrink:0}}>
+                <button
+                  type="button"
+                  data-balance-toggle="1"
+                  aria-label={balVis ? "Hide balance" : "Show balance"}
+                  aria-pressed={balVis}
+                  title={balVis ? "Hide balance" : "Show balance"}
+                  onClick={(e)=>{
+                    e.stopPropagation();
+                    setBalVis((v) => !v);
+                  }}
+                  onMouseDown={(e)=>e.stopPropagation()}
+                  onMouseEnter={()=>setHov('bal-eye')}
+                  onMouseLeave={()=>setHov(null)}
+                  style={{
+                    width:22,height:22,position:'relative',display:'flex',alignItems:'center',justifyContent:'center',
+                    cursor:'default',flexShrink:0,padding:0,margin:0,border:'none',background:'transparent',
+                    pointerEvents:'auto',
+                  }}>
                   <I n="eye" s={14} cl={hov==='bal-eye'?c.acL:balVis?c.ts:'#F5A020'}/>
                   {!balVis&&(
-                    <svg width={16} height={16} viewBox="0 0 16 16" style={{position:'absolute',top:0,left:0,pointerEvents:'none'}}>
+                    <svg width={16} height={16} viewBox="0 0 16 16" style={{position:'absolute',top:3,left:3,pointerEvents:'none'}} aria-hidden="true">
                       <line x1={2} y1={2} x2={14} y2={14} stroke={hov==='bal-eye'?c.acL:'#F5A020'} strokeWidth={0.85} strokeLinecap="round"/>
                     </svg>
                   )}
-                </div>
-                {/* Label/value grid — fixed column widths prevent layout shift on toggle */}
-                <div style={{display:'grid',gridTemplateColumns:'50px 50px 40px',columnGap:16,rowGap:3,justifyItems:'end'}}>
-                  {['BALANCE','EQUITY','P&L'].map(l=>(
-                    <span key={l} style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1}}>{l}</span>
-                  ))}
+                </button>
+                {/* Label/value columns — flex so large numbers don't clip */}
+                <div style={{display:'flex',alignItems:'flex-end',gap:14,minWidth:0,flexShrink:1}}>
                   {[
-                    { v: replayHud.balanceStr, col: c.tx },
-                    { v: replayHud.equityStr, col: c.tx },
-                    { v: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
-                  ].map(({ v, col }, i) => (
-                    <span key={i} style={{fontSize:12,fontWeight:700,color:col,fontVariantNumeric:'tabular-nums',lineHeight:1}}>{balVis?v:'•••'}</span>
+                    { label: 'BALANCE', value: replayHud.balanceStr, col: c.tx },
+                    { label: 'EQUITY', value: replayHud.equityStr, col: c.tx },
+                    { label: 'P&L', value: replayHud.pnlStr, col: replayHud.pnlNonNeg ? c.gn : c.rd },
+                  ].map(({ label, value, col }) => (
+                    <div key={label} style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,minWidth:0,flex:'0 1 auto'}}>
+                      <span style={{fontSize:9,fontWeight:600,color:c.tm,letterSpacing:'0.07em',lineHeight:1,whiteSpace:'nowrap'}}>{label}</span>
+                      <span style={{
+                        fontSize:12,fontWeight:700,
+                        color: balVis ? col : c.tm,
+                        fontVariantNumeric:'tabular-nums',lineHeight:1,
+                        whiteSpace:'nowrap',maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',
+                      }}>{maskV9AccountValue(balVis, value)}</span>
+                    </div>
                   ))}
                 </div>
               </div>

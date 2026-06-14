@@ -16784,6 +16784,7 @@ class OrderManager {
         // Must run alignPreviewLabels before _reflowEntryAnchoredTpSlBadges (was only deferred via rAF from drawPreviewLine → snap).
         this.alignPreviewLabels();
         this._reflowEntryAnchoredTpSlBadges();
+        this._reflowMultiTPPreviewBadges();
         this._syncPendingLimitStopConnector();
         const dm = previewChart && previewChart.drawingManager;
         if (dm && typeof dm.raiseDrawingLayersAboveOrderPreviews === 'function') {
@@ -17798,6 +17799,7 @@ class OrderManager {
                 if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(() => {
                         self.updatePreviewLines();
+                        self._reflowMultiTPPreviewBadges();
                         if (document.getElementById('autoBreakevenToggle')?.checked) {
                             self._syncPendingOrdersBreakevenFromPanel();
                         }
@@ -17808,6 +17810,7 @@ class OrderManager {
                     });
                 } else {
                     self.updatePreviewLines();
+                    self._reflowMultiTPPreviewBadges();
                     if (document.getElementById('autoBreakevenToggle')?.checked) {
                         self._syncPendingOrdersBreakevenFromPanel();
                     }
@@ -21382,6 +21385,11 @@ class OrderManager {
         this.renderTPTargets();
         this.updatePreviewLines();
         this.calculateAdvancedRiskReward();
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => this._reflowMultiTPPreviewBadges());
+        } else {
+            this._reflowMultiTPPreviewBadges();
+        }
     }
 
     drawYAxisPriceHighlight(price, color, label, yOffset = 0, targetChart = null) {
@@ -28413,7 +28421,10 @@ class OrderManager {
                 this.drawMultiTPAvgLine(source);
             }
         }
-        this.updateOrderLines();
+        this._syncOrderLevelGraphicsAfterStructureChange(source.id, {
+            isPending,
+            chart: this._getOrderContextChart() || this.chart,
+        });
         this.showNotification(`TP target @ ${this.formatPrice(removedPrice)} removed`, 'info');
     }
 
@@ -30410,7 +30421,9 @@ class OrderManager {
                 self._updateMultiTPAvgLines(chart);
 
                 // Reposition all order lines (Entry+ badge, y-axis highlights, etc.)
+                self._freezePendingEntryLayout(pendingOrder.id);
                 if (typeof self.updateOrderLines === 'function') self.updateOrderLines(chart);
+                if (typeof self.positionPendingOrderTargets === 'function') self.positionPendingOrderTargets(chart);
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
                 const qPlaced = self._getPendingPlacedQuantity(pendingOrder);
@@ -31373,6 +31386,10 @@ class OrderManager {
                 if (pendingOrder.tpTargets && pendingOrder.tpTargets.length >= 1) {
                     self.drawMultiTPAvgLine(pendingOrder, 'pending');
                 }
+                self._syncOrderLevelGraphicsAfterStructureChange(pendingOrder.id, {
+                    isPending: true,
+                    chart: ch,
+                });
                 if (typeof self.updatePositionsPanel === 'function') self.updatePositionsPanel();
                 
                 const slDetail = target.type === 'SL'
@@ -33346,6 +33363,92 @@ class OrderManager {
                 }
             });
         } catch (_) { /* ignore */ }
+    }
+
+    _invalidateOrderLineBadgeCache(orderId) {
+        (this.orderLines || []).forEach((ol) => {
+            if (ol && ol.orderId === orderId) ol._tpBadgeSig = null;
+        });
+    }
+
+    /** After TP/SL ladder edits: refresh entry badges + pending targets (needs 2 passes for getBBox). */
+    _syncOrderLevelGraphicsAfterStructureChange(orderId, opts = {}) {
+        const o = opts || {};
+        const isPending = !!o.isPending;
+        const order = isPending
+            ? this._findPendingOrderById(orderId)
+            : this._findOpenPositionById(orderId);
+        if (!order) return;
+
+        this._invalidateOrderLineBadgeCache(orderId);
+
+        const charts = o.chart
+            ? [o.chart]
+            : (this._isMultiPanelLayout()
+                ? (this._collectLayoutCharts() || [])
+                : [this.chart]).filter(Boolean);
+
+        const runPass = (ch) => {
+            if (!ch?.scales?.yScale) return;
+            if (isPending && typeof this.positionPendingOrderTargets === 'function') {
+                this.positionPendingOrderTargets(ch);
+            }
+            if (typeof this.updateOrderLines === 'function') {
+                this.updateOrderLines(ch);
+            }
+            if (typeof this._drawExecutedOrderConnectors === 'function') {
+                this._drawExecutedOrderConnectors(ch);
+            }
+        };
+
+        charts.forEach(runPass);
+
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                charts.forEach(runPass);
+            });
+        } else {
+            charts.forEach(runPass);
+        }
+
+        if (!this._suppressChartRender) {
+            charts.forEach((c) => {
+                if (c && typeof c.render === 'function') {
+                    c.renderPending = true;
+                    c.render();
+                }
+            });
+        }
+    }
+
+    _reflowMultiTPPreviewBadges() {
+        const pch = this.previewLines?._previewChart || this._getPreviewChart();
+        if (!pch?.scales?.yScale || !this.previewLines?.multiTPBadges?.length) return;
+        const entryPx = parseFloat(document.getElementById('orderEntryPrice')?.value || 0)
+            || this.previewLines.entry?.price
+            || 0;
+        if (!(entryPx > 0)) return;
+        const ey = pch.scales.yScale(entryPx);
+        this.previewLines.multiTPBadges.forEach((bd) => {
+            if (!bd?.labelGroup) return;
+            bd.price = entryPx;
+            this.positionPreviewLabel(bd, ey + (bd._stackOffsetY || 0));
+        });
+    }
+
+    _freezePendingEntryLayout(orderId) {
+        if (orderId == null) return;
+        if (!this._pendingEntryLayoutFreezeIds) this._pendingEntryLayoutFreezeIds = new Set();
+        this._pendingEntryLayoutFreezeIds.add(orderId);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    this._pendingEntryLayoutFreezeIds?.delete(orderId);
+                });
+            });
+        } else {
+            this._pendingEntryLayoutFreezeIds.delete(orderId);
+        }
     }
 
     /**
@@ -35488,7 +35591,7 @@ class OrderManager {
                 let price, orderData;
 
                 if (isPending) {
-                    orderData = this.pendingOrders.find((p) => p.id === orderId);
+                    orderData = this._findPendingOrderById(orderId);
                     if (!orderData) {
                         console.log(`   ⚠️ Pending order not found for #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
@@ -35499,7 +35602,7 @@ class OrderManager {
                     }
                     price = orderData.entryPrice;
                 } else {
-                    orderData = this.openPositions.find((p) => p.id === orderId);
+                    orderData = this._findOpenPositionById(orderId);
                     if (!orderData) {
                         console.log(`   ⚠️ Position not found for order #${orderId}`);
                         this._disposeOrderLineElements(olEntry);
@@ -35515,12 +35618,13 @@ class OrderManager {
 
                 console.log(`   ✅ ${isPending ? 'Pending' : 'Active'} Order #${orderId}: price=${price.toFixed(5)}, y=${y.toFixed(2)}, width=${ch.w}`);
 
-                // Pending entry drag: drawPendingOrderLine's handler owns line, label box, and close btn layout.
-                // updateOrderLines used to overwrite them every frame (different X math) → snap / stuck y-axis feel.
-                const skipPendingEntryGeom = isPending
-                    && this._isDraggingOrderLine
-                    && this._draggingPendingOrderIds
-                    && this._draggingPendingOrderIds.has(orderId);
+                // Pending entry drag / post-drag freeze: drawPendingOrderLine owns layout until settle pass completes.
+                const skipPendingEntryGeom = isPending && (
+                    (this._isDraggingOrderLine
+                        && this._draggingPendingOrderIds
+                        && this._draggingPendingOrderIds.has(orderId))
+                    || (this._pendingEntryLayoutFreezeIds && this._pendingEntryLayoutFreezeIds.has(orderId))
+                );
 
                 if (!skipPendingEntryGeom) {
                     line
@@ -35566,8 +35670,9 @@ class OrderManager {
                     const closeBtnGap = 6;
 
                     const arrowW = arrow ? (arrow.node()?.getBBox()?.width || 0) : 0;
+                    const stripeW = 3;
                     const labelTW = (labelText.node()?.getBBox()?.width || 0) + arrowW + 6;
-                    const labelBW = labelTW + pad * 2;
+                    const labelBW = labelTW + pad * 2 + stripeW;
 
                     let pnlBW = 0;
                     if (!isPending && pnlText?.node()) {
@@ -35613,7 +35718,6 @@ class OrderManager {
                     const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
-                    const stripeW = 3;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
                     labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
                     if (arrow) arrow.attr('x', cx + pad + stripeW + (labelText.node()?.getBBox()?.width || 0) + 4).attr('y', y + 4);
