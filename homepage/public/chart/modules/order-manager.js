@@ -31077,16 +31077,10 @@ class OrderManager {
                     target.priceHighlight = null;
                 }
                 const poId = entry.pendingOrder?.id;
-                const pendingRevealKey = `pending:${poId}:${target.type}:${target.tpTargetIndex ?? target.targetId ?? target.type}`;
                 const pendingChrome = [target.labelGroup, target._pctStepperBtn, target._deleteBtn, target._splitBtn]
                     .filter((s) => s && !s.empty?.());
                 if (pendingChrome.length && poId != null) {
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        pendingRevealKey,
-                        [target.hitLine, target.line].filter((s) => s && !s.empty?.()),
-                        pendingChrome
-                    );
+                    this._ensureOrderLevelChromeVisible(pendingChrome);
                 }
                 target.priceHighlight = this.drawYAxisPriceHighlight(
                     target.price,
@@ -35279,13 +35273,7 @@ class OrderManager {
 
                 const slRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (slRevealVisible) {
-                    const slHit = this._ensureOrderLevelRevealHitLine(ch, { line, hitLine }, `sl-hit-line sl-${orderId}`);
-                    if (slHit) slHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                    this._raiseOrderLevelRevealHit(slHit);
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `open:sl:${orderId}`,
-                        [slHit, line].filter((s) => s && !s.empty?.()),
+                    this._ensureOrderLevelChromeVisible(
                         [labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn].filter((s) => s && !s.empty?.())
                     );
                 }
@@ -35646,18 +35634,7 @@ class OrderManager {
 
                 const tpRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (tpRevealVisible) {
-                    const tpKey = (targetId !== undefined && targetId !== null) ? String(targetId) : 'st';
-                    const tpHit = this._ensureOrderLevelRevealHitLine(
-                        ch,
-                        { line, hitLine },
-                        `tp-hit-line tp-${orderId} tp-target-${tpKey}`
-                    );
-                    if (tpHit) tpHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                    this._raiseOrderLevelRevealHit(tpHit);
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `open:tp:${orderId}:${tpKey}`,
-                        [tpHit, line].filter((s) => s && !s.empty?.()),
+                    this._ensureOrderLevelChromeVisible(
                         [labelBox, labelAccent, labelText, pnlBox, pnlText, pctStepperBtn, deleteBtn, splitBtn, closeBtn]
                             .filter((s) => s && !s.empty?.())
                     );
@@ -36071,12 +36048,7 @@ class OrderManager {
                     if (olEntry.entryPlusBadge && olEntry.entryPlusBadge.style('display') !== 'none') {
                         entryChrome.push(olEntry.entryPlusBadge);
                     }
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `${isPending ? 'pending' : 'open'}:entry:${orderId}`,
-                        [dragHitLine, line].filter((s) => s && !s.empty?.()),
-                        entryChrome.filter((s) => s && !s.empty?.())
-                    );
+                    olEntry._entryRevealChrome = entryChrome.filter((s) => s && !s.empty?.());
                 }
 
                 if (!skipPendingEntryGeom) {
@@ -36093,6 +36065,9 @@ class OrderManager {
                             .attr('y1', y)
                             .attr('y2', y);
                         this._raiseOrderLevelRevealHit(dragHitLine);
+                    }
+                    if (olEntry._entryRevealChrome?.length) {
+                        this._ensureOrderLevelChromeVisible(olEntry._entryRevealChrome);
                     }
                 }
 
@@ -39880,97 +39855,67 @@ class OrderManager {
         return 16;
     }
 
-    _readOrderLevelRevealBase(sel) {
-        if (!sel || sel.empty?.()) return null;
-        const node = sel.node?.();
-        if (!node) return null;
-        const tag = node.tagName?.toLowerCase();
-        if (tag === 'g') {
-            const m = /translate\(([-\d.]+)[,\s]+([-\d.]+)\)/.exec(sel.attr('transform') || '');
-            if (!m) return { kind: 'opacity' };
-            return { kind: 'g', x: parseFloat(m[1]), y: parseFloat(m[2]) };
-        }
-        const x = parseFloat(sel.attr('x'));
-        const y = parseFloat(sel.attr('y'));
-        if (!Number.isFinite(x)) return { kind: 'opacity' };
-        return { kind: 'xy', x, y: Number.isFinite(y) ? y : null };
+    _clearOrderLevelRevealSlide(sel) {
+        if (!sel || sel.empty?.()) return;
+        sel.style('transform', null);
     }
 
-    _applyOrderLevelRevealBasePos(sel, base) {
-        if (!sel || sel.empty?.() || !base) return;
-        if (base.kind === 'g') {
-            sel.attr('transform', `translate(${base.x}, ${base.y})`);
-        } else if (base.kind === 'xy') {
-            sel.attr('x', base.x);
-            if (base.y != null) sel.attr('y', base.y);
-        }
+    /** Force order/preview chrome visible (no hover-hide). */
+    _ensureOrderLevelChromeVisible(chrome) {
+        (chrome || []).forEach((sel) => {
+            if (!sel || sel.empty?.()) return;
+            if (typeof sel.interrupt === 'function') sel.interrupt();
+            this._clearOrderLevelRevealSlide(sel);
+            sel.style('opacity', 1).style('pointer-events', null);
+            sel.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+        });
     }
 
-    _paintOrderLevelRevealSelection(sel, base, visible, animate, slide) {
-        if (!sel || sel.empty?.() || !base) return;
+    _paintOrderLevelRevealSelection(sel, visible, animate, slide) {
+        if (!sel || sel.empty?.()) return;
         if (typeof sel.interrupt === 'function') sel.interrupt();
 
         const finishHidden = () => {
-            this._applyOrderLevelRevealBasePos(sel, base);
+            this._clearOrderLevelRevealSlide(sel);
             sel.style('opacity', 0).style('pointer-events', 'none');
         };
         const finishVisible = () => {
-            this._applyOrderLevelRevealBasePos(sel, base);
+            this._clearOrderLevelRevealSlide(sel);
             sel.style('opacity', 1).style('pointer-events', null);
         };
 
         if (!animate) {
-            this._applyOrderLevelRevealBasePos(sel, base);
+            this._clearOrderLevelRevealSlide(sel);
             sel.style('opacity', visible ? 1 : 0);
             sel.style('pointer-events', visible ? null : 'none');
             return;
         }
 
         if (visible) {
-            if (base.kind === 'xy') {
-                sel.attr('x', base.x + slide).attr('y', base.y ?? sel.attr('y'))
-                    .style('opacity', 0).style('pointer-events', null);
-                sel.transition().duration(180)
-                    .attr('x', base.x)
-                    .style('opacity', 1)
-                    .on('end', finishVisible);
-            } else if (base.kind === 'g') {
-                sel.attr('transform', `translate(${base.x + slide}, ${base.y})`)
-                    .style('opacity', 0).style('pointer-events', null);
-                sel.transition().duration(180)
-                    .attr('transform', `translate(${base.x}, ${base.y})`)
-                    .style('opacity', 1)
-                    .on('end', finishVisible);
-            } else {
-                sel.transition().duration(180).style('opacity', 1)
-                    .on('end', finishVisible);
-            }
+            sel.style('transform', `translateX(${slide}px)`)
+                .style('opacity', 0)
+                .style('pointer-events', null);
+            sel.transition().duration(180)
+                .style('transform', 'translateX(0px)')
+                .style('opacity', 1)
+                .on('end', finishVisible);
             return;
         }
 
-        if (base.kind === 'xy') {
-            sel.transition().duration(180)
-                .attr('x', base.x + slide)
-                .style('opacity', 0)
-                .on('end', finishHidden);
-        } else if (base.kind === 'g') {
-            sel.transition().duration(180)
-                .attr('transform', `translate(${base.x + slide}, ${base.y})`)
-                .style('opacity', 0)
-                .on('end', finishHidden);
-        } else {
-            sel.transition().duration(180).style('opacity', 0)
-                .on('end', finishHidden);
-        }
+        sel.transition().duration(180)
+            .style('transform', `translateX(${slide}px)`)
+            .style('opacity', 0)
+            .on('end', finishHidden);
     }
 
     _paintOrderLevelHoverReveal(key, visible, animate = true) {
         const entry = this._orderLevelRevealRegistry?.get(key);
         if (!entry) return;
+        const dragging = this.isDraggingPreviewLine || this._isDraggingOrderLine || this._isDraggingPendingTarget;
+        const show = visible || dragging;
         const slide = this._orderLevelRevealSlidePx();
-        entry.chrome.forEach((sel, i) => {
-            const base = entry.bases.get(i);
-            if (base) this._paintOrderLevelRevealSelection(sel, base, visible, animate, slide);
+        entry.chrome.forEach((sel) => {
+            this._paintOrderLevelRevealSelection(sel, show, animate && !dragging, slide);
         });
     }
 
@@ -40024,7 +39969,7 @@ class OrderManager {
 
         let entry = this._orderLevelRevealRegistry.get(key);
         if (!entry) {
-            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome, bases: new Map() };
+            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome };
             this._orderLevelRevealRegistry.set(key, entry);
             this._wireOrderLevelHoverReveal(key);
         } else {
@@ -40034,9 +39979,9 @@ class OrderManager {
             if (typeof entry._attachRevealHover === 'function') entry._attachRevealHover();
         }
 
-        cleanChrome.forEach((sel, i) => {
+        cleanChrome.forEach((sel) => {
             if (sel && typeof sel.interrupt === 'function') sel.interrupt();
-            entry.bases.set(i, this._readOrderLevelRevealBase(sel));
+            this._clearOrderLevelRevealSlide(sel);
         });
 
         const visible = !!this._orderLevelRevealHover.get(key);
@@ -40047,10 +39992,11 @@ class OrderManager {
         if (!this._orderLevelRevealRegistry || !ch) return;
         this._orderLevelRevealRegistry.forEach((entry, key) => {
             if (entry.chart !== ch) return;
-            entry.chrome.forEach((sel, i) => {
+            if (!String(key).startsWith('preview:')) return;
+            entry.chrome.forEach((sel) => {
                 if (!sel || sel.empty?.()) return;
                 if (typeof sel.interrupt === 'function') sel.interrupt();
-                entry.bases.set(i, this._readOrderLevelRevealBase(sel));
+                this._clearOrderLevelRevealSlide(sel);
             });
             const visible = !!this._orderLevelRevealHover?.get(key);
             this._paintOrderLevelHoverReveal(key, visible, false);
@@ -40076,30 +40022,49 @@ class OrderManager {
     }
 
     _syncPreviewLineHoverReveal(lineData, ch, keySuffix) {
-        if (!lineData?.labelGroup || !lineData?.hitLine || lineData.isBadge) return;
-        const key = `preview:${keySuffix}`;
-        this._refreshOrderLevelHoverReveal(ch, key, [lineData.hitLine, lineData.line].filter(Boolean), [lineData.labelGroup]);
+        if (!lineData?.labelGroup || lineData.isBadge) return;
+        this._ensureOrderLevelChromeVisible([lineData.labelGroup]);
     }
 
     _syncAllPreviewHoverReveal(pc) {
         if (!this.previewLines || !pc) return;
-        const sync = (ld, suffix) => { if (ld) this._syncPreviewLineHoverReveal(ld, pc, suffix); };
-        sync(this.previewLines.entry, 'entry');
-        sync(this.previewLines.tp, 'tp');
-        sync(this.previewLines.sl, 'sl');
-        sync(this.previewLines.be, 'be');
-        sync(this.previewLines.avgEntry, 'avg');
-        (this.previewLines.multipleTPs || []).forEach((ld, i) => sync(ld, `mtp:${i}`));
-        (this.previewLines.splitEntries || []).forEach((ld, i) => sync(ld, `split:${i}`));
+
+        const mainLines = [
+            this.previewLines.entry,
+            this.previewLines.tp,
+            this.previewLines.sl,
+            this.previewLines.be,
+            this.previewLines.avgEntry,
+            ...(this.previewLines.multipleTPs || []),
+            ...(this.previewLines.splitEntries || []),
+        ];
+        mainLines.forEach((ld) => {
+            if (ld?.labelGroup && !ld.isBadge) {
+                this._ensureOrderLevelChromeVisible([ld.labelGroup]);
+            }
+        });
+
+        const entryHits = [this.previewLines.entry?.hitLine, this.previewLines.entry?.line]
+            .filter((s) => s && !s.empty?.());
+        const badgeRows = [];
         if (this.previewLines.sl?.isBadge && this.previewLines.sl.labelGroup) {
-            this._refreshOrderLevelHoverReveal(pc, 'preview:sl-badge', [this.previewLines.entry?.hitLine], [this.previewLines.sl.labelGroup]);
+            badgeRows.push(['preview:sl-badge', this.previewLines.sl.labelGroup]);
+        } else if (this.previewLines.sl?.labelGroup) {
+            this._ensureOrderLevelChromeVisible([this.previewLines.sl.labelGroup]);
         }
         if (this.previewLines.tp?.isBadge && this.previewLines.tp.labelGroup) {
-            this._refreshOrderLevelHoverReveal(pc, 'preview:tp-badge', [this.previewLines.entry?.hitLine], [this.previewLines.tp.labelGroup]);
+            badgeRows.push(['preview:tp-badge', this.previewLines.tp.labelGroup]);
+        } else if (this.previewLines.tp?.labelGroup) {
+            this._ensureOrderLevelChromeVisible([this.previewLines.tp.labelGroup]);
         }
         (this.previewLines.multiTPBadges || []).forEach((bd, i) => {
-            if (bd?.labelGroup) {
-                this._refreshOrderLevelHoverReveal(pc, `preview:mtp-badge:${i}`, [this.previewLines.entry?.hitLine], [bd.labelGroup]);
+            if (bd?.labelGroup) badgeRows.push([`preview:mtp-badge:${i}`, bd.labelGroup]);
+        });
+        badgeRows.forEach(([key, lg]) => {
+            if (entryHits.length) {
+                this._refreshOrderLevelHoverReveal(pc, key, entryHits, [lg]);
+            } else {
+                this._ensureOrderLevelChromeVisible([lg]);
             }
         });
     }
