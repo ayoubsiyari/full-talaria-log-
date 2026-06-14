@@ -4,6 +4,7 @@
  */
 
 const MAX_TP_TARGETS = 5;
+const MAX_ENTRY_LEVELS = 4;
 
 class OrderManager {
     constructor(chart, replaySystem) {
@@ -11526,7 +11527,7 @@ class OrderManager {
         // Weighted average across multi-entry levels (chart preview)
         if (label === 'Avg Entry') {
             const accent = '#eab308';
-            const totalLots = this._calcMultiEntryTotalLots();
+            const totalLots = this._calcMultiEntryPreviewTotalLots();
             return [
                 {
                     text: 'Avg Entry',
@@ -16689,7 +16690,7 @@ class OrderManager {
         // Weighted average entry (multi-entry): dashed line + compact label; position syncs live while dragging levels
         if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
             && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
-            const avgPrice = this._calcMultiEntryAvgPrice();
+            const avgPrice = this._calcMultiEntryPreviewAvgPrice();
             if (avgPrice > 0) {
                 const avgLineColor = '#ca8a04';
                 this.previewLines.avgEntry = this.drawPreviewLine(
@@ -17589,18 +17590,30 @@ class OrderManager {
                     }
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
+                    const prec = self.getPricePrecision();
+                    const snapped = parseFloat(newPrice.toFixed(prec));
                     if (lineData.splitEntryId !== undefined) {
-                        self.updateSplitEntryPrice(lineData.splitEntryId, newPrice);
+                        self.updateSplitEntryPrice(lineData.splitEntryId, snapped);
+                    } else {
+                        const byLevelId = lineData.multiEntryLevelId != null
+                            ? self.splitEntries.find(e => e.multiEntryLevelId === lineData.multiEntryLevelId)
+                            : null;
+                        if (byLevelId) byLevelId.price = snapped;
                     }
-                    
-                    // Sync to multi-entry panel levels
-                    if (self.isMultiEntryMode && lineData.multiEntryLevelId !== undefined) {
-                        const level = self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId);
+
+                    // Sync to multi-entry panel levels (id fallback: Entry#N → index N-1)
+                    if (self.isMultiEntryMode && self.multiEntryLevels?.length) {
+                        const lvlNum = parseInt(String(lineData.label).split('#')[1]?.split(':')[0], 10);
+                        const levelIndex = Number.isFinite(lvlNum) ? lvlNum - 1 : -1;
+                        const level = (lineData.multiEntryLevelId != null
+                            ? self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId)
+                            : null)
+                            || (levelIndex >= 0 ? self.multiEntryLevels[levelIndex] : null);
                         if (level) {
-                            level.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
-                            // Update the panel input for this level
+                            level.price = snapped;
+                            lineData.multiEntryLevelId = level.id;
                             const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${level.id}"][data-field="price"]`);
-                            if (priceInput) priceInput.value = self.formatPrice(newPrice);
+                            if (priceInput) priceInput.value = self.formatPrice(snapped);
                         }
                         self.updateMultiEntrySummary();
                         self._syncAvgEntryPreviewLineFromLevels();
@@ -18355,9 +18368,19 @@ class OrderManager {
      * Update split entry price
      */
     updateSplitEntryPrice(entryId, newPrice) {
-        const entry = this.splitEntries.find(e => e.id === entryId);
+        const prec = this.getPricePrecision();
+        const snapped = parseFloat(parseFloat(newPrice).toFixed(prec));
+        let entry = this.splitEntries.find(e => e.id === entryId);
+        if (!entry && this.isMultiEntryMode) {
+            const ld = (this.previewLines?.splitEntries || []).find(
+                l => l?.splitEntryId === entryId || l?.id === entryId
+            );
+            if (ld?.multiEntryLevelId != null) {
+                entry = this.splitEntries.find(e => e.multiEntryLevelId === ld.multiEntryLevelId);
+            }
+        }
         if (entry) {
-            entry.price = parseFloat(newPrice.toFixed(this.getPricePrecision()));
+            entry.price = snapped;
             
             // Also sync to matching multiEntryLevel
             if (this.isMultiEntryMode && entry.multiEntryLevelId !== undefined && this.multiEntryLevels) {
@@ -19193,6 +19216,7 @@ class OrderManager {
      * Add a new entry level
      */
     addMultiEntryLevel() {
+        if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) return;
         const mode = this.positionSizeMode || 'risk-usd';
         const nNext = this.multiEntryLevels.length + 1;
         let avgAmount;
@@ -19311,6 +19335,35 @@ class OrderManager {
         const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
         const totalWPrice = levels.reduce((sum, l) => sum + (l.price * l.amount), 0);
         return totalAmount > 0 ? totalWPrice / totalAmount : 0;
+    }
+
+    /**
+     * Chart Avg Entry line: amount-weighted mean across every priced leg.
+     * Unlike {@link _calcMultiEntryAvgPrice}, does not drop legs that fail min-lot sizing —
+     * otherwise the dashed avg line collapses onto the only "valid" leg and drags with it.
+     */
+    _calcMultiEntryPreviewAvgPrice() {
+        const levels = (this.multiEntryLevels || []).filter(l => l.price > 0 && (l.amount || 0) > 0);
+        if (levels.length === 0) return 0;
+        if (levels.length === 1) return levels[0].price;
+        const totalAmount = levels.reduce((sum, l) => sum + l.amount, 0);
+        if (totalAmount <= 0) return levels[0].price;
+        const totalWPrice = levels.reduce((sum, l) => sum + l.price * l.amount, 0);
+        return totalWPrice / totalAmount;
+    }
+
+    /** Total lots shown on the Avg Entry preview badge (all priced legs, same as row labels). */
+    _calcMultiEntryPreviewTotalLots() {
+        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
+        const ps = this.pipSize || 0.0001;
+        const pv = this.pipValuePerLot || 10;
+        let sum = 0;
+        for (const l of (this.multiEntryLevels || [])) {
+            if (!(l.price > 0)) continue;
+            const lots = parseFloat(this._calcLevelLotSize(l, slPrice, ps, pv)) || 0;
+            if (lots > 0) sum += lots;
+        }
+        return sum > 0 ? sum : this._calcMultiEntryTotalLots();
     }
 
     /**
@@ -19475,7 +19528,7 @@ class OrderManager {
         if (!ld0 || !ch?.scales?.yScale) return;
         const priced = (this.multiEntryLevels || []).filter(l => l.price > 0 && (l.amount || 0) > 0);
         if (priced.length <= 1) return;
-        const avgPrice = this._calcMultiEntryAvgPrice();
+        const avgPrice = this._calcMultiEntryPreviewAvgPrice();
         if (!(avgPrice > 0)) return;
         const ld = this.previewLines.avgEntry;
         const formatted = this.formatPrice(avgPrice);
@@ -19488,7 +19541,7 @@ class OrderManager {
             ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.priceText) {
-            const totalLots = this._calcMultiEntryTotalLots();
+            const totalLots = this._calcMultiEntryPreviewTotalLots();
             ld.priceText.text(this.formatQuantity(totalLots));
         }
         const bbox = ld.labelDimensions;
@@ -19893,6 +19946,7 @@ class OrderManager {
                     self.addTPFromSplit(newPrice);
                     self.showNotification(`New TP added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine && self.isMultiEntryMode) {
+                    if (!self._canAddMoreMultiEntryLevels(self.multiEntryLevels?.length || 0)) return;
                     self.multiEntryLevels.push({
                         id: Date.now(),
                         price: parseFloat(newPrice.toFixed(self.getPricePrecision())),
@@ -21272,6 +21326,10 @@ class OrderManager {
                 }
 
                 if (nextPrice > 0 && Number.isFinite(nextPrice)) {
+                    if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) {
+                        this.pullRiskRewardToolFromManager(drawing);
+                        return;
+                    }
                     if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
                     this.multiEntryLevels.push({
                         id: this.multiEntryIdCounter++,
@@ -36376,6 +36434,11 @@ class OrderManager {
     _canAddMoreTpTargets(currentCount, overrideQty) {
         const n = Number(currentCount) || 0;
         return n < this._getMaxTpTargets(overrideQty);
+    }
+
+    _canAddMoreMultiEntryLevels(currentCount) {
+        const n = Number(currentCount) || 0;
+        return n < MAX_ENTRY_LEVELS;
     }
 
     _getEffectiveTpTargetCount(source) {

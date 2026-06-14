@@ -12880,6 +12880,7 @@ const TalariaV8bLive = () => {
     (currentSymbol.type === "futures"
       ? Math.floor(v9OrderQtyForSplitUi) >= 1
       : v9OrderQtyForSplitUi > 0);
+  const v9EntryPlusVisible = v9EntryTpPlusVisible && entryRows.length < 4;
   const v9TpPlusVisible = v9EntryTpPlusVisible && tpRows.length < 5;
 
   // Futures: when there is no contract size yet, collapse to a single TP row. With ≥1 contract,
@@ -33680,6 +33681,7 @@ const TalariaV8bLive = () => {
               setEntryRows((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows));
             };
             const addRow = () => {
+              if (entryRows.length >= 4) return;
               omPanelBridgeRef.current.entryAdd = Date.now();
               markOrderControlBridge();
               const om = window.chart?.orderManager;
@@ -33826,7 +33828,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {v9EntryTpPlusVisible && (
+                    {v9EntryPlusVisible && (
                     <div onClick={addRow}
                       onMouseEnter={()=>setSwHov("ep-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add entry level"
