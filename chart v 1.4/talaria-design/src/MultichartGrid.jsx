@@ -926,9 +926,18 @@ function scheduleAlignHostOnly(mgr, delayMs) {
     }, wait);
 }
 
-function applyHostSlot(cellEl) {
+function applyHostSlot(cellEl, opts) {
     if (!cellEl) return;
     if (typeof document === "undefined") return;
+    // `reanchor` (default true) controls whether we re-center the host
+    // viewport on the replay playhead / refit AFTER the resize. During the
+    // multichart boot and on plain resize/scroll ticks we pass false so the
+    // candles keep their current horizontal position instead of jumping
+    // left/right on every staggered panel-ready + ResizeObserver fire (the
+    // "chart shaking while loading" symptom). A single intentional re-anchor
+    // is scheduled once via scheduleAlignHostOnly after the layout/boot
+    // settles, so the host still snaps to the correct replay window.
+    const reanchor = !opts || opts.reanchor !== false;
     applyHostSlotPositionOnly(cellEl);
     // Force chart.js to re-measure and repaint into the new bbox.
     try {
@@ -937,7 +946,7 @@ function applyHostSlot(cellEl) {
             ch._lastResizeDpr = 0;
             ch.resize();
             if (typeof ch.render === "function") ch.render();
-            alignHostChartForMultichart(ch, null);
+            if (reanchor) alignHostChartForMultichart(ch, null);
         }
     } catch (_) {}
 }
@@ -1173,9 +1182,9 @@ function resizeAllIframesInContainer(container) {
     });
 }
 
-function repaintAllPanelSurfaces(container, cellA) {
+function repaintAllPanelSurfaces(container, cellA, opts) {
     normalizeIframeStyles(container);
-    if (cellA) applyHostSlot(cellA);
+    if (cellA) applyHostSlot(cellA, opts);
     resizeAllIframesInContainer(container);
 }
 
@@ -1605,15 +1614,12 @@ export default function MultichartGrid({
                     try {
                         window.dispatchEvent(new CustomEvent("multichartUiPeersDirty", { detail: { panelId: id } }));
                     } catch (_) {}
-                    // After a new tile mounts, the host split layout often gets its
-                    // final width one frame late — replay getReplayAutoScrollState
-                    // was wrong until the user hit Follow. Re-run the same follow
-                    // pass on the HOST replaySystem (shared with in-page panels).
-                    setTimeout(function () {
-                        try {
-                            scheduleAlignHostOnly(managerRef.current, 220);
-                        } catch (_) { /* ignore */ }
-                    }, 0);
+                    // NOTE: the host viewport re-anchor used to run here on
+                    // EVERY panel-ready, which (with the 700ms staggered boot)
+                    // re-centered the host chart several times in a row and made
+                    // it visibly shake left/right while loading. It now runs
+                    // exactly once, after all panels in the layout report ready
+                    // (see the "host re-anchor once boot settles" effect below).
                 },
                 // Phase 7.2.4: iframe-side `panel-focus` events bubble up
                 // here. Iframe events don't propagate to the parent DOM,
@@ -1865,14 +1871,18 @@ export default function MultichartGrid({
         raf1 = requestAnimationFrame(() => {
             raf2 = requestAnimationFrame(() => {
                 if (isDraggingRef.current) return;
-                repaintAllPanelSurfaces(container, cellA);
+                // Resize the host canvas only — re-anchoring here would make
+                // the host chart jump horizontally mid-boot. The single
+                // intentional re-anchor is scheduled below + by the
+                // "all panels ready" effect.
+                repaintAllPanelSurfaces(container, cellA, { reanchor: false });
             });
         });
         const delay = 100 + iframeCount * 320;
         const t = setTimeout(() => {
             if (isDraggingRef.current) return;
             requestAnimationFrame(() => {
-                repaintAllPanelSurfaces(container, cellA);
+                repaintAllPanelSurfaces(container, cellA, { reanchor: false });
                 const mgr = managerRef.current;
                 scheduleAlignHostOnly(mgr, 280);
                 if (computeFocusedRectRef.current) {
@@ -1886,6 +1896,31 @@ export default function MultichartGrid({
             clearTimeout(t);
         };
     }, [layoutId, layout.cols, layout.rows, managerReady]);
+
+    // ─── Host re-anchor once the boot settles ───────────────────────────
+    //
+    // The host viewport re-anchor (center on replay playhead / refit) now
+    // runs EXACTLY ONCE per layout, after every iframe panel reports ready,
+    // instead of on every staggered panel-ready. Re-centering repeatedly
+    // during the ~2s staggered boot is what made the host chart visibly
+    // shake left/right while loading. The host's geometry (cell A bbox) is
+    // fixed by the grid template and does not depend on the panels finishing,
+    // so a single re-anchor at the end lands on the correct, stable window.
+    useEffect(() => {
+        if (!managerReady) return;
+        const expected = layout.tiles
+            .filter((t) => t.id !== HOST_PANEL_ID)
+            .map((t) => t.id);
+        if (expected.length === 0) return;
+        if (!expected.every((id) => readyPanels.has(id))) return;
+        const mgr = managerRef.current;
+        const t = setTimeout(() => {
+            if (isDraggingRef.current) return;
+            scheduleAlignHostOnly(mgr, 0);
+        }, 120);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [managerReady, readyPanels, layout.tiles]);
 
     // Per-iframe cell ResizeObserver — debounced resize when any panel
     // cell changes size (splitter release, layout switch, sidebar, etc.).
@@ -2006,7 +2041,11 @@ export default function MultichartGrid({
             applyHostSlotPositionOnly(cellA);
         };
         const repaintHost = () => {
-            applyHostSlot(cellA);
+            // Resize/reposition only — do NOT re-anchor the viewport on every
+            // ResizeObserver/window tick (that caused the host chart to drift
+            // left/right while panels were loading). The intentional re-anchor
+            // is handled once after the boot settles.
+            applyHostSlot(cellA, { reanchor: false });
         };
         const schedule = () => {
             if (isDraggingRef.current) return;
