@@ -17,6 +17,10 @@ class ReplaySystem {
         this._fullRawDataMatchesTF = false;
         this.autoScrollEnabled = true;
         this.userHasPanned = false;
+        /** True while play is stalled at the loaded forward edge waiting for more bars. */
+        this._replayForwardEdgeWait = false;
+        /** Bumped to invalidate stale tick timeout chains (prefetch must not stack loops). */
+        this._activeTickLoop = 0;
 
         // === VIRTUAL TIME SYNC: Track replay position by timestamp, not index ===
         // This ensures all timeframes stay in sync when switching
@@ -3008,6 +3012,7 @@ class ReplaySystem {
      */
     _handleForwardEdgeWhilePlaying(retryFn) {
         if (this.tryRequestForwardDataProbe()) {
+            this._replayForwardEdgeWait = true;
             if (this.isPlaying && !this._nextCandleTimer && typeof retryFn === 'function') {
                 this.scheduleForwardEdgeRetry(retryFn);
             }
@@ -3015,11 +3020,13 @@ class ReplaySystem {
         }
         const sessionEndMs = this._getBacktestSessionEndMs();
         if (sessionEndMs != null && !this._playheadReachedSessionEnd(sessionEndMs)) {
+            this._replayForwardEdgeWait = true;
             if (this.isPlaying && !this._nextCandleTimer && typeof retryFn === 'function') {
                 this.scheduleForwardEdgeRetry(retryFn);
             }
             return true;
         }
+        this._replayForwardEdgeWait = false;
         return false;
     }
 
@@ -3159,6 +3166,7 @@ class ReplaySystem {
      * Stop all playback intervals and animations
      */
     stopAllPlayback() {
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         if (this._nextCandleTimer) {
             clearTimeout(this._nextCandleTimer);
             this._nextCandleTimer = null;
@@ -3242,6 +3250,7 @@ class ReplaySystem {
         const targetIndex = this.calculateNextIndex();
         this.currentIndex = targetIndex;
         this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
         
         // === UPDATE VIRTUAL TIME: Sync replayTimestamp with new position ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -3554,6 +3563,18 @@ class ReplaySystem {
     startTickAnimation() {
         if (!this.isActive || !this.isPlaying) return;
 
+        // Invalidate any prior tick timeout chain before starting a new one.
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
+        const loopId = this._activeTickLoop;
+        if (this.tickInterval) {
+            clearTimeout(this.tickInterval);
+            this.tickInterval = null;
+        }
+        if (this._nextCandleTimer) {
+            clearTimeout(this._nextCandleTimer);
+            this._nextCandleTimer = null;
+        }
+
         if (!Array.isArray(this.fullRawData) || this.fullRawData.length === 0) {
             console.warn('⚠️ Cannot start tick animation - replay data unavailable');
             this.pause();
@@ -3714,14 +3735,14 @@ class ReplaySystem {
             }
         }
         
-        // Clear any existing tick interval
+        // Clear any existing tick interval (loop id bump above already dropped stale chains)
         if (this.tickInterval) {
             clearTimeout(this.tickInterval);
             this.tickInterval = null;
         }
         
         // Start tick/frame animation
-        this.scheduleNextTick();
+        this.scheduleNextTick(loopId);
     }
     
     /**
@@ -3806,8 +3827,11 @@ class ReplaySystem {
     /**
      * Schedule next tick with volume-weighted interval
      */
-    scheduleNextTick() {
+    scheduleNextTick(loopId = this._activeTickLoop) {
         if (!this.isPlaying) {
+            return;
+        }
+        if (loopId !== this._activeTickLoop) {
             return;
         }
         
@@ -3815,7 +3839,8 @@ class ReplaySystem {
         if (this.fastMode) {
             const interval = this.fastModeInterval || 16;
             this.tickInterval = setTimeout(() => {
-                this.animateTick();
+                if (loopId !== this._activeTickLoop) return;
+                this.animateTick(loopId);
             }, interval);
             return;
         }
@@ -3838,12 +3863,13 @@ class ReplaySystem {
         
         // Schedule next tick
         this.tickInterval = setTimeout(() => {
-            this.animateTick();
+            if (loopId !== this._activeTickLoop) return;
+            this.animateTick(loopId);
             
             // Schedule next tick if still animating
             if (this.isPlaying && this.animatingCandle && 
                 this.tickProgress < (this.currentTicksPerCandle || this.ticksPerCandle || 72)) {
-                this.scheduleNextTick();
+                this.scheduleNextTick(loopId);
             }
         }, tickInterval);
     }
@@ -3853,15 +3879,18 @@ class ReplaySystem {
      * Uses pre-generated tick paths for consistent animation across all timeframes
      * In FAST MODE: completes multiple candles per frame
      */
-    animateTick() {
+    animateTick(loopId = this._activeTickLoop) {
         if (!this.isPlaying) {
             this.stopTickAnimation();
+            return;
+        }
+        if (loopId !== this._activeTickLoop) {
             return;
         }
         
         // FAST MODE: Complete candles without tick animation
         if (this.fastMode) {
-            this.animateFastMode();
+            this.animateFastMode(loopId);
             return;
         }
         
@@ -3947,7 +3976,8 @@ class ReplaySystem {
      * FAST MODE: Complete multiple candles per frame for high-speed playback
      * Used when speed >= 60x (1 or more raw candles per second)
      */
-    animateFastMode() {
+    animateFastMode(loopId = this._activeTickLoop) {
+        if (loopId !== this._activeTickLoop) return;
         const candlesToComplete = this.candlesPerFrame || 1;
 
         // Proactive prefetch in FAST MODE (high-speed replay):
@@ -3969,7 +3999,7 @@ class ReplaySystem {
         for (let i = 0; i < candlesToComplete; i++) {
             // Check bounds
             if (this.currentIndex >= this.fullRawData.length - 1) {
-                if (this._handleForwardEdgeWhilePlaying(() => this.animateFastMode())) {
+                if (this._handleForwardEdgeWhilePlaying(() => this.startTickAnimation())) {
                     return;
                 }
                 this._finishPlaybackAtSessionEnd();
@@ -3979,6 +4009,7 @@ class ReplaySystem {
             // Advance to next candle
             this.currentIndex++;
             this.edgeProbeRetryCount = 0;
+            this._replayForwardEdgeWait = false;
             
             // Update virtual time
             if (this.fullRawData[this.currentIndex]) {
@@ -3996,7 +4027,7 @@ class ReplaySystem {
         
         // Schedule next frame
         if (this.isPlaying) {
-            this.scheduleNextTick();
+            this.scheduleNextTick(loopId);
         }
     }
     
@@ -4633,6 +4664,7 @@ class ReplaySystem {
         // The display timeframe only affects how data is shown, not playback
         this.currentIndex = this.currentIndex + 1;
         this.edgeProbeRetryCount = 0;
+        this._replayForwardEdgeWait = false;
         
         // === UPDATE VIRTUAL TIME: Set to the new candle's timestamp ===
         if (this.fullRawData && this.fullRawData[this.currentIndex]) {
@@ -4701,6 +4733,7 @@ class ReplaySystem {
 
         // Set state first
         this.isPlaying = false;
+        this._activeTickLoop = (this._activeTickLoop || 0) + 1;
         
         // Stop active timers first
         if (this._nextCandleTimer) {

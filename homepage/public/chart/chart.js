@@ -18518,6 +18518,10 @@ class Chart {
                         queueMicrotask(() => {
                             const rs = this.replaySystem;
                             if (!rs || !rs.isPlaying) return;
+                            // Mid-buffer prefetch must not spawn a second tick loop — only
+                            // resume when playback was stalled at the loaded forward edge.
+                            if (!rs._replayForwardEdgeWait) return;
+                            rs._replayForwardEdgeWait = false;
                             try {
                                 if (typeof rs.getPlaybackMode === 'function'
                                     && rs.getPlaybackMode() === 'tick'
