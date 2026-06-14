@@ -11917,43 +11917,16 @@ class OrderManager {
             }
             if (onRemove) {
                 const bb = lineData.labelGroup.node().getBBox();
-                const delR = 9;
-                const gap = 4;
-                const dg = lineData.labelGroup.append('g')
-                    .attr('class', 'preview-entry-level-delete-btn')
-                    .attr('transform', `translate(${bb.width + gap}, ${(height - delR * 2) / 2})`)
-                    .style('cursor', 'pointer');
-                const dbc = dg.append('circle')
-                    .attr('r', delR)
-                    .attr('cx', delR)
-                    .attr('cy', delR)
-                    .attr('fill', '#0f172a')
-                    .attr('stroke', '#ef4444')
-                    .attr('stroke-width', 1.2);
-                dg.append('text')
-                    .attr('x', delR)
-                    .attr('y', delR)
-                    .attr('dy', '0.35em')
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ef4444')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '700')
-                    .style('pointer-events', 'none')
-                    .text('✕');
-                dg.on('mousedown', (e) => e.stopPropagation())
-                    .on('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
+                this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                    className: 'preview-entry-level-delete-btn',
+                    x: bb.width + gap,
+                    y: (height - 18) / 2,
+                    stopMousedown: true,
+                    onClick: (event) => {
+                        event.preventDefault();
                         onRemove();
-                    })
-                    .on('mouseenter', () => {
-                        dbc.attr('fill', '#ef4444');
-                        dg.select('text').attr('fill', '#ffffff');
-                    })
-                    .on('mouseleave', () => {
-                        dbc.attr('fill', '#0f172a');
-                        dg.select('text').attr('fill', '#ef4444');
-                    });
+                    },
+                });
             }
         }
 
@@ -14819,12 +14792,7 @@ class OrderManager {
         this.tpTargets = [];
 
         let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
-        nTargets = Math.min(nTargets, 10);
-        if (this.marketType === 'futures') {
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
-            nTargets = Math.min(nTargets, cap);
-        }
+        nTargets = Math.min(nTargets, this._getMaxTpTargets());
         const numEl = document.getElementById('numTPTargets');
         if (numEl) numEl.value = String(nTargets);
         
@@ -14927,16 +14895,10 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
-        // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
         if (numInput) {
             const currentNum = parseInt(numInput.value || 2, 10);
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const futuresCap = this.marketType === 'futures'
-                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
-                : 10;
-            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
-            if (currentNum < hardCap) {
+            if (this._canAddMoreTpTargets(currentNum)) {
                 numInput.value = String(currentNum + 1);
                 this.calculateTPTargetsFromNumber(currentNum + 1);
             }
@@ -20053,6 +20015,13 @@ class OrderManager {
         if (!this.tpTargets) {
             this.tpTargets = [];
         }
+
+        let effectiveCount = this.tpTargets.length;
+        if (effectiveCount === 0) {
+            const originalTPPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (originalTPPrice > 0) effectiveCount = 1;
+        }
+        if (!this._canAddMoreTpTargets(effectiveCount)) return;
         
         // IMPORTANT: If tpTargets is empty but we have a TP price from single TP mode,
         // we need to preserve the original TP first before adding the new split one

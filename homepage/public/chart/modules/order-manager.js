@@ -11917,43 +11917,16 @@ class OrderManager {
             }
             if (onRemove) {
                 const bb = lineData.labelGroup.node().getBBox();
-                const delR = 9;
-                const gap = 4;
-                const dg = lineData.labelGroup.append('g')
-                    .attr('class', 'preview-entry-level-delete-btn')
-                    .attr('transform', `translate(${bb.width + gap}, ${(height - delR * 2) / 2})`)
-                    .style('cursor', 'pointer');
-                const dbc = dg.append('circle')
-                    .attr('r', delR)
-                    .attr('cx', delR)
-                    .attr('cy', delR)
-                    .attr('fill', '#0f172a')
-                    .attr('stroke', '#ef4444')
-                    .attr('stroke-width', 1.2);
-                dg.append('text')
-                    .attr('x', delR)
-                    .attr('y', delR)
-                    .attr('dy', '0.35em')
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ef4444')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '700')
-                    .style('pointer-events', 'none')
-                    .text('✕');
-                dg.on('mousedown', (e) => e.stopPropagation())
-                    .on('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
+                this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                    className: 'preview-entry-level-delete-btn',
+                    x: bb.width + gap,
+                    y: (height - 18) / 2,
+                    stopMousedown: true,
+                    onClick: (event) => {
+                        event.preventDefault();
                         onRemove();
-                    })
-                    .on('mouseenter', () => {
-                        dbc.attr('fill', '#ef4444');
-                        dg.select('text').attr('fill', '#ffffff');
-                    })
-                    .on('mouseleave', () => {
-                        dbc.attr('fill', '#0f172a');
-                        dg.select('text').attr('fill', '#ef4444');
-                    });
+                    },
+                });
             }
         }
 
@@ -14819,12 +14792,7 @@ class OrderManager {
         this.tpTargets = [];
 
         let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
-        nTargets = Math.min(nTargets, 10);
-        if (this.marketType === 'futures') {
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
-            nTargets = Math.min(nTargets, cap);
-        }
+        nTargets = Math.min(nTargets, this._getMaxTpTargets());
         const numEl = document.getElementById('numTPTargets');
         if (numEl) numEl.value = String(nTargets);
         
@@ -14927,16 +14895,10 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
-        // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
         if (numInput) {
             const currentNum = parseInt(numInput.value || 2, 10);
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const futuresCap = this.marketType === 'futures'
-                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
-                : 10;
-            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
-            if (currentNum < hardCap) {
+            if (this._canAddMoreTpTargets(currentNum)) {
                 numInput.value = String(currentNum + 1);
                 this.calculateTPTargetsFromNumber(currentNum + 1);
             }
@@ -15119,59 +15081,6 @@ class OrderManager {
     }
 
     /**
-     * Coalesce rapid TP stepper clicks into one chart refresh (reduces shake/lag).
-     */
-    _scheduleOpenTpPctChartRefresh() {
-        if (this._openTpPctChartRefreshRaf != null) return;
-        this._openTpPctChartRefreshRaf = requestAnimationFrame(() => {
-            this._openTpPctChartRefreshRaf = null;
-            if (this._isMultiPanelLayout()) {
-                this._collectLayoutCharts().forEach((c) => {
-                    if (c?.scales?.yScale) {
-                        this.updateSLTPLines(c);
-                        if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(c);
-                    }
-                });
-            } else if (this.chart?.scales?.yScale) {
-                this.updateSLTPLines(this.chart);
-                if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
-            }
-            if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
-        });
-    }
-
-    _schedulePendingTpPctChartRefresh(pendingOrderId) {
-        this._pendingTpPctRefreshOrderId = pendingOrderId;
-        if (this._pendingTpPctChartRefreshRaf != null) return;
-        this._pendingTpPctChartRefreshRaf = requestAnimationFrame(() => {
-            this._pendingTpPctChartRefreshRaf = null;
-            const po = this._pendingTpPctRefreshOrderId != null
-                ? this._findPendingOrderById(this._pendingTpPctRefreshOrderId)
-                : null;
-            if (!po) return;
-            this.removePendingSLTPLines(po.id);
-            this.removeMultiTPAvgLine(po.id);
-            this.drawPendingOrderTargets(po);
-            if (po.tpTargets?.length >= 1) this.drawMultiTPAvgLine(po, 'pending');
-            this.positionPendingOrderTargets(this.chart);
-            if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
-            this._syncPreviewTpTargetsFromPending(po);
-            this._schedulePendingOrdersPanelRefresh();
-        });
-    }
-
-    _schedulePreviewTpPctRefresh() {
-        if (this._previewTpPctRefreshRaf != null) return;
-        this._previewTpPctRefreshRaf = requestAnimationFrame(() => {
-            this._previewTpPctRefreshRaf = null;
-            this.calculateAdvancedRiskReward();
-            this.updatePreviewLines();
-            this.renderTPTargets();
-            this._syncPendingOrdersTpTargetsFromPreview();
-        });
-    }
-
-    /**
      * +/- on open position multi-TP lines: updates position.tpTargets (same as panel redistribution).
      */
     adjustOpenPositionTPPercentage(orderId, targetIndex, change) {
@@ -15182,7 +15091,18 @@ class OrderManager {
         if (pos.isSplitEntry && pos.splitGroupId) {
             this._syncOpenTpPercentagesAcrossSplitGroup(pos);
         }
-        this._scheduleOpenTpPctChartRefresh();
+        if (this._isMultiPanelLayout()) {
+            this._collectLayoutCharts().forEach((c) => {
+                if (c?.scales?.yScale) {
+                    this.updateSLTPLines(c);
+                    if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(c);
+                }
+            });
+        } else {
+            this.updateSLTPLines(this.chart);
+            if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
+        }
+        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
     }
 
     /**
@@ -15196,7 +15116,18 @@ class OrderManager {
         if (po.isSplitEntry && po.splitGroupId) {
             this._syncPendingTpPercentagesAcrossSplitGroup(po);
         }
-        this._schedulePendingTpPctChartRefresh(pendingOrderId);
+        this.removePendingSLTPLines(po.id);
+        this.removeMultiTPAvgLine(po.id);
+        this.drawPendingOrderTargets(po);
+        if (po.tpTargets.length >= 1) {
+            this.drawMultiTPAvgLine(po, 'pending');
+        }
+        this.positionPendingOrderTargets(this.chart);
+        if (typeof this._updateMultiTPAvgLines === 'function') {
+            this._updateMultiTPAvgLines(this.chart);
+        }
+        this._syncPreviewTpTargetsFromPending(po);
+        this._schedulePendingOrdersPanelRefresh();
     }
 
     /**
@@ -15220,7 +15151,10 @@ class OrderManager {
             }
         });
 
-        this._schedulePreviewTpPctRefresh();
+        this.calculateAdvancedRiskReward();
+        this.updatePreviewLines();
+        this.renderTPTargets();
+        this._syncPendingOrdersTpTargetsFromPreview();
 
         const unit = this.tpDistributionMode === 'percent' ? '%' : this.tpDistributionMode === 'amount' ? '$' : ' lots';
         console.log(`📊 Adjusted TP${targetIndex + 1}: ${currentValue.toFixed(precision)}${unit} → ${newValue.toFixed(precision)}${unit}`);
@@ -20081,6 +20015,13 @@ class OrderManager {
         if (!this.tpTargets) {
             this.tpTargets = [];
         }
+
+        let effectiveCount = this.tpTargets.length;
+        if (effectiveCount === 0) {
+            const originalTPPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (originalTPPrice > 0) effectiveCount = 1;
+        }
+        if (!this._canAddMoreTpTargets(effectiveCount)) return;
         
         // IMPORTANT: If tpTargets is empty but we have a TP price from single TP mode,
         // we need to preserve the original TP first before adding the new split one
@@ -39791,7 +39732,6 @@ class OrderManager {
 
     _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
         const accent = spec.hoverAccent || spec.accent;
-        let leaveTimer = null;
         const reset = () => {
             bg.attr('fill', th.bg).attr('stroke', th.border);
             txt.attr('fill', th.muted);
@@ -39801,15 +39741,7 @@ class OrderManager {
             txt.attr('fill', '#ffffff');
         };
         reset();
-        host
-            .on('mouseenter', () => {
-                if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-                hover();
-            })
-            .on('mouseleave', () => {
-                if (leaveTimer) clearTimeout(leaveTimer);
-                leaveTimer = setTimeout(() => { leaveTimer = null; reset(); }, 50);
-            });
+        host.on('mouseenter', hover).on('mouseleave', reset);
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
@@ -39869,23 +39801,26 @@ class OrderManager {
             .attr('fill', th.muted)
             .style('pointer-events', 'none');
 
-        const resetBoth = () => {
-            bgUp.attr('fill', th.bg).attr('stroke', th.border);
-            bgDown.attr('fill', th.bg).attr('stroke', th.border);
-            upPath.attr('fill', th.muted);
-            downPath.attr('fill', th.muted);
-        };
-
         const wireHalf = (bgEl, pathEl, accent, fn) => {
-            bgEl.style('pointer-events', 'all').style('cursor', 'pointer');
+            const reset = () => {
+                bgEl.attr('fill', th.bg).attr('stroke', th.border);
+                pathEl.attr('fill', th.muted);
+            };
+            const activate = () => {
+                bgEl.attr('fill', accent).attr('stroke', accent);
+                pathEl.attr('fill', '#ffffff');
+            };
+            reset();
+            bgEl.style('pointer-events', 'all')
+                .style('cursor', 'pointer')
+                .on('mouseleave', reset);
             if (fn) {
                 bgEl.on('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    bgEl.attr('fill', accent).attr('stroke', accent);
-                    pathEl.attr('fill', '#ffffff');
+                    activate();
                     fn(e);
-                    requestAnimationFrame(() => requestAnimationFrame(resetBoth));
+                    setTimeout(reset, 200);
                 });
             }
             if (o.stopMousedown) {
@@ -39893,7 +39828,6 @@ class OrderManager {
             }
         };
 
-        resetBoth();
         wireHalf(bgUp, upPath, green, o.onIncrease);
         wireHalf(bgDown, downPath, red, o.onDecrease);
 

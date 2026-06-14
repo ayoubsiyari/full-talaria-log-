@@ -12880,6 +12880,7 @@ const TalariaV8bLive = () => {
     (currentSymbol.type === "futures"
       ? Math.floor(v9OrderQtyForSplitUi) >= 1
       : v9OrderQtyForSplitUi > 0);
+  const v9TpPlusVisible = v9EntryTpPlusVisible && tpRows.length < 5;
 
   // Futures: when there is no contract size yet, collapse to a single TP row. With ≥1 contract,
   // multi-TP is allowed (integer shares per leg sum to contracts via v9TpNormalizeFuturesContractShares).
@@ -34458,6 +34459,7 @@ const TalariaV8bLive = () => {
               return "";
             };
             const addTp = () => {
+              if (tpRows.length >= 5) return;
               omPanelBridgeRef.current.tpAdd = Date.now();
               markOrderControlBridge();
               setTpRows((rows) => {
@@ -34637,7 +34639,7 @@ const TalariaV8bLive = () => {
                         </svg>
                       </div>
                     </>)}
-                    {v9EntryTpPlusVisible && (
+                    {v9TpPlusVisible && (
                     <div onClick={addTp}
                       onMouseEnter={()=>setSwHov("tp-add")} onMouseLeave={()=>setSwHov(null)}
                       title="Add target level"
