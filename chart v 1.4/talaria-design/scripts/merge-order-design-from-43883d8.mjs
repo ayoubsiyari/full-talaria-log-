@@ -78,6 +78,16 @@ const DESIGN_HELPERS = [
   '_accentColorForTradeMarkerTag',
 ];
 
+const SUPPORT_METHODS = [
+  '_orderConnectorAnchorX',
+  '_purgeOrderConnectorsFromSvg',
+  '_purgeOrderConnectorsFromAllSurfaces',
+  '_getMaxTpTargets',
+  '_canAddMoreTpTargets',
+  '_getEffectiveTpTargetCount',
+  '_markPriceForOpenPosition',
+];
+
 const DESIGN_RENDER_METHODS = [
   'renderPreviewLabel',
   '_appendPreviewMultiModesActivatorButton',
@@ -128,6 +138,22 @@ for (const name of DESIGN_HELPERS) {
     continue;
   }
   base = replaceMethod(base, name, body);
+}
+
+for (const name of SUPPORT_METHODS) {
+  const body = extractMethod(design, name);
+  if (!body) {
+    console.warn(`[missing support in 43883d8] ${name}`);
+    continue;
+  }
+  if (!extractMethod(base, name)) {
+    console.log(`[add support] ${name}`);
+    const exportIdx = base.indexOf('// Export for use in main chart');
+    const insertAt = exportIdx > 0 ? exportIdx : base.lastIndexOf('\n}');
+    base = base.slice(0, insertAt) + '\n' + body + '\n' + base.slice(insertAt);
+  } else {
+    base = replaceMethod(base, name, body);
+  }
 }
 
 for (const name of DESIGN_RENDER_METHODS) {

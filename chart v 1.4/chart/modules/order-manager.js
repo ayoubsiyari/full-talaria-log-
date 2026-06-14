@@ -3,6 +3,8 @@
  * Handles order placement, tracking, and P&L calculation
  */
 
+const MAX_TP_TARGETS = 5;
+
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -35825,6 +35827,84 @@ class OrderManager {
                 if (Number.isFinite(x2)) g._connector.attr('x2', x2 - dx);
             }
         });
+    }
+
+    _orderConnectorAnchorX(ch) {
+        if (!ch) return 0;
+        const yAxisWidth = ch.margin?.r || 70;
+        return ch.w - yAxisWidth - 6;
+    }
+
+    _purgeOrderConnectorsFromSvg(svg) {
+        if (!svg || typeof svg.selectAll !== 'function') return;
+        svg.selectAll('.exec-order-connector').remove();
+        svg.selectAll('.preview-pending-connector').remove();
+        svg.selectAll('.preview-pending-connector-dot').remove();
+        svg.selectAll('[class*="split-avg-connector"]').remove();
+    }
+
+    _purgeOrderConnectorsFromAllSurfaces() {
+        const seen = new Set();
+        const purge = (svg) => {
+            const node = svg?.node?.();
+            if (node) {
+                if (seen.has(node)) return;
+                seen.add(node);
+            }
+            this._purgeOrderConnectorsFromSvg(svg);
+        };
+        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg));
+        purge(this.chart?.svg);
+        if (typeof document !== 'undefined' && typeof d3 !== 'undefined') {
+            const roots = [];
+            const dw = document.getElementById('drawingSvg');
+            if (dw) roots.push(dw);
+            document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
+            roots.forEach((el) => {
+                if (!el || seen.has(el)) return;
+                seen.add(el);
+                purge(d3.select(el));
+            });
+        }
+        (this.splitGroupAvgLines || []).forEach((g) => {
+            g._connector = null;
+        });
+        this._pendingPreviewConnector = null;
+        this._pendingPreviewConnectorDots = [];
+    }
+
+    _getMaxTpTargets(overrideQty) {
+        let cap = MAX_TP_TARGETS;
+        if (this.marketType === 'futures') {
+            let q;
+            if (overrideQty != null && Number.isFinite(Number(overrideQty))) {
+                q = Math.floor(Number(overrideQty));
+            } else {
+                q = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || '0'));
+            }
+            const futuresCap = !Number.isFinite(q) || q < 1 ? 1 : Math.min(q, MAX_TP_TARGETS);
+            cap = Math.min(cap, futuresCap);
+        }
+        return cap;
+    }
+
+    _canAddMoreTpTargets(currentCount, overrideQty) {
+        const n = Number(currentCount) || 0;
+        return n < this._getMaxTpTargets(overrideQty);
+    }
+
+    _getEffectiveTpTargetCount(source) {
+        if (source?.tpTargets?.length) return source.tpTargets.length;
+        if (Number(source?.takeProfit) > 0) return 1;
+        return 0;
+    }
+
+    _markPriceForOpenPosition(position, chart) {
+        if (!position) return null;
+        const ch = chart || this._getOrderContextChart() || this.chart;
+        const candle = this._getCurrentCandleForChart(ch);
+        if (!candle) return null;
+        return this._resolveUnrealizedMarkPrice(position, candle);
     }
 
     _drawExecutedOrderConnectors(ch) {
