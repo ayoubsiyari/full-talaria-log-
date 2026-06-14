@@ -30656,10 +30656,9 @@ class OrderManager {
                 .attr('stroke', color)
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
-                .attr('stroke-dasharray', null)
-                .attr('opacity', 0.85)
                 .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
+            this._applyOrderLevelLineStyle(line, false);
 
             const labelGroup = chart.svg.append('g')
                 .attr('class', `pending-${type.toLowerCase()}-label pending-${type.toLowerCase()}-${pendingOrder.id}`)
@@ -30837,16 +30836,10 @@ class OrderManager {
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
 
-                const bgColor = target.type === 'TP' ? '#089981'
+                const accent = target.type === 'TP' ? '#089981'
                     : target.type === 'SL' ? '#f23645'
                     : '#f59e0b';
-
-                const labelRect = labelGroup.append('rect')
-                    .attr('class', 'order-overlay-sublayer')
-                    .attr('rx', 3)
-                    .attr('fill', bgColor)
-                    .attr('stroke', bgColor)
-                    .attr('stroke-width', 1);
+                const bgColor = accent;
 
                 let displayLabel = '';
                 if (target.labelText) {
@@ -30857,67 +30850,20 @@ class OrderManager {
                     displayLabel = `${target.type} ${this.formatPrice(target.price)}`;
                 }
 
-                const text = labelGroup.append('text')
-                    .attr('class', 'order-overlay-sublayer pending-target-label-main')
-                    .attr('fill', '#ffffff')
-                    .attr('font-size', '11px')
-                    .attr('font-weight', '600')
-                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
-                    .style('pointer-events', 'none')
-                    .text(displayLabel);
-
-                const bbox = text.node().getBBox();
-                const labelWidth = bbox.width + 16;
-                const labelHeight = 22;
-
-                labelRect
-                    .attr('width', labelWidth)
-                    .attr('height', labelHeight)
-                    .attr('x', 0)
-                    .attr('y', 0);
-
-                text
-                    .attr('x', labelWidth / 2)
-                    .attr('y', labelHeight / 2)
-                    .attr('text-anchor', 'middle')
-                    .attr('dy', '0.35em');
-
-                const pnlAccent = target.type === 'TP' ? '#089981' : target.type === 'SL' ? '#f23645' : '#fde68a';
-                const pnlBgFill = target.type === 'TP' ? 'rgba(8,153,129,0.15)' : target.type === 'SL' ? 'rgba(242,54,69,0.15)' : 'rgba(245,158,11,0.15)';
-                let pnlBoxW = 0;
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
-                if (hasPnl) {
-                    const pnlText = labelGroup.append('text')
-                        .attr('class', 'order-overlay-sublayer pending-target-label-pnl')
-                        .attr('fill', pnlAccent)
-                        .attr('font-size', '11px')
-                        .attr('font-weight', '600')
-                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
-                        .style('pointer-events', 'none')
-                        .text(target.pnlStr);
-                    const pnlBbox = pnlText.node().getBBox();
-                    pnlBoxW = pnlBbox.width + 16;
-                    const pnlBoxX = labelWidth + 2;
-                    labelGroup.insert('rect', 'text:last-of-type')
-                        .attr('class', 'order-overlay-sublayer')
-                        .attr('rx', 3)
-                        .attr('fill', pnlBgFill)
-                        .attr('stroke', pnlAccent)
-                        .attr('stroke-width', 1)
-                        .attr('width', pnlBoxW)
-                        .attr('height', labelHeight)
-                        .attr('x', pnlBoxX)
-                        .attr('y', 0);
-                    pnlText
-                        .attr('x', pnlBoxX + pnlBoxW / 2)
-                        .attr('y', labelHeight / 2)
-                        .attr('text-anchor', 'middle')
-                        .attr('dy', '0.35em');
-                    pnlBoxW += 2;
-                }
-
-                const totalLabelW = labelWidth + pnlBoxW;
+                const labelHeight = 24;
+                const toastDims = this._buildOrderLevelToastLabelInGroup(labelGroup, {
+                    tagText: displayLabel,
+                    detailText: hasPnl ? target.pnlStr : null,
+                    detailColor: hasPnl ? this._orderLevelDetailColor(target.pnlStr, accent) : null,
+                    accent,
+                    isPreview: false,
+                    height: labelHeight
+                });
+                const totalLabelW = toastDims.width;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
+
+                this._applyOrderLevelLineStyle(target.line, false);
 
                 // Layout: Label+PnL → [−][+] (multi-TP share) → [X] → [+] split
                 const isMultiTP = !!target.isPendingMultiTP;
@@ -31111,8 +31057,8 @@ class OrderManager {
      */
     _updatePendingTargetChartLabelsLive(target, pendingOrder) {
         if (!target?.labelGroup || !pendingOrder) return;
-        const main = target.labelGroup.select('.pending-target-label-main');
-        const pnl = target.labelGroup.select('.pending-target-label-pnl');
+        const main = target.labelGroup.select('.order-level-toast-tag');
+        const pnl = target.labelGroup.select('.order-level-toast-detail');
         if (main.empty()) return;
 
         const quantity = pendingOrder.quantity;
