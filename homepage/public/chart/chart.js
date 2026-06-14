@@ -13666,6 +13666,9 @@ class Chart {
 	        
 	        this.render();
 	        this.renderPending = false;
+	        if (typeof this._syncDomAxisCursorZones === 'function') {
+	            this._syncDomAxisCursorZones();
+	        }
 	        
 	        if (!isPanelDragResize) {
 	            if (svgNode) {
@@ -13785,6 +13788,62 @@ class Chart {
             this.drag.type = null;
         }
         this.scheduleRender();
+    }
+
+    /** Pointer position → cursor mode (price/time axis, plot, etc.). Used by events + order overlay. */
+    _detectCursorModeAt(mx, my) {
+        const m = this.margin || { t: 5, r: 70, b: 30, l: 0 };
+        this.cursor.separatePanelSlot = null;
+        if (mx > this.w - m.r && my > m.t && my < this.h - m.b) {
+            const spi = this.separatePanelInfo;
+            if (spi && Array.isArray(spi.panelSlots)) {
+                for (let si = 0; si < spi.panelSlots.length; si++) {
+                    const s = spi.panelSlots[si];
+                    if (my >= s.top && my <= s.bottom) {
+                        this.cursor.separatePanelSlot = s;
+                        return 'separatePanelAxis';
+                    }
+                }
+            }
+            return 'priceAxis';
+        }
+        if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
+            return 'timeAxis';
+        }
+        if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
+            const plotSlot = typeof this._findSeparatePanelPlotSlot === 'function'
+                ? this._findSeparatePanelPlotSlot(mx, my)
+                : null;
+            if (plotSlot) {
+                this.cursor.separatePanelSlot = plotSlot;
+                return 'separatePanelPlot';
+            }
+            return 'chart';
+        }
+        return 'outside';
+    }
+
+    /** Keep V9 DOM axis strips aligned with canvas margin (full price column, not 14px sliver). */
+    _syncDomAxisCursorZones() {
+        if (typeof document === 'undefined' || this.isPanel) return;
+        const m = this.margin || { t: 5, r: 70, b: 30, l: 0 };
+        const priceZone = document.getElementById('priceAxisZone');
+        if (priceZone) {
+            const w = Math.max(14, Number(m.r) || 70);
+            priceZone.style.width = `${w}px`;
+            priceZone.style.right = '0';
+            priceZone.style.top = `${Number(m.t) || 0}px`;
+            priceZone.style.bottom = `${Number(m.b) || 30}px`;
+            priceZone.style.pointerEvents = 'auto';
+            priceZone.style.zIndex = '12';
+        }
+        const timeZone = document.getElementById('timeAxisZone');
+        if (timeZone) {
+            timeZone.style.left = `${Number(m.l) || 0}px`;
+            timeZone.style.right = `${Number(m.r) || 70}px`;
+            timeZone.style.bottom = '0';
+            timeZone.style.height = `${Math.max(10, Number(m.b) || 30)}px`;
+        }
     }
 
     /**
@@ -20545,6 +20604,9 @@ class Chart {
         if (!this.xScale || !this.yScale) return;
 
         this._syncAdaptivePriceAxisMargin();
+        if (!this.isPanel && typeof this._syncDomAxisCursorZones === 'function') {
+            this._syncDomAxisCursorZones();
+        }
 
         const m = this.margin;
         const plotLayout = typeof this._getMainPricePlotLayout === 'function'
@@ -24401,37 +24463,24 @@ class Chart {
         // ═══════════════════════════════════════════════════════════════════
         // STEP 2 — Mouse Position Detection Helper
         // ═══════════════════════════════════════════════════════════════════
-        const detectCursorMode = (mx, my) => {
-            const m = this.margin;
-            this.cursor.separatePanelSlot = null;
-            // Right margin: main price axis vs stacked indicator pane axes
-            if (mx > this.w - m.r && my > m.t && my < this.h - m.b) {
-                const spi = this.separatePanelInfo;
-                if (spi && Array.isArray(spi.panelSlots)) {
-                    for (let si = 0; si < spi.panelSlots.length; si++) {
-                        const s = spi.panelSlots[si];
-                        if (my >= s.top && my <= s.bottom) {
-                            this.cursor.separatePanelSlot = s;
-                            return 'separatePanelAxis';
-                        }
-                    }
-                }
-                return 'priceAxis';
-            // Time axis (bottom) - full height of time axis area
-            } else if (my > this.h - m.b && mx > m.l && mx < this.w - m.r) {
-                return 'timeAxis';
-            } else if (mx > m.l && mx < this.w - m.r && my > m.t && my < this.h - m.b) {
-                const plotSlot = typeof this._findSeparatePanelPlotSlot === 'function'
-                    ? this._findSeparatePanelPlotSlot(mx, my)
-                    : null;
-                if (plotSlot) {
-                    this.cursor.separatePanelSlot = plotSlot;
-                    return 'separatePanelPlot';
-                }
-                return 'chart';
-            }
-            return 'outside';
+        const detectCursorMode = (mx, my) => this._detectCursorModeAt(mx, my);
+
+        // Price-axis double-click: capture on wrapper + canvas BEFORE drawing-tools
+        // dblclick (horizontal lines span the margin and would open settings otherwise).
+        const handlePriceAxisDoubleClickCapture = (e) => {
+            if (e.button !== 0 && e.button !== undefined) return;
+            const [mx, my] = this._eventCanvasLocalXY(e);
+            if (this._detectCursorModeAt(mx, my) !== 'priceAxis') return;
+            e.preventDefault();
+            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+            this._applyPriceAxisDoubleClickLock();
         };
+        this.canvas.addEventListener('dblclick', handlePriceAxisDoubleClickCapture, true);
+        const chartWrapper = this.canvas.parentElement;
+        if (chartWrapper && chartWrapper !== this.canvas) {
+            chartWrapper.addEventListener('dblclick', handlePriceAxisDoubleClickCapture, true);
+        }
         
         // ═══════════════════════════════════════════════════════════════════
         // STEP 5 — Candle Width Quantization

@@ -3,31 +3,6 @@
  * Handles order placement, tracking, and P&L calculation
  */
 
-/** Trim display-bar OHLC to replay playhead (shared helper — safe if class method is stale-cached). */
-function trimTouchCandleForReplayFill(orderManager, candle) {
-    if (!candle || typeof candle !== 'object' || !orderManager) return candle;
-    const ctx = (typeof orderManager._getOrderContextChart === 'function'
-        ? orderManager._getOrderContextChart()
-        : null) || orderManager.chart;
-    if (!ctx || typeof ctx._trimBarOhlcToReplayPlayhead !== 'function') return candle;
-    const playhead = typeof ctx._getReplayPlayheadMs === 'function' ? ctx._getReplayPlayheadMs() : null;
-    const barT = Number(candle.t);
-    if (!Number.isFinite(playhead) || !Number.isFinite(barT)) return candle;
-    const tfMs = typeof ctx.parseTimeframe === 'function'
-        ? ctx.parseTimeframe(ctx.currentTimeframe)
-        : null;
-    if (!Number.isFinite(tfMs) || tfMs <= 0) return candle;
-    const periodEnd = typeof ctx._getBarPeriodEndMs === 'function'
-        ? ctx._getBarPeriodEndMs(barT, null, -1, tfMs)
-        : (barT + tfMs);
-    if (Number.isFinite(periodEnd) && playhead >= periodEnd - 1) return candle;
-    if (playhead <= barT) return candle;
-    return ctx._trimBarOhlcToReplayPlayhead(candle, null, -1, tfMs);
-}
-
-/** Hard cap on take-profit levels (preview, pending, and open positions). */
-const MAX_TP_TARGETS = 5;
-
 class OrderManager {
     constructor(chart, replaySystem) {
         this.chart = chart;
@@ -153,8 +128,6 @@ class OrderManager {
         this.multiTPAvgLines = [];
         this.mfeMaeMarkers = []; // Store MFE/MAE markers
         this.previewLines = null; // Store preview TP/SL lines before order placement
-        /** 'market' | 'riskReward' | 'manual' — who owns draft preview entry price. */
-        this._previewEntrySource = 'market';
         /** When true, RR tool push/pull must not overwrite draft preview entry price. */
         this._previewEntryDecoupledFromRR = false;
         /** Set by RR Execute prefill — entry is intentionally at RR level (limit/stop), not live market. */
@@ -408,89 +381,6 @@ class OrderManager {
         return this._normalizeTicker(position && (position.ticker || position.symbol));
     }
 
-    _getPropFirmSessionRules() {
-        const sess = this.chart?.backtestingSession;
-        if (!sess || sess.type !== 'propfirm') return null;
-        const pr = sess.prop_rules || {};
-        return {
-            maxPosition: Number(sess.maxPosition ?? pr.maxPosition) || 0,
-            maxPositionEnabled: !!(sess.maxPositionEnabled ?? pr.maxPositionEnabled),
-            maxPositionUnit: String(sess.maxPositionUnit ?? pr.maxPositionUnit ?? 'lots').toLowerCase(),
-            maxContracts: Number(sess.maxContracts ?? pr.maxContracts) || 0,
-            maxContractsEnabled: !!(sess.maxContractsEnabled ?? pr.maxContractsEnabled),
-            weekendHold: !!(sess.weekendHold ?? pr.weekendHold)
-        };
-    }
-
-    _sumOpenQuantityForTicker(ticker) {
-        const t = this._normalizeTicker(ticker || this._getActiveTicker());
-        if (!t) return 0;
-        return this.openPositions
-            .filter((p) => p && p.status === 'OPEN' && this._positionTicker(p) === t)
-            .reduce((sum, p) => sum + (Number(p.quantity) || 0), 0);
-    }
-
-    _validatePropFirmPositionSize(quantity, ticker) {
-        const rules = this._getPropFirmSessionRules();
-        if (!rules) return { ok: true };
-
-        const q = Number(quantity);
-        if (!Number.isFinite(q) || q <= 0) return { ok: true };
-
-        const isFutures = this.marketType === 'futures';
-        const openQty = this._sumOpenQuantityForTicker(ticker);
-
-        if (isFutures && rules.maxContractsEnabled && rules.maxContracts > 0) {
-            if (q > rules.maxContracts) {
-                return { ok: false, message: `Max contracts per order is ${rules.maxContracts}` };
-            }
-            if (openQty + q > rules.maxContracts) {
-                return { ok: false, message: `Total open contracts would exceed limit of ${rules.maxContracts}` };
-            }
-        }
-
-        if (rules.maxPositionEnabled && rules.maxPosition > 0) {
-            const unit = rules.maxPositionUnit || 'lots';
-            if (!isFutures || unit !== 'contracts') {
-                if (q > rules.maxPosition) {
-                    return { ok: false, message: `Max position size is ${rules.maxPosition} ${unit}` };
-                }
-                if (openQty + q > rules.maxPosition) {
-                    return { ok: false, message: `Total open size would exceed ${rules.maxPosition} ${unit}` };
-                }
-            }
-        }
-
-        return { ok: true };
-    }
-
-    _isWeekendMs(ts) {
-        const day = new Date(ts).getUTCDay();
-        return day === 0 || day === 6;
-    }
-
-    _enforcePropFirmWeekendHold(currentCandle) {
-        const rules = this._getPropFirmSessionRules();
-        if (!rules || rules.weekendHold) return;
-        if (!currentCandle || !this._isWeekendMs(currentCandle.t)) {
-            this._propFirmWeekendClosedBarT = null;
-            return;
-        }
-        if (this._propFirmWeekendClosedBarT === currentCandle.t) return;
-
-        const open = this.openPositions.filter((p) => p && p.status === 'OPEN');
-        if (open.length === 0) return;
-
-        this._propFirmWeekendClosedBarT = currentCandle.t;
-        const px = Number.parseFloat(currentCandle.c);
-        if (!Number.isFinite(px)) return;
-
-        open.slice().forEach((p) => {
-            this.closePositionAtPrice(p.id, px, 'WEEKEND_HOLD');
-        });
-        this.showNotification('Weekend hold not allowed — open positions closed', 'warning', 5000);
-    }
-
     /** Dataset id the order was opened on (multi-instrument background SL/TP / mark). */
     _chartSourceFileId() {
         const c = this._getOrderContextChart();
@@ -704,192 +594,6 @@ class OrderManager {
         });
     }
 
-    /** Right edge of the plot area — order hit targets must not extend into the price axis strip. */
-    _orderPlotRightX(chart) {
-        const ch = chart || this.chart;
-        return Math.max(0, (Number(ch?.w) || 0) - (Number(ch?.margin?.r) || 70));
-    }
-
-    /** Pointer in chart layout px — same space as chart.js detectCursorMode / updateCrosshair. */
-    _pointerChartLocalXY(e, chart) {
-        const ch = chart || this.chart;
-        if (!ch) return null;
-        if (typeof ch._eventCanvasLocalXY === 'function') {
-            try {
-                const xy = ch._eventCanvasLocalXY(e);
-                if (Array.isArray(xy) && xy.length >= 2
-                    && Number.isFinite(xy[0]) && Number.isFinite(xy[1])) {
-                    return xy;
-                }
-            } catch (_e) { /* ignore */ }
-        }
-        const source = (e?.sourceEvent && typeof e.sourceEvent === 'object') ? e.sourceEvent : e;
-        const svg = ch.svg?.node?.();
-        if (!source || !svg) return null;
-        const clientX = source.clientX;
-        const clientY = source.clientY;
-        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
-        const rect = svg.getBoundingClientRect();
-        return [clientX - rect.left, clientY - rect.top];
-    }
-
-    /** True when a pointer event is over the price-axis strip (drag axis, not order levels). */
-    _eventInPriceAxisZone(e, chart) {
-        if (this._eventInChartAxisZone(e, 'priceAxisZone')) return true;
-        const ch = chart || this.chart;
-        const xy = this._pointerChartLocalXY(e, ch);
-        if (!xy) return false;
-        const [mx, my] = xy;
-        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
-        const w = Number(ch.w) || 0;
-        const h = Number(ch.h) || 0;
-        return mx > w - (Number(m.r) || 70)
-            && my > (Number(m.t) || 0)
-            && my < h - (Number(m.b) || 30);
-    }
-
-    /** True when a pointer event is over the time-axis grab strip (scale time, not order levels). */
-    _eventInTimeAxisZone(e, chart) {
-        if (this._eventInChartAxisZone(e, 'timeAxisZone')) return true;
-        const ch = chart || this.chart;
-        const xy = this._pointerChartLocalXY(e, ch);
-        if (!xy) return false;
-        const [mx, my] = xy;
-        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
-        const w = Number(ch.w) || 0;
-        const h = Number(ch.h) || 0;
-        return my > h - (Number(m.b) || 30)
-            && mx > (Number(m.l) || 0)
-            && mx < w - (Number(m.r) || 70);
-    }
-
-    /** Match #priceAxisZone / #timeAxisZone DOM hit targets when present (V9 layout). */
-    _eventInChartAxisZone(e, zoneId) {
-        if (typeof document === 'undefined' || !zoneId) return false;
-        const zone = document.getElementById(zoneId);
-        if (!zone) return false;
-        const clientX = e?.clientX ?? e?.sourceEvent?.clientX;
-        const clientY = e?.clientY ?? e?.sourceEvent?.clientY;
-        if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
-        const r = zone.getBoundingClientRect();
-        return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
-    }
-
-    /** Left X of a preview label group (for capping horizontal hit targets). */
-    _previewLineLabelStartX(lineData, ch) {
-        if (!lineData?.labelGroup) return null;
-        const transform = lineData.labelGroup.attr('transform') || '';
-        const match = /translate\(([^,]+),/.exec(transform);
-        const x = match ? parseFloat(match[1]) : NaN;
-        if (Number.isFinite(x)) return x;
-        const bbox = lineData.labelDimensions || lineData.labelGroup.node()?.getBBox?.();
-        const width = bbox?.width ?? 0;
-        return Math.max(0, (Number(ch?.w) || 0) - width - 175);
-    }
-
-    /** Full canvas width for visible order/preview lines (extends into price margin). */
-    _orderLineVisualEndX(chart) {
-        return Math.max(0, Number(chart?.w) || 0);
-    }
-
-    /** Cap draggable order-line hit width so price-axis drags are not stolen by SL/TP/entry lines. */
-    _orderLineHitEndX(chart, labelStartX = null) {
-        const plotRight = this._orderPlotRightX(chart);
-        const safePlotRight = Math.max(0, plotRight - 2);
-        if (Number.isFinite(labelStartX) && labelStartX > 0) {
-            return Math.min(safePlotRight, labelStartX);
-        }
-        return safePlotRight;
-    }
-
-    /**
-     * Transparent rect over the price margin — sits above order hit targets so axis
-     * clicks (incl. y-axis price pills) scale the chart instead of dragging levels.
-     */
-    _ensureOrderPriceMarginShield(chart) {
-        const ch = chart || this.chart;
-        if (!ch?.svg) return;
-        const m = ch.margin || { t: 5, r: 70, b: 30, l: 0 };
-        const w = Number(ch.w) || 0;
-        const h = Number(ch.h) || 0;
-        const plotRight = this._orderPlotRightX(ch);
-        const plotTop = Number(m.t) || 0;
-        const plotBot = h - (Number(m.b) || 30);
-        const shieldW = Math.max(0, w - plotRight);
-        const shieldH = Math.max(0, plotBot - plotTop);
-        if (shieldW <= 0 || shieldH <= 0) return;
-
-        let shield = ch.svg.select('rect.order-price-margin-shield');
-        const self = this;
-        const forwardMouseToCanvas = (ev, type) => {
-            const targetChart = ch;
-            if (!self._eventInPriceAxisZone(ev, targetChart)) return;
-            const canvas = targetChart.canvas;
-            if (!canvas) return;
-            if (targetChart.cursor) targetChart.cursor.mode = 'priceAxis';
-            canvas.dispatchEvent(new MouseEvent(type, {
-                bubbles: true,
-                cancelable: true,
-                clientX: ev.clientX,
-                clientY: ev.clientY,
-                button: ev.button,
-                buttons: ev.buttons,
-                shiftKey: ev.shiftKey,
-                ctrlKey: ev.ctrlKey,
-                altKey: ev.altKey,
-                metaKey: ev.metaKey
-            }));
-        };
-        const handlePriceAxisDblClick = (ev) => {
-            ev.stopPropagation();
-            if (!self._eventInPriceAxisZone(ev, ch)) return;
-            if (typeof ch._applyPriceAxisDoubleClickLock === 'function') {
-                ch._applyPriceAxisDoubleClickLock();
-                return;
-            }
-            forwardMouseToCanvas(ev, 'dblclick');
-        };
-        if (shield.empty()) {
-            shield = ch.svg.append('rect')
-                .attr('class', 'order-price-margin-shield')
-                .attr('fill', 'transparent');
-        }
-
-        shield
-            .attr('x', plotRight)
-            .attr('y', plotTop)
-            .attr('width', shieldW)
-            .attr('height', shieldH)
-            .style('pointer-events', 'all')
-            .style('cursor', 'ns-resize')
-            .on('mousedown.priceShield', function (ev) {
-                ev.stopPropagation();
-                forwardMouseToCanvas(ev, 'mousedown');
-            })
-            .on('dblclick.priceShield', handlePriceAxisDblClick)
-            .on('wheel.priceShield', function (ev) {
-                ev.stopPropagation();
-                const canvas = ch.canvas;
-                if (canvas) {
-                    canvas.dispatchEvent(new WheelEvent('wheel', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: ev.clientX,
-                        clientY: ev.clientY,
-                        deltaY: ev.deltaY,
-                        deltaX: ev.deltaX,
-                        shiftKey: ev.shiftKey,
-                        ctrlKey: ev.ctrlKey,
-                        altKey: ev.altKey
-                    }));
-                }
-            });
-
-        try {
-            if (typeof shield.raise === 'function') shield.raise();
-        } catch (_e) { /* ignore */ }
-    }
-
     /**
      * Charts that may host draft preview SVG (layout panels + whichever surface getActiveChart() uses).
      * Used when scrubbing preview on panel close so lines cannot linger on a non-listed instance.
@@ -1084,7 +788,7 @@ class OrderManager {
         s.selectAll('.order-line,.order-drag-hit,.order-label-box,.order-label-text,.order-arrow,.order-price-box,.order-price-text,.order-close-btn,.order-pnl-box,.order-pnl-text,.order-sl-badge,.order-tp-badge,.order-tp-badges').remove();
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
-        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-tp-pct-control"],[class*="pending-tp-pct-dec"],[class*="pending-tp-pct-inc"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
+        s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-split-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
@@ -1752,71 +1456,16 @@ class OrderManager {
      *   moves with replay ticks/candles.
      * - Other instruments: same session tick index + that bar's OHLC (deterministic path) so
      *   dock PnL moves smoothly; else panel last close, else cached bar close.
-     * - While replay is paused on the fill bar: freeze at entry mark so pair/TF resample does
-     *   not show phantom profit before playback advances.
      */
-    _barBucketStartMs(chart, tMs) {
-        const t = Number(tMs);
-        if (!Number.isFinite(t)) return NaN;
-        const ch = chart || this.chart;
-        if (!ch) return t;
-        let tfMs = null;
-        if (typeof ch.parseTimeframe === 'function') {
-            tfMs = ch.parseTimeframe(ch.currentTimeframe);
-        }
-        if (typeof ch._getBarPeriodStartMs === 'function') {
-            const start = ch._getBarPeriodStartMs(t, null, -1, tfMs);
-            if (Number.isFinite(start)) return start;
-        }
-        if (Number.isFinite(tfMs) && tfMs > 0) return Math.floor(t / tfMs) * tfMs;
-        return t;
-    }
-
-    _replayPlayheadTimeMs(chart) {
-        const rs = this._playbackReplaySystem();
-        if (rs && Number.isFinite(rs.replayTimestamp)) return Number(rs.replayTimestamp);
-        const ch = chart || this._getOrderContextChart() || this.chart;
-        const c = ch ? this._getCurrentCandleForChart(ch) : null;
-        const t = c && Number(c.t);
-        return Number.isFinite(t) ? t : NaN;
-    }
-
-    /** True when replay is paused and playhead is still on the bar where the position opened. */
-    _shouldFreezeOpenPnlAtFillMark(position, chart) {
-        const rs = this._playbackReplaySystem();
-        if (!rs || !rs.isActive || rs.isPlaying) return false;
-        const ch = chart || this._getOrderContextChart() || this.chart;
-        if (!ch || !position) return false;
-        const fillBarT = position._slNoTriggerBeforeTime ?? position.entryMarkerTimeMs ?? position.openTime;
-        if (fillBarT == null) return false;
-        const playT = this._replayPlayheadTimeMs(ch);
-        if (!Number.isFinite(playT)) return false;
-        const fillBucket = this._barBucketStartMs(ch, fillBarT);
-        const playBucket = this._barBucketStartMs(ch, playT);
-        return Number.isFinite(fillBucket) && fillBucket === playBucket;
-    }
-
-    _markPriceForOpenPosition(position, chart) {
-        if (!position) return null;
-        const ch = chart || this._getOrderContextChart() || this.chart;
-        const candle = this._getCurrentCandleForChart(ch);
-        if (!candle) return null;
-        return this._resolveUnrealizedMarkPrice(position, candle);
-    }
-
     _resolveUnrealizedMarkPrice(position, currentCandle) {
         if (!position || !currentCandle) return null;
-        const oc = this._getOrderContextChart() || this.chart;
-        if (this._shouldFreezeOpenPnlAtFillMark(position, oc)) {
-            const fillMark = Number(position._fillMarkPrice ?? position.openPrice);
-            if (Number.isFinite(fillMark)) return fillMark;
-        }
         const tMs = Number(currentCandle.t);
         if (!Number.isFinite(tMs)) return null;
         const posTicker = this._positionTicker(position);
         const pref = position.sourceFileId != null ? String(position.sourceFileId) : null;
         const posFileId = position.sourceFileId != null ? String(position.sourceFileId) : '';
 
+        const oc = this._getOrderContextChart() || this.chart;
         const chartTicker = this._normalizeTicker(oc && oc.currentSymbol ? oc.currentSymbol : '');
         const chartFileId = oc && oc.currentFileId != null ? String(oc.currentFileId) : '';
         const sameInstrument = !!(posTicker && chartTicker && posTicker === chartTicker);
@@ -1951,33 +1600,9 @@ class OrderManager {
     _isNoTriggerGuardActive(guardTime, guardTick, candle) {
         if (!guardTime) return false;
         const candleT = Number(candle.t);
-        const gt = Number(guardTime);
-        if (!Number.isFinite(candleT) || !Number.isFinite(gt)) return false;
-        if (candleT < gt) return true;
-        if (candleT > gt) {
-            if (guardTick === Infinity) {
-                const ctx = this._getOrderContextChart() || this.chart;
-                const playhead = ctx && typeof ctx._getReplayPlayheadMs === 'function'
-                    ? ctx._getReplayPlayheadMs()
-                    : null;
-                if (Number.isFinite(playhead) && playhead > gt && typeof ctx.parseTimeframe === 'function') {
-                    const tfMs = ctx.parseTimeframe(ctx.currentTimeframe);
-                    if (Number.isFinite(tfMs) && tfMs > 0 && gt >= candleT && gt < candleT + tfMs) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
+        if (candleT < guardTime) return true;
+        if (candleT > guardTime) return false;
         return true;
-    }
-
-    /**
-     * Trim coarse display-bar OHLC to replay playhead so pending/SL/TP checks do not see
-     * wicks from minutes the replay has not reached yet (e.g. 15m→1H switch).
-     */
-    _trimTouchCandleForReplayFill(candle) {
-        return trimTouchCandleForReplayFill(this, candle);
     }
 
     /**
@@ -2011,9 +1636,8 @@ class OrderManager {
         const candlePlayback = !!rs.isActive && mode === 'candle';
 
         if (candlePlayback) {
-            const evalCandle = trimTouchCandleForReplayFill(this, candle);
-            const h = Number.parseFloat(evalCandle.h);
-            const l = Number.parseFloat(evalCandle.l);
+            const h = Number.parseFloat(candle.h);
+            const l = Number.parseFloat(candle.l);
             if (dir === 'above') return Number.isFinite(h) && h >= lv;
             return Number.isFinite(l) && l <= lv;
         }
@@ -2141,12 +1765,6 @@ class OrderManager {
                 gross += this.estimateOpenLegPnLSlice(m, sp, mq);
                 comm += this._getRoundTripCommissionUsd(m);
             }
-            for (const p of this._getSplitGroupPendingLegsForOpenBasket(order)) {
-                const pq = this._getPendingPlacedQuantity(p);
-                if (pq <= 0) continue;
-                gross += this.estimateOpenLegPnLSlice(p, sp, pq);
-                comm += this._getRoundTripCommissionUsd(p);
-            }
             return gross - comm;
         }
         const q = Number(order.quantity) || 0;
@@ -2154,17 +1772,11 @@ class OrderManager {
         return g - this._getRoundTripCommissionUsd(order);
     }
 
-    /** Total lots on shared SL label — filled + still-pending split legs (matches basket / panel). */
+    /** Total open lots for split group (shared SL label), else this order’s qty. */
     _slChartLabelQtyForOpenOrder(order) {
         if (!order) return 0;
         if (order.isSplitEntry && order.splitGroupId) {
-            const oq = this._getSplitGroupOpenPositions(order)
-                .reduce((s, m) => s + (Number(m.quantity) || 0), 0);
-            const pq = this._getSplitGroupPendingLegsForOpenBasket(order)
-                .reduce((s, p) => s + this._getPendingPlacedQuantity(p), 0);
-            const total = oq + pq;
-            if (total > 0) return total;
-            return oq;
+            return this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
         }
         return Number(order.quantity) || 0;
     }
@@ -3385,7 +2997,6 @@ class OrderManager {
         const patch = {
             pending_orders: safeClone(this.pendingOrders),
             open_positions: safeClone(this.openPositions),
-            closed_positions: safeClone(this.closedPositions),
             account_runtime,
             order_counters,
         };
@@ -3430,52 +3041,22 @@ class OrderManager {
                 return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
             })
             : null;
-        const closedPositions = Array.isArray(state.closed_positions)
-            ? state.closed_positions.map((position) => {
-                const ticker = normalizeTradeTicker(position);
-                const sym = position?.symbol && String(position.symbol).toUpperCase() !== 'UNKNOWN' ? position.symbol : (ticker || position?.symbol || '');
-                let sourceFileId = position.sourceFileId || position.source_file_id;
-                if (!sourceFileId && ticker && typeof this.resolveFileIdForTicker === 'function') {
-                    const fid = this.resolveFileIdForTicker(ticker);
-                    if (fid) sourceFileId = fid;
-                }
-                return { ...position, ticker: ticker || position?.ticker, symbol: sym, sourceFileId: sourceFileId || position?.sourceFileId };
-            })
-            : null;
 
         if (pendingOrders) this.pendingOrders = pendingOrders;
         if (openPositions) this.openPositions = openPositions;
-        if (closedPositions) {
-            this.closedPositions = closedPositions;
-            if (this.orderService) this.orderService.closedPositions = closedPositions;
-        }
 
         const accountRuntime = state.account_runtime && typeof state.account_runtime === 'object' ? state.account_runtime : null;
         if (accountRuntime) {
+            const balance = Number.parseFloat(accountRuntime.balance);
+            const equity = Number.parseFloat(accountRuntime.equity);
             const initialBalance = Number.parseFloat(accountRuntime.initialBalance);
             const sessionCurrentTime = Number.parseFloat(accountRuntime.session_current_time);
+            if (Number.isFinite(balance)) this.balance = balance;
+            if (Number.isFinite(equity)) this.equity = equity;
             if (Number.isFinite(initialBalance)) this.initialBalance = initialBalance;
             if (Number.isFinite(sessionCurrentTime) && this.orderService?.multiInstrumentSession) {
                 this.orderService.multiInstrumentSession.current_time = sessionCurrentTime;
             }
-        }
-
-        // Closed-trade P&L lives in the journal — stale account_runtime snapshots often still
-        // show the starting balance after refresh even when journal rows have netPnL.
-        const hasLedgerTrades = (Array.isArray(this.tradeJournal) && this.tradeJournal.length > 0)
-            || (Array.isArray(this.closedPositions) && this.closedPositions.length > 0);
-        if (hasLedgerTrades) {
-            if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
-                this.reconcileAccountAfterSessionRestore();
-            } else {
-                this.recomputeAccountFromJournal();
-            }
-        } else if (accountRuntime) {
-            const balance = Number.parseFloat(accountRuntime.balance);
-            const equity = Number.parseFloat(accountRuntime.equity);
-            if (Number.isFinite(balance)) this.balance = balance;
-            if (Number.isFinite(equity)) this.equity = equity;
-            this._syncReplayHeaderStatsFromAccount();
         }
 
         const orderCounters = state.order_counters && typeof state.order_counters === 'object' ? state.order_counters : null;
@@ -3559,102 +3140,18 @@ class OrderManager {
         }
     }
 
-    _extractJournalTradePnl(trade) {
-        if (!trade || typeof trade !== 'object') return 0;
-        const direct = Number.parseFloat(
-            trade.netPnL ?? trade.realizedPnL ?? trade.pnl ?? trade.net_pnl ?? trade.profit ?? 0
-        );
-        if (Number.isFinite(direct) && Math.abs(direct) > 0.00001) return direct;
-        const entry = Number.parseFloat(trade.entryPrice ?? trade.openPrice);
-        const exit = Number.parseFloat(trade.exitPrice ?? trade.closePrice);
-        const qty = Number.parseFloat(trade.quantity);
-        if (Number.isFinite(entry) && Number.isFinite(exit) && Number.isFinite(qty) && qty > 0
-            && typeof this._enginePnL === 'function') {
-            const dir = String(trade.direction ?? trade.type ?? 'BUY').toUpperCase();
-            try {
-                const computed = this._enginePnL(
-                    dir,
-                    entry,
-                    exit,
-                    qty,
-                    exit,
-                    trade.ticker || trade.symbol || this._getActiveTicker?.(),
-                    trade.instrument_settings || null
-                );
-                if (Number.isFinite(computed)) return computed;
-            } catch (_e) { /* ignore */ }
-        }
-        return Number.isFinite(direct) ? direct : 0;
-    }
-
     recomputeAccountFromJournal() {
         const base = Number.parseFloat(this.initialBalance);
         const startingBalance = Number.isFinite(base) ? base : 0;
-        const journalIds = new Set();
-        let realizedPnL = 0;
-        if (Array.isArray(this.tradeJournal)) {
-            this.tradeJournal.forEach((trade) => {
-                const tid = trade?.tradeId ?? trade?.id;
-                if (tid != null && tid !== '') journalIds.add(String(tid));
-                realizedPnL += this._extractJournalTradePnl(trade);
-            });
-        }
-        // Same-session closed rows not yet written into tradeJournal (refresh mid-flight).
-        (this.closedPositions || []).forEach((pos) => {
-            if (pos?.id != null && journalIds.has(String(pos.id))) return;
-            const pnl = Number.parseFloat(pos?.pnl ?? pos?.netPnL ?? pos?.realizedPnL ?? 0);
-            if (Number.isFinite(pnl)) realizedPnL += pnl;
-        });
+        const realizedPnL = Array.isArray(this.tradeJournal)
+            ? this.tradeJournal.reduce((sum, trade) => {
+                const pnl = Number.parseFloat(trade?.netPnL ?? trade?.realizedPnL ?? trade?.pnl ?? 0);
+                return sum + (Number.isFinite(pnl) ? pnl : 0);
+            }, 0)
+            : 0;
 
         this.balance = startingBalance + realizedPnL;
         this._syncReplayHeaderStatsFromAccount();
-        return realizedPnL;
-    }
-
-    /**
-     * When journal has closed-trade P&L but balance still equals starting balance, re-apply ledger math.
-     */
-    _reconcileAccountIfBalanceLooksStale() {
-        const journal = Array.isArray(this.tradeJournal) ? this.tradeJournal : [];
-        if (journal.length === 0) return false;
-        const base = Number.parseFloat(this.initialBalance);
-        if (!Number.isFinite(base)) return false;
-        let journalPnl = 0;
-        journal.forEach((t) => { journalPnl += this._extractJournalTradePnl(t); });
-        if (Math.abs(journalPnl) < 0.0001) return false;
-        const bal = Number.parseFloat(this.balance);
-        const stuckAtStart = Number.isFinite(bal) && Math.abs(bal - base) < 0.01;
-        const expected = base + journalPnl;
-        if (stuckAtStart || (Number.isFinite(bal) && Math.abs(bal - expected) > 0.02)) {
-            this.recomputeAccountFromJournal();
-            return true;
-        }
-        return false;
-    }
-
-    /** After GET /state or local backup restore — journal is canonical for realized balance. */
-    reconcileAccountAfterSessionRestore() {
-        this.recomputeAccountFromJournal();
-        this._reconcileAccountIfBalanceLooksStale();
-        this._syncReplayHeaderStatsFromAccount();
-        try {
-            if (this.eventBus && typeof this.eventBus.emit === 'function') {
-                this.eventBus.emit('account:updated', {
-                    balance: this.balance,
-                    equity: this.equity,
-                    realizedPnL: this.realizedPnL,
-                });
-            }
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('talaria:account-reconciled', {
-                    detail: {
-                        balance: this.balance,
-                        equity: this.equity,
-                        initialBalance: this.initialBalance,
-                    },
-                }));
-            }
-        } catch (_e) { /* ignore */ }
     }
 
     _computeAdvancedAnalytics() {
@@ -4207,9 +3704,6 @@ class OrderManager {
                 const om = window.chart && window.chart.orderManager;
                 if (!om) return;
                 const hasJournal = Array.isArray(om.tradeJournal) && om.tradeJournal.length > 0;
-                if (hasJournal && typeof om.reconcileAccountAfterSessionRestore === 'function') {
-                    try { om.reconcileAccountAfterSessionRestore(); } catch (_e) { /* ignore */ }
-                }
                 if (om._journalMarkerRestorePending || hasJournal) {
                     if (typeof om._scheduleSessionMarkerRedraw === 'function') {
                         om._scheduleSessionMarkerRedraw();
@@ -4219,15 +3713,6 @@ class OrderManager {
                 }
             });
         }
-
-        // Session journal often loads async after init — retry reconcile so balance is not stuck at start.
-        [500, 1500, 4000].forEach((ms) => {
-            setTimeout(() => {
-                if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
-                    try { this.reconcileAccountAfterSessionRestore(); } catch (_e) { /* ignore */ }
-                }
-            }, ms);
-        });
         
         // Load MFE/MAE settings from localStorage
         try {
@@ -4283,8 +3768,10 @@ class OrderManager {
         if (session && rawStart !== undefined && rawStart !== null && rawStart !== '') {
             const pb = parseFloat(rawStart);
             if (Number.isFinite(pb) && pb > 0) {
+                this.balance = pb;
                 this.initialBalance = pb;
-                console.log(`💰 Starting balance: $${this.initialBalance} | Initial: $${this.initialBalance}`);
+                this.equity = pb;
+                console.log(`💰 Starting balance: $${this.balance} | Initial: $${this.initialBalance}`);
             } else {
                 console.log(`⚠️ Invalid session balance, using default: $${this.balance}`);
             }
@@ -4293,11 +3780,7 @@ class OrderManager {
         }
 
         // Rebuild account state from persisted closed trades after refresh/load.
-        if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
-            this.reconcileAccountAfterSessionRestore();
-        } else {
-            this.recomputeAccountFromJournal();
-        }
+        this.recomputeAccountFromJournal();
         
         // Create UI
         this.createOrderButtons();
@@ -4363,13 +3846,18 @@ class OrderManager {
         const pb = parseFloat(rawStart);
         if (!Number.isFinite(pb) || pb <= 0) return;
         this.initialBalance = pb;
+        this.balance = pb;
+        this.equity = pb;
         if (this.orderService) {
             this.orderService.initialBalance = pb;
+            this.orderService.balance = pb;
+            this.orderService.equity = pb;
         }
-        if (typeof this.reconcileAccountAfterSessionRestore === 'function') {
-            this.reconcileAccountAfterSessionRestore();
-        } else if (typeof this.recomputeAccountFromJournal === 'function') {
+        if (typeof this.recomputeAccountFromJournal === 'function') {
             this.recomputeAccountFromJournal();
+        }
+        if (typeof this._syncReplayHeaderStatsFromAccount === 'function') {
+            this._syncReplayHeaderStatsFromAccount();
         }
         if (typeof this.updatePositionsPanel === 'function') {
             try {
@@ -7315,22 +6803,16 @@ class OrderManager {
         const hourOfEntry = entryDate.getHours();
         const entryTimeStr = entryDate.toLocaleString();
         
-        // Calculate R-multiple and planned setup R:R when closing
-        let plannedRR = '';
+        // Calculate R:R if closing (use originalRiskAmount for trailing SL accuracy)
+        let rewardToRisk = '';
         let rMultiple = '';
         if (closeData) {
             const riskForCalc = order.originalRiskAmount || order.riskAmount;
             if (riskForCalc) {
+                const rr = Math.abs(closeData.pnl) / riskForCalc;
                 const rm = closeData.pnl / riskForCalc;
+                rewardToRisk = rr.toFixed(2);
                 rMultiple = (rm >= 0 ? '+' : '') + rm.toFixed(2) + 'R';
-            }
-            const entryPx = Number.parseFloat(order.openPrice);
-            const slPx = Number.parseFloat(order.stopLoss);
-            const tpPx = Number.parseFloat(order.takeProfit);
-            if (Number.isFinite(entryPx) && Number.isFinite(slPx) && Number.isFinite(tpPx)) {
-                const riskPx = Math.abs(entryPx - slPx);
-                const rewardPx = Math.abs(tpPx - entryPx);
-                if (riskPx > 0) plannedRR = (rewardPx / riskPx).toFixed(2);
             }
         }
         
@@ -7371,12 +6853,8 @@ class OrderManager {
                     <div style="color: #fff; font-weight: 600;">${new Date(closeData.closeTime).getHours()}:00</div>
                 </div>
                 <div>
-                    <div style="color: #787b86;">Result (R)</div>
-                    <div style="color: #fff; font-weight: 600;">${rMultiple || '—'}</div>
-                </div>
-                <div>
-                    <div style="color: #787b86;">Planned R:R</div>
-                    <div style="color: #fff; font-weight: 600;">${plannedRR ? plannedRR + ':1' : '—'}</div>
+                    <div style="color: #787b86;">R:R Ratio</div>
+                    <div style="color: #fff; font-weight: 600;">${rewardToRisk}:1</div>
                 </div>
             </div>
         ` : '';
@@ -7844,18 +7322,13 @@ class OrderManager {
         const holdingTimeHours = (holdingTime / (1000 * 60 * 60)).toFixed(2);
         const holdingTimeDays = (holdingTime / (1000 * 60 * 60 * 24)).toFixed(2);
         
-        // Planned setup R:R (TP distance / SL distance) — stored separately from realized R.
-        let plannedRR = 0;
-        const entryPx = Number.parseFloat(order.openPrice);
-        const slPx = Number.parseFloat(order.stopLoss);
-        const tpPx = Number.parseFloat(order.takeProfit);
-        if (Number.isFinite(entryPx) && Number.isFinite(slPx) && Number.isFinite(tpPx)) {
-            const riskPx = Math.abs(entryPx - slPx);
-            const rewardPx = Math.abs(tpPx - entryPx);
-            if (riskPx > 0) plannedRR = rewardPx / riskPx;
+        // Calculate reward-to-risk ratio
+        let rewardToRisk = 0;
+        if (order.riskAmount && order.riskAmount > 0) {
+            rewardToRisk = Math.abs(closeData.pnl) / order.riskAmount;
         }
-
-        // Calculate R-Multiple (actual signed P&L / ORIGINAL risk amount)
+        
+        // Calculate R-Multiple (actual P&L / ORIGINAL risk amount)
         // Use originalRiskAmount to ensure trailing SL doesn't affect R calculation
         let rMultiple = 0;
         const riskForCalculation = order.originalRiskAmount || order.riskAmount;
@@ -7906,10 +7379,8 @@ class OrderManager {
             // Financial Metrics
             netPnL: closeData.pnl,
             riskPerTrade: order.riskAmount || 0,
-            rewardToRiskRatio: plannedRR > 0 ? plannedRR.toFixed(2) : '',
-            plannedRR: plannedRR > 0 ? plannedRR.toFixed(2) : '',
+            rewardToRiskRatio: rewardToRisk.toFixed(2),
             rMultiple: rMultiple.toFixed(2),
-            actual_rr_net: rMultiple,
             
             // MFE/MAE Metrics
             mfe: order.mfe || order.openPrice, // Max Favorable Excursion (price level)
@@ -12005,10 +11476,10 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                const tagLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper}`;
+                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
                 return [
                     {
-                        text: tagLabel,
+                        text: fullLabel,
                         fill: color,
                         stroke: color,
                         textColor: '#ffffff',
@@ -12027,11 +11498,10 @@ class OrderManager {
                 ];
             }
 
-            const tagLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper}`;
-            const qtyDetail = this._formatQty(parseFloat(document.getElementById('orderQuantity')?.value || 0) || 0);
+            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
             return [
                 {
-                    text: tagLabel,
+                    text: fullLabel,
                     fill: color,
                     stroke: color,
                     textColor: '#ffffff',
@@ -12039,13 +11509,12 @@ class OrderManager {
                     minWidth: 104
                 },
                 {
-                    text: qtyDetail,
+                    text: arrow,
                     fill: '#0f172a',
                     stroke: color,
-                    textColor: '#ffffff',
+                    textColor: color,
                     fontWeight: '700',
-                    minWidth: 44,
-                    role: 'price'
+                    minWidth: 28
                 }
             ];
         }
@@ -12064,7 +11533,7 @@ class OrderManager {
                     minWidth: 64
                 },
                 {
-                    text: this._formatQty(totalLots),
+                    text: this.formatQuantity(totalLots),
                     fill: '#0f172a',
                     stroke: accent,
                     textColor: '#fde68a',
@@ -12086,11 +11555,11 @@ class OrderManager {
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
-            const tagLabel = `${splitOrderType} ${sideUpper}`;
+            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
             
             return [
                 {
-                    text: tagLabel,
+                    text: fullLabel,
                     fill: color,
                     stroke: color,
                     textColor: '#ffffff',
@@ -12111,7 +11580,6 @@ class OrderManager {
 
         if (label === 'TP') {
             const infoText = this._formatTpSlInfoText('TP', price);
-            const pnlColor = infoText.startsWith('-') ? '#ef4444' : '#22c55e';
             return [
                 {
                     text: 'TP',
@@ -12125,7 +11593,7 @@ class OrderManager {
                     text: infoText,
                     fill: '#0f172a',
                     stroke: '#22c55e',
-                    textColor: pnlColor,
+                    textColor: '#22c55e',
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -12159,7 +11627,6 @@ class OrderManager {
 
         if (label === 'SL') {
             const infoText = this._formatTpSlInfoText('SL', price);
-            const pnlColor = infoText.startsWith('-') ? '#ef4444' : '#22c55e';
             return [
                 {
                     text: 'SL',
@@ -12173,7 +11640,7 @@ class OrderManager {
                     text: infoText,
                     fill: '#0f172a',
                     stroke: '#ef4444',
-                    textColor: pnlColor,
+                    textColor: '#ef4444',
                     fontWeight: '700',
                     minWidth: 74,
                     role: 'price'
@@ -12257,55 +11724,6 @@ class OrderManager {
         } catch (_e) {
             return false;
         }
-    }
-
-    /** Max TP rows allowed for preview/panel (futures also capped by whole-contract qty). */
-    _getMaxTpTargets(overrideQty) {
-        let cap = MAX_TP_TARGETS;
-        if (this.marketType === 'futures') {
-            let q;
-            if (overrideQty != null && Number.isFinite(Number(overrideQty))) {
-                q = Math.floor(Number(overrideQty));
-            } else {
-                q = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || '0'));
-            }
-            const futuresCap = !Number.isFinite(q) || q < 1 ? 1 : Math.min(q, MAX_TP_TARGETS);
-            cap = Math.min(cap, futuresCap);
-        }
-        return cap;
-    }
-
-    _getEffectiveTpTargetCount(source) {
-        if (source?.tpTargets?.length) return source.tpTargets.length;
-        if (Number(source?.takeProfit) > 0) return 1;
-        return 0;
-    }
-
-    _canAddMoreTpTargets(currentCount, overrideQty) {
-        const n = Number(currentCount) || 0;
-        return n < this._getMaxTpTargets(overrideQty);
-    }
-
-    _notifyTpTargetCapReached(overrideQty) {
-        const max = this._getMaxTpTargets(overrideQty);
-        this.showNotification(`Maximum ${max} take-profit levels`, 'warning', 3500);
-    }
-
-    _syncTpAddButtonsUi() {
-        const atCap = !this._canAddMoreTpTargets(this.tpTargets?.length || 0);
-        const hide = this._isOrderEntryPlusUiDisabled() || atCap;
-        const addTPButton = document.getElementById('addTPTarget');
-        const tpMultiAddBtn = document.getElementById('tpMultiAddBtn');
-        [addTPButton, tpMultiAddBtn].forEach((el) => {
-            if (!el) return;
-            if (hide) {
-                el.style.display = 'none';
-                el.onclick = null;
-            } else {
-                el.style.display = '';
-                el.onclick = () => { this.addTPTarget(); };
-            }
-        });
     }
 
     /**
@@ -12887,7 +12305,8 @@ class OrderManager {
             this.tpManuallyPositioned = false;
             this.slManuallyPositioned = false;
             this.isDraggingPreviewLine = false;
-            this._setPreviewEntrySource('market');
+            this._previewEntryDecoupledFromRR = false;
+            this._previewEntryLinkedToRiskReward = false;
 
             (this._collectLayoutCharts() || []).forEach((c) => {
                 if (c && typeof c.updateSVGPointerEvents === 'function') {
@@ -12958,12 +12377,10 @@ class OrderManager {
         }
 
         const rrSelectedOpen = !this.editingPendingOrderId ? this._getSelectedRiskRewardDrawing() : null;
-
         if (rrSelectedOpen) {
-            this._setPreviewEntrySource('riskReward');
+            // RR is the source — entry, SL, and TP all come from the tool (not live market only).
             this._syncRiskRewardDrawingToOpenOrderPanel(rrSelectedOpen);
         } else {
-            this._setPreviewEntrySource('market');
             this.updateOrderPanelPrice();
         }
 
@@ -12999,7 +12416,8 @@ class OrderManager {
 
         this.slManuallyPositioned = false;
         this.tpManuallyPositioned = false;
-        this._setPreviewEntrySource('market');
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = false;
 
         const placeBtn = document.getElementById('placeOrderButton');
         if (placeBtn) {
@@ -13099,13 +12517,13 @@ class OrderManager {
         if (this.editingPendingOrderId) return;
         const d = this._getSelectedRiskRewardDrawing();
         if (!d) return;
-        if (this._previewEntrySource === 'manual') {
-            this.pushRiskRewardToolToManager(d, { skipEntry: true });
+        this.pushRiskRewardToolToManager(d, this._previewEntryDecoupledFromRR ? { skipEntry: true } : {});
+        if (!this._previewEntryDecoupledFromRR) {
+            this._previewEntryLinkedToRiskReward = true;
             this.tpManuallyPositioned = true;
             this.slManuallyPositioned = true;
-        } else {
-            this._setPreviewEntrySource('riskReward');
-            this._syncRiskRewardDrawingToOpenOrderPanel(d);
+            this._autoDetectOrderTypeFromEntry();
+            this._dispatchRrOrderPrefilledEvent();
         }
         requestAnimationFrame(() => {
             this.updatePreviewLines();
@@ -13602,9 +13020,6 @@ class OrderManager {
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
-            if (parseFloat(document.getElementById('orderEntryPrice')?.value || '0') > 0) {
-                this._autoDetectOrderTypeFromEntry();
-            }
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
         };
         
@@ -13616,17 +13031,30 @@ class OrderManager {
             this.updatePlaceButtonText();
             this.calculateAdvancedRiskReward();
             this.updatePreviewLines(); // Update preview when switching sides
-            if (parseFloat(document.getElementById('orderEntryPrice')?.value || '0') > 0) {
-                this._autoDetectOrderTypeFromEntry();
-            }
             this.updateScalingCheckboxAvailability(); // Update scaling checkbox
         };
         
-        // Order type buttons — Limit/Stop tabs resolve automatically from entry vs market.
+        // Order type buttons
         document.querySelectorAll('.order-type-btn').forEach(btn => {
             btn.onclick = () => {
-                this._applyOrderTypeFromUi(btn.dataset.type);
-                console.log(`📝 Order type: ${this.orderType.toUpperCase()} (requested ${String(btn.dataset.type || '').toUpperCase()})`);
+                // Update order type
+                this.orderType = btn.dataset.type;
+                console.log(`📝 Order type changed to: ${this.orderType.toUpperCase()}`);
+                
+                // Update button styling
+                document.querySelectorAll('.order-type-btn').forEach(b => {
+                    b.style.cssText = '';
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
+                
+                // Show entry price warning for market orders
+                if (this.orderType === 'market') {
+                    this.updateOrderPanelPrice();
+                }
+                
+                // Update preview lines when order type changes
+                this.updatePreviewLines();
             };
         });
         
@@ -14291,8 +13719,7 @@ class OrderManager {
         if (numTPInput) {
             numTPInput.oninput = () => {
                 const num = parseInt(numTPInput.value || 2);
-                const maxTp = this._getMaxTpTargets();
-                if (num >= 2 && num <= maxTp && this.tpTargets) {
+                if (num >= 2 && num <= 10 && this.tpTargets) {
                     // Auto-recalculate when number changes
                     this.calculateTPTargetsFromNumber(num);
                 }
@@ -14980,7 +14407,10 @@ class OrderManager {
 
             if (refEntry > 0 && slEn && slPx > 0) {
                 const d = Math.abs(refEntry - slPx);
-                hasValidSL = d > minDistance;
+                let dirOk = true;
+                if (this.orderSide === 'BUY') dirOk = slPx < refEntry;
+                else dirOk = slPx > refEntry;
+                hasValidSL = d > minDistance && dirOk;
                 slDistance = d;
             } else {
                 hasValidSL = false;
@@ -15012,6 +14442,7 @@ class OrderManager {
         
         if (tpEnabled) {
             if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
+                // Use effective percentages (same conversion+normalization as placeOrder)
                 const ePcts = this._computeEffectiveTPPercentages(effectiveEntryForReward, qtyForReward, this.orderSide);
                 console.log(`📊 Calculating reward for ${this.tpTargets.length} TP targets, mode: ${this.tpDistributionMode}`);
                 this.tpTargets.forEach((target, index) => {
@@ -15019,40 +14450,55 @@ class OrderManager {
                     console.log(`   Target ${index + 1}: price=${target.price?.toFixed(5)}, raw=${target.percentage}, effectivePct=${ePct.toFixed(1)}%`);
                     if (target.price > 0 && ePct > 0) {
                         const tpPx = Number.parseFloat(target.price);
-                        const partialQuantity = qtyForReward * (ePct / 100);
-                        const partialReward = this.estimatePnLForPriceLevel(
-                            this.orderSide, effectiveEntryForReward, tpPx, partialQuantity);
-                        reward += partialReward;
-                        console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
+                        let priceDiff;
+                        if (this.orderSide === 'BUY') {
+                            priceDiff = tpPx - effectiveEntryForReward;
+                        } else {
+                            priceDiff = effectiveEntryForReward - tpPx;
+                        }
+                        
+                        if (priceDiff > 0) {
+                            const partialQuantity = qtyForReward * (ePct / 100);
+                            const partialReward = Math.max(0, this.estimatePnLForPriceLevel(
+                                this.orderSide, effectiveEntryForReward, tpPx, partialQuantity));
+                            reward += partialReward;
+                            console.log(`      Added ${partialReward.toFixed(2)}, total reward now: ${reward.toFixed(2)}`);
+                        }
                     }
                 });
                 console.log(`   Final calculated reward: $${reward.toFixed(2)}`);
             } else if (tpPrice > 0) {
-                if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-                    const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
-                    const ps = this.pipSize || 0.0001;
-                    const pv = this.pipValuePerLot || 10;
-                    const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
-                    reward = 0;
-                    for (const l of this.multiEntryLevels) {
-                        if (!(l.price > 0)) continue;
-                        if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
-                        const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
-                        if (lots > 0) {
-                            reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
-                        }
-                    }
+                let priceDiff;
+                if (this.orderSide === 'BUY') {
+                    priceDiff = tpPrice - effectiveEntryForReward;
                 } else {
-                    reward = this.estimatePnLForPriceLevel(
-                        this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward);
+                    priceDiff = effectiveEntryForReward - tpPrice;
+                }
+                
+                if (priceDiff > 0) {
+                    // Multi-entry: sum individual level P&Ls for accurate reward
+                    if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
+                        const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
+                        const ps = this.pipSize || 0.0001;
+                        const pv = this.pipValuePerLot || 10;
+                        const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
+                        reward = 0;
+                        for (const l of this.multiEntryLevels) {
+                            if (!(l.price > 0)) continue;
+                            if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
+                            const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
+                            if (lots > 0) {
+                                reward += this.estimatePnLForPriceLevel(this.orderSide, l.price, tpPrice, lots);
+                            }
+                        }
+                        reward = Math.max(0, reward);
+                    } else {
+                        reward = Math.max(0, this.estimatePnLForPriceLevel(
+                            this.orderSide, effectiveEntryForReward, tpPrice, qtyForReward));
+                    }
                 }
             }
         }
-
-        const slPriceForDisplay = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const slDisplayPnl = (hasValidSL && slPriceForDisplay > 0)
-            ? this._computeSignedPnlAtLevel(slContextEntry || effectiveEntryForReward, slPriceForDisplay, qtyForReward)
-            : 0;
         
         // Update UI
         const rewardEl = document.getElementById('rewardAmount');
@@ -15062,52 +14508,58 @@ class OrderManager {
         // Show reward only if TP is actually set (enabled AND different from entry)
         if (rewardEl) {
             if (!hasValidTP) {
+                // No valid TP = unlimited potential gain
                 rewardEl.textContent = '∞';
-                rewardEl.style.color = '#22c55e';
-            } else if (!Number.isFinite(reward) || reward === 0) {
+                rewardEl.style.color = '#22c55e'; // Green for unlimited potential
+            } else if (reward <= 0) {
+                // TP in wrong direction
                 rewardEl.textContent = '$0.00';
-                rewardEl.style.color = '#9ca3af';
+                rewardEl.style.color = '#9ca3af'; // Gray
             } else {
-                rewardEl.textContent = this._formatSignedUsdPnl(reward);
-                rewardEl.style.color = reward >= 0 ? '#22c55e' : '#ef4444';
+                rewardEl.textContent = `$${reward.toFixed(2)}`;
+                rewardEl.style.color = '#22c55e'; // Green for positive
             }
         }
         
-        // Show risk at SL price (signed P&L) when SL is set; sizing budget kept in `risk` for validation
+        // Show risk only if SL is actually set (enabled AND different from entry)
         if (riskEl) {
             if (!hasValidSL) {
+                // No valid SL = unlimited risk (either disabled or same as entry)
                 riskEl.textContent = '∞';
-                riskEl.style.color = '#ef4444';
-            } else if (!Number.isFinite(slDisplayPnl) || slDisplayPnl === 0) {
+                riskEl.style.color = '#ef4444'; // Red for unlimited risk warning
+            } else if (risk <= 0) {
+                // SL set but calculated risk is 0
                 riskEl.textContent = '$0.00';
-                riskEl.style.color = '#9ca3af';
+                riskEl.style.color = '#9ca3af'; // Gray
             } else {
-                riskEl.textContent = this._formatSignedUsdPnl(slDisplayPnl);
-                riskEl.style.color = slDisplayPnl >= 0 ? '#22c55e' : '#ef4444';
+                riskEl.textContent = `$${risk.toFixed(2)}`;
+                riskEl.style.color = '#ef4444'; // Red for risk
             }
             const eqR = Number.parseFloat(this.equity);
-            const riskMag = Math.abs(Number.isFinite(risk) && risk > 0 ? risk : slDisplayPnl);
-            if (hasValidSL && Number.isFinite(riskMag) && riskMag > 0 && Number.isFinite(eqR) && eqR > 0 && riskMag > eqR * 1.0001) {
-                riskEl.title = `Stop loss risk (~$${riskMag.toFixed(2)}) exceeds account equity ($${eqR.toFixed(2)}). Margin/leverage does not cap cash loss at stop — reduce contracts or tighten the stop.`;
+            if (hasValidSL && Number.isFinite(risk) && risk > 0 && Number.isFinite(eqR) && eqR > 0 && risk > eqR * 1.0001) {
+                riskEl.title = `Stop loss risk (~$${risk.toFixed(2)}) exceeds account equity ($${eqR.toFixed(2)}). Margin/leverage does not cap cash loss at stop — reduce contracts or tighten the stop.`;
             } else if (riskEl) {
                 riskEl.removeAttribute('title');
             }
         }
         
-        // Show total (signed TP + signed SL outcomes when both set)
+        // Show total (reward - risk)
         if (totalEl) {
             if (!hasValidSL && !hasValidTP) {
+                // Neither set = undefined
                 totalEl.textContent = '--';
-                totalEl.style.color = '#9ca3af';
+                totalEl.style.color = '#9ca3af'; // Gray
             } else if (!hasValidSL) {
-                totalEl.textContent = '∞';
-                totalEl.style.color = '#22c55e';
-            } else if (!hasValidTP) {
+                // No valid SL = can't calculate net (unlimited risk)
                 totalEl.textContent = '-∞';
-                totalEl.style.color = '#ef4444';
+                totalEl.style.color = '#ef4444'; // Red for unlimited risk
+            } else if (!hasValidTP) {
+                // No valid TP = unlimited potential gain minus known risk
+                totalEl.textContent = '∞';
+                totalEl.style.color = '#22c55e'; // Green for unlimited potential
             } else {
-                const total = reward + slDisplayPnl;
-                totalEl.textContent = this._formatSignedUsdPnl(total);
+                const total = reward - risk;
+                totalEl.textContent = `${total >= 0 ? '' : '-'}$${Math.abs(total).toFixed(2)}`;
                 totalEl.style.color = total >= 0 ? '#22c55e' : '#ef4444';
             }
         }
@@ -15119,12 +14571,11 @@ class OrderManager {
             const balSync = (document.querySelector('input[name="balanceType"]:checked')?.value || 'current') === 'current'
                 ? this.balance
                 : this.initialBalance;
-            const rewardMag = Math.abs(reward);
-            if (usdIn && modeTP === 'risk-usd' && hasValidTP && rewardMag > 0 && Number.isFinite(rewardMag)) {
-                usdIn.value = parseFloat(rewardMag.toFixed(2));
+            if (usdIn && modeTP === 'risk-usd' && hasValidTP && reward > 0 && Number.isFinite(reward)) {
+                usdIn.value = parseFloat(reward.toFixed(2));
             }
-            if (pctIn && modeTP === 'risk-percent' && hasValidTP && balSync > 0 && rewardMag > 0 && Number.isFinite(rewardMag)) {
-                pctIn.value = parseFloat(((rewardMag / balSync) * 100).toFixed(2));
+            if (pctIn && modeTP === 'risk-percent' && hasValidTP && balSync > 0 && reward > 0 && Number.isFinite(reward)) {
+                pctIn.value = parseFloat(((reward / balSync) * 100).toFixed(2));
             }
         }
 
@@ -15151,12 +14602,8 @@ class OrderManager {
                 if (!this._syncingTpRRInput) tpRRInput.value = '';
             } else if (multipleTPEnabled && this.tpTargets && this.tpTargets.length > 0) {
                 tpDistanceDisplay.textContent = '—';
-                tpProfitDisplay.textContent = Number.isFinite(reward) && reward !== 0
-                    ? this._formatSignedUsdPnl(reward)
-                    : '$0.00';
-                const rrV = hasValidSL && Math.abs(slDisplayPnl) > 0 && Number.isFinite(reward)
-                    ? Math.abs(reward) / Math.abs(slDisplayPnl)
-                    : (hasValidSL && risk > 0 && Number.isFinite(reward) ? Math.abs(reward) / risk : 0);
+                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
+                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
                 if (!this._syncingTpRRInput) {
                     tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
                 }
@@ -15171,12 +14618,8 @@ class OrderManager {
                     distText = `${dist.toFixed(cfgTP.symbolPrecision ?? 5)} pts`;
                 }
                 tpDistanceDisplay.textContent = distText;
-                tpProfitDisplay.textContent = Number.isFinite(reward) && reward !== 0
-                    ? this._formatSignedUsdPnl(reward)
-                    : '$0.00';
-                const rrV = hasValidSL && Math.abs(slDisplayPnl) > 0 && Number.isFinite(reward)
-                    ? Math.abs(reward) / Math.abs(slDisplayPnl)
-                    : (hasValidSL && risk > 0 && Number.isFinite(reward) ? Math.abs(reward) / risk : 0);
+                tpProfitDisplay.textContent = reward > 0 && Number.isFinite(reward) ? `+$${reward.toFixed(2)}` : '$0.00';
+                const rrV = hasValidSL && risk > 0 && Number.isFinite(reward) && reward > 0 ? reward / risk : 0;
                 if (!this._syncingTpRRInput) {
                     tpRRInput.value = rrV > 0 && Number.isFinite(rrV) ? rrV.toFixed(1) : '';
                 }
@@ -15191,22 +14634,16 @@ class OrderManager {
                 barRiskSeg.style.width = '50%';
                 barRewardSeg.style.width = '50%';
             } else {
-                const riskMag = Math.abs(Number.isFinite(risk) && risk > 0 ? risk : slDisplayPnl);
-                const rewardMag = Math.abs(reward);
-                const rp = riskMag > 0 ? (riskMag / balTP) * 100 : 0;
-                const rwp = rewardMag > 0 && Number.isFinite(rewardMag) ? (rewardMag / balTP) * 100 : 0;
-                tpSummaryPctRisk.textContent = riskMag > 0
-                    ? `${slDisplayPnl >= 0 ? '+' : '-'}${rp.toFixed(2)}%`
-                    : '—';
-                tpSummaryPctReward.textContent = rewardMag > 0
-                    ? `${reward >= 0 ? '+' : '-'}${rwp.toFixed(2)}%`
-                    : '—';
-                const ratio = riskMag > 0 && rewardMag > 0 ? rewardMag / riskMag : 0;
+                const rp = risk > 0 ? (risk / balTP) * 100 : 0;
+                const rwp = reward > 0 && Number.isFinite(reward) ? (reward / balTP) * 100 : 0;
+                tpSummaryPctRisk.textContent = risk > 0 ? `-${rp.toFixed(2)}%` : '—';
+                tpSummaryPctReward.textContent = reward > 0 ? `+${rwp.toFixed(2)}%` : '—';
+                const ratio = hasValidSL && risk > 0 && reward > 0 ? reward / risk : 0;
                 tpSummaryRRDisplay.textContent = ratio > 0 && Number.isFinite(ratio) ? `1 : ${ratio.toFixed(1)}` : '—';
-                const sumBR = riskMag + rewardMag;
+                const sumBR = risk + reward;
                 if (sumBR > 0 && Number.isFinite(sumBR)) {
-                    barRiskSeg.style.width = `${(riskMag / sumBR) * 100}%`;
-                    barRewardSeg.style.width = `${(rewardMag / sumBR) * 100}%`;
+                    barRiskSeg.style.width = `${(risk / sumBR) * 100}%`;
+                    barRewardSeg.style.width = `${(reward / sumBR) * 100}%`;
                 } else {
                     barRiskSeg.style.width = '50%';
                     barRewardSeg.style.width = '50%';
@@ -15242,11 +14679,9 @@ class OrderManager {
                 slPipsDisplay.textContent = distText;
                 slQuantityDisplay.textContent = `${this._formatQty(qtyForReward)} ${cfg.positionLabel}`;
                 if (modeSL === 'lot-size' && slRiskUsdDisplay && slRiskPctDisplay) {
-                    const rOk = Number.isFinite(slDisplayPnl) && slDisplayPnl !== 0;
-                    slRiskUsdDisplay.textContent = rOk
-                        ? this._formatSignedUsdPnl(slDisplayPnl)
-                        : '$0.00';
-                    slRiskPctDisplay.textContent = this._riskUsdAsPercentValue(rOk ? Math.abs(slDisplayPnl) : 0);
+                    const rOk = risk > 0 && Number.isFinite(risk);
+                    slRiskUsdDisplay.textContent = rOk ? `$${risk.toFixed(2)}` : '$0.00';
+                    slRiskPctDisplay.textContent = this._riskUsdAsPercentValue(rOk ? risk : 0);
                 } else if (slRiskUsdDisplay && slRiskPctDisplay) {
                     slRiskUsdDisplay.textContent = '—';
                     slRiskPctDisplay.textContent = '—';
@@ -15350,7 +14785,12 @@ class OrderManager {
         this.tpTargets = [];
 
         let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
-        nTargets = Math.min(nTargets, this._getMaxTpTargets());
+        nTargets = Math.min(nTargets, 10);
+        if (this.marketType === 'futures') {
+            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
+            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
+            nTargets = Math.min(nTargets, cap);
+        }
         const numEl = document.getElementById('numTPTargets');
         if (numEl) numEl.value = String(nTargets);
         
@@ -15430,17 +14870,20 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
+        // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
-        if (!numInput) return;
-        const currentNum = parseInt(numInput.value || 2, 10);
-        const maxTp = this._getMaxTpTargets();
-        if (currentNum >= maxTp) {
-            this._notifyTpTargetCapReached();
-            this._syncTpAddButtonsUi();
-            return;
+        if (numInput) {
+            const currentNum = parseInt(numInput.value || 2, 10);
+            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
+            const futuresCap = this.marketType === 'futures'
+                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
+                : 10;
+            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
+            if (currentNum < hardCap) {
+                numInput.value = String(currentNum + 1);
+                this.calculateTPTargetsFromNumber(currentNum + 1);
+            }
         }
-        numInput.value = String(currentNum + 1);
-        this.calculateTPTargetsFromNumber(currentNum + 1);
     }
     
     /**
@@ -15660,6 +15103,7 @@ class OrderManager {
         if (po.tpTargets.length >= 1) {
             this.drawMultiTPAvgLine(po, 'pending');
         }
+        this.positionPendingOrderTargets(this.chart);
         if (typeof this._updateMultiTPAvgLines === 'function') {
             this._updateMultiTPAvgLines(this.chart);
         }
@@ -16068,7 +15512,6 @@ class OrderManager {
         if (mirrorList && this.tpTargets) {
             this._renderTPTargetsInto(mirrorList, 'rrMirror_', mirrorBlend || null);
         }
-        this._syncTpAddButtonsUi();
     }
     
     /**
@@ -16095,7 +15538,7 @@ class OrderManager {
      */
     updateOrderPanelPrice() {
         if (this._shouldSkipParentOrderRailLivePriceForFocusedIframeTile()) return;
-        if (this._previewEntrySource !== 'market') return;
+        if (this._previewEntryLinkedToRiskReward) return;
         const ot = this.orderType
             || document.querySelector('#orderPanel .order-type-btn.active')?.dataset?.type
             || 'market';
@@ -16246,93 +15689,41 @@ class OrderManager {
     }
 
     /**
-     * Infer market / limit / stop from entry price vs current market.
-     * @returns {'market'|'limit'|'stop'|null} null when inputs are invalid
-     */
-    _inferOrderTypeFromEntryPrice(entryPrice, orderSide = null, currentPrice = null) {
-        const ep = Number.parseFloat(entryPrice);
-        if (!Number.isFinite(ep) || ep <= 0) return null;
-        let cp = currentPrice;
-        if (cp == null || !Number.isFinite(Number.parseFloat(cp))) {
-            const candle = this.getCurrentCandle();
-            cp = candle?.c ?? candle?.close ?? 0;
-        }
-        cp = Number.parseFloat(cp);
-        if (!Number.isFinite(cp) || cp <= 0) return null;
-        const pip = this.pipSize || 0.0001;
-        const atMarket = Math.abs(ep - cp) <= Math.max(pip * 1.5, Math.abs(cp) * 1e-10);
-        if (atMarket) return 'market';
-        const side = String(orderSide || this.orderSide || 'BUY').toUpperCase();
-        if (side === 'BUY') return ep > cp ? 'stop' : 'limit';
-        return ep < cp ? 'stop' : 'limit';
-    }
-
-    /**
      * Auto-detect order type (market / limit / stop) based on the entry price
      * relative to the current market price. Called when the user edits the
-     * entry price input manually or selects Limit/Stop in the panel.
-     * @returns {'market'|'limit'|'stop'|null}
+     * entry price input manually.
      */
     _autoDetectOrderTypeFromEntry() {
         const entryInput = document.getElementById('orderEntryPrice');
-        if (!entryInput) return null;
+        if (!entryInput) return;
         const entryPrice = parseFloat(entryInput.value || '0');
-        if (!entryPrice || entryPrice <= 0) return null;
+        if (!entryPrice || entryPrice <= 0) return;
 
-        const newType = this._inferOrderTypeFromEntryPrice(entryPrice);
-        if (!newType) return null;
+        const currentCandle = this.getCurrentCandle();
+        const currentPrice = currentCandle?.c || currentCandle?.close || 0;
+        if (!currentPrice || currentPrice <= 0) return;
 
-        const prevType = this.orderType;
+        const pip = this.pipSize || 0.0001;
+        const atMarket = Math.abs(entryPrice - currentPrice) <= Math.max(pip * 1.5, Math.abs(currentPrice) * 1e-10);
+
+        let newType;
+        if (atMarket) {
+            newType = 'market';
+        } else if (this.orderSide === 'BUY') {
+            newType = entryPrice > currentPrice ? 'stop' : 'limit';
+        } else {
+            newType = entryPrice < currentPrice ? 'stop' : 'limit';
+        }
+
         if (this.orderType !== newType) {
             this.orderType = newType;
-            if (newType === 'market') {
-                this._setPreviewEntrySource('market');
-            } else if (this._previewEntrySource === 'market') {
-                this._setPreviewEntrySource('manual');
-            }
+            document.querySelectorAll('.order-type-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.type === newType);
+            });
             this.updatePlaceButtonText();
+            // Keep draft entry tag in sync (LIMIT ↔ STOP ↔ MARKET) when market moves vs fixed entry
+            
         }
-
-        document.querySelectorAll('.order-type-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.type === this.orderType);
-        });
-
-        if (this.orderType !== prevType) {
-            this.updatePreviewLines();
-        }
-        return this.orderType;
-    }
-
-    /**
-     * Apply order-type tab from the panel — Limit/Stop always resolve via entry vs market.
-     */
-    _applyOrderTypeFromUi(requestedType) {
-        const t = String(requestedType || 'market').toLowerCase();
-        if (t === 'market') {
-            this.orderType = 'market';
-            this._setPreviewEntrySource('market');
-            this.updateOrderPanelPrice();
-        } else if (t === 'limit' || t === 'stop') {
-            if (this._previewEntrySource === 'market') {
-                this._setPreviewEntrySource('manual');
-            }
-            const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || '0');
-            if (entryPrice > 0) {
-                this._autoDetectOrderTypeFromEntry();
-            } else {
-                this.orderType = t;
-            }
-        } else {
-            this.orderType = t;
-        }
-
-        document.querySelectorAll('.order-type-btn').forEach(b => {
-            b.style.cssText = '';
-            b.classList.toggle('active', b.dataset.type === this.orderType);
-        });
-        this.updatePreviewLines();
-        this.calculateAdvancedRiskReward();
-        this.updatePlaceButtonText();
     }
 
     /**
@@ -16846,12 +16237,6 @@ class OrderManager {
             const x = pc.w - rightMargin + 2;
             lineData.yAxisHighlight.attr('transform', `translate(${x}, ${yPixel - highlightHeight / 2})`);
         };
-
-        const syncPreviewHitWidth = (ld) => {
-            if (!ld?.hitLine || ld.isBadge) return;
-            const labelX = this._previewLineLabelStartX(ld, pc);
-            ld.hitLine.attr('x2', this._orderLineHitEndX(pc, labelX));
-        };
         
         // Update entry line position
         if (this.previewLines.entry) {
@@ -16867,9 +16252,9 @@ class OrderManager {
             if (this.previewLines.entry.hitLine) {
                 this.previewLines.entry.hitLine
                     .attr('y1', entryY)
-                    .attr('y2', entryY);
+                    .attr('y2', entryY)
+                    .attr('x2', pc.w);
             }
-            syncPreviewHitWidth(this.previewLines.entry);
 
             updateLabelY(this.previewLines.entry, entryY);
             updateYAxisHighlight(this.previewLines.entry, entryY);
@@ -16889,9 +16274,9 @@ class OrderManager {
             if (this.previewLines.tp.hitLine) {
                 this.previewLines.tp.hitLine
                     .attr('y1', tpY)
-                    .attr('y2', tpY);
+                    .attr('y2', tpY)
+                    .attr('x2', pc.w);
             }
-            syncPreviewHitWidth(this.previewLines.tp);
 
             updateLabelY(this.previewLines.tp, tpY);
             updateYAxisHighlight(this.previewLines.tp, tpY);
@@ -16911,9 +16296,9 @@ class OrderManager {
             if (this.previewLines.sl.hitLine) {
                 this.previewLines.sl.hitLine
                     .attr('y1', slY)
-                    .attr('y2', slY);
+                    .attr('y2', slY)
+                    .attr('x2', pc.w);
             }
-            syncPreviewHitWidth(this.previewLines.sl);
 
             updateLabelY(this.previewLines.sl, slY);
             updateYAxisHighlight(this.previewLines.sl, slY);
@@ -16949,9 +16334,9 @@ class OrderManager {
                     if (tpLine.hitLine) {
                         tpLine.hitLine
                             .attr('y1', tpY)
-                            .attr('y2', tpY);
+                            .attr('y2', tpY)
+                            .attr('x2', pc.w);
                     }
-                    syncPreviewHitWidth(tpLine);
 
                     updateLabelY(tpLine, tpY);
                     updateYAxisHighlight(tpLine, tpY);
@@ -16973,9 +16358,9 @@ class OrderManager {
             if (this.previewLines.be.hitLine) {
                 this.previewLines.be.hitLine
                     .attr('y1', beY)
-                    .attr('y2', beY);
+                    .attr('y2', beY)
+                    .attr('x2', pc.w);
             }
-            syncPreviewHitWidth(this.previewLines.be);
 
             updateLabelY(this.previewLines.be, beY);
             updateYAxisHighlight(this.previewLines.be, beY);
@@ -16996,9 +16381,9 @@ class OrderManager {
                     if (splitLine.hitLine) {
                         splitLine.hitLine
                             .attr('y1', splitY)
-                            .attr('y2', splitY);
+                            .attr('y2', splitY)
+                            .attr('x2', pc.w);
                     }
-                    syncPreviewHitWidth(splitLine);
 
                     updateLabelY(splitLine, splitY);
                     updateYAxisHighlight(splitLine, splitY);
@@ -17018,9 +16403,9 @@ class OrderManager {
             if (this.previewLines.avgEntry.hitLine) {
                 this.previewLines.avgEntry.hitLine
                     .attr('y1', avgY)
-                    .attr('y2', avgY);
+                    .attr('y2', avgY)
+                    .attr('x2', pc.w);
             }
-            syncPreviewHitWidth(this.previewLines.avgEntry);
             updateLabelY(this.previewLines.avgEntry, avgY);
             updateYAxisHighlight(this.previewLines.avgEntry, avgY);
         }
@@ -17029,11 +16414,26 @@ class OrderManager {
         if (widthChanged) {
             this.alignPreviewLabels();
             this._reflowEntryAnchoredTpSlBadges();
+        } else {
+            // Vertical-only pan: x2 was reset to full width — clip back to label edge (no gap).
+            const clipPreviewToLabel = (ld) => {
+                if (ld && ld.line && ld.labelGroup && !ld.isBadge) this.adjustPreviewLineForLabel(ld);
+            };
+            clipPreviewToLabel(this.previewLines.entry);
+            clipPreviewToLabel(this.previewLines.tp);
+            clipPreviewToLabel(this.previewLines.sl);
+            clipPreviewToLabel(this.previewLines.be);
+            clipPreviewToLabel(this.previewLines.avgEntry);
+            if (this.previewLines.multipleTPs && Array.isArray(this.previewLines.multipleTPs)) {
+                this.previewLines.multipleTPs.forEach(clipPreviewToLabel);
+            }
+            if (this.previewLines.splitEntries && Array.isArray(this.previewLines.splitEntries)) {
+                this.previewLines.splitEntries.forEach(clipPreviewToLabel);
+            }
         }
 
         this._syncPendingLimitStopConnector();
         if (pc) this._updateMultiTPAvgLines(pc);
-        this._ensureOrderPriceMarginShield(pc);
     }
 
     updatePreviewLines() {
@@ -17216,7 +16616,7 @@ class OrderManager {
                     false,
                     undefined,
                     undefined,
-                    { smallLabel: true, isAvgEntryLine: true }
+                    { strokeDasharray: '7 5', smallLabel: true, isAvgEntryLine: true, opacity: 0.85 }
                 );
             }
         }
@@ -17371,8 +16771,10 @@ class OrderManager {
             if (this.previewLines.be) {
                 this.previewLines.be.targetPrice = beTriggerPrice;
                 this.previewLines.be.isBELine = true;
-                this._applyOrderLevelLineStyle(this.previewLines.be.line, true);
-                this.previewLines.be.line.attr('stroke-width', 1);
+                this.previewLines.be.line
+                    .attr('stroke-width', 1)
+                    .attr('stroke-dasharray', null)
+                    .attr('opacity', 0.85);
             }
         }
 
@@ -17388,37 +16790,8 @@ class OrderManager {
         // Entry preview uses a full-width invisible hit strip; SL badge sits left of TP and can
         // end up underneath other preview layers — move badges to top for reliable drags.
         this._raiseEntryAnchoredPreviewBadgesToFront();
-        if (this.editingPendingOrderId) {
-            this._syncEditingPendingOrderTargetsFromPanel();
-        }
         } finally {
             this._previewTargetChart = null;
-        }
-    }
-
-    /**
-     * While editing a pending order, mirror SL/TP clears from the panel onto the live pending order.
-     */
-    _syncEditingPendingOrderTargetsFromPanel() {
-        const orderId = this.editingPendingOrderId;
-        if (!orderId) return;
-        const po = this._findPendingOrderById(orderId);
-        if (!po || po.status !== 'PENDING') return;
-
-        const slEnabled = !!document.getElementById('enableSL')?.checked;
-        const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
-        const tpEnabled = !!document.getElementById('enableTP')?.checked;
-        const tpPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
-        const multiTp = !!document.getElementById('multipleTPToggle')?.checked;
-
-        if (po.stopLoss && (!slEnabled || !(slPrice > 0))) {
-            this.removePendingStopLoss(orderId);
-            return;
-        }
-
-        const hasTp = !!(po.takeProfit || (po.tpTargets && po.tpTargets.length > 0));
-        if (hasTp && (!tpEnabled || (!multiTp && !(tpPrice > 0)))) {
-            this.removePendingTakeProfit(orderId);
         }
     }
 
@@ -17461,7 +16834,7 @@ class OrderManager {
         const hitStrokeWidth = 20;
         const dash = options?.strokeDasharray ?? null;
         const disabled = options?.disabled === true;
-        const lineOpacity = disabled ? 0.38 : (options?.opacity ?? this._orderLevelLineStyle(true).opacity);
+        const lineOpacity = disabled ? 0.38 : (options?.opacity ?? 0.92);
 
         const line = chart.svg.append('line')
             .attr('class', disabled ? 'preview-line preview-line--disabled' : 'preview-line')
@@ -17472,14 +16845,14 @@ class OrderManager {
             .attr('stroke', color)
             .attr('stroke-width', 1)
             .attr('stroke-linecap', 'butt')
-            .attr('stroke-dasharray', dash != null ? dash : null)
+            .attr('stroke-dasharray', dash)
             .attr('opacity', lineOpacity)
-            .style('pointer-events', 'none')
+            .style('pointer-events', isDraggable ? 'all' : 'none')
             .style('cursor', isDraggable ? 'ns-resize' : 'default');
         const hitLine = chart.svg.append('line')
             .attr('class', 'preview-line-hit')
             .attr('x1', 0)
-            .attr('x2', isDraggable ? this._orderLineHitEndX(chart, null) : chart.w)
+            .attr('x2', chart.w)
             .attr('y1', y)
             .attr('y2', y)
             .attr('stroke', color)
@@ -17538,7 +16911,6 @@ class OrderManager {
             this.makePreviewLineDraggable(lineData);
         }
 
-        this._ensureOrderPriceMarginShield(chart);
         return lineData;
     }
 
@@ -17648,9 +17020,6 @@ class OrderManager {
 
         const drag = d3.drag()
             .filter((event) => {
-                const ch = lineData._previewChart || self._getPreviewChart();
-                if (self._eventInPriceAxisZone(event, ch)) return false;
-                if (self._eventInTimeAxisZone(event, ch)) return false;
                 const t = event.sourceEvent && event.sourceEvent.target;
                 if (t && typeof t.closest === 'function') {
                     if (t.closest('.preview-tp-sl-close-btn')) return false;
@@ -17660,7 +17029,6 @@ class OrderManager {
                     if (t.closest('.split-handle')) return false;
                     if (t.closest('.preview-entry-level-delete-btn')) return false;
                     if (t.closest('.preview-enable-multi-modes-btn')) return false;
-                    if (t.closest('.order-level-badge')) return false;
                 }
                 return true;
             })
@@ -17674,7 +17042,8 @@ class OrderManager {
                 self._multichartPostDraftDragBusy(true);
 
                 if (lineData.label === 'Entry' || (lineData.label && String(lineData.label).startsWith('Entry#'))) {
-                    self._setPreviewEntrySource('manual');
+                    self._previewEntryDecoupledFromRR = true;
+                    self._previewEntryLinkedToRiskReward = false;
                 }
 
                 // Store initial values for comparison
@@ -17787,8 +17156,12 @@ class OrderManager {
                 }
 
                 lineData.price = newPrice;
+                lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+                if (lineData.hitLine) {
+                    lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+                }
+                
                 const formattedPrice = self.formatPrice(newPrice);
-                self._syncPreviewDragVisuals(lineData, clampedY, newPrice);
                 // Sync SL input before $/lot label math (multi-entry uses #slPrice for per-level lots).
                 if (lineData.label === 'SL') {
                     self.slManuallyPositioned = true;
@@ -17829,6 +17202,24 @@ class OrderManager {
                         lineData.pipIndicator.remove();
                         lineData.pipIndicator = null;
                     }
+                }
+                
+                // Update label Y position without recalculating X (prevents horizontal jumping)
+                const bbox = lineData.labelDimensions;
+                const height = bbox?.height || 0;
+                const currentTransform = lineData.labelGroup.attr('transform');
+                const currentX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                const translateY = clampedY - height / 2;
+                lineData.labelGroup.attr('transform', `translate(${currentX}, ${translateY})`);
+                self.adjustPreviewLineForLabel(lineData);
+                
+                // Update Y-axis price highlight for ALL lines (Entry, TP, SL, BE, etc.)
+                if (lineData.yAxisHighlight) {
+                    const highlightHeight = 22;
+                    const highlightY = clampedY - highlightHeight / 2;
+                    const highlightX = parseFloat(lineData.yAxisHighlight.attr('transform').match(/translate\(([\d.]+)/)?.[1] || 0);
+                    lineData.yAxisHighlight.attr('transform', `translate(${highlightX}, ${highlightY})`);
+                    lineData.yAxisHighlight.select('.y-axis-price-text').text(formattedPrice);
                 }
                 
                 if (lineData.label === 'TP') {
@@ -17881,15 +17272,20 @@ class OrderManager {
                         );
                         lineData.label = `TP${targetNum}`;
                         
-                        if (lineData.priceText && !lineData.priceText.empty()) {
-                            lineData.priceText.text(self._formatMultiTpInfoText(lineData.label, newPrice));
+                        // Re-render label so the profit segment updates with new price
+                        if (lineData.labelGroup) {
+                            self.renderPreviewLabel(lineData, clampedY);
+                            self.adjustPreviewLineForLabel(lineData);
                         }
                         
-                        throttledCalculate(() => {
-                            self.calculateAdvancedRiskReward();
-                            self.renderTPTargets();
-                            if (ch) self._updateMultiTPAvgLines(ch);
-                        });
+                        // Recalculate risk/reward to update profit display
+                        self.calculateAdvancedRiskReward();
+                        
+                        // Re-render the targets list to update validation and show updated percentages
+                        self.renderTPTargets();
+
+                        // Live-update Avg TP line position during drag
+                        if (ch) self._updateMultiTPAvgLines(ch);
                     }
                 } else if (lineData.label === 'SL') {
                     // Input synced above so _formatTpSlInfoText / panel match while dragging
@@ -18001,24 +17397,50 @@ class OrderManager {
                     }
                     
                     // Auto-detect order type based on entry position relative to current price
-                    const newOrderType = self._inferOrderTypeFromEntryPrice(newPrice);
-                    if (newOrderType && newOrderType !== 'market' && self.orderType !== newOrderType) {
-                        const oldType = self.orderType;
-                        self.orderType = newOrderType;
-                        if (self._previewEntrySource === 'market') {
-                            self._setPreviewEntrySource('manual');
+                    const currentCandle = self.getCurrentCandle();
+                    const currentPrice = currentCandle?.c || currentCandle?.close || null;
+                    
+                    if (currentPrice) {
+                        let newOrderType;
+                        if (self.orderSide === 'BUY') {
+                            // BUY: above price = STOP, below price = LIMIT
+                            newOrderType = newPrice > currentPrice ? 'stop' : 'limit';
+                        } else {
+                            // SELL: below price = STOP, above price = LIMIT
+                            newOrderType = newPrice < currentPrice ? 'stop' : 'limit';
                         }
-                        console.log(`🔄 Auto-detected order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)})`);
-                        document.querySelectorAll('.order-type-btn').forEach(btn => {
-                            btn.classList.toggle('active', btn.dataset.type === newOrderType);
-                        });
-                        self.updatePlaceButtonText();
-                        const currentTransform = lineData.labelGroup.attr('transform');
-                        const savedX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        self.renderPreviewLabel(lineData, clampedY);
-                        const newTransform = lineData.labelGroup.attr('transform');
-                        const newY = parseFloat(newTransform?.match(/translate\([^,]+,\s*([\d.]+)/)?.[1] || 0);
-                        lineData.labelGroup.attr('transform', `translate(${savedX}, ${newY})`);
+                        
+                        // Update order type if changed
+                        if (self.orderType !== newOrderType) {
+                            const oldType = self.orderType;
+                            self.orderType = newOrderType;
+                            
+                            console.log(`🔄 Auto-detected order type: ${oldType} → ${newOrderType} (Entry: ${newPrice.toFixed(5)}, Current: ${currentPrice.toFixed(5)})`);
+                            
+                            // Update order type buttons in panel
+                            document.querySelectorAll('.order-type-btn').forEach(btn => {
+                                if (btn.dataset.type === newOrderType) {
+                                    btn.classList.add('active');
+                                } else {
+                                    btn.classList.remove('active');
+                                }
+                            });
+                            
+                            // Update the Place Order button text
+                            self.updatePlaceButtonText();
+                            
+                            // Save current X position before re-rendering
+                            const currentTransform = lineData.labelGroup.attr('transform');
+                            const savedX = parseFloat(currentTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                            
+                            // Re-render entry label to show new type
+                            self.renderPreviewLabel(lineData, clampedY);
+                            
+                            // Restore X position after re-render
+                            const newTransform = lineData.labelGroup.attr('transform');
+                            const newY = parseFloat(newTransform?.match(/translate\([^,]+,\s*([\d.]+)/)?.[1] || 0);
+                            lineData.labelGroup.attr('transform', `translate(${savedX}, ${newY})`);
+                        }
                     }
                     
                     // Update TP/SL badge positions if they haven't been manually positioned
@@ -18333,8 +17755,7 @@ class OrderManager {
             .on('end', () => {
                 if (!isDragging) return;
                 isDragging = false;
-                lineData.line.attr('stroke-width', 1);
-                self._applyOrderLevelLineStyle(lineData.line, true);
+                lineData.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
                 // Clear dragging flag
                 self.isDraggingPreviewLine = false;
@@ -18505,11 +17926,6 @@ class OrderManager {
 
             // Drag to set this target's price
             const drag = d3.drag()
-                .filter((event) => {
-                    if (self._eventInPriceAxisZone(event, ch)) return false;
-                    if (self._eventInTimeAxisZone(event, ch)) return false;
-                    return !event.button;
-                })
                 .on('start', () => {
                     badgeGroup.style('opacity', 0.8);
                     self._multichartPostDraftDragBusy(true);
@@ -18586,11 +18002,6 @@ class OrderManager {
 
         // Make badge draggable - when dragged, convert to full line
         const drag = d3.drag()
-            .filter((event) => {
-                if (self._eventInPriceAxisZone(event, ch)) return false;
-                if (self._eventInTimeAxisZone(event, ch)) return false;
-                return !event.button;
-            })
             .on('start', () => {
                 badgeGroup.style('opacity', 0.8);
                 self._multichartPostDraftDragBusy(true);
@@ -19077,12 +18488,8 @@ class OrderManager {
                 orderTypeSection.style.pointerEvents = 'none';
             }
 
-            if (this.multiEntryLevels.length < 2) {
-                const preservedPrimary = this.multiEntryLevels.length === 1 ? this.multiEntryLevels[0] : null;
-                this.multiEntryLevels = [];
-                const currentPrice = preservedPrimary?.price > 0
-                    ? preservedPrimary.price
-                    : parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+            if (this.multiEntryLevels.length === 0) {
+                const currentPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
                 const psMode = this.positionSizeMode || 'risk-usd';
                 let amt1;
                 let amt2;
@@ -19097,9 +18504,6 @@ class OrderManager {
                     const riskAmount = parseFloat(document.getElementById('riskAmountUSD')?.value || 100);
                     amt1 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
                     amt2 = riskAmount > 0 ? Math.round(riskAmount / 2) : 40;
-                }
-                if (preservedPrimary?.amount > 0) {
-                    amt1 = preservedPrimary.amount;
                 }
                 this.multiEntryLevels.push({
                     id: this.multiEntryIdCounter++,
@@ -19150,7 +18554,6 @@ class OrderManager {
             }
 
             this.clearSplitEntries();
-            this.multiEntryLevels = [];
         }
 
         this.updatePreviewLines();
@@ -19732,24 +19135,11 @@ class OrderManager {
     removeMultiEntryLevel(id) {
         const ix = this.multiEntryLevels.findIndex((l) => l.id === id);
         if (ix === -1) return;
-
-        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
-
         if (this.multiEntryLevels.length <= 1) {
-            if (this.multiEntryLevels.length === 1 && this.multiEntryLevels[0].price > 0) {
-                const entryInput = document.getElementById('orderEntryPrice');
-                if (entryInput) entryInput.value = this.formatPrice(this.multiEntryLevels[0].price);
-            }
-            this.multiEntryLevels = [];
-            if (this.isMultiEntryMode) {
-                this.setEntryMode(false);
-            } else {
-                this.renderMultiEntryRows();
-                this.syncMultiEntryToSplitEntries();
-            }
+            this.toggleEntryMode();
             return;
         }
-
+        this.multiEntryLevels = this.multiEntryLevels.filter((l) => l.id !== id);
         // Scale remaining levels proportionally to restore the total risk/lot target
         // (equalizeMultiEntryAmounts resets to equal split — this preserves relative weights)
         this._rebalanceLevelAmountsToTarget();
@@ -19856,40 +19246,6 @@ class OrderManager {
     }
 
     /**
-     * Format signed USD P&L for chart labels and panel readouts (+ profit / − loss).
-     */
-    _formatSignedUsdPnl(pnl) {
-        if (!Number.isFinite(pnl)) return '$0.00';
-        const sign = pnl >= 0 ? '+' : '-';
-        return `${sign}$${Math.abs(pnl).toFixed(2)}`;
-    }
-
-    /**
-     * Signed gross P&L at a stop/limit level vs entry (respects multi-entry legs).
-     */
-    _computeSignedPnlAtLevel(entryPx, levelPrice, quantity) {
-        if (!(entryPx > 0) || !(levelPrice > 0) || !(quantity > 0)) return 0;
-        const side = this.orderSide || 'BUY';
-        if (this.isMultiEntryMode && this.multiEntryLevels && this.multiEntryLevels.length > 0) {
-            const slPx = parseFloat(document.getElementById('slPrice')?.value || 0);
-            const ps = this.pipSize || 0.0001;
-            const pv = this.pipValuePerLot || 10;
-            const minLotR = this.getMarketConfig()?.minSize ?? 0.01;
-            let total = 0;
-            for (const l of this.multiEntryLevels) {
-                if (!(l.price > 0)) continue;
-                if (!this._multiEntryLevelMeetsMinLot(l, slPx, ps, pv, minLotR)) continue;
-                const lots = parseFloat(this._calcLevelLotSize(l, slPx, ps, pv)) || 0;
-                if (lots > 0) {
-                    total += this.estimatePnLForPriceLevel(side, l.price, levelPrice, lots);
-                }
-            }
-            return total;
-        }
-        return this.estimatePnLForPriceLevel(side, entryPx, levelPrice, quantity);
-    }
-
-    /**
      * TP/SL distances, R:R, and $ profit on the order panel use weighted average entry when multi-entry is on.
      */
     _formatTpSlInfoText(label, price) {
@@ -19915,16 +19271,18 @@ class OrderManager {
                 totalPnl += this.estimatePnLForPriceLevel(side, level.price, price, lots);
             }
             if (totalLots <= 0) return fallback;
-            const sign = totalPnl >= 0 ? '+' : '-';
-            return `${sign}$${Math.abs(totalPnl).toFixed(2)}  (${this.formatQuantity(totalLots)})`;
+            const absPnl = Math.abs(totalPnl);
+            const sign = label === 'SL' ? '-' : '+';
+            return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(totalLots)})`;
         }
 
         // Single entry
         const entryPx = this._getReferenceEntryForOrderMath();
         if (!(entryPx > 0) || price === entryPx) return fallback;
         const pnl = this.estimatePnLForPriceLevel(side, entryPx, price, qty);
-        const sign = pnl >= 0 ? '+' : '-';
-        return `${sign}$${Math.abs(pnl).toFixed(2)}  (${this.formatQuantity(qty)})`;
+        const absPnl = Math.abs(pnl);
+        const sign = label === 'SL' ? '-' : '+';
+        return `${sign}$${absPnl.toFixed(2)}  (${this.formatQuantity(qty)})`;
     }
 
     /**
@@ -20025,7 +19383,7 @@ class OrderManager {
             ld.line.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.hitLine) {
-            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', this._orderLineHitEndX(ch, this._previewLineLabelStartX(ld, ch)));
+            ld.hitLine.attr('y1', y).attr('y2', y).attr('x2', ch.w);
         }
         if (ld.priceText) {
             const totalLots = this._calcMultiEntryTotalLots();
@@ -20539,18 +19897,6 @@ class OrderManager {
      * Add a new TP target from split drag
      */
     addTPFromSplit(price) {
-        let projectedLen = this.tpTargets?.length || 0;
-        if (projectedLen === 0) {
-            const originalTPPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
-            if (originalTPPrice > 0) projectedLen = 1;
-        }
-        if (projectedLen + 1 > this._getMaxTpTargets()) {
-            this._notifyTpTargetCapReached();
-            this._syncTpAddButtonsUi();
-            this.updatePreviewLines();
-            return;
-        }
-
         // Enable multiple TP if not already (without triggering change event that initializes)
         const multipleTPToggle = document.getElementById('multipleTPToggle');
         const multipleTPSettings = document.getElementById('multipleTPSettings');
@@ -20947,13 +20293,6 @@ class OrderManager {
         return null;
     }
 
-    _setPreviewEntrySource(source) {
-        const s = source === 'riskReward' || source === 'manual' ? source : 'market';
-        this._previewEntrySource = s;
-        this._previewEntryLinkedToRiskReward = s === 'riskReward';
-        this._previewEntryDecoupledFromRR = s === 'manual';
-    }
-
     _dispatchRrOrderPrefilledEvent() {
         try {
             if (typeof window === 'undefined') return;
@@ -20976,7 +20315,8 @@ class OrderManager {
      */
     _syncRiskRewardDrawingToOpenOrderPanel(drawing) {
         if (!drawing) return;
-        this._setPreviewEntrySource('riskReward');
+        this._previewEntryDecoupledFromRR = false;
+        this._previewEntryLinkedToRiskReward = true;
         this.pushRiskRewardToolToManager(drawing);
         this.tpManuallyPositioned = true;
         this.slManuallyPositioned = true;
@@ -21014,7 +20354,7 @@ class OrderManager {
         const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
         const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
         if (Math.abs(panelEntry - rrEntry) > eps) {
-            this._setPreviewEntrySource('manual');
+            this._previewEntryDecoupledFromRR = true;
         }
     }
 
@@ -21025,9 +20365,14 @@ class OrderManager {
         if (opts.forceEntry) return false;
         if (opts.skipEntry) return true;
         if (!this._isDraftOrderPreviewActive()) return false;
-        if (this._previewEntrySource === 'manual') return true;
-        if (this._previewEntrySource === 'market') return true;
-        return false;
+        if (this._previewEntryDecoupledFromRR) return true;
+        if (!drawing?.points?.[0]) return false;
+        const rrEntry = this._getRiskRewardDrawingEntryPrice(drawing);
+        const panelEntry = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
+        if (!(panelEntry > 0) || !Number.isFinite(rrEntry)) return false;
+        const prec = typeof this.getPricePrecision === 'function' ? this.getPricePrecision(rrEntry) : 5;
+        const eps = Math.max(Math.pow(10, -prec), Math.abs(rrEntry) * 1e-9);
+        return Math.abs(panelEntry - rrEntry) > eps;
     }
 
     /**
@@ -22381,17 +21726,26 @@ class OrderManager {
             return match ? parseFloat(match[1]) : ch.w - width - 18;
         })();
 
-        // Visual line always reaches the price axis; only the invisible hit target is capped.
-        const lineEndX = this._orderLineVisualEndX(ch);
+        // End at label edge by default; preview TP/SL extends to right axis price.
+        let lineEndX = Math.max(0, x);
+        const isPreviewOrder = this.orderType === 'market' || this.orderType === 'limit' || this.orderType === 'stop';
+        const isBePreview = typeof lineData.label === 'string' && lineData.label.startsWith('BE @');
+        const isEntryTpSl = lineData.label === 'SL'
+            || lineData.label === 'TP'
+            || lineData.label === 'Entry'
+            || lineData.label === 'Avg Entry'
+            || (typeof lineData.label === 'string' && (lineData.label.startsWith('TP') || lineData.label.startsWith('Entry')));
+        if (isPreviewOrder && (isEntryTpSl || isBePreview)) {
+            lineEndX = ch.w;
+        }
 
         lineData.line
             .attr('x1', 0)
             .attr('x2', lineEndX);
         if (lineData.hitLine) {
-            const hitEndX = this._orderLineHitEndX(ch, x);
             lineData.hitLine
                 .attr('x1', 0)
-                .attr('x2', hitEndX);
+                .attr('x2', lineEndX);
         }
     }
 
@@ -22408,92 +21762,10 @@ class OrderManager {
             });
         }
         this._pendingPreviewConnectorDots = [];
-        const ch = this.previewLines?._previewChart || this._getPreviewChart();
-        if (ch?.svg) {
-            ch.svg.selectAll('.preview-pending-connector').remove();
-        }
-    }
-
-    /** Shared X for preview + live TP/SL vertical connectors (right of chart, left of price axis). */
-    _orderConnectorAnchorX(ch) {
-        if (!ch) return 0;
-        const yAxisWidth = ch.margin?.r || 70;
-        return ch.w - yAxisWidth - 6;
-    }
-
-    /** Remove vertical TP/SL connector layers from one SVG root (no yScale required). */
-    _purgeOrderConnectorsFromSvg(svg) {
-        if (!svg || typeof svg.selectAll !== 'function') return;
-        svg.selectAll('.exec-order-connector').remove();
-        svg.selectAll('.preview-pending-connector').remove();
-        svg.selectAll('.preview-pending-connector-dot').remove();
-        svg.selectAll('[class*="split-avg-connector"]').remove();
-    }
-
-    /** Scrub connector layers from every chart surface (main, panels, drawing SVG). */
-    _purgeOrderConnectorsFromAllSurfaces() {
-        const seen = new Set();
-        const purge = (svg) => {
-            const node = svg?.node?.();
-            if (node) {
-                if (seen.has(node)) return;
-                seen.add(node);
-            }
-            this._purgeOrderConnectorsFromSvg(svg);
-        };
-        (this._collectLayoutCharts() || []).forEach((c) => purge(c?.svg));
-        purge(this.chart?.svg);
-        if (typeof document !== 'undefined' && typeof d3 !== 'undefined') {
-            const roots = [];
-            const dw = document.getElementById('drawingSvg');
-            if (dw) roots.push(dw);
-            document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
-            roots.forEach((el) => {
-                if (!el || seen.has(el)) return;
-                seen.add(el);
-                purge(d3.select(el));
-            });
-        }
-        (this.splitGroupAvgLines || []).forEach((g) => {
-            g._connector = null;
-        });
-        this._pendingPreviewConnector = null;
-        this._pendingPreviewConnectorDots = [];
-    }
-
-    /** Redraw vertical entry↔TP/SL connectors on every layout surface (after place/cancel/close). */
-    _refreshOrderConnectors(ch) {
-        if (ch?.svg) {
-            this._purgeOrderConnectorsFromSvg(ch.svg);
-        } else {
-            this._purgeOrderConnectorsFromAllSurfaces();
-        }
-        const charts = ch
-            ? [ch]
-            : (typeof this._collectLayoutCharts === 'function' ? this._collectLayoutCharts() : [this.chart]);
-        (charts || []).forEach((c) => {
-            if (c && typeof this._drawExecutedOrderConnectors === 'function') {
-                this._drawExecutedOrderConnectors(c);
-            }
-        });
-    }
-
-    /** Drop open/pending registry rows + connector SVG after any close/cancel path. */
-    _cleanupClosedOrderChartLayers(orderId) {
-        if (orderId == null) return;
-        if (this.orderService?.openPositions?.length) {
-            this.orderService.openPositions = this.orderService.openPositions.filter((p) => p && p.id !== orderId);
-        }
-        if (this.orderService?.pendingOrders?.length) {
-            this.orderService.pendingOrders = this.orderService.pendingOrders.filter((p) => p && p.id !== orderId);
-        }
-        this.pendingOrders = (this.pendingOrders || []).filter((p) => p && p.id !== orderId);
-        this._purgeOrderConnectorsFromAllSurfaces();
-        this._refreshOrderConnectors();
     }
 
     /**
-     * Pre-place preview: vertical guide through Entry + TP + SL (same anchor as live orders).
+     * Pre-place preview: vertical dashed guide through Entry + TP + SL (TradingView-style).
      * Does not replace horizontal TP/SL lines — those stay full width to the label edge.
      */
     _syncPendingLimitStopConnector() {
@@ -22529,7 +21801,35 @@ class OrderManager {
         const yBot = Math.max(...ys);
         if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
 
-        const connX = this._orderConnectorAnchorX(ch);
+        const leftXs = [];
+        const pushLeftX = (ld) => {
+            if (!ld?.labelGroup) return;
+            const tr = ld.labelGroup.attr('transform') || '';
+            const m = /translate\(([^,]+),/.exec(tr);
+            const lx = m ? parseFloat(m[1]) : NaN;
+            if (Number.isFinite(lx)) leftXs.push(lx);
+        };
+        const anchorLine = (this.isMultiEntryMode && this.previewLines.avgEntry) ? this.previewLines.avgEntry : this.previewLines.entry;
+        pushLeftX(anchorLine);
+        if (tpOn) pushLeftX(this.previewLines.tp);
+        if (slOn) pushLeftX(this.previewLines.sl);
+        if (!leftXs.length) return;
+        const entryGroup = anchorLine?.labelGroup;
+        let entryW = anchorLine?.labelDimensions?.width || 0;
+        if (this.isDraggingPreviewLine && entryGroup?.node()?.getBBox) {
+            try {
+                const bb = entryGroup.node().getBBox();
+                if (bb && Number.isFinite(bb.width) && bb.width > 0) entryW = bb.width;
+            } catch (_e) { /* ignore */ }
+        }
+        const trEntry = entryGroup?.attr('transform') || '';
+        const mEntry = /translate\(([^,]+),/.exec(trEntry);
+        const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
+        // Keep connector on the right side near the entry tag.
+        const connectorPadRight = 50; // px past entry label — nudge toward axis, away from badges
+        const anchorX = Number.isFinite(entryX)
+            ? Math.max(0, Math.min(ch.w - 1, entryX + entryW + connectorPadRight))
+            : Math.max(0, Math.min(ch.w - 1, Math.min(...leftXs)));
         const entryY = ch.scales.yScale(entryPx);
         const tpY = (tpOn && tpPx > 0) ? ch.scales.yScale(tpPx) : null;
         const slY = (slOn && slPx > 0) ? ch.scales.yScale(slPx) : null;
@@ -22541,25 +21841,25 @@ class OrderManager {
 
         const tpColor = '#26a69a';
         const slColor = '#f23645';
-        const entryColor = (this.orderSide || 'BUY') === 'BUY' ? '#2962ff' : '#f23645';
         const dotStroke = '#0f172a';
 
         const drawSegment = (y1, y2, color) => {
             connectorGroup.append('line')
-                .attr('x1', connX).attr('x2', connX)
+                .attr('x1', anchorX).attr('x2', anchorX)
                 .attr('y1', y1).attr('y2', y2)
                 .attr('stroke', color)
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
-                .attr('opacity', 0.7);
+                .attr('opacity', 0.9);
         };
         const drawDot = (y, color) => connectorGroup.append('circle')
             .attr('class', 'preview-pending-connector-dot')
-            .attr('cx', connX).attr('cy', y)
+            .attr('cx', anchorX).attr('cy', y)
             .attr('r', 2.5)
             .attr('fill', color)
             .attr('stroke', dotStroke)
-            .attr('stroke-width', 1);
+            .attr('stroke-width', 1)
+            .attr('opacity', 0.95);
 
         this._pendingPreviewConnectorDots = [];
 
@@ -22569,7 +21869,7 @@ class OrderManager {
         if (Number.isFinite(entryY) && Number.isFinite(slY)) {
             drawSegment(entryY, slY, slColor);
         }
-        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, entryColor));
+        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#eab308'));
         if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, tpColor));
         if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, slColor));
         try {
@@ -22683,17 +21983,10 @@ class OrderManager {
         
         const currentPrice = currentCandle.c;
         const quantity = parseFloat(document.getElementById('orderQuantity')?.value || 1);
-        const activeTicker = this._getActiveTicker();
-
-        const propSizeCheck = this._validatePropFirmPositionSize(quantity, activeTicker);
-        if (!propSizeCheck.ok) {
-            this.showNotification(propSizeCheck.message, 'error');
-            return;
-        }
-
         // `let` (not `const`) — tick-grid snap below re-assigns this value so all
         // downstream order-creation paths use the snapped price.
         let entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || currentPrice);
+        const activeTicker = this._getActiveTicker();
         const activeInstrumentSettings = this._getActiveInstrumentSettings();
         
         // Get TP/SL enabled status
@@ -22982,12 +22275,6 @@ class OrderManager {
                 }
                 totalLots += levelLots;
             });
-
-            const propSizeCheck = this._validatePropFirmPositionSize(totalLots, activeTicker);
-            if (!propSizeCheck.ok) {
-                this.showNotification(propSizeCheck.message, 'error');
-                return;
-            }
 
             const qtyStep = this._getQtyStep();
             const isWholeQtyInstrument = this.marketType === 'futures' || qtyStep >= 1;
@@ -23530,7 +22817,6 @@ class OrderManager {
             type: this.orderSide,
             orderType: 'market',
             openPrice: entryPrice,
-            _fillMarkPrice: entryPrice,
             openTime: marketFillTimeMs,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: quantity,
@@ -23698,33 +22984,6 @@ class OrderManager {
         if (Number.isFinite(pq) && pq > 0) return pq;
         const q = Number(pendingOrder.quantity);
         return Number.isFinite(q) && q > 0 ? q : 0;
-    }
-
-    /**
-     * Chart entry-row label — same type / side / qty readout as the order panel.
-     * @returns {{ tag: string, detail: string, text: string }}
-     */
-    _formatChartEntryLabel(order, opts = {}) {
-        if (!order) return { tag: '', detail: '', text: '' };
-        const isPending = opts.isPending ?? (String(order.status || '').toUpperCase() === 'PENDING');
-        const direction = String(order.direction || order.type || 'BUY').toUpperCase();
-        const orderType = isPending
-            ? String(order.orderType || 'limit').toUpperCase()
-            : String(this._resolvePositionOrderType(order)).toUpperCase();
-        const qty = isPending
-            ? this._getPendingPlacedQuantity(order)
-            : (Number(order.quantity) || 0);
-        const detail = this._formatQty(qty);
-        const tag = `${orderType} ${direction}`;
-        return { tag, detail, text: `${tag} ${detail}`, orderType, direction, qty };
-    }
-
-    /** Keep legacy entry label text in sync with order model (panel uses the same fields). */
-    _syncLiveEntryLabelElements(olEntry, order, isPending) {
-        if (!olEntry?.labelText || !order) return;
-        const lbl = this._formatChartEntryLabel(order, { isPending });
-        olEntry.labelText.text(lbl.text);
-        if (olEntry.arrow) olEntry.arrow.style('display', 'none');
     }
 
     /** Throttled so pending card Risk $ updates live while dragging entry/SL without spamming DOM. */
@@ -24759,9 +24018,6 @@ class OrderManager {
         
         // Move to closed positions
         this.openPositions = this.openPositions.filter(p => p.id !== orderId);
-        if (this.orderService?.openPositions?.length) {
-            this.orderService.openPositions = this.orderService.openPositions.filter((p) => p && p.id !== orderId);
-        }
         this.closedPositions.push(position);
 
         // Multichart: notify peers to drop mirrored visuals only (no second balance close).
@@ -24795,15 +24051,12 @@ class OrderManager {
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
-                this._cleanupClosedOrderChartLayers(orderId);
                 this._cleanupOrphanedYAxisHighlights();
                 this._ensurePendingTargetsSurvive();
                 // Force a chart redraw to ensure lines are visually removed
                 if (this.chart && this.chart.render) {
                     this.chart.render();
                 }
-                this._purgeOrderConnectorsFromAllSurfaces();
-                this._refreshOrderConnectors();
                 this.updatePositionsPanel();
                 this.updateJournalTab();
                 return;
@@ -25012,7 +24265,6 @@ class OrderManager {
         }
         
         this._ensurePendingTargetsSurvive();
-        this._cleanupClosedOrderChartLayers(orderId);
         this.updatePositionsPanel();
         
         // Show trade journal modal for post-trade notes (modal will UPDATE the journal entry, not create it)
@@ -25428,8 +24680,7 @@ class OrderManager {
             // Use the same OHLC the trader sees for this symbol. Background/cache bars can lag
             // behind intra-bar tick animation — then high/low never "touch" the order price.
             const onActiveChart = poTicker === activeT;
-            const touchCandleRaw = onActiveChart && currentCandle ? currentCandle : bar;
-            const touchCandle = trimTouchCandleForReplayFill(this, touchCandleRaw);
+            const touchCandle = onActiveChart && currentCandle ? currentCandle : bar;
 
             const high = Number.parseFloat(touchCandle.h);
             const low = Number.parseFloat(touchCandle.l);
@@ -25554,7 +24805,6 @@ class OrderManager {
             type: pendingOrder.direction,
             orderType: pendingOrder.orderType || (pendingOrder.wasStopOrder ? 'stop' : 'limit'),
             openPrice: executionPrice, // Use actual execution price (accounts for gaps)
-            _fillMarkPrice: executionPrice,
             openTime: currentCandle.t,
             entryMarkerTimeMs: this._entryMarkerAnchorTimeMsFromFillCandle(currentCandle),
             quantity: pendingOrder.quantity,
@@ -25793,9 +25043,8 @@ class OrderManager {
             return;
         }
         const parentGuardCandle = this._getMultichartParentGuardCandle();
-        const currentCandleRaw = parentGuardCandle || this.getCurrentCandle();
-        if (!currentCandleRaw) return;
-        const currentCandle = trimTouchCandleForReplayFill(this, currentCandleRaw);
+        const currentCandle = parentGuardCandle || this.getCurrentCandle();
+        if (!currentCandle) return;
         if (this.orderService && this.orderService.multiInstrumentSession) {
             this.orderService.multiInstrumentSession.current_time = currentCandle.t;
         }
@@ -25810,9 +25059,6 @@ class OrderManager {
 
         // Keep preview order lines tracking the current price during replay
         this._syncPreviewToReplayPrice();
-
-        // Prop firm: close positions held over weekends when rule disallows it
-        this._enforcePropFirmWeekendHold(currentCandle);
         
         // If no open positions but have MFE/MAE tracking, still continue
         if (this.openPositions.length === 0) {
@@ -27025,9 +26271,6 @@ class OrderManager {
             
             // Move to closed positions first
             this.openPositions = this.openPositions.filter(p => p.id !== orderId);
-            if (this.orderService?.openPositions?.length) {
-                this.orderService.openPositions = this.orderService.openPositions.filter((p) => p && p.id !== orderId);
-            }
             this.closedPositions.push(position);
 
             if (this.orderService && typeof this.orderService.emit === 'function') {
@@ -27165,7 +26408,6 @@ class OrderManager {
                     this._cancelPendingOrdersInSplitGroup(position.splitGroupId);
                 }
                 this._ensurePendingTargetsSurvive();
-                this._cleanupClosedOrderChartLayers(orderId);
                 this.updatePositionsPanel();
                 return;
             }
@@ -27613,7 +26855,6 @@ class OrderManager {
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
-                this._cleanupClosedOrderChartLayers(orderId);
                 this.updatePositionsPanel();
                 return;
             }
@@ -27723,10 +26964,6 @@ class OrderManager {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
             this._cleanupOrphanedYAxisHighlights();
-        }
-        
-        if (!isPartialClose) {
-            this._cleanupClosedOrderChartLayers(orderId);
         }
         
         // Clean up any preview lines that might be lingering
@@ -27842,8 +27079,6 @@ class OrderManager {
                 e.target.closest('.tp-close-btn')) {
                 return;
             }
-            if (self._eventInPriceAxisZone(e, ctx)) return;
-            if (self._eventInTimeAxisZone(e, ctx)) return;
             
             e.preventDefault();
             e.stopPropagation();
@@ -28080,15 +27315,15 @@ class OrderManager {
                             const deleteBtnR = 8;
                             const splitBtnR = splBtn ? (delBtn ? 8 : 9) : 0;
                             if (delBtn) {
-                                self._positionOrderLevelBadgeAtCenter(delBtn, cx + deleteBtnR, newY, deleteBtnR);
+                                delBtn.attr('transform', `translate(${cx + deleteBtnR}, ${newY})`);
                                 cx += deleteBtnR * 2 + gap;
                             }
                             if (splBtn) {
-                                self._positionOrderLevelBadgeAtCenter(splBtn, cx + splitBtnR, newY, splitBtnR);
+                                splBtn.attr('transform', `translate(${cx + splitBtnR}, ${newY})`);
                                 cx += splitBtnR * 2 + gap;
                             }
                             const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
-                            if (!clBtn.empty()) self._positionOrderCloseBtn(clBtn, cX, newY, closeBtnR);
+                            if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
                         }
                     }
                 } else {
@@ -28156,9 +27391,8 @@ class OrderManager {
                 frameId = null;
             }
             
-            line.attr('stroke-width', 1);
-            self._applyOrderLevelLineStyle(line, false);
-
+            line.attr('stroke-width', 1).attr('opacity', 0.85);
+            
             let finalPrice;
             if (lineType === 'entry') finalPrice = order.openPrice;
             else if (lineType === 'sl') finalPrice = order.stopLoss;
@@ -28257,6 +27491,8 @@ class OrderManager {
         lineNode.addEventListener('mousedown', onMouseDown);
         labelNode.addEventListener('mousedown', onMouseDown);
         if (labelTextNode) labelTextNode.addEventListener('mousedown', onMouseDown);
+        if (priceBoxNode) priceBoxNode.addEventListener('mousedown', onMouseDown);
+        if (priceTextNode) priceTextNode.addEventListener('mousedown', onMouseDown);
         const pnlBoxNode = extraElements.pnlBox?.node?.();
         const pnlTextNode = extraElements.pnlText?.node?.();
         if (pnlBoxNode) pnlBoxNode.addEventListener('mousedown', onMouseDown);
@@ -28286,8 +27522,6 @@ class OrderManager {
         const priceTextNode = priceText?.node();
         
         const onMouseDown = function(e) {
-            if (self._eventInPriceAxisZone(e, ctx)) return;
-            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             
@@ -28408,8 +27642,7 @@ class OrderManager {
                 frameId = null;
             }
             
-            line.attr('stroke-width', 1);
-            self._applyOrderLevelLineStyle(line, false);
+            line.attr('stroke-width', 1).attr('opacity', 0.85);
             
             const finalPrice = target.price;
 
@@ -28466,6 +27699,8 @@ class OrderManager {
         if (lineNode) lineNode.addEventListener('mousedown', onMouseDown);
         if (labelBoxNode) labelBoxNode.addEventListener('mousedown', onMouseDown);
         if (labelTextNode) labelTextNode.addEventListener('mousedown', onMouseDown);
+        if (priceBoxNode) priceBoxNode.addEventListener('mousedown', onMouseDown);
+        if (priceTextNode) priceTextNode.addEventListener('mousedown', onMouseDown);
     }
     
     /**
@@ -28491,8 +27726,6 @@ class OrderManager {
         const onMouseDown = (e) => {
             if (e.target.closest('.pending-order-close-btn')) return;
             if (e.target.closest('.pending-entry-plus-badge')) return;
-            if (self._eventInPriceAxisZone(e, ctx)) return;
-            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -28706,8 +27939,6 @@ class OrderManager {
 
         const onMouseDown = (e) => {
             if (e.target.closest('.order-close-btn')) return;
-            if (self._eventInPriceAxisZone(e, ctx)) return;
-            if (self._eventInTimeAxisZone(e, ctx)) return;
             e.preventDefault();
             e.stopPropagation();
             isDragging = true;
@@ -29007,13 +28238,6 @@ class OrderManager {
         if (!source) return;
 
         const price = parseFloat(this.formatPrice(newPrice));
-        const projectedCount = !source.tpTargets || source.tpTargets.length === 0
-            ? (Number(source.takeProfit) > 0 ? 2 : 1)
-            : source.tpTargets.length + 1;
-        if (projectedCount > this._getMaxTpTargets(source.quantity)) {
-            this._notifyTpTargetCapReached(source.quantity);
-            return;
-        }
 
         if (!source.tpTargets || source.tpTargets.length === 0) {
             const origTP = source.takeProfit || 0;
@@ -29215,16 +28439,7 @@ class OrderManager {
         if (!isPending) return;
         const po = this.pendingOrders.find(p => p.id === orderId);
         if (!po) return;
-        if (po.isSplitEntry) {
-            const members = this._getSplitGroupPendingOrders(po);
-            if (members.length > 1) return;
-            const gid = po.splitGroupId;
-            if (gid != null) this.removeSplitGroupAvgLine(gid);
-            po.isSplitEntry = false;
-            po.splitGroupId = undefined;
-            po.splitIndex = undefined;
-            po.splitTotal = undefined;
-        }
+        if (po.isSplitEntry) return;
 
         const price = parseFloat(this.formatPrice(newPrice));
         const halfQty = +(po.quantity / 2).toFixed(2) || po.quantity;
@@ -29581,8 +28796,8 @@ class OrderManager {
             .attr('class', `order-line order-${order.id}`)
             .attr('stroke', lineColor)
             .attr('stroke-width', 1)
+            .attr('opacity', 0.85)
             .attr('pointer-events', 'none');
-        this._applyOrderLevelLineStyle(line, false);
 
         // Wide invisible hit area for easy dragging from the line
         const dragHitLine = chart.svg.append('line')
@@ -29594,21 +28809,23 @@ class OrderManager {
 
         const labelBox = chart.svg.append('rect')
             .attr('class', `order-label-box order-${order.id}`)
+            .attr('fill', color)
+            .attr('stroke', color)
+            .attr('stroke-width', 1)
+            .attr('rx', 3)
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize');
 
-        const labelAccent = chart.svg.append('rect')
-            .attr('class', `order-label-accent order-${order.id}`)
-            .attr('width', 3)
-            .style('pointer-events', 'none');
-
         const labelText = chart.svg.append('text')
             .attr('class', `order-label-text order-${order.id}`)
+            .attr('fill', '#ffffff')
             .attr('font-size', '11px')
             .attr('font-weight', '700')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+            .attr('letter-spacing', '0')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .text(this._formatChartEntryLabel(order, { isPending: false }).text);
+            .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
 
         const arrow = chart.svg.append('text')
             .attr('class', `order-arrow order-${order.id}`)
@@ -29617,16 +28834,15 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .style('display', 'none')
             .text(order.type === 'BUY' ? '↑' : '↓');
 
         const priceBox = chart.svg.append('rect')
             .attr('class', `order-price-box order-${order.id}`)
             .attr('fill', color)
             .attr('rx', 2)
-            .style('pointer-events', 'none');
-        
-        // Price text
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize');
+
         const priceText = chart.svg.append('text')
             .attr('class', `order-price-text order-${order.id}`)
             .attr('fill', '#ffffff')
@@ -29634,7 +28850,8 @@ class OrderManager {
             .attr('font-weight', '600')
             .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
             .attr('text-anchor', 'middle')
-            .style('pointer-events', 'none')
+            .attr('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
             .text(this.formatPrice(order.openPrice));
 
         const closeBtn = this._createCloseCircleButton(
@@ -29646,20 +28863,20 @@ class OrderManager {
 
         const pnlBox = chart.svg.append('rect')
             .attr('class', `order-pnl-box order-${order.id}`)
+            .attr('fill', '#1e222d')
+            .attr('stroke', '#363a45')
+            .attr('stroke-width', 1)
+            .attr('rx', 3)
             .style('pointer-events', 'none');
 
         const pnlText = chart.svg.append('text')
             .attr('class', `order-pnl-text order-${order.id}`)
+            .attr('fill', '#d1d4dc')
             .attr('font-size', '11px')
             .attr('font-weight', '600')
+            .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
             .style('pointer-events', 'none')
             .text('$0.00');
-
-        this._styleLegacyOrderLevelToastChrome(
-            { labelBox, labelText, pnlBox, pnlText, labelAccent },
-            color,
-            { isPreview: false }
-        );
 
         // --- SL / TP "re-add" badges (visible when SL or TP is missing) ---
         const badgeH = 16, badgeR = 3, badgePad = 4, badgeFontSize = '10px';
@@ -29737,7 +28954,6 @@ class OrderManager {
             line,
             dragHitLine,
             labelBox,
-            labelAccent,
             labelText,
             arrow,
             priceBox,
@@ -29943,9 +29159,10 @@ class OrderManager {
                 .attr('class', `split-avg-line split-avg-${splitGroupId}`)
                 .attr('stroke', accent)
                 .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '7 5')
+                .attr('opacity', 0.85)
                 .attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y)
                 .style('pointer-events', 'none');
-            this._applyOrderLevelLineStyle(line, false);
 
             const avgBox = chart.svg.append('rect')
                 .attr('class', `split-avg-label split-avg-${splitGroupId}`)
@@ -29973,7 +29190,7 @@ class OrderManager {
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
                 .attr('x', 0).attr('y', y + 4)
-                .text(this._formatQty(totalLots));
+                .text(this.formatQuantity(totalLots));
 
             const pnlBox = chart.svg.append('rect')
                 .attr('class', `split-avg-label split-avg-${splitGroupId}`)
@@ -30231,9 +29448,10 @@ class OrderManager {
             .attr('class', `multi-tp-avg-line ${cls}`)
             .attr('stroke', accent)
             .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '7 5')
+            .attr('opacity', 0.85)
             .attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y)
             .style('pointer-events', 'none');
-        this._applyOrderLevelLineStyle(line, mode === 'preview');
 
         const lotsBox = chart.svg.append('rect')
             .attr('class', `multi-tp-avg-label ${cls}`)
@@ -30519,17 +29737,15 @@ class OrderManager {
                     const legs = (this.openPositions || []).filter(p => p.splitGroupId == grpId);
                     for (const leg of legs) {
                         totalPnl += Number(leg.partialClosePnL) || 0;
-                        const markPx = this._markPriceForOpenPosition(leg, ch);
-                        if (Number.isFinite(markPx) && markPx > 0) {
-                            totalPnl += this.estimatePnLForPriceLevel(side, leg.openPrice, markPx, leg.quantity || 0, sym);
+                        if (currentPrice > 0) {
+                            totalPnl += this.estimatePnLForPriceLevel(side, leg.openPrice, currentPrice, leg.quantity || 0, sym);
                         }
                     }
                 } else {
                     const realizedPartials = Number(source.partialClosePnL) || 0;
                     let unrealized = 0;
-                    const markPx = this._markPriceForOpenPosition(source, ch);
-                    if (Number.isFinite(markPx) && markPx > 0) {
-                        unrealized = this.estimatePnLForPriceLevel(side, entryPrice, markPx, qty, sym);
+                    if (currentPrice > 0) {
+                        unrealized = this.estimatePnLForPriceLevel(side, entryPrice, currentPrice, qty, sym);
                     }
                     totalPnl = realizedPartials + unrealized;
                 }
@@ -30560,7 +29776,6 @@ class OrderManager {
             g.line
                 .attr('x1', 0).attr('x2', ch.w)
                 .attr('y1', y).attr('y2', y);
-            this._applyOrderLevelLineStyle(g.line, g.mode === 'preview');
 
             g.lotsBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', lotsBW).attr('height', boxH);
             g.lotsText.attr('x', cx + pad).attr('y', y + 4);
@@ -30658,18 +29873,17 @@ class OrderManager {
             const avgBW = g.avgText.node().getBBox().width + pad * 2;
 
             const lotsLabel = (filledLots < allLots && filledLots > 0)
-                ? `${this._formatQty(filledLots)}/${this._formatQty(allLots)}`
-                : this._formatQty(allLots);
+                ? `${this.formatQuantity(filledLots)}/${this.formatQuantity(allLots)}`
+                : this.formatQuantity(allLots);
             g.lotsText.text(lotsLabel);
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
             let totalPnl = 0;
-            for (const o of openOrders) {
-                if (o.status === 'OPEN') {
-                    const sym = o.ticker || o.symbol || this._getSymbol();
-                    const markPx = this._markPriceForOpenPosition(o, ch);
-                    if (Number.isFinite(markPx) && markPx > 0) {
-                        totalPnl += this.estimatePnLForPriceLevel(o.type, o.openPrice, markPx, o.quantity, sym);
+            if (currentPrice > 0) {
+                for (const o of openOrders) {
+                    if (o.status === 'OPEN') {
+                        const sym = o.ticker || o.symbol || this._getSymbol();
+                        totalPnl += this.estimatePnLForPriceLevel(o.type, o.openPrice, currentPrice, o.quantity, sym);
                     }
                 }
             }
@@ -30714,7 +29928,6 @@ class OrderManager {
                 .attr('x2', ch.w)
                 .attr('y1', y)
                 .attr('y2', y);
-            this._applyOrderLevelLineStyle(g.line, false);
 
             let cx = alignX;
             g.avgBox.attr('x', cx).attr('y', y - boxH / 2).attr('width', avgBW).attr('height', boxH);
@@ -30777,18 +29990,17 @@ class OrderManager {
                 if (!Number.isFinite(oy)) continue;
                 const boxY = oy - boxH / 2;
 
-                ml.line?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x1', 0).attr('y1', oy).attr('y2', oy);
+                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
+                ml.dragHitLine?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
 
                 if (ml.priceBox) ml.priceBox.style('display', 'none');
                 if (ml.priceText) ml.priceText.style('display', 'none');
 
                 // Live P&L
                 if (!isPending && ml.pnlBox && ml.pnlText && od) {
-                    const markPx = this._markPriceForOpenPosition(od, ch);
-                    if (Number.isFinite(markPx) && markPx > 0) {
+                    if (currentPrice > 0) {
                         const sym = od.ticker || od.symbol || this._getSymbol();
-                        const livePnl = this.estimatePnLForPriceLevel(od.type, od.openPrice, markPx, od.quantity, sym);
+                        const livePnl = this.estimatePnLForPriceLevel(od.type, od.openPrice, currentPrice, od.quantity, sym);
                         const s = livePnl >= 0 ? '+' : '';
                         const pc = livePnl >= 0 ? '#22c55e' : '#ef4444';
                         ml.pnlText.text(`${s}$${livePnl.toFixed(2)}`).attr('fill', pc);
@@ -30801,6 +30013,11 @@ class OrderManager {
                     actualPbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
 
+                // Close button at right edge
+                const closeBtnX = rightEdge - closeBtnR;
+                ml.closeBtn?.attr('transform', `translate(${closeBtnX}, ${oy})`);
+
+                // Label box right-aligned to close button
                 const labelBoxX = alignX;
 
                 ml.labelBox
@@ -30810,13 +30027,7 @@ class OrderManager {
                     .attr('height', boxH);
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
-                this._syncLiveEntryLabelElements(ml, od, isPending);
 
-                const splitHitEnd = this._orderLineHitEndX(ch, labelBoxX);
-                ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
-                ml.dragHitLine?.attr('x2', splitHitEnd);
-
-                // Close button inline after label row badges (not stuck on y-axis)
                 let memberCx = labelBoxX + lbw + gap;
 
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
@@ -30919,8 +30130,6 @@ class OrderManager {
                     if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
                 }
 
-                this._positionOrderCloseBtn(ml.closeBtn, memberCx + closeBtnGap + closeBtnR, oy, closeBtnR);
-
                 ml._handledBySplitGroup = true;
             }
         }
@@ -30994,7 +30203,7 @@ class OrderManager {
             .attr('class', `pending-order-label-accent pending-${pendingOrder.id}`)
             .attr('width', 3)
             .style('pointer-events', 'none');
-        
+
         const orderTypeLabel = pendingOrder.orderType === 'limit' ? 'LIMIT' : 'STOP';
         const directionLabel = pendingOrder.direction;
         const labelText = chart.svg.append('text')
@@ -31002,7 +30211,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .style('cursor', 'pointer')
-            .text(this._formatChartEntryLabel(pendingOrder, { isPending: true }).text);
+            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
 
         this._styleLegacyOrderLevelToastChrome(
             { labelBox, labelText, labelAccent },
@@ -31021,7 +30230,8 @@ class OrderManager {
                 .attr('stroke', lineColor)
                 .attr('stroke-width', 1)
                 .attr('rx', 2)
-                .style('pointer-events', 'none');
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
             
             // Price text
             priceText = chart.svg.append('text')
@@ -31031,7 +30241,7 @@ class OrderManager {
                 .attr('font-weight', '600')
                 .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
-                .style('pointer-events', 'none')
+                .style('cursor', 'pointer')
                 .text(this.formatPrice(pendingOrder.entryPrice));
         }
         
@@ -31051,11 +30261,6 @@ class OrderManager {
         let dragStartQty = self._getPendingPlacedQuantity(pendingOrder);
 
         const drag = d3.drag()
-            .filter((event) => {
-                if (self._eventInPriceAxisZone(event, chart)) return false;
-                if (self._eventInTimeAxisZone(event, chart)) return false;
-                return !event.button;
-            })
             .on('start', function() {
                 isDragging = true;
                 self._isDraggingOrderLine = true;
@@ -31118,14 +30323,31 @@ class OrderManager {
 
                 const finalY = chart.scales.yScale(newPrice);
 
-                self._positionPendingEntryDragVisuals(chart, pendingOrder, {
-                    line,
-                    dragHitLine,
-                    labelBox,
-                    labelAccent,
-                    labelText,
-                    closeBtn
-                }, finalY);
+                // Update line position
+                line.attr('y1', finalY).attr('y2', finalY);
+                dragHitLine.attr('y1', finalY).attr('y2', finalY);
+                
+                const boxHeight = 18;
+                const boxY = finalY - boxHeight / 2;
+                const yAxisWidth = 70;
+                
+                closeBtn.attr('transform', `translate(${chart.w - yAxisWidth - 15}, ${finalY})`);
+                
+                const labelTextBbox = labelText.node().getBBox();
+                const labelBoxWidth = labelTextBbox.width + 20;
+                const labelBoxX = chart.w - yAxisWidth - 30 - labelBoxWidth;
+                
+                labelBox
+                    .attr('x', labelBoxX)
+                    .attr('y', boxY)
+                    .attr('width', labelBoxWidth)
+                    .attr('height', boxHeight);
+                
+                labelText
+                    .attr('x', labelBoxX + 10)
+                    .attr('y', finalY + 4);
+                line.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
+                dragHitLine.attr('x1', 0).attr('x2', Math.max(0, labelBoxX));
                 
                 if (priceBox) priceBox.style('display', 'none');
                 if (priceText) priceText.style('display', 'none');
@@ -31143,7 +30365,7 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                const typeLabel = self._formatChartEntryLabel(pendingOrder, { isPending: true }).text;
+                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
                 labelText.text(typeLabel);
                 self._drawExecutedOrderConnectors(chart);
             })
@@ -31153,8 +30375,7 @@ class OrderManager {
                 self._isDraggingOrderLine = false;
                 if (self._draggingPendingOrderIds) self._draggingPendingOrderIds.delete(pendingOrder.id);
                 
-                line.attr('stroke-width', 1);
-                self._applyOrderLevelLineStyle(line, false);
+                line.attr('stroke-width', 1).attr('opacity', 0.85);
 
                 // Relax guard from Infinity (set during drag) to current tick
                 // so the pending order can fill from the next tick onward.
@@ -31176,7 +30397,8 @@ class OrderManager {
                 }
 
                 pendingOrder.quantity = self._getPendingPlacedQuantity(pendingOrder);
-                labelText.text(self._formatChartEntryLabel(pendingOrder, { isPending: true }).text);
+                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
+                labelText.text(finalTypeLabel);
 
                 // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
@@ -31200,10 +30422,11 @@ class OrderManager {
                 self._emitPendingMirrorSync(pendingOrder);
             });
         
-        // Apply drag to line, labelBox (not price-axis price box — axis drag must stay free)
+        // Apply drag to line, labelBox, and priceBox
         line.call(drag);
         dragHitLine.call(drag);
         labelBox.call(drag);
+        if (priceBox) priceBox.call(drag);
         
         // --- SL / TP drag-to-set badges for pending orders ---
         const badgeH = 16, badgeR = 3, badgeFontSize = '10px';
@@ -31281,7 +30504,6 @@ class OrderManager {
             line,
             dragHitLine,
             labelBox,
-            labelAccent,
             labelText,
             priceBox,
             closeBtn,
@@ -31298,11 +30520,10 @@ class OrderManager {
             chart.renderPending = true;
             chart.render();
         }
-        this._ensureOrderPriceMarginShield(chart);
     }
 
     /**
-     * Re-draw full pending order graphics on one chart (multichart peer mirror after
+     * Rebuild pending entry + SL/TP/BE SVG on `chart` after multichart mirror
      * (`addOrder` / `syncPendingOrder`). `registerPendingOrder` only mutates
      * arrays + emits — it does not call drawPendingOrderLine, so peers would
      * otherwise miss full horizontal lines (only stray axis hints).
@@ -31435,9 +30656,10 @@ class OrderManager {
                 .attr('stroke', color)
                 .attr('stroke-width', 1)
                 .attr('stroke-linecap', 'butt')
-                .style('pointer-events', 'none')
+                .attr('stroke-dasharray', null)
+                .attr('opacity', 0.85)
+                .style('pointer-events', isDraggable ? 'all' : 'none')
                 .style('cursor', isDraggable ? 'ns-resize' : 'default');
-            this._applyOrderLevelLineStyle(line, false);
 
             const labelGroup = chart.svg.append('g')
                 .attr('class', `pending-${type.toLowerCase()}-label pending-${type.toLowerCase()}-${pendingOrder.id}`)
@@ -31587,22 +30809,6 @@ class OrderManager {
         ch.svg.selectAll('[class*="pending-tp-tp-plus-badge"]').remove();
         ch.svg.selectAll('[class*="pending-tp-delete"]').remove();
         ch.svg.selectAll('[class*="pending-tp-split"]').remove();
-        ch.svg.selectAll('[class*="pending-tp-pct-control"]').remove();
-        ch.svg.selectAll('[class*="pending-tp-pct-dec"]').remove();
-        ch.svg.selectAll('[class*="pending-tp-pct-inc"]').remove();
-        // Drop stale overlay refs so +/- / X / split controls are recreated in sync with labels
-        if (this.pendingTargetLines?.length) {
-            this.pendingTargetLines.forEach((entry) => {
-                if (entry.chart !== ch) return;
-                (entry.targets || []).forEach((target) => {
-                    target._pctDecBtn = null;
-                    target._pctIncBtn = null;
-                    target._deleteBtn = null;
-                    target._splitBtn = null;
-                    target._tpPlusBadge = null;
-                });
-            });
-        }
 
         if (!this.pendingTargetLines?.length) return;
 
@@ -31612,27 +30818,35 @@ class OrderManager {
             if (entry.chart !== ch) return;
             entry.targets.forEach((target) => {
                 const y = ch.scales.yScale(target.price);
-                if (!Number.isFinite(y)) return;
                 const isDraggable = (target.type === 'TP' || target.type === 'SL' || target.type === 'BE');
 
                 target.line
+                    .attr('x1', 0)
+                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y)
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
-                this._applyOrderLevelLineStyle(target.line, false);
                 if (target.hitLine) {
-                    target.hitLine.attr('y1', y).attr('y2', y);
+                    target.hitLine
+                        .attr('x1', 0)
+                        .attr('x2', ch.w)
+                        .attr('y1', y)
+                        .attr('y2', y);
                 }
 
                 const labelGroup = target.labelGroup;
                 labelGroup.selectAll('*').remove();
 
-                const accent = target.type === 'TP' ? (this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e')
-                    : target.type === 'SL' ? '#ef4444'
-                    : '#f59e0b';
                 const bgColor = target.type === 'TP' ? '#089981'
                     : target.type === 'SL' ? '#f23645'
                     : '#f59e0b';
+
+                const labelRect = labelGroup.append('rect')
+                    .attr('class', 'order-overlay-sublayer')
+                    .attr('rx', 3)
+                    .attr('fill', bgColor)
+                    .attr('stroke', bgColor)
+                    .attr('stroke-width', 1);
 
                 let displayLabel = '';
                 if (target.labelText) {
@@ -31643,79 +30857,84 @@ class OrderManager {
                     displayLabel = `${target.type} ${this.formatPrice(target.price)}`;
                 }
 
+                const text = labelGroup.append('text')
+                    .attr('class', 'order-overlay-sublayer pending-target-label-main')
+                    .attr('fill', '#ffffff')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', '600')
+                    .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+                    .style('pointer-events', 'none')
+                    .text(displayLabel);
+
+                const bbox = text.node().getBBox();
+                const labelWidth = bbox.width + 16;
+                const labelHeight = 22;
+
+                labelRect
+                    .attr('width', labelWidth)
+                    .attr('height', labelHeight)
+                    .attr('x', 0)
+                    .attr('y', 0);
+
+                text
+                    .attr('x', labelWidth / 2)
+                    .attr('y', labelHeight / 2)
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '0.35em');
+
+                const pnlAccent = target.type === 'TP' ? '#089981' : target.type === 'SL' ? '#f23645' : '#fde68a';
+                const pnlBgFill = target.type === 'TP' ? 'rgba(8,153,129,0.15)' : target.type === 'SL' ? 'rgba(242,54,69,0.15)' : 'rgba(245,158,11,0.15)';
+                let pnlBoxW = 0;
                 const hasPnl = target.pnlStr && (target.type === 'TP' || target.type === 'SL');
-                const toastDims = this._buildOrderLevelToastLabelInGroup(labelGroup, {
-                    tagText: displayLabel,
-                    detailText: hasPnl ? target.pnlStr : null,
-                    detailColor: hasPnl ? this._orderLevelDetailColor(target.pnlStr, accent) : null,
-                    accent,
-                    isPreview: false,
-                    height: 24
-                });
-                let labelWidth = toastDims.width;
-                const labelHeight = toastDims.height;
-                const pnlBoxW = 0;
-
-                const isMultiTP = !!target.isPendingMultiTP;
-                const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
-                target.pctArrowsWidth = showPctArrows ? (18 + 2) * 2 : 0;
-
-                // −/+ inside the toast row (same row as profit detail)
-                if (showPctArrows) {
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
-                    const poId = entry.pendingOrder.id;
-                    const tIdx = target.tpTargetIndex;
-                    const badgeY = (labelHeight - 18) / 2;
-                    const badgeGap = 2;
-                    let bx = labelWidth + 4;
-                    const dec = this._appendOrderLevelBadgeToGroup(labelGroup, 'minus', {
-                        className: 'tp-percentage-control pending-tp-pct-dec',
-                        x: bx,
-                        y: badgeY,
-                        stopMousedown: true,
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            this.adjustPendingTPPercentage(poId, tIdx, -5);
-                        },
-                    });
-                    bx += dec.size + badgeGap;
-                    const inc = this._appendOrderLevelBadgeToGroup(labelGroup, 'plus', {
-                        className: 'tp-percentage-control pending-tp-pct-inc',
-                        x: bx,
-                        y: badgeY,
-                        stopMousedown: true,
-                        onClick: (e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            this.adjustPendingTPPercentage(poId, tIdx, +5);
-                        },
-                    });
-                    labelWidth = bx + inc.size;
-                } else {
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                if (hasPnl) {
+                    const pnlText = labelGroup.append('text')
+                        .attr('class', 'order-overlay-sublayer pending-target-label-pnl')
+                        .attr('fill', pnlAccent)
+                        .attr('font-size', '11px')
+                        .attr('font-weight', '600')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
+                        .style('pointer-events', 'none')
+                        .text(target.pnlStr);
+                    const pnlBbox = pnlText.node().getBBox();
+                    pnlBoxW = pnlBbox.width + 16;
+                    const pnlBoxX = labelWidth + 2;
+                    labelGroup.insert('rect', 'text:last-of-type')
+                        .attr('class', 'order-overlay-sublayer')
+                        .attr('rx', 3)
+                        .attr('fill', pnlBgFill)
+                        .attr('stroke', pnlAccent)
+                        .attr('stroke-width', 1)
+                        .attr('width', pnlBoxW)
+                        .attr('height', labelHeight)
+                        .attr('x', pnlBoxX)
+                        .attr('y', 0);
+                    pnlText
+                        .attr('x', pnlBoxX + pnlBoxW / 2)
+                        .attr('y', labelHeight / 2)
+                        .attr('text-anchor', 'middle')
+                        .attr('dy', '0.35em');
+                    pnlBoxW += 2;
                 }
 
                 const totalLabelW = labelWidth + pnlBoxW;
                 target.labelDimensions = { width: totalLabelW, height: labelHeight };
 
-                // Layout: Label+PnL(+−/+) → [X] → [+] split
+                // Layout: Label+PnL → [−][+] (multi-TP share) → [X] → [+] split
+                const isMultiTP = !!target.isPendingMultiTP;
                 const needsCloseBtn = (target.type === 'SL' || target.type === 'TP');
                 const canPendingTpSplit = target.type === 'TP'
                     && !this._isOrderEntryPlusUiDisabled()
-                    && this._orderQtyAllowsEntryTpSplitAffordances(entry.pendingOrder?.quantity)
-                    && this._canAddMoreTpTargets(
-                        this._getEffectiveTpTargetCount(entry.pendingOrder),
-                        entry.pendingOrder?.quantity
-                    );
+                    && this._orderQtyAllowsEntryTpSplitAffordances(entry.pendingOrder?.quantity);
                 const closeBtnR = 9;
                 const splitBtnR = canPendingTpSplit ? 9 : 0;
                 const closeBtnGap = 6;
+                const arrowSize = 18;
+                const arrowGap = 2;
+                const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
+                target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) * 2 : 0;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
                 const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
-                const badgesW = xBtnW + splitW;
+                const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
 
                 const translateX = ch.w - totalLabelW - badgesW - marginRight;
                 const translateY = y - labelHeight / 2;
@@ -31724,37 +30943,98 @@ class OrderManager {
                     .style('cursor', isDraggable ? 'ns-resize' : 'default');
 
                 let xAfterLabel = translateX + totalLabelW + closeBtnGap;
+                if (showPctArrows) {
+                    const poId = entry.pendingOrder.id;
+                    const tIdx = target.tpTargetIndex;
+                    if (!target._pctDecBtn || !target._pctDecBtn.node()?.parentNode) {
+                        if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
+                        if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
+                        const decG = ch.svg.append('g')
+                            .attr('class', `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        decG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(239, 68, 68, 0.2)').attr('stroke', '#ef4444').attr('stroke-width', 1);
+                        decG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#ef4444').attr('font-size', '14px').attr('font-weight', '700').text('−');
+                        decG.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                this.adjustPendingTPPercentage(poId, tIdx, -5);
+                            });
+                        const incG = ch.svg.append('g')
+                            .attr('class', `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        incG.append('rect').attr('class', 'order-overlay-sublayer').attr('width', arrowSize).attr('height', arrowSize).attr('rx', 4)
+                            .attr('fill', 'rgba(8, 153, 129, 0.2)').attr('stroke', '#089981').attr('stroke-width', 1);
+                        incG.append('text').attr('class', 'order-overlay-sublayer').attr('x', arrowSize / 2).attr('y', arrowSize / 2).attr('dy', '0.35em')
+                            .attr('text-anchor', 'middle').attr('fill', '#089981').attr('font-size', '14px').attr('font-weight', '700').text('+');
+                        incG.on('mousedown', (e) => e.stopPropagation())
+                            .on('click', (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                this.adjustPendingTPPercentage(poId, tIdx, +5);
+                            });
+                        target._pctDecBtn = decG;
+                        target._pctIncBtn = incG;
+                    }
+                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    try {
+                        if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
+                    } catch (_) {}
+                    xAfterLabel += arrowSize + arrowGap;
+                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel}, ${y - arrowSize / 2})`);
+                    try {
+                        if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
+                    } catch (_) {}
+                    xAfterLabel += arrowSize + arrowGap;
+                } else {
+                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
+                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                }
 
                 // X close/delete button for SL, single TP, and multi-TP targets
                 if (needsCloseBtn) {
                     const closeBtnX = xAfterLabel + closeBtnR;
                     if (!target._deleteBtn || !target._deleteBtn.node()?.parentNode) {
                         if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
-                        target._deleteBtn = this._createOrderLevelBadgeOnChart(
-                            ch.svg,
-                            `pending-tp-delete pending-tp-${entry.pendingOrder.id}`,
-                            'close',
-                            {
-                                stopMousedown: true,
-                                onClick: (event) => {
-                                    event.stopPropagation();
-                                    if (isMultiTP) {
-                                        this._deleteTPTarget(
-                                            entry.pendingOrder.id,
-                                            target.tpTargetIndex,
-                                            true,
-                                            target.targetId
-                                        );
-                                    } else if (target.type === 'SL') {
-                                        this.removePendingStopLoss(entry.pendingOrder.id);
-                                    } else if (target.type === 'TP') {
-                                        this.removePendingTakeProfit(entry.pendingOrder.id);
-                                    }
-                                },
+                        const dbg = ch.svg.append('g')
+                            .attr('class', `pending-tp-delete pending-tp-${entry.pendingOrder.id}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        dbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', closeBtnR)
+                            .attr('fill', '#0f172a').attr('stroke', '#e2e8f0').attr('stroke-width', 1.2);
+                        dbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#e2e8f0').attr('font-size', '14px')
+                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
+                            .style('pointer-events', 'none').text('×');
+                        dbg.on('mousedown', (e) => e.stopPropagation());
+                        dbg.on('click', (event) => {
+                            event.stopPropagation();
+                            if (isMultiTP) {
+                                this._deleteTPTarget(
+                                    entry.pendingOrder.id,
+                                    target.tpTargetIndex,
+                                    true,
+                                    target.targetId
+                                );
+                            } else if (target.type === 'SL') {
+                                this.removePendingStopLoss(entry.pendingOrder.id);
+                            } else if (target.type === 'TP') {
+                                this.removePendingTakeProfit(entry.pendingOrder.id);
                             }
-                        );
+                        });
+                        dbg.on('mouseover', function() {
+                            dbg.select('circle').attr('fill', target.type === 'SL' ? '#f23645' : '#22c55e');
+                            dbg.select('text').attr('fill', '#ffffff');
+                        }).on('mouseout', function() {
+                            dbg.select('circle').attr('fill', '#0f172a');
+                            dbg.select('text').attr('fill', '#e2e8f0');
+                        });
+                        target._deleteBtn = dbg;
                     }
-                    target._deleteBtn.attr('transform', `translate(${closeBtnX - closeBtnR}, ${y - closeBtnR})`);
+                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
                     try {
                         if (typeof target._deleteBtn.raise === 'function') target._deleteBtn.raise();
                     } catch (_) {}
@@ -31766,41 +31046,42 @@ class OrderManager {
                     const splitX = xAfterLabel + splitBtnR;
                     if (!target._splitBtn || !target._splitBtn.node()?.parentNode) {
                         if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
-                        target._splitBtn = this._createOrderLevelBadgeOnChart(
-                            ch.svg,
-                            `pending-tp-split pending-tp-${entry.pendingOrder.id}`,
-                            'tpAdd',
-                            {
-                                stopMousedown: true,
-                                onClick: (event) => {
-                                    event.stopPropagation();
-                                    event.preventDefault();
-                                    const po = entry.pendingOrder;
-                                    const ep = po.entryPrice;
-                                    const tp = target.price;
-                                    const dist = Math.abs(tp - ep);
-                                    const newTP = po.direction === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
-                                    this._splitTPAtPrice(po.id, newTP, true);
-                                },
-                            }
-                        );
+                        const sbg = ch.svg.append('g')
+                            .attr('class', `pending-tp-split pending-tp-${entry.pendingOrder.id}`)
+                            .attr('pointer-events', 'all')
+                            .style('cursor', 'pointer');
+                        sbg.append('circle').attr('class', 'order-overlay-sublayer').attr('r', splitBtnR)
+                            .attr('fill', '#0f172a').attr('stroke', '#089981').attr('stroke-width', 1.2);
+                        sbg.append('text').attr('class', 'order-overlay-sublayer').attr('fill', '#089981').attr('font-size', '14px')
+                            .attr('font-weight', '700').attr('text-anchor', 'middle').attr('dy', '0.35em')
+                            .style('pointer-events', 'none').text('+');
+                        sbg.on('mousedown', (e) => e.stopPropagation());
+                        sbg.on('click', (event) => {
+                            event.stopPropagation();
+                            event.preventDefault();
+                            const po = entry.pendingOrder;
+                            const ep = po.entryPrice;
+                            const tp = target.price;
+                            const dist = Math.abs(tp - ep);
+                            const newTP = po.direction === 'BUY' ? tp + dist * 0.5 : tp - dist * 0.5;
+                            this._splitTPAtPrice(po.id, newTP, true);
+                        });
+                        sbg.on('mouseover', function() {
+                            sbg.select('circle').attr('fill', '#089981');
+                            sbg.select('text').attr('fill', '#ffffff');
+                        }).on('mouseout', function() {
+                            sbg.select('circle').attr('fill', '#0f172a');
+                            sbg.select('text').attr('fill', '#089981');
+                        });
+                        target._splitBtn = sbg;
                     }
-                    target._splitBtn.attr('transform', `translate(${splitX - splitBtnR}, ${y - splitBtnR})`);
+                    target._splitBtn.attr('transform', `translate(${splitX}, ${y})`);
                     try {
                         if (typeof target._splitBtn.raise === 'function') target._splitBtn.raise();
                     } catch (_) {}
                 } else if (target._splitBtn) {
                     try { target._splitBtn.remove(); } catch (_) {}
                     target._splitBtn = null;
-                }
-
-                const hitEndX = this._orderLineHitEndX(ch, translateX);
-                target.line
-                    .attr('x1', 0)
-                    .attr('x2', ch.w)
-                    .style('pointer-events', 'none');
-                if (target.hitLine) {
-                    target.hitLine.attr('x1', 0).attr('x2', hitEndX);
                 }
 
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} target._tpPlusBadge = null; }
@@ -31830,9 +31111,9 @@ class OrderManager {
      */
     _updatePendingTargetChartLabelsLive(target, pendingOrder) {
         if (!target?.labelGroup || !pendingOrder) return;
-        const tag = target.labelGroup.select('.order-level-toast-tag');
-        const detail = target.labelGroup.select('.order-level-toast-detail');
-        if (tag.empty()) return;
+        const main = target.labelGroup.select('.pending-target-label-main');
+        const pnl = target.labelGroup.select('.pending-target-label-pnl');
+        if (main.empty()) return;
 
         const quantity = pendingOrder.quantity;
 
@@ -31855,8 +31136,8 @@ class OrderManager {
                 slPnL = this.estimateOpenLegPnLSlice(pendingOrder, pendingOrder.stopLoss, quantity)
                     - this._getRoundTripCommissionUsd(pendingOrder);
             }
-            tag.text(`SL  ${totalSlQty.toFixed(2)}`);
-            if (!detail.empty()) detail.text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
+            main.text(`SL  ${totalSlQty.toFixed(2)}`);
+            if (!pnl.empty()) pnl.text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
             return;
         }
 
@@ -31872,8 +31153,8 @@ class OrderManager {
                     'pending'
                 );
                 const ladderPct = Number(t.percentage) || 0;
-                tag.text(`TP${idx + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`);
-                if (!detail.empty()) detail.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                main.text(`TP${idx + 1} (${ladderPct.toFixed(0)}%) ${totalCloseQty.toFixed(2)}`);
+                if (!pnl.empty()) pnl.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
                 return;
             }
             if (pendingOrder.takeProfit) {
@@ -31888,8 +31169,8 @@ class OrderManager {
                     }, 0);
                     totalTpQty = members.reduce((s, m) => s + (m.quantity || 0), 0);
                 }
-                tag.text(`TP  ${totalTpQty.toFixed(2)}`);
-                if (!detail.empty()) detail.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
+                main.text(`TP  ${totalTpQty.toFixed(2)}`);
+                if (!pnl.empty()) pnl.text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
             }
         }
     }
@@ -31907,11 +31188,6 @@ class OrderManager {
         const marginRight = 120;
 
         const drag = d3.drag()
-            .filter((event) => {
-                if (self._eventInPriceAxisZone(event, ch)) return false;
-                if (self._eventInTimeAxisZone(event, ch)) return false;
-                return !event.button;
-            })
             .on('start', function() {
                 isDragging = true;
                 // Do NOT set _isDraggingPendingTarget here: mousedown alone (click) fires start+end
@@ -31968,28 +31244,38 @@ class OrderManager {
                     target.hitLine.attr('y1', clampedY).attr('y2', clampedY);
                 }
                 
-                const dims = self._refreshPendingTargetLabelDimensions(target);
+                const dims = target.labelDimensions || { width: 80, height: 20 };
                 const translateX = Number.isFinite(dragLabelX)
                     ? dragLabelX
                     : (ch.w - dims.width - marginRight);
                 target.labelGroup.attr('transform', `translate(${translateX}, ${clampedY - dims.height / 2})`);
-                target.line.attr('x1', 0).attr('x2', ch.w);
+                target.line.attr('x2', Math.max(0, translateX));
                 if (target.hitLine) {
-                    target.hitLine.attr('x1', 0).attr('x2', self._orderLineHitEndX(ch, translateX));
+                    target.hitLine.attr('x1', 0).attr('x2', ch.w);
                 }
 
-                const cBtnR = 9;
+                const cBtnR = 10;
                 const cBtnGap = 6;
-                const sBtnR = 9;
+                const sBtnR = 10;
                 const sBtnGap = 6;
+                const arrowSize = 18;
+                const arrowGap = 2;
+                const pctExtra = target.pctArrowsWidth || 0;
+                const xBase = translateX + dims.width + cBtnGap;
+                if (target._pctDecBtn) {
+                    target._pctDecBtn.attr('transform', `translate(${xBase}, ${clampedY - arrowSize / 2})`);
+                }
+                if (target._pctIncBtn) {
+                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap}, ${clampedY - arrowSize / 2})`);
+                }
                 if (target._deleteBtn) {
-                    const closeBtnX = translateX + dims.width + cBtnGap + cBtnR;
-                    this._positionOrderLevelBadgeAtCenter(target._deleteBtn, closeBtnX, clampedY, cBtnR);
+                    const closeBtnX = translateX + dims.width + pctExtra + cBtnGap + cBtnR;
+                    target._deleteBtn.attr('transform', `translate(${closeBtnX}, ${clampedY})`);
                 }
                 if (target._splitBtn) {
                     const hasClose = !!target._deleteBtn;
-                    const splitX = translateX + dims.width + (hasClose ? cBtnR * 2 + cBtnGap : 0) + sBtnGap + sBtnR;
-                    this._positionOrderLevelBadgeAtCenter(target._splitBtn, splitX, clampedY, sBtnR);
+                    const splitX = translateX + dims.width + pctExtra + (hasClose ? cBtnR * 2 + cBtnGap : 0) + sBtnGap + sBtnR;
+                    target._splitBtn.attr('transform', `translate(${splitX}, ${clampedY})`);
                 }
                 
                 if (target.priceHighlight) {
@@ -32058,8 +31344,7 @@ class OrderManager {
                 self._isDraggingPendingTarget = false;
                 dragLabelX = null;
                 
-                target.line.attr('stroke-width', 1);
-                self._applyOrderLevelLineStyle(target.line, false);
+                target.line.attr('stroke-width', 1).attr('opacity', 0.85);
                 
                 const formattedPrice = self.formatPrice(target.price);
                 console.log(`📍 Pending ${target.type} moved to ${formattedPrice}`);
@@ -32217,11 +31502,7 @@ class OrderManager {
                 if (lineData.line) lineData.line.remove();
                 if (lineData.dragHitLine) lineData.dragHitLine.remove();
                 if (lineData.labelBox) lineData.labelBox.remove();
-                if (lineData.labelAccent) lineData.labelAccent.remove();
                 if (lineData.labelText) lineData.labelText.remove();
-                if (lineData.pnlBox) lineData.pnlBox.remove();
-                if (lineData.pnlText) lineData.pnlText.remove();
-                if (lineData.pnlAccent) lineData.pnlAccent.remove();
                 if (lineData.priceBox) lineData.priceBox.remove();
                 if (lineData.priceText) lineData.priceText.remove();
                 if (lineData.closeBtn) lineData.closeBtn.remove();
@@ -32249,12 +31530,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-pct-control.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-pct-dec.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-pct-inc.pending-tp-${orderId}`).remove();
-            c.svg.selectAll(`.pending-tp-split.pending-tp-${orderId}`).remove();
         });
-        this._refreshOrderConnectors();
     }
     
     /**
@@ -32381,14 +31657,6 @@ class OrderManager {
                     survivor.splitGroupId = undefined;
                     survivor.splitIndex = undefined;
                     survivor.splitTotal = undefined;
-                    survivor.quantity = (survivor.quantity || 0) + cancelledQty;
-                    survivor.placedQuantity = survivor.quantity;
-                    if (cancelledRisk > 0) {
-                        survivor.riskAmount = Math.round(((survivor.riskAmount || 0) + cancelledRisk) * 100) / 100;
-                        survivor.originalRiskAmount = Math.round(
-                            ((survivor.originalRiskAmount || survivor.riskAmount || 0) + cancelledRisk) * 100
-                        ) / 100;
-                    }
                     if (!survivor.takeProfit && cancelledTP) survivor.takeProfit = cancelledTP;
                     if (!survivor.stopLoss && cancelledSL) survivor.stopLoss = cancelledSL;
                     if (!survivor.tpTargets && cancelledTPTargets) survivor.tpTargets = cancelledTPTargets;
@@ -33269,507 +32537,6 @@ class OrderManager {
     }
 
     /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
-    /** Toast stack palette (matches talaria-toast-stack.js / nav-badge-tooltip). */
-    _tradeMarkerToastTheme() {
-        const light = typeof document !== 'undefined' && document.body?.classList.contains('light-mode');
-        return {
-            light,
-            bg: light ? '#E8EBF6' : '#0F1119',
-            border: light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)',
-            text: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
-            muted: light ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.58)',
-            accentDefault: light ? '#2F55E8' : '#4A6AFF',
-        };
-    }
-
-    /** Active/pending/executed order levels: dashed @ 100%. Preview draft lines: solid @ 60%. */
-    _ORDER_LEVEL_ACTIVE_DASH = '6 3';
-
-    _orderLevelLineStyle(isPreview) {
-        return isPreview
-            ? { opacity: 0.6, dasharray: null }
-            : { opacity: 1, dasharray: this._ORDER_LEVEL_ACTIVE_DASH };
-    }
-
-    _applyOrderLevelLineStyle(lineSel, isPreview, overrides) {
-        if (!lineSel || (lineSel.empty && lineSel.empty())) return;
-        const s = this._orderLevelLineStyle(isPreview);
-        const o = overrides || {};
-        lineSel
-            .attr('stroke-dasharray', o.dasharray !== undefined ? o.dasharray : s.dasharray)
-            .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity);
-    }
-
-    _orderLevelLabelFontFamily() {
-        return "'Exo 2', Roboto, sans-serif";
-    }
-
-    _orderLevelDetailColor(detailText, fallbackAccent) {
-        const t = String(detailText || '');
-        const th = this._tradeMarkerToastTheme();
-        if (t.startsWith('-')) return '#ef4444';
-        if (t.startsWith('+')) return th.light ? '#059669' : '#22c55e';
-        return fallbackAccent || th.text;
-    }
-
-    /**
-     * Unified toast label for order level rows (preview + pending + executed).
-     * @returns {{ width: number, height: number }}
-     */
-    _buildOrderLevelToastLabelInGroup(parentGroup, opts) {
-        const o = opts || {};
-        const th = this._tradeMarkerToastTheme();
-        const isPreview = !!o.isPreview;
-        const height = o.height || (o.smallLabel ? 20 : 24);
-        const padL = 14;
-        const padR = 10;
-        const stripeW = 3;
-        const gap = 6;
-        const fontSize = o.smallLabel ? '10px' : '11px';
-        const accent = o.accent || th.accentDefault;
-        const tagText = String(o.tagText || '');
-        const detailText = o.detailText != null && o.detailText !== '' ? String(o.detailText) : null;
-        const detailColor = o.detailColor || this._orderLevelDetailColor(detailText, th.text);
-        const shellOpacity = isPreview ? 0.6 : 1;
-        const font = this._orderLevelLabelFontFamily();
-
-        const measure = parentGroup.append('text').style('visibility', 'hidden').attr('font-size', fontSize).attr('font-family', font);
-        measure.attr('font-weight', '700').text(tagText);
-        const tagW = measure.node()?.getBBox()?.width || 40;
-        let detailW = 0;
-        if (detailText) {
-            measure.attr('font-weight', '600').text(detailText);
-            detailW = measure.node()?.getBBox()?.width || 0;
-        }
-        measure.remove();
-
-        const innerW = tagW + (detailText ? gap + detailW : 0);
-        const totalW = Math.max(o.minWidth || 72, stripeW + padL + innerW + padR);
-
-        const shell = parentGroup.append('g')
-            .attr('class', 'order-level-toast-label')
-            .attr('data-role', 'order-level-toast-shell')
-            .style('opacity', shellOpacity);
-
-        shell.append('rect')
-            .attr('class', 'order-level-toast-bg')
-            .attr('x', 0).attr('y', 0)
-            .attr('width', totalW).attr('height', height)
-            .attr('fill', th.bg)
-            .attr('stroke', th.border)
-            .attr('stroke-width', 1)
-            .attr('rx', 0);
-
-        shell.append('rect')
-            .attr('class', 'order-level-toast-accent')
-            .attr('x', 0).attr('y', 0)
-            .attr('width', stripeW).attr('height', height)
-            .attr('fill', accent);
-
-        shell.append('text')
-            .attr('class', 'order-level-toast-tag')
-            .attr('x', stripeW + padL)
-            .attr('y', height / 2)
-            .attr('dy', '0.35em')
-            .attr('fill', accent)
-            .attr('font-size', fontSize)
-            .attr('font-weight', '700')
-            .attr('font-family', font)
-            .text(tagText);
-
-        if (detailText) {
-            shell.append('text')
-                .attr('class', 'order-level-toast-detail')
-                .attr('x', stripeW + padL + tagW + gap)
-                .attr('y', height / 2)
-                .attr('dy', '0.35em')
-                .attr('fill', detailColor)
-                .attr('font-size', fontSize)
-                .attr('font-weight', '600')
-                .attr('font-family', font)
-                .text(detailText);
-        }
-
-        return { width: totalW, height };
-    }
-
-    /** Style legacy separate labelBox/pnlBox pairs to match toast shell (with optional 3px accent stripe). */
-    _styleLegacyOrderLevelToastChrome(els, accent, opts) {
-        const o = opts || {};
-        const th = this._tradeMarkerToastTheme();
-        const isPreview = !!o.isPreview;
-        const op = isPreview ? 0.6 : 1;
-        const { labelBox, labelText, pnlBox, pnlText, labelAccent, pnlAccent } = els || {};
-        const font = this._orderLevelLabelFontFamily();
-        const stripeW = 3;
-
-        labelBox?.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
-        labelText?.attr('fill', accent).attr('font-family', font).attr('font-weight', '700');
-        labelAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
-
-        if (pnlBox && pnlText) {
-            pnlBox.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
-            pnlText.attr('font-family', font).attr('font-weight', '600');
-            pnlAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
-        }
-    }
-
-    _positionLegacyOrderLevelToastAccent(labelAccent, labelBox) {
-        if (!labelAccent || !labelBox) return;
-        const x = parseFloat(labelBox.attr('x'));
-        const y = parseFloat(labelBox.attr('y'));
-        const h = parseFloat(labelBox.attr('height'));
-        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(h)) {
-            labelAccent.attr('x', x).attr('y', y).attr('height', h);
-        }
-    }
-
-    /** Shared circle-badge spec for × / + / − / ✓ controls on order levels. */
-    _orderLevelBadgeKindSpec(kind) {
-        const th = this._tradeMarkerToastTheme();
-        const green = th.light ? '#059669' : '#22c55e';
-        const map = {
-            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444', fontSize: '15px' },
-            plus: { glyph: '+', accent: green, hoverAccent: green },
-            tpAdd: { glyph: 'TP', accent: green, hoverAccent: green, fontSize: '9px' },
-            minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
-            check: { glyph: '✓', accent: green, hoverAccent: green },
-        };
-        return map[kind] || map.close;
-    }
-
-    _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
-        const accent = spec.hoverAccent || spec.accent;
-        const reset = () => {
-            bg.attr('fill', th.bg).attr('stroke', th.border);
-            txt.attr('fill', th.muted);
-        };
-        const hover = () => {
-            bg.attr('fill', accent).attr('stroke', accent);
-            txt.attr('fill', '#ffffff');
-        };
-        reset();
-        host.on('mouseenter', hover).on('mouseleave', reset);
-    }
-
-    /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
-    _positionOrderLevelBadgeAtRow(btn, xLeft, lineY, r = 9, boxH = 22) {
-        if (!btn) return;
-        const yTop = lineY - boxH / 2 + (boxH - r * 2) / 2;
-        btn.attr('transform', `translate(${Number(xLeft)}, ${Number(yTop)})`);
-    }
-
-    /** Center-anchored chart badge (circle center at xCenter, lineY). */
-    _positionOrderLevelBadgeAtCenter(btn, xCenter, lineY, r = 9) {
-        if (!btn) return;
-        btn.attr('transform', `translate(${Number(xCenter) - r}, ${Number(lineY) - r})`);
-    }
-
-    /** × cancel on entry / SL rows — centered on the dashed line, inline after badges. */
-    _positionOrderCloseBtn(btn, centerX, lineY, r = 9) {
-        this._positionOrderLevelBadgeAtCenter(btn, centerX, lineY, r);
-        if (btn) {
-            try { btn.raise(); } catch (_) {}
-        }
-    }
-
-    /**
-     * Inline circle badge inside a preview label group.
-     * @returns {{ group, size: number, r: number }}
-     */
-    _appendOrderLevelBadgeToGroup(parentGroup, kind, opts = {}) {
-        const o = opts || {};
-        const r = o.r ?? 9;
-        const size = r * 2;
-        const spec = this._orderLevelBadgeKindSpec(kind);
-        const th = this._tradeMarkerToastTheme();
-        const x = o.x ?? 0;
-        const y = o.y ?? 0;
-        const g = parentGroup.append('g')
-            .attr('class', `order-level-badge order-level-badge--${kind} ${o.className || ''}`.trim())
-            .attr('transform', `translate(${x}, ${y})`)
-            .style('cursor', 'pointer');
-        const bg = g.append('circle')
-            .attr('class', 'order-level-badge-bg')
-            .attr('cx', r)
-            .attr('cy', r)
-            .attr('r', r)
-            .attr('stroke-width', 1);
-        const txt = g.append('text')
-            .attr('class', 'order-level-badge-glyph')
-            .attr('x', r)
-            .attr('y', r)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', 'middle')
-            .attr('font-size', spec.fontSize || (kind === 'check' ? '12px' : '13px'))
-            .attr('font-weight', '700')
-            .attr('font-family', this._orderLevelLabelFontFamily())
-            .text(spec.glyph);
-        this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
-        if (o.onClick) {
-            g.on('click', (e) => {
-                e.stopPropagation();
-                o.onClick(e);
-            });
-        }
-        if (o.stopMousedown) {
-            g.on('mousedown', (e) => e.stopPropagation());
-        }
-        return { group: g, size, r };
-    }
-
-    _orderLevelBadgeFontSize(kind, spec) {
-        if (spec?.fontSize) return spec.fontSize;
-        if (kind === 'check') return '12px';
-        return '13px';
-    }
-
-    /**
-     * Circle badge on chart SVG (pending/executed rows) — transform applied by caller.
-     */
-    _createOrderLevelBadgeOnChart(svg, cssClass, kind, opts = {}) {
-        const o = opts || {};
-        const r = o.r ?? 9;
-        const spec = this._orderLevelBadgeKindSpec(kind);
-        const th = this._tradeMarkerToastTheme();
-        const btn = svg.append('g')
-            .attr('class', `order-level-badge order-level-badge--${kind} ${cssClass || ''}`.trim())
-            .attr('pointer-events', 'all')
-            .style('cursor', 'pointer');
-        const bg = btn.append('circle')
-            .attr('class', 'order-level-badge-bg order-overlay-sublayer')
-            .attr('cx', r)
-            .attr('cy', r)
-            .attr('r', r)
-            .attr('stroke-width', 1);
-        const txt = btn.append('text')
-            .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
-            .attr('x', r)
-            .attr('y', r)
-            .attr('font-size', this._orderLevelBadgeFontSize(kind, spec))
-            .attr('font-weight', '700')
-            .attr('font-family', this._orderLevelLabelFontFamily())
-            .attr('text-anchor', 'middle')
-            .attr('dy', '0.35em')
-            .style('pointer-events', 'none')
-            .text(spec.glyph);
-        this._wireOrderLevelBadgeHover(btn, bg, txt, th, spec);
-        if (o.onClick) {
-            btn.on('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                o.onClick(e);
-            });
-        }
-        if (o.stopMousedown) {
-            btn.on('mousedown', (e) => e.stopPropagation());
-        }
-        return btn;
-    }
-
-    _refreshPreviewLabelDimensions(lineData) {
-        const node = lineData?.labelGroup?.node?.();
-        if (!node) return lineData?.labelDimensions || { width: 0, height: 0 };
-        try {
-            const bb = node.getBBox();
-            if (bb.width > 0 || bb.height > 0) {
-                lineData.labelDimensions = { width: bb.width, height: bb.height };
-            }
-        } catch (_) { /* ignore */ }
-        return lineData.labelDimensions || { width: 0, height: 24 };
-    }
-
-    _refreshPendingTargetLabelDimensions(target) {
-        const node = target?.labelGroup?.node?.();
-        if (!node) return target?.labelDimensions || { width: 80, height: 24 };
-        try {
-            const bb = node.getBBox();
-            if (bb.width > 0 || bb.height > 0) {
-                target.labelDimensions = { width: bb.width, height: bb.height };
-            }
-        } catch (_) { /* ignore */ }
-        return target.labelDimensions || { width: 80, height: 24 };
-    }
-
-    /** Smooth preview drag: move line + label + axis pill without horizontal snap. */
-    _syncPreviewDragVisuals(lineData, clampedY, newPrice) {
-        if (!lineData?.line) return;
-        lineData.line.attr('y1', clampedY).attr('y2', clampedY);
-        if (lineData.hitLine) {
-            lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
-        }
-        const dims = this._refreshPreviewLabelDimensions(lineData);
-        const h = dims.height || 24;
-        const tr = lineData.labelGroup?.attr('transform') || '';
-        const curX = parseFloat(tr.match(/translate\(([\d.-]+)/)?.[1] || '0');
-        const translateY = clampedY - h / 2;
-        lineData.labelGroup?.attr('transform', `translate(${Number.isFinite(curX) ? curX : 0}, ${translateY})`);
-        this.adjustPreviewLineForLabel(lineData);
-        if (lineData.yAxisHighlight) {
-            const highlightHeight = 22;
-            const highlightY = clampedY - highlightHeight / 2;
-            const ht = lineData.yAxisHighlight.attr('transform') || '';
-            const hx = parseFloat(ht.match(/translate\(([\d.-]+)/)?.[1] || '0');
-            lineData.yAxisHighlight.attr('transform', `translate(${hx}, ${highlightY})`);
-            lineData.yAxisHighlight.select('.y-axis-price-text')?.text(this.formatPrice(newPrice));
-        }
-    }
-
-    /** Pending entry drag layout — same toast row math as updateOrderLines. */
-    _positionPendingEntryDragVisuals(chart, pendingOrder, els, y) {
-        const {
-            line, dragHitLine, labelBox, labelAccent, labelText, closeBtn
-        } = els || {};
-        if (!line || !labelBox || !labelText) return;
-        const boxH = 22;
-        const boxY = y - boxH / 2;
-        const pad = 8;
-        const stripeW = 3;
-        const yAxisWidth = 70;
-        const closeBtnR = 9;
-        const closeBtnGap = 6;
-        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
-
-        line.attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y);
-        if (dragHitLine) dragHitLine.attr('y1', y).attr('y2', y);
-
-        const labelTW = labelText.node()?.getBBox()?.width || 0;
-        const labelBW = labelTW + pad * 2 + stripeW;
-        const rightEdge = chart.w - yAxisWidth - 10;
-        const closeBtnX = rightEdge - closeBtnR;
-        const startX = closeBtnX - closeBtnR - closeBtnGap - labelBW;
-
-        labelBox.attr('x', startX).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
-        labelText.attr('x', startX + pad + stripeW).attr('y', y + 4);
-        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
-        this._styleLegacyOrderLevelToastChrome(
-            { labelBox, labelText, labelAccent },
-            lineColor,
-            { isPreview: false }
-        );
-        this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
-
-        if (dragHitLine) {
-            dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, startX));
-        }
-    }
-
-    _accentColorForTradeMarkerTag(tag, fallbackColor) {
-        const t = String(tag || '').toUpperCase();
-        const th = this._tradeMarkerToastTheme();
-        if (t.includes('TP')) return th.light ? '#059669' : '#22c55e';
-        if (t.includes('SL') || t.includes('STOP')) return '#ef4444';
-        if (t === 'BUY') return th.light ? '#059669' : '#22c55e';
-        if (t === 'SELL') return '#ef4444';
-        if (t.includes('BE')) return '#f59e0b';
-        return fallbackColor || th.accentDefault;
-    }
-
-    /**
-     * Build hover tooltip for entry/exit markers — same shell as bottom toasts
-     * (Exo 2, #0F1119, subtle border, 3px left accent stripe).
-     * @returns {import('d3-selection').Selection} tooltip root group
-     */
-    _buildTradeMarkerToastTooltip(parentGroup, opts) {
-        const o = opts || {};
-        const th = this._tradeMarkerToastTheme();
-        const lines = o.lines || [];
-        const lineH = 14;
-        const padT = 6;
-        const padR = 11;
-        const padB = 6;
-        const padL = 14;
-        const stripeW = 3;
-        const minW = 118;
-        const textW = lines.reduce((mx, ln) => {
-            const len = String(ln.text || '').length;
-            return Math.max(mx, len * 6.4 + padL + padR);
-        }, minW);
-        const ttW = Math.max(minW, Math.ceil(textW));
-        const ttH = padT + padB + lines.length * lineH;
-        const sz = 12;
-        const ttX = (o.anchorX || 0) + 14;
-        const above = !!o.above;
-        const ttY = above
-            ? (o.anchorY || 0) - sz - ttH
-            : (o.anchorY || 0) + sz;
-
-        const tagLine = lines.find((ln) => ln.kind === 'tag');
-        const accent = o.accentColor
-            || this._accentColorForTradeMarkerTag(tagLine?.text, o.fallbackAccent);
-        const tagColor = o.tagColor || accent;
-
-        const ttGroup = parentGroup.append('g')
-            .attr('data-role', o.tooltipRole || 'exit-tooltip')
-            .attr('data-tt-w', ttW)
-            .attr('data-tt-h', ttH)
-            .style('display', 'none')
-            .style('pointer-events', 'none');
-
-        const shell = ttGroup.append('g')
-            .attr('data-role', 'tt-shell')
-            .attr('transform', `translate(${ttX}, ${ttY})`);
-
-        shell.append('rect')
-            .attr('data-role', 'tt-bg')
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('width', ttW)
-            .attr('height', ttH)
-            .attr('fill', th.bg)
-            .attr('stroke', th.border)
-            .attr('stroke-width', 1);
-
-        shell.append('rect')
-            .attr('data-role', 'tt-accent')
-            .attr('x', 0)
-            .attr('y', 0)
-            .attr('width', stripeW)
-            .attr('height', ttH)
-            .attr('fill', accent);
-
-        lines.forEach((line, i) => {
-            let fill = th.muted;
-            let weight = 600;
-            if (line.kind === 'price') {
-                fill = th.text;
-                weight = 700;
-            } else if (line.kind === 'tag') {
-                fill = tagColor;
-                weight = 700;
-            }
-            const t = shell.append('text')
-                .attr('x', padL + 1)
-                .attr('y', padT + (i + 1) * lineH - 4)
-                .attr('fill', line.fill || fill)
-                .attr('font-size', '11px')
-                .attr('font-weight', weight)
-                .attr('font-family', "'Exo 2', Roboto, sans-serif")
-                .text(line.text);
-            if (line.role) t.attr('data-role', line.role);
-        });
-
-        return ttGroup;
-    }
-
-    _repositionTradeMarkerTooltip(tt, x, arrowCY, above) {
-        if (!tt || tt.empty()) return;
-        const ttH = parseFloat(tt.attr('data-tt-h') || 55);
-        const sz = 12;
-        const ttX = x + 14;
-        const ttY = above ? arrowCY - sz - ttH : arrowCY + sz;
-        const shell = tt.select('[data-role="tt-shell"]');
-        if (!shell.empty()) {
-            shell.attr('transform', `translate(${ttX}, ${ttY})`);
-            return;
-        }
-        const ttRect = tt.select('rect');
-        if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
-        tt.selectAll('text').each(function(_d, i) {
-            d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
-        });
-    }
-
     _tradeMarkerTooltipTag(hitType, order) {
         const t = String(hitType || 'MANUAL').toUpperCase();
         if (t.includes('TP-PARTIAL') || t === 'TP-PARTIAL' || t === 'TP' || t.startsWith('TP')) return 'TP';
@@ -33812,13 +32579,9 @@ class OrderManager {
             if (active) {
                 this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
                 line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
-                    .attr('filter', 'url(#trade-connector-glow)')
-                    .style('visibility', 'visible')
-                    .style('opacity', 1);
+                    .attr('filter', 'url(#trade-connector-glow)');
             } else {
-                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null)
-                    .style('visibility', 'hidden')
-                    .style('opacity', 0);
+                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
             }
         }
     }
@@ -33952,19 +32715,41 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
-        // Hover tooltip — toast shell (Exo 2, left accent stripe)
+        // Hover tooltip group (hidden by default)
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'entry-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
         const sideLabel = isBuy ? 'BUY' : 'SELL';
-        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
-            tooltipRole: 'entry-tooltip',
-            anchorX: x,
-            anchorY: arrowCY,
-            above: !isBuy,
-            fallbackAccent: color,
-            lines: [
-                { text: `${order.openPrice.toFixed(5)}`, kind: 'price' },
-                { text: `${order.quantity.toFixed(2)} lots`, kind: 'muted' },
-                { text: sideLabel, kind: 'tag', role: 'entry-tag-text' },
-            ],
+        const lines = [
+            `${order.openPrice.toFixed(5)}`,
+            `${order.quantity.toFixed(2)} lots`,
+            sideLabel,
+        ];
+
+        const lineH = 15, ttPad = 5, ttW = 118;
+        const ttH = lines.length * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        lines.forEach((txt, i) => {
+            const tagLine = i === lines.length - 1;
+            ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + (i + 1) * lineH - 3)
+                .attr('fill', tagLine ? color : (i === 0 ? '#f8fafc' : '#cbd5e1'))
+                .attr('font-size', '10px')
+                .attr('font-weight', tagLine || i === 0 ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(txt);
         });
 
         const self = this;
@@ -34107,20 +32892,40 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'exit-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
         const tag = this._tradeMarkerTooltipTag(closeData.type, order);
-        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
-            tooltipRole: 'exit-tooltip',
-            anchorX: x,
-            anchorY: arrowCY,
-            above: isBuyExit,
-            fallbackAccent: color,
-            tagColor: color,
-            lines: [
-                { text: this.formatPrice(closeData.closePrice), kind: 'price', role: 'exit-price-text' },
-                { text: `${order.quantity.toFixed(2)} lots`, kind: 'muted', role: 'exit-lots-text' },
-                { text: tag, kind: 'tag', role: 'exit-tag-text' },
-            ],
-        });
+        const lineH = 15, ttPad = 5, ttW = 118;
+        const nLines = 3;
+        const ttH = nLines * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        const ttLine = (i, text, opts = {}) => {
+            const t = ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + i * lineH - 3)
+                .attr('fill', opts.fill || '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', opts.bold ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(text);
+            if (opts.role) t.attr('data-role', opts.role);
+        };
+
+        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(2, `${order.quantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
+        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
 
         const self = this;
         markerGroup
@@ -34191,9 +32996,7 @@ class OrderManager {
             .attr('stroke-width', 1)
             .attr('stroke-dasharray', '1 3')
             .attr('stroke-linecap', 'round')
-            .style('pointer-events', 'none')
-            .style('visibility', 'hidden')
-            .style('opacity', 0);
+            .style('pointer-events', 'none');
 
         if (!this.tradeConnectors) this.tradeConnectors = [];
         this.tradeConnectors.push({
@@ -34308,21 +33111,41 @@ class OrderManager {
             .attr('fill', color)
             .attr('stroke', 'none');
 
+        const ttGroup = markerGroup.append('g')
+            .attr('data-role', 'exit-tooltip')
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
         const percentText = closeData.percentage ? `${(closeData.percentage * 100).toFixed(0)}%` : '';
         const tag = `TP ${percentText}`.trim();
-        const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
-            tooltipRole: 'exit-tooltip',
-            anchorX: x,
-            anchorY: arrowCY,
-            above: isBuyExit,
-            fallbackAccent: color,
-            tagColor: color,
-            lines: [
-                { text: this.formatPrice(closeData.closePrice), kind: 'price', role: 'exit-price-text' },
-                { text: `${closeQuantity.toFixed(2)} lots`, kind: 'muted', role: 'exit-lots-text' },
-                { text: tag, kind: 'tag', role: 'exit-tag-text' },
-            ],
-        });
+        const lineH = 15, ttPad = 5, ttW = 118;
+        const nLines = 3;
+        const ttH = nLines * lineH + ttPad * 2;
+        const ttX = x + 14;
+        const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+
+        ttGroup.append('rect')
+            .attr('x', ttX).attr('y', ttY)
+            .attr('width', ttW).attr('height', ttH)
+            .attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)')
+            .attr('stroke', color).attr('stroke-width', 1);
+
+        const ttLine = (i, text, opts = {}) => {
+            const t = ttGroup.append('text')
+                .attr('x', ttX + ttPad + 2)
+                .attr('y', ttY + ttPad + i * lineH - 3)
+                .attr('fill', opts.fill || '#e2e8f0')
+                .attr('font-size', '10px')
+                .attr('font-weight', opts.bold ? '700' : '400')
+                .attr('font-family', 'Roboto, sans-serif')
+                .text(text);
+            if (opts.role) t.attr('data-role', opts.role);
+        };
+
+        ttLine(1, this.formatPrice(closeData.closePrice), { role: 'exit-price-text', fill: '#f8fafc', bold: true });
+        ttLine(2, `${closeQuantity.toFixed(2)} lots`, { role: 'exit-lots-text' });
+        ttLine(3, tag, { role: 'exit-tag-text', fill: color, bold: true });
 
         const self = this;
         markerGroup
@@ -34406,7 +33229,14 @@ class OrderManager {
 
             const tt = marker.select('[data-role="entry-tooltip"]');
             if (!tt.empty()) {
-                this._repositionTradeMarkerTooltip(tt, x, arrowCY, !isBuy);
+                const ttX = x + 14;
+                const ttRect = tt.select('rect');
+                const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
+                const ttY = isBuy ? arrowCY + sz : arrowCY - sz - ttH;
+                if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+                tt.selectAll('text').each(function(d, i) {
+                    d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                });
             }
         });
     }
@@ -34445,7 +33275,14 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
+                    const ttX = x + 14;
+                    const ttRect = tt.select('rect');
+                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
+                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+                    tt.selectAll('text').each(function(d, i) {
+                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                    });
                 }
             });
         }
@@ -34483,7 +33320,14 @@ class OrderManager {
 
                 const tt = marker.select('[data-role="exit-tooltip"]');
                 if (!tt.empty()) {
-                    this._repositionTradeMarkerTooltip(tt, x, arrowCY, isBuyExit);
+                    const ttX = x + 14;
+                    const ttRect = tt.select('rect');
+                    const ttH = ttRect.empty() ? 55 : parseFloat(ttRect.attr('height'));
+                    const ttY = isBuyExit ? arrowCY - sz - ttH : arrowCY + sz;
+                    if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+                    tt.selectAll('text').each(function(d, i) {
+                        d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+                    });
                 }
             });
         }
@@ -34576,12 +33420,11 @@ class OrderManager {
             });
         }
 
-        // Toggle trade connector lines (always hidden unless a marker is hovered)
+        // Toggle trade connector lines
         if (this.tradeConnectors && this.tradeConnectors.length > 0) {
             this.tradeConnectors.forEach(({ line }) => {
                 if (line) {
-                    line.style('visibility', 'hidden').style('opacity', 0);
-                    if (!show) line.attr('filter', null);
+                    line.style('visibility', show ? 'visible' : 'hidden');
                 }
             });
         }
@@ -34608,7 +33451,6 @@ class OrderManager {
             if (orderLine.line) orderLine.line.remove();
             if (orderLine.dragHitLine) orderLine.dragHitLine.remove();
             if (orderLine.labelBox) orderLine.labelBox.remove();
-            if (orderLine.labelAccent) orderLine.labelAccent.remove();
             if (orderLine.labelText) orderLine.labelText.remove();
             if (orderLine.arrow) orderLine.arrow.remove();
             if (orderLine.priceBox) orderLine.priceBox.remove();
@@ -34616,7 +33458,6 @@ class OrderManager {
             if (orderLine.closeBtn) orderLine.closeBtn.remove();
             if (orderLine.pnlBox) orderLine.pnlBox.remove();
             if (orderLine.pnlText) orderLine.pnlText.remove();
-            if (orderLine.pnlAccent) orderLine.pnlAccent.remove();
             if (orderLine.slBadge) orderLine.slBadge.remove();
             if (orderLine.tpBadge) orderLine.tpBadge.remove();
             if (orderLine.tpBadgesContainer) orderLine.tpBadgesContainer.remove();
@@ -34627,7 +33468,6 @@ class OrderManager {
         // Remove from array
         this.orderLines = this.orderLines.filter(ol => ol.orderId !== orderId);
         console.log(`✅ Order line removed. Remaining lines: ${this.orderLines.length}`);
-        this._refreshOrderConnectors();
     }
     
     /** All open legs in a split / multi-entry group (deduped by **id** only — same row may appear in manager + service lists). */
@@ -34702,37 +33542,23 @@ class OrderManager {
         return false;
     }
 
-    /** True when pending order already has TP on data model or as a drawn target line. */
-    _pendingOrderHasTpConfigured(po) {
-        if (!po) return false;
-        if (Number(po.takeProfit) > 0) return true;
-        const targets = po.tpTargets || [];
-        if (targets.some((t) => t && !t.hit && Number(t.price) > 0)) return true;
-        const oid = po.id;
-        if ((this.pendingTargetLines || []).some((entry) => {
-            if (entry.orderId !== oid) return false;
-            return (entry.targets || []).some((t) => t && t.type === 'TP' && Number(t.price) > 0);
-        })) return true;
-        if (po.isSplitEntry && po.splitGroupId && this._splitBasketHasTpOnChart(po.splitGroupId)) {
-            return true;
-        }
-        return false;
-    }
-
     /**
      * Dashed TP ghost on pending entry: not on extra split legs once the basket is live (open leg owns TP UI);
      * pre-fill, only primary leg (splitIndex 1) and only while basket has no TP anywhere.
      */
-    _shouldShowPendingEntryTpGhost(po, _hasMultiTP, _hasSingleTP) {
+    _shouldShowPendingEntryTpGhost(po, hasMultiTP, hasSingleTP) {
         if (!po) return false;
-        if (this._pendingOrderHasTpConfigured(po)) return false;
         if (!po.isSplitEntry || !po.splitGroupId) {
+            if (hasMultiTP) return true;
+            if (hasSingleTP) return false;
             return true;
         }
         const gid = po.splitGroupId;
         if (this._splitGroupHasOpenLeg(gid)) return false;
         if (Number(po.splitIndex) > 1) return false;
         if (this._splitBasketHasTpOnChart(gid)) return false;
+        if (hasMultiTP) return true;
+        if (hasSingleTP) return false;
         return true;
     }
 
@@ -34832,20 +33658,14 @@ class OrderManager {
     _styleOpenSlProfitProtectionVisuals(order, line, els) {
         if (!order) return;
         const profit = this._isOpenSlProfitProtection(order, order.stopLoss);
-        const red = '#ef4444';
-        const green = this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e';
-        const accent = profit ? green : red;
+        const red = '#f23645';
         line?.attr('stroke', red);
-        this._applyOrderLevelLineStyle(line, false);
-        this._styleLegacyOrderLevelToastChrome(els, accent, { isPreview: false });
-        if (els?.labelText) els.labelText.attr('fill', accent);
-        if (els?.pnlText) {
-            const pnlStr = els.pnlText.text();
-            els.pnlText.attr('fill', this._orderLevelDetailColor(String(pnlStr || ''), accent));
-        }
-        els.priceBox?.style('display', 'none');
-        els.priceText?.style('display', 'none');
-        this._positionLegacyOrderLevelToastAccent(els?.labelAccent, els?.labelBox);
+        els.labelBox?.attr('fill', red).attr('stroke', red);
+        els.labelText?.attr('fill', '#ffffff');
+        els.pnlBox?.attr('fill', profit ? 'rgba(8,153,129,0.15)' : 'rgba(242,54,69,0.15)').attr('stroke', profit ? '#089981' : red);
+        els.pnlText?.attr('fill', profit ? '#089981' : '#f23645');
+        els.priceBox?.attr('fill', red).attr('stroke', red);
+        els.priceText?.attr('fill', '#ffffff');
     }
 
     /**
@@ -34971,48 +33791,48 @@ class OrderManager {
                 .attr('class', `sl-line sl-${order.id}`)
                 .attr('stroke', '#f23645')
                 .attr('stroke-width', 1)
+                .attr('opacity', 0.85)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
-            this._applyOrderLevelLineStyle(slLine, false);
             
             const slLabelBox = chart.svg.append('rect')
                 .attr('class', `sl-label-box sl-${order.id}`)
+                .attr('fill', '#f23645')
+                .attr('stroke', '#f23645')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
-
-            const slLabelAccent = chart.svg.append('rect')
-                .attr('class', `sl-label-accent sl-${order.id}`)
-                .attr('width', 3)
-                .style('pointer-events', 'none');
             
             const slTotalQty = this._slChartLabelQtyForOpenOrder(order);
             const slLabelText = chart.svg.append('text')
                 .attr('class', `sl-label-text sl-${order.id}`)
+                .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`SL  ${slTotalQty.toFixed(2)}`);
 
             const slPnlBox = chart.svg.append('rect')
                 .attr('class', `sl-pnl-box sl-${order.id}`)
+                .attr('fill', 'rgba(242,54,69,0.15)')
+                .attr('stroke', '#f23645')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
 
             const slPnlText = chart.svg.append('text')
                 .attr('class', `sl-pnl-text sl-${order.id}`)
+                .attr('fill', '#f23645')
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`);
-
-            this._styleLegacyOrderLevelToastChrome(
-                { labelBox: slLabelBox, labelText: slLabelText, pnlBox: slPnlBox, pnlText: slPnlText, labelAccent: slLabelAccent },
-                '#ef4444',
-                { isPreview: false }
-            );
-            slPnlText.attr('fill', this._orderLevelDetailColor(`${slPnL >= 0 ? '+' : ''}$${slPnL.toFixed(2)}`, '#ef4444'));
             
             // Close button (removes only SL, not the entire position)
             const slCloseBtn = this._createCloseCircleButton(
@@ -35027,7 +33847,8 @@ class OrderManager {
                 .attr('class', `sl-price-box sl-${order.id}`)
                 .attr('fill', '#f23645')
                 .attr('rx', 2)
-                .style('pointer-events', 'none');
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
             
             // Price text
             const slPriceText = chart.svg.append('text')
@@ -35037,7 +33858,8 @@ class OrderManager {
                 .attr('font-weight', '600')
                 .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
-                .style('pointer-events', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
                 .text(this.formatPrice(order.stopLoss));
             
             this._styleOpenSlProfitProtectionVisuals(order, slLine, {
@@ -35061,8 +33883,7 @@ class OrderManager {
             slLines.push({ 
                 orderId: order.id, 
                 line: slLine, 
-                labelBox: slLabelBox,
-                labelAccent: slLabelAccent,
+                labelBox: slLabelBox, 
                 labelText: slLabelText,
                 pnlBox: slPnlBox,
                 pnlText: slPnlText,
@@ -35079,11 +33900,7 @@ class OrderManager {
             openPosQtyForTpSplit = this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (m.quantity || 0), 0);
         }
         const canOpenTpSplitPlus = !this._isOrderEntryPlusUiDisabled()
-            && this._orderQtyAllowsEntryTpSplitAffordances(openPosQtyForTpSplit)
-            && this._canAddMoreTpTargets(
-                this._getEffectiveTpTargetCount(order),
-                openPosQtyForTpSplit
-            );
+            && this._orderQtyAllowsEntryTpSplitAffordances(openPosQtyForTpSplit);
 
         // Draw Take Profit lines (check for multiple TPs first)
         if (order.tpTargets && Array.isArray(order.tpTargets) && order.tpTargets.length > 0) {
@@ -35103,54 +33920,55 @@ class OrderManager {
                         .attr('class', `tp-line tp-${order.id} tp-target-${tpKey}`)
                         .attr('stroke', color)
                         .attr('stroke-width', 1)
+                        .attr('opacity', 0.85)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
-                    this._applyOrderLevelLineStyle(tpLine, false);
                     
                     const tpLabelBox = chart.svg.append('rect')
                         .attr('class', `tp-label-box tp-${order.id} tp-target-${tpKey}`)
+                        .attr('fill', color)
+                        .attr('stroke', color)
+                        .attr('stroke-width', 1)
+                        .attr('rx', 3)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
-
-                    const tpLabelAccent = chart.svg.append('rect')
-                        .attr('class', `tp-label-accent tp-${order.id} tp-target-${tpKey}`)
-                        .attr('width', 3)
-                        .style('pointer-events', 'none');
                     
                     const tpLabelStr = `TP${rankByArrayIndex.get(index) ?? index + 1}`;
                     const tpLabelText = chart.svg.append('text')
                         .attr('class', `tp-label-text tp-${order.id} tp-target-${tpKey}`)
+                        .attr('fill', '#ffffff')
                         .attr('font-size', '11px')
                         .attr('font-weight', '700')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
                         .text(tpLabelStr);
 
                     const tpPnlBox = chart.svg.append('rect')
                         .attr('class', `tp-pnl-box tp-${order.id} tp-target-${tpKey}`)
+                        .attr('fill', 'rgba(8,153,129,0.15)')
+                        .attr('stroke', '#089981')
+                        .attr('stroke-width', 1)
+                        .attr('rx', 3)
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize');
 
                     const tpPnlText = chart.svg.append('text')
                         .attr('class', `tp-pnl-text tp-${order.id} tp-target-${tpKey}`)
+                        .attr('fill', '#089981')
                         .attr('font-size', '11px')
                         .attr('font-weight', '600')
+                        .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .style('pointer-events', 'all')
                         .style('cursor', 'ns-resize')
                         .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
-
-                    this._styleLegacyOrderLevelToastChrome(
-                        { labelBox: tpLabelBox, labelText: tpLabelText, pnlBox: tpPnlBox, pnlText: tpPnlText, labelAccent: tpLabelAccent },
-                        this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e',
-                        { isPreview: false }
-                    );
-                    tpPnlText.attr('fill', this._orderLevelDetailColor(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`, '#22c55e'));
                     
                     const tpPriceBox = chart.svg.append('rect')
                         .attr('class', `tp-price-box tp-${order.id} tp-target-${tpKey}`)
                         .attr('fill', color)
                         .attr('rx', 2)
-                        .style('pointer-events', 'none');
+                        .style('pointer-events', 'all')
+                        .style('cursor', 'ns-resize');
                     
                     const tpPriceText = chart.svg.append('text')
                         .attr('class', `tp-price-text tp-${order.id} tp-target-${tpKey}`)
@@ -35159,7 +33977,8 @@ class OrderManager {
                         .attr('font-weight', '600')
                         .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                         .attr('text-anchor', 'middle')
-                        .style('pointer-events', 'none')
+                        .style('pointer-events', 'all')
+                        .style('cursor', 'ns-resize')
                         .text(this.formatPrice(target.price));
 
                     // − / + share (open position multi-TP): same redistribution as preview/pending
@@ -35168,7 +33987,6 @@ class OrderManager {
                     const tpPctArrowSize = 18;
                     const tpPctArrowGap = 2;
                     const tpPctArrowsW = nonHitTargets.length > 1 ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0;
-                    const tpBadgeR = tpPctArrowSize / 2;
                     if (nonHitTargets.length > 1) {
                         const oid = order.id;
                         const tIdx = index;
@@ -35248,8 +34066,7 @@ class OrderManager {
                         orderId: order.id,
                         targetId: tpKey,
                         line: tpLine, 
-                        labelBox: tpLabelBox,
-                        labelAccent: tpLabelAccent,
+                        labelBox: tpLabelBox, 
                         labelText: tpLabelText,
                         pnlBox: tpPnlBox,
                         pnlText: tpPnlText,
@@ -35284,19 +34101,19 @@ class OrderManager {
                 .attr('class', `tp-line tp-${order.id}`)
                 .attr('stroke', '#089981')
                 .attr('stroke-width', 1)
+                .attr('opacity', 0.85)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
-            this._applyOrderLevelLineStyle(tpLine, false);
             
+            // Left side label box (green background)
             const tpLabelBox = chart.svg.append('rect')
                 .attr('class', `tp-label-box tp-${order.id}`)
+                .attr('fill', '#089981')
+                .attr('stroke', '#089981')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
-
-            const tpLabelAccent = chart.svg.append('rect')
-                .attr('class', `tp-label-accent tp-${order.id}`)
-                .attr('width', 3)
-                .style('pointer-events', 'none');
             
             let tpTotalQty = order.quantity || 0;
             if (order.isSplitEntry && order.splitGroupId && Number(order.splitIndex) === 1) {
@@ -35304,31 +34121,32 @@ class OrderManager {
             }
             const tpLabelText = chart.svg.append('text')
                 .attr('class', `tp-label-text tp-${order.id}`)
+                .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '700')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`TP  ${tpTotalQty.toFixed(2)}`);
 
             const tpPnlBox = chart.svg.append('rect')
                 .attr('class', `tp-pnl-box tp-${order.id}`)
+                .attr('fill', 'rgba(8,153,129,0.15)')
+                .attr('stroke', '#089981')
+                .attr('stroke-width', 1)
+                .attr('rx', 3)
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
 
             const tpPnlText = chart.svg.append('text')
                 .attr('class', `tp-pnl-text tp-${order.id}`)
+                .attr('fill', '#089981')
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('pointer-events', 'all')
                 .style('cursor', 'ns-resize')
                 .text(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`);
-
-            this._styleLegacyOrderLevelToastChrome(
-                { labelBox: tpLabelBox, labelText: tpLabelText, pnlBox: tpPnlBox, pnlText: tpPnlText, labelAccent: tpLabelAccent },
-                this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e',
-                { isPreview: false }
-            );
-            tpPnlText.attr('fill', this._orderLevelDetailColor(`${tpPnL >= 0 ? '+' : ''}$${tpPnL.toFixed(2)}`, '#22c55e'));
             
             const tpCloseBtn = this._createCloseCircleButton(
                 chart.svg,
@@ -35359,7 +34177,8 @@ class OrderManager {
                 .attr('class', `tp-price-box tp-${order.id}`)
                 .attr('fill', '#089981')
                 .attr('rx', 2)
-                .style('pointer-events', 'none');
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize');
             
             // Price text
             const tpPriceText = chart.svg.append('text')
@@ -35369,7 +34188,8 @@ class OrderManager {
                 .attr('font-weight', '600')
                 .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .attr('text-anchor', 'middle')
-                .style('pointer-events', 'none')
+                .style('pointer-events', 'all')
+                .style('cursor', 'ns-resize')
                 .text(this.formatPrice(order.takeProfit));
             
             // Make TP line draggable (pass all elements for full drag area)
@@ -35385,8 +34205,7 @@ class OrderManager {
             tpLines.push({ 
                 orderId: order.id, 
                 line: tpLine, 
-                labelBox: tpLabelBox,
-                labelAccent: tpLabelAccent,
+                labelBox: tpLabelBox, 
                 labelText: tpLabelText,
                 pnlBox: tpPnlBox,
                 pnlText: tpPnlText,
@@ -35440,10 +34259,11 @@ class OrderManager {
                 .attr('class', `be-line be-${order.id}`)
                 .attr('stroke', '#f59e0b')
                 .attr('stroke-width', 1)
+                .attr('stroke-dasharray', null)
+                .attr('opacity', 0.85)
                 .attr('pointer-events', 'all')
                 .style('cursor', 'ns-resize');
-            this._applyOrderLevelLineStyle(beLine, false);
-
+            
             const beLabel = this._formatBreakevenLabelText(
                 order.breakevenSettings.mode,
                 order.breakevenSettings.value
@@ -35451,25 +34271,18 @@ class OrderManager {
 
             const beLabelBox = chart.svg.append('rect')
                 .attr('class', `be-label-box be-${order.id}`)
+                .attr('fill', '#f59e0b')
+                .attr('rx', 3)
                 .style('cursor', 'ns-resize');
-
-            const beLabelAccent = chart.svg.append('rect')
-                .attr('class', `be-label-accent be-${order.id}`)
-                .attr('width', 3)
-                .style('pointer-events', 'none');
             
             const beLabelText = chart.svg.append('text')
                 .attr('class', `be-label-text be-${order.id}`)
+                .attr('fill', '#ffffff')
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
+                .attr('font-family', "'Trebuchet MS', 'Roboto Condensed', sans-serif")
                 .style('cursor', 'ns-resize')
                 .text(beLabel);
-
-            this._styleLegacyOrderLevelToastChrome(
-                { labelBox: beLabelBox, labelText: beLabelText, labelAccent: beLabelAccent },
-                '#f59e0b',
-                { isPreview: false }
-            );
             
             // Make BE line draggable (no separate price pill — trigger is in the orange label)
             this.makeLineDraggable(beLine, beLabelBox, order, 'be', {
@@ -35484,7 +34297,6 @@ class OrderManager {
                 line: beLine,
                 hitLine: beHitLine,
                 labelBox: beLabelBox,
-                labelAccent: beLabelAccent,
                 labelText: beLabelText,
                 triggerPrice: beTriggerPrice,
                 type: 'BE',
@@ -35524,11 +34336,9 @@ class OrderManager {
                 slToRemove.forEach((slLine) => {
                     if (slLine.line) slLine.line.remove();
                     if (slLine.labelBox) slLine.labelBox.remove();
-                    if (slLine.labelAccent) slLine.labelAccent.remove();
                     if (slLine.labelText) slLine.labelText.remove();
                     if (slLine.pnlBox) slLine.pnlBox.remove();
                     if (slLine.pnlText) slLine.pnlText.remove();
-                    if (slLine.pnlAccent) slLine.pnlAccent.remove();
                     if (slLine.closeBtn) slLine.closeBtn.remove();
                     if (slLine.priceBox) slLine.priceBox.remove();
                     if (slLine.priceText) slLine.priceText.remove();
@@ -35546,11 +34356,9 @@ class OrderManager {
                 tpLinesToRemove.forEach(tpLine => {
                     if (tpLine.line) tpLine.line.remove();
                     if (tpLine.labelBox) tpLine.labelBox.remove();
-                    if (tpLine.labelAccent) tpLine.labelAccent.remove();
                     if (tpLine.labelText) tpLine.labelText.remove();
                     if (tpLine.pnlBox) tpLine.pnlBox.remove();
                     if (tpLine.pnlText) tpLine.pnlText.remove();
-                    if (tpLine.pnlAccent) tpLine.pnlAccent.remove();
                     if (tpLine.closeBtn) tpLine.closeBtn.remove();
                     if (tpLine.splitBtn) tpLine.splitBtn.remove();
                     if (tpLine.priceBox) tpLine.priceBox.remove();
@@ -35585,7 +34393,17 @@ class OrderManager {
         
         console.log(`✅ All SL/TP/BE lines removed for order #${orderId}`);
 
-        this._refreshOrderConnectors();
+        // Drop stale vertical TP/SL connectors immediately after a close (otherwise they lag until next render).
+        try {
+            const charts = typeof this._collectLayoutCharts === 'function'
+                ? this._collectLayoutCharts()
+                : [this.chart];
+            charts.forEach((c) => {
+                if (c && typeof this._drawExecutedOrderConnectors === 'function') {
+                    this._drawExecutedOrderConnectors(c);
+                }
+            });
+        } catch (_) {}
     }
 
     /**
@@ -35887,33 +34705,6 @@ class OrderManager {
     }
     
     /**
-     * Redraw pending entry badges/lines immediately after SL/TP target removal (no chart click needed).
-     */
-    _refreshPendingOrderAfterTargetChange(orderId) {
-        const po = this._findPendingOrderById(orderId);
-        if (!po) return;
-        const charts = this._isMultiPanelLayout()
-            ? (this._collectLayoutCharts() || [])
-            : [this.chart].filter(Boolean);
-        for (const ch of charts) {
-            if (!ch?.svg) continue;
-            this.drawPendingOrderTargets(po, ch);
-            this._drawExecutedOrderConnectors(ch);
-            if (ch.scales?.yScale) {
-                this.updateOrderLines(ch);
-            }
-        }
-        if (typeof this._updateMultiTPAvgLines === 'function') {
-            charts.forEach((ch) => {
-                if (ch?.scales?.yScale) this._updateMultiTPAvgLines(ch);
-            });
-        }
-        this._cleanupOrphanedYAxisHighlights();
-        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
-        this._renderAllLayoutCharts();
-    }
-
-    /**
      * Remove Stop Loss from a pending order
      */
     removePendingStopLoss(orderId) {
@@ -35927,7 +34718,8 @@ class OrderManager {
         }
 
         this.removePendingSLTPLines(orderId);
-        this._refreshPendingOrderAfterTargetChange(orderId);
+        this.drawPendingOrderTargets(po, this.chart);
+        this._drawExecutedOrderConnectors(this.chart);
         console.log(`✅ Pending SL removed from order #${orderId}`);
         this.showNotification(`Stop Loss removed from pending order`, 'info');
     }
@@ -35947,10 +34739,11 @@ class OrderManager {
         }
 
         this.removePendingSLTPLines(orderId);
+        this.drawPendingOrderTargets(po, this.chart);
+        this._drawExecutedOrderConnectors(this.chart);
         const avgKey = `splitgrp_${po.splitGroupId}`;
         const avgIdx = (this.multiTPAvgLines || []).findIndex(g => g.orderId === avgKey || g.orderId === po.id);
         if (avgIdx !== -1) this._destroyMultiTPAvgEntry(avgIdx);
-        this._refreshPendingOrderAfterTargetChange(orderId);
         console.log(`✅ Pending TP removed from order #${orderId}`);
         this.showNotification(`Take Profit removed from pending order`, 'info');
     }
@@ -36189,7 +34982,7 @@ class OrderManager {
             
             const updatedSLPrices = new Set();
             
-            slForChart.forEach(({ orderId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }) => {
+            slForChart.forEach(({ orderId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, priceBox, priceText }, slIndex) => {
                 const position = this.openPositions.find(p => p.id === orderId);
                 if (!position || !position.stopLoss) {
                     return;
@@ -36209,7 +35002,7 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                 } else {
                     updatedSLPrices.add(priceKey);
-                    const labelPrefix = `SL  ${this._formatQty(labelQty)}`;
+                    const labelPrefix = `SL  ${labelQty.toFixed(2)}`;
                     if (labelText) labelText.text(labelPrefix);
                     if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
@@ -36222,8 +35015,8 @@ class OrderManager {
                 }
                 
                 const y = ch.scales.yScale(position.stopLoss);
-                const plotRight = this._orderPlotRightX(ch);
-                let slHitEnd = plotRight;
+                
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -36244,9 +35037,8 @@ class OrderManager {
                     const startX = closeBtnX - closeBtnR - closeBtnGap - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
                     
                     let cx = startX;
-                    const stripeW = 3;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
-                    labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
                     cx += labelBW + gap;
                     
                     if (pnlBox && pnlText && pnlBW > 0) {
@@ -36254,16 +35046,8 @@ class OrderManager {
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
                     }
                     
-                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
-                    this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
-
-                if (labelBox) {
-                    const lx = parseFloat(labelBox.attr('x'));
-                    if (Number.isFinite(lx)) slHitEnd = Math.min(slHitEnd, lx);
-                }
-                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                this._applyOrderLevelLineStyle(line, false);
 
                 this._styleOpenSlProfitProtectionVisuals(position, line, {
                     labelBox,
@@ -36271,8 +35055,7 @@ class OrderManager {
                     pnlBox,
                     pnlText,
                     priceBox,
-                    priceText,
-                    labelAccent
+                    priceText
                 });
                 
                 yAxisHighlightPrices.sl.add(position.stopLoss);
@@ -36371,7 +35154,7 @@ class OrderManager {
             const updatedTPLineKeys = new Set();
             const tpRankMapsByOrder = new Map();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
                 if (!position) return;
                 
@@ -36472,10 +35255,7 @@ class OrderManager {
                             : `TP  ${totalTpQty.toFixed(2)}`;
                     }
                     if (labelText) labelText.text(labelStr);
-                    if (pnlText) {
-                        const pnlStr = `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`;
-                        pnlText.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, '#22c55e'));
-                    }
+                    if (pnlText) pnlText.text(`${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
                     if (labelText) labelText.style('display', null);
                     if (pnlBox) pnlBox.style('display', null);
@@ -36490,8 +35270,8 @@ class OrderManager {
                 }
                 
                 const y = ch.scales.yScale(tpPrice);
-                const plotRight = this._orderPlotRightX(ch);
-                let tpHitEnd = plotRight;
+                
+                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
                 
                 if (labelText && labelBox) {
                     const boxH = 22;
@@ -36500,12 +35280,11 @@ class OrderManager {
                     const pad = 8;
                     const yAxisWidth = 70;
                     const closeBtnR = 9;
-                    const splitBtnR = splitBtn ? 9 : 0;
+                    const splitBtnR = splitBtn ? (deleteBtn ? 8 : 9) : 0;
                     const closeBtnGap = 6;
-                    const deleteBtnR = 9;
+                    const deleteBtnR = 8;
                     const tpPctArrowSize = 18;
                     const tpPctArrowGap = 2;
-                    const tpBadgeR = tpPctArrowSize / 2;
                     const pctW = (pctArrowsWidth != null && pctArrowsWidth > 0)
                         ? pctArrowsWidth
                         : ((pctDecBtn && pctIncBtn) ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0);
@@ -36513,70 +35292,55 @@ class OrderManager {
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
                     const pnlTW = pnlText?.node()?.getBBox()?.width || 0;
-                    const pnlTextBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
-                    const pnlStripInnerGap = pctW > 0 ? 4 : 0;
-                    const pnlStripBW = pnlTextBW + (pctW > 0 ? pnlStripInnerGap + pctW : 0);
+                    const pnlBW = pnlTW > 0 ? pnlTW + pad * 2 : 0;
 
-                    // Layout: Label → [PnL + −/+ strip] → [Delete] → [Split+] → CloseBtn
+                    // Layout: Label → PnL → [−][+] share → [Delete] → [Split+] → CloseBtn
                     const deleteSpace = deleteBtn ? (deleteBtnR * 2 + gap) : 0;
                     const splitSpace = splitBtn ? (splitBtnR * 2 + gap) : 0;
-                    const badgesW = deleteSpace + splitSpace;
+                    const badgesW = pctW + deleteSpace + splitSpace;
 
                     const rightEdge = ch.w - yAxisWidth - 10;
                     const closeBtnX = rightEdge - closeBtnR;
                     const startX = closeBtnX - closeBtnR - closeBtnGap
-                        - badgesW - (pnlStripBW > 0 ? pnlStripBW + gap : 0) - labelBW;
+                        - badgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
-                    const stripeW = 3;
 
                     // Label box (leftmost)
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
-                    labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
                     cx += labelBW + gap;
 
-                    // PnL strip (profit text + −/+ share in one toast row)
-                    if (pnlBox && pnlText && pnlStripBW > 0) {
-                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlStripBW).attr('height', boxH);
+                    // PnL box
+                    if (pnlBox && pnlText && pnlBW > 0) {
+                        pnlBox.attr('x', cx).attr('y', boxY).attr('width', pnlBW).attr('height', boxH);
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
-                        if (pctDecBtn && pctIncBtn && pctW > 0) {
-                            let bx = cx + pnlTextBW + pnlStripInnerGap;
-                            this._positionOrderLevelBadgeAtRow(pctDecBtn, bx, y, tpBadgeR, boxH);
-                            bx += tpPctArrowSize + tpPctArrowGap;
-                            this._positionOrderLevelBadgeAtRow(pctIncBtn, bx, y, tpBadgeR, boxH);
-                        }
-                        cx += pnlStripBW + gap;
+                        cx += pnlBW + gap;
                     }
 
-                    this._styleLegacyOrderLevelToastChrome(
-                        { labelBox, labelText, pnlBox, pnlText, labelAccent },
-                        this._tradeMarkerToastTheme().light ? '#059669' : '#22c55e',
-                        { isPreview: false }
-                    );
-                    this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+                    // − / + TP share (open multi-TP)
+                    if (pctDecBtn && pctIncBtn && pctW > 0) {
+                        pctDecBtn.attr('transform', `translate(${cx}, ${y - tpPctArrowSize / 2})`);
+                        cx += tpPctArrowSize + tpPctArrowGap;
+                        pctIncBtn.attr('transform', `translate(${cx}, ${y - tpPctArrowSize / 2})`);
+                        cx += tpPctArrowSize + tpPctArrowGap;
+                    }
 
-                    // × delete button (multi-TP only)
+                    // X delete button (multi-TP only)
                     if (deleteBtn) {
-                        deleteBtn.style('display', null);
-                        this._positionOrderLevelBadgeAtCenter(deleteBtn, cx + deleteBtnR, y);
+                        deleteBtn.style('display', null)
+                            .attr('transform', `translate(${cx + deleteBtnR}, ${y})`);
                         cx += deleteBtnR * 2 + gap;
                     }
 
                     // + split button
                     if (splitBtn) {
-                        this._positionOrderLevelBadgeAtCenter(splitBtn, cx + splitBtnR, y);
+                        splitBtn.attr('transform', `translate(${cx + splitBtnR}, ${y})`);
                         cx += splitBtnR * 2 + gap;
                     }
 
-                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
+                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
-
-                if (labelBox) {
-                    const lx = parseFloat(labelBox.attr('x'));
-                    if (Number.isFinite(lx)) tpHitEnd = Math.min(tpHitEnd, lx);
-                }
-                line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                this._applyOrderLevelLineStyle(line, false);
                 
                 yAxisHighlightPrices.tp.add(tpPrice);
             });
@@ -36634,18 +35398,16 @@ class OrderManager {
             const pad = 8;
             const yAxisWidth = 70;
             
-            const plotRight = this._orderPlotRightX(ch);
-            let beHitEnd = plotRight;
-
             line
                 .attr('x1', 0)
+                .attr('x2', ch.w)
                 .attr('y1', y)
-                .attr('y2', y)
-                .style('pointer-events', 'none');
+                .attr('y2', y);
             
             if (hitLine) {
                 hitLine
                     .attr('x1', 0)
+                    .attr('x2', ch.w)
                     .attr('y1', y)
                     .attr('y2', y);
             }
@@ -36665,10 +35427,6 @@ class OrderManager {
             labelText
                 .attr('x', startX + pad)
                 .attr('y', y + 4);
-
-            beHitEnd = Math.min(beHitEnd, startX);
-            line.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-            if (hitLine) hitLine.attr('x2', beHitEnd);
 
             beData.yAxisHighlight = this.drawYAxisPriceHighlight(triggerPrice, '#f59e0b', 'be', 0, ch);
         });
@@ -36794,9 +35552,14 @@ class OrderManager {
                         .attr('x1', 0)
                         .attr('x2', ch.w)
                         .attr('y1', y)
-                        .attr('y2', y)
-                        .style('pointer-events', 'none');
-                    this._applyOrderLevelLineStyle(line, false);
+                        .attr('y2', y);
+                    if (dragHitLine) {
+                        dragHitLine
+                            .attr('x1', 0)
+                            .attr('x2', ch.w)
+                            .attr('y1', y)
+                            .attr('y2', y);
+                    }
                 }
 
                 if (priceBox) priceBox.style('display', 'none');
@@ -36804,28 +35567,30 @@ class OrderManager {
 
                 // Live P&L for open (non-pending) positions
                 if (!isPending && pnlBox && pnlText && orderData) {
-                    const markPx = this._markPriceForOpenPosition(orderData, ch);
-                    if (Number.isFinite(markPx) && markPx > 0) {
+                    const currentCandle = this._getCurrentCandleForChart(ch);
+                    const currentPrice = currentCandle ? currentCandle.c : 0;
+                    if (currentPrice > 0) {
                         const orderSym = orderData.ticker || orderData.symbol || this._getSymbol();
-                        const unrealizedPnl = this.estimatePnLForPriceLevel(orderData.type, orderData.openPrice, markPx, orderData.quantity, orderSym);
+                        const unrealizedPnl = this.estimatePnLForPriceLevel(orderData.type, orderData.openPrice, currentPrice, orderData.quantity, orderSym);
                         const realizedPartials = Number(orderData.partialClosePnL) || 0;
                         const livePnl = unrealizedPnl + realizedPartials;
                         const sign = livePnl >= 0 ? '+' : '';
-                        const pnlStr = `${sign}$${livePnl.toFixed(2)}`;
-                        pnlText.text(pnlStr).attr('fill', this._orderLevelDetailColor(pnlStr, orderData.type === 'BUY' ? '#2962ff' : '#f23645'));
-                        this._styleLegacyOrderLevelToastChrome(
-                            { labelBox, labelText, pnlBox, pnlText, labelAccent: olEntry.labelAccent },
-                            orderData.type === 'BUY' ? '#2962ff' : '#f23645',
-                            { isPreview: false }
-                        );
+                        if (livePnl > 0) {
+                            pnlBox.attr('fill', 'rgba(8,153,129,0.15)').attr('stroke', '#089981');
+                            pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', '#089981');
+                        } else if (livePnl < 0) {
+                            pnlBox.attr('fill', 'rgba(242,54,69,0.15)').attr('stroke', '#f23645');
+                            pnlText.text(`${sign}$${livePnl.toFixed(2)}`).attr('fill', '#f23645');
+                        } else {
+                            pnlBox.attr('fill', '#1e222d').attr('stroke', '#363a45');
+                            pnlText.text(`+$0.00`).attr('fill', '#d1d4dc');
+                        }
                     }
                 }
                 if (isPending && pnlBox) pnlBox.style('display', 'none');
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
                 if (!skipPendingEntryGeom && labelText && closeBtn && labelBox) {
-                    this._syncLiveEntryLabelElements(olEntry, orderData, isPending);
-
                     const boxH = 22;
                     const boxY = y - boxH / 2;
                     const gap = 4;
@@ -36882,10 +35647,9 @@ class OrderManager {
                     const startX = closeBtnX - closeBtnR - closeBtnGap - totalBadgesW - (pnlBW > 0 ? pnlBW + gap : 0) - labelBW;
 
                     let cx = startX;
-                    const stripeW = 3;
                     labelBox.attr('x', cx).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
-                    labelText.attr('x', cx + pad + stripeW).attr('y', y + 4);
-                    if (arrow) arrow.attr('x', cx + pad + stripeW + (labelText.node()?.getBBox()?.width || 0) + 4).attr('y', y + 4);
+                    labelText.attr('x', cx + pad).attr('y', y + 4);
+                    if (arrow) arrow.attr('x', cx + pad + (labelText.node()?.getBBox()?.width || 0) + 4).attr('y', y + 4);
                     cx += labelBW + gap;
 
                     if (!isPending && pnlBox && pnlText && pnlBW > 0) {
@@ -36893,16 +35657,6 @@ class OrderManager {
                         pnlText.attr('x', cx + pad).attr('y', y + 4).attr('text-anchor', 'start').style('display', null);
                         cx += pnlBW + gap;
                     }
-
-                    const entryAccent = isPending
-                        ? (orderData.direction === 'BUY' ? '#2962ff' : '#f23645')
-                        : (orderData.type === 'BUY' ? '#2962ff' : '#f23645');
-                    this._styleLegacyOrderLevelToastChrome(
-                        { labelBox, labelText, pnlBox, pnlText, labelAccent: olEntry.labelAccent },
-                        entryAccent,
-                        { isPreview: false }
-                    );
-                    this._positionLegacyOrderLevelToastAccent(olEntry.labelAccent, labelBox);
 
                     // --- SL badge (both open and pending) ---
                     if (slBadge) {
@@ -36974,23 +35728,7 @@ class OrderManager {
                         }
                     }
 
-                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
-                }
-
-                if (!skipPendingEntryGeom && labelBox) {
-                    let labelStartX = null;
-                    if (labelBox) {
-                        const lx = parseFloat(labelBox.attr('x'));
-                        if (Number.isFinite(lx)) labelStartX = lx;
-                    }
-                    const hitEndX = this._orderLineHitEndX(ch, labelStartX);
-                    if (dragHitLine) {
-                        dragHitLine
-                            .attr('x1', 0)
-                            .attr('x2', hitEndX)
-                            .attr('y1', y)
-                            .attr('y2', y);
-                    }
+                    closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
                 }
 
                 const highlightColor = isPending
@@ -37017,7 +35755,6 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
-        this._ensureOrderPriceMarginShield(ch);
     }
 
     /**
@@ -37059,13 +35796,6 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
-            const shiftX = (el) => {
-                if (!el) return;
-                const ax = parseFloat(el.attr('x'));
-                if (Number.isFinite(ax)) el.attr('x', ax - dx);
-            };
-            shiftX(sl.labelAccent);
-            shiftX(sl.pnlAccent);
             if (sl.labelText) sl.labelText.attr('x', parseFloat(sl.labelText.attr('x')) - dx);
             if (sl.pnlBox) sl.pnlBox.attr('x', parseFloat(sl.pnlBox.attr('x')) - dx);
             if (sl.pnlText) sl.pnlText.attr('x', parseFloat(sl.pnlText.attr('x')) - dx);
@@ -37087,26 +35817,9 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
-            const shiftX = (el) => {
-                if (!el) return;
-                const ax = parseFloat(el.attr('x'));
-                if (Number.isFinite(ax)) el.attr('x', ax - dx);
-            };
-            shiftX(tp.labelAccent);
-            shiftX(tp.pnlAccent);
             if (tp.labelText) tp.labelText.attr('x', parseFloat(tp.labelText.attr('x')) - dx);
             if (tp.pnlBox) tp.pnlBox.attr('x', parseFloat(tp.pnlBox.attr('x')) - dx);
             if (tp.pnlText) tp.pnlText.attr('x', parseFloat(tp.pnlText.attr('x')) - dx);
-            const shiftBadge = (badge) => {
-                if (!badge || badge.style('display') === 'none') return;
-                const bt = badge.attr('transform');
-                if (bt) {
-                    const bm = bt.match(/translate\(\s*([\d.e+-]+)\s*,\s*([\d.e+-]+)/);
-                    if (bm) badge.attr('transform', `translate(${parseFloat(bm[1]) - dx}, ${bm[2]})`);
-                }
-            };
-            shiftBadge(tp.pctDecBtn);
-            shiftBadge(tp.pctIncBtn);
             if (tp.deleteBtn) {
                 const ct = tp.deleteBtn.attr('transform');
                 if (ct) {
@@ -37139,13 +35852,6 @@ class OrderManager {
             if (!Number.isFinite(curX) || Math.abs(curX - minX) < 0.5) return;
             const dx = curX - minX;
             box.attr('x', minX);
-            const shiftX = (el) => {
-                if (!el) return;
-                const ax = parseFloat(el.attr('x'));
-                if (Number.isFinite(ax)) el.attr('x', ax - dx);
-            };
-            shiftX(ol.labelAccent);
-            shiftX(ol.pnlAccent);
             if (ol.labelText) ol.labelText.attr('x', parseFloat(ol.labelText.attr('x')) - dx);
             if (ol.arrow) ol.arrow.attr('x', parseFloat(ol.arrow.attr('x')) - dx);
             if (ol.pnlBox) ol.pnlBox.attr('x', parseFloat(ol.pnlBox.attr('x')) - dx);
@@ -37205,26 +35911,13 @@ class OrderManager {
     }
 
     _drawExecutedOrderConnectors(ch) {
-        if (!ch?.svg) return;
-        this._purgeOrderConnectorsFromSvg(ch.svg);
-        if (!ch?.scales?.yScale) return;
+        if (!ch?.svg || !ch?.scales?.yScale) return;
+        ch.svg.selectAll('.exec-order-connector').remove();
         const yScale = ch.scales.yScale;
-        const connX = this._orderConnectorAnchorX(ch);
+        const yAxisWidth = ch.margin?.r || 70;
+        const connX = ch.w - yAxisWidth - 6;
 
-        const openPositions = [
-            ...(this.openPositions || []),
-            ...(this.orderService?.openPositions || []),
-        ];
-        const seenOpenIds = new Set();
-        const pendingOrders = [
-            ...(this.pendingOrders || []),
-            ...(this.orderService?.pendingOrders || []),
-        ];
-        const seenPendingIds = new Set();
-
-        for (const pos of openPositions) {
-            if (!pos || seenOpenIds.has(pos.id)) continue;
-            seenOpenIds.add(pos.id);
+        for (const pos of this.openPositions) {
             if (!this._positionTickerMatchesChartSymbol(pos, ch)) continue;
             if (pos.isSplitEntry) continue;
             const hasMultiTP = pos.tpTargets && pos.tpTargets.length >= 1;
@@ -37277,9 +35970,7 @@ class OrderManager {
             try { cg.lower(); } catch (_) {}
         }
 
-        for (const po of pendingOrders) {
-            if (!po || seenPendingIds.has(po.id)) continue;
-            seenPendingIds.add(po.id);
+        for (const po of this.pendingOrders) {
             if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
             const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
             const tpPx = po.takeProfit || 0;
@@ -37528,7 +36219,7 @@ class OrderManager {
                     const direction = (order.direction || '—').toUpperCase();
                     const directionClass = direction === 'SELL' ? 'order-badge--direction-sell' : 'order-badge--direction-buy';
                     const entryPrice = typeof order.entryPrice === 'number' ? order.entryPrice.toFixed(5) : '—';
-                    const quantity = this._formatQty(this._getPendingPlacedQuantity(order));
+                    const quantity = typeof order.quantity === 'number' ? order.quantity.toFixed(2) : '—';
                     const placedTime = this.format24Hour(order.placedTime);
                     const sl = order.stopLoss ? `$${order.stopLoss.toFixed(5)}` : 'None';
                     const tp = order.takeProfit ? `$${order.takeProfit.toFixed(5)}` : 'None';
@@ -37591,7 +36282,7 @@ class OrderManager {
                     const direction = (order.direction || '—').toUpperCase();
                     const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
                     const entryPrice = typeof order.entryPrice === 'number' ? order.entryPrice.toFixed(5) : '—';
-                    const quantity = this._formatQty(this._getPendingPlacedQuantity(order));
+                    const quantity = typeof order.quantity === 'number' ? order.quantity.toFixed(2) : '—';
                     const placedTime = this.formatTimeOnly(order.placedTime);
                     const sl = order.stopLoss ? order.stopLoss.toFixed(5) : '—';
                     const tp = order.takeProfit ? order.takeProfit.toFixed(5) : '—';
@@ -39290,7 +37981,7 @@ class OrderManager {
                 </div>
                 <div id="modalMultipleTPSettings" style="display: none;">
                     <label style="display: block; font-size: 10px; color: #9ca3af; margin-bottom: 4px;">Number of Targets</label>
-                    <input type="number" id="modalNumTPTargets" value="3" min="2" max="5" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
+                    <input type="number" id="modalNumTPTargets" value="3" min="2" max="10" step="1" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 6px; font-size: 11px; color: #fff;">
                 </div>
             </div>
             
@@ -40253,13 +38944,19 @@ class OrderManager {
      * @param {function} onClickFn - called with (event) on click
      * @returns {object} d3 <g> selection
      */
-    _createCloseCircleButton(svg, cssClass, _hoverColor, onClickFn) {
-        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'close', { onClick: onClickFn });
-    }
 
-    _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 10) {
-        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'tpAdd', { onClick: onClickFn, r });
-    }
+
+    /**
+     * Build a circular +-split button and return the <g> element.
+     * Replaces the repeated tpSplitBtn/tpMultiSplitBtn pattern.
+     * @param {object} svg - d3 selection
+     * @param {string} cssClass - class string for the <g>
+     * @param {string} color - stroke + text color (green #22c55e)
+     * @param {function} onClickFn - called with (event) on click
+     * @param {number} [r=10] - circle radius (8 for multi-TP small variant)
+     * @returns {object} d3 <g> selection
+     */
+
 
     /**
      * Calculate the breakeven trigger price from breakevenSettings.
@@ -40328,6 +39025,523 @@ class OrderManager {
             return members.reduce((s, m) => s + (m.quantity || 0), 0);
         }
         return order.quantity || 0;
+    }
+    /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
+    /** Toast stack palette (matches talaria-toast-stack.js / nav-badge-tooltip). */
+    _tradeMarkerToastTheme() {
+        const light = typeof document !== 'undefined' && document.body?.classList.contains('light-mode');
+        return {
+            light,
+            bg: light ? '#E8EBF6' : '#0F1119',
+            border: light ? 'rgba(0,5,40,0.26)' : 'rgba(140,160,255,0.12)',
+            text: light ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)',
+            muted: light ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.58)',
+            accentDefault: light ? '#2F55E8' : '#4A6AFF',
+        };
+    }
+
+    /** Active/pending/executed order levels: dashed @ 100%. Preview draft lines: solid @ 60%. */
+    _ORDER_LEVEL_ACTIVE_DASH = '6 3';
+
+    _orderLevelLineStyle(isPreview) {
+        return isPreview
+            ? { opacity: 0.6, dasharray: null }
+            : { opacity: 1, dasharray: this._ORDER_LEVEL_ACTIVE_DASH };
+    }
+
+    _applyOrderLevelLineStyle(lineSel, isPreview, overrides) {
+        if (!lineSel || (lineSel.empty && lineSel.empty())) return;
+        const s = this._orderLevelLineStyle(isPreview);
+        const o = overrides || {};
+        lineSel
+            .attr('stroke-dasharray', o.dasharray !== undefined ? o.dasharray : s.dasharray)
+            .attr('opacity', o.opacity !== undefined ? o.opacity : s.opacity);
+    }
+
+    _orderLevelLabelFontFamily() {
+        return "'Exo 2', Roboto, sans-serif";
+    }
+
+    _orderLevelDetailColor(detailText, fallbackAccent) {
+        const t = String(detailText || '');
+        const th = this._tradeMarkerToastTheme();
+        if (t.startsWith('-')) return '#ef4444';
+        if (t.startsWith('+')) return th.light ? '#059669' : '#22c55e';
+        return fallbackAccent || th.text;
+    }
+
+    /**
+     * Unified toast label for order level rows (preview + pending + executed).
+     * @returns {{ width: number, height: number }}
+     */
+    _buildOrderLevelToastLabelInGroup(parentGroup, opts) {
+        const o = opts || {};
+        const th = this._tradeMarkerToastTheme();
+        const isPreview = !!o.isPreview;
+        const height = o.height || (o.smallLabel ? 20 : 24);
+        const padL = 14;
+        const padR = 10;
+        const stripeW = 3;
+        const gap = 6;
+        const fontSize = o.smallLabel ? '10px' : '11px';
+        const accent = o.accent || th.accentDefault;
+        const tagText = String(o.tagText || '');
+        const detailText = o.detailText != null && o.detailText !== '' ? String(o.detailText) : null;
+        const detailColor = o.detailColor || this._orderLevelDetailColor(detailText, th.text);
+        const shellOpacity = isPreview ? 0.6 : 1;
+        const font = this._orderLevelLabelFontFamily();
+
+        const measure = parentGroup.append('text').style('visibility', 'hidden').attr('font-size', fontSize).attr('font-family', font);
+        measure.attr('font-weight', '700').text(tagText);
+        const tagW = measure.node()?.getBBox()?.width || 40;
+        let detailW = 0;
+        if (detailText) {
+            measure.attr('font-weight', '600').text(detailText);
+            detailW = measure.node()?.getBBox()?.width || 0;
+        }
+        measure.remove();
+
+        const innerW = tagW + (detailText ? gap + detailW : 0);
+        const totalW = Math.max(o.minWidth || 72, stripeW + padL + innerW + padR);
+
+        const shell = parentGroup.append('g')
+            .attr('class', 'order-level-toast-label')
+            .attr('data-role', 'order-level-toast-shell')
+            .style('opacity', shellOpacity);
+
+        shell.append('rect')
+            .attr('class', 'order-level-toast-bg')
+            .attr('x', 0).attr('y', 0)
+            .attr('width', totalW).attr('height', height)
+            .attr('fill', th.bg)
+            .attr('stroke', th.border)
+            .attr('stroke-width', 1)
+            .attr('rx', 0);
+
+        shell.append('rect')
+            .attr('class', 'order-level-toast-accent')
+            .attr('x', 0).attr('y', 0)
+            .attr('width', stripeW).attr('height', height)
+            .attr('fill', accent);
+
+        shell.append('text')
+            .attr('class', 'order-level-toast-tag')
+            .attr('x', stripeW + padL)
+            .attr('y', height / 2)
+            .attr('dy', '0.35em')
+            .attr('fill', accent)
+            .attr('font-size', fontSize)
+            .attr('font-weight', '700')
+            .attr('font-family', font)
+            .text(tagText);
+
+        if (detailText) {
+            shell.append('text')
+                .attr('class', 'order-level-toast-detail')
+                .attr('x', stripeW + padL + tagW + gap)
+                .attr('y', height / 2)
+                .attr('dy', '0.35em')
+                .attr('fill', detailColor)
+                .attr('font-size', fontSize)
+                .attr('font-weight', '600')
+                .attr('font-family', font)
+                .text(detailText);
+        }
+
+        return { width: totalW, height };
+    }
+
+    /** Style legacy separate labelBox/pnlBox pairs to match toast shell (with optional 3px accent stripe). */
+    _styleLegacyOrderLevelToastChrome(els, accent, opts) {
+        const o = opts || {};
+        const th = this._tradeMarkerToastTheme();
+        const isPreview = !!o.isPreview;
+        const op = isPreview ? 0.6 : 1;
+        const { labelBox, labelText, pnlBox, pnlText, labelAccent, pnlAccent } = els || {};
+        const font = this._orderLevelLabelFontFamily();
+        const stripeW = 3;
+
+        labelBox?.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
+        labelText?.attr('fill', accent).attr('font-family', font).attr('font-weight', '700');
+        labelAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
+
+        if (pnlBox && pnlText) {
+            pnlBox.attr('fill', th.bg).attr('stroke', th.border).attr('stroke-width', 1).attr('rx', 0).style('opacity', op);
+            pnlText.attr('font-family', font).attr('font-weight', '600');
+            pnlAccent?.attr('fill', accent).attr('width', stripeW).style('opacity', op);
+        }
+    }
+
+    _positionLegacyOrderLevelToastAccent(labelAccent, labelBox) {
+        if (!labelAccent || !labelBox) return;
+        const x = parseFloat(labelBox.attr('x'));
+        const y = parseFloat(labelBox.attr('y'));
+        const h = parseFloat(labelBox.attr('height'));
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(h)) {
+            labelAccent.attr('x', x).attr('y', y).attr('height', h);
+        }
+    }
+
+    /** Shared circle-badge spec for × / + / − / ✓ controls on order levels. */
+    _orderLevelBadgeKindSpec(kind) {
+        const th = this._tradeMarkerToastTheme();
+        const green = th.light ? '#059669' : '#22c55e';
+        const map = {
+            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444', fontSize: '15px' },
+            plus: { glyph: '+', accent: green, hoverAccent: green },
+            tpAdd: { glyph: 'TP', accent: green, hoverAccent: green, fontSize: '9px' },
+            minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
+            check: { glyph: '✓', accent: green, hoverAccent: green },
+        };
+        return map[kind] || map.close;
+    }
+
+    _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
+        const accent = spec.hoverAccent || spec.accent;
+        const reset = () => {
+            bg.attr('fill', th.bg).attr('stroke', th.border);
+            txt.attr('fill', th.muted);
+        };
+        const hover = () => {
+            bg.attr('fill', accent).attr('stroke', accent);
+            txt.attr('fill', '#ffffff');
+        };
+        reset();
+        host.on('mouseenter', hover).on('mouseleave', reset);
+    }
+
+    /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
+    _positionOrderLevelBadgeAtRow(btn, xLeft, lineY, r = 9, boxH = 22) {
+        if (!btn) return;
+        const yTop = lineY - boxH / 2 + (boxH - r * 2) / 2;
+        btn.attr('transform', `translate(${Number(xLeft)}, ${Number(yTop)})`);
+    }
+
+    /** Center-anchored chart badge (circle center at xCenter, lineY). */
+    _positionOrderLevelBadgeAtCenter(btn, xCenter, lineY, r = 9) {
+        if (!btn) return;
+        btn.attr('transform', `translate(${Number(xCenter) - r}, ${Number(lineY) - r})`);
+    }
+
+    /** × cancel on entry / SL rows — centered on the dashed line, inline after badges. */
+    _positionOrderCloseBtn(btn, centerX, lineY, r = 9) {
+        this._positionOrderLevelBadgeAtCenter(btn, centerX, lineY, r);
+        if (btn) {
+            try { btn.raise(); } catch (_) {}
+        }
+    }
+
+    /**
+     * Inline circle badge inside a preview label group.
+     * @returns {{ group, size: number, r: number }}
+     */
+    _appendOrderLevelBadgeToGroup(parentGroup, kind, opts = {}) {
+        const o = opts || {};
+        const r = o.r ?? 9;
+        const size = r * 2;
+        const spec = this._orderLevelBadgeKindSpec(kind);
+        const th = this._tradeMarkerToastTheme();
+        const x = o.x ?? 0;
+        const y = o.y ?? 0;
+        const g = parentGroup.append('g')
+            .attr('class', `order-level-badge order-level-badge--${kind} ${o.className || ''}`.trim())
+            .attr('transform', `translate(${x}, ${y})`)
+            .style('cursor', 'pointer');
+        const bg = g.append('circle')
+            .attr('class', 'order-level-badge-bg')
+            .attr('cx', r)
+            .attr('cy', r)
+            .attr('r', r)
+            .attr('stroke-width', 1);
+        const txt = g.append('text')
+            .attr('class', 'order-level-badge-glyph')
+            .attr('x', r)
+            .attr('y', r)
+            .attr('dy', '0.35em')
+            .attr('text-anchor', 'middle')
+            .attr('font-size', spec.fontSize || (kind === 'check' ? '12px' : '13px'))
+            .attr('font-weight', '700')
+            .attr('font-family', this._orderLevelLabelFontFamily())
+            .text(spec.glyph);
+        this._wireOrderLevelBadgeHover(g, bg, txt, th, spec);
+        if (o.onClick) {
+            g.on('click', (e) => {
+                e.stopPropagation();
+                o.onClick(e);
+            });
+        }
+        if (o.stopMousedown) {
+            g.on('mousedown', (e) => e.stopPropagation());
+        }
+        return { group: g, size, r };
+    }
+
+    _orderLevelBadgeFontSize(kind, spec) {
+        if (spec?.fontSize) return spec.fontSize;
+        if (kind === 'check') return '12px';
+        return '13px';
+    }
+
+    /**
+     * Circle badge on chart SVG (pending/executed rows) — transform applied by caller.
+     */
+    _createOrderLevelBadgeOnChart(svg, cssClass, kind, opts = {}) {
+        const o = opts || {};
+        const r = o.r ?? 9;
+        const spec = this._orderLevelBadgeKindSpec(kind);
+        const th = this._tradeMarkerToastTheme();
+        const btn = svg.append('g')
+            .attr('class', `order-level-badge order-level-badge--${kind} ${cssClass || ''}`.trim())
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        const bg = btn.append('circle')
+            .attr('class', 'order-level-badge-bg order-overlay-sublayer')
+            .attr('cx', r)
+            .attr('cy', r)
+            .attr('r', r)
+            .attr('stroke-width', 1);
+        const txt = btn.append('text')
+            .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
+            .attr('x', r)
+            .attr('y', r)
+            .attr('font-size', this._orderLevelBadgeFontSize(kind, spec))
+            .attr('font-weight', '700')
+            .attr('font-family', this._orderLevelLabelFontFamily())
+            .attr('text-anchor', 'middle')
+            .attr('dy', '0.35em')
+            .style('pointer-events', 'none')
+            .text(spec.glyph);
+        this._wireOrderLevelBadgeHover(btn, bg, txt, th, spec);
+        if (o.onClick) {
+            btn.on('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                o.onClick(e);
+            });
+        }
+        if (o.stopMousedown) {
+            btn.on('mousedown', (e) => e.stopPropagation());
+        }
+        return btn;
+    }
+
+    _refreshPreviewLabelDimensions(lineData) {
+        const node = lineData?.labelGroup?.node?.();
+        if (!node) return lineData?.labelDimensions || { width: 0, height: 0 };
+        try {
+            const bb = node.getBBox();
+            if (bb.width > 0 || bb.height > 0) {
+                lineData.labelDimensions = { width: bb.width, height: bb.height };
+            }
+        } catch (_) { /* ignore */ }
+        return lineData.labelDimensions || { width: 0, height: 24 };
+    }
+
+    _refreshPendingTargetLabelDimensions(target) {
+        const node = target?.labelGroup?.node?.();
+        if (!node) return target?.labelDimensions || { width: 80, height: 24 };
+        try {
+            const bb = node.getBBox();
+            if (bb.width > 0 || bb.height > 0) {
+                target.labelDimensions = { width: bb.width, height: bb.height };
+            }
+        } catch (_) { /* ignore */ }
+        return target.labelDimensions || { width: 80, height: 24 };
+    }
+
+    /** Smooth preview drag: move line + label + axis pill without horizontal snap. */
+    _syncPreviewDragVisuals(lineData, clampedY, newPrice) {
+        if (!lineData?.line) return;
+        lineData.line.attr('y1', clampedY).attr('y2', clampedY);
+        if (lineData.hitLine) {
+            lineData.hitLine.attr('y1', clampedY).attr('y2', clampedY);
+        }
+        const dims = this._refreshPreviewLabelDimensions(lineData);
+        const h = dims.height || 24;
+        const tr = lineData.labelGroup?.attr('transform') || '';
+        const curX = parseFloat(tr.match(/translate\(([\d.-]+)/)?.[1] || '0');
+        const translateY = clampedY - h / 2;
+        lineData.labelGroup?.attr('transform', `translate(${Number.isFinite(curX) ? curX : 0}, ${translateY})`);
+        this.adjustPreviewLineForLabel(lineData);
+        if (lineData.yAxisHighlight) {
+            const highlightHeight = 22;
+            const highlightY = clampedY - highlightHeight / 2;
+            const ht = lineData.yAxisHighlight.attr('transform') || '';
+            const hx = parseFloat(ht.match(/translate\(([\d.-]+)/)?.[1] || '0');
+            lineData.yAxisHighlight.attr('transform', `translate(${hx}, ${highlightY})`);
+            lineData.yAxisHighlight.select('.y-axis-price-text')?.text(this.formatPrice(newPrice));
+        }
+    }
+
+    /** Pending entry drag layout — same toast row math as updateOrderLines. */
+    _positionPendingEntryDragVisuals(chart, pendingOrder, els, y) {
+        const {
+            line, dragHitLine, labelBox, labelAccent, labelText, closeBtn
+        } = els || {};
+        if (!line || !labelBox || !labelText) return;
+        const boxH = 22;
+        const boxY = y - boxH / 2;
+        const pad = 8;
+        const stripeW = 3;
+        const yAxisWidth = 70;
+        const closeBtnR = 9;
+        const closeBtnGap = 6;
+        const lineColor = pendingOrder.direction === 'BUY' ? '#2962ff' : '#f23645';
+
+        line.attr('x1', 0).attr('x2', chart.w).attr('y1', y).attr('y2', y);
+        if (dragHitLine) dragHitLine.attr('y1', y).attr('y2', y);
+
+        const labelTW = labelText.node()?.getBBox()?.width || 0;
+        const labelBW = labelTW + pad * 2 + stripeW;
+        const rightEdge = chart.w - yAxisWidth - 10;
+        const closeBtnX = rightEdge - closeBtnR;
+        const startX = closeBtnX - closeBtnR - closeBtnGap - labelBW;
+
+        labelBox.attr('x', startX).attr('y', boxY).attr('width', labelBW).attr('height', boxH);
+        labelText.attr('x', startX + pad + stripeW).attr('y', y + 4);
+        this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
+        this._styleLegacyOrderLevelToastChrome(
+            { labelBox, labelText, labelAccent },
+            lineColor,
+            { isPreview: false }
+        );
+        this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
+
+        if (dragHitLine) {
+            dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, startX));
+        }
+    }
+
+    _accentColorForTradeMarkerTag(tag, fallbackColor) {
+        const t = String(tag || '').toUpperCase();
+        const th = this._tradeMarkerToastTheme();
+        if (t.includes('TP')) return th.light ? '#059669' : '#22c55e';
+        if (t.includes('SL') || t.includes('STOP')) return '#ef4444';
+        if (t === 'BUY') return th.light ? '#059669' : '#22c55e';
+        if (t === 'SELL') return '#ef4444';
+        if (t.includes('BE')) return '#f59e0b';
+        return fallbackColor || th.accentDefault;
+    }
+
+    /**
+     * Build hover tooltip for entry/exit markers — same shell as bottom toasts
+     * (Exo 2, #0F1119, subtle border, 3px left accent stripe).
+     * @returns {import('d3-selection').Selection} tooltip root group
+     */
+    _buildTradeMarkerToastTooltip(parentGroup, opts) {
+        const o = opts || {};
+        const th = this._tradeMarkerToastTheme();
+        const lines = o.lines || [];
+        const lineH = 14;
+        const padT = 6;
+        const padR = 11;
+        const padB = 6;
+        const padL = 14;
+        const stripeW = 3;
+        const minW = 118;
+        const textW = lines.reduce((mx, ln) => {
+            const len = String(ln.text || '').length;
+            return Math.max(mx, len * 6.4 + padL + padR);
+        }, minW);
+        const ttW = Math.max(minW, Math.ceil(textW));
+        const ttH = padT + padB + lines.length * lineH;
+        const sz = 12;
+        const ttX = (o.anchorX || 0) + 14;
+        const above = !!o.above;
+        const ttY = above
+            ? (o.anchorY || 0) - sz - ttH
+            : (o.anchorY || 0) + sz;
+
+        const tagLine = lines.find((ln) => ln.kind === 'tag');
+        const accent = o.accentColor
+            || this._accentColorForTradeMarkerTag(tagLine?.text, o.fallbackAccent);
+        const tagColor = o.tagColor || accent;
+
+        const ttGroup = parentGroup.append('g')
+            .attr('data-role', o.tooltipRole || 'exit-tooltip')
+            .attr('data-tt-w', ttW)
+            .attr('data-tt-h', ttH)
+            .style('display', 'none')
+            .style('pointer-events', 'none');
+
+        const shell = ttGroup.append('g')
+            .attr('data-role', 'tt-shell')
+            .attr('transform', `translate(${ttX}, ${ttY})`);
+
+        shell.append('rect')
+            .attr('data-role', 'tt-bg')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', ttW)
+            .attr('height', ttH)
+            .attr('fill', th.bg)
+            .attr('stroke', th.border)
+            .attr('stroke-width', 1);
+
+        shell.append('rect')
+            .attr('data-role', 'tt-accent')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', stripeW)
+            .attr('height', ttH)
+            .attr('fill', accent);
+
+        lines.forEach((line, i) => {
+            let fill = th.muted;
+            let weight = 600;
+            if (line.kind === 'price') {
+                fill = th.text;
+                weight = 700;
+            } else if (line.kind === 'tag') {
+                fill = tagColor;
+                weight = 700;
+            }
+            const t = shell.append('text')
+                .attr('x', padL + 1)
+                .attr('y', padT + (i + 1) * lineH - 4)
+                .attr('fill', line.fill || fill)
+                .attr('font-size', '11px')
+                .attr('font-weight', weight)
+                .attr('font-family', "'Exo 2', Roboto, sans-serif")
+                .text(line.text);
+            if (line.role) t.attr('data-role', line.role);
+        });
+
+        return ttGroup;
+    }
+
+    _repositionTradeMarkerTooltip(tt, x, arrowCY, above) {
+        if (!tt || tt.empty()) return;
+        const ttH = parseFloat(tt.attr('data-tt-h') || 55);
+        const sz = 12;
+        const ttX = x + 14;
+        const ttY = above ? arrowCY - sz - ttH : arrowCY + sz;
+        const shell = tt.select('[data-role="tt-shell"]');
+        if (!shell.empty()) {
+            shell.attr('transform', `translate(${ttX}, ${ttY})`);
+            return;
+        }
+        const ttRect = tt.select('rect');
+        if (!ttRect.empty()) ttRect.attr('x', ttX).attr('y', ttY);
+        tt.selectAll('text').each(function(_d, i) {
+            d3.select(this).attr('x', ttX + 8).attr('y', ttY + 6 + (i + 1) * 15 - 3);
+        });
+    }
+    /**
+     * Build a standard circular ×-close button and return the <g> element.
+     * Replaces the repeated circle+text+hover pattern in every draw method.
+     * @param {object} svg - d3 selection to append into
+     * @param {string} cssClass - class string for the <g>
+     * @param {string} hoverColor - fill color on hover (matches line color)
+     * @param {function} onClickFn - called with (event) on click
+     * @returns {object} d3 <g> selection
+     */
+    _createCloseCircleButton(svg, cssClass, _hoverColor, onClickFn) {
+        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'close', { onClick: onClickFn });
+    }
+
+    _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 10) {
+        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'tpAdd', { onClick: onClickFn, r });
     }
 }
 

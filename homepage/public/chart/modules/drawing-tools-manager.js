@@ -2300,6 +2300,22 @@ class DrawingToolsManager {
 
             const onDblClick = (event) => {
                 if (event.button !== 0) return;
+                const chart = this.chart;
+                if (chart && typeof chart._detectCursorModeAt === 'function') {
+                    const [mx, my] = chart._eventCanvasLocalXY(event);
+                    const axisMode = chart._detectCursorModeAt(mx, my);
+                    if (axisMode === 'priceAxis' || axisMode === 'timeAxis' || axisMode === 'separatePanelAxis') {
+                        if (axisMode === 'priceAxis' && typeof chart._applyPriceAxisDoubleClickLock === 'function') {
+                            chart._applyPriceAxisDoubleClickLock();
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (typeof event.stopImmediatePropagation === 'function') {
+                            event.stopImmediatePropagation();
+                        }
+                        return;
+                    }
+                }
                 const suppressUntil = Number(this._suppressNextDrawingDblClickUntil || 0);
                 if (suppressUntil > 0 && Date.now() <= suppressUntil) {
                     this._suppressNextDrawingDblClickUntil = 0;
