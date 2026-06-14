@@ -12055,10 +12055,41 @@ class OrderManager {
         const entryPrice = parseFloat(document.getElementById('orderEntryPrice')?.value || 0);
         if (!(entryPrice > 0)) return;
         const y = pch.scales.yScale(entryPrice);
-        const sl = this.previewLines?.sl;
+        this._syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, y);
+    }
+
+    /**
+     * Keep entry-anchored SL/TP badges on the entry row (X beside entry tag, Y at entry).
+     * Syncs badge.price to entry so updatePreviewLinePositions during replay does not snap back.
+     */
+    _syncEntryAnchoredPreviewBadgesWithEntry(entryPrice, entryYPx) {
+        if (!this._useEntryAnchoredTpSlBadges()) return;
+        if (!(entryPrice > 0) || !Number.isFinite(entryYPx)) return;
+
+        const pricedLv = (this.multiEntryLevels || []).filter(l => l.price > 0);
+        const skipTp = this.isMultiEntryMode && pricedLv.length > 1;
+
         const tp = this.previewLines?.tp;
-        if (sl?.isBadge && sl.labelGroup) this.positionPreviewLabel(sl, y);
-        if (tp?.isBadge && tp.labelGroup) this.positionPreviewLabel(tp, y);
+        if (!skipTp && tp && !this.tpManuallyPositioned && tp.isBadge && tp.labelGroup) {
+            tp.price = entryPrice;
+            this.positionPreviewLabel(tp, entryYPx);
+        }
+
+        const sl = this.previewLines?.sl;
+        if (sl && !this.slManuallyPositioned && sl.isBadge && sl.labelGroup) {
+            sl.price = entryPrice;
+            this.positionPreviewLabel(sl, entryYPx);
+        }
+
+        const mtp = this.previewLines?.multiTPBadges;
+        if (mtp?.length) {
+            mtp.forEach((bd) => {
+                if (bd?.labelGroup) {
+                    bd.price = entryPrice;
+                    this.positionPreviewLabel(bd, entryYPx + (bd._stackOffsetY || 0));
+                }
+            });
+        }
     }
 
     positionPreviewLabel(lineData, overrideY = null) {
@@ -16304,6 +16335,17 @@ class OrderManager {
         const updateLabelY = (lineData, yPixel) => {
             if (!lineData || !lineData.labelGroup) return;
 
+            // Entry-anchored SL/TP badges sit on the entry row — not at targetPrice Y.
+            if (lineData.isBadge && this._useEntryAnchoredTpSlBadges()
+                && (lineData.label === 'TP' || lineData.label === 'SL')) {
+                const entry = this.previewLines?.entry;
+                if (entry?.price > 0 && pc.scales?.yScale) {
+                    lineData.price = entry.price;
+                    this.positionPreviewLabel(lineData, pc.scales.yScale(entry.price));
+                }
+                return;
+            }
+
             // Badges have custom horizontal placement logic; recompute fully on width changes.
             if (widthChanged && lineData.isBadge) {
                 this.positionPreviewLabel(lineData, yPixel);
@@ -17278,8 +17320,11 @@ class OrderManager {
                     }
                 }
                 
-                // Calculate and display pip distance in real-time (only for Entry line)
-                if (lineData.label === 'Entry') {
+                // Calculate and display pip distance in real-time (only for primary entry line)
+                const isMainEntryDragLabel =
+                    lineData.label === 'Entry'
+                    || (lineData.label && /^Entry#1(?:$|:)/.test(String(lineData.label)));
+                if (isMainEntryDragLabel) {
                     const pipDistance = Math.abs(newPrice - (lineData.dragStartPrice || newPrice)) / self.pipSize;
                     if (pipDistance > 0.1) {
                         if (!lineData.pipIndicator) {
@@ -17539,47 +17584,45 @@ class OrderManager {
                         }
                     }
                     
-                    // Update TP/SL badge positions if they haven't been manually positioned
-                    // Only update Y position during drag to prevent horizontal jumping
-                    if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
-                        const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
-                        // Multi-entry: TP badge Y follows Avg Entry via _syncAvgEntryPreviewLineFromLevels (called above)
-                        if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
-                            // Move the TP badge visually with entry but do NOT write #tpPrice —
-                            // writing the input made it look like TP was "set" to the entry price.
-                            self.previewLines.tp.price = newPrice;
-                            const tpBbox = self.previewLines.tp.labelDimensions;
-                            const tpHeight = tpBbox?.height || 0;
-                            const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
-                            const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                            const tpY = clampedY - tpHeight / 2;
-                            self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
-                        }
-                    }
-                    if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
-                        // Move the SL badge visually with entry but do NOT write #slPrice —
-                        // writing the input made it look like SL was "set" to the entry price.
-                        const slBbox = self.previewLines.sl.labelDimensions;
-                        const slHeight = slBbox?.height || 0;
-                        const slTransform = self.previewLines.sl.labelGroup.attr('transform');
-                        const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                        const slY = clampedY - slHeight / 2;
-                        self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
-                    }
-
-                    // Move multi-TP badges with entry during drag (horizontal fan)
-                    if (self.previewLines.multiTPBadges && self.previewLines.multiTPBadges.length > 0) {
-                        self.previewLines.multiTPBadges.forEach(bd => {
-                            if (bd && bd.labelGroup) {
-                                bd.price = newPrice;
-                                const bdBbox = bd.labelDimensions;
-                                const bdHeight = bdBbox?.height || 0;
-                                const bdTransform = bd.labelGroup.attr('transform');
-                                const bdX = parseFloat(bdTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
-                                const bdY = clampedY + (bd._stackOffsetY || 0) - bdHeight / 2;
-                                bd.labelGroup.attr('transform', `translate(${bdX}, ${bdY})`);
+                    // Entry-anchored badges: full X+Y reflow beside entry tag (replay ticks won't snap back).
+                    if (self._useEntryAnchoredTpSlBadges()) {
+                        self._syncEntryAnchoredPreviewBadgesWithEntry(newPrice, clampedY);
+                    } else {
+                        // Multi-entry / axis-anchored: Y-only follow during drag
+                        if (self.previewLines.tp && !self.tpManuallyPositioned && self.previewLines.tp.isBadge) {
+                            const pricedLv = (self.multiEntryLevels || []).filter(l => l.price > 0);
+                            if (!(self.isMultiEntryMode && pricedLv.length > 1)) {
+                                self.previewLines.tp.price = newPrice;
+                                const tpBbox = self.previewLines.tp.labelDimensions;
+                                const tpHeight = tpBbox?.height || 0;
+                                const tpTransform = self.previewLines.tp.labelGroup.attr('transform');
+                                const tpX = parseFloat(tpTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                                const tpY = clampedY - tpHeight / 2;
+                                self.previewLines.tp.labelGroup.attr('transform', `translate(${tpX}, ${tpY})`);
                             }
-                        });
+                        }
+                        if (self.previewLines.sl && !self.slManuallyPositioned && self.previewLines.sl.isBadge) {
+                            self.previewLines.sl.price = newPrice;
+                            const slBbox = self.previewLines.sl.labelDimensions;
+                            const slHeight = slBbox?.height || 0;
+                            const slTransform = self.previewLines.sl.labelGroup.attr('transform');
+                            const slX = parseFloat(slTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                            const slY = clampedY - slHeight / 2;
+                            self.previewLines.sl.labelGroup.attr('transform', `translate(${slX}, ${slY})`);
+                        }
+                        if (self.previewLines.multiTPBadges?.length) {
+                            self.previewLines.multiTPBadges.forEach(bd => {
+                                if (bd?.labelGroup) {
+                                    bd.price = newPrice;
+                                    const bdBbox = bd.labelDimensions;
+                                    const bdHeight = bdBbox?.height || 0;
+                                    const bdTransform = bd.labelGroup.attr('transform');
+                                    const bdX = parseFloat(bdTransform?.match(/translate\(([\d.]+)/)?.[1] || 0);
+                                    const bdY = clampedY + (bd._stackOffsetY || 0) - bdHeight / 2;
+                                    bd.labelGroup.attr('transform', `translate(${bdX}, ${bdY})`);
+                                }
+                            });
+                        }
                     }
                     
                     // Recalculate risk/reward since TP/SL are synced to entry

@@ -8859,11 +8859,10 @@ function v9SizeStepperStep(sizeMode, symbolType, currentVal = null, dir = 1) {
   if (sizeMode === "$") return 1;
   if (sizeMode === "#") {
     if (symbolType === "futures") return 1;
-    const n = parseFloat(currentVal);
-    if (Number.isFinite(n)) {
-      if (dir < 0 && n <= 0.01) return 0.001;
-      if (n < 0.01) return 0.001;
-    }
+    const n = parseFloat(currentVal) || 0;
+    if (dir > 0 && n === 0) return 0.01;
+    if (dir < 0 && n <= 0.01) return 0.001;
+    if (n < 0.01) return 0.001;
     return 0.01;
   }
   return 1;
@@ -13968,8 +13967,12 @@ const TalariaV8bLive = () => {
             );
             if (Number.isFinite(oq) && oq > 0) lotCore = oq;
           }
+          const bridgeLead = isOmBridgeLead(omPanelBridgeRef.current.control);
+          const rvNum = parseFloat(riskVal || "0");
           let lotStr = String(lotCore);
-          if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
+          if (rvNum > 0 || bridgeLead) {
+            lotStr = v9FormatSizeInputOnBlur(riskVal, "#", currentSymbol.type, accountEquity);
+          } else if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
             lotStr = om._formatQty(om._roundQtyToStep(lotCore));
           }
           if (!v9IsPartialDecimalInput(riskVal)) {
@@ -13978,6 +13981,9 @@ const TalariaV8bLive = () => {
           queueMicrotask(() => {
             try {
               if (sizeInputFocusedRef.current || v9IsPartialDecimalInput(riskVal)) return;
+              if (bridgeLead) return;
+              const lsNum = parseFloat(lotStr || "0");
+              if (rvNum > 0 && lsNum === 0) return;
               setRiskVal((prev) => (prev === lotStr ? prev : lotStr));
             } catch (_) {}
           });
@@ -14669,7 +14675,11 @@ const TalariaV8bLive = () => {
           }
         }
         if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsPartialDecimalInput(riskVal)) {
-          setRiskVal((prev) => (prev === rv ? prev : rv));
+          const rvNum = parseFloat(riskVal || "0");
+          const hidNum = parseFloat(rv || "0");
+          if (!(rvNum > 0 && hidNum === 0)) {
+            setRiskVal((prev) => (prev === rv ? prev : rv));
+          }
         }
       }
 
