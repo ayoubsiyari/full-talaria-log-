@@ -8853,6 +8853,40 @@ function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
   return String(n);
 }
 
+/** SIZE rail stepper: $/amount by 1; lot (#) by 0.01; futures contracts by 1. */
+function v9SizeStepperStep(sizeMode, symbolType) {
+  if (sizeMode === "%") return 0.5;
+  if (sizeMode === "$") return 1;
+  if (sizeMode === "#") {
+    if (symbolType === "futures") return 1;
+    return 0.01;
+  }
+  return 1;
+}
+
+function v9ApplySizeStepperDelta(rawVal, dir, sizeMode, symbolType, accountEquity = null) {
+  const step = v9SizeStepperStep(sizeMode, symbolType);
+  const next = Math.max(0, parseFloat(rawVal || "0") + dir * step);
+  let capped = next;
+  if (sizeMode === "%") capped = Math.min(100, next);
+  else if (sizeMode === "$" && Number.isFinite(accountEquity)) capped = Math.min(accountEquity, next);
+
+  if (sizeMode === "#" && symbolType === "futures") {
+    return String(Math.max(0, Math.floor(capped)));
+  }
+  if (sizeMode === "#") {
+    const dec = step >= 1 ? 0 : Math.min(3, String(step).split(".")[1]?.length || 2);
+    return String(parseFloat(capped.toFixed(dec)));
+  }
+  if (sizeMode === "$") {
+    return String(parseFloat(capped.toFixed(3)));
+  }
+  if (sizeMode === "%") {
+    return String(parseFloat(capped.toFixed(2)));
+  }
+  return String(capped);
+}
+
 function v9NormalizePriceInputOnBlur(raw) {
   const s = String(raw ?? "").trim();
   if (s === "" || s === ".") return "0";
@@ -33414,17 +33448,11 @@ const TalariaV8bLive = () => {
                   {/* Step buttons — SVG chevrons */}
                   <div style={{ display:"flex", flexDirection:"column", gap:1, flexShrink:0 }}>
                     {[[1,"up"],[-1,"dn"]].map(([dir,key]) => {
-                      const step = sizeMode==="%"?0.5:sizeMode==="#"?1:10;
                       const isH = swHov===`rv-${key}`;
                       return (
-                        <div key={key} onClick={()=>{ markOrderControlBridge(); setRiskVal(v => {
-                          const next = Math.max(0, parseFloat(v||"0")+dir*step);
-                          const capped = sizeMode==="%"?Math.min(100,next):sizeMode==="$"?Math.min(accountEquity,next):next;
-                          if (sizeMode === "$" || sizeMode === "#") {
-                            return String(parseFloat(capped.toFixed(3)));
-                          }
-                          return String(capped);
-                        }); }}
+                        <div key={key} onClick={()=>{ markOrderControlBridge(); setRiskVal(v =>
+                          v9ApplySizeStepperDelta(v, dir, sizeMode, currentSymbol.type, accountEquity)
+                        ); }}
                           onMouseEnter={()=>setSwHov(`rv-${key}`)} onMouseLeave={()=>setSwHov(null)}
                           style={{ width:12, height:11, display:"flex", alignItems:"center", justifyContent:"center", cursor:"default", color:isH?c.tx:c.ts, transition:"color 0.1s" }}>
                           <svg width={8} height={5} viewBox="0 0 8 5" fill="none">
@@ -33539,7 +33567,7 @@ const TalariaV8bLive = () => {
               markOrderControlBridge();
               setEntryRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: val } : r)));
             };
-            const stepRow = (id, field, dir, step = 1) => {
+            const stepRow = (id, field, dir, stepOverride) => {
               markOrderControlBridge();
               const omStep = window.chart?.orderManager;
               if (field === "price") {
@@ -33553,16 +33581,19 @@ const TalariaV8bLive = () => {
                 );
                 return;
               }
+              const riskStep = field === "risk" ? v9SizeStepperStep(sizeMode, currentSymbol.type) : (stepOverride ?? 1);
               setEntryRows((rows) => {
                 const next = rows.map((r) => {
                   if (r.id !== id) return r;
-                  if (field === "risk" && sizeMode === "#" && currentSymbol.type === "futures") {
-                    const base = Math.round(parseFloat(r[field] || "0") || 0);
-                    return { ...r, [field]: String(Math.max(0, base + dir)) };
+                  if (field === "risk") {
+                    return {
+                      ...r,
+                      [field]: v9ApplySizeStepperDelta(r[field], dir, sizeMode, currentSymbol.type),
+                    };
                   }
                   return {
                     ...r,
-                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * step)),
+                    [field]: String(Math.max(0, parseFloat(r[field] || "0") + dir * riskStep)),
                   };
                 });
                 if (field === "risk") {

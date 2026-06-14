@@ -21875,116 +21875,10 @@ class OrderManager {
     }
 
     /**
-     * Pre-place preview: vertical dashed guide through Entry + TP + SL (TradingView-style).
-     * Does not replace horizontal TP/SL lines — those stay full width to the label edge.
+     * Pre-place preview: vertical guide removed — horizontal entry/TP/SL lines only.
      */
     _syncPendingLimitStopConnector() {
         this._removePendingLimitStopConnector();
-        const ch = this.previewLines?._previewChart || this._getPreviewChart();
-        if (!ch?.svg || !ch.scales?.yScale) return;
-        if (!this.previewLines?.entry) return;
-
-        const tpOn = document.getElementById('enableTP')?.checked;
-        const slOn = document.getElementById('enableSL')?.checked;
-        let entryPx = Number(this.previewLines.entry?.price) || parseFloat(document.getElementById('orderEntryPrice')?.value || 0) || 0;
-        if (this.isMultiEntryMode && this.previewLines.avgEntry) {
-            const avgPx = Number(this.previewLines.avgEntry.price) || 0;
-            if (avgPx > 0) entryPx = avgPx;
-        }
-        // Only include real lines (not badges) in the connector — badges sit on entry, no connector needed.
-        const tpPreview = this.previewLines.tp;
-        const tpPx = tpOn
-            ? (tpPreview && !tpPreview.isBadge ? (Number(tpPreview.price) || parseFloat(document.getElementById('tpPrice')?.value || 0)) : 0)
-            : 0;
-        const slPreview = this.previewLines.sl;
-        const slPx = slOn
-            ? (slPreview && !slPreview.isBadge ? (Number(slPreview.price) || parseFloat(document.getElementById('slPrice')?.value || 0)) : 0)
-            : 0;
-
-        const ys = [];
-        if (entryPx > 0) ys.push(ch.scales.yScale(entryPx));
-        if (tpOn && tpPx > 0) ys.push(ch.scales.yScale(tpPx));
-        if (slOn && slPx > 0) ys.push(ch.scales.yScale(slPx));
-        if (ys.length < 2) return;
-
-        const yTop = Math.min(...ys);
-        const yBot = Math.max(...ys);
-        if (!Number.isFinite(yTop) || !Number.isFinite(yBot) || Math.abs(yBot - yTop) < 0.5) return;
-
-        const leftXs = [];
-        const pushLeftX = (ld) => {
-            if (!ld?.labelGroup) return;
-            const tr = ld.labelGroup.attr('transform') || '';
-            const m = /translate\(([^,]+),/.exec(tr);
-            const lx = m ? parseFloat(m[1]) : NaN;
-            if (Number.isFinite(lx)) leftXs.push(lx);
-        };
-        const anchorLine = (this.isMultiEntryMode && this.previewLines.avgEntry) ? this.previewLines.avgEntry : this.previewLines.entry;
-        pushLeftX(anchorLine);
-        if (tpOn) pushLeftX(this.previewLines.tp);
-        if (slOn) pushLeftX(this.previewLines.sl);
-        if (!leftXs.length) return;
-        const entryGroup = anchorLine?.labelGroup;
-        let entryW = anchorLine?.labelDimensions?.width || 0;
-        if (this.isDraggingPreviewLine && entryGroup?.node()?.getBBox) {
-            try {
-                const bb = entryGroup.node().getBBox();
-                if (bb && Number.isFinite(bb.width) && bb.width > 0) entryW = bb.width;
-            } catch (_e) { /* ignore */ }
-        }
-        const trEntry = entryGroup?.attr('transform') || '';
-        const mEntry = /translate\(([^,]+),/.exec(trEntry);
-        const entryX = mEntry ? parseFloat(mEntry[1]) : NaN;
-        // Keep connector on the right side near the entry tag.
-        const connectorPadRight = 50; // px past entry label — nudge toward axis, away from badges
-        const anchorX = Number.isFinite(entryX)
-            ? Math.max(0, Math.min(ch.w - 1, entryX + entryW + connectorPadRight))
-            : Math.max(0, Math.min(ch.w - 1, Math.min(...leftXs)));
-        const entryY = ch.scales.yScale(entryPx);
-        const tpY = (tpOn && tpPx > 0) ? ch.scales.yScale(tpPx) : null;
-        const slY = (slOn && slPx > 0) ? ch.scales.yScale(slPx) : null;
-
-        const connectorGroup = ch.svg.append('g')
-            .attr('class', 'preview-pending-connector')
-            .style('pointer-events', 'none');
-        this._pendingPreviewConnector = connectorGroup;
-
-        const tpColor = '#26a69a';
-        const slColor = '#f23645';
-        const dotStroke = '#0f172a';
-
-        const drawSegment = (y1, y2, color) => {
-            connectorGroup.append('line')
-                .attr('x1', anchorX).attr('x2', anchorX)
-                .attr('y1', y1).attr('y2', y2)
-                .attr('stroke', color)
-                .attr('stroke-width', 1)
-                .attr('stroke-linecap', 'butt')
-                .attr('opacity', 0.9);
-        };
-        const drawDot = (y, color) => connectorGroup.append('circle')
-            .attr('class', 'preview-pending-connector-dot')
-            .attr('cx', anchorX).attr('cy', y)
-            .attr('r', 2.5)
-            .attr('fill', color)
-            .attr('stroke', dotStroke)
-            .attr('stroke-width', 1)
-            .attr('opacity', 0.95);
-
-        this._pendingPreviewConnectorDots = [];
-
-        if (Number.isFinite(entryY) && Number.isFinite(tpY)) {
-            drawSegment(entryY, tpY, tpColor);
-        }
-        if (Number.isFinite(entryY) && Number.isFinite(slY)) {
-            drawSegment(entryY, slY, slColor);
-        }
-        if (Number.isFinite(entryY)) this._pendingPreviewConnectorDots.push(drawDot(entryY, '#eab308'));
-        if (Number.isFinite(tpY)) this._pendingPreviewConnectorDots.push(drawDot(tpY, tpColor));
-        if (Number.isFinite(slY)) this._pendingPreviewConnectorDots.push(drawDot(slY, slColor));
-        try {
-            connectorGroup.lower();
-        } catch (_e) { /* ignore */ }
     }
 
     validateOrder(orderType, orderSide, entryPrice, currentPrice, slPrice, tpPrice, quantity = null, positionSizeMode = null, slEnabled = false) {
@@ -30070,12 +29964,13 @@ class OrderManager {
 
             this.drawYAxisPriceHighlight(avgPrice, '#ca8a04', 'entry', 0, ch);
 
-            // --- Draw connector on the right side (after close button, before Y-axis) ---
-            if (g._connector) { try { g._connector.remove(); } catch (_) {} }
+            // --- Draw connector on the right side (open positions only — not pending/preview) ---
+            if (g._connector) { try { g._connector.remove(); } catch (_) {} g._connector = null; }
+            const hasPendingLeg = openOrders.some((o) => o.status === 'PENDING');
             const refOrder = openOrders.find(o => o.status === 'OPEN') || openOrders[0];
             const tpPx = this._splitGroupConnectorTpPrice(refOrder);
             const slPx = refOrder?.stopLoss || 0;
-            if (tpPx > 0 || slPx > 0) {
+            if (!hasPendingLeg && (tpPx > 0 || slPx > 0)) {
                 const connGroup = ch.svg.append('g')
                     .attr('class', `split-avg-connector split-avg-${g.splitGroupId}`)
                     .style('pointer-events', 'none');
@@ -36522,11 +36417,6 @@ class OrderManager {
 
         const openPositions = [...(this.openPositions || [])];
         const seenOpenIds = new Set();
-        const pendingOrders = [
-            ...(this.pendingOrders || []),
-            ...(this.orderService?.pendingOrders || []),
-        ];
-        const seenPendingIds = new Set();
 
         for (const pos of openPositions) {
             if (!pos || seenOpenIds.has(pos.id)) continue;
@@ -36584,64 +36474,6 @@ class OrderManager {
                 }
             }
             const eColor = pos.type === 'BUY' ? '#2962ff' : '#f23645';
-            cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
-                .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
-            try { cg.lower(); } catch (_) {}
-        }
-
-        for (const po of pendingOrders) {
-            if (!po || seenPendingIds.has(po.id)) continue;
-            seenPendingIds.add(po.id);
-            if (!this._positionTickerMatchesChartSymbol(po, ch)) continue;
-            if (!this._orderEntryVisualExistsOnChart(po.id, ch, { pending: true })) continue;
-            const hasMultiTP = po.tpTargets && po.tpTargets.length >= 1;
-            const tpPx = po.takeProfit || 0;
-            const slPx = po.stopLoss || 0;
-            if (tpPx <= 0 && slPx <= 0 && !hasMultiTP) continue;
-            const entryY = yScale(po.entryPrice);
-            if (!Number.isFinite(entryY)) continue;
-            const cg = ch.svg.append('g')
-                .attr('class', 'exec-order-connector')
-                .attr('data-order-id', String(po.id))
-                .style('pointer-events', 'none');
-            if (hasMultiTP) {
-                for (const t of po.tpTargets) {
-                    if (t.hit || !(t.price > 0)) continue;
-                    const tpY = yScale(t.price);
-                    if (Number.isFinite(tpY)) {
-                        cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                            .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                        cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                            .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                    }
-                }
-                const avgG = this.multiTPAvgLines.find((g) => g.orderId === po.id && g.chart === ch);
-                if (avgG && Number.isFinite(avgG.avgTP)) {
-                    const avgY = yScale(avgG.avgTP);
-                    if (Number.isFinite(avgY)) {
-                        cg.append('circle').attr('cx', connX).attr('cy', avgY).attr('r', 2.5)
-                            .attr('fill', '#eab308').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                    }
-                }
-            } else if (tpPx > 0) {
-                const tpY = yScale(tpPx);
-                if (Number.isFinite(tpY)) {
-                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', tpY)
-                        .attr('stroke', '#26a69a').attr('stroke-width', 1).attr('opacity', 0.7);
-                    cg.append('circle').attr('cx', connX).attr('cy', tpY).attr('r', 2.5)
-                        .attr('fill', '#26a69a').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-            }
-            if (slPx > 0) {
-                const slY = yScale(slPx);
-                if (Number.isFinite(slY)) {
-                    cg.append('line').attr('x1', connX).attr('x2', connX).attr('y1', entryY).attr('y2', slY)
-                        .attr('stroke', '#f23645').attr('stroke-width', 1).attr('opacity', 0.7);
-                    cg.append('circle').attr('cx', connX).attr('cy', slY).attr('r', 2.5)
-                        .attr('fill', '#f23645').attr('stroke', '#0f172a').attr('stroke-width', 1);
-                }
-            }
-            const eColor = po.direction === 'BUY' ? '#2962ff' : '#f23645';
             cg.append('circle').attr('cx', connX).attr('cy', entryY).attr('r', 2.5)
                 .attr('fill', eColor).attr('stroke', '#0f172a').attr('stroke-width', 1);
             try { cg.lower(); } catch (_) {}
