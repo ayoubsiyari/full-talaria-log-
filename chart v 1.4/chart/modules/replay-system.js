@@ -2043,22 +2043,43 @@ class ReplaySystem {
             const nextDisp = sourceChart.data[candleIndex + 1];
             const tEndExclusive = (nextDisp && Number.isFinite(nextDisp.t)) ? nextDisp.t : Infinity;
 
+            let playheadCap = Infinity;
+            if (Number.isFinite(this.replayTimestamp)) {
+                playheadCap = this.replayTimestamp;
+            } else if (typeof this.currentIndex === 'number' && this.fullRawData[this.currentIndex]) {
+                const capBar = this.fullRawData[this.currentIndex];
+                if (capBar && Number.isFinite(capBar.t)) playheadCap = capBar.t;
+            }
+
             if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
                 let lastInBucket = -1;
                 for (let i = 0; i < this.fullRawData.length; i++) {
                     const rt = this.fullRawData[i]?.t;
                     if (!Number.isFinite(rt)) continue;
                     if (rt >= tEndExclusive) break;
-                    if (rt >= tStart) lastInBucket = i;
+                    if (rt >= tStart && rt <= playheadCap) {
+                        lastInBucket = i;
+                    }
                 }
                 if (lastInBucket >= 0) {
                     newRawIndex = Math.max(lastInBucket, goBackFloor);
                 } else {
-                    let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
-                        ? this._findLastRawIndexAtOrBefore(this.fullRawData, tStart)
-                        : this.fullRawData.findIndex(c => (c && c.t) >= tStart);
-                    if (idx < 0) idx = goBackFloor;
-                    newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
+                    const firstInBucket = this.fullRawData.findIndex((c) => {
+                        const rt = c?.t;
+                        return Number.isFinite(rt) && rt >= tStart && rt < tEndExclusive && rt <= playheadCap;
+                    });
+                    if (firstInBucket >= 0) {
+                        newRawIndex = Math.max(firstInBucket, goBackFloor);
+                    } else {
+                        let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
+                            ? this._findLastRawIndexAtOrBefore(this.fullRawData, Math.min(playheadCap, tStart))
+                            : -1;
+                        if (idx < 0) {
+                            idx = this.fullRawData.findIndex(c => c && Number.isFinite(c.t) && c.t >= tStart);
+                        }
+                        if (idx < 0) idx = goBackFloor;
+                        newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
+                    }
                 }
             }
 
@@ -2134,18 +2155,21 @@ class ReplaySystem {
 
         const rect = wrapper.getBoundingClientRect();
         const x = e.clientX - rect.left;
+        const plotW = this._chartPlotWidth(sourceChart);
+        const mr = (sourceChart.margin && sourceChart.margin.r) || 0;
+        const ml = (sourceChart.margin && sourceChart.margin.l) || 0;
 
-        if (x < sourceChart.margin.l || x > sourceChart.w - sourceChart.margin.r) {
+        if (x < ml || x > plotW - mr) {
             return;
         }
 
-        const candleIndex = this.getCandleIndexAtXForChart(sourceChart, x);
-
-        if (candleIndex < 0) {
+        const snapped = this.resolveSnappedCutLineAtX(sourceChart, x);
+        if (!snapped) {
             console.warn('Could not find candle at click position');
             return;
         }
 
+        const { candleIndex, timestamp } = snapped;
         const candle = sourceChart.data[candleIndex];
         if (!candle) return;
 
@@ -2163,7 +2187,7 @@ class ReplaySystem {
         flashCutLines();
 
         setTimeout(() => {
-            this.applyReplayCutToWallClock(candle.t, { sourceChart, candleIndex });
+            this.applyReplayCutToWallClock(timestamp, { sourceChart, candleIndex });
             this.exitGoBackMode();
             try {
                 if (typeof window !== 'undefined') {

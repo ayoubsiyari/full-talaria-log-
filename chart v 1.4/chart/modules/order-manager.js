@@ -28039,15 +28039,15 @@ class OrderManager {
                             const deleteBtnR = 8;
                             const splitBtnR = splBtn ? (delBtn ? 8 : 9) : 0;
                             if (delBtn) {
-                                delBtn.attr('transform', `translate(${cx + deleteBtnR}, ${newY})`);
+                                self._positionOrderLevelBadgeAtCenter(delBtn, cx + deleteBtnR, newY, deleteBtnR);
                                 cx += deleteBtnR * 2 + gap;
                             }
                             if (splBtn) {
-                                splBtn.attr('transform', `translate(${cx + splitBtnR}, ${newY})`);
+                                self._positionOrderLevelBadgeAtCenter(splBtn, cx + splitBtnR, newY, splitBtnR);
                                 cx += splitBtnR * 2 + gap;
                             }
                             const clBtn = ctx.svg.select(`.${lineType}-close-btn.${lineType}-${order.id}`);
-                            if (!clBtn.empty()) clBtn.attr('transform', `translate(${cX}, ${newY})`);
+                            if (!clBtn.empty()) self._positionOrderCloseBtn(clBtn, cX, newY, closeBtnR);
                         }
                     }
                 } else {
@@ -30759,11 +30759,6 @@ class OrderManager {
                     actualPbw = ml.pnlText.node().getBBox().width + pad * 2;
                 }
 
-                // Close button at right edge
-                const closeBtnX = rightEdge - closeBtnR;
-                ml.closeBtn?.attr('transform', `translate(${closeBtnX}, ${oy})`);
-
-                // Label box right-aligned to close button
                 const labelBoxX = alignX;
 
                 ml.labelBox
@@ -30778,6 +30773,7 @@ class OrderManager {
                 ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
                 ml.dragHitLine?.attr('x2', splitHitEnd);
 
+                // Close button inline after label row badges (not stuck on y-axis)
                 let memberCx = labelBoxX + lbw + gap;
 
                 if (!isPending && ml.pnlBox && ml.pnlText && actualPbw > 0) {
@@ -30879,6 +30875,8 @@ class OrderManager {
                     }
                     if (ml.entryPlusBadge) ml.entryPlusBadge.style('display', 'none');
                 }
+
+                this._positionOrderCloseBtn(ml.closeBtn, memberCx + closeBtnGap + closeBtnR, oy, closeBtnR);
 
                 ml._handledBySplitGroup = true;
             }
@@ -33389,7 +33387,7 @@ class OrderManager {
         const th = this._tradeMarkerToastTheme();
         const green = th.light ? '#059669' : '#22c55e';
         const map = {
-            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
+            close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444', fontSize: '15px' },
             plus: { glyph: '+', accent: green, hoverAccent: green },
             tpAdd: { glyph: 'TP', accent: green, hoverAccent: green, fontSize: '9px' },
             minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
@@ -33423,6 +33421,14 @@ class OrderManager {
     _positionOrderLevelBadgeAtCenter(btn, xCenter, lineY, r = 9) {
         if (!btn) return;
         btn.attr('transform', `translate(${Number(xCenter) - r}, ${Number(lineY) - r})`);
+    }
+
+    /** × cancel on entry / SL rows — centered on the dashed line, inline after badges. */
+    _positionOrderCloseBtn(btn, centerX, lineY, r = 9) {
+        this._positionOrderLevelBadgeAtCenter(btn, centerX, lineY, r);
+        if (btn) {
+            try { btn.raise(); } catch (_) {}
+        }
     }
 
     /**
@@ -33599,7 +33605,7 @@ class OrderManager {
             lineColor,
             { isPreview: false }
         );
-        closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+        this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
 
         if (dragHitLine) {
             dragHitLine.attr('x1', 0).attr('x2', this._orderLineHitEndX(chart, startX));
@@ -36206,7 +36212,7 @@ class OrderManager {
                         pnlText.attr('x', cx + pad).attr('y', y + 4);
                     }
                     
-                    closeBtn?.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
                 }
 
@@ -36520,7 +36526,7 @@ class OrderManager {
                         cx += splitBtnR * 2 + gap;
                     }
 
-                    this._positionOrderLevelBadgeAtCenter(closeBtn, closeBtnX, y);
+                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
                 }
 
                 if (labelBox) {
@@ -36924,10 +36930,10 @@ class OrderManager {
                         }
                     }
 
-                    closeBtn.attr('transform', `translate(${closeBtnX}, ${y})`);
+                    this._positionOrderCloseBtn(closeBtn, closeBtnX, y, closeBtnR);
                 }
 
-                if (!skipPendingEntryGeom) {
+                if (!skipPendingEntryGeom && labelBox) {
                     let labelStartX = null;
                     if (labelBox) {
                         const lx = parseFloat(labelBox.attr('x'));

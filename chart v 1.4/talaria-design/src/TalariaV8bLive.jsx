@@ -9026,7 +9026,6 @@ const TalariaV8bLive = () => {
     }
   }, []);
 
-  const [rollbackLineX, setRollbackLineX] = useState(60);
   const [rbDragging, setRbDragging] = useState(false);
   const [rbPressed, setRbPressed] = useState(false);
   const rbPressTimer = useRef(null);
@@ -10202,8 +10201,6 @@ const TalariaV8bLive = () => {
 
   // ────────────────────────────────────────────────────────────────────────
 
-  const rollbackLineRef = useRef(null);
-  const rollbackOverlayRef = useRef(null);
   const tlBarRef = useRef(null);
   const tlBarDropRef = useRef(null);
   const pinnedBarRef = useRef(null);
@@ -13064,133 +13061,23 @@ const TalariaV8bLive = () => {
     }
   }, [btmTab]);
 
-  // When the V9 rollback (cut-line) overlay is active, intercept the next
-  // click: compute the candle index/timestamp at the click x and drive the
-  // legacy replaySystem to seek there. Mirrors the legacy pick-point flow
-  // (handlePickModeClick → startReplayAtIndex) but keeps V9 visual styling.
-  useEffect(() => {
-    if (!rollback) return;
-    // Multichart uses replay-system goBackToPickPoint (per-panel cut lines + clicks).
-    if (layoutPanels.n > 1) return;
-    const handleClick = (e) => {
-      const el = e.target;
-      // Never steal clicks from header, rail, or any UI outside the chart slot (#chart-container).
-      if (!el || !el.closest || !el.closest("#chart-container")) return;
-      // OHLC row, indicator chips, LOCKED toggle — must receive clicks normally.
-      if (el.closest(".ohlc-info")) return;
-
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      try {
-        const rs = getReplaySystem();
-        if (!rs) return;
-
-        const grid = typeof window.__multichartGrid !== "undefined"
-          ? window.__multichartGrid
-          : null;
-        let chart = null;
-        let x = 0;
-        if (grid && typeof grid.resolveChartAtClientPoint === "function") {
-          const hit = grid.resolveChartAtClientPoint(e.clientX, e.clientY);
-          if (hit) {
-            chart = hit.chart;
-            x = hit.x;
-          }
-        }
-        if (!chart) {
-          chart = typeof window.getActiveChart === "function"
-            ? window.getActiveChart()
-            : window.chart;
-          if (chart) {
-            const containerNode =
-              chart.container && typeof chart.container.node === "function"
-                ? chart.container.node()
-                : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
-            if (containerNode) {
-              const rect = containerNode.getBoundingClientRect();
-              x = e.clientX - rect.left;
-            }
-          }
-        }
-        if (rs && chart) {
-          const containerNode =
-            chart.container && typeof chart.container.node === "function"
-              ? chart.container.node()
-              : (chart.canvas && chart.canvas.parentElement) || chartCanvasRef.current;
-          if (containerNode) {
-            const rect = containerNode.getBoundingClientRect();
-            const inChartArea =
-              x >= (chart.margin?.l || 0) &&
-              x <= ((Number(chart.w) >= 80 ? chart.w : rect.width) - (chart.margin?.r || 0));
-            if (inChartArea) {
-              const candleIndex =
-                typeof rs.getCandleIndexAtXForChart === "function"
-                  ? rs.getCandleIndexAtXForChart(chart, x)
-                  : typeof rs.getCandleIndexAtX === "function"
-                    ? rs.getCandleIndexAtX(x)
-                    : typeof chart.pixelToDataIndex === "function"
-                      ? Math.round(chart.pixelToDataIndex(x))
-                      : -1;
-              if (
-                candleIndex >= 0 &&
-                Array.isArray(chart.data) &&
-                chart.data[candleIndex]
-              ) {
-                const ts = chart.data[candleIndex].t;
-                if (!rs.isActive) {
-                  if (typeof rs.startReplayAtIndex === "function") {
-                    rs.startReplayAtIndex(candleIndex);
-                  } else {
-                    if (typeof rs.enterReplayMode === "function") rs.enterReplayMode();
-                    if (typeof rs.goToReplayTimestamp === "function") {
-                      rs.goToReplayTimestamp(ts);
-                    }
-                  }
-                } else if (typeof rs.applyReplayCutToWallClock === "function") {
-                  rs.applyReplayCutToWallClock(ts, { sourceChart: chart, candleIndex });
-                } else if (typeof rs.goToReplayTimestamp === "function") {
-                  rs.goToReplayTimestamp(ts);
-                }
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("[V9 Replay] cut-line click failed", err);
-      }
-      setRollback(false);
-    };
-    const t = setTimeout(() => window.addEventListener("click", handleClick, true), 0);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("click", handleClick, true);
-    };
-  }, [rollback, layoutPanels.n]);
-
-  // Multichart rollback: legacy per-panel go-back UI (cut line on every tile).
+  // Rollback: same replay-system go-back UI as multichart (soft shade + info label + snap).
   useEffect(() => {
     const rs = getReplaySystem();
-    const isMulti = layoutPanels.n > 1;
-    if (!isMulti) {
-      if (rollback && rs?.isGoingBack) {
-        try { rs.exitGoBackMode(); } catch (_) {}
-      }
-      return;
-    }
+    if (!rs) return;
     if (rollback) {
-      if (!rs) return;
       if (typeof rs.goBackToPickPoint === "function") {
         try {
           if (!rs.isGoingBack) rs.goBackToPickPoint();
         } catch (err) {
-          console.warn("[V9 Replay] multichart goBackToPickPoint failed", err);
+          console.warn("[V9 Replay] goBackToPickPoint failed", err);
         }
       }
-    } else if (rs?.isGoingBack) {
+    } else if (rs.isGoingBack) {
       try { rs.exitGoBackMode(); } catch (_) {}
     }
     return () => {
-      if (rs?.isGoingBack) {
+      if (rs.isGoingBack) {
         try { rs.exitGoBackMode(); } catch (_) {}
       }
     };
@@ -13199,7 +13086,7 @@ const TalariaV8bLive = () => {
   useEffect(() => {
     try {
       window.dispatchEvent(new CustomEvent("talariaReplayRollbackMode", {
-        detail: { active: rollback && layoutPanels.n <= 1 },
+        detail: { active: rollback && layoutPanels.n > 1 },
       }));
     } catch (_) {}
   }, [rollback, layoutPanels.n]);
@@ -14708,47 +14595,6 @@ const TalariaV8bLive = () => {
       }
     });
   }, [tagSels, orderPanelOpen, preTradeDefRevision]);
-
-  // Rollback overlay — callback ref attaches native mousemove the instant the node mounts
-  // (avoids useEffect timing gap when rollback first becomes true)
-  const rollbackOverlayCallbackRef = (node) => {
-    rollbackOverlayRef.current = node;
-    if (!node) return;
-    // Cache rect — recomputed only on scroll/resize, never inside the hot path
-    let rectLeft = 0, rectWidth = 0;
-    const refreshRect = () => { const r = node.getBoundingClientRect(); rectLeft = r.left; rectWidth = r.width; };
-    refreshRect();
-    const onMove = (e) => {
-      if (!rollbackLineRef.current) return;
-      const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-      const last = samples[samples.length - 1];
-      let x = Math.min((rectWidth / Z) - 1, Math.max(0, (last.clientX - rectLeft) / Z));
-
-      const chart = typeof window.getActiveChart === "function"
-        ? window.getActiveChart()
-        : window.chart;
-      const rs = chart?.replaySystem;
-      if (chart && rs && typeof rs.resolveSnappedCutLineAtX === "function") {
-        const snapped = rs.resolveSnappedCutLineAtX(chart, x);
-        if (!snapped) {
-          rollbackLineRef.current.style.opacity = "0";
-          return;
-        }
-        x = snapped.x;
-      }
-
-      rollbackLineRef.current.style.transform = `translateX(${x}px)`;
-      rollbackLineRef.current.style.opacity = "1";
-    };
-    node.addEventListener('pointermove', onMove, { passive: true });
-    window.addEventListener('resize', refreshRect, { passive: true });
-    window.addEventListener('scroll', refreshRect, { passive: true });
-    node._rbCleanup = () => {
-      node.removeEventListener('pointermove', onMove);
-      window.removeEventListener('resize', refreshRect);
-      window.removeEventListener('scroll', refreshRect);
-    };
-  };
 
   const catColors = {trend:c.acL, momentum:"#E8820A", volatility:"#C9A84C", volume:c.gn, sessions:"#FF5068", others:c.ts};
   const tplWatchKeys = new Set(["bullBody","bullBorder","bullWick","bearBody","bearBorder","bearWick","background","gridColor","unifiedBarColorVal","crosshairColor","priceLineColor","textColor"]);
@@ -31145,7 +30991,7 @@ const TalariaV8bLive = () => {
                 overflow: "hidden",
                 isolation: "isolate",
                 userSelect: "none",
-                cursor: rollback ? "none" : "default",
+                cursor: "default",
               }}>
               {/* Legacy probes: panel-manager + replay-system expect these IDs; V9 UI lives in React. */}
               <button type="button" id="layout-selector-btn" data-open-mode="settings-panel" tabIndex={-1} aria-hidden="true" style={{ display: "none" }} />
@@ -31290,8 +31136,6 @@ const TalariaV8bLive = () => {
 
               {/* Overlays — stay on top of both #chartWrapper and #panels-container */}
               {screenshotFlash && <div onAnimationEnd={()=>setScreenshotFlash(false)} style={{position:"absolute",inset:0,background:"white",animation:"tlrFlash 0.35s ease-out forwards",zIndex:9998,pointerEvents:"none"}}/>}
-              {rollback && layoutPanels.n <= 1 && <div ref={rollbackLineRef} style={{position:"absolute",top:0,bottom:0,left:0,width:1,opacity:0,willChange:"transform",background:c.acL,boxShadow:`0 0 6px ${c.acL}, 0 0 16px ${c.acG}`,zIndex:22,pointerEvents:"none"}}/>}
-              {rollback && layoutPanels.n <= 1 && <div ref={(node)=>{ if(!node&&rollbackOverlayRef.current?._rbCleanup){rollbackOverlayRef.current._rbCleanup();}rollbackOverlayCallbackRef(node); }} style={{position:"absolute",inset:0,zIndex:21,cursor:"none"}}/>}
 
               {/*
                 `#replayFollow` MUST live AFTER rollback/screenshot layers. Inside `#chartWrapper` it sat under
