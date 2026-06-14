@@ -11834,29 +11834,21 @@ class OrderManager {
             offsetX += badge.size + gap;
         }
 
-        // Add +/- arrows for multiple TP lines (after segments); X when at least one multi-TP row exists
+        // Combined ↑/↓ stepper for multiple TP lines (after segments); X when at least one multi-TP row exists
         if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length > 1) {
-            const arrowGap = 2;
-            const dec = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'minus', {
+            const stepperGap = 2;
+            const stepper = this._appendTpPctStepperToGroup(lineData.labelGroup, {
                 className: 'tp-percentage-control',
                 x: offsetX,
-                y: (height - 18) / 2,
-                onClick: (event) => {
-                    event.stopPropagation();
+                y: (height - this._tpPctStepperSize()) / 2,
+                onDecrease: (event) => {
                     this.adjustTPPercentage(lineData.targetIndex, -5);
                 },
-            });
-            offsetX += dec.size + arrowGap;
-            const inc = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
-                className: 'tp-percentage-control',
-                x: offsetX,
-                y: (height - 18) / 2,
-                onClick: (event) => {
-                    event.stopPropagation();
+                onIncrease: (event) => {
                     this.adjustTPPercentage(lineData.targetIndex, +5);
                 },
             });
-            offsetX += inc.size + arrowGap;
+            offsetX += stepper.size + stepperGap;
         }
 
         if (lineData.targetIndex !== undefined && this.tpTargets && this.tpTargets.length >= 1) {
@@ -30872,8 +30864,7 @@ class OrderManager {
             this.pendingTargetLines.forEach((entry) => {
                 if (entry.chart !== ch) return;
                 (entry.targets || []).forEach((target) => {
-                    target._pctDecBtn = null;
-                    target._pctIncBtn = null;
+                    target._pctStepperBtn = null;
                     target._deleteBtn = null;
                     target._splitBtn = null;
                     target._tpPlusBadge = null;
@@ -30952,7 +30943,7 @@ class OrderManager {
                 const arrowSize = 18;
                 const arrowGap = 2;
                 const showPctArrows = isMultiTP && entry.pendingOrder.tpTargets && entry.pendingOrder.tpTargets.length > 1;
-                target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) * 2 : 0;
+                target.pctArrowsWidth = showPctArrows ? (arrowSize + arrowGap) : 0;
                 const xBtnW = needsCloseBtn ? (closeBtnR * 2 + closeBtnGap) : 0;
                 const splitW = canPendingTpSplit ? (splitBtnR * 2 + closeBtnGap) : 0;
                 const badgesW = (target.pctArrowsWidth || 0) + xBtnW + splitW;
@@ -30967,49 +30958,29 @@ class OrderManager {
                 if (showPctArrows) {
                     const poId = entry.pendingOrder.id;
                     const tIdx = target.tpTargetIndex;
-                    if (!target._pctDecBtn || !target._pctDecBtn.node()?.parentNode) {
-                        if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
-                        if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
-                        target._pctDecBtn = this._createOrderLevelBadgeOnChart(
+                    if (!target._pctStepperBtn || !target._pctStepperBtn.node()?.parentNode) {
+                        if (target._pctStepperBtn) { try { target._pctStepperBtn.remove(); } catch (_) {} }
+                        target._pctStepperBtn = this._createTpPctStepperOnChart(
                             ch.svg,
-                            `pending-tp-pct-control pending-tp-pct-dec pending-tp-${poId}`,
-                            'minus',
+                            `pending-tp-pct-control pending-tp-pct-stepper pending-tp-${poId}`,
                             {
                                 stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
+                                onDecrease: (e) => {
                                     this.adjustPendingTPPercentage(poId, tIdx, -5);
                                 },
-                            }
-                        );
-                        target._pctIncBtn = this._createOrderLevelBadgeOnChart(
-                            ch.svg,
-                            `pending-tp-pct-control pending-tp-pct-inc pending-tp-${poId}`,
-                            'plus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
+                                onIncrease: (e) => {
                                     this.adjustPendingTPPercentage(poId, tIdx, +5);
                                 },
                             }
                         );
                     }
-                    target._pctDecBtn.attr('transform', `translate(${xAfterLabel + closeBtnR}, ${y})`);
+                    target._pctStepperBtn.attr('transform', `translate(${xAfterLabel + closeBtnR}, ${y})`);
                     try {
-                        if (typeof target._pctDecBtn.raise === 'function') target._pctDecBtn.raise();
-                    } catch (_) {}
-                    xAfterLabel += arrowSize + arrowGap;
-                    target._pctIncBtn.attr('transform', `translate(${xAfterLabel + closeBtnR}, ${y})`);
-                    try {
-                        if (typeof target._pctIncBtn.raise === 'function') target._pctIncBtn.raise();
+                        if (typeof target._pctStepperBtn.raise === 'function') target._pctStepperBtn.raise();
                     } catch (_) {}
                     xAfterLabel += arrowSize + arrowGap;
                 } else {
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} target._pctDecBtn = null; }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} target._pctIncBtn = null; }
+                    if (target._pctStepperBtn) { try { target._pctStepperBtn.remove(); } catch (_) {} target._pctStepperBtn = null; }
                 }
 
                 // X close/delete button for SL, single TP, and multi-TP targets
@@ -31278,11 +31249,8 @@ class OrderManager {
                 const pctExtra = target.pctArrowsWidth || 0;
                 const xBase = translateX + dims.width + cBtnGap;
                 const badgeR = arrowSize / 2;
-                if (target._pctDecBtn) {
-                    target._pctDecBtn.attr('transform', `translate(${xBase + badgeR}, ${clampedY})`);
-                }
-                if (target._pctIncBtn) {
-                    target._pctIncBtn.attr('transform', `translate(${xBase + arrowSize + arrowGap + badgeR}, ${clampedY})`);
+                if (target._pctStepperBtn) {
+                    target._pctStepperBtn.attr('transform', `translate(${xBase + badgeR}, ${clampedY})`);
                 }
                 if (target._deleteBtn) {
                     const closeBtnX = translateX + dims.width + pctExtra + cBtnGap + cBtnR;
@@ -31475,8 +31443,7 @@ class OrderManager {
                     target.hitLine?.remove();
                     target.labelGroup?.remove();
                     target.priceHighlight?.remove();
-                    if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
-                    if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
+                    if (target._pctStepperBtn) { try { target._pctStepperBtn.remove(); } catch (_) {} }
                     if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                     if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
                     if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
@@ -31500,8 +31467,7 @@ class OrderManager {
                 target.hitLine?.remove();
                 target.labelGroup?.remove();
                 target.priceHighlight?.remove();
-                if (target._pctDecBtn) { try { target._pctDecBtn.remove(); } catch (_) {} }
-                if (target._pctIncBtn) { try { target._pctIncBtn.remove(); } catch (_) {} }
+                if (target._pctStepperBtn) { try { target._pctStepperBtn.remove(); } catch (_) {} }
                 if (target._deleteBtn) { try { target._deleteBtn.remove(); } catch (_) {} }
                 if (target._splitBtn) { try { target._splitBtn.remove(); } catch (_) {} }
                 if (target._tpPlusBadge) { try { target._tpPlusBadge.remove(); } catch (_) {} }
@@ -33375,7 +33341,7 @@ class OrderManager {
         if (!row) return;
         const keys = [
             'line', 'labelBox', 'labelAccent', 'labelText', 'pnlBox', 'pnlText', 'closeBtn', 'splitBtn',
-            'priceBox', 'priceText', 'deleteBtn', 'pctDecBtn', 'pctIncBtn', 'tpPlusBadge', 'yAxisHighlight',
+            'priceBox', 'priceText', 'deleteBtn', 'pctStepperBtn', 'tpPlusBadge', 'yAxisHighlight',
         ];
         keys.forEach((k) => {
             if (row[k]) {
@@ -34222,38 +34188,24 @@ class OrderManager {
                         .style('pointer-events', 'none')
                         .text(this.formatPrice(target.price));
 
-                    // − / + share (open position multi-TP): same toast circle badges as preview/pending
-                    let tpPctDecBtn = null;
-                    let tpPctIncBtn = null;
+                    // ↑/↓ share stepper (open position multi-TP): single square on the toast row
+                    let tpPctStepperBtn = null;
                     const tpPctArrowSize = 18;
                     const tpPctArrowGap = 2;
-                    const tpPctArrowsW = nonHitTargets.length > 1 ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0;
+                    const tpPctArrowsW = nonHitTargets.length > 1 ? (tpPctArrowSize + tpPctArrowGap) : 0;
                     if (nonHitTargets.length > 1) {
                         const oid = order.id;
                         const tIdx = index;
                         const self = this;
-                        tpPctDecBtn = this._createOrderLevelBadgeOnChart(
+                        tpPctStepperBtn = this._createTpPctStepperOnChart(
                             chart.svg,
-                            `open-tp-pct-control open-tp-pct-dec tp-${oid} tp-target-${tpKey}`,
-                            'minus',
+                            `open-tp-pct-control open-tp-pct-stepper tp-${oid} tp-target-${tpKey}`,
                             {
                                 stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
+                                onDecrease: (e) => {
                                     self.adjustOpenPositionTPPercentage(oid, tIdx, -5);
                                 },
-                            }
-                        );
-                        tpPctIncBtn = this._createOrderLevelBadgeOnChart(
-                            chart.svg,
-                            `open-tp-pct-control open-tp-pct-inc tp-${oid} tp-target-${tpKey}`,
-                            'plus',
-                            {
-                                stopMousedown: true,
-                                onClick: (e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
+                                onIncrease: (e) => {
                                     self.adjustOpenPositionTPPercentage(oid, tIdx, +5);
                                 },
                             }
@@ -34306,8 +34258,7 @@ class OrderManager {
                         pnlText: tpPnlText,
                         priceBox: tpPriceBox,
                         priceText: tpPriceText,
-                        pctDecBtn: tpPctDecBtn,
-                        pctIncBtn: tpPctIncBtn,
+                        pctStepperBtn: tpPctStepperBtn,
                         pctArrowsWidth: tpPctArrowsW,
                         deleteBtn: tpDeleteBtn,
                         splitBtn: tpMultiSplitBtn,
@@ -34605,8 +34556,7 @@ class OrderManager {
                     if (tpLine.priceBox) tpLine.priceBox.remove();
                     if (tpLine.priceText) tpLine.priceText.remove();
                     if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
-                    if (tpLine.pctDecBtn) tpLine.pctDecBtn.remove();
-                    if (tpLine.pctIncBtn) tpLine.pctIncBtn.remove();
+                    if (tpLine.pctStepperBtn) tpLine.pctStepperBtn.remove();
                     if (tpLine.tpPlusBadge) tpLine.tpPlusBadge.remove();
                     if (tpLine.yAxisHighlight) tpLine.yAxisHighlight.remove();
                 });
@@ -35006,8 +34956,7 @@ class OrderManager {
                 if (tpLine.closeBtn) tpLine.closeBtn.remove();
                 if (tpLine.splitBtn) tpLine.splitBtn.remove();
                 if (tpLine.deleteBtn) tpLine.deleteBtn.remove();
-                if (tpLine.pctDecBtn) tpLine.pctDecBtn.remove();
-                if (tpLine.pctIncBtn) tpLine.pctIncBtn.remove();
+                if (tpLine.pctStepperBtn) tpLine.pctStepperBtn.remove();
                 if (tpLine.priceBox) tpLine.priceBox.remove();
                 if (tpLine.priceText) tpLine.priceText.remove();
             });
@@ -35394,12 +35343,12 @@ class OrderManager {
             const updatedTPLineKeys = new Set();
             const tpRankMapsByOrder = new Map();
             
-            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn, pctArrowsWidth }) => {
+            tpForChart.forEach(({ orderId, targetId, line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctStepperBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
                 if (!position) {
                     this._disposeSlTpRowElements({
                         line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
-                        priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn,
+                        priceBox, priceText, deleteBtn, pctStepperBtn,
                     });
                     this.tpLines = (this.tpLines || []).filter(
                         (tp) => !(tp.orderId === orderId && (tp.chart || this.chart) === ch
@@ -35426,7 +35375,7 @@ class OrderManager {
                         if (target?.hit) {
                             this._disposeSlTpRowElements({
                                 line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
-                                priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn,
+                                priceBox, priceText, deleteBtn, pctStepperBtn,
                             });
                             this.tpLines = (this.tpLines || []).filter(
                                 (tp) => !(tp.orderId === orderId && (tp.chart || this.chart) === ch
@@ -35458,8 +35407,7 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                     if (splitBtn) splitBtn.style('display', 'none');
                     if (deleteBtn) deleteBtn.style('display', 'none');
-                    if (pctDecBtn) pctDecBtn.style('display', 'none');
-                    if (pctIncBtn) pctIncBtn.style('display', 'none');
+                    if (pctStepperBtn) pctStepperBtn.style('display', 'none');
                 } else {
                     updatedTPLineKeys.add(lineDedupeKey);
                     const numPositions = groupData ? groupData.positions.length : 1;
@@ -35530,8 +35478,7 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', null);
                     if (splitBtn) splitBtn.style('display', null);
                     if (deleteBtn) deleteBtn.style('display', null);
-                    if (pctDecBtn) pctDecBtn.style('display', null);
-                    if (pctIncBtn) pctIncBtn.style('display', null);
+                    if (pctStepperBtn) pctStepperBtn.style('display', null);
                     if (priceBox) priceBox.style('display', 'none');
                     if (priceText) priceText.style('display', 'none');
                 }
@@ -35552,7 +35499,7 @@ class OrderManager {
                     const tpPctArrowGap = 2;
                     const pctW = (pctArrowsWidth != null && pctArrowsWidth > 0)
                         ? pctArrowsWidth
-                        : ((pctDecBtn && pctIncBtn) ? (tpPctArrowSize + tpPctArrowGap) * 2 : 0);
+                        : (pctStepperBtn ? (tpPctArrowSize + tpPctArrowGap) : 0);
 
                     const labelTW = labelText.node()?.getBBox()?.width || 0;
                     const labelBW = labelTW + pad * 2;
@@ -35591,13 +35538,11 @@ class OrderManager {
                     );
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
 
-                    // − / + TP share (open multi-TP) — center-anchored circle badges (r=9)
-                    if (pctDecBtn && pctIncBtn && pctW > 0) {
+                    // ↑/↓ TP share stepper (open multi-TP) — center-anchored square
+                    if (pctStepperBtn && pctW > 0) {
                         const badgeR = tpPctArrowSize / 2;
                         const badgeCenterY = boxY + boxH / 2;
-                        pctDecBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
-                        cx += tpPctArrowSize + tpPctArrowGap;
-                        pctIncBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
+                        pctStepperBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
                         cx += tpPctArrowSize + tpPctArrowGap;
                     }
 
@@ -39811,6 +39756,119 @@ class OrderManager {
 
     /** × cancel on entry / SL rows — centered on the dashed line, inline after badges. */
 
+    _tpPctStepperSize() {
+        return 18;
+    }
+
+    _populateTpPctStepper(g, opts = {}) {
+        const o = opts || {};
+        const size = this._tpPctStepperSize();
+        const half = size / 2;
+        const th = o.th || this._tradeMarkerToastTheme();
+        const accent = th.light ? '#059669' : '#22c55e';
+        const center = !!o.centerAnchor;
+        const bx = center ? -half : 0;
+        const by = center ? -half : 0;
+        const cx = center ? 0 : half;
+        const arrowSz = 4.2;
+
+        const bg = g.append('rect')
+            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg order-overlay-sublayer')
+            .attr('x', bx).attr('y', by)
+            .attr('width', size).attr('height', size)
+            .attr('rx', 2)
+            .attr('stroke-width', 1);
+
+        g.append('line')
+            .attr('class', 'tp-pct-stepper-divider order-overlay-sublayer')
+            .attr('x1', bx + 2).attr('x2', bx + size - 2)
+            .attr('y1', center ? 0 : half)
+            .attr('y2', center ? 0 : half)
+            .attr('stroke', th.border)
+            .attr('stroke-width', 1)
+            .style('pointer-events', 'none');
+
+        const upPath = g.append('path')
+            .attr('class', 'order-level-badge-glyph tp-pct-stepper-up order-overlay-sublayer')
+            .attr('d', this._arrowUpPath(cx, center ? -4 : half - 4.5, arrowSz))
+            .attr('fill', th.muted)
+            .style('pointer-events', 'none');
+
+        const downPath = g.append('path')
+            .attr('class', 'order-level-badge-glyph tp-pct-stepper-down order-overlay-sublayer')
+            .attr('d', this._arrowDownPath(cx, center ? 4 : half + 4.5, arrowSz))
+            .attr('fill', th.muted)
+            .style('pointer-events', 'none');
+
+        const reset = () => {
+            bg.attr('fill', th.bg).attr('stroke', th.border);
+            upPath.attr('fill', th.muted);
+            downPath.attr('fill', th.muted);
+        };
+        const hover = () => {
+            bg.attr('fill', accent).attr('stroke', accent);
+            upPath.attr('fill', '#ffffff');
+            downPath.attr('fill', '#ffffff');
+        };
+        reset();
+        g.on('mouseenter', hover).on('mouseleave', reset);
+
+        const wireHit = (node, fn) => {
+            if (!fn) return;
+            node.attr('fill', 'transparent')
+                .style('pointer-events', 'all')
+                .style('cursor', 'pointer')
+                .on('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    fn(e);
+                });
+            if (o.stopMousedown) {
+                node.on('mousedown', (e) => e.stopPropagation());
+            }
+        };
+
+        const hitUp = g.append('rect')
+            .attr('class', 'tp-pct-stepper-hit tp-pct-stepper-hit-up')
+            .attr('x', bx).attr('y', by)
+            .attr('width', size).attr('height', half);
+        wireHit(hitUp, o.onIncrease);
+
+        const hitDown = g.append('rect')
+            .attr('class', 'tp-pct-stepper-hit tp-pct-stepper-hit-down')
+            .attr('x', bx).attr('y', by + half)
+            .attr('width', size).attr('height', half);
+        wireHit(hitDown, o.onDecrease);
+
+        return { bg, upPath, downPath, size };
+    }
+
+    /** Combined ↑/↓ square for multi-TP share stepper on chart SVG (center-anchored). */
+    _createTpPctStepperOnChart(svg, cssClass, opts = {}) {
+        const g = svg.append('g')
+            .attr('class', `order-level-badge tp-pct-stepper tp-percentage-control ${cssClass || ''}`.trim())
+            .attr('pointer-events', 'all')
+            .style('cursor', 'pointer');
+        this._populateTpPctStepper(g, { centerAnchor: true, ...opts });
+        return g;
+    }
+
+    /** Combined ↑/↓ square inside a preview label group (top-left anchored). */
+    _appendTpPctStepperToGroup(parentGroup, opts = {}) {
+        const o = opts || {};
+        const size = this._tpPctStepperSize();
+        const g = parentGroup.append('g')
+            .attr('class', `order-level-badge tp-pct-stepper tp-percentage-control ${o.className || ''}`.trim())
+            .attr('transform', `translate(${o.x ?? 0}, ${o.y ?? 0})`)
+            .style('cursor', 'pointer');
+        this._populateTpPctStepper(g, {
+            centerAnchor: false,
+            onIncrease: o.onIncrease,
+            onDecrease: o.onDecrease,
+            stopMousedown: o.stopMousedown,
+        });
+        return { group: g, size };
+    }
 
     /**
      * Inline circle badge inside a preview label group.
