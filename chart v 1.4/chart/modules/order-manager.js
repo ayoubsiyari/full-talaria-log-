@@ -2141,6 +2141,12 @@ class OrderManager {
                 gross += this.estimateOpenLegPnLSlice(m, sp, mq);
                 comm += this._getRoundTripCommissionUsd(m);
             }
+            for (const p of this._getSplitGroupPendingLegsForOpenBasket(order)) {
+                const pq = this._getPendingPlacedQuantity(p);
+                if (pq <= 0) continue;
+                gross += this.estimateOpenLegPnLSlice(p, sp, pq);
+                comm += this._getRoundTripCommissionUsd(p);
+            }
             return gross - comm;
         }
         const q = Number(order.quantity) || 0;
@@ -2148,11 +2154,17 @@ class OrderManager {
         return g - this._getRoundTripCommissionUsd(order);
     }
 
-    /** Total open lots for split group (shared SL label), else this order’s qty. */
+    /** Total lots on shared SL label — filled + still-pending split legs (matches basket / panel). */
     _slChartLabelQtyForOpenOrder(order) {
         if (!order) return 0;
         if (order.isSplitEntry && order.splitGroupId) {
-            return this._getSplitGroupOpenPositions(order).reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+            const oq = this._getSplitGroupOpenPositions(order)
+                .reduce((s, m) => s + (Number(m.quantity) || 0), 0);
+            const pq = this._getSplitGroupPendingLegsForOpenBasket(order)
+                .reduce((s, p) => s + this._getPendingPlacedQuantity(p), 0);
+            const total = oq + pq;
+            if (total > 0) return total;
+            return oq;
         }
         return Number(order.quantity) || 0;
     }
@@ -11993,10 +12005,10 @@ class OrderManager {
                 const level = this.multiEntryLevels[0];
                 const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
                 const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
-                const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${lotSize}`;
+                const tagLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper}`;
                 return [
                     {
-                        text: fullLabel,
+                        text: tagLabel,
                         fill: color,
                         stroke: color,
                         textColor: '#ffffff',
@@ -12015,10 +12027,11 @@ class OrderManager {
                 ];
             }
 
-            const fullLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper} ${this.formatQuantity(quantity)}`;
+            const tagLabel = `${orderTypeRaw.toUpperCase()} ${sideUpper}`;
+            const qtyDetail = this._formatQty(parseFloat(document.getElementById('orderQuantity')?.value || 0) || 0);
             return [
                 {
-                    text: fullLabel,
+                    text: tagLabel,
                     fill: color,
                     stroke: color,
                     textColor: '#ffffff',
@@ -12026,12 +12039,13 @@ class OrderManager {
                     minWidth: 104
                 },
                 {
-                    text: arrow,
+                    text: qtyDetail,
                     fill: '#0f172a',
                     stroke: color,
-                    textColor: color,
+                    textColor: '#ffffff',
                     fontWeight: '700',
-                    minWidth: 28
+                    minWidth: 44,
+                    role: 'price'
                 }
             ];
         }
@@ -12050,7 +12064,7 @@ class OrderManager {
                     minWidth: 64
                 },
                 {
-                    text: this.formatQuantity(totalLots),
+                    text: this._formatQty(totalLots),
                     fill: '#0f172a',
                     stroke: accent,
                     textColor: '#fde68a',
@@ -12072,11 +12086,11 @@ class OrderManager {
             const slPrice = parseFloat(document.getElementById('slPrice')?.value || 0);
             const lotSize = level ? this._calcLevelLotSize(level, slPrice, this.pipSize, this.pipValuePerLot) : '0.00';
 
-            const fullLabel = `${splitOrderType} ${sideUpper} ${lotSize}`;
+            const tagLabel = `${splitOrderType} ${sideUpper}`;
             
             return [
                 {
-                    text: fullLabel,
+                    text: tagLabel,
                     fill: color,
                     stroke: color,
                     textColor: '#ffffff',
@@ -23686,6 +23700,33 @@ class OrderManager {
         return Number.isFinite(q) && q > 0 ? q : 0;
     }
 
+    /**
+     * Chart entry-row label — same type / side / qty readout as the order panel.
+     * @returns {{ tag: string, detail: string, text: string }}
+     */
+    _formatChartEntryLabel(order, opts = {}) {
+        if (!order) return { tag: '', detail: '', text: '' };
+        const isPending = opts.isPending ?? (String(order.status || '').toUpperCase() === 'PENDING');
+        const direction = String(order.direction || order.type || 'BUY').toUpperCase();
+        const orderType = isPending
+            ? String(order.orderType || 'limit').toUpperCase()
+            : String(this._resolvePositionOrderType(order)).toUpperCase();
+        const qty = isPending
+            ? this._getPendingPlacedQuantity(order)
+            : (Number(order.quantity) || 0);
+        const detail = this._formatQty(qty);
+        const tag = `${orderType} ${direction}`;
+        return { tag, detail, text: `${tag} ${detail}`, orderType, direction, qty };
+    }
+
+    /** Keep legacy entry label text in sync with order model (panel uses the same fields). */
+    _syncLiveEntryLabelElements(olEntry, order, isPending) {
+        if (!olEntry?.labelText || !order) return;
+        const lbl = this._formatChartEntryLabel(order, { isPending });
+        olEntry.labelText.text(lbl.text);
+        if (olEntry.arrow) olEntry.arrow.style('display', 'none');
+    }
+
     /** Throttled so pending card Risk $ updates live while dragging entry/SL without spamming DOM. */
     _schedulePendingOrdersPanelRefresh() {
         if (this._pendingPositionsPanelRaf != null) return;
@@ -29567,7 +29608,7 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
-            .text(`${order.type.toLowerCase()} ${order.quantity.toFixed(2)}`);
+            .text(this._formatChartEntryLabel(order, { isPending: false }).text);
 
         const arrow = chart.svg.append('text')
             .attr('class', `order-arrow order-${order.id}`)
@@ -29576,6 +29617,7 @@ class OrderManager {
             .attr('font-weight', '700')
             .attr('pointer-events', 'all')
             .style('cursor', 'ns-resize')
+            .style('display', 'none')
             .text(order.type === 'BUY' ? '↑' : '↓');
 
         const priceBox = chart.svg.append('rect')
@@ -29931,7 +29973,7 @@ class OrderManager {
                 .attr('font-size', '11px')
                 .attr('font-weight', '600')
                 .attr('x', 0).attr('y', y + 4)
-                .text(this.formatQuantity(totalLots));
+                .text(this._formatQty(totalLots));
 
             const pnlBox = chart.svg.append('rect')
                 .attr('class', `split-avg-label split-avg-${splitGroupId}`)
@@ -30616,8 +30658,8 @@ class OrderManager {
             const avgBW = g.avgText.node().getBBox().width + pad * 2;
 
             const lotsLabel = (filledLots < allLots && filledLots > 0)
-                ? `${this.formatQuantity(filledLots)}/${this.formatQuantity(allLots)}`
-                : this.formatQuantity(allLots);
+                ? `${this._formatQty(filledLots)}/${this._formatQty(allLots)}`
+                : this._formatQty(allLots);
             g.lotsText.text(lotsLabel);
             const lotsBW = g.lotsText.node().getBBox().width + pad * 2;
 
@@ -30768,6 +30810,7 @@ class OrderManager {
                     .attr('height', boxH);
                 ml.labelText?.attr('x', labelBoxX + pad).attr('y', oy + 4);
                 ml.arrow?.attr('x', labelBoxX + pad + (ml.labelText?.node()?.getBBox()?.width || 0) + 4).attr('y', oy + 4);
+                this._syncLiveEntryLabelElements(ml, od, isPending);
 
                 const splitHitEnd = this._orderLineHitEndX(ch, labelBoxX);
                 ml.line?.attr('x1', 0).attr('x2', ch.w).attr('y1', oy).attr('y2', oy);
@@ -30959,7 +31002,7 @@ class OrderManager {
             .attr('font-size', '11px')
             .attr('font-weight', '700')
             .style('cursor', 'pointer')
-            .text(`${orderTypeLabel} ${directionLabel} ${this.formatQuantity(pendingOrder.quantity || 0)}`);
+            .text(this._formatChartEntryLabel(pendingOrder, { isPending: true }).text);
 
         this._styleLegacyOrderLevelToastChrome(
             { labelBox, labelText, labelAccent },
@@ -31100,7 +31143,7 @@ class OrderManager {
                     pendingOrder.orderType = newType;
                 }
 
-                const typeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${dragStartQty.toFixed(2)}`;
+                const typeLabel = self._formatChartEntryLabel(pendingOrder, { isPending: true }).text;
                 labelText.text(typeLabel);
                 self._drawExecutedOrderConnectors(chart);
             })
@@ -31133,8 +31176,7 @@ class OrderManager {
                 }
 
                 pendingOrder.quantity = self._getPendingPlacedQuantity(pendingOrder);
-                const finalTypeLabel = `${pendingOrder.orderType} ${pendingOrder.direction.toLowerCase()} ${self.formatQuantity(pendingOrder.quantity || 0)}`;
-                labelText.text(finalTypeLabel);
+                labelText.text(self._formatChartEntryLabel(pendingOrder, { isPending: true }).text);
 
                 // Redraw targets to update P&L with new lot size
                 self.removePendingSLTPLines(pendingOrder.id);
@@ -36167,7 +36209,7 @@ class OrderManager {
                     if (closeBtn) closeBtn.style('display', 'none');
                 } else {
                     updatedSLPrices.add(priceKey);
-                    const labelPrefix = `SL  ${labelQty.toFixed(2)}`;
+                    const labelPrefix = `SL  ${this._formatQty(labelQty)}`;
                     if (labelText) labelText.text(labelPrefix);
                     if (pnlText) pnlText.text(`${totalSlPnL >= 0 ? '+' : ''}$${totalSlPnL.toFixed(2)}`);
                     if (labelBox) labelBox.style('display', null);
@@ -36782,6 +36824,8 @@ class OrderManager {
                 if (isPending && pnlText) pnlText.style('display', 'none');
 
                 if (!skipPendingEntryGeom && labelText && closeBtn && labelBox) {
+                    this._syncLiveEntryLabelElements(olEntry, orderData, isPending);
+
                     const boxH = 22;
                     const boxY = y - boxH / 2;
                     const gap = 4;
@@ -37484,7 +37528,7 @@ class OrderManager {
                     const direction = (order.direction || '—').toUpperCase();
                     const directionClass = direction === 'SELL' ? 'order-badge--direction-sell' : 'order-badge--direction-buy';
                     const entryPrice = typeof order.entryPrice === 'number' ? order.entryPrice.toFixed(5) : '—';
-                    const quantity = typeof order.quantity === 'number' ? order.quantity.toFixed(2) : '—';
+                    const quantity = this._formatQty(this._getPendingPlacedQuantity(order));
                     const placedTime = this.format24Hour(order.placedTime);
                     const sl = order.stopLoss ? `$${order.stopLoss.toFixed(5)}` : 'None';
                     const tp = order.takeProfit ? `$${order.takeProfit.toFixed(5)}` : 'None';
@@ -37547,7 +37591,7 @@ class OrderManager {
                     const direction = (order.direction || '—').toUpperCase();
                     const sideClass = direction === 'SELL' ? 'replay-badge--sell' : 'replay-badge--buy';
                     const entryPrice = typeof order.entryPrice === 'number' ? order.entryPrice.toFixed(5) : '—';
-                    const quantity = typeof order.quantity === 'number' ? order.quantity.toFixed(2) : '—';
+                    const quantity = this._formatQty(this._getPendingPlacedQuantity(order));
                     const placedTime = this.formatTimeOnly(order.placedTime);
                     const sl = order.stopLoss ? order.stopLoss.toFixed(5) : '—';
                     const tp = order.takeProfit ? order.takeProfit.toFixed(5) : '—';

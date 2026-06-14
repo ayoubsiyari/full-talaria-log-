@@ -1250,6 +1250,52 @@ class ReplaySystem {
     }
     
     /**
+     * Rollback / pick hover label — same shell as __TalariaToastStack (pinned above time axis).
+     */
+    _createCutLineLabelElement() {
+        const el = document.createElement('div');
+        el.id = 'replayCutLineLabel';
+        el.className = 'replay-cut-line-label';
+        el.setAttribute('role', 'status');
+        el.style.opacity = '0';
+        el.style.visibility = 'hidden';
+        el.style.pointerEvents = 'none';
+        if (typeof window !== 'undefined' && window.__TalariaToastStack
+            && typeof window.__TalariaToastStack.setPinned === 'function') {
+            window.__TalariaToastStack.setPinned('replay-cut-line-label', el);
+        } else if (typeof document !== 'undefined') {
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+
+    _updateCutLineLabel(labelEl, text, visible) {
+        if (!labelEl) return;
+        if (!visible || !text) {
+            labelEl.style.opacity = '0';
+            labelEl.style.visibility = 'hidden';
+            return;
+        }
+        labelEl.textContent = text;
+        labelEl.style.opacity = '1';
+        labelEl.style.visibility = 'visible';
+        if (typeof window !== 'undefined' && window.__TalariaToastStack
+            && typeof window.__TalariaToastStack.relayout === 'function') {
+            window.__TalariaToastStack.relayout();
+        }
+    }
+
+    _disposeCutLineLabel(labelEl) {
+        if (!labelEl) return;
+        if (typeof window !== 'undefined' && window.__TalariaToastStack
+            && typeof window.__TalariaToastStack.clearPinned === 'function') {
+            window.__TalariaToastStack.clearPinned('replay-cut-line-label');
+        } else {
+            try { labelEl.remove(); } catch (_) { /* ignore */ }
+        }
+    }
+
+    /**
      * Create the vertical cut line
      */
     createCutLine() {
@@ -1273,27 +1319,8 @@ class ReplaySystem {
                 .style('pointer-events', 'none');
         }
         
-        // Label showing date/time at cut point
-        this.cutLineLabel = document.createElement('div');
-        this.cutLineLabel.id = 'replayCutLineLabel';
-        this.cutLineLabel.style.cssText = `
-            position: absolute;
-            top: 10px;
-            background: #2196f3;
-            color: white;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 45;
-            opacity: 0;
-            transition: opacity 0.1s;
-        `;
-        if (chartWrapper) {
-            chartWrapper.appendChild(this.cutLineLabel);
-        }
+        // Label showing date/time at cut point (toast-style, bottom-centered)
+        this.cutLineLabel = this._createCutLineLabelElement();
         
         // Bind mouse handlers
         this.onPickModeMouseMove = this.handlePickModeMouseMove.bind(this);
@@ -1330,7 +1357,7 @@ class ReplaySystem {
                 this.hideAllGoBackVisualsMulti();
                 return;
             }
-            this.applyGoBackVisualsForTimestamp(snapped.timestamp);
+            this.applyGoBackVisualsForTimestamp(snapped.timestamp, { candleIndex: snapped.candleIndex });
             return;
         }
 
@@ -1343,7 +1370,7 @@ class ReplaySystem {
         const snapped = this.resolveSnappedCutLineAtX(this.chart, x);
         if (!snapped) {
             if (this.cutLine) this.cutLine.attr('opacity', 0);
-            if (this.cutLineLabel) this.cutLineLabel.style.opacity = '0';
+            this._updateCutLineLabel(this.cutLineLabel, null, false);
             if (this.pickModeOverlay) this.pickModeOverlay.style.width = '0';
             return;
         }
@@ -1362,7 +1389,8 @@ class ReplaySystem {
         // Update overlay based on mode
         if (this.pickModeOverlay) {
             if (this.isGoingBack) {
-                const rightWidth = this.chart.w - lineX;
+                const shadeFromX = this._goBackShadeStartX(this.chart, candleIndex, lineX);
+                const rightWidth = this.chart.w - shadeFromX;
                 this.pickModeOverlay.style.left = 'auto';
                 this.pickModeOverlay.style.right = '0';
                 this.pickModeOverlay.style.width = rightWidth + 'px';
@@ -1375,16 +1403,10 @@ class ReplaySystem {
         if (candleIndex >= 0 && this.chart.data[candleIndex]) {
             const candle = this.chart.data[candleIndex];
             const dateStr = this.formatDateTime(new Date(candle.t));
-            
-            if (this.cutLineLabel) {
-                if (this.isGoingBack) {
-                    this.cutLineLabel.textContent = `⏪ Go back to: ${dateStr}`;
-                } else {
-                    this.cutLineLabel.textContent = `▶ Start from: ${dateStr}`;
-                }
-                this.cutLineLabel.style.left = (lineX + 10) + 'px';
-                this.cutLineLabel.style.opacity = '1';
-            }
+            const msg = this.isGoingBack
+                ? `Go back to: ${dateStr}`
+                : `Start from: ${dateStr}`;
+            this._updateCutLineLabel(this.cutLineLabel, msg, true);
         }
     }
     
@@ -1570,25 +1592,38 @@ class ReplaySystem {
         this._goBackEntries.forEach((entry) => {
             if (entry.cutLine) entry.cutLine.attr('opacity', 0);
             if (entry.pickModeOverlay) entry.pickModeOverlay.style.width = '0';
-            if (entry.cutLineLabel) entry.cutLineLabel.style.opacity = '0';
+            this._updateCutLineLabel(entry.cutLineLabel, null, false);
         });
     }
 
-    applyGoBackVisualsForTimestamp(ts) {
+    _goBackShadeStartX(chart, candleIndex, centerX) {
+        if (!chart || !Number.isFinite(centerX)) return centerX;
+        if (!Number.isInteger(candleIndex) || candleIndex < 0) return centerX;
+        const spacing = typeof chart.getCandleSpacing === 'function'
+            ? chart.getCandleSpacing()
+            : (chart.candleWidth != null ? chart.candleWidth + 2 : 8);
+        const ml = (chart.margin && chart.margin.l) || 0;
+        return Math.max(ml, centerX - spacing / 2);
+    }
+
+    applyGoBackVisualsForTimestamp(ts, options = {}) {
         if (!this._goBackEntries) return;
+        const candleIndexOpt = options.candleIndex;
         this._goBackEntries.forEach((entry) => {
             const { chart, pickModeOverlay, cutLine, cutLineLabel } = entry;
             if (!chart.data || chart.data.length === 0) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                this._updateCutLineLabel(cutLineLabel, null, false);
                 return;
             }
-            const idx = this.findLastDataIndexAtOrBefore(chart, ts);
+            let idx = Number.isInteger(candleIndexOpt) && candleIndexOpt >= 0
+                ? candleIndexOpt
+                : this.findLastDataIndexAtOrBefore(chart, ts);
             if (idx < 0) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                this._updateCutLineLabel(cutLineLabel, null, false);
                 return;
             }
             let x;
@@ -1601,23 +1636,22 @@ class ReplaySystem {
             if (x < chart.margin.l || x > plotW - chart.margin.r) {
                 if (cutLine) cutLine.attr('opacity', 0);
                 if (pickModeOverlay) pickModeOverlay.style.width = '0';
-                if (cutLineLabel) cutLineLabel.style.opacity = '0';
+                this._updateCutLineLabel(cutLineLabel, null, false);
                 return;
             }
             if (cutLine) {
                 cutLine.attr('x1', x).attr('x2', x).attr('opacity', 1);
             }
             if (pickModeOverlay) {
-                const rightWidth = chart.w - x;
+                const shadeFromX = this._goBackShadeStartX(chart, idx, x);
+                const rightWidth = chart.w - shadeFromX;
                 pickModeOverlay.style.left = 'auto';
                 pickModeOverlay.style.right = '0';
                 pickModeOverlay.style.width = `${rightWidth}px`;
             }
             if (cutLineLabel) {
                 const dateStr = this.formatDateTime(new Date(ts));
-                cutLineLabel.textContent = `⏪ Go back to: ${dateStr}`;
-                cutLineLabel.style.left = `${x + 10}px`;
-                cutLineLabel.style.opacity = '1';
+                this._updateCutLineLabel(cutLineLabel, `Go back to: ${dateStr}`, true);
             }
         });
     }
@@ -1684,24 +1718,7 @@ class ReplaySystem {
 
             let cutLineLabel = null;
             if (i === 0) {
-                cutLineLabel = document.createElement('div');
-                cutLineLabel.id = 'replayCutLineLabel';
-                cutLineLabel.style.cssText = `
-                    position: absolute;
-                    top: 10px;
-                    background: #2196f3;
-                    color: white;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    font-size: 12px;
-                    font-weight: 600;
-                    white-space: nowrap;
-                    pointer-events: none;
-                    z-index: 45;
-                    opacity: 0;
-                    transition: opacity 0.1s;
-                `;
-                wrapper.appendChild(cutLineLabel);
+                cutLineLabel = this._createCutLineLabelElement();
             }
 
             wrapper.style.cursor = 'crosshair';
@@ -2039,64 +2056,23 @@ class ReplaySystem {
             && sourceChart && Array.isArray(sourceChart.data)
             && sourceChart.data[candleIndex]) {
             const candle = sourceChart.data[candleIndex];
-            const tStart = candle.t;
-            const nextDisp = sourceChart.data[candleIndex + 1];
-            const tEndExclusive = (nextDisp && Number.isFinite(nextDisp.t)) ? nextDisp.t : Infinity;
+            const cutAtMs = Number.isFinite(candle.t) ? candle.t : ts;
+            orderCutoff = cutAtMs;
 
-            let playheadCap = Infinity;
-            if (Number.isFinite(this.replayTimestamp)) {
-                playheadCap = this.replayTimestamp;
-            } else if (typeof this.currentIndex === 'number' && this.fullRawData[this.currentIndex]) {
-                const capBar = this.fullRawData[this.currentIndex];
-                if (capBar && Number.isFinite(capBar.t)) playheadCap = capBar.t;
-            }
-
-            if (Array.isArray(this.fullRawData) && this.fullRawData.length > 0) {
-                let lastInBucket = -1;
-                for (let i = 0; i < this.fullRawData.length; i++) {
-                    const rt = this.fullRawData[i]?.t;
-                    if (!Number.isFinite(rt)) continue;
-                    if (rt >= tEndExclusive) break;
-                    if (rt >= tStart && rt <= playheadCap) {
-                        lastInBucket = i;
-                    }
-                }
-                if (lastInBucket >= 0) {
-                    newRawIndex = Math.max(lastInBucket, goBackFloor);
-                } else {
-                    const firstInBucket = this.fullRawData.findIndex((c) => {
-                        const rt = c?.t;
-                        return Number.isFinite(rt) && rt >= tStart && rt < tEndExclusive && rt <= playheadCap;
-                    });
-                    if (firstInBucket >= 0) {
-                        newRawIndex = Math.max(firstInBucket, goBackFloor);
-                    } else {
-                        let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
-                            ? this._findLastRawIndexAtOrBefore(this.fullRawData, Math.min(playheadCap, tStart))
-                            : -1;
-                        if (idx < 0) {
-                            idx = this.fullRawData.findIndex(c => c && Number.isFinite(c.t) && c.t >= tStart);
-                        }
-                        if (idx < 0) idx = goBackFloor;
-                        newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
-                    }
-                }
-            }
-
-            if (Number.isFinite(tEndExclusive)) {
-                orderCutoff = tEndExclusive;
-            } else {
-                const rb = this.fullRawData[newRawIndex];
-                orderCutoff = (rb && Number.isFinite(rb.t)) ? rb.t + 1 : tStart + 1;
-            }
-        } else {
-            let idx = typeof this._findLastRawIndexAtOrBefore === 'function'
-                ? this._findLastRawIndexAtOrBefore(this.fullRawData, ts)
+            let idx = typeof this._findLastRawIndexStrictlyBefore === 'function'
+                ? this._findLastRawIndexStrictlyBefore(this.fullRawData, cutAtMs)
                 : -1;
-            if (idx < 0) idx = goBackFloor;
-            newRawIndex = Math.min(Math.max(idx, goBackFloor), this.fullRawData.length - 1);
-            const rawBar = this.fullRawData[newRawIndex];
-            orderCutoff = (rawBar && Number.isFinite(rawBar.t)) ? rawBar.t + 1 : ts + 1;
+            if (idx < 0) idx = goBackFloor - 1;
+            newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
+        } else {
+            const cutAtMs = ts;
+            orderCutoff = cutAtMs;
+
+            let idx = typeof this._findLastRawIndexStrictlyBefore === 'function'
+                ? this._findLastRawIndexStrictlyBefore(this.fullRawData, cutAtMs)
+                : -1;
+            if (idx < 0) idx = goBackFloor - 1;
+            newRawIndex = Math.max(goBackFloor, Math.min(idx, this.fullRawData.length - 1));
         }
 
         if (this.chart.orderManager && typeof this.chart.orderManager.forceCloseAllOrders === 'function') {
@@ -2233,7 +2209,7 @@ class ReplaySystem {
                     entry.cutLine.remove();
                 }
                 if (entry.cutLineLabel) {
-                    entry.cutLineLabel.remove();
+                    this._disposeCutLineLabel(entry.cutLineLabel);
                 }
                 if (entry.pickModeOverlay) {
                     entry.pickModeOverlay.remove();
@@ -2257,7 +2233,7 @@ class ReplaySystem {
             }
 
             if (this.cutLineLabel) {
-                this.cutLineLabel.remove();
+                this._disposeCutLineLabel(this.cutLineLabel);
                 this.cutLineLabel = null;
             }
 
@@ -6323,6 +6299,29 @@ class ReplaySystem {
             const mid = (lo + hi) >>> 1;
             const t = data[mid]?.t || 0;
             if (t <= ts) {
+                ans = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return ans;
+    }
+
+    /**
+     * Last raw bar index with t < tExclusive (sorted ascending by .t).
+     * Used for exclusive rollback cuts — hide the clicked candle and everything after.
+     */
+    _findLastRawIndexStrictlyBefore(data, tExclusive) {
+        if (!Array.isArray(data) || data.length === 0) return -1;
+        if (!Number.isFinite(tExclusive)) return Math.max(0, data.length - 1);
+        let lo = 0;
+        let hi = data.length - 1;
+        let ans = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            const t = data[mid]?.t || 0;
+            if (t < tExclusive) {
                 ans = mid;
                 lo = mid + 1;
             } else {
