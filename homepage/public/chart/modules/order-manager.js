@@ -24317,7 +24317,8 @@ class OrderManager {
             closePrice: closePrice,
             closeTime: closeTime,
             pnl: pnl,
-            type: 'MANUAL'
+            type: 'MANUAL',
+            quantity: position.quantity,
         });
         
         this.removeEntryMarker(orderId);
@@ -26358,7 +26359,8 @@ class OrderManager {
                     closeTime: closeTime,
                     pnl: pnl,
                     percentage: percentage,
-                    targetId: targetId
+                    targetId: targetId,
+                    quantity: closeQuantity,
                 });
             }
             
@@ -26497,7 +26499,8 @@ class OrderManager {
                         closePrice: closePrice,
                         closeTime: closeTime,
                         pnl: position.pnl,
-                        type: hitType || 'MANUAL'
+                        type: hitType || 'MANUAL',
+                        quantity: closeQuantity,
                     });
                 }
                 
@@ -27015,7 +27018,8 @@ class OrderManager {
                     closePrice: closePrice,
                     closeTime: closeTime,
                     pnl: totalPnL,
-                    type: hitType || 'MANUAL'
+                    type: hitType || 'MANUAL',
+                    quantity: closeQuantity,
                 });
                 this._scheduleClosedJournalMarkerRedraw();
             }
@@ -32068,6 +32072,7 @@ class OrderManager {
             closePrice: closePrice != null ? Number.parseFloat(closePrice) : undefined,
             entryMarkerTimeMs: trade.entryMarkerTimeMs ?? trade.entry_marker_time_ms ?? undefined,
             quantity: Number.parseFloat(trade.quantity) || 0,
+            originalQuantity: Number.parseFloat(trade.originalQuantity ?? trade.quantity) || 0,
             ticker,
             symbol: trade.symbol || ticker,
             sourceFileId: sourceFileId != null && String(sourceFileId) !== '' ? String(sourceFileId) : undefined,
@@ -32801,7 +32806,7 @@ class OrderManager {
             accentColor: color,
             lines: [
                 { kind: 'price', text: this.formatPrice(order.openPrice) },
-                { text: `${order.quantity.toFixed(2)} lots` },
+                { text: this._tradeMarkerLotsLabel(order.originalQuantity ?? order.quantity) },
                 { kind: 'tag', text: sideLabel },
             ],
         });
@@ -32886,7 +32891,8 @@ class OrderManager {
 
         if (existingMarker) {
             existingMarker.totalPnL += closeData.pnl;
-            existingMarker.totalQuantity += order.quantity;
+            const exitLots = this._resolveExitMarkerLots(order, closeData);
+            existingMarker.totalQuantity += exitLots;
             existingMarker.count++;
             if (!existingMarker.linkedOrderIds) {
                 existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
@@ -32898,7 +32904,7 @@ class OrderManager {
             existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
             const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
             if (!lotsTxt.empty()) {
-                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
+                lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
             }
             this._drawTradeConnector(order, closeData, chart);
             return;
@@ -32947,6 +32953,7 @@ class OrderManager {
             .attr('stroke', 'none');
 
         const tag = this._tradeMarkerTooltipTag(closeData.type, order);
+        const exitLots = this._resolveExitMarkerLots(order, closeData);
         const ttGroup = this._buildTradeMarkerToastTooltip(markerGroup, {
             tooltipRole: 'exit-tooltip',
             anchorX: x,
@@ -32955,7 +32962,7 @@ class OrderManager {
             accentColor: color,
             lines: [
                 { kind: 'price', text: this.formatPrice(closeData.closePrice), role: 'exit-price-text' },
-                { text: `${order.quantity.toFixed(2)} lots`, role: 'exit-lots-text' },
+                { text: this._tradeMarkerLotsLabel(exitLots), role: 'exit-lots-text' },
                 { kind: 'tag', text: tag, role: 'exit-tag-text' },
             ],
         });
@@ -32988,7 +32995,7 @@ class OrderManager {
             price: closeData.closePrice,
             priceKey: priceKey,
             totalPnL: closeData.pnl,
-            totalQuantity: order.quantity,
+            totalQuantity: exitLots,
             count: 1,
             isBuyExit,
             linkedOrderIds: [String(order.id)],
@@ -33081,7 +33088,8 @@ class OrderManager {
 
         if (existingMarker) {
             existingMarker.totalPnL += closeData.pnl;
-            existingMarker.totalQuantity += (order.quantity * (closeData.percentage || 1));
+            const partialLots = this._resolvePartialCloseMarkerLots(order, closeData);
+            existingMarker.totalQuantity += partialLots;
             existingMarker.count++;
             if (!existingMarker.linkedOrderIds) {
                 existingMarker.linkedOrderIds = [String(existingMarker.orderId)];
@@ -33093,7 +33101,7 @@ class OrderManager {
             existingMarker.marker.attr('data-linked-order-ids', existingMarker.linkedOrderIds.join(','));
             const lotsTxt = existingMarker.marker.select('[data-role="exit-lots-text"]');
             if (!lotsTxt.empty()) {
-                lotsTxt.text(`${existingMarker.totalQuantity.toFixed(2)} lots`);
+                lotsTxt.text(this._tradeMarkerLotsLabel(existingMarker.totalQuantity));
             }
             this._drawTradeConnector(order, closeData, chart);
             console.log(`   📊 Aggregated partial close: ${existingMarker.count} positions, total P&L: ${existingMarker.totalPnL.toFixed(2)}`);
@@ -33107,7 +33115,7 @@ class OrderManager {
         const sz = 12;
         const gap = 4;
         const tickW = Math.max(candleSpacing * 0.6, 8);
-        const closeQuantity = order.quantity * (closeData.percentage || 1);
+        const closeQuantity = this._resolvePartialCloseMarkerLots(order, closeData);
 
         const isBuyExit = order.type === 'BUY';
         const wickY = isBuyExit ? yScale(candle.h) : yScale(candle.l);
@@ -33152,7 +33160,7 @@ class OrderManager {
             accentColor: color,
             lines: [
                 { kind: 'price', text: this.formatPrice(closeData.closePrice), role: 'exit-price-text' },
-                { text: `${closeQuantity.toFixed(2)} lots`, role: 'exit-lots-text' },
+                { text: this._tradeMarkerLotsLabel(closeQuantity), role: 'exit-lots-text' },
                 { kind: 'tag', text: tag, role: 'exit-tag-text' },
             ],
         });
@@ -39643,6 +39651,61 @@ class OrderManager {
         }
         return order.quantity || 0;
     }
+    /** Instrument position label (Lots / Contracts / …) for trade marker tooltips. */
+    _tradeMarkerPositionLabel() {
+        const cfg = this.marketConfigs?.[this.marketType];
+        return (cfg?.positionLabel || 'Lots').toLowerCase();
+    }
+
+    /** Format lots/qty for entry/exit marker hover tooltips. */
+    _tradeMarkerLotsLabel(qty) {
+        return `${this._formatQty(qty)} ${this._tradeMarkerPositionLabel()}`;
+    }
+
+    /**
+     * Lots actually closed at this exit (SL/TP/manual). Prefers explicit closeData.quantity;
+     * journal restores store original entry size on `quantity` — subtract partial closes for final exit.
+     */
+    _resolveExitMarkerLots(order, closeData) {
+        if (closeData) {
+            for (const key of ['quantity', 'closeQuantity', 'lotsClosed']) {
+                const v = Number(closeData[key]);
+                if (Number.isFinite(v) && v > 0) return v;
+            }
+        }
+        const partials = Array.isArray(order?.partialCloses) ? order.partialCloses : [];
+        const orig = Number(order?.originalQuantity ?? order?.quantity);
+        if (partials.length > 0 && Number.isFinite(orig) && orig > 0) {
+            const partialSum = partials.reduce((s, p) => s + (Number(p.quantity) || 0), 0);
+            const finalExit = orig - partialSum;
+            if (finalExit > 0) {
+                const q = Number(order?.quantity);
+                if (!Number.isFinite(q) || q <= 0 || Math.abs(q - orig) < 1e-8) {
+                    return finalExit;
+                }
+            }
+        }
+        const q = Number(order?.quantity);
+        if (Number.isFinite(q) && q > 0) return q;
+        if (Number.isFinite(orig) && orig > 0) return orig;
+        return 0;
+    }
+
+    /** Lots closed at a partial TP marker (share of original, not remaining × %). */
+    _resolvePartialCloseMarkerLots(order, closeData) {
+        if (closeData) {
+            for (const key of ['quantity', 'closeQuantity', 'lotsClosed']) {
+                const v = Number(closeData[key]);
+                if (Number.isFinite(v) && v > 0) return v;
+            }
+        }
+        const pct = closeData?.percentage;
+        if (Number.isFinite(Number(pct)) && Number(pct) > 0 && Number(pct) < 1) {
+            return this._multiTpPartialCloseQuantity(order, Number(pct));
+        }
+        return Number(order?.quantity) || 0;
+    }
+
     /** Short label for trade marker tooltip: TP, SL, or closing side BUY / SELL. */
     /** Toast stack palette (matches talaria-toast-stack.js / nav-badge-tooltip). */
     _tradeMarkerToastTheme() {
@@ -40046,10 +40109,14 @@ class OrderManager {
     }
 
     _accentColorForTradeMarkerTag(tag, fallbackColor) {
-        const t = String(tag || '').toUpperCase();
+        const t = String(tag || '').toUpperCase().trim();
         const th = this._tradeMarkerToastTheme();
+        // Multi-entry / pending entry legs ("STOP BUY …") — use side entry color, not SL red.
+        if (/^(LIMIT|STOP|MARKET)\s+(BUY|SELL)\b/.test(t)) {
+            return fallbackColor || th.accentDefault;
+        }
         if (t.includes('TP')) return th.light ? '#059669' : '#22c55e';
-        if (t.includes('SL') || t.includes('STOP')) return '#ef4444';
+        if (t === 'SL' || /^SL\b/.test(t) || t.includes('STOP LOSS')) return '#ef4444';
         if (t === 'BUY') return th.light ? '#059669' : '#22c55e';
         if (t === 'SELL') return '#ef4444';
         if (t.includes('BE')) return '#f59e0b';
