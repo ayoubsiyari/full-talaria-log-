@@ -4,6 +4,7 @@
  */
 
 const MAX_TP_TARGETS = 5;
+const MAX_ENTRY_LEVELS = 4;
 
 class OrderManager {
     constructor(chart, replaySystem) {
@@ -11526,7 +11527,7 @@ class OrderManager {
         // Weighted average across multi-entry levels (chart preview)
         if (label === 'Avg Entry') {
             const accent = '#eab308';
-            const totalLots = this._calcMultiEntryTotalLots();
+            const totalLots = this._calcMultiEntryPreviewTotalLots();
             return [
                 {
                     text: 'Avg Entry',
@@ -11917,43 +11918,16 @@ class OrderManager {
             }
             if (onRemove) {
                 const bb = lineData.labelGroup.node().getBBox();
-                const delR = 9;
-                const gap = 4;
-                const dg = lineData.labelGroup.append('g')
-                    .attr('class', 'preview-entry-level-delete-btn')
-                    .attr('transform', `translate(${bb.width + gap}, ${(height - delR * 2) / 2})`)
-                    .style('cursor', 'pointer');
-                const dbc = dg.append('circle')
-                    .attr('r', delR)
-                    .attr('cx', delR)
-                    .attr('cy', delR)
-                    .attr('fill', '#0f172a')
-                    .attr('stroke', '#ef4444')
-                    .attr('stroke-width', 1.2);
-                dg.append('text')
-                    .attr('x', delR)
-                    .attr('y', delR)
-                    .attr('dy', '0.35em')
-                    .attr('text-anchor', 'middle')
-                    .attr('fill', '#ef4444')
-                    .attr('font-size', '12px')
-                    .attr('font-weight', '700')
-                    .style('pointer-events', 'none')
-                    .text('✕');
-                dg.on('mousedown', (e) => e.stopPropagation())
-                    .on('click', (e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
+                this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'close', {
+                    className: 'preview-entry-level-delete-btn',
+                    x: bb.width + gap,
+                    y: (height - 18) / 2,
+                    stopMousedown: true,
+                    onClick: (event) => {
+                        event.preventDefault();
                         onRemove();
-                    })
-                    .on('mouseenter', () => {
-                        dbc.attr('fill', '#ef4444');
-                        dg.select('text').attr('fill', '#ffffff');
-                    })
-                    .on('mouseleave', () => {
-                        dbc.attr('fill', '#0f172a');
-                        dg.select('text').attr('fill', '#ef4444');
-                    });
+                    },
+                });
             }
         }
 
@@ -14819,12 +14793,7 @@ class OrderManager {
         this.tpTargets = [];
 
         let nTargets = Math.max(1, parseInt(numTargets, 10) || 1);
-        nTargets = Math.min(nTargets, 10);
-        if (this.marketType === 'futures') {
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const cap = !Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10);
-            nTargets = Math.min(nTargets, cap);
-        }
+        nTargets = Math.min(nTargets, this._getMaxTpTargets());
         const numEl = document.getElementById('numTPTargets');
         if (numEl) numEl.value = String(nTargets);
         
@@ -14927,16 +14896,10 @@ class OrderManager {
      * Add a new TP target (deprecated - now using auto-calculate)
      */
     addTPTarget() {
-        // Increment number of targets and recalculate
         const numInput = document.getElementById('numTPTargets');
         if (numInput) {
             const currentNum = parseInt(numInput.value || 2, 10);
-            const qty = Math.floor(parseFloat(document.getElementById('orderQuantity')?.value || 0));
-            const futuresCap = this.marketType === 'futures'
-                ? (!Number.isFinite(qty) || qty < 1 ? 1 : Math.min(qty, 10))
-                : 10;
-            const hardCap = this.marketType === 'futures' ? futuresCap : 10;
-            if (currentNum < hardCap) {
+            if (this._canAddMoreTpTargets(currentNum)) {
                 numInput.value = String(currentNum + 1);
                 this.calculateTPTargetsFromNumber(currentNum + 1);
             }
@@ -16727,7 +16690,7 @@ class OrderManager {
         // Weighted average entry (multi-entry): dashed line + compact label; position syncs live while dragging levels
         if (this.isMultiEntryMode && this.splitEntriesEnabled && this.multiEntryLevels
             && this.multiEntryLevels.filter(l => l.price > 0).length > 1) {
-            const avgPrice = this._calcMultiEntryAvgPrice();
+            const avgPrice = this._calcMultiEntryPreviewAvgPrice();
             if (avgPrice > 0) {
                 const avgLineColor = '#ca8a04';
                 this.previewLines.avgEntry = this.drawPreviewLine(
@@ -17627,18 +17590,30 @@ class OrderManager {
                     }
                 } else if (lineData.label && lineData.label.startsWith('Entry#') && lineData.isSplitEntry) {
                     // Split entry line drag — sync price back to splitEntries and multiEntryLevels
+                    const prec = self.getPricePrecision();
+                    const snapped = parseFloat(newPrice.toFixed(prec));
                     if (lineData.splitEntryId !== undefined) {
-                        self.updateSplitEntryPrice(lineData.splitEntryId, newPrice);
+                        self.updateSplitEntryPrice(lineData.splitEntryId, snapped);
+                    } else {
+                        const byLevelId = lineData.multiEntryLevelId != null
+                            ? self.splitEntries.find(e => e.multiEntryLevelId === lineData.multiEntryLevelId)
+                            : null;
+                        if (byLevelId) byLevelId.price = snapped;
                     }
-                    
-                    // Sync to multi-entry panel levels
-                    if (self.isMultiEntryMode && lineData.multiEntryLevelId !== undefined) {
-                        const level = self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId);
+
+                    // Sync to multi-entry panel levels (id fallback: Entry#N → index N-1)
+                    if (self.isMultiEntryMode && self.multiEntryLevels?.length) {
+                        const lvlNum = parseInt(String(lineData.label).split('#')[1]?.split(':')[0], 10);
+                        const levelIndex = Number.isFinite(lvlNum) ? lvlNum - 1 : -1;
+                        const level = (lineData.multiEntryLevelId != null
+                            ? self.multiEntryLevels.find(l => l.id === lineData.multiEntryLevelId)
+                            : null)
+                            || (levelIndex >= 0 ? self.multiEntryLevels[levelIndex] : null);
                         if (level) {
-                            level.price = parseFloat(newPrice.toFixed(self.getPricePrecision()));
-                            // Update the panel input for this level
+                            level.price = snapped;
+                            lineData.multiEntryLevelId = level.id;
                             const priceInput = document.querySelector(`.multi-entry-row-input[data-level-id="${level.id}"][data-field="price"]`);
-                            if (priceInput) priceInput.value = self.formatPrice(newPrice);
+                            if (priceInput) priceInput.value = self.formatPrice(snapped);
                         }
                         self.updateMultiEntrySummary();
                         self._syncAvgEntryPreviewLineFromLevels();
@@ -18393,10 +18368,20 @@ class OrderManager {
      * Update split entry price
      */
     updateSplitEntryPrice(entryId, newPrice) {
-        const entry = this.splitEntries.find(e => e.id === entryId);
+        const prec = this.getPricePrecision();
+        const snapped = parseFloat(parseFloat(newPrice).toFixed(prec));
+        let entry = this.splitEntries.find(e => e.id === entryId);
+        if (!entry && this.isMultiEntryMode) {
+            const ld = (this.previewLines?.splitEntries || []).find(
+                l => l?.splitEntryId === entryId || l?.id === entryId
+            );
+            if (ld?.multiEntryLevelId != null) {
+                entry = this.splitEntries.find(e => e.multiEntryLevelId === ld.multiEntryLevelId);
+            }
+        }
         if (entry) {
-            entry.price = parseFloat(newPrice.toFixed(this.getPricePrecision()));
-            
+            entry.price = snapped;
+
             // Also sync to matching multiEntryLevel
             if (this.isMultiEntryMode && entry.multiEntryLevelId !== undefined && this.multiEntryLevels) {
                 const level = this.multiEntryLevels.find(l => l.id === entry.multiEntryLevelId);
@@ -19231,6 +19216,7 @@ class OrderManager {
      * Add a new entry level
      */
     addMultiEntryLevel() {
+        if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) return;
         const mode = this.positionSizeMode || 'risk-usd';
         const nNext = this.multiEntryLevels.length + 1;
         let avgAmount;
@@ -19931,6 +19917,7 @@ class OrderManager {
                     self.addTPFromSplit(newPrice);
                     self.showNotification(`New TP added at ${self.formatPrice(newPrice)}`, 'success');
                 } else if (isEntryLine && self.isMultiEntryMode) {
+                    if (!self._canAddMoreMultiEntryLevels(self.multiEntryLevels?.length || 0)) return;
                     self.multiEntryLevels.push({
                         id: Date.now(),
                         price: parseFloat(newPrice.toFixed(self.getPricePrecision())),
@@ -20053,6 +20040,13 @@ class OrderManager {
         if (!this.tpTargets) {
             this.tpTargets = [];
         }
+
+        let effectiveCount = this.tpTargets.length;
+        if (effectiveCount === 0) {
+            const originalTPPrice = parseFloat(document.getElementById('tpPrice')?.value || 0);
+            if (originalTPPrice > 0) effectiveCount = 1;
+        }
+        if (!this._canAddMoreTpTargets(effectiveCount)) return;
         
         // IMPORTANT: If tpTargets is empty but we have a TP price from single TP mode,
         // we need to preserve the original TP first before adding the new split one
@@ -21303,6 +21297,10 @@ class OrderManager {
                 }
 
                 if (nextPrice > 0 && Number.isFinite(nextPrice)) {
+                    if (!this._canAddMoreMultiEntryLevels(this.multiEntryLevels?.length || 0)) {
+                        this.pullRiskRewardToolFromManager(drawing);
+                        return;
+                    }
                     if (!Number.isFinite(this.multiEntryIdCounter)) this.multiEntryIdCounter = 1;
                     this.multiEntryLevels.push({
                         id: this.multiEntryIdCounter++,
@@ -36407,6 +36405,11 @@ class OrderManager {
     _canAddMoreTpTargets(currentCount, overrideQty) {
         const n = Number(currentCount) || 0;
         return n < this._getMaxTpTargets(overrideQty);
+    }
+
+    _canAddMoreMultiEntryLevels(currentCount) {
+        const n = Number(currentCount) || 0;
+        return n < MAX_ENTRY_LEVELS;
     }
 
     _getEffectiveTpTargetCount(source) {

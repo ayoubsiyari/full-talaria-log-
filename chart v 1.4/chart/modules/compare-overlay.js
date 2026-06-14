@@ -3436,6 +3436,11 @@ class CompareOverlay {
         if (visibleOverlays.length === 0) {
             // Reset left margin and logo position when no overlays
             this.chart.margin.l = 0;
+            if (typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed')) {
+                return;
+            }
             const chartBrand = document.querySelector('.chart-brand');
             if (chartBrand) {
                 chartBrand.style.left = '0px';
@@ -4044,7 +4049,10 @@ class CompareOverlay {
         }
 
         const chartBrand = document.querySelector('.chart-brand');
-        if (chartBrand) {
+        if (chartBrand
+            && !(typeof document !== 'undefined'
+                && document.documentElement
+                && document.documentElement.classList.contains('multichart-embed'))) {
             chartBrand.style.left = leftMargin + 'px';
         }
     }

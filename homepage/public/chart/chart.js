@@ -21964,6 +21964,11 @@ class Chart {
      * "Talaria-Log" spans still followed body.light-mode).
      */
     updateLogoForTheme() {
+        if (typeof document !== 'undefined'
+            && document.documentElement
+            && document.documentElement.classList.contains('multichart-embed')) {
+            return;
+        }
         const bgColor = this.chartSettings?.backgroundColor || '#000000';
         const darkEls = document.querySelectorAll('.chart-brand .logo-dark');
         const lightEls = document.querySelectorAll('.chart-brand .logo-light');

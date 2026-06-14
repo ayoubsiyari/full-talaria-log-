@@ -197,6 +197,41 @@
         });
     };
 
+    function suppressIframeChartBrand(frame) {
+        if (!frame) return;
+        try {
+            var doc = frame.contentDocument;
+            if (!doc || !doc.documentElement) return;
+            var styleId = 'multichart-parent-hide-brand';
+            if (!doc.getElementById(styleId)) {
+                var s = doc.createElement('style');
+                s.id = styleId;
+                s.textContent = [
+                    'html.multichart-embed .chart-brand,',
+                    'html.multichart-embed a.brand-lockup,',
+                    'html.multichart-embed #chartWrapper .logo-top,',
+                    'html.multichart-embed #chartWrapper .logo-bottom,',
+                    '.chart-brand, a.brand-lockup, #chartWrapper .logo-top, #chartWrapper .logo-bottom',
+                    '{ display:none !important; visibility:hidden !important; pointer-events:none !important; }'
+                ].join(' ');
+                (doc.head || doc.documentElement).appendChild(s);
+            }
+            doc.querySelectorAll('.chart-brand').forEach(function (el) {
+                try { el.remove(); } catch (_) {}
+            });
+        } catch (_) {}
+    }
+
+    function scheduleIframeBrandSuppression(frame) {
+        if (!frame) return;
+        var n = 0;
+        var tick = function () {
+            suppressIframeChartBrand(frame);
+            if (++n < 48) setTimeout(tick, 250);
+        };
+        tick();
+    }
+
     /**
      * Add a chart by spawning an iframe.
      * @param {{id:string, symbol:string, tf:string, days?:number}} cfg
@@ -273,6 +308,7 @@
         // even though init is still healthy — embed-bridge polls up to 30s.
         var BRIDGE_READY_TIMEOUT_MS = 30000;
         frame.addEventListener('load', function () {
+            scheduleIframeBrandSuppression(frame);
             self._log('info', 'iframe loaded: ' + cfg.id + ' (waiting for bridge-ready…)');
             const small = overlay.querySelector('small');
             if (small) small.textContent = 'iframe: LOADED — bridge: pending (up to '

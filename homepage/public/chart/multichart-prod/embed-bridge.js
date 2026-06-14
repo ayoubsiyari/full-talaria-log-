@@ -68,6 +68,27 @@
         tick();
     }
 
+    function suppressEmbedChartBrand() {
+        try {
+            var styleId = 'multichart-embed-hide-brand';
+            if (!document.getElementById(styleId)) {
+                var s = document.createElement('style');
+                s.id = styleId;
+                s.textContent = [
+                    'html.multichart-embed .chart-brand,',
+                    'html.multichart-embed a.brand-lockup,',
+                    'html.multichart-embed #chartWrapper .logo-top,',
+                    'html.multichart-embed #chartWrapper .logo-bottom',
+                    '{ display:none !important; visibility:hidden !important; pointer-events:none !important; }'
+                ].join(' ');
+                document.head.appendChild(s);
+            }
+            document.querySelectorAll('.chart-brand').forEach(function (el) {
+                try { el.remove(); } catch (_) {}
+            });
+        } catch (_) {}
+    }
+
     function installOnce() {
         if (window.__multichartBridge) {
             reportToShell('info', 'bridge already installed; ignoring duplicate boot');
@@ -98,6 +119,12 @@
 
         installSettingsParentProxy();
         installMultichartSettingsModalGuard();
+        suppressEmbedChartBrand();
+        var brandSweep = 0;
+        var brandSweepTimer = setInterval(function () {
+            suppressEmbedChartBrand();
+            if (++brandSweep >= 40) clearInterval(brandSweepTimer);
+        }, 250);
         pollFor(
             function () { return installSettingsParentProxy(); },
             100,
@@ -968,6 +995,7 @@
     }, { once: true });
 
     function boot() {
+        suppressEmbedChartBrand();
         pollFor(
             function () {
                 return !!window.chart
@@ -989,6 +1017,7 @@
     }
 
     if (document.readyState === 'loading') {
+        suppressEmbedChartBrand();
         document.addEventListener('DOMContentLoaded', boot, { once: true });
     } else {
         boot();

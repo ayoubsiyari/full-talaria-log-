@@ -21,8 +21,20 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 
+function isMultichartEmbedPanel() {
+  if (typeof window === "undefined") return false;
+  try {
+    if (document.documentElement.classList.contains("multichart-embed")) return true;
+    if (document.body && document.body.classList.contains("multichart-embed")) return true;
+    return new URLSearchParams(window.location.search).get("multichart") === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
 /** Bottom-left watermark — one instance for the full chart area in multi-layout. */
 function ChartBrandLink({ multi = false }) {
+  if (isMultichartEmbedPanel()) return null;
   return (
     <a
       className={`chart-brand brand-lockup${multi ? " chart-brand--multi" : ""}`}
