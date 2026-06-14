@@ -1333,6 +1333,25 @@ export default function MultichartGrid({
     // endless "Loading …" spinner.
     const [failedPanels, setFailedPanels] = useState(() => new Map());
 
+    // panelId -> timeout id. When a panel's first bars arrive we DON'T hide
+    // its loading overlay immediately: the iframe chart still runs a viewport
+    // settle pass (canvas 0→real resize + _finalizeMultichartPanelAfterPairLoad,
+    // ~1.2s) that re-anchors the candles horizontally. Dismissing the overlay
+    // on "first bars" let the user watch that re-anchor as a left/right shake.
+    // We hold the overlay across the settle window so the reposition happens
+    // behind it; the chart only becomes visible once it's stable.
+    const overlayHoldTimersRef = useRef({});
+    const OVERLAY_SETTLE_HOLD_MS = 1300;
+    useEffect(() => {
+        return () => {
+            const timers = overlayHoldTimersRef.current || {};
+            for (const k in timers) {
+                if (timers[k]) clearTimeout(timers[k]);
+            }
+            overlayHoldTimersRef.current = {};
+        };
+    }, []);
+
     // Capture initial context in refs so the per-tile add closure always
     // uses the LATEST values when a new tile is added (e.g. user opens
     // file X, splits to 2 panels, switches to file Y in the parent, then
@@ -1764,6 +1783,10 @@ export default function MultichartGrid({
         for (const existingId of Array.from(mgr.charts.keys())) {
             if (!desiredIframeIds.has(existingId)) {
                 try { mgr.removeChart(existingId); } catch (_) {}
+                if (overlayHoldTimersRef.current[existingId]) {
+                    clearTimeout(overlayHoldTimersRef.current[existingId]);
+                    delete overlayHoldTimersRef.current[existingId];
+                }
                 setReadyPanels((prev) => {
                     if (!prev.has(existingId)) return prev;
                     const next = new Set(prev);
@@ -3122,21 +3145,31 @@ export default function MultichartGrid({
     //       (effect above); iframe tf/fileId arrive via sync-bridge
     //       `chart-state` postMessage.
     onStateAnyRef.current = (id, state) => {
-        // Hide the tile loading overlay only once bars exist — bridge-ready
-        // fires before loadFileData finishes and caused empty-chart flashes.
-        if (state && Number(state.candleCount) > 0) {
-            setDataReadyPanels((prev) => {
-                if (prev.has(id)) return prev;
-                const next = new Set(prev);
-                next.add(id);
-                return next;
-            });
-            setOverlayFallbackPanels((prev) => {
-                if (prev.has(id)) return prev;
-                const next = new Set(prev);
-                next.add(id);
-                return next;
-            });
+        // Hide the tile loading overlay only once bars exist AND the iframe's
+        // viewport settle window has elapsed — bridge-ready fires before
+        // loadFileData finishes (empty-chart flash), and "first bars" fires
+        // before the panel finishes re-anchoring its viewport (left/right
+        // shake). We hold the overlay across OVERLAY_SETTLE_HOLD_MS so the
+        // reposition happens behind it.
+        if (state && Number(state.candleCount) > 0
+            && id !== HOST_PANEL_ID
+            && !dataReadyPanels.has(id)
+            && !overlayHoldTimersRef.current[id]) {
+            overlayHoldTimersRef.current[id] = setTimeout(() => {
+                delete overlayHoldTimersRef.current[id];
+                setDataReadyPanels((prev) => {
+                    if (prev.has(id)) return prev;
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                });
+                setOverlayFallbackPanels((prev) => {
+                    if (prev.has(id)) return prev;
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                });
+            }, OVERLAY_SETTLE_HOLD_MS);
         }
 
         // (a) focus mirror
