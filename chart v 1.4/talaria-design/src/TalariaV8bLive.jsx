@@ -21,6 +21,22 @@ import {
   isGotoCalendarDayDisabled,
 } from "./gotoMenuHelpers.js";
 
+/** Bottom-left watermark — one instance for the full chart area in multi-layout. */
+function ChartBrandLink({ multi = false }) {
+  return (
+    <a
+      className={`chart-brand brand-lockup${multi ? " chart-brand--multi" : ""}`}
+      href="/"
+      title="Talaria Homepage"
+    >
+      <img src="/chart/modules/logo-08.png" alt="Talaria logo symbol" className="logo-top logo-dark" />
+      <img src="/chart/modules/logo-09.png" alt="Talaria logo symbol" className="logo-top logo-light" />
+      <span className="logo-bottom logo-dark">Talaria-Log</span>
+      <span className="logo-bottom logo-light">Talaria-Log</span>
+    </a>
+  );
+}
+
 // ── Multichart layout picker constants ───────────────────────────────────────
 // Lifted to module scope (Phase 7.2.3) so BOTH the existing right-panel
 // "Layout" tab AND the new topbar "Layout" dropdown can share the same
@@ -31323,17 +31339,15 @@ const TalariaV8bLive = () => {
                 <div className="price-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
                 <div className="time-label" style={{ position: "absolute", pointerEvents: "none", zIndex: 20, display: "none" }} />
 
-                <a className="chart-brand brand-lockup" href="/" title="Talaria Homepage">
-                  <img src="/chart/modules/logo-08.png" alt="Talaria logo symbol" className="logo-top logo-dark" />
-                  <img src="/chart/modules/logo-09.png" alt="Talaria logo symbol" className="logo-top logo-light" />
-                  <span className="logo-bottom logo-dark">Talaria-Log</span>
-                  <span className="logo-bottom logo-light">Talaria-Log</span>
-                </a>
+                {layoutPanels.n === 1 && <ChartBrandLink />}
 
                 {/* OHLC: chart.js owns #chartSymbol / #chartTimeframe + OHLC values; memoized subtree +
                     multi-panel effect re-stamping window.chart keeps main tile vs toolbar in sync. */}
                 {mainOhlcInfoEl}
               </div>
+
+              {/* Multi-layout: one logo on #chart-container (not per tile / iframe). */}
+              {layoutPanels.n > 1 && <ChartBrandLink multi />}
 
               {/* ── C-4: Single-runtime migration flag ───────────────────────
                    Enable with:  localStorage.setItem('talaria_single_runtime','true')
