@@ -35168,6 +35168,8 @@ class OrderManager {
             return;
         }
 
+        this._resetNonPreviewOrderLevelHoverReveal(ch);
+
         if (!this.slLines && !this.tpLines) {
             console.log('⚠️ updateSLTPLines: No lines to update');
             return;
@@ -35795,6 +35797,8 @@ class OrderManager {
             console.log('⚠️ updateOrderLines: Scales not ready');
             return;
         }
+
+        this._resetNonPreviewOrderLevelHoverReveal(ch);
 
         this._updateEntryMarkersForChart(ch);
 
@@ -39958,48 +39962,27 @@ class OrderManager {
         if (regEntry) regEntry._attachRevealHover = attach;
     }
 
-    _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
-        if (!key || !ch) return;
-        if (!this._orderLevelRevealRegistry) this._orderLevelRevealRegistry = new Map();
-        if (!this._orderLevelRevealHover) this._orderLevelRevealHover = new Map();
-
-        const cleanHits = (hits || []).filter((s) => s && !s.empty?.());
-        const cleanChrome = (chrome || []).filter((s) => s && !s.empty?.());
-        if (!cleanHits.length || !cleanChrome.length) return;
-
-        let entry = this._orderLevelRevealRegistry.get(key);
-        if (!entry) {
-            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome };
-            this._orderLevelRevealRegistry.set(key, entry);
-            this._wireOrderLevelHoverReveal(key);
-        } else {
-            entry.chart = ch;
-            entry.hits = cleanHits;
-            entry.chrome = cleanChrome;
-            if (typeof entry._attachRevealHover === 'function') entry._attachRevealHover();
+    /** Clear stale hover-hide state left on executed/pending rows. */
+    _resetNonPreviewOrderLevelHoverReveal(ch) {
+        if (!this._orderLevelRevealRegistry || !ch) return;
+        for (const [key, entry] of [...this._orderLevelRevealRegistry.entries()]) {
+            if (entry.chart !== ch || String(key).startsWith('preview:')) continue;
+            this._ensureOrderLevelChromeVisible(entry.chrome);
+            this._orderLevelRevealRegistry.delete(key);
+            this._orderLevelRevealWired?.delete(key);
+            this._orderLevelRevealHover?.delete(key);
         }
+    }
 
-        cleanChrome.forEach((sel) => {
-            if (sel && typeof sel.interrupt === 'function') sel.interrupt();
-            this._clearOrderLevelRevealSlide(sel);
-        });
-
-        const visible = !!this._orderLevelRevealHover.get(key);
-        this._paintOrderLevelHoverReveal(key, visible, false);
+    _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
+        this._ensureOrderLevelChromeVisible(chrome);
     }
 
     _repaintAllOrderLevelHoverReveal(ch) {
         if (!this._orderLevelRevealRegistry || !ch) return;
         this._orderLevelRevealRegistry.forEach((entry, key) => {
             if (entry.chart !== ch) return;
-            if (!String(key).startsWith('preview:')) return;
-            entry.chrome.forEach((sel) => {
-                if (!sel || sel.empty?.()) return;
-                if (typeof sel.interrupt === 'function') sel.interrupt();
-                this._clearOrderLevelRevealSlide(sel);
-            });
-            const visible = !!this._orderLevelRevealHover?.get(key);
-            this._paintOrderLevelHoverReveal(key, visible, false);
+            this._ensureOrderLevelChromeVisible(entry.chrome);
         });
     }
 
@@ -40021,15 +40004,23 @@ class OrderManager {
         return row.hitLine;
     }
 
-    _syncPreviewLineHoverReveal(lineData, ch, keySuffix) {
-        if (!lineData?.labelGroup || lineData.isBadge) return;
-        this._ensureOrderLevelChromeVisible([lineData.labelGroup]);
-    }
-
     _syncAllPreviewHoverReveal(pc) {
         if (!this.previewLines || !pc) return;
 
-        const mainLines = [
+        if (this._orderLevelRevealRegistry) {
+            for (const [key, entry] of [...this._orderLevelRevealRegistry.entries()]) {
+                if (entry.chart !== pc || !String(key).startsWith('preview:')) continue;
+                this._ensureOrderLevelChromeVisible(entry.chrome);
+                [...(entry.hits || []), ...(entry.chrome || [])].forEach((sel) => {
+                    sel?.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+                });
+                this._orderLevelRevealRegistry.delete(key);
+                this._orderLevelRevealWired?.delete(key);
+                this._orderLevelRevealHover?.delete(key);
+            }
+        }
+
+        const allPreviewRows = [
             this.previewLines.entry,
             this.previewLines.tp,
             this.previewLines.sl,
@@ -40037,35 +40028,10 @@ class OrderManager {
             this.previewLines.avgEntry,
             ...(this.previewLines.multipleTPs || []),
             ...(this.previewLines.splitEntries || []),
+            ...(this.previewLines.multiTPBadges || []),
         ];
-        mainLines.forEach((ld) => {
-            if (ld?.labelGroup && !ld.isBadge) {
-                this._ensureOrderLevelChromeVisible([ld.labelGroup]);
-            }
-        });
-
-        const entryHits = [this.previewLines.entry?.hitLine, this.previewLines.entry?.line]
-            .filter((s) => s && !s.empty?.());
-        const badgeRows = [];
-        if (this.previewLines.sl?.isBadge && this.previewLines.sl.labelGroup) {
-            badgeRows.push(['preview:sl-badge', this.previewLines.sl.labelGroup]);
-        } else if (this.previewLines.sl?.labelGroup) {
-            this._ensureOrderLevelChromeVisible([this.previewLines.sl.labelGroup]);
-        }
-        if (this.previewLines.tp?.isBadge && this.previewLines.tp.labelGroup) {
-            badgeRows.push(['preview:tp-badge', this.previewLines.tp.labelGroup]);
-        } else if (this.previewLines.tp?.labelGroup) {
-            this._ensureOrderLevelChromeVisible([this.previewLines.tp.labelGroup]);
-        }
-        (this.previewLines.multiTPBadges || []).forEach((bd, i) => {
-            if (bd?.labelGroup) badgeRows.push([`preview:mtp-badge:${i}`, bd.labelGroup]);
-        });
-        badgeRows.forEach(([key, lg]) => {
-            if (entryHits.length) {
-                this._refreshOrderLevelHoverReveal(pc, key, entryHits, [lg]);
-            } else {
-                this._ensureOrderLevelChromeVisible([lg]);
-            }
+        allPreviewRows.forEach((ld) => {
+            if (ld?.labelGroup) this._ensureOrderLevelChromeVisible([ld.labelGroup]);
         });
     }
 
