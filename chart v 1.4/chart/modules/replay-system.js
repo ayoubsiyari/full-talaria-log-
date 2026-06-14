@@ -1325,24 +1325,12 @@ class ReplaySystem {
             if (!wrapper) return;
             const rect = wrapper.getBoundingClientRect();
             const x = e.clientX - rect.left;
-            const plotW = this._chartPlotWidth(chart);
-            if (x < chart.margin.l || x > plotW - chart.margin.r) {
+            const snapped = this.resolveSnappedCutLineAtX(chart, x);
+            if (!snapped) {
                 this.hideAllGoBackVisualsMulti();
                 return;
             }
-            const candleIndex = this.getCandleIndexAtXForChart(chart, x);
-            if (candleIndex < 0 || !chart.data[candleIndex]) {
-                this.hideAllGoBackVisualsMulti();
-                return;
-            }
-            const targetTime = chart.data[candleIndex].t;
-            const mmFloor = this.sessionStartIndex || 0;
-            const mmFloorTs = this.fullRawData && this.fullRawData[mmFloor] ? this.fullRawData[mmFloor].t : null;
-            if (mmFloorTs != null && targetTime < mmFloorTs) {
-                this.hideAllGoBackVisualsMulti();
-                return;
-            }
-            this.applyGoBackVisualsForTimestamp(targetTime);
+            this.applyGoBackVisualsForTimestamp(snapped.timestamp);
             return;
         }
 
@@ -1352,58 +1340,41 @@ class ReplaySystem {
         const rect = wrapper.getBoundingClientRect();
         const x = e.clientX - rect.left;
         
-        // Only show in chart area
-        if (x < this.chart.margin.l || x > this.chart.w - this.chart.margin.r) {
+        const snapped = this.resolveSnappedCutLineAtX(this.chart, x);
+        if (!snapped) {
             if (this.cutLine) this.cutLine.attr('opacity', 0);
             if (this.cutLineLabel) this.cutLineLabel.style.opacity = '0';
+            if (this.pickModeOverlay) this.pickModeOverlay.style.width = '0';
             return;
         }
 
-        // In go-back mode, reject positions before the session start
-        if (this.isGoingBack) {
-            const spFloor = this.sessionStartIndex || 0;
-            const spFloorTs = this.fullRawData && this.fullRawData[spFloor] ? this.fullRawData[spFloor].t : null;
-            if (spFloorTs != null) {
-                const hoverIdx = this.getCandleIndexAtX(x);
-                const hoverCandle = hoverIdx >= 0 && this.chart.data[hoverIdx];
-                if (hoverCandle && hoverCandle.t < spFloorTs) {
-                    if (this.cutLine) this.cutLine.attr('opacity', 0);
-                    if (this.cutLineLabel) this.cutLineLabel.style.opacity = '0';
-                    if (this.pickModeOverlay) this.pickModeOverlay.style.width = '0';
-                    return;
-                }
-            }
-        }
+        const lineX = snapped.x;
+        const candleIndex = snapped.candleIndex;
 
-        // Update cut line position
+        // Update cut line position (snapped to candle center)
         if (this.cutLine) {
             this.cutLine
-                .attr('x1', x)
-                .attr('x2', x)
+                .attr('x1', lineX)
+                .attr('x2', lineX)
                 .attr('opacity', 1);
         }
         
         // Update overlay based on mode
         if (this.pickModeOverlay) {
             if (this.isGoingBack) {
-                // Go back mode: shade area to the RIGHT (candles to be removed)
-                const rightWidth = this.chart.w - x;
+                const rightWidth = this.chart.w - lineX;
                 this.pickModeOverlay.style.left = 'auto';
                 this.pickModeOverlay.style.right = '0';
                 this.pickModeOverlay.style.width = rightWidth + 'px';
             } else {
-                // Normal pick mode: shade area to the right (future data)
-                const rightWidth = this.chart.w - x;
+                const rightWidth = this.chart.w - lineX;
                 this.pickModeOverlay.style.width = rightWidth + 'px';
             }
         }
         
-        // Find candle index at this x position
-        const candleIndex = this.getCandleIndexAtX(x);
         if (candleIndex >= 0 && this.chart.data[candleIndex]) {
             const candle = this.chart.data[candleIndex];
-            const date = new Date(candle.t);
-            const dateStr = this.formatDateTime(date);
+            const dateStr = this.formatDateTime(new Date(candle.t));
             
             if (this.cutLineLabel) {
                 if (this.isGoingBack) {
@@ -1411,7 +1382,7 @@ class ReplaySystem {
                 } else {
                     this.cutLineLabel.textContent = `▶ Start from: ${dateStr}`;
                 }
-                this.cutLineLabel.style.left = (x + 10) + 'px';
+                this.cutLineLabel.style.left = (lineX + 10) + 'px';
                 this.cutLineLabel.style.opacity = '1';
             }
         }
@@ -1473,6 +1444,50 @@ class ReplaySystem {
         index = Math.max(0, Math.min(chart.data.length - 1, index));
 
         return index;
+    }
+
+    /**
+     * Snap pointer X to candle-center pixel (same rule as crosshair / multichart rollback).
+     * @returns {{ x: number, candleIndex: number, timestamp: number }|null}
+     */
+    resolveSnappedCutLineAtX(chart, x) {
+        if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) {
+            return null;
+        }
+
+        const ml = (chart.margin && chart.margin.l) || 0;
+        const plotW = this._chartPlotWidth(chart);
+        const mr = (chart.margin && chart.margin.r) || 0;
+        if (!Number.isFinite(x) || x < ml || x > plotW - mr) {
+            return null;
+        }
+
+        const candleIndex = this.getCandleIndexAtXForChart(chart, x);
+        if (candleIndex < 0 || !chart.data[candleIndex]) {
+            return null;
+        }
+
+        const candle = chart.data[candleIndex];
+        const floor = this.sessionStartIndex || 0;
+        const floorTs = this.fullRawData && this.fullRawData[floor] ? this.fullRawData[floor].t : null;
+        if (floorTs != null && candle.t < floorTs) {
+            return null;
+        }
+
+        if (typeof chart.dataIndexToPixel !== 'function') {
+            return null;
+        }
+
+        const snappedX = chart.dataIndexToPixel(candleIndex);
+        if (!Number.isFinite(snappedX) || snappedX < ml || snappedX > plotW - mr) {
+            return null;
+        }
+
+        return {
+            x: snappedX,
+            candleIndex,
+            timestamp: candle.t,
+        };
     }
 
     collectGoBackPanelEntries() {

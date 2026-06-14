@@ -14720,13 +14720,25 @@ const TalariaV8bLive = () => {
     refreshRect();
     const onMove = (e) => {
       if (!rollbackLineRef.current) return;
-      // Process every coalesced sample so the line matches the mouse's native
-      // polling rate rather than the display frame rate
       const samples = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
       const last = samples[samples.length - 1];
-      const x = Math.min((rectWidth / Z) - 1, Math.max(0, (last.clientX - rectLeft) / Z));
+      let x = Math.min((rectWidth / Z) - 1, Math.max(0, (last.clientX - rectLeft) / Z));
+
+      const chart = typeof window.getActiveChart === "function"
+        ? window.getActiveChart()
+        : window.chart;
+      const rs = chart?.replaySystem;
+      if (chart && rs && typeof rs.resolveSnappedCutLineAtX === "function") {
+        const snapped = rs.resolveSnappedCutLineAtX(chart, x);
+        if (!snapped) {
+          rollbackLineRef.current.style.opacity = "0";
+          return;
+        }
+        x = snapped.x;
+      }
+
       rollbackLineRef.current.style.transform = `translateX(${x}px)`;
-      rollbackLineRef.current.style.opacity = '1';
+      rollbackLineRef.current.style.opacity = "1";
     };
     node.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('resize', refreshRect, { passive: true });
