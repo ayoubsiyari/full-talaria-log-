@@ -30958,7 +30958,8 @@ class OrderManager {
                 if (showPctArrows) {
                     const poId = entry.pendingOrder.id;
                     const tIdx = target.tpTargetIndex;
-                    if (!target._pctStepperBtn || !target._pctStepperBtn.node()?.parentNode) {
+                    if (!target._pctStepperBtn || !target._pctStepperBtn.node()?.parentNode
+                        || target._pctStepperBtn.select('.tp-pct-stepper-bg-down').empty()) {
                         if (target._pctStepperBtn) { try { target._pctStepperBtn.remove(); } catch (_) {} }
                         target._pctStepperBtn = this._createTpPctStepperOnChart(
                             ch.svg,
@@ -35539,10 +35540,36 @@ class OrderManager {
                     this._positionLegacyOrderLevelToastAccent(labelAccent, labelBox);
 
                     // ↑/↓ TP share stepper (open multi-TP) — center-anchored square
-                    if (pctStepperBtn && pctW > 0) {
+                    let stepper = pctStepperBtn;
+                    if (stepper && pctW > 0 && targetIndex >= 0 && position.tpTargets?.length > 1) {
+                        const tpKey = targetId !== undefined && targetId !== null ? String(targetId) : String(targetIndex);
+                        const oid = orderId;
+                        const tIdx = targetIndex;
+                        const self = this;
+                        const upgraded = this._ensureModernTpPctStepper(
+                            stepper,
+                            ch.svg,
+                            `open-tp-pct-control open-tp-pct-stepper tp-${oid} tp-target-${tpKey}`,
+                            {
+                                stopMousedown: true,
+                                onDecrease: () => { self.adjustOpenPositionTPPercentage(oid, tIdx, -5); },
+                                onIncrease: () => { self.adjustOpenPositionTPPercentage(oid, tIdx, +5); },
+                            }
+                        );
+                        if (upgraded !== stepper) {
+                            const tpRec = (this.tpLines || []).find(
+                                (tp) => tp.orderId === orderId && (tp.chart || this.chart) === ch
+                                    && ((targetId === undefined && tp.targetId === undefined)
+                                        || String(tp.targetId) === String(targetId))
+                            );
+                            if (tpRec) tpRec.pctStepperBtn = upgraded;
+                            stepper = upgraded;
+                        }
+                    }
+                    if (stepper && pctW > 0) {
                         const badgeR = tpPctArrowSize / 2;
                         const badgeCenterY = boxY + boxH / 2;
-                        pctStepperBtn.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
+                        stepper.attr('transform', `translate(${cx + badgeR}, ${badgeCenterY})`);
                         cx += tpPctArrowSize + tpPctArrowGap;
                     }
 
@@ -39766,13 +39793,15 @@ class OrderManager {
         const th = o.th || this._tradeMarkerToastTheme();
         const green = th.light ? '#059669' : '#22c55e';
         const red = th.light ? '#dc2626' : '#ef4444';
+        const greenFill = th.light ? '#047857' : '#166534';
+        const redFill = th.light ? '#b91c1c' : '#991b1b';
         const center = !!o.centerAnchor;
         const half = size / 2;
         const bx = center ? -half : 0;
         const by = center ? -half : 0;
         const cx = center ? 0 : half;
-        const arrowSz = 4.2;
-        const splitGap = 1;
+        const arrowSz = 3.8;
+        const splitGap = 2;
         const upH = Math.ceil((size - splitGap) / 2);
         const downH = size - splitGap - upH;
         const downY = by + upH + splitGap;
@@ -39780,35 +39809,35 @@ class OrderManager {
         const downCy = downY + downH / 2;
 
         const bgUp = g.append('rect')
-            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg-up order-overlay-sublayer')
+            .attr('class', 'tp-pct-stepper-bg-up order-overlay-sublayer')
             .attr('x', bx).attr('y', by)
             .attr('width', size).attr('height', upH)
             .attr('rx', 2)
             .attr('stroke-width', 1);
 
         const bgDown = g.append('rect')
-            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg-down order-overlay-sublayer')
+            .attr('class', 'tp-pct-stepper-bg-down order-overlay-sublayer')
             .attr('x', bx).attr('y', downY)
             .attr('width', size).attr('height', downH)
             .attr('rx', 2)
             .attr('stroke-width', 1);
 
         const upPath = g.append('path')
-            .attr('class', 'order-level-badge-glyph tp-pct-stepper-up order-overlay-sublayer')
+            .attr('class', 'tp-pct-stepper-up order-overlay-sublayer')
             .attr('d', this._arrowUpPath(cx, upCy, arrowSz))
-            .attr('fill', green)
+            .attr('fill', '#ffffff')
             .style('pointer-events', 'none');
 
         const downPath = g.append('path')
-            .attr('class', 'order-level-badge-glyph tp-pct-stepper-down order-overlay-sublayer')
+            .attr('class', 'tp-pct-stepper-down order-overlay-sublayer')
             .attr('d', this._arrowDownPath(cx, downCy, arrowSz))
-            .attr('fill', red)
+            .attr('fill', '#ffffff')
             .style('pointer-events', 'none');
 
-        const wireHalf = (bgEl, pathEl, accent, fn) => {
+        const wireHalf = (bgEl, pathEl, accent, fill, fn) => {
             const reset = () => {
-                bgEl.attr('fill', th.bg).attr('stroke', accent);
-                pathEl.attr('fill', accent);
+                bgEl.attr('fill', fill).attr('stroke', accent);
+                pathEl.attr('fill', '#ffffff');
             };
             const hover = () => {
                 bgEl.attr('fill', accent).attr('stroke', accent);
@@ -39831,8 +39860,8 @@ class OrderManager {
             }
         };
 
-        wireHalf(bgUp, upPath, green, o.onIncrease);
-        wireHalf(bgDown, downPath, red, o.onDecrease);
+        wireHalf(bgUp, upPath, green, greenFill, o.onIncrease);
+        wireHalf(bgDown, downPath, red, redFill, o.onDecrease);
 
         return { bgUp, bgDown, upPath, downPath, size };
     }
@@ -39845,6 +39874,14 @@ class OrderManager {
             .style('cursor', 'pointer');
         this._populateTpPctStepper(g, { centerAnchor: true, ...opts });
         return g;
+    }
+
+    /** Replace legacy single-green stepper DOM with split green/red halves when chart updates. */
+    _ensureModernTpPctStepper(stepperBtn, svg, cssClass, opts = {}) {
+        if (!stepperBtn) return null;
+        if (!stepperBtn.select('.tp-pct-stepper-bg-down').empty()) return stepperBtn;
+        try { stepperBtn.remove(); } catch (_) {}
+        return this._createTpPctStepperOnChart(svg, cssClass, opts);
     }
 
     /** Combined ↑/↓ square inside a preview label group (top-left anchored). */
