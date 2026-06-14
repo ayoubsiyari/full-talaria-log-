@@ -820,64 +820,70 @@ class OrderManager {
         if (shieldW <= 0 || shieldH <= 0) return;
 
         let shield = ch.svg.select('rect.order-price-margin-shield');
+        const self = this;
+        const forwardMouseToCanvas = (ev, type) => {
+            const targetChart = ch;
+            if (!self._eventInPriceAxisZone(ev, targetChart)) return;
+            const canvas = targetChart.canvas;
+            if (!canvas) return;
+            if (targetChart.cursor) targetChart.cursor.mode = 'priceAxis';
+            canvas.dispatchEvent(new MouseEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                clientX: ev.clientX,
+                clientY: ev.clientY,
+                button: ev.button,
+                buttons: ev.buttons,
+                shiftKey: ev.shiftKey,
+                ctrlKey: ev.ctrlKey,
+                altKey: ev.altKey,
+                metaKey: ev.metaKey
+            }));
+        };
+        const handlePriceAxisDblClick = (ev) => {
+            ev.stopPropagation();
+            if (!self._eventInPriceAxisZone(ev, ch)) return;
+            if (typeof ch._applyPriceAxisDoubleClickLock === 'function') {
+                ch._applyPriceAxisDoubleClickLock();
+                return;
+            }
+            forwardMouseToCanvas(ev, 'dblclick');
+        };
         if (shield.empty()) {
-            const self = this;
-            const forwardMouseToCanvas = (ev, type) => {
-                const targetChart = ch;
-                if (!self._eventInPriceAxisZone(ev, targetChart)) return;
-                const canvas = targetChart.canvas;
-                if (!canvas) return;
-                if (targetChart.cursor) targetChart.cursor.mode = 'priceAxis';
-                canvas.dispatchEvent(new MouseEvent(type, {
-                    bubbles: true,
-                    cancelable: true,
-                    clientX: ev.clientX,
-                    clientY: ev.clientY,
-                    button: ev.button,
-                    buttons: ev.buttons,
-                    shiftKey: ev.shiftKey,
-                    ctrlKey: ev.ctrlKey,
-                    altKey: ev.altKey,
-                    metaKey: ev.metaKey
-                }));
-            };
             shield = ch.svg.append('rect')
                 .attr('class', 'order-price-margin-shield')
-                .attr('fill', 'transparent')
-                .style('pointer-events', 'all')
-                .style('cursor', 'ns-resize')
-                .on('mousedown.priceShield', function (ev) {
-                    ev.stopPropagation();
-                    forwardMouseToCanvas(ev, 'mousedown');
-                })
-                .on('dblclick.priceShield', function (ev) {
-                    ev.stopPropagation();
-                    forwardMouseToCanvas(ev, 'dblclick');
-                })
-                .on('wheel.priceShield', function (ev) {
-                    ev.stopPropagation();
-                    const canvas = ch.canvas;
-                    if (canvas) {
-                        canvas.dispatchEvent(new WheelEvent('wheel', {
-                            bubbles: true,
-                            cancelable: true,
-                            clientX: ev.clientX,
-                            clientY: ev.clientY,
-                            deltaY: ev.deltaY,
-                            deltaX: ev.deltaX,
-                            shiftKey: ev.shiftKey,
-                            ctrlKey: ev.ctrlKey,
-                            altKey: ev.altKey
-                        }));
-                    }
-                });
+                .attr('fill', 'transparent');
         }
 
         shield
             .attr('x', plotRight)
             .attr('y', plotTop)
             .attr('width', shieldW)
-            .attr('height', shieldH);
+            .attr('height', shieldH)
+            .style('pointer-events', 'all')
+            .style('cursor', 'ns-resize')
+            .on('mousedown.priceShield', function (ev) {
+                ev.stopPropagation();
+                forwardMouseToCanvas(ev, 'mousedown');
+            })
+            .on('dblclick.priceShield', handlePriceAxisDblClick)
+            .on('wheel.priceShield', function (ev) {
+                ev.stopPropagation();
+                const canvas = ch.canvas;
+                if (canvas) {
+                    canvas.dispatchEvent(new WheelEvent('wheel', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: ev.clientX,
+                        clientY: ev.clientY,
+                        deltaY: ev.deltaY,
+                        deltaX: ev.deltaX,
+                        shiftKey: ev.shiftKey,
+                        ctrlKey: ev.ctrlKey,
+                        altKey: ev.altKey
+                    }));
+                }
+            });
 
         try {
             if (typeof shield.raise === 'function') shield.raise();
@@ -12433,7 +12439,7 @@ class OrderManager {
                 && this._orderQtyAllowsEntryTpSplitAffordances()
                 && this._canAddMoreTpTargets(this.tpTargets?.length || 0)) {
                 const self = this;
-                const splitBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'plus', {
+                const splitBadge = this._appendOrderLevelBadgeToGroup(lineData.labelGroup, 'tpAdd', {
                     className: 'preview-tp-split-add-btn',
                     x: offsetX,
                     y: (height - 18) / 2,
@@ -31723,7 +31729,7 @@ class OrderManager {
                         target._splitBtn = this._createOrderLevelBadgeOnChart(
                             ch.svg,
                             `pending-tp-split pending-tp-${entry.pendingOrder.id}`,
-                            'plus',
+                            'tpAdd',
                             {
                                 stopMousedown: true,
                                 onClick: (event) => {
@@ -33385,6 +33391,7 @@ class OrderManager {
         const map = {
             close: { glyph: '×', accent: '#787b86', hoverAccent: '#ef4444' },
             plus: { glyph: '+', accent: green, hoverAccent: green },
+            tpAdd: { glyph: 'TP', accent: green, hoverAccent: green, fontSize: '9px' },
             minus: { glyph: '−', accent: '#ef4444', hoverAccent: '#ef4444' },
             check: { glyph: '✓', accent: green, hoverAccent: green },
         };
@@ -33446,7 +33453,7 @@ class OrderManager {
             .attr('y', r)
             .attr('dy', '0.35em')
             .attr('text-anchor', 'middle')
-            .attr('font-size', kind === 'check' ? '12px' : '13px')
+            .attr('font-size', spec.fontSize || (kind === 'check' ? '12px' : '13px'))
             .attr('font-weight', '700')
             .attr('font-family', this._orderLevelLabelFontFamily())
             .text(spec.glyph);
@@ -33461,6 +33468,12 @@ class OrderManager {
             g.on('mousedown', (e) => e.stopPropagation());
         }
         return { group: g, size, r };
+    }
+
+    _orderLevelBadgeFontSize(kind, spec) {
+        if (spec?.fontSize) return spec.fontSize;
+        if (kind === 'check') return '12px';
+        return '13px';
     }
 
     /**
@@ -33485,7 +33498,7 @@ class OrderManager {
             .attr('class', 'order-level-badge-glyph order-overlay-sublayer')
             .attr('x', r)
             .attr('y', r)
-            .attr('font-size', kind === 'check' ? '12px' : '13px')
+            .attr('font-size', this._orderLevelBadgeFontSize(kind, spec))
             .attr('font-weight', '700')
             .attr('font-family', this._orderLevelLabelFontFamily())
             .attr('text-anchor', 'middle')
@@ -34641,23 +34654,37 @@ class OrderManager {
         return false;
     }
 
+    /** True when pending order already has TP on data model or as a drawn target line. */
+    _pendingOrderHasTpConfigured(po) {
+        if (!po) return false;
+        if (Number(po.takeProfit) > 0) return true;
+        const targets = po.tpTargets || [];
+        if (targets.some((t) => t && !t.hit && Number(t.price) > 0)) return true;
+        const oid = po.id;
+        if ((this.pendingTargetLines || []).some((entry) => {
+            if (entry.orderId !== oid) return false;
+            return (entry.targets || []).some((t) => t && t.type === 'TP' && Number(t.price) > 0);
+        })) return true;
+        if (po.isSplitEntry && po.splitGroupId && this._splitBasketHasTpOnChart(po.splitGroupId)) {
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Dashed TP ghost on pending entry: not on extra split legs once the basket is live (open leg owns TP UI);
      * pre-fill, only primary leg (splitIndex 1) and only while basket has no TP anywhere.
      */
-    _shouldShowPendingEntryTpGhost(po, hasMultiTP, hasSingleTP) {
+    _shouldShowPendingEntryTpGhost(po, _hasMultiTP, _hasSingleTP) {
         if (!po) return false;
+        if (this._pendingOrderHasTpConfigured(po)) return false;
         if (!po.isSplitEntry || !po.splitGroupId) {
-            if (hasMultiTP) return true;
-            if (hasSingleTP) return false;
             return true;
         }
         const gid = po.splitGroupId;
         if (this._splitGroupHasOpenLeg(gid)) return false;
         if (Number(po.splitIndex) > 1) return false;
         if (this._splitBasketHasTpOnChart(gid)) return false;
-        if (hasMultiTP) return true;
-        if (hasSingleTP) return false;
         return true;
     }
 
@@ -40181,7 +40208,7 @@ class OrderManager {
     }
 
     _createSplitPlusButton(svg, cssClass, _color, onClickFn, r = 10) {
-        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'plus', { onClick: onClickFn, r });
+        return this._createOrderLevelBadgeOnChart(svg, cssClass, 'tpAdd', { onClick: onClickFn, r });
     }
 
     /**

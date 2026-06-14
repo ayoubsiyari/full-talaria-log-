@@ -13764,6 +13764,29 @@ class Chart {
         }
     }
 
+    /** TradingView-style price-axis double-click: auto-scale and lock vertical scale. */
+    _applyPriceAxisDoubleClickLock() {
+        this._isDoubleClicking = true;
+        if (this._priceAxisClickUnlockTimer) {
+            clearTimeout(this._priceAxisClickUnlockTimer);
+            this._priceAxisClickUnlockTimer = null;
+        }
+        setTimeout(() => { this._isDoubleClicking = false; }, 120);
+        this.autoScale = true;
+        if (this.priceScale) {
+            this.priceScale.autoScale = true;
+            this.priceScale.locked = true;
+            this.priceScale.lastLockTime = performance.now();
+        }
+        this.priceZoom = 1;
+        this.priceOffset = 0;
+        if (this.drag?.active) {
+            this.drag.active = false;
+            this.drag.type = null;
+        }
+        this.scheduleRender();
+    }
+
     /**
      * Coalesce multiple viewport commits in the same frame into one paint (TV-style).
      * @param {object} [opts] Same as {@link #_resetViewportToDefault} plus:
@@ -24836,10 +24859,18 @@ class Chart {
                 return;
             }
             
-            // Unlock axes IMMEDIATELY if clicking on them - before any other processing
-            // Skip if we're currently processing a double-click event
+            // Unlock axes on single click — defer so double-click can lock first.
             if (mode === 'priceAxis' && this.priceScale.locked && !this._isDoubleClicking) {
-                this.priceScale.locked = false;
+                if (this._priceAxisClickUnlockTimer) {
+                    clearTimeout(this._priceAxisClickUnlockTimer);
+                }
+                this._priceAxisClickUnlockTimer = setTimeout(() => {
+                    this._priceAxisClickUnlockTimer = null;
+                    if (!this._isDoubleClicking && this.priceScale?.locked) {
+                        this.priceScale.locked = false;
+                        this.scheduleRender();
+                    }
+                }, 260);
                 e.preventDefault();
             } else if (mode === 'timeAxis' && this.timeScale.locked && !this._isDoubleClicking) {
                 this.timeScale.locked = false;
@@ -25667,20 +25698,9 @@ class Chart {
             }
             
             if (mode === 'priceAxis') {
-                // Set flag to prevent unlock during this double-click
-                this._isDoubleClicking = true;
-                setTimeout(() => this._isDoubleClicking = false, 100);
-                
-                // Reset to auto-scale and lock the price scale (stay at current position)
-                this.autoScale = true;
-                this.priceScale.autoScale = true;
-                this.priceScale.locked = true;
-                this.priceScale.lastLockTime = performance.now();
-                this.priceZoom = 1;
-                this.priceOffset = 0;
-
-                
-                this.scheduleRender();
+                if (typeof this._applyPriceAxisDoubleClickLock === 'function') {
+                    this._applyPriceAxisDoubleClickLock();
+                }
             } else if (mode === 'timeAxis') {
                 // TradingView-style: reset zoom/size and jump to latest (current) candle
                 this.jumpToLatest();
@@ -30831,6 +30851,13 @@ async function _talariaInitializeChart() {
             chartInstance.cursor.mode = 'priceAxis';
         } else if (zone === 'time') {
             chartInstance.cursor.mode = 'timeAxis';
+        }
+
+        if (zone === 'price' && e.type === 'dblclick'
+            && typeof chartInstance._applyPriceAxisDoubleClickLock === 'function') {
+            e.preventDefault();
+            chartInstance._applyPriceAxisDoubleClickLock();
+            return;
         }
         
         // Forward the event to canvas
