@@ -791,6 +791,8 @@ class OrderManager {
         s.selectAll('.pending-order-line,.pending-order-label-box,.pending-order-label-text,.pending-order-price-box,.pending-order-price-text,.pending-order-close-btn').remove();
         s.selectAll('.pending-tp-line,.pending-sl-line,.pending-be-line,.pending-tp-label,.pending-sl-label,.pending-be-label').remove();
         s.selectAll('[class*="pending-tp-tp-plus-badge"],[class*="pending-tp-delete"],[class*="pending-tp-split"],[class*="pending-sl-badge"],[class*="pending-tp-badge"]').remove();
+        s.selectAll('[class*="pending-tp-pct-control"],[class*="pending-tp-pct-dec"],[class*="pending-tp-pct-inc"]').remove();
+        s.selectAll('[class*="open-tp-pct-control"],[class*="open-tp-pct-dec"],[class*="open-tp-pct-inc"]').remove();
         s.selectAll('.sl-line,.sl-label-box,.sl-label-text,.sl-pnl-box,.sl-pnl-text,.sl-close-btn,.sl-price-box,.sl-price-text').remove();
         s.selectAll('.tp-line,.tp-label-box,.tp-label-text,.tp-pnl-box,.tp-pnl-text,.tp-close-btn,.tp-split-btn,.tp-price-box,.tp-price-text').remove();
         s.selectAll('.be-line,.be-hit-line,.be-label-box,.be-label-text,.be-price-box,.be-price-text').remove();
@@ -25832,6 +25834,7 @@ class OrderManager {
                     this.removeSLTPLines(id);
                     this.removeMultiTPAvgLine(id);
                     this.removeEntryMarker(id);
+                    this._cleanupOrderVisualsAfterClose(id);
                 } catch (e) {
                     console.error(`❌ Error removing lines for #${id}:`, e);
                 }
@@ -26238,20 +26241,7 @@ class OrderManager {
             if (targetId !== undefined && this.tpLines) {
                 const hitLine = this.tpLines.find(tpLine => tpLine.orderId === orderId && (tpLine.targetId === targetId || String(tpLine.targetId) === String(targetId)));
                 if (hitLine) {
-                    if (hitLine.line) hitLine.line.remove();
-                    if (hitLine.labelBox) hitLine.labelBox.remove();
-                    if (hitLine.labelText) hitLine.labelText.remove();
-                    if (hitLine.pnlBox) hitLine.pnlBox.remove();
-                    if (hitLine.pnlText) hitLine.pnlText.remove();
-                    if (hitLine.priceBox) hitLine.priceBox.remove();
-                    if (hitLine.priceText) hitLine.priceText.remove();
-                    if (hitLine.closeBtn) hitLine.closeBtn.remove();
-                    if (hitLine.splitBtn) hitLine.splitBtn.remove();
-                    if (hitLine.deleteBtn) hitLine.deleteBtn.remove();
-                    if (hitLine.pctDecBtn) hitLine.pctDecBtn.remove();
-                    if (hitLine.pctIncBtn) hitLine.pctIncBtn.remove();
-                    if (hitLine.tpPlusBadge) hitLine.tpPlusBadge.remove();
-                    if (hitLine.yAxisHighlight) hitLine.yAxisHighlight.remove();
+                    this._disposeSlTpRowElements(hitLine);
                     this.tpLines = this.tpLines.filter(tpLine => !(tpLine.orderId === orderId && (tpLine.targetId === targetId || String(tpLine.targetId) === String(targetId))));
                     console.log(`   ✅ Removed TP line for target #${targetId}`);
                 }
@@ -26262,9 +26252,9 @@ class OrderManager {
             (_avgCharts.length ? _avgCharts : [this.chart]).forEach((c) => {
                 if (c?.scales?.yScale) {
                     this._updateMultiTPAvgLines(c);
-                    this._drawExecutedOrderConnectors(c);
                 }
             });
+            this._cleanupOrderVisualsAfterClose(orderId);
             
             // Draw partial profit marker only on the active chart
             if (!isBackgroundClose) {
@@ -26424,7 +26414,7 @@ class OrderManager {
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
-                this._cleanupOrphanedYAxisHighlights();
+                this._cleanupOrderVisualsAfterClose(orderId);
                 // Defer promoting remaining siblings until after all batch closes this tick (see _scheduleSplitGroupSiblingPromotion).
                 if (position.splitGroupId && position.isSplitEntry) {
                     this._scheduleSplitGroupSiblingPromotion(position.splitGroupId);
@@ -26876,7 +26866,7 @@ class OrderManager {
                 this.removeMultiTPAvgLine(orderId);
                 this.removeEntryMarker(orderId);
                 this.removeMfeMaeMarkers(orderId);
-                this._cleanupOrphanedYAxisHighlights();
+                this._cleanupOrderVisualsAfterClose(orderId);
                 if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                     this.removeSplitGroupAvgLine(position.splitGroupId);
                 }
@@ -26988,7 +26978,7 @@ class OrderManager {
             if (position.splitGroupId && position.isSplitEntry && !this._splitGroupHasAnyOpenLeg(position.splitGroupId)) {
                 this.removeSplitGroupAvgLine(position.splitGroupId);
             }
-            this._cleanupOrphanedYAxisHighlights();
+            this._cleanupOrderVisualsAfterClose(orderId);
         }
         
         // Clean up any preview lines that might be lingering
@@ -31520,6 +31510,7 @@ class OrderManager {
             c.svg.selectAll(`.pending-order-close-btn.pending-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-delete.pending-tp-${orderId}`).remove();
             c.svg.selectAll(`.pending-tp-tp-plus-badge.pending-tp-${orderId}`).remove();
+            c.svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${orderId}"]`).remove();
         });
     }
     
@@ -33389,6 +33380,64 @@ class OrderManager {
         } catch (_) { /* ignore */ }
     }
 
+    /** Sweep DOM orphans (−/+/× badges, connector stubs) after TP/SL hit or line removal. */
+    _sweepOrphanedOrderLevelDom(orderId) {
+        if (orderId == null) return;
+        const oid = String(orderId);
+        const seen = new Set();
+        const sweep = (svg) => {
+            if (!svg?.selectAll) return;
+            const node = svg.node?.();
+            if (node) {
+                if (seen.has(node)) return;
+                seen.add(node);
+            }
+            svg.selectAll(`.tp-${oid}`).remove();
+            svg.selectAll(`.sl-${oid}`).remove();
+            svg.selectAll(`.pending-tp-${oid}`).remove();
+            svg.selectAll(`.pending-sl-${oid}`).remove();
+            svg.selectAll(`.pending-be-${oid}`).remove();
+            svg.selectAll(`.pending-${oid}`).remove();
+            svg.selectAll(`[class*="open-tp-pct"][class*="tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-pct"][class*="pending-tp-${oid}"]`).remove();
+            svg.selectAll(`[class*="pending-tp-delete"][class*="pending-tp-${oid}"]`).remove();
+        };
+        const charts = typeof this._collectLayoutCharts === 'function'
+            ? this._collectLayoutCharts()
+            : [this.chart];
+        (charts || []).forEach((c) => sweep(c?.svg));
+        sweep(this.chart?.svg);
+        if (typeof document !== 'undefined' && typeof d3 !== 'undefined') {
+            const roots = [];
+            const dw = document.getElementById('drawingSvg');
+            if (dw) roots.push(dw);
+            document.querySelectorAll('#panels-container svg').forEach((el) => roots.push(el));
+            roots.forEach((el) => {
+                if (!el || seen.has(el)) return;
+                seen.add(el);
+                sweep(d3.select(el));
+            });
+        }
+    }
+
+    _cleanupOrderVisualsAfterClose(orderId) {
+        this._sweepOrphanedOrderLevelDom(orderId);
+        if (typeof this._purgeOrderConnectorsFromAllSurfaces === 'function') {
+            this._purgeOrderConnectorsFromAllSurfaces();
+        }
+        const charts = typeof this._collectLayoutCharts === 'function'
+            ? this._collectLayoutCharts()
+            : [this.chart];
+        (charts || []).forEach((c) => {
+            if (c?.scales?.yScale && typeof this._drawExecutedOrderConnectors === 'function') {
+                this._drawExecutedOrderConnectors(c);
+            }
+        });
+        if (typeof this._cleanupOrphanedYAxisHighlights === 'function') {
+            this._cleanupOrphanedYAxisHighlights();
+        }
+    }
+
     _invalidateOrderLineBadgeCache(orderId) {
         (this.orderLines || []).forEach((ol) => {
             if (ol && ol.orderId === orderId) ol._tpBadgeSig = null;
@@ -35252,7 +35301,20 @@ class OrderManager {
                         const idxMatch = i === targetId || String(i) === String(targetId);
                         if (idMatch || idxMatch) { target = t; targetIndex = i; break; }
                     }
-                    if (!target || target.hit) return;
+                    if (!target || target.hit) {
+                        if (target?.hit) {
+                            this._disposeSlTpRowElements({
+                                line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
+                                priceBox, priceText, deleteBtn, pctDecBtn, pctIncBtn,
+                            });
+                            this.tpLines = (this.tpLines || []).filter(
+                                (tp) => !(tp.orderId === orderId && (tp.chart || this.chart) === ch
+                                    && ((targetId === undefined && tp.targetId === undefined)
+                                        || String(tp.targetId) === String(targetId)))
+                            );
+                        }
+                        return;
+                    }
                     tpPrice = target.price;
                     percentage = target.percentage;
                 } else if (position.takeProfit) {
