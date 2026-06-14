@@ -31101,12 +31101,7 @@ class OrderManager {
                 const pendingChrome = [target.labelGroup, target._pctStepperBtn, target._deleteBtn, target._splitBtn]
                     .filter((s) => s && !s.empty?.());
                 if (pendingChrome.length && poId != null) {
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `pending:${poId}:${target.type}:${target.tpTargetIndex ?? target.targetId ?? target.type}`,
-                        [target.hitLine, target.line].filter((s) => s && !s.empty?.()),
-                        pendingChrome
-                    );
+                    this._ensureOrderLevelChromeVisible(pendingChrome);
                 }
                 target.priceHighlight = this.drawYAxisPriceHighlight(
                     target.price,
@@ -35194,7 +35189,7 @@ class OrderManager {
             return;
         }
 
-        this._resetNonPreviewOrderLevelHoverReveal(ch);
+        this._purgeOrderLevelHoverRevealForChart(ch);
 
         if (!this.slLines && !this.tpLines) {
             console.log('⚠️ updateSLTPLines: No lines to update');
@@ -35301,13 +35296,7 @@ class OrderManager {
 
                 const slRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (slRevealVisible) {
-                    const slHit = this._ensureOrderLevelRevealHitLine(ch, { line, hitLine }, `sl-hit-line sl-${orderId}`);
-                    if (slHit) slHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                    this._raiseOrderLevelRevealHit(slHit);
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `open:sl:${orderId}`,
-                        [slHit, line].filter((s) => s && !s.empty?.()),
+                    this._ensureOrderLevelChromeVisible(
                         [labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn].filter((s) => s && !s.empty?.())
                     );
                 }
@@ -35670,18 +35659,7 @@ class OrderManager {
 
                 const tpRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (tpRevealVisible) {
-                    const tpKey = (targetId !== undefined && targetId !== null) ? String(targetId) : 'st';
-                    const tpHit = this._ensureOrderLevelRevealHitLine(
-                        ch,
-                        { line, hitLine },
-                        `tp-hit-line tp-${orderId} tp-target-${tpKey}`
-                    );
-                    if (tpHit) tpHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
-                    this._raiseOrderLevelRevealHit(tpHit);
-                    this._refreshOrderLevelHoverReveal(
-                        ch,
-                        `open:tp:${orderId}:${tpKey}`,
-                        [tpHit, line].filter((s) => s && !s.empty?.()),
+                    this._ensureOrderLevelChromeVisible(
                         [labelBox, labelAccent, labelText, pnlBox, pnlText, rowStepperBtn, deleteBtn, splitBtn, closeBtn]
                             .filter((s) => s && !s.empty?.())
                     );
@@ -35696,12 +35674,8 @@ class OrderManager {
             });
         }
         
-        // Entry prices are handled in updateOrderLines
-        
-        // Check if SL/TP lines are visible in DOM
-        const slLinesInDom = document.querySelectorAll('.sl-line');
-        const tpLinesInDom = document.querySelectorAll('.tp-line');
-        console.log(`✅ SL/TP lines updated. DOM count: SL=${slLinesInDom.length}, TP=${tpLinesInDom.length}`);
+        this._purgeOrderLevelHoverRevealForChart(ch);
+        this._forceAllOrderChromeVisibleOnChart(ch);
     }
     
     /**
@@ -35843,7 +35817,7 @@ class OrderManager {
             return;
         }
 
-        this._resetNonPreviewOrderLevelHoverReveal(ch);
+        this._purgeOrderLevelHoverRevealForChart(ch);
 
         this._updateEntryMarkersForChart(ch);
 
@@ -36116,12 +36090,7 @@ class OrderManager {
                         this._raiseOrderLevelRevealHit(dragHitLine);
                     }
                     if (olEntry._entryRevealChrome?.length) {
-                        this._refreshOrderLevelHoverReveal(
-                            ch,
-                            `${isPending ? 'pending' : 'open'}:entry:${orderId}`,
-                            [dragHitLine, line].filter((s) => s && !s.empty?.()),
-                            olEntry._entryRevealChrome
-                        );
+                        this._ensureOrderLevelChromeVisible(olEntry._entryRevealChrome);
                     }
                 }
 
@@ -36149,6 +36118,7 @@ class OrderManager {
             this.positionPendingOrderTargets(ch);
         }
         this._alignAllOrderLabels(ch);
+        this._forceAllOrderChromeVisibleOnChart(ch);
     }
 
     /**
@@ -36180,7 +36150,7 @@ class OrderManager {
         // Do not fold them into minX or shift them here — that caused horizontal snap on click/drag.
 
         if (!Number.isFinite(minX) || minX === Infinity) {
-            this._repaintAllOrderLevelHoverReveal(ch);
+            this._forceAllOrderChromeVisibleOnChart(ch);
             return;
         }
 
@@ -36327,7 +36297,7 @@ class OrderManager {
             }
         });
 
-        this._repaintAllOrderLevelHoverReveal(ch);
+        this._forceAllOrderChromeVisibleOnChart(ch);
     }
 
     _orderConnectorAnchorX(ch) {
@@ -39924,17 +39894,51 @@ class OrderManager {
             sel.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
             const node = sel.node?.();
             const cls = node?.getAttribute?.('class') || '';
-            const isInteractivePreview = /preview-label-group|preview-badge-group/.test(cls);
-            if (isInteractivePreview) {
+            const tag = node?.tagName?.toLowerCase();
+            const interactive = /preview-label-group|preview-badge-group|order-label|pending-order|sl-label|tp-label|tp-pct|open-tp-pct|order-level-badge|tp-delete|tp-split|order-close|sl-hit|tp-hit|order-drag/.test(cls)
+                || tag === 'g';
+            if (interactive) {
+                sel.style('pointer-events', 'all');
+            } else if (tag === 'rect' && sel.style('pointer-events') === 'none') {
                 sel.style('pointer-events', 'all');
             } else if (sel.style('pointer-events') === 'none') {
-                if (/order-label|pending-order-label|sl-label|tp-label/.test(cls)
-                    || node?.tagName?.toLowerCase() === 'g') {
-                    sel.style('pointer-events', 'all');
-                } else {
-                    sel.style('pointer-events', null);
-                }
+                sel.style('pointer-events', null);
             }
+        });
+    }
+
+    /** Remove hover-hide wiring on executed/pending rows and restore visible chrome. */
+    _purgeOrderLevelHoverRevealForChart(ch) {
+        if (!ch || !this._orderLevelRevealRegistry) return;
+        for (const [key, entry] of [...this._orderLevelRevealRegistry.entries()]) {
+            if (entry.chart !== ch || String(key).startsWith('preview:')) continue;
+            this._ensureOrderLevelChromeVisible(entry.chrome);
+            [...(entry.hits || []), ...(entry.chrome || [])].forEach((sel) => {
+                sel?.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+            });
+            this._orderLevelRevealRegistry.delete(key);
+            this._orderLevelRevealWired?.delete(key);
+            this._orderLevelRevealHover?.delete(key);
+        }
+    }
+
+    _forceAllOrderChromeVisibleOnChart(ch) {
+        if (!ch) return;
+        (this.slLines || []).forEach((sl) => {
+            if ((sl.chart || this.chart) !== ch) return;
+            this._ensureOrderLevelChromeVisible(
+                [sl.labelBox, sl.labelAccent, sl.labelText, sl.pnlBox, sl.pnlText, sl.closeBtn]
+            );
+        });
+        (this.tpLines || []).forEach((tp) => {
+            if ((tp.chart || this.chart) !== ch) return;
+            this._ensureOrderLevelChromeVisible(
+                [tp.labelBox, tp.labelAccent, tp.labelText, tp.pnlBox, tp.pnlText, tp.pctStepperBtn, tp.deleteBtn, tp.splitBtn, tp.closeBtn]
+            );
+        });
+        (this.orderLines || []).forEach((ol) => {
+            if ((ol.chart || this.chart) !== ch) return;
+            if (ol._entryRevealChrome?.length) this._ensureOrderLevelChromeVisible(ol._entryRevealChrome);
         });
     }
 
@@ -40042,60 +40046,22 @@ class OrderManager {
         if (regEntry) regEntry._attachRevealHover = attach;
     }
 
-    /** Clear stale hover-hide registry entries (does not force visible). */
-    _resetNonPreviewOrderLevelHoverReveal(ch) {
-        if (!this._orderLevelRevealRegistry || !ch) return;
-        for (const [key, entry] of [...this._orderLevelRevealRegistry.entries()]) {
-            if (entry.chart !== ch || String(key).startsWith('preview:')) continue;
+    _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
+        this._ensureOrderLevelChromeVisible(chrome);
+        [...(hits || []), ...(chrome || [])].forEach((sel) => {
+            sel?.on('mouseenter.reveal', null).on('mouseleave.reveal', null);
+        });
+        if (key && this._orderLevelRevealRegistry?.has(key)) {
             this._orderLevelRevealRegistry.delete(key);
             this._orderLevelRevealWired?.delete(key);
             this._orderLevelRevealHover?.delete(key);
         }
     }
 
-    _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
-        if (!key || !ch) return;
-        if (!this._orderLevelRevealRegistry) this._orderLevelRevealRegistry = new Map();
-        if (!this._orderLevelRevealHover) this._orderLevelRevealHover = new Map();
-
-        const cleanHits = (hits || []).filter((s) => s && !s.empty?.());
-        const cleanChrome = (chrome || []).filter((s) => s && !s.empty?.());
-        if (!cleanHits.length || !cleanChrome.length) return;
-
-        let entry = this._orderLevelRevealRegistry.get(key);
-        if (!entry) {
-            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome };
-            this._orderLevelRevealRegistry.set(key, entry);
-            this._wireOrderLevelHoverReveal(key);
-        } else {
-            entry.chart = ch;
-            entry.hits = cleanHits;
-            entry.chrome = cleanChrome;
-            if (typeof entry._attachRevealHover === 'function') entry._attachRevealHover();
-        }
-
-        cleanChrome.forEach((sel) => {
-            if (sel && typeof sel.interrupt === 'function') sel.interrupt();
-            this._clearOrderLevelRevealSlide(sel);
-        });
-
-        const visible = !!this._orderLevelRevealHover.get(key);
-        this._paintOrderLevelHoverReveal(key, visible, false);
-    }
-
     _repaintAllOrderLevelHoverReveal(ch) {
-        if (!this._orderLevelRevealRegistry || !ch) return;
-        this._orderLevelRevealRegistry.forEach((entry, key) => {
-            if (entry.chart !== ch) return;
-            if (String(key).startsWith('preview:')) return;
-            entry.chrome.forEach((sel) => {
-                if (!sel || sel.empty?.()) return;
-                if (typeof sel.interrupt === 'function') sel.interrupt();
-                this._clearOrderLevelRevealSlide(sel);
-            });
-            const visible = !!this._orderLevelRevealHover?.get(key);
-            this._paintOrderLevelHoverReveal(key, visible, false);
-        });
+        if (!ch) return;
+        this._purgeOrderLevelHoverRevealForChart(ch);
+        this._forceAllOrderChromeVisibleOnChart(ch);
     }
 
     _raiseOrderLevelRevealHit(sel) {
