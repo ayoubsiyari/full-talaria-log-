@@ -25934,7 +25934,10 @@ class OrderManager {
         
         if (positionsToClose.length > 0) {
             this._finalizeOrderVisualsAfterBatchClose();
-            this._scheduleClosedJournalMarkerRedraw();
+            const hadFullClose = positionsToClose.some((row) => row.type !== 'TP-PARTIAL');
+            if (hadFullClose) {
+                this._scheduleClosedJournalMarkerRedraw();
+            }
         }
         
         // Continue tracking MFE/MAE for closed positions
@@ -26363,7 +26366,7 @@ class OrderManager {
                     this._updateMultiTPAvgLines(c);
                 }
             });
-            this._cleanupOrderVisualsAfterClose(orderId);
+            this._cleanupOrderVisualsAfterPartialTpClose(orderId);
             
             // Draw partial profit marker only on the active chart
             if (!isBackgroundClose) {
@@ -26374,7 +26377,6 @@ class OrderManager {
                     percentage: percentage,
                     targetId: targetId
                 });
-                this._scheduleClosedJournalMarkerRedraw();
             }
             
             // Show notification
@@ -27026,21 +27028,6 @@ class OrderManager {
             
             // Draw exit marker only on the active chart (skip for cross-pair background closes)
             if (!isBackgroundClose) {
-                // Re-paint partial TP arrows (chart render can run between leg closes)
-                if (Array.isArray(position.partialCloses) && position.partialCloses.length > 0) {
-                    position.partialCloses.forEach((pc) => {
-                        try {
-                            this.drawPartialCloseMarker(position, {
-                                closePrice: pc.closePrice,
-                                closeTime: pc.closeTime,
-                                pnl: pc.pnl || 0,
-                                percentage: pc.percentage,
-                                targetId: pc.targetId,
-                                type: pc.hitType || 'TP-PARTIAL',
-                            });
-                        } catch (_) { /* ignore */ }
-                    });
-                }
                 this.drawExitMarker(position, {
                     closePrice: closePrice,
                     closeTime: closeTime,
@@ -32685,11 +32672,9 @@ class OrderManager {
             const line = svg.select(`.trade-connector-${oid}`);
             if (line.empty()) continue;
             if (active) {
-                this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', '#94a3b8');
-                line.attr('stroke', 'rgba(200, 210, 230, 0.95)').attr('stroke-width', 2.5)
-                    .attr('filter', 'url(#trade-connector-glow)');
+                this._applyTradeConnectorHoverStyle(line, svg);
             } else {
-                line.attr('stroke', 'rgba(150, 150, 150, 0.4)').attr('stroke-width', 1).attr('filter', null);
+                this._applyTradeConnectorIdleStyle(line);
             }
         }
     }
@@ -33057,11 +33042,9 @@ class OrderManager {
             .attr('class', `trade-connector trade-connector-${order.id}`)
             .attr('x1', x1).attr('y1', y1)
             .attr('x2', x2).attr('y2', y2)
-            .attr('stroke', 'rgba(150, 150, 150, 0.4)')
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '1 3')
-            .attr('stroke-linecap', 'round')
+            .attr('stroke', this._tradeConnectorTheme().hoverStroke)
             .style('pointer-events', 'none');
+        this._applyTradeConnectorIdleStyle(line);
 
         if (!this.tradeConnectors) this.tradeConnectors = [];
         this.tradeConnectors.push({
@@ -33443,11 +33426,14 @@ class OrderManager {
             });
         }
 
-        // Toggle trade connector lines
+        // Toggle trade connector lines (hidden until hover when markers are shown)
         if (this.tradeConnectors && this.tradeConnectors.length > 0) {
             this.tradeConnectors.forEach(({ line }) => {
-                if (line) {
-                    line.style('visibility', show ? 'visible' : 'hidden');
+                if (!line) return;
+                if (show) {
+                    this._applyTradeConnectorIdleStyle(line);
+                } else {
+                    line.style('visibility', 'hidden').attr('filter', null);
                 }
             });
         }
@@ -33549,6 +33535,16 @@ class OrderManager {
     _cleanupOrderVisualsAfterClose(orderId) {
         this._syncOrderServiceOpenAfterClose(orderId);
         this._sweepOrphanedOrderLevelDom(orderId);
+        this._purgeOrderConnectorsForOrder(orderId);
+        this._purgeOrderConnectorsFromAllSurfaces();
+        this._scheduleOrderConnectorRefreshAfterClose();
+        if (typeof this._cleanupOrphanedYAxisHighlights === 'function') {
+            this._cleanupOrphanedYAxisHighlights();
+        }
+    }
+
+    /** Partial multi-TP hit: position stays open — refresh connectors only, keep entry + remaining TP/SL lines. */
+    _cleanupOrderVisualsAfterPartialTpClose(orderId) {
         this._purgeOrderConnectorsForOrder(orderId);
         this._purgeOrderConnectorsFromAllSurfaces();
         this._scheduleOrderConnectorRefreshAfterClose();
@@ -39654,6 +39650,43 @@ class OrderManager {
             muted: light ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.58)',
             accentDefault: light ? '#2F55E8' : '#4A6AFF',
         };
+    }
+
+    /** Entry↔exit connector line — hidden until marker hover; adapts to light chart background. */
+    _tradeConnectorTheme() {
+        const light = typeof document !== 'undefined' && document.body?.classList.contains('light-mode');
+        return {
+            light,
+            hoverStroke: light ? 'rgba(51, 65, 85, 0.82)' : 'rgba(200, 210, 230, 0.95)',
+            glow: light ? '#64748b' : '#94a3b8',
+        };
+    }
+
+    _applyTradeConnectorIdleStyle(lineSel) {
+        if (!lineSel || (lineSel.empty && lineSel.empty())) return;
+        lineSel
+            .attr('stroke-width', 1)
+            .attr('stroke-dasharray', '1 3')
+            .attr('stroke-linecap', 'round')
+            .attr('filter', null)
+            .style('opacity', 0)
+            .style('visibility', 'visible');
+    }
+
+    _applyTradeConnectorHoverStyle(lineSel, svg) {
+        if (!lineSel || (lineSel.empty && lineSel.empty())) return;
+        const th = this._tradeConnectorTheme();
+        if (svg && typeof svg.select === 'function') {
+            this._ensureMarkerGlowFilter(svg, 'trade-connector-glow', th.glow);
+        }
+        lineSel
+            .attr('stroke', th.hoverStroke)
+            .attr('stroke-width', 2.5)
+            .attr('stroke-dasharray', '1 3')
+            .attr('stroke-linecap', 'round')
+            .attr('filter', svg ? 'url(#trade-connector-glow)' : null)
+            .style('opacity', 1)
+            .style('visibility', 'visible');
     }
 
     /** Active/pending/executed order levels: dashed @ 100%. Preview draft lines: solid @ 60%. */
