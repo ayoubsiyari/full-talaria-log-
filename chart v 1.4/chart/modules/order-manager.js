@@ -31101,7 +31101,12 @@ class OrderManager {
                 const pendingChrome = [target.labelGroup, target._pctStepperBtn, target._deleteBtn, target._splitBtn]
                     .filter((s) => s && !s.empty?.());
                 if (pendingChrome.length && poId != null) {
-                    this._ensureOrderLevelChromeVisible(pendingChrome);
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `pending:${poId}:${target.type}:${target.tpTargetIndex ?? target.targetId ?? target.type}`,
+                        [target.hitLine, target.line].filter((s) => s && !s.empty?.()),
+                        pendingChrome
+                    );
                 }
                 target.priceHighlight = this.drawYAxisPriceHighlight(
                     target.price,
@@ -35296,7 +35301,13 @@ class OrderManager {
 
                 const slRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (slRevealVisible) {
-                    this._ensureOrderLevelChromeVisible(
+                    const slHit = this._ensureOrderLevelRevealHitLine(ch, { line, hitLine }, `sl-hit-line sl-${orderId}`);
+                    if (slHit) slHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._raiseOrderLevelRevealHit(slHit);
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `open:sl:${orderId}`,
+                        [slHit, line].filter((s) => s && !s.empty?.()),
                         [labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn].filter((s) => s && !s.empty?.())
                     );
                 }
@@ -35409,6 +35420,7 @@ class OrderManager {
             
             tpForChart.forEach(({ orderId, targetId, line, hitLine, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn, priceBox, priceText, deleteBtn, pctStepperBtn, pctArrowsWidth }) => {
                 const position = this._findOpenPositionById(orderId);
+                let rowStepperBtn = pctStepperBtn;
                 if (!position) {
                     this._disposeSlTpRowElements({
                         line, labelBox, labelAccent, labelText, pnlBox, pnlText, closeBtn, splitBtn,
@@ -35627,6 +35639,7 @@ class OrderManager {
                             );
                             if (tpRec) tpRec.pctStepperBtn = upgraded;
                             stepper = upgraded;
+                            rowStepperBtn = upgraded;
                         }
                     }
                     if (stepper && pctW > 0) {
@@ -35657,8 +35670,19 @@ class OrderManager {
 
                 const tpRevealVisible = labelBox && labelBox.style('display') !== 'none';
                 if (tpRevealVisible) {
-                    this._ensureOrderLevelChromeVisible(
-                        [labelBox, labelAccent, labelText, pnlBox, pnlText, pctStepperBtn, deleteBtn, splitBtn, closeBtn]
+                    const tpKey = (targetId !== undefined && targetId !== null) ? String(targetId) : 'st';
+                    const tpHit = this._ensureOrderLevelRevealHitLine(
+                        ch,
+                        { line, hitLine },
+                        `tp-hit-line tp-${orderId} tp-target-${tpKey}`
+                    );
+                    if (tpHit) tpHit.attr('x1', 0).attr('x2', ch.w).attr('y1', y).attr('y2', y);
+                    this._raiseOrderLevelRevealHit(tpHit);
+                    this._refreshOrderLevelHoverReveal(
+                        ch,
+                        `open:tp:${orderId}:${tpKey}`,
+                        [tpHit, line].filter((s) => s && !s.empty?.()),
+                        [labelBox, labelAccent, labelText, pnlBox, pnlText, rowStepperBtn, deleteBtn, splitBtn, closeBtn]
                             .filter((s) => s && !s.empty?.())
                     );
                 }
@@ -36092,7 +36116,12 @@ class OrderManager {
                         this._raiseOrderLevelRevealHit(dragHitLine);
                     }
                     if (olEntry._entryRevealChrome?.length) {
-                        this._ensureOrderLevelChromeVisible(olEntry._entryRevealChrome);
+                        this._refreshOrderLevelHoverReveal(
+                            ch,
+                            `${isPending ? 'pending' : 'open'}:entry:${orderId}`,
+                            [dragHitLine, line].filter((s) => s && !s.empty?.()),
+                            olEntry._entryRevealChrome
+                        );
                     }
                 }
 
@@ -39909,30 +39938,47 @@ class OrderManager {
         });
     }
 
+    _restoreOrderLevelRevealPointerEvents(sel, visible) {
+        if (!sel || sel.empty?.()) return;
+        if (!visible) {
+            sel.style('pointer-events', 'none');
+            return;
+        }
+        const node = sel.node?.();
+        const cls = node?.getAttribute?.('class') || '';
+        if (/label-accent|label-text.*pointer|pnl-text|order-arrow/.test(cls)) {
+            sel.style('pointer-events', null);
+        } else {
+            sel.style('pointer-events', 'all');
+        }
+    }
+
     _paintOrderLevelRevealSelection(sel, visible, animate, slide) {
         if (!sel || sel.empty?.()) return;
         if (typeof sel.interrupt === 'function') sel.interrupt();
 
         const finishHidden = () => {
             this._clearOrderLevelRevealSlide(sel);
-            sel.style('opacity', 0).style('pointer-events', 'none');
+            sel.style('opacity', 0);
+            this._restoreOrderLevelRevealPointerEvents(sel, false);
         };
         const finishVisible = () => {
             this._clearOrderLevelRevealSlide(sel);
-            sel.style('opacity', 1).style('pointer-events', null);
+            sel.style('opacity', 1);
+            this._restoreOrderLevelRevealPointerEvents(sel, true);
         };
 
         if (!animate) {
             this._clearOrderLevelRevealSlide(sel);
             sel.style('opacity', visible ? 1 : 0);
-            sel.style('pointer-events', visible ? null : 'none');
+            this._restoreOrderLevelRevealPointerEvents(sel, visible);
             return;
         }
 
         if (visible) {
+            this._restoreOrderLevelRevealPointerEvents(sel, true);
             sel.style('transform', `translateX(${slide}px)`)
-                .style('opacity', 0)
-                .style('pointer-events', null);
+                .style('opacity', 0);
             sel.transition().duration(180)
                 .style('transform', 'translateX(0px)')
                 .style('opacity', 1)
@@ -39996,12 +40042,11 @@ class OrderManager {
         if (regEntry) regEntry._attachRevealHover = attach;
     }
 
-    /** Clear stale hover-hide state left on executed/pending rows. */
+    /** Clear stale hover-hide registry entries (does not force visible). */
     _resetNonPreviewOrderLevelHoverReveal(ch) {
         if (!this._orderLevelRevealRegistry || !ch) return;
         for (const [key, entry] of [...this._orderLevelRevealRegistry.entries()]) {
             if (entry.chart !== ch || String(key).startsWith('preview:')) continue;
-            this._ensureOrderLevelChromeVisible(entry.chrome);
             this._orderLevelRevealRegistry.delete(key);
             this._orderLevelRevealWired?.delete(key);
             this._orderLevelRevealHover?.delete(key);
@@ -40009,14 +40054,47 @@ class OrderManager {
     }
 
     _refreshOrderLevelHoverReveal(ch, key, hits, chrome) {
-        this._ensureOrderLevelChromeVisible(chrome);
+        if (!key || !ch) return;
+        if (!this._orderLevelRevealRegistry) this._orderLevelRevealRegistry = new Map();
+        if (!this._orderLevelRevealHover) this._orderLevelRevealHover = new Map();
+
+        const cleanHits = (hits || []).filter((s) => s && !s.empty?.());
+        const cleanChrome = (chrome || []).filter((s) => s && !s.empty?.());
+        if (!cleanHits.length || !cleanChrome.length) return;
+
+        let entry = this._orderLevelRevealRegistry.get(key);
+        if (!entry) {
+            entry = { chart: ch, hits: cleanHits, chrome: cleanChrome };
+            this._orderLevelRevealRegistry.set(key, entry);
+            this._wireOrderLevelHoverReveal(key);
+        } else {
+            entry.chart = ch;
+            entry.hits = cleanHits;
+            entry.chrome = cleanChrome;
+            if (typeof entry._attachRevealHover === 'function') entry._attachRevealHover();
+        }
+
+        cleanChrome.forEach((sel) => {
+            if (sel && typeof sel.interrupt === 'function') sel.interrupt();
+            this._clearOrderLevelRevealSlide(sel);
+        });
+
+        const visible = !!this._orderLevelRevealHover.get(key);
+        this._paintOrderLevelHoverReveal(key, visible, false);
     }
 
     _repaintAllOrderLevelHoverReveal(ch) {
         if (!this._orderLevelRevealRegistry || !ch) return;
         this._orderLevelRevealRegistry.forEach((entry, key) => {
             if (entry.chart !== ch) return;
-            this._ensureOrderLevelChromeVisible(entry.chrome);
+            if (String(key).startsWith('preview:')) return;
+            entry.chrome.forEach((sel) => {
+                if (!sel || sel.empty?.()) return;
+                if (typeof sel.interrupt === 'function') sel.interrupt();
+                this._clearOrderLevelRevealSlide(sel);
+            });
+            const visible = !!this._orderLevelRevealHover?.get(key);
+            this._paintOrderLevelHoverReveal(key, visible, false);
         });
     }
 
