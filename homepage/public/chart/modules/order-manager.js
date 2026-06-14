@@ -26349,24 +26349,7 @@ class OrderManager {
             
             console.log(`✅ Partial close: #${orderId} | Closed ${(percentage * 100).toFixed(0)}% (${closeQuantity.toFixed(2)} lots) | P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} | Cumulative Partial P&L: $${position.partialClosePnL.toFixed(2)} | Remaining: ${position.quantity.toFixed(2)} lots | Balance: $${this.balance.toFixed(2)}`);
             
-            // Remove the TP line for the target that just filled (split TP)
-            if (targetId !== undefined && this.tpLines) {
-                const hitLine = this.tpLines.find(tpLine => tpLine.orderId === orderId && (tpLine.targetId === targetId || String(tpLine.targetId) === String(targetId)));
-                if (hitLine) {
-                    this._disposeSlTpRowElements(hitLine);
-                    this.tpLines = this.tpLines.filter(tpLine => !(tpLine.orderId === orderId && (tpLine.targetId === targetId || String(tpLine.targetId) === String(targetId))));
-                    console.log(`   ✅ Removed TP line for target #${targetId}`);
-                }
-            }
-            
-            this.updateSLTPLines();
-            const _avgCharts = this._isMultiPanelLayout() ? (this._collectLayoutCharts() || []) : [this.chart];
-            (_avgCharts.length ? _avgCharts : [this.chart]).forEach((c) => {
-                if (c?.scales?.yScale) {
-                    this._updateMultiTPAvgLines(c);
-                }
-            });
-            this._cleanupOrderVisualsAfterPartialTpClose(orderId);
+            this._refreshOpenPositionSlTpAfterPartialTpClose(position);
             
             // Draw partial profit marker only on the active chart
             if (!isBackgroundClose) {
@@ -33545,11 +33528,33 @@ class OrderManager {
 
     /** Partial multi-TP hit: position stays open — refresh connectors only, keep entry + remaining TP/SL lines. */
     _cleanupOrderVisualsAfterPartialTpClose(orderId) {
-        this._purgeOrderConnectorsForOrder(orderId);
-        this._purgeOrderConnectorsFromAllSurfaces();
         this._scheduleOrderConnectorRefreshAfterClose();
-        if (typeof this._cleanupOrphanedYAxisHighlights === 'function') {
-            this._cleanupOrphanedYAxisHighlights();
+    }
+
+    /**
+     * After a multi-TP partial fill: rebuild SL/TP ladder + entry badge + connectors cleanly.
+     * Patching one tpLines row leaves orphan badges when chart.render() strips unpreserved classes.
+     */
+    _refreshOpenPositionSlTpAfterPartialTpClose(position) {
+        if (!position?.id) return;
+        try {
+            this.drawSLTPLines(position);
+            this.updateSLTPLines();
+            const charts = this._isMultiPanelLayout()
+                ? (this._collectLayoutCharts() || [])
+                : [this.chart];
+            (charts.length ? charts : [this.chart]).forEach((c) => {
+                if (!c?.scales?.yScale) return;
+                this._updateMultiTPAvgLines(c);
+                if (typeof this._drawExecutedOrderConnectors === 'function') {
+                    this._drawExecutedOrderConnectors(c);
+                }
+            });
+            if (typeof this.updateOrderLines === 'function') {
+                this.updateOrderLines();
+            }
+        } catch (e) {
+            console.warn('Partial TP SL/TP refresh failed:', e);
         }
     }
 

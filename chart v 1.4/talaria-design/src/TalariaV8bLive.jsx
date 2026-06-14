@@ -8809,6 +8809,50 @@ function v9IsPartialDecimalInput(str) {
   return false;
 }
 
+/** SIZE rail input — allow free typing; cap fractional digits (default 3). */
+function v9SanitizeSizeInputRaw(raw, sizeMode, symbolType, maxDecimals = 3) {
+  let v = String(raw ?? "");
+  if (sizeMode === "#" && symbolType === "futures") {
+    if (!/^\d*$/.test(v)) return null;
+    return v;
+  }
+  if (!/^-?\d*\.?\d*$/.test(v)) return null;
+  if (v.length > 18) return null;
+  const dot = v.indexOf(".");
+  if (dot >= 0) {
+    const frac = v.slice(dot + 1);
+    if (frac.length > maxDecimals) {
+      v = `${v.slice(0, dot + 1)}${frac.slice(0, maxDecimals)}`;
+    }
+  }
+  if (sizeMode === "%") {
+    const n = parseFloat(v);
+    if (!isNaN(n) && n > 100) return null;
+  }
+  return v;
+}
+
+function v9FormatSizeInputOnBlur(raw, sizeMode, symbolType, accountEquity) {
+  const s = String(raw ?? "").trim();
+  if (s === "" || s === ".") return "0";
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return "0";
+  if (sizeMode === "#" && symbolType === "futures") {
+    return String(Math.max(0, Math.floor(n)));
+  }
+  if (sizeMode === "%") {
+    return String(Math.max(0, Math.min(100, parseFloat(n.toFixed(2)))));
+  }
+  if (sizeMode === "$") {
+    const capped = Math.max(0, Math.min(accountEquity, n));
+    return String(parseFloat(capped.toFixed(3)));
+  }
+  if (sizeMode === "#") {
+    return String(parseFloat(Math.max(0, n).toFixed(3)));
+  }
+  return String(n);
+}
+
 function v9NormalizePriceInputOnBlur(raw) {
   const s = String(raw ?? "").trim();
   if (s === "" || s === ".") return "0";
@@ -11062,6 +11106,7 @@ const TalariaV8bLive = () => {
 
   /** Short windows where React row counts intentionally lead OM (panel add/delete) so reverse poll must not fight the forward bridge. */
   const omPanelBridgeRef = useRef({ entryAdd: 0, entryDel: 0, tpAdd: 0, tpDel: 0, control: 0 });
+  const sizeInputFocusedRef = useRef(false);
   /** Throttle OM full R:R recompute while React leads the bridge (margin badge reads DOM fed by this). */
   const omHeaderRecalcRef = useRef(0);
   const closeOthersForIndSettRef = useRef(() => {});
@@ -13855,8 +13900,10 @@ const TalariaV8bLive = () => {
           }
         };
 
-        if (sizeMode === "$") setIn("riskAmountUSD", riskVal);
-        else if (sizeMode === "%") {
+        if (sizeMode === "$") {
+          if (!v9IsPartialDecimalInput(riskVal)) setIn("riskAmountUSD", riskVal);
+        } else if (sizeMode === "%") {
+          if (!v9IsPartialDecimalInput(riskVal)) {
           let pct = riskVal;
           // order-manager.js applies % to balance (current/initial), not equity; scale so $ risk matches V8b EQ mode.
           if (riskBasis === "equity" && om) {
@@ -13867,6 +13914,7 @@ const TalariaV8bLive = () => {
             }
           }
           setIn("riskAmountPercent", pct);
+          }
           const wantBal = "current";
           const br = document.querySelector(`input[name="balanceType"][value="${wantBal}"]`);
           if (br && !br.checked) br.click();
@@ -13885,9 +13933,12 @@ const TalariaV8bLive = () => {
           if (om && typeof om._formatQty === "function" && typeof om._roundQtyToStep === "function") {
             lotStr = om._formatQty(om._roundQtyToStep(lotCore));
           }
-          setIn("lotSizeAmount", lotStr);
+          if (!v9IsPartialDecimalInput(riskVal)) {
+            setIn("lotSizeAmount", lotStr);
+          }
           queueMicrotask(() => {
             try {
+              if (sizeInputFocusedRef.current || v9IsPartialDecimalInput(riskVal)) return;
               setRiskVal((prev) => (prev === lotStr ? prev : lotStr));
             } catch (_) {}
           });
@@ -14578,7 +14629,7 @@ const TalariaV8bLive = () => {
             rv = String((parseFloat(rv) * b) / eq);
           }
         }
-        if (rv != null && rv !== "") {
+        if (rv != null && rv !== "" && !sizeInputFocusedRef.current && !v9IsPartialDecimalInput(riskVal)) {
           setRiskVal((prev) => (prev === rv ? prev : rv));
         }
       }
@@ -33316,8 +33367,8 @@ const TalariaV8bLive = () => {
               omFuturesMinRiskTxt &&
               (!Number.isFinite(minLotsHint) || minLotsHint < 1);
             const qtyDisplay = Number.isFinite(qtyDisplayNum)
-              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyDisplayNum)) : qtyDisplayNum.toFixed(2)} ${sizeUnit}`
-              : `0.00 ${sizeUnit}`;
+              ? `${currentSymbol.type==="futures" ? Math.floor(Math.max(0, qtyDisplayNum)) : parseFloat(qtyDisplayNum.toFixed(3))} ${sizeUnit}`
+              : `0.000 ${sizeUnit}`;
             const calcUsdRead =
               typeof document !== "undefined"
                 ? document.getElementById("calculatedValue")?.textContent?.replace(/\s+/g, " ").trim() || ""
@@ -33335,29 +33386,30 @@ const TalariaV8bLive = () => {
                   {sizeMode==="%" && <span style={{ fontSize:9, fontWeight:700, color:c.ts, flexShrink:0 }}>%</span>}
                   <input
                     type="text"
+                    inputMode="decimal"
                     value={riskVal}
+                    onFocus={() => {
+                      sizeInputFocusedRef.current = true;
+                      markOrderControlBridge();
+                    }}
                     onChange={e => {
-                      const v=e.target.value;
-                      if(sizeMode==="#" && currentSymbol.type==="futures" && !/^\d*$/.test(v)) return;
-                      if((sizeMode==="#"||sizeMode==="$") && v.length>18) return;
-                      if(/^-?\d*\.?\d*$/.test(v)) {
-                        if(sizeMode==="%") { const n=parseFloat(v); if(!isNaN(n)&&n>100) return; }
-                        markOrderControlBridge();
-                        setRiskVal(v);
-                      }
+                      const v = v9SanitizeSizeInputRaw(e.target.value, sizeMode, currentSymbol.type, 3);
+                      if (v == null) return;
+                      markOrderControlBridge();
+                      setRiskVal(v);
                     }}
                     onBlur={e => {
-                      const n=parseFloat(e.target.value);
+                      sizeInputFocusedRef.current = false;
                       markOrderControlBridge();
-                      if(!isNaN(n)) {
-                        const next = sizeMode==="#" && currentSymbol.type==="futures"
-                          ? Math.floor(Math.max(0, n))
-                          : Math.max(0, sizeMode==="%"?Math.min(100,n):sizeMode==="$"?Math.min(accountEquity,n):n);
-                        setRiskVal(String(next));
-                      }
-                      else setRiskVal("0");
+                      const formatted = v9FormatSizeInputOnBlur(
+                        e.target.value,
+                        sizeMode,
+                        currentSymbol.type,
+                        accountEquity
+                      );
+                      setRiskVal(formatted);
                     }}
-                    style={{ width:`${Math.max(2, riskVal.length+0.5)}ch`, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:12, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", textAlign:"left", padding:0 }}
+                    style={{ width:56, minWidth:40, maxWidth:88, background:"transparent", border:"none", outline:"none", color:c.tx, fontSize:12, fontWeight:700, fontFamily:F, fontVariantNumeric:"tabular-nums", textAlign:"left", padding:0 }}
                   />
                   {/* Step buttons — SVG chevrons */}
                   <div style={{ display:"flex", flexDirection:"column", gap:1, flexShrink:0 }}>
@@ -33368,6 +33420,9 @@ const TalariaV8bLive = () => {
                         <div key={key} onClick={()=>{ markOrderControlBridge(); setRiskVal(v => {
                           const next = Math.max(0, parseFloat(v||"0")+dir*step);
                           const capped = sizeMode==="%"?Math.min(100,next):sizeMode==="$"?Math.min(accountEquity,next):next;
+                          if (sizeMode === "$" || sizeMode === "#") {
+                            return String(parseFloat(capped.toFixed(3)));
+                          }
                           return String(capped);
                         }); }}
                           onMouseEnter={()=>setSwHov(`rv-${key}`)} onMouseLeave={()=>setSwHov(null)}

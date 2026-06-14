@@ -26740,11 +26740,19 @@ class Chart {
         // Pending uses separate class names; without these, chart.render() → redrawDrawings() strips TP/SL
         // labels and leaves broken lines after e.g. deleting a pending multi-TP leg.
         const _preserveOrderOverlay = [
-            'order-line', 'order-label', 'sl-line', 'sl-label', 'sl-label-box', 'sl-label-text', 'sl-close-btn', 'sl-price-box', 'sl-price-text',
-            'tp-line', 'tp-label', 'tp-label-box', 'tp-label-text', 'tp-close-btn', 'tp-price-box', 'tp-price-text',
+            'order-line', 'order-label', 'order-label-box', 'order-label-text', 'order-label-accent',
+            'order-drag-hit', 'order-arrow', 'order-pnl-box', 'order-pnl-text', 'order-price-box', 'order-price-text',
+            'order-sl-badge', 'order-tp-badge', 'order-tp-badges',
+            'sl-line', 'sl-label', 'sl-label-box', 'sl-label-text', 'sl-label-accent', 'sl-pnl-box', 'sl-pnl-text',
+            'sl-close-btn', 'sl-price-box', 'sl-price-text',
+            'tp-line', 'tp-label', 'tp-label-box', 'tp-label-text', 'tp-label-accent', 'tp-pnl-box', 'tp-pnl-text',
+            'tp-close-btn', 'tp-price-box', 'tp-price-text', 'tp-delete-btn', 'tp-split-btn',
+            'open-tp-pct-control', 'open-tp-pct-dec', 'open-tp-pct-inc',
+            'order-level-badge', 'order-level-badge-bg', 'order-level-badge-glyph',
+            'order-level-toast-label', 'order-level-toast-bg', 'order-level-toast-accent', 'order-level-toast-tag', 'order-level-toast-detail',
             'be-line', 'be-label-box', 'be-label-text', 'be-price-box', 'be-price-text',
             'pending-order-line', 'pending-order-hit-line', 'pending-order-label-box', 'pending-order-label-text',
-            'pending-order-price-box', 'pending-order-price-text', 'pending-order-close-btn',
+            'pending-order-label-accent', 'pending-order-price-box', 'pending-order-price-text', 'pending-order-close-btn',
             'pending-sl-badge', 'pending-tp-badge', 'pending-entry-plus-badge',
             'pending-sl-line', 'pending-tp-line', 'pending-be-line',
             'pending-sl-label', 'pending-tp-label', 'pending-be-label',
