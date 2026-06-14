@@ -39763,84 +39763,78 @@ class OrderManager {
     _populateTpPctStepper(g, opts = {}) {
         const o = opts || {};
         const size = this._tpPctStepperSize();
-        const half = size / 2;
         const th = o.th || this._tradeMarkerToastTheme();
-        const accent = th.light ? '#059669' : '#22c55e';
+        const green = th.light ? '#059669' : '#22c55e';
+        const red = th.light ? '#dc2626' : '#ef4444';
         const center = !!o.centerAnchor;
+        const half = size / 2;
         const bx = center ? -half : 0;
         const by = center ? -half : 0;
         const cx = center ? 0 : half;
         const arrowSz = 4.2;
+        const splitGap = 1;
+        const upH = Math.ceil((size - splitGap) / 2);
+        const downH = size - splitGap - upH;
+        const downY = by + upH + splitGap;
+        const upCy = by + upH / 2;
+        const downCy = downY + downH / 2;
 
-        const bg = g.append('rect')
-            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg order-overlay-sublayer')
+        const bgUp = g.append('rect')
+            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg-up order-overlay-sublayer')
             .attr('x', bx).attr('y', by)
-            .attr('width', size).attr('height', size)
+            .attr('width', size).attr('height', upH)
             .attr('rx', 2)
             .attr('stroke-width', 1);
 
-        g.append('line')
-            .attr('class', 'tp-pct-stepper-divider order-overlay-sublayer')
-            .attr('x1', bx + 2).attr('x2', bx + size - 2)
-            .attr('y1', center ? 0 : half)
-            .attr('y2', center ? 0 : half)
-            .attr('stroke', th.border)
-            .attr('stroke-width', 1)
-            .style('pointer-events', 'none');
+        const bgDown = g.append('rect')
+            .attr('class', 'order-level-badge-bg tp-pct-stepper-bg-down order-overlay-sublayer')
+            .attr('x', bx).attr('y', downY)
+            .attr('width', size).attr('height', downH)
+            .attr('rx', 2)
+            .attr('stroke-width', 1);
 
         const upPath = g.append('path')
             .attr('class', 'order-level-badge-glyph tp-pct-stepper-up order-overlay-sublayer')
-            .attr('d', this._arrowUpPath(cx, center ? -4 : half - 4.5, arrowSz))
-            .attr('fill', th.muted)
+            .attr('d', this._arrowUpPath(cx, upCy, arrowSz))
+            .attr('fill', green)
             .style('pointer-events', 'none');
 
         const downPath = g.append('path')
             .attr('class', 'order-level-badge-glyph tp-pct-stepper-down order-overlay-sublayer')
-            .attr('d', this._arrowDownPath(cx, center ? 4 : half + 4.5, arrowSz))
-            .attr('fill', th.muted)
+            .attr('d', this._arrowDownPath(cx, downCy, arrowSz))
+            .attr('fill', red)
             .style('pointer-events', 'none');
 
-        const reset = () => {
-            bg.attr('fill', th.bg).attr('stroke', th.border);
-            upPath.attr('fill', th.muted);
-            downPath.attr('fill', th.muted);
-        };
-        const hover = () => {
-            bg.attr('fill', accent).attr('stroke', accent);
-            upPath.attr('fill', '#ffffff');
-            downPath.attr('fill', '#ffffff');
-        };
-        reset();
-        g.on('mouseenter', hover).on('mouseleave', reset);
-
-        const wireHit = (node, fn) => {
-            if (!fn) return;
-            node.attr('fill', 'transparent')
-                .style('pointer-events', 'all')
+        const wireHalf = (bgEl, pathEl, accent, fn) => {
+            const reset = () => {
+                bgEl.attr('fill', th.bg).attr('stroke', accent);
+                pathEl.attr('fill', accent);
+            };
+            const hover = () => {
+                bgEl.attr('fill', accent).attr('stroke', accent);
+                pathEl.attr('fill', '#ffffff');
+            };
+            reset();
+            bgEl.style('pointer-events', 'all')
                 .style('cursor', 'pointer')
-                .on('click', (e) => {
+                .on('mouseenter', hover)
+                .on('mouseleave', reset);
+            if (fn) {
+                bgEl.on('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
                     fn(e);
                 });
+            }
             if (o.stopMousedown) {
-                node.on('mousedown', (e) => e.stopPropagation());
+                bgEl.on('mousedown', (e) => e.stopPropagation());
             }
         };
 
-        const hitUp = g.append('rect')
-            .attr('class', 'tp-pct-stepper-hit tp-pct-stepper-hit-up')
-            .attr('x', bx).attr('y', by)
-            .attr('width', size).attr('height', half);
-        wireHit(hitUp, o.onIncrease);
+        wireHalf(bgUp, upPath, green, o.onIncrease);
+        wireHalf(bgDown, downPath, red, o.onDecrease);
 
-        const hitDown = g.append('rect')
-            .attr('class', 'tp-pct-stepper-hit tp-pct-stepper-hit-down')
-            .attr('x', bx).attr('y', by + half)
-            .attr('width', size).attr('height', half);
-        wireHit(hitDown, o.onDecrease);
-
-        return { bg, upPath, downPath, size };
+        return { bgUp, bgDown, upPath, downPath, size };
     }
 
     /** Combined ↑/↓ square for multi-TP share stepper on chart SVG (center-anchored). */
