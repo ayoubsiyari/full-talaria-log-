@@ -15119,6 +15119,59 @@ class OrderManager {
     }
 
     /**
+     * Coalesce rapid TP stepper clicks into one chart refresh (reduces shake/lag).
+     */
+    _scheduleOpenTpPctChartRefresh() {
+        if (this._openTpPctChartRefreshRaf != null) return;
+        this._openTpPctChartRefreshRaf = requestAnimationFrame(() => {
+            this._openTpPctChartRefreshRaf = null;
+            if (this._isMultiPanelLayout()) {
+                this._collectLayoutCharts().forEach((c) => {
+                    if (c?.scales?.yScale) {
+                        this.updateSLTPLines(c);
+                        if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(c);
+                    }
+                });
+            } else if (this.chart?.scales?.yScale) {
+                this.updateSLTPLines(this.chart);
+                if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
+            }
+            if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        });
+    }
+
+    _schedulePendingTpPctChartRefresh(pendingOrderId) {
+        this._pendingTpPctRefreshOrderId = pendingOrderId;
+        if (this._pendingTpPctChartRefreshRaf != null) return;
+        this._pendingTpPctChartRefreshRaf = requestAnimationFrame(() => {
+            this._pendingTpPctChartRefreshRaf = null;
+            const po = this._pendingTpPctRefreshOrderId != null
+                ? this._findPendingOrderById(this._pendingTpPctRefreshOrderId)
+                : null;
+            if (!po) return;
+            this.removePendingSLTPLines(po.id);
+            this.removeMultiTPAvgLine(po.id);
+            this.drawPendingOrderTargets(po);
+            if (po.tpTargets?.length >= 1) this.drawMultiTPAvgLine(po, 'pending');
+            this.positionPendingOrderTargets(this.chart);
+            if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
+            this._syncPreviewTpTargetsFromPending(po);
+            this._schedulePendingOrdersPanelRefresh();
+        });
+    }
+
+    _schedulePreviewTpPctRefresh() {
+        if (this._previewTpPctRefreshRaf != null) return;
+        this._previewTpPctRefreshRaf = requestAnimationFrame(() => {
+            this._previewTpPctRefreshRaf = null;
+            this.calculateAdvancedRiskReward();
+            this.updatePreviewLines();
+            this.renderTPTargets();
+            this._syncPendingOrdersTpTargetsFromPreview();
+        });
+    }
+
+    /**
      * +/- on open position multi-TP lines: updates position.tpTargets (same as panel redistribution).
      */
     adjustOpenPositionTPPercentage(orderId, targetIndex, change) {
@@ -15129,18 +15182,7 @@ class OrderManager {
         if (pos.isSplitEntry && pos.splitGroupId) {
             this._syncOpenTpPercentagesAcrossSplitGroup(pos);
         }
-        if (this._isMultiPanelLayout()) {
-            this._collectLayoutCharts().forEach((c) => {
-                if (c?.scales?.yScale) {
-                    this.updateSLTPLines(c);
-                    if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(c);
-                }
-            });
-        } else {
-            this.updateSLTPLines(this.chart);
-            if (typeof this._updateMultiTPAvgLines === 'function') this._updateMultiTPAvgLines(this.chart);
-        }
-        if (typeof this.updatePositionsPanel === 'function') this.updatePositionsPanel();
+        this._scheduleOpenTpPctChartRefresh();
     }
 
     /**
@@ -15154,18 +15196,7 @@ class OrderManager {
         if (po.isSplitEntry && po.splitGroupId) {
             this._syncPendingTpPercentagesAcrossSplitGroup(po);
         }
-        this.removePendingSLTPLines(po.id);
-        this.removeMultiTPAvgLine(po.id);
-        this.drawPendingOrderTargets(po);
-        if (po.tpTargets.length >= 1) {
-            this.drawMultiTPAvgLine(po, 'pending');
-        }
-        this.positionPendingOrderTargets(this.chart);
-        if (typeof this._updateMultiTPAvgLines === 'function') {
-            this._updateMultiTPAvgLines(this.chart);
-        }
-        this._syncPreviewTpTargetsFromPending(po);
-        this._schedulePendingOrdersPanelRefresh();
+        this._schedulePendingTpPctChartRefresh(pendingOrderId);
     }
 
     /**
@@ -15189,10 +15220,7 @@ class OrderManager {
             }
         });
 
-        this.calculateAdvancedRiskReward();
-        this.updatePreviewLines();
-        this.renderTPTargets();
-        this._syncPendingOrdersTpTargetsFromPreview();
+        this._schedulePreviewTpPctRefresh();
 
         const unit = this.tpDistributionMode === 'percent' ? '%' : this.tpDistributionMode === 'amount' ? '$' : ' lots';
         console.log(`📊 Adjusted TP${targetIndex + 1}: ${currentValue.toFixed(precision)}${unit} → ${newValue.toFixed(precision)}${unit}`);
@@ -39763,6 +39791,7 @@ class OrderManager {
 
     _wireOrderLevelBadgeHover(host, bg, txt, th, spec) {
         const accent = spec.hoverAccent || spec.accent;
+        let leaveTimer = null;
         const reset = () => {
             bg.attr('fill', th.bg).attr('stroke', th.border);
             txt.attr('fill', th.muted);
@@ -39772,7 +39801,15 @@ class OrderManager {
             txt.attr('fill', '#ffffff');
         };
         reset();
-        host.on('mouseenter', hover).on('mouseleave', reset);
+        host
+            .on('mouseenter', () => {
+                if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+                hover();
+            })
+            .on('mouseleave', () => {
+                if (leaveTimer) clearTimeout(leaveTimer);
+                leaveTimer = setTimeout(() => { leaveTimer = null; reset(); }, 50);
+            });
     }
 
     /** Align chart badge top-left so circle center sits on the order row (matches 22px toast boxes). */
@@ -39832,26 +39869,23 @@ class OrderManager {
             .attr('fill', th.muted)
             .style('pointer-events', 'none');
 
+        const resetBoth = () => {
+            bgUp.attr('fill', th.bg).attr('stroke', th.border);
+            bgDown.attr('fill', th.bg).attr('stroke', th.border);
+            upPath.attr('fill', th.muted);
+            downPath.attr('fill', th.muted);
+        };
+
         const wireHalf = (bgEl, pathEl, accent, fn) => {
-            const reset = () => {
-                bgEl.attr('fill', th.bg).attr('stroke', th.border);
-                pathEl.attr('fill', th.muted);
-            };
-            const activate = () => {
-                bgEl.attr('fill', accent).attr('stroke', accent);
-                pathEl.attr('fill', '#ffffff');
-            };
-            reset();
-            bgEl.style('pointer-events', 'all')
-                .style('cursor', 'pointer')
-                .on('mouseleave', reset);
+            bgEl.style('pointer-events', 'all').style('cursor', 'pointer');
             if (fn) {
                 bgEl.on('click', (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    activate();
+                    bgEl.attr('fill', accent).attr('stroke', accent);
+                    pathEl.attr('fill', '#ffffff');
                     fn(e);
-                    setTimeout(reset, 200);
+                    requestAnimationFrame(() => requestAnimationFrame(resetBoth));
                 });
             }
             if (o.stopMousedown) {
@@ -39859,6 +39893,7 @@ class OrderManager {
             }
         };
 
+        resetBoth();
         wireHalf(bgUp, upPath, green, o.onIncrease);
         wireHalf(bgDown, downPath, red, o.onDecrease);
 
